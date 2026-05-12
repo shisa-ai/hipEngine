@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hipengine"
+version = "0.0.0"
+description = "ROCm-native local LLM inference engine with a torch-free runtime hot path"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "HIPENGINE contributors" }
+]
+dependencies = [
+  "jinja2>=3.1",
+  "numpy>=1.26",
+  "safetensors>=0.4",
+  "tokenizers>=0.15",
+]
+
+[project.optional-dependencies]
+server = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+]
+torch = [
+  "torch>=2.5",
+]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["hipengine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

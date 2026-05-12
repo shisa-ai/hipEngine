@@ -17,8 +17,8 @@ dist/
 .eggs/
 
 # Model weights / fixtures that are too large to track
-models/
-weights/
+/models/
+/weights/
 *.safetensors
 *.gguf
 *.bin
