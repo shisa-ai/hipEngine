@@ -550,7 +550,7 @@ All kernels come from the `nano-vllm-amd` research lineage (`gfx1100-qwen3.5` br
 | `nano-vllm-amd/csrc/amd/smoke.hip` | 51 | 1 | — | `smoke_add` |
 | `nano-vllm-amd/csrc/amd/qwen35_expert_hip.hip` | 13,769 | — | — | **Near-duplicate** of `qwen35_expert.hip` (only `ATen/cuda/CUDAContext.h` → `ATen/hip/HIPContext.h`). **Dropped on port.** |
 | `nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` | 4,394 Python | **25** | — | Contains one `r'''...'''` block of **3,766 lines** of embedded HIP source compiled via `torch.utils.cpp_extension.load_inline`. Python wrapper ≈ 628 lines. |
-| **Total HIP source to port** | **~17,590** lines | **120** kernels | | (13,769 + 3,766 + 51, before splitting) |
+| **Total Qwen/PARO HIP source to port** | **~17,535** lines | **120** kernels | | 13,769 + 3,766, excluding the separate `smoke_add` build smoke |
 | **C++ bindings to port** | **~1,040** lines | | ~94 exports | |
 
 Pure-Python dispatch under `nano-vllm-amd/nanovllm/native/qwen35/` totals **~10,886 lines** (14,652 total − 3,766 embedded HIP) across `paroquant.py` (4,753), `expert.py` (1,085), `paroquant_weights.py` (854), `wmma.py` (774), `mtp.py` (676), `full_attention.py` (511), `weights.py` (454), `linear_attention.py` (387), `__init__.py` (306), `rmsnorm.py` (155), `linear.py` (138), `spec.py` (115), `router.py` (101), `paroquant_kernels.py` wrapper (628). This is the dispatch layer HIPENGINE adapts.
@@ -564,26 +564,26 @@ The monolithic `qwen35_expert.hip` + `paroquant_kernels.py` embedded string are 
 | `common/helpers.cuh` | — | new, extracted | vec8, warp-reduce, packing helpers shared across families |
 | `common/extension.cpp` | — | from `csrc/amd/extension.cpp` | Aggregated PyBind registrations (one entry point) |
 | `attention/full_attn_decode.hip` | 2 | `qwen35_expert.hip` | `qwen35_full_attn_decode_kernel`, `_context_tensor_kernel` |
-| `attention/paged_attn_decode.hip` | 11 | `qwen35_expert.hip` | `qwen35_paged_full_attn_decode_*` family incl. split-K, split-K reduce (gate), context-tensor, warp-cooperative, int8, GQA, 4k/8k variants. +12–62% over SDPA at long context; +33% 32K (warp); +20% 128K (V-loop); +11% long-ctx (GQA) |
+| `attention/paged_attn_decode.hip` | 13 | `qwen35_expert.hip` | `qwen35_paged_full_attn_decode_*` family incl. 4K/8K variants, split-K, context-tensor, warp-cooperative, GQA, int8, and split-K reduce/gate. +12–62% over SDPA at long context; +33% 32K (warp); +20% 128K (V-loop); +11% long-ctx (GQA) |
 | `attention/paged_kv_write.hip` | 6 | `qwen35_expert.hip` | `qwen35_write_paged_kv_*` incl. mixed-value, position-tensor, int8 |
 | `linear_attn/conv.hip` | 4 | `qwen35_expert.hip` | `qwen35_linear_attn_conv_{prefill,decode}[_lowp,_state]` |
 | `linear_attn/gdn.hip` | 6 | `qwen35_expert.hip` | `qwen35_gdn_*` (prefill recurrent k/k2, decode, rmsnorm gate lowp/normal) |
 | `moe/router.hip` | 6 | `qwen35_expert.hip` | `qwen35_router_logits`, `_select`, `qwen35_token_rank_count_{partial,finalize}`, `qwen35_token_top2_{partial,finalize}`. 5.7× kernel speedup vs reference topk |
-| `moe/group_scatter.hip` | ~12 | `qwen35_expert.hip` | `qwen35_moe_group_{count,prefix,scatter,scatter_gather}`, `qwen35_moe_c1_group_metadata*`, `qwen35_moe_gather_*`, `qwen35_moe_combine`, `qwen35_build_lane_to_sorted` |
+| `moe/group_scatter.hip` | 11 | `qwen35_expert.hip` | `qwen35_moe_group_{count,prefix,scatter,scatter_gather}`, `qwen35_moe_c1_group_metadata*`, `qwen35_moe_gather_*`, `qwen35_moe_combine`, `qwen35_build_lane_to_sorted` |
 | `moe/w8a8_grouped.hip` | 10 | `qwen35_expert.hip` | `qwen35_dequantize_w8a8_*` (5) + `qwen35_moe_grouped_*` (5, gate_up / down_flat / accumulate variants) |
 | `moe/swiglu.hip` | 2 | `qwen35_expert.hip` | `qwen35_swiglu_packed_gate_up`, `qwen35_dequantize_swiglu_quantize_grouped` |
 | `quant/w8a8_activation.hip` | 2 | `qwen35_expert.hip` | `qwen35_quantize_activation_{i8,f32_i8}_per_row` (per-token dynamic int8) |
-| `quant/w8a16_linear.hip` | 6 | `qwen35_expert.hip` | `w8a16_linear`, `_batched`, `_f32`, `_batched_f32`, `_lowp_out` |
-| `quant/w8a16_moe.hip` | 18 | `qwen35_expert.hip` | `w8a16_gate_up*`, `_down*`, `_shared_*`, `_selected_experts`, `_single_*`, `_shared_gate_up_bulk*`, `_shared_down_bulk_combine*`. +54% decode family |
-| `quant/paro_awq_gemv.hip` | ~10 | `paroquant_kernels.py` | `gemv_awq_v8`, `_pack8`, `_pack8_strided`, `dual_pack8`, `selected_dual_pack8_strided[_rotate_out]`, `selected_pack8`, `dense_gemv_out`. +19% decode, coalesced pack8 layout |
+| `quant/w8a16_linear.hip` | 5 | `qwen35_expert.hip` | `w8a16_linear`, `_batched`, `_f32`, `_batched_f32`, `_lowp_out` |
+| `quant/w8a16_moe.hip` | 17 | `qwen35_expert.hip` | `w8a16_gate_up*`, `_down*`, `_shared_*`, `_selected_experts`, `_single_*`, `_shared_gate_up_bulk*`, `_shared_down_bulk_combine*`. +54% decode family |
+| `quant/paro_awq_gemv.hip` | 7 | `paroquant_kernels.py` | `gemv_awq_v8`, `_pack8`, `dual_pack8`, `selected_dual_pack8_strided[_rotate_out]`, `selected_pack8`, `dense_gemv_out`. +19% decode, coalesced pack8 layout |
 | `quant/paro_awq_dequant.hip` | 2 | `paroquant_kernels.py` | `dequant_awq_pack8`, `_dual` |
 | `wmma/wmma_i8_gemm.hip` | 4 | `qwen35_expert.hip` | `qwen35_wmma_i8_{tile,gemm,gemm_a_row_major,gemm_grouped_a_row_major}` |
 | `norm/rmsnorm.hip` | 6 | mixed | `qwen35_rmsnorm`, `_add_rmsnorm`, `_add_rmsnorm_f32`, `_head_rmsnorm`, `paro_rmsnorm_out`, `paro_add_rmsnorm_out` |
 | `rotary/rotary.hip` | 5 | mixed | `qwen35_partial_rotary`, `qwen35_head_rmsnorm_partial_rotary[_position]`, `paro_rotate2`, `paro_rotate3` |
-| `fused/fused_ops.hip` | ~11 | `paroquant_kernels.py` | `silu_mul_dual_out`, `_dual_rotate_out`, `_pair_rotate_out`, `full_attn_gate_mul_out`, `shared_gate_combine_{,residual_}out`, `weighted_{index_add_[atomic_float_]out, lanes_{sum,inverse}, sum_out}`, `weighted_sum_shared_gate_combine_residual_out` |
+| `fused/fused_ops.hip` | 12 | `paroquant_kernels.py` | `silu_mul_dual_out`, `_dual_rotate_out`, `_pair_rotate_out`, `full_attn_gate_mul_out`, `shared_gate_combine_{,residual_}out`, `weighted_{index_add_[atomic_float_]out, lanes_{sum,inverse}, sum_out}`, `weighted_sum_shared_gate_combine_residual_out` |
 | `smoke/smoke.hip` | 1 | `csrc/amd/smoke.hip` | `smoke_add` (JIT-build smoke) |
 
-**Split totals:** ~14 `.hip` files + 1 shared header + 1 aggregator `.cpp`, preserving all **120 kernels** and ~94 bindings with **no kernel rewrites**. Per-file boilerplate (includes, anonymous namespaces, per-family binding sections) adds **~300 new LoC**; dropping the near-duplicate `qwen35_expert_hip.hip` removes **13,769 LoC** from the tree. Host-side launch wrappers are retyped from `torch::Tensor` to raw pointer + shape/stride/dtype signatures during the same pass (~1 day scripted).
+**Split totals:** ~14 `.hip` files + 1 shared header + 1 aggregator `.cpp`, preserving all **120 Qwen/PARO kernels** plus the separate `smoke_add` build smoke and ~94 bindings with **no kernel rewrites**. Per-file boilerplate (includes, anonymous namespaces, per-family binding sections) adds **~300 new LoC**; dropping the near-duplicate `qwen35_expert_hip.hip` removes **13,769 LoC** from the tree. Host-side launch wrappers are retyped from `torch::Tensor` to raw pointer + shape/stride/dtype signatures during the same pass (~1 day scripted).
 
 **Correctness gate for the split:** after partitioning, verify (a) every kernel name still resolves via the Python extension module, (b) `rocprofv3 --kernel-trace` reports the same kernel set with matching `DurationNs` distribution on the Qwen3.6-35B-A3B decode smoke, (c) KL ≤ 0.05 and top-1 ≥ 90% vs the monolithic build on the correctness fixtures.
 

@@ -18,6 +18,27 @@ Every retained performance number must carry:
 
 Claims without a correctness gate are disallowed. A perf win that regresses correctness is reverted. Raw terminal output is not evidence — retain a compact JSON artifact per the schema at the bottom of this doc.
 
+## Benchmark Output Contract
+
+A benchmark artifact must answer five questions without rereading raw logs:
+
+1. **What ran?** Exact command, model, quant, workload shape, hardware/software context, commit/dirty state.
+2. **Did correctness pass?** Fixture set, oracle, KL/top-1 or layer tolerance metrics, exact correctness command(s), pass/fail status.
+3. **How stable is the number?** Warmup count, measured repetitions, per-phase samples, median/p95/min/max/stdev where applicable.
+4. **What did the GPU actually execute?** Profiler trace status, expected kernel names, time-share summary, and any profiler blocker. Raw traces stay outside git; compact summaries go in JSON.
+5. **Should we keep this number?** Baseline reference, delta, acceptance decision, and rejection/blocker reason if not retained.
+
+Allowed artifact statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `accepted` | Correctness passed, benchmark protocol followed, variance acceptable, and result may be compared later. |
+| `rejected_correctness` | Performance may have been measured but correctness failed; number must not be used as a perf claim. |
+| `rejected_variance` | Correctness passed but timing was too noisy / contaminated for comparison. |
+| `blocked` | Benchmark could not complete (OOM, hang, profiler failure, missing dependency, GPU busy). Record symptom and command. |
+
+A JSON artifact with `status != "accepted"` is still useful evidence, but it is not a retained performance number.
+
 ## Hardware & Software Context (default)
 
 Unless explicitly stated otherwise, HIPENGINE benchmarks run on:
@@ -101,10 +122,30 @@ Protocol TBD once the scheduler is stable. Will mirror `mini-sglang`'s concurren
 For kernel-local claims (port parity, fusion wins):
 
 - Warmup: 50 iterations
-- Measure: 200 iterations, report median + p95
-- Report: `DurationNs`, `Grid_Size`, `Workgroup_Size`, `VGPR_Count`, `Scratch_Size`, `LDS_Block_Size` from `rocprofv3 --kernel-trace`
+- Measure: 200 iterations.
+- Report for each measured metric: samples count, median, p95, min, max, and stdev.
+- Report profiler fields: `DurationNs`, `Grid_Size`, `Workgroup_Size`, `VGPR_Count`, `Scratch_Size`, `LDS_Block_Size` from `rocprofv3 --kernel-trace`.
 
 Kernel-local wins that do not translate to ≥ 1% E2E impact on the c=1 short workload are recorded but not defended — see `docs/ROOFLINE.md` §11 "What Not To Chase" (~100 iterations on a 19%-of-time kernel while 76.9% sat untouched is the canonical anti-pattern).
+
+## Measurement Statistics
+
+Every accepted benchmark artifact records timing as **samples**, not just one number.
+
+Minimum for E2E workloads:
+
+- `warmup_runs`: normally `1` for full workload shapes.
+- `measured_runs`: normally `3` for expensive E2E benchmarks unless cost is prohibitive; if fewer, explain in `notes`.
+- For each phase (`prefill`, `decode`, `wall`): sample list plus `median`, `p95`, `min`, `max`, `stdev`.
+- For memory: pre-run idle VRAM, post-run VRAM, peak allocator reservation when available, KV cache bytes/shape.
+
+Minimum for microbenchmarks:
+
+- `warmup_iters`: normally `50`.
+- `measured_iters`: normally `200`.
+- Duration stats in nanoseconds and, when meaningful, derived throughput.
+
+Variance guard: if stdev is >5% of median for E2E or >10% for a microbenchmark, mark the artifact `rejected_variance` unless the variance is understood and documented.
 
 ## Correctness Gate
 
@@ -145,24 +186,30 @@ Post-process the CSV to rank kernels by total `DurationNs`. Audit-first discipli
 
 ## Artifact Format
 
-Every retained benchmark number writes one JSON file under `benchmarks/results/<date>-<tag>.json`. The JSON is committed; the raw rocprofv3 CSV and terminal logs are not.
+Every benchmark attempt writes one JSON file under `benchmarks/results/<date>-<tag>.json`. The JSON is committed when it is small and useful. Raw `rocprofv3` CSVs, terminal logs, large logits, and model outputs are not committed.
+
+Schema `2` is the benchmark-output contract:
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
+  "status": "accepted",
   "timestamp": "2026-05-12T18:30:00+09:00",
   "run_tag": "qwen06-c1-short-baseline",
+  "summary": "Qwen3-0.6B fp16 c1-short baseline",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100",
     "cus": 96,
-    "vram_total_bytes": 48301604864
+    "vram_total_bytes": 48301604864,
+    "pre_run_vram_used_bytes": 27930624,
+    "post_run_vram_used_bytes": 43307237376
   },
   "software": {
     "rocm_hip": "7.13.26162",
     "hipcc_version": "<from hipcc --version>",
     "python": "3.12.x",
-    "torch_rocm": "2.11.0+rocm7.13.0",
+    "torch_rocm": "2.11.0+rocm7.13.0 or null",
     "hipengine_commit": "<sha>",
     "hipengine_dirty": false
   },
@@ -170,33 +217,91 @@ Every retained benchmark number writes one JSON file under `benchmarks/results/<
     "shape": "c1-short",
     "model": "Qwen3-0.6B",
     "model_path": "/home/lhl/gpu-tuning/models/Qwen3-0.6B",
+    "model_revision": "<hf snapshot or git/ref>",
     "quant": "fp16",
     "prompt_tokens": 4096,
     "gen_tokens": 4096,
     "concurrency": 1,
     "kv_policy": "dense_paged",
-    "warmup_runs": 1
+    "warmup_runs": 1,
+    "measured_runs": 3
   },
-  "command": "uv run python scripts/bench.py --shape c1-short --model Qwen3-0.6B --quant fp16",
-  "result": {
-    "prefill_ms": 135.78,
-    "prefill_tok_s": 30167.12,
-    "decode_ms": 267147.80,
-    "decode_tok_s": 15.33,
-    "wall_s": 267.30,
-    "vram_used_bytes_post": 43307237376,
-    "torch_reserved_peak_bytes": 42859495424
+  "commands": {
+    "environment": ["rocminfo | grep -E 'Name:|gfx' | head -4", "hipcc --version"],
+    "correctness": ["python3 scripts/check_fixtures.py"],
+    "benchmark": "python3 scripts/bench.py --shape c1-short --model Qwen3-0.6B --quant fp16",
+    "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- ..."
   },
   "correctness": {
+    "passed": true,
+    "oracle": "cpu_reference",
+    "fixtures": "tests/fixtures/qwen3-0.6b-smoke/",
     "kl_mean": 0.018,
     "kl_max": 0.049,
     "top1_agreement": 0.942,
-    "oracle": "cpu_reference",
-    "fixtures": "fixtures/qwen3-0.6b-smoke/"
+    "layer_fixture_max_abs": 0.0003,
+    "command_exit_code": 0
+  },
+  "measurements": {
+    "prefill_ms": {
+      "samples": [135.4, 135.8, 136.1],
+      "median": 135.8,
+      "p95": 136.1,
+      "min": 135.4,
+      "max": 136.1,
+      "stdev": 0.29
+    },
+    "decode_tok_s": {
+      "samples": [15.2, 15.3, 15.4],
+      "median": 15.3,
+      "p95": 15.4,
+      "min": 15.2,
+      "max": 15.4,
+      "stdev": 0.08
+    }
+  },
+  "memory": {
+    "kv_shape": [2, 28, 1404, 256, 8, 128],
+    "kv_bytes": 41221619712,
+    "allocator_reserved_peak_bytes": 42859495424
+  },
+  "profiler": {
+    "status": "captured",
+    "raw_trace_path": "/tmp/hipengine-profile/results.csv",
+    "expected_kernels_present": true,
+    "top_kernels": [
+      {
+        "name": "qwen35_paged_full_attn_decode_splitk",
+        "total_duration_ns": 123456789,
+        "time_share": 0.42,
+        "grid_size": 4096,
+        "workgroup_size": 256,
+        "vgpr_count": 80,
+        "scratch_size": 0,
+        "lds_block_size": 0
+      }
+    ],
+    "notes": "raw_trace_path is not committed"
+  },
+  "baseline": {
+    "name": "llama.cpp Qwen3.6-35B-A3B UD-Q8_K_XL 4K/4K",
+    "source": "~/amd-gpu-tuning/WORKLOG.md 2026-04-28",
+    "decode_tok_s": 71.49,
+    "prefill_tok_s": 1139.72
+  },
+  "comparison": {
+    "decode_delta_pct": -78.6,
+    "prefill_delta_pct": 2547.0
+  },
+  "decision": {
+    "accepted": true,
+    "reason": "correctness passed and variance below threshold"
   },
   "notes": "baseline; no kernels ported yet, engine runs on cpu_reference backend"
 }
 ```
+
+If a benchmark is blocked or rejected, keep the same schema but set `status` and `decision.accepted=false`, then fill `decision.reason`, the exact failing command, and any symptom fields (`oom_bytes`, `signal`, `exception`, `profiler_status`, etc.).
 
 Fields marked with `<...>` are filled at runtime by `scripts/bench.py` (to be written during Phase 0 scaffold). The `hipengine_commit` + `hipengine_dirty` pair means a dirty-tree number can be recorded but is visibly flagged.
 

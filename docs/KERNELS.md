@@ -1,13 +1,283 @@
-# HIPENGINE Kernel Playbook
+# HIPENGINE Kernel Catalog and Port Playbook
 
-This doc covers the mechanics of landing a kernel in HIPENGINE — porting from `~/amd-gpu-tuning/nano-vllm-amd/`, the JIT build layer, gotchas specific to this repo, and the correctness gate a port must pass.
+This doc is both the live kernel catalog and the mechanics for landing a kernel in HIPENGINE — porting from `~/amd-gpu-tuning/nano-vllm-amd/`, the JIT build layer, gotchas specific to this repo, and the correctness gate a port must pass.
 
 **Kernel R&D does not live here.** Micro-tuning iteration loops (`rocprofv3 --kernel-trace` ranking, VGPR/occupancy hunting, `__launch_bounds__` sweeps, fusion experiments, the device-code gotcha catalog) belong in `~/amd-gpu-tuning/`. HIPENGINE receives *stable* kernels via the port pipeline below. If you find yourself opening a profiler inside the HIPENGINE tree, stop and move the experiment to the parent workspace.
 
 See also:
 - `docs/PLAN.md` "Kernel Port Strategy" — authoritative source inventory, split plan, per-family targets.
+- `docs/TESTING.md` — RED/GREEN, CPU-reference fixtures, and math-correctness gates.
 - `~/amd-gpu-tuning/AGENTS.md` — audit-first-via-rocprofv3, time-share/occupancy/iters-per-thread/VGPR discipline.
 - `~/amd-gpu-tuning/LESSONS-LEARNED.md` — device-code gotchas and kernel lineage results.
+- `~/amd-gpu-tuning/PLAN-PAROQUANT.md` and `~/amd-gpu-tuning/docs/PARO.md` — current Qwen3.5/PARO path map and evidence rows.
+
+## Status legend
+
+| Status | Meaning |
+| --- | --- |
+| **HIPENGINE landed** | Source lives in this repo, is registered or runnable through HIPENGINE, and has this repo's tests/smokes. |
+| **CPU reference landed** | Torch-free NumPy oracle lives in `hipengine/kernels/cpu_reference/`; it is correctness infrastructure, not a HIP port. |
+| **Lineage green** | Implemented/validated in `~/amd-gpu-tuning/nano-vllm-amd/`; source for HIPENGINE's copy+partition+retype port, but not yet landed here. |
+| **Lineage dirty / experimental** | Observed in the parent checkout's uncommitted worktree or R&D notes. Do not make a default HIPENGINE path from it until it is promoted in `~/amd-gpu-tuning/`. |
+| **Planned** | Architecture path is decided, but no HIPENGINE implementation yet. |
+
+## HIPENGINE-landed kernels and oracles
+
+This is the authoritative list of kernels/oracles that exist in this repo today. Empty backend family packages under `hipengine/kernels/hip_gfx1100/*/` are placeholders, not implemented kernels.
+
+### CPU-reference primitive oracles (**CPU reference landed**)
+
+Registered by `hipengine.kernels.cpu_reference.register_cpu_reference_kernels()` under `KernelKey("cpu_reference", <layer>, "fp16")`:
+
+- `embed`
+- `rmsnorm`
+- `linear`
+- `qkv_proj`
+- `rotate`
+- `attention_decode`
+- `o_proj`
+- `lm_head`
+
+Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `attention_decode`; run with `python3 scripts/check_fixtures.py`.
+
+### gfx1100 HIP kernels (**HIPENGINE landed**)
+
+| Layer key | Quant key | Source | Public wrapper | Current gate |
+| --- | --- | --- | --- | --- |
+| `smoke_add` | `fp16` registry key, FP32 buffers | `hipengine/kernels/hip_gfx1100/smoke/smoke_add.hip` | `smoke_add_f32(...)` | `python3 scripts/smoke.py --mode smoke-add-hip --n 1024` → `max_abs=0.0` on W7900 |
+
+`smoke_add` is a build/runtime smoke, not a model-layer primitive. It proves `hipengine.core.build`, lazy `libamdhip64.so`, device allocation/copy, launch, synchronize, and copyback without torch.
+
+## Source-lineage kernel catalog to port
+
+The stable source-lineage port set is the committed `nano-vllm-amd` Qwen3.5/PARO kernel set: **95** kernels from `csrc/amd/qwen35_expert.hip` plus **25** PARO kernels from `nanovllm/native/qwen35/paroquant_kernels.py` = **120 Qwen/PARO kernels**, plus the separate `smoke_add` build smoke. HIPENGINE ports these by family; bodies are preserved byte-for-byte except for includes and raw-pointer host-wrapper retyping.
+
+### Atomic / primitive-oriented kernel families (**lineage green, not yet HIPENGINE-landed**)
+
+- `wmma/wmma_i8_gemm.hip` (4):
+  - `qwen35_wmma_i8_tile_kernel`
+  - `qwen35_wmma_i8_gemm_kernel`
+  - `qwen35_wmma_i8_gemm_a_row_major_kernel`
+  - `qwen35_wmma_i8_gemm_grouped_a_row_major_kernel`
+- `quant/w8a8_activation.hip` (2):
+  - `qwen35_quantize_activation_i8_per_row_kernel`
+  - `qwen35_quantize_activation_f32_i8_per_row_kernel`
+- `moe/w8a8_grouped.hip` (10):
+  - `qwen35_dequantize_w8a8_projection_kernel`
+  - `qwen35_dequantize_w8a8_grouped_projection_kernel`
+  - `qwen35_dequantize_w8a8_grouped_accumulate_kernel`
+  - `qwen35_dequantize_w8a8_grouped_accumulate_deterministic_kernel`
+  - `qwen35_dequantize_w8a8_c1_grouped_accumulate_kernel`
+  - `qwen35_moe_grouped_accumulate_kernel`
+  - `qwen35_moe_grouped_gate_up_kernel`
+  - `qwen35_moe_grouped_down_kernel`
+  - `qwen35_moe_grouped_down_flat_kernel`
+  - `qwen35_moe_grouped_down_flat_accumulate_kernel`
+- `moe/swiglu.hip` (2):
+  - `qwen35_swiglu_packed_gate_up_kernel`
+  - `qwen35_dequantize_swiglu_quantize_grouped_kernel`
+- `quant/w8a16_moe.hip` (17):
+  - `w8a16_selected_experts_kernel`
+  - `w8a16_gate_up_kernel`
+  - `w8a16_down_kernel`
+  - `w8a16_gate_up_shared_kernel`
+  - `w8a16_gate_up_shared_t_kernel`
+  - `w8a16_gate_up_shared_t_decode_v2_kernel`
+  - `w8a16_down_shared_kernel`
+  - `w8a16_down_shared_bulk_combine_kernel`
+  - `w8a16_down_shared_t_kernel`
+  - `w8a16_down_shared_t_decode_v2_kernel`
+  - `w8a16_down_shared_bulk_combine_t_kernel`
+  - `w8a16_single_gate_up_kernel`
+  - `w8a16_single_down_combine_kernel`
+  - `w8a16_shared_gate_up_bulk_kernel`
+  - `w8a16_shared_gate_up_bulk4_kernel`
+  - `w8a16_shared_down_bulk_combine_kernel`
+  - `w8a16_shared_down_bulk_combine_w8a8_c1_selected_kernel`
+- `moe/group_scatter.hip` (11):
+  - `qwen35_moe_group_count_kernel`
+  - `qwen35_moe_group_prefix_kernel`
+  - `qwen35_moe_group_scatter_kernel`
+  - `qwen35_moe_group_scatter_gather_kernel`
+  - `qwen35_moe_c1_group_metadata_kernel`
+  - `qwen35_moe_c1_group_metadata_gather_kernel`
+  - `qwen35_moe_c1_group_metadata_quantize_kernel`
+  - `qwen35_moe_gather_packed_hidden_kernel`
+  - `qwen35_moe_gather_quantize_packed_hidden_kernel`
+  - `qwen35_build_lane_to_sorted_kernel`
+  - `qwen35_moe_combine_kernel`
+- `moe/router.hip` (6):
+  - `qwen35_router_logits_kernel`
+  - `qwen35_router_select_kernel`
+  - `qwen35_token_rank_count_partial_kernel`
+  - `qwen35_token_rank_count_finalize_kernel`
+  - `qwen35_token_top2_partial_kernel`
+  - `qwen35_token_top2_finalize_kernel`
+- `quant/w8a16_linear.hip` (5):
+  - `w8a16_linear_kernel`
+  - `w8a16_linear_lowp_out_kernel`
+  - `w8a16_linear_f32_kernel`
+  - `w8a16_linear_batched_kernel`
+  - `w8a16_linear_batched_f32_kernel`
+- `linear_attn/conv.hip` (4):
+  - `qwen35_linear_attn_conv_decode_kernel`
+  - `qwen35_linear_attn_conv_decode_lowp_kernel`
+  - `qwen35_linear_attn_conv_prefill_kernel`
+  - `qwen35_linear_attn_conv_prefill_state_kernel`
+- `linear_attn/gdn.hip` (6):
+  - `qwen35_gdn_recurrent_decode_kernel`
+  - `qwen35_gdn_rmsnorm_gate_kernel`
+  - `qwen35_gdn_prefill_recurrent_kernel`
+  - `qwen35_gdn_prefill_recurrent_k2_kernel`
+  - `qwen35_gdn_recurrent_rmsnorm_gate_kernel`
+  - `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel`
+- `norm/rmsnorm.hip` Qwen primitive subset (4):
+  - `qwen35_rmsnorm_kernel`
+  - `qwen35_add_rmsnorm_kernel`
+  - `qwen35_add_rmsnorm_f32_kernel`
+  - `qwen35_head_rmsnorm_kernel`
+- `rotary/rotary.hip` Qwen primitive subset (1):
+  - `qwen35_partial_rotary_kernel`
+- `attention/full_attn_decode.hip` (2):
+  - `qwen35_full_attn_decode_kernel`
+  - `qwen35_full_attn_decode_context_tensor_kernel`
+- `attention/paged_attn_decode.hip` (13):
+  - `qwen35_paged_full_attn_decode_kernel`
+  - `qwen35_paged_full_attn_decode_context_tensor_kernel`
+  - `qwen35_paged_full_attn_decode_8k_context_tensor_kernel`
+  - `qwen35_paged_full_attn_decode_4k_kernel`
+  - `qwen35_paged_full_attn_decode_8k_dyn_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_int8_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_int8_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_reduce_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel`
+- `attention/paged_kv_write.hip` (6):
+  - `qwen35_write_paged_kv_kernel`
+  - `qwen35_write_paged_kv_position_tensor_kernel`
+  - `qwen35_write_paged_kv_mixed_value_kernel`
+  - `qwen35_write_paged_kv_mixed_value_position_tensor_kernel`
+  - `qwen35_write_paged_kv_int8_kernel`
+  - `qwen35_write_paged_kv_position_tensor_int8_kernel`
+- `quant/paro_awq_gemv.hip` stable PARO GEMV/projection subset (7; projection-pair fused variants are called out again below):
+  - `gemv_awq_v8_kernel`
+  - `gemv_awq_pack8_kernel`
+  - `gemv_awq_dual_pack8_kernel`
+  - `gemv_awq_selected_dual_pack8_strided_kernel`
+  - `gemv_awq_selected_pack8_kernel`
+  - `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`
+  - `dense_gemv_out_kernel`
+- `quant/paro_awq_dequant.hip` (2):
+  - `dequant_awq_pack8_kernel`
+  - `dequant_awq_pack8_dual_kernel`
+- `norm/rmsnorm.hip` PARO subset (2):
+  - `paro_rmsnorm_out_kernel`
+  - `paro_add_rmsnorm_out_kernel`
+- `rotary/rotary.hip` PARO subset (2):
+  - `paro_rotate2_kernel`
+  - `paro_rotate3_kernel`
+
+### Fused / composite kernel families (**lineage green, not yet HIPENGINE-landed**)
+
+Each fused kernel still requires an unfused fallback chain registered under its primitive components.
+
+- Norm + rotary:
+  - `qwen35_head_rmsnorm_partial_rotary_kernel`: `head_rmsnorm -> partial_rotary`.
+  - `qwen35_head_rmsnorm_partial_rotary_position_kernel`: `head_rmsnorm -> position-indexed partial_rotary`.
+- PARO selected-expert activation / rotation:
+  - `silu_mul_dual_out_kernel`: `silu(gate) * up` for dual selected-expert outputs.
+  - `silu_mul_dual_rotate_out_kernel`: `silu(gate) * up -> PARO down-rotation`.
+  - `silu_mul_pair_rotate_out_kernel`: paired `silu(gate) * up -> rotate` variant.
+- Weighted routing reductions:
+  - `weighted_index_add_out_kernel`: routed weighted add into output rows.
+  - `weighted_index_add_atomic_float_out_kernel`: atomic-float routed weighted add variant.
+  - `weighted_lanes_inverse_kernel`: lane/weight inverse helper.
+  - `weighted_lanes_sum_out_kernel`: lane-group weighted sum.
+  - `weighted_sum_out_kernel`: selected-expert weighted sum.
+- Shared-expert + selected-expert combine:
+  - `shared_gate_combine_out_kernel`: `selected_moe + sigmoid(shared_gate) * shared_expert`.
+  - `shared_gate_combine_residual_out_kernel`: above plus residual add.
+  - `weighted_sum_shared_gate_combine_residual_out_kernel`: selected weighted sum + shared gate combine + residual add in one c=1 decode kernel.
+- Full-attention gate fusion:
+  - `full_attn_gate_mul_out_kernel`: `sigmoid(attn_gate) * attention_out` plus output conversion.
+  - `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel`: paged split-K reduce fused with PARO full-attention gate for device-context decode.
+- Projection-pair fusion routes used by the PARO path:
+  - `gemv_awq_dual_pack8_kernel`: dual W4 pack8 GEMV for two projections over the same input.
+  - `gemv_awq_selected_dual_pack8_strided_kernel`: selected-expert dual W4 pack8 GEMV over compact/repacked expert weights.
+  - `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`: selected-expert dual W4 pack8 GEMV plus output rotation.
+
+### Recent source-lineage additions not yet stable for HIPENGINE defaults (**lineage dirty / experimental**)
+
+The current parent checkout (`~/amd-gpu-tuning/nano-vllm-amd`, branch `gfx1100-qwen3.5`, HEAD observed as `22405a9`, with local modifications) contains six additional PARO kernels beyond the committed 25-kernel PARO set:
+
+- `gemv_awq_mbatch_dual_pack8_kernel`
+- `gemv_awq_mbatch_pack8_kernel`
+- `gemv_awq_expert_seq_dual_pack8_kernel`
+- `gemv_awq_expert_seq_pack8_kernel`
+- `gemm_awq_selected_dual_pack8_wmma_kernel`
+- `gemm_awq_selected_pack8_wmma_kernel`
+
+Treat these as R&D inventory only until they are committed/promoted in `~/amd-gpu-tuning/` with correctness and benchmark evidence.
+
+## Qwen3.5 MoE / PARO path map
+
+This section maps the current source-lineage inference path that HIPENGINE should preserve when porting `z-lab/Qwen3.5-35B-A3B-PARO` (`w4_paro`, W4A16) from `nano-vllm-amd`. It is **not** an HIPENGINE performance claim yet; it is the target graph/kernel route to reproduce after the port.
+
+### Current 24GB compact speed-best route
+
+Reference from `~/amd-gpu-tuning/PLAN-PAROQUANT.md` and `~/amd-gpu-tuning/docs/PARO.md` (2026-05-11 snapshot): W7900/gfx1100, c=1, compact 24GB path, one-step decode graph replay, warm-start prefill. Current quality-safe speed rows in the parent docs are approximately:
+
+| Shape | PARO prefill tok/s | PARO decode tok/s | Peak VRAM | Notes |
+| --- | ---: | ---: | ---: | --- |
+| 512/128 | 1107.491 | 115.821 | 18.860 GiB | short-prefill grouped-stacked MoE path |
+| 4K/128 | 1918.755 | 121.251 | 21.559 GiB | compact 24GB path |
+| 4K/4K | 1922.654 | 116.443 | 21.635 GiB | compact 24GB path |
+
+Correctness hierarchy for these rows: HF PARO oracle for model correctness; scalar eager pure-native as the native debug reference; tensorized eager as serving/graph ABI reference; graph replay must match tensorized eager. Long scalar-vs-tensorized greedy equality is a diagnostic, not the only promotion gate; use KL/NLL/top-k/top-1 and repetition/coherence/long-context quality gates.
+
+### Prefill route
+
+- Warm-start benchmark protocol: 64-token warm-up prefill plus up to 8 decode tokens before timed measurement.
+- Router/MoE:
+  - Real router runs per MoE layer; no HF model execution in the pure-native path.
+  - Prompt length `<= 1024`: grouped-stacked W4 path avoids the grouped-device-gather dequant/materialization storm seen at 512 prefill (`dequant_awq_pack8_kernel` was 33.7% of selected-region time across 19,285 launches before the split).
+  - Prompt length `> 1024`: grouped-device-gather W4 prefill path wins for 2K/4K shapes.
+  - Long-prefill low-memory mode chunks GDN/MoE/full-attention work, streams projection/QK/attention/post chunks, disables only pack8 qweight materialization, and keeps pack8 kernels available via strided paths.
+- Attention:
+  - Bulk/native prefill path is used where available.
+  - Long full-attention prefill must be chunkable; default pure-native path OOMs at 32K, while low-memory mode is green through 128K/0 in the parent workspace.
+- Projection/quant:
+  - Non-expert W4 pack8 replacement uses `[out/8, in]` pack8 qweights and frees original eligible AWQ qweights.
+  - `lm_head` uses the W8A16 replacement path in the compact route.
+
+### Decode route
+
+The target c=1 decode path is static-buffer, graph-replay-friendly, and mostly device-resident:
+
+1. **RMSNorm / residual:** PARO-native `rmsnorm` and `add+rmsnorm` kernels; avoid per-token framework glue.
+2. **Router:** native combined router/shared-gate logits with hot BF16 cache and FP16/BF16 hidden input; reuse decode-only output buffers.
+3. **Selected MoE:** compact stacked selected-expert layout plus repacked replacement qweights; selected gate/up via dual W4 pack8 GEMV; selected down uses small-K specialization where applicable.
+4. **Selected activation/down rotation:** `silu(gate) * up` and PARO down-rotation fused on the stacked decode path.
+5. **Shared expert:** dense shared expert c=1 branch uses W8A16 gate/up/down where enabled; prefill keeps the dense path.
+6. **MoE combine:** selected-expert weighted sum, shared-expert sigmoid/gate combine, and residual add fuse into `weighted_sum_shared_gate_combine_residual_out_kernel` on c=1 decode.
+7. **Linear attention:** native conv/GDN recurrence; lowp FP16/BF16 inputs feed kernels while recurrent state/math stay FP32. A/B projections are concatenated for c=1; QKV/Z uses dual pack8 W4 GEMV after rotation.
+8. **Full attention projections:** q/k use dual pack8 W4 GEMV after batched input rotation; v stays on the existing pack8 path.
+9. **KV append:** BF16 full-attention KV cache with native mixed-input paged-KV writer; no tiny per-token framework appends.
+10. **Full attention decode:** contiguous path for short contexts; paged/split-K path defaults at context `>= 1024`, with warp-cooperative context tensor QK, physical-offset address hoist, grouped-GQA reuse, split cap 512 for 128K-class rows, and gated split-K reduce where applicable.
+11. **Final head:** W8A16 `lm_head` replacement path.
+12. **Graph replay:** one reusable decode-step graph replay is the promoted graph shape; multi-step capture was tested and rejected in the parent workspace.
+
+### Alternative paths and caveats
+
+- **W8A8 comparison path:** stays quality-safe and useful as a comparator; do not regress it while porting PARO.
+- **40GB+ diagnostic PARO path:** stacked selected-expert diagnostics proved speed hypotheses but are not promotion candidates because 24GB W4 usability is a hard gate.
+- **24GB non-stacked baseline:** green but slow; retained as a deployable-memory fallback, not the speed target.
+- **Long-context decode:** contiguous full-attention decode cannot launch at 32K because dynamic LDS scales with context; long decode must use paged/split-K over the dense cache viewed as pages.
+- **Tensorized paged-attention drift:** current parent docs localize long-tail scalar-vs-tensorized drift to paged context-tensor full attention. Graph replay matching tensorized eager is necessary; scalar-eager greedy equality alone is not sufficient promotion evidence.
+- **Rejected standalone kernel ideas:** PARO v8 unroll-threshold 600, isolated wave32/no-LDS W4 GEMV, naive AWQ W4xQ8 dp4a, caller-owned paged workspace, and non-split-K 4K attention were tested but not promoted. Do not import them into HIPENGINE defaults without a fresh audit and correctness/perf evidence.
 
 ## Port = copy + partition + retype
 

@@ -484,3 +484,64 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 - Docs/process change. Re-read `AGENTS.md` and `docs/TESTING.md` via `read`.
 - Checked references with:
   `rg -n "TESTING|RED|GREEN|math changes|Correctness|Validation" AGENTS.md docs/TESTING.md docs/IMPLEMENTATION.md`
+
+---
+
+## 2026-05-13 — Benchmark output contract and kernel catalog/path map
+
+### Prompt / concern
+
+- User asked whether `docs/BENCHMARK.md` is up to date with the new testing methodology, specifically what benchmark output should carry so perf numbers are comparable and correctness-backed.
+- User also asked to revisit `docs/KERNELS.md` after recent source-lineage updates: full implemented-kernel catalog, atomic vs fused sections, and a Qwen3.5 MoE/PARO prefill/decode path map with alternatives.
+
+### Sources reviewed
+
+- `docs/BENCHMARK.md` and `docs/TESTING.md` in this repo.
+- `docs/KERNELS.md` and `docs/PLAN.md` "Kernel Port Strategy" in this repo.
+- `hipengine/kernels/cpu_reference/ops.py` and `hipengine/kernels/hip_gfx1100/smoke/smoke_add.py` to list kernels/oracles actually landed in HIPENGINE.
+- `~/amd-gpu-tuning/PLAN-PAROQUANT.md` and `~/amd-gpu-tuning/docs/PARO.md` for the current Qwen3.5-35B-A3B-PARO route, shape-gated prefill MoE split, graph replay caveats, 24GB compact path, and recent rejected/alternative routes.
+- `~/amd-gpu-tuning/nano-vllm-amd` source inventory:
+  - Committed stable Qwen/PARO set: 95 kernels in `csrc/amd/qwen35_expert.hip` + 25 kernels in `nanovllm/native/qwen35/paroquant_kernels.py` = 120 Qwen/PARO kernels, plus separate `smoke_add`.
+  - Parent repo observed at `nano-vllm-amd@22405a9` with local modifications in `paroquant.py` and `paroquant_kernels.py`; six additional PARO kernels were documented as lineage-dirty/experimental, not HIPENGINE defaults.
+
+### Files changed
+
+- `docs/BENCHMARK.md`:
+  - Added a benchmark-output contract: exact run context, correctness status/commands, repeated-run statistics, profiler/kernel summary, baseline comparison, and acceptance/rejection reason.
+  - Added artifact statuses: `accepted`, `rejected_correctness`, `rejected_variance`, `blocked`.
+  - Expanded microbenchmark and E2E measurement statistics requirements: samples, median/p95/min/max/stdev, warmup/measured counts, variance guard.
+  - Upgraded retained benchmark JSON schema from `1` to `2` with `status`, command groups, correctness pass/fail fields, measurement samples, memory, profiler top kernels, baseline/comparison, and decision fields.
+  - Clarified blocked/rejected attempts are still useful evidence but not retained performance numbers.
+- `docs/KERNELS.md`:
+  - Renamed to a kernel catalog + port playbook.
+  - Added status legend distinguishing HIPENGINE-landed, CPU-reference-landed, lineage-green, lineage-dirty/experimental, and planned.
+  - Added authoritative HIPENGINE-landed list: CPU-reference oracles (`embed`, `rmsnorm`, `linear`, `qkv_proj`, `rotate`, `attention_decode`, `o_proj`, `lm_head`) and `smoke_add` gfx1100 build/runtime smoke.
+  - Added exact source-lineage kernel catalog grouped into atomic/primitive-oriented families and fused/composite families.
+  - Added Qwen3.5 MoE/PARO target path map: current 24GB compact speed-best rows from parent docs, prefill route, decode route, alternative paths/caveats, and rejected standalone kernel ideas.
+  - Documented six parent-worktree dirty/experimental PARO kernels separately from the committed 25-kernel PARO set.
+- `docs/PLAN.md`:
+  - Aligned split-plan family counts with the exact source-lineage catalog (`paged_attn_decode=13`, `group_scatter=11`, `w8a16_linear=5`, `w8a16_moe=17`, `paro_awq_gemv=7`, `fused_ops=12`).
+  - Clarified total count as 120 Qwen/PARO kernels plus the separate `smoke_add` build smoke.
+
+### Verification
+
+CPU-only; no GPU/HIP/profiler commands.
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 - <<'PY'
+from pathlib import Path
+for path in [Path('docs/BENCHMARK.md'), Path('docs/KERNELS.md'), Path('docs/PLAN.md')]:
+    text = path.read_text()
+    assert text.endswith('\n'), f'{path} missing final newline'
+print('docs sanity ok')
+PY
+```
+
+Results:
+
+- `python3 -m pytest -q`: `24 passed`.
+- `scripts/check_fixtures.py`: all four CPU-reference fixtures passed with `max_abs=0`, `max_rel=0`.
+- Docs sanity: `docs sanity ok`.
