@@ -435,3 +435,52 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 - Updated `docs/IMPLEMENTATION.md`:
   - `[x] Run first HIP smoke kernel (smoke_add) on GPU after explicit clearance.`
   - `[ ] Resolve rocprofv3 trace hang for Python/ctypes smoke before first real kernel port.`
+
+---
+
+## 2026-05-13 — Add testing discipline for math correctness
+
+### Prompt / concern
+
+- User noted HIPENGINE is becoming "real" software and should have a proper testing story: RED/GREEN, correctness guard/gates, and especially protection against silent math mistakes.
+- Goal: adopt useful testing methodology/verbiage from `~/shisad/` and `~/shisad-dev/` without importing irrelevant process (multi-reviewer lanes, release machinery, implement-driven workflow).
+
+### Sources reviewed
+
+- `~/shisad/AGENTS.md`:
+  - Useful: Spec → Plan → Test → Implement; write tests first even for ad-hoc work; run targeted tests first; exact command evidence; claim integrity; structural tests are not enough for runtime-facing behavior.
+  - Not adopted: shisad-specific security roles, multi-reviewer process, live daemon harness details.
+- `~/shisad-dev/AGENTS.md`:
+  - Useful: validation cadence proportional to scope; do not default to broad suites for every small change; record validation evidence in worklog; truth-scoped claims.
+  - Not adopted: private/public repo split, reviewer-lane rules, release-close process.
+- `~/shisad-dev/implement/TEST-COVERAGE.md`:
+  - Most relevant source. Key adapted concept: structural correctness is necessary but not sufficient. For shisad the real contract is user-visible correctness; for HIPENGINE the real contract is numerical correctness against an oracle.
+  - Adapted RED/GREEN requirement: for regressions and math changes, add a failing fixture/test first where practical; if impossible, record no-RED rationale.
+- `~/shisad-dev/planning/PLAN-test-optimization.md` and `~/shisad/docs/analysis/ANALYSIS-test-suite-optimization.md`:
+  - Useful as cautionary examples on test cost and validation cadence. Adopted the principle "targeted first, CPU deterministic bundle for ordinary changes, GPU/perf gates only when relevant".
+
+### Files changed
+
+- Added `docs/TESTING.md` as the detailed testing playbook.
+- Updated `AGENTS.md` only with concise every-session rules/pointers:
+  - Summary bullet: "math changes are guilty until proven correct"; follow RED/GREEN where practical; details in `docs/TESTING.md`.
+  - Key Files entry for `docs/TESTING.md`.
+  - During Work: write/update targeted tests/fixtures before behavior/math implementation, or record why RED-first is impractical.
+  - After Changes and Verification tiers: run applicable `docs/TESTING.md` gates.
+  - Handling blockers: if a math change lacks oracle/test, stop and add a CPU-reference/golden fixture or record explicit no-RED rationale.
+  - Coordination high-conflict list now includes `docs/TESTING.md`.
+
+### Testing policy adopted
+
+- **Core principle:** math changes are guilty until proven correct.
+- **Structural vs numerical correctness:** registry resolution, build artifacts, launches, shapes, and traces are necessary diagnostics; they do not prove math correctness. Any math-touching test must assert numerical output against an oracle.
+- **Oracle preference order:** analytic/high-precision NumPy CPU-reference; existing monolithic kernel for ports; external framework oracle only outside the hot path; small committed golden fixtures when stable.
+- **Required gates by change type:** registry/fusion/plugin, CPU-reference primitive, HIP kernel port, math optimization, quant plugin, KV policy, runtime/build, public API/server, perf claim.
+- **Validation matrix:** targeted RED/GREEN tests; CPU deterministic bundle; GPU smoke bundle only when GPU is explicitly clear; kernel correctness gate; milestone closure gate.
+- **Definition of done for math/kernel changes:** oracle identified, RED fixture/test or no-RED rationale, targeted tests pass, CPU deterministic bundle, GPU smoke when relevant, profiler trace or blocker, WORKLOG evidence.
+
+### Verification
+
+- Docs/process change. Re-read `AGENTS.md` and `docs/TESTING.md` via `read`.
+- Checked references with:
+  `rg -n "TESTING|RED|GREEN|math changes|Correctness|Validation" AGENTS.md docs/TESTING.md docs/IMPLEMENTATION.md`

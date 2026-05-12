@@ -10,6 +10,7 @@ Instruction precedence: if this file conflicts with platform / system / develope
 
 - **Source of truth:** [docs/PLAN.md](docs/PLAN.md). Update it when architecture or phase plans move.
 - **Cross-session handoff:** `WORKLOG.md`. Append-only, chronological; log decisions, commands, measurements, and next actions as they happen.
+- **Testing discipline:** math changes are guilty until proven correct. Follow RED/GREEN where practical, and use `docs/TESTING.md` for fixture/oracle/gate details.
 - **Evidence policy:** every performance claim carries model + quant + workload shape + hardware + exact command + result + correctness gate. No exceptions (see `docs/PLAN.md` "Evidence Policy" and `docs/BENCHMARK.md`).
 - **Correctness gate for any new/ported kernel:** KL ≤ 0.05 AND top-1 agreement ≥ 90% vs `kernels/cpu_reference/` on fixture inputs.
 - **Default hardware:** AMD Radeon Pro W7900, gfx1100/RDNA3. Claims about other backends require the corresponding hardware or are marked explicitly unverified.
@@ -32,6 +33,7 @@ Do not drift these casually. They define what HIPENGINE is.
 | --- | --- |
 | `docs/PLAN.md` | Architecture, phase roadmap, LoC budgets, extensibility design. |
 | `docs/BENCHMARK.md` | Benchmark protocols, baselines to beat, correctness gate, artifact format. |
+| `docs/TESTING.md` | RED/GREEN workflow, correctness oracles, fixture policy, validation matrix. |
 | `docs/KERNELS.md` | Kernel port playbook, JIT cache gotcha, build profiles. |
 | `docs/ROOFLINE.md` | RDNA3 W7900 performance model: hardware, regimes, decision tree, what-not-to-chase. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |
@@ -54,13 +56,14 @@ Do not drift these casually. They define what HIPENGINE is.
 ### During Work
 
 - Keep changes scoped to one logical unit (one kernel family, one plugin, one doc, one phase milestone).
+- Write or update the targeted test/fixture before implementation when behavior or math changes. If RED-first is impractical, record why in `WORKLOG.md`.
 - Log non-trivial decisions, measurements, and dependency additions in `WORKLOG.md` as they happen.
 - Do not silently add `import torch`, `flash_attn`, or other CUDA-only deps to hot-path modules.
 - Do not add `if backend == "..."` or `if quant == "..."` branches in engine / dispatch / model code.
 
 ### After Changes (before claiming done)
 
-- Run the narrowest relevant test.
+- Run the narrowest relevant test, then the applicable `docs/TESTING.md` gate before claiming done.
 - For a new / ported kernel: correctness gate vs `kernels/cpu_reference/` + a `rocprofv3 --kernel-trace` entry showing the kernel ran under the expected name with plausible `DurationNs`. See `docs/KERNELS.md`.
 - For a perf change: record baseline + new measurements in `WORKLOG.md` with exact commands, per `docs/BENCHMARK.md`.
 - Update `docs/PLAN.md` if architectural plans shifted.
@@ -73,8 +76,8 @@ Run the narrowest tier for your change; escalate at milestone boundaries.
 | Scope | What to run |
 | --- | --- |
 | Docs / process | Re-read the changed file end-to-end; no GPU run needed. |
-| Code / registry / dispatch | The narrowest relevant `pytest` + a model generate smoke (see `docs/BENCHMARK.md`). |
-| New or ported kernel | CPU-reference correctness gate + `rocprofv3 --kernel-trace` smoke (see `docs/KERNELS.md`). |
+| Code / registry / dispatch | The narrowest relevant `pytest` + applicable CPU deterministic bundle (see `docs/TESTING.md`). |
+| New or ported kernel | CPU-reference correctness gate + `rocprofv3 --kernel-trace` smoke (see `docs/KERNELS.md` and `docs/TESTING.md`). |
 | Perf claim | Re-run the exact benchmark command from `docs/BENCHMARK.md` on stated hardware; record both runs in `WORKLOG.md`. |
 | Milestone closure | Full `uv run pytest -v` + the phase's named perf target vs prior baseline. |
 
@@ -129,7 +132,7 @@ Do not run `git restore`, `git checkout --`, `git reset --hard`, `git clean -fd`
 
 Working tree is shared state. Other agents or the human may be editing concurrently.
 
-- **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/BENCHMARK.md`, `docs/KERNELS.md`, `docs/IMPLEMENTATION.md`, `WORKLOG.md`, `pyproject.toml`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
+- **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/BENCHMARK.md`, `docs/TESTING.md`, `docs/KERNELS.md`, `docs/IMPLEMENTATION.md`, `WORKLOG.md`, `pyproject.toml`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
 - Same-file contention: stop and coordinate. The designated agent stages and commits their scoped hunks first to unblock others.
 - `WORKLOG.md` appends are expected and not a conflict unless there are actual conflict markers or interleaved garbled lines. Re-read the live tail, append after it, commit with your logical unit.
 - Do not clean up another agent's benchmark outputs, staged files, or local artifacts unless the task explicitly asks for that cleanup.
@@ -151,6 +154,7 @@ Read-only peers under `/home/lhl/`. Do not edit as part of a HIPENGINE task. Whe
 | ROCm env appears corrupted | Record symptoms in `WORKLOG.md` before any restore; follow the `~/amd-gpu-tuning` `therock` restore commands if clearly required. |
 | Kernel hangs with GPU at 0%, no error | Stale JIT cache. See `docs/KERNELS.md` "JIT cache gotcha". |
 | `rocprofv3` reports unexpected kernel | Registry / dispatch bug, not a kernel bug. Check `fusion.plan()` output before touching the kernel. |
+| Math change lacks an oracle/test | Stop and add a CPU-reference/golden fixture first, or record an explicit no-RED rationale in `WORKLOG.md`. |
 | KL / top-1 regression after a kernel edit | Revert, add a correctness fixture that captures the failure, then re-try. Never land a perf win that regresses correctness. |
 | Kernel micro-opt shows neutral / negative results | Re-run the pre-optimization audit in `~/amd-gpu-tuning/`; do not keep tweaking. |
 | Merge conflict in a high-conflict file | Stop and coordinate. Do not force-stage or revert. |
