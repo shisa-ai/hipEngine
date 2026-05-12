@@ -1,0 +1,50 @@
+# HIPENGINE .gitignore
+# See AGENTS.md "What Never Gets Committed" for the rationale.
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build / JIT caches (though real build cache lives in ~/.cache/hipengine/)
+build/
+dist/
+.eggs/
+
+# Model weights / fixtures that are too large to track
+models/
+weights/
+*.safetensors
+*.gguf
+*.bin
+# (exception: small test fixtures go under tests/fixtures/ and are tracked explicitly)
+
+# Benchmark / profiler artifacts
+*.rocprof
+*.rocprofv3
+rocprof_*/
+profile_*/
+bench_*.json
+bench_*.csv
+trace_*.csv
+
+# Editor / env
+.env
+.env.*
+.venv/
+venv/
+.vscode/
+.idea/
+
+# pi / agent harness state
+.pi/
+.multiloop/
+
+# OS
+.DS_Store
+Thumbs.db
