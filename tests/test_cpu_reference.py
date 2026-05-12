@@ -15,6 +15,7 @@ from hipengine.kernels.cpu_reference import (
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
 
 FIXTURE = Path("tests/fixtures/cpu_reference/rmsnorm_basic.json")
+FIXTURE_DIR = Path("tests/fixtures/cpu_reference")
 
 
 def setup_function() -> None:
@@ -53,6 +54,19 @@ def test_json_layer_fixture_round_trips_and_runs() -> None:
     assert fixture.name == "rmsnorm_basic"
     assert result.passed
     assert result.max_abs <= 1e-6
+
+
+def test_all_committed_cpu_reference_fixtures_pass() -> None:
+    fixture_paths = sorted(FIXTURE_DIR.glob("*.json"))
+
+    assert {path.name for path in fixture_paths} == {
+        "attention_decode_masked.json",
+        "linear_basic.json",
+        "rmsnorm_basic.json",
+        "rotate_split_half.json",
+    }
+    for path in fixture_paths:
+        assert run_fixture(load_fixture(path)).passed, path
 
 
 def test_logit_correctness_metrics_pass_and_fail() -> None:

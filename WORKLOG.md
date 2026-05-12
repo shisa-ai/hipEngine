@@ -230,3 +230,109 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 
 - Docs/metadata-only change. Re-read touched snippets and checked license references with:
   `rg -n "Apache|AGPL|GPL|License|license" pyproject.toml README.md docs AGENTS.md WORKLOG.md LICENSE`
+
+---
+
+## 2026-05-12 — Non-GPU prep for HIP smoke path
+
+### Scope
+
+- User requested continuing through all next steps but pausing before touching the GPU because another process is benchmarking/tuning on it.
+- Completed the safe pre-GPU subset only: expanded CPU-reference fixtures, added lazy HIP runtime/memory wrappers that do not load ROCm on import, and added `smoke_add` HIP source + registry + dry-run build planning.
+- Explicitly did **not** run `rocminfo`, `rocm-smi`, `hipcc`, non-dry `build_hip()`, HIP runtime calls, or profiler commands.
+
+### CPU-reference fixtures
+
+- Added committed CPU-reference fixtures:
+  - `tests/fixtures/cpu_reference/linear_basic.json`
+  - `tests/fixtures/cpu_reference/rotate_split_half.json`
+  - `tests/fixtures/cpu_reference/attention_decode_masked.json`
+  - Existing `rmsnorm_basic.json` retained.
+- Added `scripts/check_fixtures.py`, a CPU-only fixture runner for JSON fixture files/directories.
+- Extended `tests/test_cpu_reference.py` to require all four committed fixtures and run each through `run_fixture(load_fixture(path))`.
+
+### Lazy HIP runtime/memory skeleton
+
+- Added `hipengine/core/hip.py`:
+  - `HipMemcpyKind`, `HipError`, `HipRuntime`.
+  - `HipRuntime.load()` lazily loads `libamdhip64.so` only when explicitly called.
+  - `malloc`, `free`, `memcpy`, `device_synchronize`, `error_string`, `check` wrappers.
+  - `is_default_runtime_loaded()` and `reset_default_runtime_for_tests()` to prove import-time laziness.
+- Added `hipengine/core/memory.py`:
+  - `DeviceBuffer`, `malloc`, `free`, host/device copy helpers, host pointer helpers.
+  - No HIP library load on import; allocation/copy helpers load runtime only when called.
+- Added `tests/test_hip_runtime.py` with a fake HIP library object, so tests cover ctypes arg/return setup and error behavior without ROCm or GPU access.
+
+### smoke_add dry-run path
+
+- Added `hipengine/kernels/hip_gfx1100/smoke/smoke_add.hip`:
+  - Device kernel `hipengine_smoke_add_f32_kernel`.
+  - C ABI host wrapper `hipengine_smoke_add_f32(...)` using `hipLaunchKernelGGL` and returning `hipGetLastError()`.
+- Added `hipengine/kernels/hip_gfx1100/smoke/smoke_add.py`:
+  - `plan_smoke_add_build()` dry-run-safe build artifact planner.
+  - `build_smoke_add()` wrapper around `build_hip()`.
+  - `smoke_add_f32()` lazy launch wrapper; first GPU-touching function, not called yet.
+  - `register_smoke_add_kernel()` registering `KernelKey("hip_gfx1100", "smoke_add", "fp16")`.
+- Updated `hipengine/kernels/hip_gfx1100/smoke/__init__.py` to expose the lazy smoke-add wrapper.
+- Added `tests/test_smoke_add_plan.py` for registry and build-plan coverage without invoking `hipcc`.
+
+### Scripts
+
+- Updated `scripts/smoke.py` with CPU-only modes:
+  - `--mode registry` (default): toy model registry/fusion smoke; expects clean missing `hip_gfx1100/embed/fp16`.
+  - `--mode cpu-fixtures`: runs committed CPU-reference JSON fixtures.
+  - `--mode smoke-add-plan`: prints the dry-run `hipcc` command/artifact for `smoke_add` without invoking it.
+- Important fix: CPU-reference and smoke-add imports are now mode-local so `--mode registry` does not accidentally self-register CPU fallback kernels at import time.
+
+### Verification (CPU-only)
+
+- Command:
+  ```bash
+  set -e
+  python3 - <<'PY'
+  from pathlib import Path
+  bad = False
+  for root in ('hipengine', 'tests', 'scripts'):
+      for p in Path(root).rglob('*.py'):
+          if '__pycache__' in p.parts:
+              continue
+          for i, line in enumerate(p.read_text().splitlines(), 1):
+              if len(line) > 100:
+                  print(f'{p}:{i}:{len(line)}:{line}')
+                  bad = True
+  raise SystemExit(1 if bad else 0)
+  PY
+  python3 -m compileall -q hipengine tests scripts
+  python3 -m pytest -q
+  python3 scripts/check_fixtures.py
+  python3 scripts/smoke.py --mode registry
+  python3 scripts/smoke.py --mode cpu-fixtures
+  python3 scripts/smoke.py --mode smoke-add-plan
+  rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
+  ```
+- Results:
+  - Line-length scan: pass (no >100-character Python lines).
+  - Compile check: pass.
+  - Unit tests: `........................ [100%]` (24 tests passed).
+  - `scripts/check_fixtures.py`: all four fixtures PASS with `max_abs=0`.
+  - `scripts/smoke.py --mode registry`: pass; expected missing kernel for `hip_gfx1100/embed/fp16`.
+  - `scripts/smoke.py --mode cpu-fixtures`: all four fixtures PASS.
+  - `scripts/smoke.py --mode smoke-add-plan`: pass; printed dry-run command:
+    `hipcc -shared -fPIC -O3 /home/lhl/hipengine/hipengine/kernels/hip_gfx1100/smoke/smoke_add.hip -o /home/lhl/.cache/hipengine/build/smoke-101db2a5ad5526c3/smoke_add.so`
+  - Torch audit: no executable torch imports/usages; only docstrings mention torch.
+
+### Implementation punchlist
+
+- Updated `docs/IMPLEMENTATION.md`:
+  - `[x] Add lazy HIP runtime/memory skeleton (no HIP library load on import).`
+  - `[x] Add first HIP smoke kernel source and dry-run registry/build plan (smoke_add).`
+  - Added unchecked GPU gate: `[ ] Run first HIP smoke kernel (smoke_add) on GPU after explicit clearance.`
+
+### Pause point
+
+- Stopping here before the first GPU-touching action.
+- Next after user confirms the GPU is clear:
+  1. Run ROCm/hipcc environment checks.
+  2. Build `smoke_add` with non-dry `build_hip()`.
+  3. Allocate/copy/synchronize through the lazy HIP runtime wrappers.
+  4. Record exact commands/results and commit the real GPU smoke.

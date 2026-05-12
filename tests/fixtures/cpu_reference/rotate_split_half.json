@@ -1,0 +1,55 @@
+{
+  "backend": "cpu_reference",
+  "expected": {
+    "data": [
+      [
+        -10.0,
+        2.0,
+        1.0,
+        20.0,
+        99.0
+      ]
+    ],
+    "dtype": "float32"
+  },
+  "inputs": {
+    "cos": {
+      "data": [
+        0.0,
+        1.0
+      ],
+      "dtype": "float32"
+    },
+    "rotary_dim": 4,
+    "sin": {
+      "data": [
+        1.0,
+        0.0
+      ],
+      "dtype": "float32"
+    },
+    "x": {
+      "data": [
+        [
+          1.0,
+          2.0,
+          10.0,
+          20.0,
+          99.0
+        ]
+      ],
+      "dtype": "float32"
+    }
+  },
+  "layer": "rotate",
+  "metadata": {
+    "purpose": "split-half rotary CPU-reference fixture"
+  },
+  "name": "rotate_split_half",
+  "quant": "fp16",
+  "schema": 1,
+  "tolerances": {
+    "atol": 1e-06,
+    "rtol": 1e-06
+  }
+}

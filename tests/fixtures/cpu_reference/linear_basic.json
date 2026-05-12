@@ -1,0 +1,66 @@
+{
+  "backend": "cpu_reference",
+  "expected": {
+    "data": [
+      [
+        4.099999904632568,
+        -0.44999998807907104
+      ],
+      [
+        -2.9000000953674316,
+        1.0499999523162842
+      ]
+    ],
+    "dtype": "float32"
+  },
+  "inputs": {
+    "bias": {
+      "data": [
+        0.10000000149011612,
+        -0.20000000298023224
+      ],
+      "dtype": "float32"
+    },
+    "weight": {
+      "data": [
+        [
+          2.0,
+          -1.0,
+          0.0
+        ],
+        [
+          0.5,
+          0.25,
+          -0.5
+        ]
+      ],
+      "dtype": "float32"
+    },
+    "x": {
+      "data": [
+        [
+          1.0,
+          -2.0,
+          0.5
+        ],
+        [
+          0.0,
+          3.0,
+          -1.0
+        ]
+      ],
+      "dtype": "float32"
+    }
+  },
+  "layer": "linear",
+  "metadata": {
+    "purpose": "linear CPU-reference fixture"
+  },
+  "name": "linear_basic",
+  "quant": "fp16",
+  "schema": 1,
+  "tolerances": {
+    "atol": 1e-06,
+    "rtol": 1e-06
+  }
+}

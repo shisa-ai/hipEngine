@@ -1,0 +1,102 @@
+{
+  "backend": "cpu_reference",
+  "expected": {
+    "data": [
+      [
+        [
+          1.2689414024353027,
+          12.689414024353027
+        ],
+        [
+          2.5,
+          25.0
+        ]
+      ]
+    ],
+    "dtype": "float32"
+  },
+  "inputs": {
+    "key": {
+      "data": [
+        [
+          [
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0
+          ],
+          [
+            1.0,
+            1.0
+          ]
+        ]
+      ],
+      "dtype": "float32"
+    },
+    "mask": {
+      "data": [
+        [
+          [
+            true,
+            true,
+            false
+          ],
+          [
+            false,
+            true,
+            true
+          ]
+        ]
+      ],
+      "dtype": "bool"
+    },
+    "query": {
+      "data": [
+        [
+          [
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0
+          ]
+        ]
+      ],
+      "dtype": "float32"
+    },
+    "scale": 1.0,
+    "value": {
+      "data": [
+        [
+          [
+            1.0,
+            10.0
+          ],
+          [
+            2.0,
+            20.0
+          ],
+          [
+            3.0,
+            30.0
+          ]
+        ]
+      ],
+      "dtype": "float32"
+    }
+  },
+  "layer": "attention_decode",
+  "metadata": {
+    "purpose": "masked decode attention CPU-reference fixture"
+  },
+  "name": "attention_decode_masked",
+  "quant": "fp16",
+  "schema": 1,
+  "tolerances": {
+    "atol": 1e-06,
+    "rtol": 1e-06
+  }
+}
