@@ -24,15 +24,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--mode",
-        choices=("registry", "cpu-fixtures", "smoke-add-plan"),
+        choices=("registry", "cpu-fixtures", "smoke-add-plan", "smoke-add-hip"),
         default="registry",
     )
+    parser.add_argument("--n", type=int, default=1024, help="Element count for smoke-add-hip.")
     args = parser.parse_args()
     if args.mode == "registry":
         return registry_smoke()
     if args.mode == "cpu-fixtures":
         return cpu_fixture_smoke()
-    return smoke_add_plan_smoke()
+    if args.mode == "smoke-add-plan":
+        return smoke_add_plan_smoke()
+    return smoke_add_hip_smoke(args.n)
 
 
 def registry_smoke() -> int:
@@ -73,6 +76,50 @@ def smoke_add_plan_smoke() -> int:
     print("command:", " ".join(artifact.command))
     print("dry-run only: no hipcc invocation, no GPU access")
     return 0
+
+
+def smoke_add_hip_smoke(n: int) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.smoke import build_smoke_add, smoke_add_f32
+
+    if n < 1:
+        raise ValueError("--n must be >= 1")
+
+    a_host = np.arange(n, dtype=np.float32)
+    b_host = np.arange(n, dtype=np.float32) * 2.0 + 1.0
+    out_host = np.empty_like(a_host)
+
+    runtime = get_hip_runtime()
+    library = build_smoke_add(load=True)
+    a_dev = b_dev = out_dev = None
+    try:
+        a_dev = malloc(a_host.nbytes, runtime=runtime)
+        b_dev = malloc(b_host.nbytes, runtime=runtime)
+        out_dev = malloc(out_host.nbytes, runtime=runtime)
+        copy_host_to_device(a_dev, host_array_ptr(a_host), runtime=runtime)
+        copy_host_to_device(b_dev, host_array_ptr(b_host), runtime=runtime)
+        smoke_add_f32(a_dev.ptr, b_dev.ptr, out_dev.ptr, n, library=library, runtime=runtime)
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_host), out_dev, runtime=runtime)
+    finally:
+        for buffer in (out_dev, b_dev, a_dev):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+
+    expected = a_host + b_host
+    max_abs = float(np.max(np.abs(out_host - expected)))
+    print(f"n={n} max_abs={max_abs}")
+    print("first5=", out_host[:5].tolist())
+    return 0 if np.allclose(out_host, expected) else 1
 
 
 if __name__ == "__main__":

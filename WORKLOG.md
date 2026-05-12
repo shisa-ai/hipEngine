@@ -336,3 +336,102 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
   2. Build `smoke_add` with non-dry `build_hip()`.
   3. Allocate/copy/synchronize through the lazy HIP runtime wrappers.
   4. Record exact commands/results and commit the real GPU smoke.
+
+---
+
+## 2026-05-13 — First real HIP smoke_add build/run
+
+### GPU clearance and environment
+
+- User confirmed the GPU was open, so proceeded past the explicit GPU-touching pause.
+- Repo state before changes:
+  `git status -sb` → clean at `0baa95c feat: prepare smoke_add without touching GPU`.
+- HIP runtime check:
+  `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  - Result: `hip OK`.
+- Compiler check:
+  `command -v hipcc && hipcc --version`
+  - Result: `/opt/rocm/bin/hipcc`, HIP version `7.2.53211-d40244d`, AMD clang `22.0.0git`.
+- Hardware check:
+  `rocminfo | grep -E 'Name:|gfx' | head -24`
+  - Result included `Name: gfx1100`, `Marketing Name: AMD Radeon Pro W7900`.
+- Pre-smoke GPU state:
+  `rocm-smi --showmeminfo vram --showuse --showtemp`
+  - Result: GPU use `0%`, VRAM used `27,930,624 B` / `48,301,604,864 B`; edge/junction/memory temps `39/48/48 C`.
+
+### smoke_add real run
+
+- First non-dry build/run command (ad-hoc Python, before adding script mode):
+  ```bash
+  python3 - <<'PY'
+  import numpy as np
+  from hipengine.core.hip import get_hip_runtime
+  from hipengine.core.memory import malloc, free, copy_host_to_device, copy_device_to_host, host_array_ptr
+  from hipengine.kernels.hip_gfx1100.smoke import build_smoke_add, smoke_add_f32
+  n = 1024
+  a_host = np.arange(n, dtype=np.float32)
+  b_host = (np.arange(n, dtype=np.float32) * 2.0) + 1.0
+  out_host = np.empty_like(a_host)
+  runtime = get_hip_runtime()
+  lib = build_smoke_add(load=True)
+  a_dev = b_dev = out_dev = None
+  try:
+      a_dev = malloc(a_host.nbytes, runtime=runtime)
+      b_dev = malloc(b_host.nbytes, runtime=runtime)
+      out_dev = malloc(out_host.nbytes, runtime=runtime)
+      copy_host_to_device(a_dev, host_array_ptr(a_host), runtime=runtime)
+      copy_host_to_device(b_dev, host_array_ptr(b_host), runtime=runtime)
+      smoke_add_f32(a_dev.ptr, b_dev.ptr, out_dev.ptr, n, library=lib, runtime=runtime)
+      runtime.device_synchronize()
+      copy_device_to_host(host_array_ptr(out_host), out_dev, runtime=runtime)
+  finally:
+      for buf in (out_dev, b_dev, a_dev):
+          if buf is not None:
+              free(buf, runtime=runtime)
+  expected = a_host + b_host
+  max_abs = float(np.max(np.abs(out_host - expected)))
+  print(f'n={n} max_abs={max_abs}')
+  print('first5=', out_host[:5].tolist())
+  if not np.allclose(out_host, expected):
+      raise SystemExit(1)
+  PY
+  ```
+  - Result: `n=1024 max_abs=0.0`, `first5= [1.0, 4.0, 7.0, 10.0, 13.0]`.
+- Added durable smoke mode:
+  `python3 scripts/smoke.py --mode smoke-add-hip --n 1024`
+  - Result: `n=1024 max_abs=0.0`, `first5= [1.0, 4.0, 7.0, 10.0, 13.0]`.
+- Build artifact: `~/.cache/hipengine/build/smoke-101db2a5ad5526c3/smoke_add.so`.
+- This validates the first non-dry `hipengine.core.build` path, lazy `libamdhip64.so` load, `hipMalloc`/`hipMemcpy`/kernel launch/`hipDeviceSynchronize`/copyback/free path without torch.
+
+### rocprofv3 attempt and blocker
+
+- Tried to capture the kernel trace:
+  `rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-smoke-add-trace -- python3 scripts/smoke.py --mode smoke-add-hip --n 1024`
+  - Result: hung until the harness timeout at 120 s; no trace CSV observed.
+- Retried with shell timeout:
+  `timeout 60s rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-smoke-add-trace -- python3 scripts/smoke.py --mode smoke-add-hip --n 1024`
+  - Result: rocprofv3 caught signal 15 and waited for a child process; the wrapper did not exit cleanly before the outer 90 s harness timeout.
+  - Cleanup: killed the lingering `timeout`/`python3 scripts/smoke.py` rocprof child processes.
+- `command -v rocprofv3` resolved to `/home/lhl/mambaforge/envs/therock/bin/rocprofv3`, a Python wrapper around `rocm_sdk_core._cli`; `rocprofv3 --version` reports ROCm `7.13.0`, while `/opt/rocm/bin/hipcc --version` reports HIP `7.2.53211-d40244d`. This version split may be relevant.
+- Action: added unchecked `docs/IMPLEMENTATION.md` item to resolve the `rocprofv3` trace hang before the first real kernel port. Do **not** start rmsnorm port until trace capture is reliable.
+
+### Post-smoke GPU state / pause
+
+- Post-smoke check:
+  `rocm-smi --showmeminfo vram --showuse --showtemp`
+  - Result: GPU use `0%`, VRAM used `4,376,268,800 B`; edge/junction/memory temps `39/48/52 C`.
+- `rocm-smi --showpids` showed PID `1697754` using `4,343,508,992 B` VRAM:
+  `/home/lhl/amd-gpu-tuning/scripts/bench_paro_native_engine.py --model-preset qwen35-a3b-paro --prompt-len 512 --decode-len 128 ...`
+- That process is not owned by this HIPENGINE task. Pausing further GPU actions here; do not run rmsnorm port or more profiling until the GPU is explicitly clear again.
+
+### Verification after adding script mode
+
+- Command:
+  `python3 -m compileall -q hipengine tests scripts && python3 -m pytest -q && python3 scripts/smoke.py --mode smoke-add-hip --n 1024`
+- Result: `24 passed`; smoke-add HIP run passed with `max_abs=0.0`.
+
+### Implementation punchlist
+
+- Updated `docs/IMPLEMENTATION.md`:
+  - `[x] Run first HIP smoke kernel (smoke_add) on GPU after explicit clearance.`
+  - `[ ] Resolve rocprofv3 trace hang for Python/ctypes smoke before first real kernel port.`

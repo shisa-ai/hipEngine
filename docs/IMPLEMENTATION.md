@@ -14,7 +14,8 @@ Active implementation checklist. Keep this file lightweight; durable architectur
 - [x] Add `hipengine.core.build` JIT cache implementation.
 - [x] Add lazy HIP runtime/memory skeleton (no HIP library load on import).
 - [x] Add first HIP smoke kernel source and dry-run registry/build plan (`smoke_add`).
-- [ ] Run first HIP smoke kernel (`smoke_add`) on GPU after explicit clearance.
+- [x] Run first HIP smoke kernel (`smoke_add`) on GPU after explicit clearance.
+- [ ] Resolve `rocprofv3` trace hang for Python/ctypes smoke before first real kernel port.
 - [ ] Add minimal `scripts/smoke.py` path that exercises `LLM.generate()` once the engine loop exists.
 
 ## Notes
