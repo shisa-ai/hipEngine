@@ -1200,7 +1200,7 @@ This policy is inherited from the `LESSONS-LEARNED.md` discipline: fast rows are
 
 ## License
 
-MIT (matching nano-vllm and mini-sglang lineages).
+AGPL-3.0-or-later. HIPENGINE is intended as copyleft software for local/home users, including the optional hosted/server paths; model weights, checkpoints, and external datasets remain under their own licenses.
 
 ## Acknowledgements
 

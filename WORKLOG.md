@@ -208,3 +208,25 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 
 - Port the tiny `smoke_add` HIP kernel and register it under `hip_gfx1100/smoke/fp16` (or a more precise layer key if we decide `smoke_add` should not pretend to be a model layer).
 - Add a non-dry-run build test only when ROCm/hipcc availability is confirmed in the environment.
+
+---
+
+## 2026-05-12 — License HIPENGINE as AGPL-3.0-or-later
+
+### Decision
+
+- Selected **AGPL-3.0-or-later** for HIPENGINE source code.
+- Rationale: project is aimed at local/home users, and we explicitly prefer copyleft over permissive/business adoption. AGPL closes the hosted-service loophole that GPLv3 leaves open for an inference engine with optional server/API paths.
+- User clarified that the future `nano-vllm-amd` kernel ports are not an upstream-license concern for this decision because those kernels were authored locally by the project lead; still, model weights/checkpoints and external datasets remain under their own licenses.
+
+### Files changed
+
+- Added `LICENSE` containing the full GNU Affero General Public License v3 text from the system SPDX license copy (`/usr/share/licenses/spdx/AGPL-3.0-or-later.txt`).
+- Updated `pyproject.toml` project metadata from `Apache-2.0` to `AGPL-3.0-or-later`.
+- Updated `README.md` with a License section: HIPENGINE source code is AGPL-3.0-or-later; model weights, checkpoints, and external datasets keep their own licenses.
+- Updated `docs/PLAN.md` "License" section from the prior MIT placeholder to AGPL-3.0-or-later.
+
+### Verification
+
+- Docs/metadata-only change. Re-read touched snippets and checked license references with:
+  `rg -n "Apache|AGPL|GPL|License|license" pyproject.toml README.md docs AGENTS.md WORKLOG.md LICENSE`
