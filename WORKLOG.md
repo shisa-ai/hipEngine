@@ -117,3 +117,94 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 - Add the first CPU-reference layer implementations and fixture format so the correctness gate has something real to run.
 - Implement `hipengine.core.build` JIT cache skeleton before the first HIP port, matching `docs/KERNELS.md` hash/cache semantics.
 - Port the tiny `smoke_add` HIP kernel as the first build-system smoke before touching the large Qwen3.5 families.
+
+---
+
+## 2026-05-12 — CPU-reference fixtures and JIT build cache skeleton
+
+### Scope
+
+- Completed both outstanding Phase-0 scaffold items requested after the registry/fusion spike:
+  1. First CPU-reference layer implementations + fixture format.
+  2. `hipengine.core.build` JIT cache skeleton matching `docs/KERNELS.md` semantics.
+- Still no HIP compilation in this commit. Build tests are dry-run / plan-only so the scaffold remains runnable without ROCm in CI.
+
+### CPU-reference backend
+
+- Added `hipengine/kernels/cpu_reference/ops.py` with torch-free NumPy reference kernels:
+  - `embed(token_ids, table)`
+  - `rmsnorm(x, weight, eps=1e-6)`
+  - `linear(x, weight, bias=None)`
+  - `qkv_proj`, `o_proj`, `lm_head` wrappers around `linear`
+  - `rotate(x, cos, sin, rotary_dim=None)` split-half rotary embedding
+  - `attention_decode(query, key, value, mask=None, scale=None)` reference scaled dot-product attention
+- `hipengine/kernels/cpu_reference/__init__.py` now self-registers these kernels under `KernelKey("cpu_reference", <layer>, "fp16")` on import, and exposes `register_cpu_reference_kernels()` for tests that clear the registry.
+- Important behavior check: resolving `backend="hip_gfx1100", layer="rmsnorm", quant="fp16"` now falls back to the CPU-reference kernel when no gfx1100 implementation exists.
+
+### Fixture and correctness format
+
+- Added `hipengine/kernels/cpu_reference/fixtures.py`:
+  - JSON schema version `1`.
+  - `LayerFixture`, `Tolerances`, `LayerCheckResult` dataclasses.
+  - `load_fixture()`, `save_fixture()`, `run_fixture()` helpers.
+  - Inputs may be scalars or typed arrays represented as `{ "dtype": ..., "data": ... }`; expected output is a typed array.
+- Added first committed fixture: `tests/fixtures/cpu_reference/rmsnorm_basic.json`.
+  - Layer: `rmsnorm`, backend: `cpu_reference`, quant: `fp16`.
+  - Checks a 2×4 float32 input and 4-vector weight with `atol=rtol=1e-6`.
+- Added `hipengine/benchmark/correctness.py` with KL/top-1 logit gate helper:
+  - `evaluate_logits(reference_logits, candidate_logits, kl_threshold=0.05, top1_threshold=0.90)`
+  - Returns `LogitCorrectness(kl_mean, kl_max, top1_agreement, passed)`.
+
+### JIT build cache skeleton
+
+- Added `hipengine/core/build.py` with:
+  - `BuildProfile`, `BuildArtifact` dataclasses.
+  - Three profiles from `docs/KERNELS.md`:
+    - `decode`: `-mcumode`, `-amdgpu-unroll-threshold-local=600`, wavefront 64.
+    - `prefill`: `-amdgpu-unroll-threshold-local=600`, wavefront 32.
+    - `baseline`: no extra flags, wavefront 32.
+  - `plan_hip_build(...)`: deterministic artifact planner with no compiler invocation.
+  - `build_hip(..., dry_run=True)`: returns the planned artifact without creating dirs or invoking `hipcc`.
+  - `build_hip(..., dry_run=False)`: creates `~/.cache/hipengine/build/<family>-<hash>/`, writes `manifest.txt`, runs `hipcc -shared -fPIC -O3 ... -o <family>.so`, and returns `ctypes.CDLL` unless `load=False`.
+  - Cache key includes source file names + bytes, normalized flags, compiler name, and compiler version text.
+- `hipengine/core/__init__.py` exports `BuildArtifact`, `BuildProfile`, `build_hip`, and `plan_hip_build`.
+
+### Tests added
+
+- `tests/test_cpu_reference.py`:
+  - RMSNorm matches manual NumPy formula.
+  - Split-half rotary output is correct on a small vector.
+  - `hip_gfx1100`→`cpu_reference` fallback resolves `rmsnorm`.
+  - JSON fixture loads and runs with max abs ≤ `1e-6`.
+  - `evaluate_logits()` passes/fails expected KL/top-1 cases.
+- `tests/test_build.py`:
+  - Build hash changes with profile flags and compiler version, and stays stable for identical inputs.
+  - `build_hip(dry_run=True)` does not create cache dirs or require a real compiler.
+  - Bad profile and missing source paths fail cleanly.
+
+### Verification
+
+- Compile check:
+  `python3 -m compileall -q hipengine tests scripts`
+  - Result: pass.
+- Unit tests:
+  `python3 -m pytest -q`
+  - Result: `................. [100%]` (17 tests passed).
+- Source-tree smoke:
+  `python3 scripts/smoke.py`
+  - Result: pass; still intentionally reports a missing `hip_gfx1100/embed/fp16` implementation because the smoke does not import/register CPU-reference fallback.
+- Torch hot-path audit:
+  `rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true`
+  - Result: no executable torch imports/usages; only docstrings mention torch.
+
+### Implementation punchlist
+
+- Updated `docs/IMPLEMENTATION.md`:
+  - `[x] Add first CPU-reference kernels and correctness fixture format.`
+  - `[x] Add hipengine.core.build JIT cache implementation.`
+  - `smoke_add` HIP port remains unchecked.
+
+### Next
+
+- Port the tiny `smoke_add` HIP kernel and register it under `hip_gfx1100/smoke/fp16` (or a more precise layer key if we decide `smoke_add` should not pretend to be a model layer).
+- Add a non-dry-run build test only when ROCm/hipcc availability is confirmed in the environment.

@@ -10,8 +10,8 @@ Active implementation checklist. Keep this file lightweight; durable architectur
 - [x] Add 4-axis kernel registry (`KernelKey`, `register`, `resolve`, fallback order, clean missing errors).
 - [x] Add model and quant plugin registries with toy model + fp16 quant plugin.
 - [x] Add fusion planner spike (longest registered `+` composite, primitive fallback, plan resolution).
-- [ ] Add first CPU-reference kernels and correctness fixture format.
-- [ ] Add `hipengine.core.build` JIT cache implementation.
+- [x] Add first CPU-reference kernels and correctness fixture format.
+- [x] Add `hipengine.core.build` JIT cache implementation.
 - [ ] Add first HIP smoke kernel port (`smoke_add`) and registry entry.
 - [ ] Add minimal `scripts/smoke.py` path that exercises `LLM.generate()` once the engine loop exists.
 

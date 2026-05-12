@@ -1,0 +1,60 @@
+{
+  "backend": "cpu_reference",
+  "expected": {
+    "data": [
+      [
+        0.3651483654975891,
+        0.3651483654975891,
+        -1.095445156097412,
+        2.921186923980713
+      ],
+      [
+        1.3333330154418945,
+        -0.6666665077209473,
+        -0.0,
+        1.3333330154418945
+      ]
+    ],
+    "dtype": "float32"
+  },
+  "inputs": {
+    "eps": 1e-06,
+    "weight": {
+      "data": [
+        1.0,
+        0.5,
+        -1.0,
+        2.0
+      ],
+      "dtype": "float32"
+    },
+    "x": {
+      "data": [
+        [
+          1.0,
+          2.0,
+          3.0,
+          4.0
+        ],
+        [
+          2.0,
+          -2.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "dtype": "float32"
+    }
+  },
+  "layer": "rmsnorm",
+  "metadata": {
+    "purpose": "first committed CPU-reference layer fixture"
+  },
+  "name": "rmsnorm_basic",
+  "quant": "fp16",
+  "schema": 1,
+  "tolerances": {
+    "atol": 1e-06,
+    "rtol": 1e-06
+  }
+}
