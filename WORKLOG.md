@@ -1598,3 +1598,61 @@ Results:
 
 - This lands the low-level W8A16 linear path used by parent shared expert and lm-head/auxiliary dense routes.
 - Next step is a composite HIPENGINE shared-expert smoke chaining W8A16 gate/up → `silu_mul_dual_out` → W8A16 down, then a c=1 MoE vertical smoke that includes selected W4 experts and shared branch combine.
+
+---
+
+## 2026-05-13 — Add W8A16 shared-expert composite smoke
+
+### Scope
+
+- Added `scripts/smoke.py --mode w8a16-shared-expert-hip` to chain the current parent shared-expert lowp route with existing HIPENGINE kernels:
+  1. `w8a16_linear_bf16_lowp_out`: hidden → fused gate/up BF16 scratch.
+  2. `silu_mul_dual_out_bf16`: fused `SiLU(gate) * up` into BF16 intermediate.
+  3. `w8a16_linear_bf16_lowp_out`: intermediate → shared expert BF16 output.
+- Added deterministic NumPy oracle that stages the same BF16 rounding after gate/up and after activation before the down projection.
+- Updated docs to mark the current parent lowp-linear shared-expert route as landed; specialized `w8a16_*shared*` fused kernels remain optional/future.
+
+### GPU sharing note
+
+- A separate sweep started between the first smoke and an attempted profile (`python3`, ~29–30 GiB VRAM). That profile was treated as contaminated and discarded.
+- Re-ran after a hard no-KFD guard before smoke and profile; evidence below is the uncontended rerun.
+
+### Validation
+
+```bash
+python3 -m compileall -q scripts/smoke.py
+python3 -m pytest -q
+python3 scripts/smoke.py --mode smoke-add-plan
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.quant import build_w8a16_linear
+from hipengine.kernels.hip_gfx1100.fused import build_paro_silu
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_w8a16_linear(load=False, compiler_version=version).output_path)
+print(build_paro_silu(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode w8a16-shared-expert-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-w8a16-shared-trace -- \
+  python3 scripts/smoke.py --mode w8a16-shared-expert-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `47 passed`.
+- Prebuilt artifacts:
+  - `/home/lhl/.cache/hipengine/build/w8a16_linear-617c51c3658bde8b/w8a16_linear.so`
+  - `/home/lhl/.cache/hipengine/build/paro_silu-38ebcf975b9a1e88/paro_silu.so`
+- Shared-expert smoke: `rows=2 hidden_size=16 intermediate_size=8 gate_up_mismatch=0 intermediate_mismatch=0 out_mismatch=0 out_max_abs=0.0`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-w8a16-shared-trace/epyc/3643123_kernel_trace.csv`.
+- Target kernel rows:
+  - `w8a16_linear_lowp_out_kernel<hip_bfloat16>` gate/up launch: computed `DurationNs=12520`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=64`, `Grid_Size=(1024,2,1)`.
+  - `silu_mul_dual_out_kernel<unsigned short>`: computed `DurationNs=9760`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=64`, `Grid_Size=(64,1,1)`.
+  - `w8a16_linear_lowp_out_kernel<hip_bfloat16>` down launch: computed `DurationNs=6920`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=64`, `Grid_Size=(1024,2,1)`.
+
+### Next
+
+- Build a native c=1 MoE vertical smoke that chains: PARO RMSNorm → router/shared gate → selected W4 gate/up → SiLU/down rotation → selected W4 down → W8A16 shared branch → weighted/shared/residual combine.

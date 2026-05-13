@@ -65,7 +65,7 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `a
 
 `paro_combine` ports the c=1 selected-weighted/shared-gate/residual combine kernels. The current HIPENGINE wrappers cover the parent default FP32 router-weight/gate-logit path; scalar-weight variants can be added if a future route needs them.
 
-`w8a16_linear` ports the parent W8A16 GEMV kernels used by the current shared-expert default (`hip_w8a16_linear_lowp_out`) and W8A16 lm-head/auxiliary dense route. The shared-expert composite still needs a HIPENGINE-level smoke that chains W8A16 gate/up → SiLU → W8A16 down.
+`w8a16_linear` ports the parent W8A16 GEMV kernels used by the current shared-expert default (`hip_w8a16_linear_lowp_out`) and W8A16 lm-head/auxiliary dense route. `scripts/smoke.py --mode w8a16-shared-expert-hip` chains W8A16 gate/up → `silu_mul_dual_out` → W8A16 down and is bit-exact against the staged BF16 NumPy oracle.
 
 ## Source-lineage drift check
 
@@ -329,7 +329,7 @@ The checklist below is the active port map for reproducing the parent compact-WM
 | Selected gate/up GEMV | `gemv_awq_selected_dual_pack8_strided_kernel`, `gemv_awq_selected_dual_pack8_kernel`, optional rotate-out variant | **Partial:** BF16 raw-pointer strided/transposed dual pack8 wrappers landed | Decode path uses stacked/repacked selected-expert W4 pack8 qweights. Fused rotate-out variant remains missing. Preserve small-K safety fix from `59195ed`. |
 | Activation + down rotation | `silu_mul_dual_rotate_out_kernel` (fallback `silu_mul_dual_out_kernel` + rotate) | **Landed for BF16 raw-pointer fused and fallback wrappers** | Default `NANOVLLM_PARO_MOE_SILU_DOWN_ROTATE_FUSED=1`; fused dual rotate plus dual/pair fallback kernels are registered. |
 | Selected down GEMV | `gemv_awq_selected_pack8_kernel` / strided wrapper | **Landed for BF16 raw-pointer strided/transposed pack8 wrappers** | Used for selected down projection; small-K specialization applies where safe. |
-| Shared expert | W8A16 shared gate/up/down (`w8a16_*shared*`, `w8a16_single_*`, `w8a16_linear*`) | **Partial:** W8A16 linear BF16/F32 raw-pointer kernels landed | Required by `NANOVLLM_PARO_SHARED_EXPERT_W8A16=1`; next gate is a composite shared-expert smoke using lowp W8A16 gate/up/down plus `silu_mul_dual_out`. |
+| Shared expert | W8A16 shared gate/up/down (`w8a16_*shared*`, `w8a16_single_*`, `w8a16_linear*`) | **Landed for current parent lowp-linear route** | `w8a16-shared-expert-hip` validates W8A16 gate/up → `silu_mul_dual_out` → W8A16 down (`gate_up_mismatch=0`, `intermediate_mismatch=0`, `out_mismatch=0`); specialized `w8a16_*shared*` fusion remains optional/future. |
 | Weighted combine + residual | `weighted_sum_shared_gate_combine_residual_out_kernel`; fallback `weighted_sum_out_kernel`, `shared_gate_combine*` | **Landed for BF16 values with FP32 weights/gate logits** | c=1 decode promoted path fuses selected sum, shared sigmoid/gate combine, and residual add; scalar-weight fallback remains unported. |
 
 #### MoE prefill compact-WMMA path

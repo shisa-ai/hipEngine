@@ -36,6 +36,7 @@ def main() -> int:
             "paro-silu-hip",
             "paro-combine-hip",
             "w8a16-linear-hip",
+            "w8a16-shared-expert-hip",
         ),
         default="registry",
     )
@@ -119,7 +120,14 @@ def main() -> int:
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
-    return w8a16_linear_hip_smoke(
+    if args.mode == "w8a16-linear-hip":
+        return w8a16_linear_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    return w8a16_shared_expert_hip_smoke(
         args.rows,
         args.hidden_size,
         compiler_version=compiler_version,
@@ -549,6 +557,173 @@ def qwen35_router_hip_smoke(
     print("routing0=", routing[0].tolist())
     return 0 if selected_match and logits_max_abs <= 2e-5 and routing_max_abs <= 2e-5 else 1
 
+
+def w8a16_shared_expert_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.fused import (
+        build_paro_silu,
+        silu_mul_dual_out_bf16,
+    )
+    from hipengine.kernels.hip_gfx1100.quant import (
+        build_w8a16_linear,
+        w8a16_linear_bf16_lowp_out,
+    )
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 2 or hidden_size % 2 != 0:
+        raise ValueError("--hidden-size must be >= 2 and even")
+
+    intermediate_size = hidden_size // 2
+    gate_up_features = intermediate_size * 2
+    threads = 64
+    x_f32 = np.linspace(-1.0, 0.75, rows * hidden_size, dtype=np.float32).reshape(
+        rows, hidden_size
+    )
+    x_bits = _float32_to_bf16_bits(x_f32)
+    gate_up_weight = _int8_pattern(gate_up_features, hidden_size, salt=1)
+    down_weight = _int8_pattern(hidden_size, intermediate_size, salt=3)
+    gate_up_scale = np.asarray(
+        [0.125, 0.25, 0.5, 1.0] * ((gate_up_features + 3) // 4), dtype=np.float32
+    )[:gate_up_features]
+    down_scale = np.asarray(
+        [0.0625, 0.125, 0.25, 0.5] * ((hidden_size + 3) // 4), dtype=np.float32
+    )[:hidden_size]
+    gate_up_bits = np.empty((rows, gate_up_features), dtype=np.uint16)
+    intermediate_bits = np.empty((rows, intermediate_size), dtype=np.uint16)
+    out_bits = np.empty((rows, hidden_size), dtype=np.uint16)
+
+    x_bf32 = _bf16_bits_to_float32(x_bits)
+    gate_up_f32 = (x_bf32 @ gate_up_weight.astype(np.float32).T).astype(np.float32)
+    gate_up_f32 *= gate_up_scale.reshape(1, gate_up_features)
+    expected_gate_up_bits = _float32_to_bf16_bits(gate_up_f32)
+    expected_gate_up = _bf16_bits_to_float32(expected_gate_up_bits)
+    gate = expected_gate_up[:, :intermediate_size]
+    up = expected_gate_up[:, intermediate_size:]
+    expected_intermediate_bits = _float32_to_bf16_bits(_silu_np(gate) * up)
+    expected_intermediate = _bf16_bits_to_float32(expected_intermediate_bits)
+    expected_out_f32 = (expected_intermediate @ down_weight.astype(np.float32).T).astype(
+        np.float32
+    )
+    expected_out_f32 *= down_scale.reshape(1, hidden_size)
+    expected_out_bits = _float32_to_bf16_bits(expected_out_f32)
+
+    runtime = get_hip_runtime()
+    w8a16_library = build_w8a16_linear(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    silu_library = build_paro_silu(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = dev(x_bits)
+        gate_up_weight_dev = dev(gate_up_weight)
+        gate_up_scale_dev = dev(gate_up_scale)
+        down_weight_dev = dev(down_weight)
+        down_scale_dev = dev(down_scale)
+        gate_up_dev = out_dev(gate_up_bits)
+        intermediate_dev = out_dev(intermediate_bits)
+        out_dev_buf = out_dev(out_bits)
+        w8a16_linear_bf16_lowp_out(
+            x_dev.ptr,
+            gate_up_weight_dev.ptr,
+            gate_up_scale_dev.ptr,
+            gate_up_dev.ptr,
+            rows,
+            hidden_size,
+            gate_up_features,
+            threads=threads,
+            library=w8a16_library,
+            runtime=runtime,
+        )
+        silu_mul_dual_out_bf16(
+            gate_up_dev.ptr,
+            intermediate_dev.ptr,
+            rows,
+            intermediate_size,
+            threads=threads,
+            library=silu_library,
+            runtime=runtime,
+        )
+        w8a16_linear_bf16_lowp_out(
+            intermediate_dev.ptr,
+            down_weight_dev.ptr,
+            down_scale_dev.ptr,
+            out_dev_buf.ptr,
+            rows,
+            intermediate_size,
+            hidden_size,
+            threads=threads,
+            library=w8a16_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(gate_up_bits), gate_up_dev, runtime=runtime)
+        copy_device_to_host(
+            host_array_ptr(intermediate_bits), intermediate_dev, runtime=runtime
+        )
+        copy_device_to_host(host_array_ptr(out_bits), out_dev_buf, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    gate_up_mismatch = int(np.count_nonzero(gate_up_bits != expected_gate_up_bits))
+    intermediate_mismatch = int(
+        np.count_nonzero(intermediate_bits != expected_intermediate_bits)
+    )
+    out_mismatch = int(np.count_nonzero(out_bits != expected_out_bits))
+    out_max_abs = float(
+        np.max(
+            np.abs(_bf16_bits_to_float32(out_bits) - _bf16_bits_to_float32(expected_out_bits))
+        )
+    )
+    print(
+        f"rows={rows} hidden_size={hidden_size} intermediate_size={intermediate_size} "
+        f"gate_up_mismatch={gate_up_mismatch} "
+        f"intermediate_mismatch={intermediate_mismatch} "
+        f"out_mismatch={out_mismatch} out_max_abs={out_max_abs}"
+    )
+    print(
+        "shared_out_row0=",
+        _bf16_bits_to_float32(out_bits)[0, : min(8, hidden_size)].tolist(),
+    )
+    return (
+        0
+        if gate_up_mismatch == 0 and intermediate_mismatch == 0 and out_mismatch == 0
+        else 1
+    )
 
 def w8a16_linear_hip_smoke(
     rows: int,
@@ -1404,6 +1579,22 @@ def _awq_shift_for_pack_lane(lane: int) -> int:
     packed_pos = (4 + (lane >> 1)) if (lane & 1) else (lane >> 1)
     return packed_pos * 4
 
+
+def _int8_pattern(rows: int, cols: int, *, salt: int):
+    import numpy as np
+
+    weight = np.empty((rows, cols), dtype=np.int8)
+    for row in range(rows):
+        weight[row] = np.asarray(
+            [((row * 3 + col + salt) % 7) - 3 for col in range(cols)], dtype=np.int8
+        )
+    return weight
+
+
+def _silu_np(values):
+    import numpy as np
+
+    return values / (np.float32(1.0) + np.exp(-values, dtype=np.float32))
 
 def _float32_to_bf16_bits(values: object):
     import numpy as np
