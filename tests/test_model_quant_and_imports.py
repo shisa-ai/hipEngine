@@ -22,6 +22,19 @@ def test_builtin_toy_model_plugin_is_registered() -> None:
     assert plugin.layer_sequence()[1:4] == ("rmsnorm", "rotate", "qkv_proj")
 
 
+def test_builtin_qwen35_paro_model_plugin_is_registered() -> None:
+    plugin = resolve_model("Qwen3_5MoeForConditionalGeneration")
+
+    assert plugin.name == "qwen3_5_moe_paro"
+    assert plugin.default_quant == "w4_paro"
+    assert "selected_dual_pack8_gemv" in plugin.layer_sequence()
+    assert plugin.decode_layer_sequence(attention_kind="linear_attention")[:2] == (
+        "rmsnorm",
+        "linear_attention_qkvz_proj",
+    )
+    assert "model.layers.{layer}.mlp.experts.{expert}.{proj}.qweight" in plugin.weight_name_templates
+
+
 def test_builtin_fp16_quant_plugin_is_registered() -> None:
     plugin = resolve_quant("fp16")
 

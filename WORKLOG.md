@@ -1762,3 +1762,30 @@ Results: `48 passed`.
 ### Next
 
 - Add Qwen3.5/PARO model plugin metadata and loader-side tensor-name/layout scaffolding.
+
+---
+
+## 2026-05-13 — Register Qwen3.5/PARO model plugin metadata
+
+### Scope
+
+- Added `hipengine.models.qwen35.Qwen35ParoMoeModel` and registered it for:
+  - `Qwen3_5MoeForConditionalGeneration`
+  - `Qwen3_5MoeForCausalLM`
+- Added metadata-only defaults for `default_quant=w4_paro` and `default_backend=hip_gfx1100`.
+- Added representative full-attention and linear-attention decode layer primitive sequences using existing registry layer keys.
+- Added canonical HF/PARO weight-name templates for loader scaffolding without importing torch.
+- Updated model import surface and tests.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest -q
+```
+
+Results: `49 passed`.
+
+### Next
+
+- Start loader-side safetensors/config scaffolding for `w4_paro` tensor discovery and layout validation, still torch-free.
