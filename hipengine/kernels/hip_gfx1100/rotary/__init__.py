@@ -7,11 +7,25 @@ from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import (
     plan_paro_rotate_build,
     register_paro_rotate_kernels,
 )
+from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
+    build_qwen35_rotary,
+    plan_qwen35_rotary_build,
+    qwen35_head_rmsnorm_partial_rotary_f32_bf16,
+    qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
+    qwen35_partial_rotary_f32,
+    register_qwen35_rotary_kernels,
+)
 
 __all__ = [
     "build_paro_rotate",
+    "build_qwen35_rotary",
     "paro_rotate2_bf16",
     "paro_rotate3_bf16",
     "plan_paro_rotate_build",
+    "plan_qwen35_rotary_build",
+    "qwen35_head_rmsnorm_partial_rotary_f32_bf16",
+    "qwen35_head_rmsnorm_partial_rotary_position_f32_bf16",
+    "qwen35_partial_rotary_f32",
     "register_paro_rotate_kernels",
+    "register_qwen35_rotary_kernels",
 ]

@@ -58,6 +58,7 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `a
 | `dense_gemv` variant `out` | `bf16`, `w4_paro` | `hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip` | `dense_gemv_out_bf16(...)` | `python3 scripts/smoke.py --mode dense-gemv-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact (`mismatch=0`, `max_abs=0.0`); `rocprofv3` shows `dense_gemv_out_kernel` with `Scratch_Size=0` on W7900 |
 | `w8a16_linear` variants `bf16_f32_out`, `bf16_lowp_out`, `f32_f32_out` | `w8a16`, `w4_paro` | `hipengine/kernels/hip_gfx1100/quant/w8a16_linear.hip` | `w8a16_linear_bf16_f32_out(...)`, `w8a16_linear_bf16_lowp_out(...)`, `w8a16_linear_f32_f32_out(...)` | `python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → `bf16_f32_max_abs=0.0`, `f32_f32_max_abs=4.77e-07`, `lowp_mismatch=0`; `rocprofv3` shows all three W8A16 linear kernels with `Scratch_Size=0` on W7900 |
 | `paro_rotate2`, `paro_rotate3` variant `bf16` | `w4_paro` | `hipengine/kernels/hip_gfx1100/rotary/paro_rotate.hip` | `paro_rotate2_bf16(...)`, `paro_rotate3_bf16(...)` | `python3 scripts/smoke.py --mode paro-rotate-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact (`mismatches=[0, 0, 0, 0, 0]`, `max_abs=0.0`); `rocprofv3` shows `paro_rotate2_kernel` (`DurationNs=3400`, `VGPR_Count=24`, `Scratch_Size=0`) and `paro_rotate3_kernel` (`DurationNs=3160`, `VGPR_Count=24`, `Scratch_Size=0`) on W7900 |
+| `partial_rotary`, `head_rmsnorm+partial_rotary` variants `qwen35_f32`, `qwen35_f32_bf16`, `qwen35_position_f32_bf16` | `w4_paro` full-attention prelude | `hipengine/kernels/hip_gfx1100/rotary/qwen35_rotary.hip` | `qwen35_partial_rotary_f32(...)`, `qwen35_head_rmsnorm_partial_rotary*_f32_bf16(...)` | `python3 scripts/smoke.py --mode qwen35-rotary-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → `partial_max_abs=0`, `head_max_abs=2.38e-07`, `position_max_abs=2.38e-07`; `rocprofv3` shows all three parent kernels with `Scratch_Size=0` on W7900 |
 
 `smoke_add` is a build/runtime smoke, not a model-layer primitive. It proves `hipengine.core.build`, lazy `libamdhip64.so`, device allocation/copy, launch, synchronize, and copyback without torch.
 
@@ -71,7 +72,7 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `a
 
 `dense_gemv` ports the parent PARO BF16 dense GEMV used by auxiliary dense paths such as linear-attention AB projections when they remain dense rather than W4/W8 quantized.
 
-`paro_rotate` ports the parent PARO pairwise rotation helpers used by multi-projection PARO paths (`paro_rotate2`, `paro_rotate3`).
+`paro_rotate` ports the parent PARO pairwise rotation helpers used by multi-projection PARO paths (`paro_rotate2`, `paro_rotate3`). `qwen35_rotary` ports the parent full-attention prelude (`partial_rotary`, fused head RMSNorm + partial rotary, and table-positioned fused head RMSNorm + partial rotary).
 
 `w8a16_linear` ports the parent W8A16 GEMV kernels used by the current shared-expert default (`hip_w8a16_linear_lowp_out`) and W8A16 lm-head/auxiliary dense route. `scripts/smoke.py --mode w8a16-shared-expert-hip` chains W8A16 gate/up → `silu_mul_dual_out` → W8A16 down and is bit-exact against the staged BF16 NumPy oracle. `scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8` is the synthetic c=1 decode vertical smoke: PARO RMSNorm → router/shared-gate → selected W4 gate/up → SiLU → selected W4 down → W8A16 shared branch → weighted/shared/residual combine.
 
@@ -361,7 +362,7 @@ The checklist below is the active port map for reproducing the parent compact-WM
 | Model plugin / scheduler | Qwen3.5 hybrid full-attn + linear-attn/GDN + MoE layer sequence, static decode buffers, one-step graph replay | Missing; `LLM.generate()` is still scaffolded. |
 | Linear projections | `gemv_awq_pack8`, `gemv_awq_dual_pack8`, `dense_gemv_out`, rotation helpers | Missing. |
 | Linear attention / GDN | `qwen35_linear_attn_conv_*`, `qwen35_gdn_*` incl. lowp recurrent RMSNorm gate | Missing. |
-| Full attention / KV | `qwen35_head_rmsnorm_partial_rotary*`, `qwen35_write_paged_kv_mixed_value*`, paged/split-K full-attention decode family, `full_attn_gate_mul_out` | Missing; must be reconciled with HIPENGINE `KVLiveSpans` ABI rather than parent `(block_table, context_len)` shortcuts. |
+| Full attention / KV | `qwen35_head_rmsnorm_partial_rotary*`, `qwen35_write_paged_kv_mixed_value*`, paged/split-K full-attention decode family, `full_attn_gate_mul_out` | Partial: full-attention prelude (`partial_rotary`, fused head RMSNorm + rotary, position variant) landed; KV write/decode still missing and must be reconciled with HIPENGINE `KVLiveSpans` ABI rather than parent `(block_table, context_len)` shortcuts. |
 | Final head | W8A16 `lm_head` replacement path | Missing. |
 | Eval harness | Parent baseline JSON capture + HIPENGINE JSON schema-2 artifacts + KL/top-1/sample/graph validation gates | Not yet landed. |
 

@@ -2040,3 +2040,56 @@ Results:
 ### Next
 
 - Port the committed parent attention/KV decode kernels instead of inventing a new ABI, then adapt wrappers to HIPENGINE's `KVLiveSpans` ABI at the host boundary.
+
+---
+
+## 2026-05-14 — Port Qwen full-attention rotary prelude kernels
+
+### Scope
+
+- Ported the known-good Qwen full-attention prelude kernels from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip` at `nano-vllm-amd@59195ed`:
+  - `qwen35_partial_rotary_kernel`
+  - `qwen35_head_rmsnorm_partial_rotary_kernel`
+  - `qwen35_head_rmsnorm_partial_rotary_position_kernel`
+- Preserved the parent kernel bodies byte-for-byte and added only raw-pointer C ABI wrappers:
+  - `hipengine_qwen35_partial_rotary_f32`
+  - `hipengine_qwen35_head_rmsnorm_partial_rotary_f32_bf16`
+  - `hipengine_qwen35_head_rmsnorm_partial_rotary_position_f32_bf16`
+- Added ctypes wrappers and registry keys for `partial_rotary` and `head_rmsnorm+partial_rotary` under `w4_paro`.
+- Added `scripts/smoke.py --mode qwen35-rotary-hip` to validate partial rotary and both fused head-RMSNorm rotary variants.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.rotary import build_qwen35_rotary
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_qwen35_rotary(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode qwen35-rotary-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-rotary-trace -- \
+  python3 scripts/smoke.py --mode qwen35-rotary-hip \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `67 passed`.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_rotary-6a6e995b22522d49/qwen35_rotary.so`.
+- Qwen rotary smoke: `partial_max_abs=0`, `head_max_abs=2.38e-07`, `position_max_abs=2.38e-07`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-qwen35-rotary-trace/epyc/3994302_kernel_trace.csv`.
+- Target kernel rows:
+  - `qwen35_partial_rotary_kernel`: `DurationNs=2880`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`.
+  - `qwen35_head_rmsnorm_partial_rotary_kernel`: `DurationNs=3200`, `VGPR_Count=32`, `Scratch_Size=0`, `LDS_Block_Size=0`.
+  - `qwen35_head_rmsnorm_partial_rotary_position_kernel`: `DurationNs=4360`, `VGPR_Count=32`, `Scratch_Size=0`, `LDS_Block_Size=0`.
+
+### Next
+
+- Port KV append (`qwen35_write_paged_kv_mixed_value*`) and paged full-attention decode from the committed parent kernels, adapting wrappers to HIPENGINE `KVLiveSpans` instead of changing kernel bodies.

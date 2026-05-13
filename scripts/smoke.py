@@ -32,6 +32,7 @@ def main() -> int:
             "qwen35-rmsnorm-hip",
             "paro-rmsnorm-hip",
             "qwen35-router-hip",
+            "qwen35-rotary-hip",
             "paro-selected-gemv-hip",
             "paro-selected-gemv-rotate-hip",
             "paro-pack8-gemv-hip",
@@ -101,6 +102,11 @@ def main() -> int:
         return qwen35_router_hip_smoke(
             args.rows,
             args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-rotary-hip":
+        return qwen35_rotary_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -485,6 +491,190 @@ def paro_rmsnorm_hip_smoke(
         and residual_bit_mismatch == 0
     ) else 1
 
+
+
+def qwen35_rotary_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.rotary import (
+        build_qwen35_rotary,
+        qwen35_head_rmsnorm_partial_rotary_f32_bf16,
+        qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
+        qwen35_partial_rotary_f32,
+    )
+
+    num_q_heads = 2
+    num_kv_heads = 1
+    head_dim = 8
+    rotary_dim = 4
+    eps = 1.0e-6
+    query = np.asarray(
+        [[0.25, -0.5, 0.75, -1.0, 0.5, -0.25, 1.25, -0.75],
+         [-0.125, 0.375, -0.625, 0.875, -1.125, 1.375, -1.625, 1.875]],
+        dtype=np.float32,
+    )
+    key = np.asarray([[0.5, -0.25, 1.0, -0.75, 1.5, -1.25, 0.125, -0.375]], dtype=np.float32)
+    cos = np.ones(rotary_dim, dtype=np.float32)
+    sin = np.zeros(rotary_dim, dtype=np.float32)
+    cos_table = np.vstack([np.zeros(rotary_dim, dtype=np.float32), cos]).astype(np.float32)
+    sin_table = np.vstack([np.ones(rotary_dim, dtype=np.float32), sin]).astype(np.float32)
+    position = np.asarray([1], dtype=np.int64)
+    q_weight = _float32_to_bf16_bits(
+        np.asarray([0.0, 0.125, -0.125, 0.25, 0.0, -0.25, 0.125, -0.125], dtype=np.float32)
+    )
+    k_weight = _float32_to_bf16_bits(
+        np.asarray([0.125, 0.0, -0.125, 0.25, -0.25, 0.125, 0.0, -0.125], dtype=np.float32)
+    )
+    partial_query = np.empty_like(query)
+    partial_key = np.empty_like(key)
+    head_query = np.empty_like(query)
+    head_key = np.empty_like(key)
+    position_query = np.empty_like(query)
+    position_key = np.empty_like(key)
+
+    def head_ref(src: np.ndarray, weight_bits: np.ndarray) -> np.ndarray:
+        weight = _bf16_bits_to_float32(weight_bits).reshape(1, head_dim)
+        out = np.empty_like(src, dtype=np.float32)
+        for head in range(src.shape[0]):
+            row = src[head].astype(np.float32)
+            inv = np.float32(1.0) / np.sqrt(
+                np.sum(row * row, dtype=np.float32) / np.float32(head_dim) + np.float32(eps)
+            )
+            out[head] = row * inv * (np.float32(1.0) + weight[0])
+        return out
+
+    expected_partial_query = query.copy()
+    expected_partial_key = key.copy()
+    expected_head_query = head_ref(query, q_weight)
+    expected_head_key = head_ref(key, k_weight)
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_rotary(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        query_dev = dev(query)
+        key_dev = dev(key)
+        cos_dev = dev(cos)
+        sin_dev = dev(sin)
+        cos_table_dev = dev(cos_table)
+        sin_table_dev = dev(sin_table)
+        position_dev = dev(position)
+        q_weight_dev = dev(q_weight)
+        k_weight_dev = dev(k_weight)
+        partial_query_dev = out_dev(partial_query)
+        partial_key_dev = out_dev(partial_key)
+        head_query_dev = out_dev(head_query)
+        head_key_dev = out_dev(head_key)
+        position_query_dev = out_dev(position_query)
+        position_key_dev = out_dev(position_key)
+        qwen35_partial_rotary_f32(
+            query_dev.ptr,
+            key_dev.ptr,
+            cos_dev.ptr,
+            sin_dev.ptr,
+            partial_query_dev.ptr,
+            partial_key_dev.ptr,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            rotary_dim,
+            library=library,
+            runtime=runtime,
+        )
+        qwen35_head_rmsnorm_partial_rotary_f32_bf16(
+            query_dev.ptr,
+            key_dev.ptr,
+            q_weight_dev.ptr,
+            k_weight_dev.ptr,
+            cos_dev.ptr,
+            sin_dev.ptr,
+            head_query_dev.ptr,
+            head_key_dev.ptr,
+            eps,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            rotary_dim,
+            library=library,
+            runtime=runtime,
+        )
+        qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
+            query_dev.ptr,
+            key_dev.ptr,
+            q_weight_dev.ptr,
+            k_weight_dev.ptr,
+            cos_table_dev.ptr,
+            sin_table_dev.ptr,
+            position_dev.ptr,
+            position_query_dev.ptr,
+            position_key_dev.ptr,
+            eps,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            rotary_dim,
+            cos_table.shape[0],
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(partial_query), partial_query_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(partial_key), partial_key_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(head_query), head_query_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(head_key), head_key_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(position_query), position_query_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(position_key), position_key_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    partial_max_abs = float(
+        max(np.max(np.abs(partial_query - expected_partial_query)), np.max(np.abs(partial_key - expected_partial_key)))
+    )
+    head_max_abs = float(
+        max(np.max(np.abs(head_query - expected_head_query)), np.max(np.abs(head_key - expected_head_key)))
+    )
+    position_max_abs = float(
+        max(
+            np.max(np.abs(position_query - expected_head_query)),
+            np.max(np.abs(position_key - expected_head_key)),
+        )
+    )
+    print(
+        f"num_q_heads={num_q_heads} num_kv_heads={num_kv_heads} head_dim={head_dim} "
+        f"rotary_dim={rotary_dim} partial_max_abs={partial_max_abs:.3g} "
+        f"head_max_abs={head_max_abs:.3g} position_max_abs={position_max_abs:.3g}"
+    )
+    print("head_query0=", head_query[0].tolist())
+    return 0 if partial_max_abs == 0.0 and head_max_abs <= 1.0e-6 and position_max_abs <= 1.0e-6 else 1
 
 def qwen35_router_hip_smoke(
     rows: int,

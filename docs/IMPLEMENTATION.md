@@ -43,6 +43,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Port PARO BF16 dense GEMV (`dense_gemv_out`) for auxiliary dense projection paths.
   - [x] Port generic PARO pack8 GEMV (`gemv_awq_pack8*`, `gemv_awq_dual_pack8*`) for non-MoE Q/K/QKV/Z projection paths.
   - [x] Port PARO pairwise rotation helpers (`paro_rotate2`, `paro_rotate3`) for multi-projection PARO paths.
+  - [x] Port Qwen full-attention prelude kernels (`partial_rotary`, `head_rmsnorm+partial_rotary`, position variant).
 - [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.
 
 ## Notes
