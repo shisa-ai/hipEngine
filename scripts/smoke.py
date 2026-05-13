@@ -35,6 +35,7 @@ def main() -> int:
             "qwen35-rotary-hip",
             "qwen35-linear-attn-conv-hip",
             "qwen35-linear-attn-gdn-hip",
+            "qwen35-paged-kv-write-hip",
             "paro-selected-gemv-hip",
             "paro-selected-gemv-rotate-hip",
             "paro-pack8-gemv-hip",
@@ -119,6 +120,11 @@ def main() -> int:
         )
     if args.mode == "qwen35-linear-attn-gdn-hip":
         return qwen35_linear_attn_gdn_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-paged-kv-write-hip":
+        return qwen35_paged_kv_write_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -506,6 +512,150 @@ def paro_rmsnorm_hip_smoke(
 
 
 
+
+
+def qwen35_paged_kv_write_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.core.tensor import Tensor
+    from hipengine.kernels.hip_gfx1100.attention import (
+        build_qwen35_paged_kv_write,
+        qwen35_write_paged_kv_f32_spans,
+        qwen35_write_paged_kv_mixed_value_bf16_spans,
+    )
+    from hipengine.kvcache import KVLiveSpans
+
+    block_size = 4
+    blocks = 2
+    num_kv_heads = 2
+    head_dim = 4
+    position = 5
+    logical_block = position // block_size
+    block_offset = position - logical_block * block_size
+    physical_block = 0
+    block_table = np.asarray([1, physical_block], dtype=np.int32)
+    live_counts = np.asarray([position], dtype=np.int64)
+    key = np.asarray(
+        [[0.25, -0.5, 0.75, -1.0], [1.25, -1.5, 1.75, -2.0]], dtype=np.float32
+    )
+    value_f32 = np.asarray(
+        [[-0.125, 0.375, -0.625, 0.875], [1.125, -1.375, 1.625, -1.875]], dtype=np.float32
+    )
+    value_bf16_bits = _float32_to_bf16_bits(value_f32)
+    mixed_key_cache = np.zeros((blocks, block_size, num_kv_heads, head_dim), dtype=np.uint16)
+    mixed_value_cache = np.zeros_like(mixed_key_cache)
+    f32_key_cache = np.zeros_like(mixed_key_cache)
+    f32_value_cache = np.zeros_like(mixed_key_cache)
+    expected_key_bits = _float32_to_bf16_bits(key)
+    expected_value_bf16_bits = value_bf16_bits
+    expected_value_f32_bits = _float32_to_bf16_bits(value_f32)
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_paged_kv_write(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    try:
+        block_table_dev = dev(block_table)
+        live_counts_dev = dev(live_counts)
+        key_dev = dev(key)
+        value_f32_dev = dev(value_f32)
+        value_bf16_dev = dev(value_bf16_bits)
+        mixed_key_cache_dev = out_dev(mixed_key_cache)
+        mixed_value_cache_dev = out_dev(mixed_value_cache)
+        f32_key_cache_dev = out_dev(f32_key_cache)
+        f32_value_cache_dev = out_dev(f32_value_cache)
+        spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(
+                block_table_dev.ptr, block_table.shape, "int32", Device("hip", 0)
+            ),
+            live_counts=Tensor.from_handle(
+                live_counts_dev.ptr, live_counts.shape, "int64", Device("hip", 0)
+            ),
+            max_live_count=int(position),
+            storage_dtype="bf16",
+        )
+        qwen35_write_paged_kv_mixed_value_bf16_spans(
+            key_dev.ptr,
+            value_bf16_dev.ptr,
+            mixed_key_cache_dev.ptr,
+            mixed_value_cache_dev.ptr,
+            spans,
+            block_size,
+            num_kv_heads,
+            head_dim,
+            library=library,
+            runtime=runtime,
+        )
+        qwen35_write_paged_kv_f32_spans(
+            key_dev.ptr,
+            value_f32_dev.ptr,
+            f32_key_cache_dev.ptr,
+            f32_value_cache_dev.ptr,
+            spans,
+            block_size,
+            num_kv_heads,
+            head_dim,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(mixed_key_cache), mixed_key_cache_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(mixed_value_cache), mixed_value_cache_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_key_cache), f32_key_cache_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_value_cache), f32_value_cache_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    target = (physical_block, block_offset)
+    mixed_key_mismatch = int(np.count_nonzero(mixed_key_cache[target] != expected_key_bits))
+    mixed_value_mismatch = int(np.count_nonzero(mixed_value_cache[target] != expected_value_bf16_bits))
+    f32_key_mismatch = int(np.count_nonzero(f32_key_cache[target] != expected_key_bits))
+    f32_value_mismatch = int(np.count_nonzero(f32_value_cache[target] != expected_value_f32_bits))
+    untouched_mask = np.ones(mixed_key_cache.shape, dtype=bool)
+    untouched_mask[physical_block, block_offset, :, :] = False
+    untouched = int(np.count_nonzero(mixed_key_cache[untouched_mask]))
+    print(
+        f"block_size={block_size} position={position} physical_block={physical_block} "
+        f"mixed_mismatch={mixed_key_mismatch}/{mixed_value_mismatch} "
+        f"f32_mismatch={f32_key_mismatch}/{f32_value_mismatch} untouched_nonzero={untouched}"
+    )
+    print("kv_key=", _bf16_bits_to_float32(mixed_key_cache[target]).reshape(-1).tolist())
+    return 0 if (
+        mixed_key_mismatch == 0
+        and mixed_value_mismatch == 0
+        and f32_key_mismatch == 0
+        and f32_value_mismatch == 0
+    ) else 1
 
 def qwen35_linear_attn_gdn_hip_smoke(
     *,

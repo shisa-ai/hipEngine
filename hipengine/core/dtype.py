@@ -9,7 +9,10 @@ class DType(str, Enum):
     FP16 = "fp16"
     BF16 = "bf16"
     FP32 = "fp32"
+    INT64 = "int64"
+    INT32 = "int32"
     INT8 = "int8"
+    BOOL = "bool"
     INT4_PARO = "int4_paro"
 
     @classmethod

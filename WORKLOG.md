@@ -2189,3 +2189,57 @@ Results:
 ### Next
 
 - Resume KV append and paged full-attention decode with public wrappers shaped around HIPENGINE `KVLiveSpans`, while preserving parent kernel bodies internally.
+
+---
+
+## 2026-05-14 — Port Qwen paged KV write via KVLiveSpans wrapper
+
+### Scope
+
+- Added torch-free `KVLiveSpans` scaffold (`hipengine/kvcache/spans.py`) and integer/bool dtype identifiers needed for span metadata.
+- Ported the known-good Qwen paged KV writer kernels from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip` at `nano-vllm-amd@59195ed`:
+  - `qwen35_write_paged_kv_kernel`
+  - `qwen35_write_paged_kv_position_tensor_kernel`
+  - `qwen35_write_paged_kv_mixed_value_kernel`
+  - `qwen35_write_paged_kv_mixed_value_position_tensor_kernel`
+- Preserved the parent kernel bodies byte-for-byte and added raw-pointer C ABI wrappers that use span-shaped inputs:
+  - `hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans`
+  - `hipengine_qwen35_write_paged_kv_f32_spans`
+- Public Python wrappers accept `KVLiveSpans`, not a raw `(block_table, context_len)` API. For this fixed-page parent bridge, `spans.base_offsets` carries the int32 physical block table and `spans.live_counts` carries the int64 device position tensor consumed by the parent position-tensor writer.
+- Added registry keys `paged_kv_write` / `w4_paro` / `mixed_bf16_spans|f32_spans`.
+- Added `scripts/smoke.py --mode qwen35-paged-kv-write-hip` to validate mixed BF16-value and FP32-value KV append into a paged BF16 cache.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.attention import build_qwen35_paged_kv_write
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_qwen35_paged_kv_write(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode qwen35-paged-kv-write-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-paged-kv-write-trace -- \
+  python3 scripts/smoke.py --mode qwen35-paged-kv-write-hip \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: all tests passed.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_paged_kv_write-3387785660a7ab69/qwen35_paged_kv_write.so`.
+- KV write smoke: `mixed_mismatch=0/0`, `f32_mismatch=0/0`, `untouched_nonzero=0`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-qwen35-paged-kv-write-trace/epyc/4123483_kernel_trace.csv`.
+- Target kernel rows:
+  - `qwen35_write_paged_kv_mixed_value_position_tensor_kernel<uint16_t>`: `DurationNs=3360`, `VGPR_Count=8`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`.
+  - `qwen35_write_paged_kv_position_tensor_kernel`: `DurationNs=2760`, `VGPR_Count=8`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`.
+
+### Next
+
+- Port paged full-attention decode wrappers using the same `KVLiveSpans` public boundary, then bring over the split-K/gated-reduce variants from the parent optimal path.
