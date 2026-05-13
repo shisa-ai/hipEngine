@@ -47,6 +47,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Wire Qwen3.5/PARO linear-attention c=1 decode-state chain through GDN recurrent output.
   - [x] Add F32→BF16 runtime cast glue and single-output PARO rotation for runtime projections.
   - [x] Wire Qwen3.5/PARO linear-attention `out_proj` over GDN recurrent output.
+  - [x] Wire Qwen3.5/PARO linear-attention+MoE c=1 full-layer decode-state chain.
   - [x] Add Qwen3.5/PARO parent-compatible prepared MoE host/device layouts (router+shared gate, stacked expert pack8 tensors).
   - [x] Add torch-free named runtime workspace allocator for scratch/device tensors.
   - [x] Add minimal Qwen3.5/PARO one-token decode-state scratch scaffold.

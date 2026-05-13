@@ -143,6 +143,7 @@ def test_qwen35_decode_state_reserves_moe_c1_scratch() -> None:
     scratch = state.reserve_moe_c1_scratch(tokens=1)
 
     assert scratch.normed.shape == (1, 4096)
+    assert scratch.residual.shape == (1, 4096)
     assert scratch.router_logits.shape == (1, 129)
     assert scratch.routing_weights.shape == (1, 8)
     assert scratch.selected_experts.shape == (1, 8)
@@ -215,6 +216,10 @@ def _linear_weights() -> DeviceWeightMap:
     prefix = "layers.0.linear_attn"
     return DeviceWeightMap(
         {
+            "layers.0.input_layernorm.weight": _allocation("layers.0.input_layernorm.weight", 0x9010, (4096,), "bf16"),
+            "layers.0.post_attention_layernorm.weight": _allocation(
+                "layers.0.post_attention_layernorm.weight", 0x9020, (4096,), "bf16"
+            ),
             f"{prefix}.in_proj_qkv.pairs": _allocation(f"{prefix}.in_proj_qkv.pairs", 0x9100, (8, 4096), "int16"),
             f"{prefix}.in_proj_qkv.theta": _allocation(f"{prefix}.in_proj_qkv.theta", 0x9200, (8, 2048), "bf16"),
             f"{prefix}.in_proj_qkv.channel_scales": _allocation(
@@ -255,6 +260,7 @@ def test_qwen35_decode_state_reserves_linear_attention_scratch() -> None:
 
     scratch = state.reserve_linear_attention_scratch(tokens=1)
 
+    assert scratch.attn_input.shape == (1, 4096)
     assert scratch.qkv.shape == (1, 8192)
     assert scratch.z.shape == (1, 4096)
     assert scratch.a.shape == (1, 32)
@@ -379,6 +385,85 @@ def test_qwen35_decode_state_runs_linear_attention_out_proj_chain(monkeypatch) -
     assert order == ["rotate2", "pack8", "pack8", "dense", "dense", "conv", "gdn", "cast", "rotate1", "pack8"]
     with pytest.raises(ValueError, match="tokens=1"):
         state.run_linear_attention_out_proj_bf16(hidden, conv_state=conv_state, recurrent_state=recurrent_state, tokens=2)
+
+
+def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    weights = DeviceWeightMap({**_linear_weights().tensors, **_prepared_moe_weights().tensors})
+    state = _state(runtime, weights)
+    hidden = _tensor(0xC000, (1, 4096), "bf16")
+    conv_state = _tensor(0xC100, (8192, 4), "fp32")
+    recurrent_state = _tensor(0xC200, (32, 128, 128), "fp32")
+    linear_scratch = state.reserve_linear_attention_scratch(tokens=1)
+    moe_scratch = state.reserve_moe_c1_scratch(tokens=1)
+    calls = []
+
+    def record(name):
+        def fake(*args, **kwargs):
+            calls.append((name, args, kwargs))
+        return fake
+
+    monkeypatch.setattr(qwen_runtime, "paro_rmsnorm_out_bf16", record("input_norm"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", record("rotate2"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
+    monkeypatch.setattr(qwen_runtime, "dense_gemv_out_bf16", record("dense"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_decode_bf16", record("conv"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16", record("gdn"))
+    monkeypatch.setattr(qwen_runtime, "f32_to_bf16", record("cast"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", record("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "paro_add_rmsnorm_out_bf16", record("post_norm"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_bf16", record("router"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", record("gate_up"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", record("silu_rotate"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", record("down"))
+    monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", record("w8a16"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", record("shared_silu"))
+    monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_out_bf16_f32w", record("combine"))
+
+    out = state.run_linear_attention_moe_c1_layer_bf16(
+        hidden,
+        conv_state=conv_state,
+        recurrent_state=recurrent_state,
+        linear_scratch=linear_scratch,
+        moe_scratch=moe_scratch,
+    )
+
+    assert out is moe_scratch.moe_out
+    assert [name for name, _, _ in calls] == [
+        "input_norm",
+        "rotate2",
+        "pack8",
+        "pack8",
+        "dense",
+        "dense",
+        "conv",
+        "gdn",
+        "cast",
+        "rotate1",
+        "pack8",
+        "post_norm",
+        "router",
+        "gate_up",
+        "silu_rotate",
+        "down",
+        "w8a16",
+        "shared_silu",
+        "w8a16",
+        "combine",
+    ]
+    assert calls[0][1] == (hidden.ptr, 0x9010, linear_scratch.attn_input.ptr, 1, 4096, 1.0e-6)
+    assert calls[11][1] == (
+        hidden.ptr,
+        linear_scratch.out_proj.ptr,
+        0x9020,
+        moe_scratch.normed.ptr,
+        moe_scratch.residual.ptr,
+        1,
+        4096,
+        1.0e-6,
+    )
+    with pytest.raises(ValueError, match="tokens=1"):
+        state.run_linear_attention_moe_c1_layer_bf16(hidden, conv_state=conv_state, recurrent_state=recurrent_state, tokens=2)
 
 
 def test_qwen35_decode_state_appends_kv_with_scratch_pointers(monkeypatch) -> None:
@@ -663,4 +748,4 @@ def test_qwen35_decode_state_free_releases_workspace() -> None:
     state.free()
 
     assert runtime.allocations == {}
-    assert len(runtime.freed) == 20
+    assert len(runtime.freed) == 21

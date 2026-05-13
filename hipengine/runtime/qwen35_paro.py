@@ -17,6 +17,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_dual_out_bf16
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import qwen35_linear_attn_conv_decode_bf16
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
+from hipengine.kernels.hip_gfx1100.norm import paro_add_rmsnorm_out_bf16, paro_rmsnorm_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_lowp_out
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
@@ -45,6 +46,7 @@ class Qwen35ParoAttentionScratch:
 
 @dataclass(frozen=True)
 class Qwen35ParoLinearAttentionScratch:
+    attn_input: Tensor
     qkv_rot: Tensor
     z_rot: Tensor
     qkv: Tensor
@@ -61,6 +63,7 @@ class Qwen35ParoLinearAttentionScratch:
 @dataclass(frozen=True)
 class Qwen35ParoMoeScratch:
     normed: Tensor
+    residual: Tensor
     router_logits: Tensor
     routing_weights: Tensor
     selected_experts: Tensor
@@ -172,6 +175,7 @@ class Qwen35ParoDecodeState:
         qkv_width = _linear_qkv_width(cfg)
         z_width = _linear_value_width(cfg)
         return Qwen35ParoLinearAttentionScratch(
+            attn_input=self.workspace.reserve_tensor("linear_attn.attn_input", (tokens, cfg.hidden_size), DType.BF16),
             qkv_rot=self.workspace.reserve_tensor("linear_attn.qkv_rot", (tokens, cfg.hidden_size), DType.BF16),
             z_rot=self.workspace.reserve_tensor("linear_attn.z_rot", (tokens, cfg.hidden_size), DType.BF16),
             qkv=self.workspace.reserve_tensor("linear_attn.qkv", (tokens, qkv_width), DType.BF16),
@@ -426,6 +430,95 @@ class Qwen35ParoDecodeState:
             scratch,
             conv_state=conv_state,
             recurrent_state=recurrent_state,
+            library=library,
+        )
+
+    def input_rmsnorm_bf16(
+        self,
+        hidden: Tensor,
+        out: Tensor,
+        *,
+        tokens: int = 1,
+        eps: float | None = None,
+        library=None,
+    ) -> Tensor:
+        weight = self.tensor(f"layers.{self.layer_weights.layer_id}.input_layernorm.weight")
+        paro_rmsnorm_out_bf16(
+            hidden.ptr,
+            weight.ptr,
+            out.ptr,
+            tokens,
+            self.config.hidden_size,
+            self.config.rms_norm_eps if eps is None else eps,
+            library=_library_for(library, "norm"),
+            runtime=self.runtime,
+        )
+        return out
+
+    def post_attention_add_rmsnorm_bf16(
+        self,
+        hidden: Tensor,
+        attn_out: Tensor,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        tokens: int = 1,
+        eps: float | None = None,
+        library=None,
+    ) -> tuple[Tensor, Tensor]:
+        weight = self.tensor(f"layers.{self.layer_weights.layer_id}.post_attention_layernorm.weight")
+        paro_add_rmsnorm_out_bf16(
+            hidden.ptr,
+            attn_out.ptr,
+            weight.ptr,
+            scratch.normed.ptr,
+            scratch.residual.ptr,
+            tokens,
+            self.config.hidden_size,
+            self.config.rms_norm_eps if eps is None else eps,
+            library=_library_for(library, "norm"),
+            runtime=self.runtime,
+        )
+        return scratch.normed, scratch.residual
+
+    def run_linear_attention_moe_c1_layer_bf16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | None = None,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> Tensor:
+        if tokens != 1:
+            raise ValueError("linear-attention+MoE c=1 layer orchestrator currently requires tokens=1")
+        linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens)
+        moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens)
+        self.input_rmsnorm_bf16(hidden, linear_scratch.attn_input, tokens=tokens, library=library)
+        attn_out = self.run_linear_attention_out_proj_bf16(
+            linear_scratch.attn_input,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            scratch=linear_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+        )
+        mlp_input, residual = self.post_attention_add_rmsnorm_bf16(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=tokens,
+            library=library,
+        )
+        return self.run_moe_c1_bf16(
+            mlp_input,
+            residual,
+            scratch=moe_scratch,
+            tokens=tokens,
+            group_size=group_size,
             library=library,
         )
 
@@ -731,6 +824,7 @@ class Qwen35ParoDecodeState:
             raise ValueError("config.num_experts_per_tok must be positive")
         return Qwen35ParoMoeScratch(
             normed=self.workspace.reserve_tensor("moe.normed", (tokens, cfg.hidden_size), DType.BF16),
+            residual=self.workspace.reserve_tensor("moe.residual", (tokens, cfg.hidden_size), DType.BF16),
             router_logits=self.workspace.reserve_tensor("moe.router_logits", (tokens, cfg.num_experts + 1), DType.FP32),
             routing_weights=self.workspace.reserve_tensor("moe.routing_weights", (tokens, top_k), DType.FP32),
             selected_experts=self.workspace.reserve_tensor("moe.selected_experts", (tokens, top_k), DType.INT64),

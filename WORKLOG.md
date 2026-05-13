@@ -3190,3 +3190,40 @@ Results:
 ### Next
 
 - Feed this projected linear-attention output into post-attention PARO add-RMSNorm + c=1 MoE to produce a full layer-0 BF16 output, then build the minimal real-model token loop.
+
+---
+
+## 2026-05-14 — Wire Qwen3.5/PARO linear-attention+MoE layer chain
+
+### Scope
+
+- Added decode-state helpers for PARO input RMSNorm and post-attention add-RMSNorm over caller-owned scratch buffers.
+- Extended MoE scratch with a residual buffer and linear-attention scratch with an input-normalized buffer.
+- Added `run_linear_attention_moe_c1_layer_bf16(...)`, matching the parent decode order:
+  input RMSNorm → linear-attention out_proj → post-attention add-RMSNorm → c=1 MoE shared/residual combine.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_decode_state.py -q
+python3 -m pytest -q
+(rocm-smi --showpids --showuse --showmeminfo vram || true) | sed -n '1,120p'
+python3 - <<'PY'
+# Real layer-0 GPU smoke on /models/.../Qwen3.5-35B-A3B-PARO:
+# materialize runtime layer-0 tensors, zero hidden/state inputs, run full linear-attention+MoE layer chain.
+PY
+```
+
+Results:
+
+- Decode-state tests: `19 passed`.
+- Full test suite: all tests passed.
+- GPU was idle before the smoke (`GPU use 0%`, no KFD PIDs).
+- Real checkpoint layer-0 full chain completed on W7900:
+  - `linear_layer_out (1, 2048) bf16 nonzero=0`, first output BF16 words all zero for zero input/state.
+
+### Next
+
+- Add a real-model partial decode/generate harness around embeddings/layer sequencing/lm-head so the validated layer chain can advance an actual token.
