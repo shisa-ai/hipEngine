@@ -7,6 +7,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
     plan_qwen35_paged_attn_decode_build,
     qwen35_paged_full_attn_decode_context_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_bf16_spans,
     register_qwen35_paged_attn_decode_kernels,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
@@ -42,6 +43,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
         )
         is qwen35_paged_full_attn_decode_context_bf16_spans
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="w4_paro",
+            variant="bf16_split_k_spans",
+        )
+        is qwen35_paged_full_attn_decode_split_k_bf16_spans
+    )
 
 
 def test_qwen35_paged_attn_decode_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -74,3 +84,7 @@ def test_qwen35_paged_attn_decode_wrapper_validates_before_gpu_load() -> None:
         )
     with pytest.raises(ValueError, match="num_q_heads must be divisible"):
         qwen35_paged_full_attn_decode_context_bf16_spans(0, 0, 0, 0, _spans(), 2, 256, 3, 2, 4, 1.0)
+    with pytest.raises(ValueError, match="head_dim divisible by 8"):
+        qwen35_paged_full_attn_decode_split_k_bf16_spans(
+            0, 0, 0, 0, 0, 0, 0, _spans(), 2, 2, 256, 2, 1, 4, 1.0
+        )

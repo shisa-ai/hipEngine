@@ -14,6 +14,8 @@ from hipengine.kvcache import KVLiveSpans
 _SOURCE = Path(__file__).with_name("paged_attn_decode.hip")
 _OUTPUT_NAME = "qwen35_paged_attn_decode.so"
 _SYMBOL_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_context_bf16_spans"
+_SYMBOL_SPLIT_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
+_SYMBOL_SPLIT_REDUCE = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_f32"
 
 
 def plan_qwen35_paged_attn_decode_build(
@@ -118,10 +120,108 @@ def qwen35_paged_full_attn_decode_context_bf16_spans(
     _check_launch(runtime, err)
 
 
+
+def qwen35_paged_full_attn_decode_split_k_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run parent split-K paged BF16 attention decode and reduce via spans."""
+
+    _check_split_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    split = getattr(library, _SYMBOL_SPLIT_CONTEXT)
+    split.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    split.restype = ctypes.c_int
+    err = split(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(chunk_size),
+        ctypes.c_int64(num_splits),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+    reduce = getattr(library, _SYMBOL_SPLIT_REDUCE)
+    reduce.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    reduce.restype = ctypes.c_int
+    err = reduce(
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_splits),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
 def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_context_spans"),
         qwen35_paged_full_attn_decode_context_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_spans"),
+        qwen35_paged_full_attn_decode_split_k_bf16_spans,
         replace=replace,
     )
 
@@ -155,6 +255,31 @@ def _check_decode_shape(
     if ((max_context_len + block_size - 1) // block_size) > spans.base_offsets.numel:
         raise ValueError("span base_offsets block table is too short for max_context_len")
 
+
+
+def _check_split_shape(
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> None:
+    _check_decode_shape(
+        spans,
+        chunk_size * num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+    )
+    _check_positive(chunk_size, "chunk_size")
+    _check_positive(num_splits, "num_splits")
+    if head_dim % 8 != 0:
+        raise ValueError("split-K paged attention requires head_dim divisible by 8")
+    if head_dim > 1024:
+        raise ValueError("head_dim must fit in one reduce block")
 
 def _check_positive(value: int, name: str) -> None:
     if value <= 0:

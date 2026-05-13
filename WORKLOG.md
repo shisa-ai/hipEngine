@@ -2290,3 +2290,55 @@ Results:
 ### Next
 
 - Port the parent split-K paged attention variants and reduce/gated-reduce kernels behind the same `KVLiveSpans` public boundary.
+
+---
+
+## 2026-05-14 — Port Qwen split-K paged full-attention decode/reduce via KVLiveSpans wrapper
+
+### Scope
+
+- Extended the Qwen paged attention family with parent long-context split-K kernels from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip` at `nano-vllm-amd@59195ed`:
+  - `paged_key_dot_vec8`
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_reduce_kernel`
+- Preserved the parent helper/kernel bodies byte-for-byte and added raw-pointer C ABI wrappers:
+  - `hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans`
+  - `hipengine_qwen35_paged_full_attn_decode_split_k_reduce_f32`
+- Public Python wrapper `qwen35_paged_full_attn_decode_split_k_bf16_spans(...)` accepts `KVLiveSpans` and caller-provided workspaces, then runs parent split-K context + reduce in sequence.
+- Added registry key `paged_attn_decode` / `w4_paro` / `bf16_split_k_spans`.
+- Added `scripts/smoke.py --mode qwen35-paged-attn-split-k-hip` to validate split-K against a deterministic NumPy softmax oracle.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.attention import build_qwen35_paged_attn_decode
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_qwen35_paged_attn_decode(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode qwen35-paged-attn-split-k-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-paged-attn-split-k-trace -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-split-k-hip \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: all tests passed.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_paged_attn_decode-f4fe340865e12dcb/qwen35_paged_attn_decode.so`.
+- Split-K attention smoke: `max_abs=5.96e-08`, `finite_partials=True` vs NumPy softmax oracle.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-qwen35-paged-attn-split-k-trace/epyc/4168790_kernel_trace.csv`.
+- Target kernel rows:
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel`: `DurationNs=17320`, `VGPR_Count=32`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size_X=512`.
+  - `qwen35_paged_full_attn_decode_split_k_reduce_kernel`: `DurationNs=6320`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=8`, `Grid_Size_X=16`.
+
+### Next
+
+- Port the parent gated split-K reduce (`qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel`) and GQA-specialized split-K context kernels.
