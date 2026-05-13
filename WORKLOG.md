@@ -2393,3 +2393,52 @@ Results:
 ### Next
 
 - Port BF16/FP16 gated-output support without relying on `uint16_t` casts, then port the parent GQA-specialized split-K context kernels for the target long-context shape.
+
+---
+
+## 2026-05-14 — Add BF16 gated split-K paged attention reduce
+
+### Scope
+
+- Added BF16 gate/output support for the parent split-K gated reduce path in `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip`.
+- The raw C ABI wrapper instantiates the preserved parent template with HIP `hip_bfloat16` and reinterprets BF16 bit buffers at the wrapper boundary, avoiding incorrect `uint16_t` numeric casts:
+  - `hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16`
+- Added public Python wrapper and registry key:
+  - `qwen35_paged_full_attn_decode_split_k_gate_bf16_spans(...)`
+  - `paged_attn_decode` / `w4_paro` / `bf16_split_k_gate_bf16_spans`
+- Added `scripts/smoke.py --mode qwen35-paged-attn-gate-bf16-hip` to validate BF16 output bits against a deterministic NumPy softmax+sigmoid oracle.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.attention import build_qwen35_paged_attn_decode
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_qwen35_paged_attn_decode(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode qwen35-paged-attn-gate-bf16-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-paged-attn-gate-bf16-trace -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-gate-bf16-hip \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: all tests passed.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_paged_attn_decode-1d0fa235cf1dd172/qwen35_paged_attn_decode.so`.
+- BF16 gated split-K smoke: `bf16_mismatch=0`, `bf16_max_abs=0` vs NumPy softmax+sigmoid oracle rounded to BF16.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-qwen35-paged-attn-gate-bf16-trace/epyc/18310_kernel_trace.csv`.
+- Target kernel rows:
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel`: `DurationNs=16000`, `VGPR_Count=32`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size_X=512`.
+  - `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>`: `DurationNs=4600`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=8`, `Grid_Size_X=16`.
+
+### Next
+
+- Port GQA-specialized split-K context kernels (`qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel`, `*_gqa_kernel<8,16,2>`) for the target long-context shape.

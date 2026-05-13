@@ -17,6 +17,7 @@ _SYMBOL_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_context_bf16_spans"
 _SYMBOL_SPLIT_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
 _SYMBOL_SPLIT_REDUCE = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_f32"
 _SYMBOL_SPLIT_REDUCE_GATE_F32 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_f32"
+_SYMBOL_SPLIT_REDUCE_GATE_BF16 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16"
 
 
 def plan_qwen35_paged_attn_decode_build(
@@ -174,35 +175,90 @@ def qwen35_paged_full_attn_decode_split_k_gate_f32_spans(
         runtime=runtime,
     )
 
-    reduce_gate = getattr(library, _SYMBOL_SPLIT_REDUCE_GATE_F32)
-    reduce_gate.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    reduce_gate.restype = ctypes.c_int
-    err = reduce_gate(
-        ctypes.c_void_p(partial_out_ptr),
-        ctypes.c_void_p(partial_m_ptr),
-        ctypes.c_void_p(partial_l_ptr),
-        ctypes.c_void_p(gate_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(num_q_heads),
-        ctypes.c_int64(num_splits),
-        ctypes.c_int64(head_dim),
-        ctypes.c_int64(gate_stride1),
-        ctypes.c_int64(gate_stride2),
-        ctypes.c_void_p(stream),
+    _launch_gate_reduce(
+        _SYMBOL_SPLIT_REDUCE_GATE_F32,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        gate_ptr,
+        out_ptr,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        gate_stride1,
+        gate_stride2,
+        stream=stream,
+        library=library,
+        runtime=runtime,
     )
-    _check_launch(runtime, err)
+
+def qwen35_paged_full_attn_decode_split_k_gate_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run parent split-K paged BF16 attention and BF16 gated reduce via spans."""
+
+    _check_split_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_split_context(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+    _launch_gate_reduce(
+        _SYMBOL_SPLIT_REDUCE_GATE_BF16,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        gate_ptr,
+        out_ptr,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        gate_stride1,
+        gate_stride2,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 def qwen35_paged_full_attn_decode_split_k_bf16_spans(
     query_ptr: int,
@@ -290,6 +346,11 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         qwen35_paged_full_attn_decode_split_k_gate_f32_spans,
         replace=replace,
     )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_gate_bf16_spans"),
+        qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
+        replace=replace,
+    )
 
 
 def _check_decode_shape(
@@ -323,6 +384,54 @@ def _check_decode_shape(
 
 
 
+
+
+def _launch_gate_reduce(
+    symbol: str,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    num_q_heads: int,
+    num_splits: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL,
+    runtime: HipRuntime,
+) -> None:
+    reduce_gate = getattr(library, symbol)
+    reduce_gate.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    reduce_gate.restype = ctypes.c_int
+    err = reduce_gate(
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_splits),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(gate_stride1),
+        ctypes.c_int64(gate_stride2),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 def _launch_split_context(
     query_ptr: int,

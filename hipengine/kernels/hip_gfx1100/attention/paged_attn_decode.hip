@@ -2,6 +2,7 @@
 // Qwen3.5 paged full-attention context-tensor decode body is preserved; public wrapper uses HIPENGINE KVLiveSpans.
 
 #include <hip/hip_runtime.h>
+#include <hip/hip_bfloat16.h>
 #include <stdint.h>
 
 typedef uint32_t uint32x4 __attribute__((ext_vector_type(4)));
@@ -514,6 +515,43 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_f32(
   return static_cast<int>(hipGetLastError());
 }
 
+
+
+extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16(
+    const float* partial_out,
+    const float* partial_m,
+    const float* partial_l,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t num_q_heads,
+    int64_t num_splits,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    hipStream_t stream) {
+  if (num_q_heads <= 0 || num_splits <= 0 || head_dim <= 0 || head_dim > 1024 ||
+      gate_stride1 <= 0 || gate_stride2 <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int reduce_threads = static_cast<int>(head_dim);
+  const size_t shared_bytes = static_cast<size_t>(num_splits) * 3 * sizeof(float);
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>),
+      dim3(static_cast<unsigned int>(num_q_heads)),
+      dim3(reduce_threads),
+      shared_bytes,
+      stream,
+      partial_out,
+      partial_m,
+      partial_l,
+      reinterpret_cast<const hip_bfloat16*>(gate),
+      reinterpret_cast<hip_bfloat16*>(out),
+      num_splits,
+      head_dim,
+      gate_stride1,
+      gate_stride2);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_f32(
     const float* partial_out,
