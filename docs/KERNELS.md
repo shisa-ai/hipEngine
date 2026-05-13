@@ -48,9 +48,35 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `a
 
 `smoke_add` is a build/runtime smoke, not a model-layer primitive. It proves `hipengine.core.build`, lazy `libamdhip64.so`, device allocation/copy, launch, synchronize, and copyback without torch.
 
+## Source-lineage drift check
+
+Before porting a family, check whether the parent source moved since the last HIPENGINE catalog/audit baseline:
+
+```bash
+python3 scripts/check_lineage.py --diff stat
+```
+
+Useful filters:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+python3 scripts/check_lineage.py --file '*paroquant*' --diff patch
+python3 scripts/check_lineage.py --fail-on-drift
+```
+
+The script is read-only. It uses `docs/source_lineage.json` to compare tracked files in `~/amd-gpu-tuning/nano-vllm-amd/` against the recorded baseline ref, then reports:
+
+- current child-repo branch/HEAD,
+- per-file dirty status,
+- commits since baseline,
+- diffstat or patch for the file,
+- matching lines in `~/amd-gpu-tuning/WORKLOG.md` and relevant parent docs.
+
+If a file reports **DRIFT**, inspect the listed commits/diff and read the evidence hits before copying code. Update `docs/source_lineage.json`'s baseline only after the catalog/port source is intentionally refreshed and logged in `WORKLOG.md`.
+
 ## Source-lineage kernel catalog to port
 
-The stable source-lineage port set is the committed `nano-vllm-amd` Qwen3.5/PARO kernel set: **95** kernels from `csrc/amd/qwen35_expert.hip` plus **25** PARO kernels from `nanovllm/native/qwen35/paroquant_kernels.py` = **120 Qwen/PARO kernels**, plus the separate `smoke_add` build smoke. HIPENGINE ports these by family; bodies are preserved byte-for-byte except for includes and raw-pointer host-wrapper retyping.
+The stable source-lineage port set at the current HIPENGINE catalog baseline is the committed `nano-vllm-amd` Qwen3.5/PARO kernel set: **95** kernels from `csrc/amd/qwen35_expert.hip` plus **25** PARO kernels from `nanovllm/native/qwen35/paroquant_kernels.py` = **120 Qwen/PARO kernels**, plus the separate `smoke_add` build smoke. HIPENGINE ports these by family; bodies are preserved byte-for-byte except for includes and raw-pointer host-wrapper retyping.
 
 ### Atomic / primitive-oriented kernel families (**lineage green, not yet HIPENGINE-landed**)
 
@@ -211,7 +237,7 @@ Each fused kernel still requires an unfused fallback chain registered under its 
 
 ### Recent source-lineage additions not yet stable for HIPENGINE defaults (**lineage dirty / experimental**)
 
-The current parent checkout (`~/amd-gpu-tuning/nano-vllm-amd`, branch `gfx1100-qwen3.5`, HEAD observed as `22405a9`, with local modifications) contains six additional PARO kernels beyond the committed 25-kernel PARO set:
+The last manual catalog audit (`docs/source_lineage.json` baseline `22405a9`) observed six additional PARO kernels in the parent worktree beyond the committed 25-kernel PARO set:
 
 - `gemv_awq_mbatch_dual_pack8_kernel`
 - `gemv_awq_mbatch_pack8_kernel`

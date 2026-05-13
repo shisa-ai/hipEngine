@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "description": "External source-lineage files HIPENGINE ports from or audits before a port.",
+  "evidence_paths": [
+    "/home/lhl/amd-gpu-tuning/WORKLOG.md",
+    "/home/lhl/amd-gpu-tuning/docs/PARO.md",
+    "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT.md",
+    "/home/lhl/amd-gpu-tuning/PLAN-MOE2.md"
+  ],
+  "repositories": {
+    "nano-vllm-amd": {
+      "path": "/home/lhl/amd-gpu-tuning/nano-vllm-amd",
+      "baseline_ref": "22405a9",
+      "baseline_note": "Last manual KERNELS.md catalog audit before adding scripts/check_lineage.py."
+    }
+  },
+  "files": [
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/qwen35_expert.hip",
+      "kind": "kernel",
+      "family": "qwen35 monolithic HIP kernels"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/extension.cpp",
+      "kind": "binding",
+      "family": "qwen35 PyBind/TORCH_LIBRARY exports"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/smoke.hip",
+      "kind": "kernel",
+      "family": "smoke_add build smoke"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/paroquant_kernels.py",
+      "kind": "kernel",
+      "family": "PARO embedded HIP kernels and wrappers"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/paroquant.py",
+      "kind": "dispatch",
+      "family": "PARO native dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/expert.py",
+      "kind": "dispatch",
+      "family": "Qwen3.5 expert/MoE dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/paroquant_weights.py",
+      "kind": "layout",
+      "family": "PARO weight layout and packing"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/wmma.py",
+      "kind": "dispatch",
+      "family": "WMMA grouped MoE dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/mtp.py",
+      "kind": "dispatch",
+      "family": "MTP dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/full_attention.py",
+      "kind": "dispatch",
+      "family": "Full-attention dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/weights.py",
+      "kind": "layout",
+      "family": "Qwen3.5 native weight loading/layout"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/linear_attention.py",
+      "kind": "dispatch",
+      "family": "Linear-attention/GDN dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/__init__.py",
+      "kind": "dispatch",
+      "family": "Qwen3.5 native package exports"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/rmsnorm.py",
+      "kind": "dispatch",
+      "family": "RMSNorm dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/linear.py",
+      "kind": "dispatch",
+      "family": "Linear projection dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/spec.py",
+      "kind": "dispatch",
+      "family": "Qwen3.5 model spec"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/router.py",
+      "kind": "dispatch",
+      "family": "Router dispatch"
+    }
+  ]
+}

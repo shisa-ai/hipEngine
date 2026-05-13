@@ -15,6 +15,7 @@ Active implementation checklist. Keep this file lightweight; durable architectur
 - [x] Add lazy HIP runtime/memory skeleton (no HIP library load on import).
 - [x] Add first HIP smoke kernel source and dry-run registry/build plan (`smoke_add`).
 - [x] Run first HIP smoke kernel (`smoke_add`) on GPU after explicit clearance.
+- [x] Add source-lineage drift checker for `~/amd-gpu-tuning/nano-vllm-amd` port inputs.
 - [ ] Resolve `rocprofv3` trace hang for Python/ctypes smoke before first real kernel port.
 - [ ] Add minimal `scripts/smoke.py` path that exercises `LLM.generate()` once the engine loop exists.
 

@@ -545,3 +545,97 @@ Results:
 - `python3 -m pytest -q`: `24 passed`.
 - `scripts/check_fixtures.py`: all four CPU-reference fixtures passed with `max_abs=0`, `max_rel=0`.
 - Docs sanity: `docs sanity ok`.
+
+---
+
+## 2026-05-13 — Add source-lineage drift checker before kernel ports
+
+### Prompt / concern
+
+- User asked for a way to track whether kernel or dispatch files in `~/amd-gpu-tuning/` are newer before continuing HIPENGINE ports.
+- Desired workflow: see changed kernel/dispatch files, inspect child-repo commits/diffs for those files, and jump to corresponding `~/amd-gpu-tuning/WORKLOG.md` evidence entries.
+
+### Implementation
+
+- Added `docs/source_lineage.json`, a machine-readable manifest for external source-lineage inputs:
+  - Parent repo: `/home/lhl/amd-gpu-tuning/nano-vllm-amd`.
+  - Baseline ref: `22405a9` (the last manual KERNELS.md catalog audit baseline).
+  - Evidence paths searched: `/home/lhl/amd-gpu-tuning/WORKLOG.md`, `docs/PARO.md`, `PLAN-PAROQUANT.md`, and `PLAN-MOE2.md`.
+  - Tracked files: Qwen3.5 monolithic HIP source, extension bindings, smoke source, PARO embedded HIP, and native Qwen3.5/PARO dispatch/layout files.
+- Added `scripts/check_lineage.py`:
+  - Read-only; only calls `git` and reads parent docs/logs.
+  - Reports current child repo branch/HEAD, per-file dirty status, last commit, commits since baseline, diffstat/patch, and evidence hits.
+  - Supports filters: `--kind`, `--file`, `--diff {none,stat,patch}`, `--json`, `--fail-on-drift`.
+  - Evidence search prefers exact commit SHA hits, falling back to precise file/family path hits to avoid generic/noisy matches.
+- Added `tests/test_check_lineage.py` with temporary git repos to verify JSON output, evidence-hit detection, diffstat capture, and `--fail-on-drift` exit behavior.
+- Updated `docs/KERNELS.md` with a "Source-lineage drift check" section and clarified that the six experimental PARO kernels were from the last manual catalog baseline rather than necessarily the current parent checkout.
+- Updated `docs/IMPLEMENTATION.md` Phase 0 with the completed lineage-checker item.
+
+### Current drift found
+
+Command:
+
+```bash
+python3 scripts/check_lineage.py --diff stat --evidence-limit 4
+```
+
+Result summary at current parent checkout:
+
+- Parent `nano-vllm-amd`: branch `gfx1100-qwen3.5`, HEAD `0627f8b`.
+- Tracked sources: 17.
+- Changed/dirty since baseline `22405a9`: 5.
+- Drift files:
+  - `csrc/amd/qwen35_expert.hip` — commit `6e2b19b`, +93 lines, compact WMMA buffer support.
+  - `csrc/amd/extension.cpp` — commit `6e2b19b`, +8 lines, binding additions for the WMMA compact path.
+  - `nanovllm/native/qwen35/paroquant_kernels.py` — commits `4864e0a`, `2cd28d5`, `6e2b19b`; diffstat `985 insertions(+), 165 deletions(-)`.
+  - `nanovllm/native/qwen35/paroquant.py` — commits `2cd28d5`, `57bdb5a`, `6e2b19b`, `5f64c97`, `4751c84`, `0627f8b`; diffstat `184 insertions(+), 8 deletions(-)`.
+  - `nanovllm/native/qwen35/expert.py` — commit `6e2b19b`, +19 lines.
+- Relevant parent WORKLOG hits include lines around `48961`, `48968`, `49047`, `49183`, `49236`, and `49258` for the changed commits.
+
+### Verification
+
+CPU/read-only; no GPU/HIP/profiler commands.
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+bad = False
+for root in ('scripts', 'tests'):
+    for p in Path(root).rglob('*.py'):
+        if '__pycache__' in p.parts:
+            continue
+        for i, line in enumerate(p.read_text().splitlines(), 1):
+            if len(line) > 100:
+                print(f'{p}:{i}:{len(line)}:{line}')
+                bad = True
+raise SystemExit(1 if bad else 0)
+PY
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 scripts/check_lineage.py --file 'paroquant*' --diff stat --evidence-limit 4 >/tmp/hipengine-lineage-paroquant.txt
+python3 scripts/check_lineage.py --json >/tmp/hipengine-lineage-default.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+report = json.loads(Path('/tmp/hipengine-lineage-default.json').read_text())
+changed = [s for s in report['sources'] if s['changed']]
+print(f'lineage json ok: tracked={len(report["sources"])} changed={len(changed)}')
+assert changed
+PY
+git diff --check
+```
+
+Results:
+
+- Python line-length check: pass.
+- `python3 -m pytest -q`: `26 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Lineage JSON smoke: `tracked=17 changed=5`.
+- `git diff --check`: pass.
+
+### Next
+
+- Before porting any real kernel family, run `python3 scripts/check_lineage.py --kind kernel --diff stat` and inspect DRIFT entries.
+- For a drifted file selected for port, use `--diff patch --file '<pattern>'` and read the listed parent WORKLOG evidence before copying code.
+- Do not advance `docs/source_lineage.json` baseline until HIPENGINE's catalog/port plan is intentionally refreshed and logged.
