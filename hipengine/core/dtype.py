@@ -11,6 +11,7 @@ class DType(str, Enum):
     FP32 = "fp32"
     INT64 = "int64"
     INT32 = "int32"
+    INT16 = "int16"
     INT8 = "int8"
     BOOL = "bool"
     INT4_PARO = "int4_paro"

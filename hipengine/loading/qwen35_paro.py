@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from hipengine.core.device import Device
+from hipengine.core.hip import HipRuntime
+from hipengine.core.tensor import Tensor
+from hipengine.loading.materialize import DeviceTensorAllocation, DeviceWeightMap, load_tensor_info_to_device
 from hipengine.loading.safetensors import MissingTensorError, TensorInfo, WeightIndex
 
 ROOT_PREFIXES = ("model.language_model.", "language_model.", "model.")
@@ -47,6 +51,24 @@ class Qwen35ParoLayoutValidation:
             more = "" if len(self.shape_errors) <= 4 else f" (+{len(self.shape_errors) - 4} more)"
             parts.append(f"shape errors: {preview}{more}")
         raise MissingTensorError("; ".join(parts))
+
+
+@dataclass(frozen=True)
+class Qwen35ParoLayerDeviceWeights:
+    """Materialized normalized device weights for one Qwen3.5/PARO layer slice."""
+
+    config: Qwen35ParoConfig
+    layer_id: int
+    weights: DeviceWeightMap
+
+    def tensor(self, name: str) -> Tensor:
+        return self.weights[normalize_qwen35_weight_name(name)]
+
+    def allocation(self, name: str) -> DeviceTensorAllocation:
+        return self.weights.allocation(normalize_qwen35_weight_name(name))
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        self.weights.free(runtime=runtime)
 
 
 def normalize_qwen35_weight_name(name: str) -> str:
@@ -133,6 +155,47 @@ def validate_qwen35_paro_moe_c1_layout(
     if raise_on_error:
         result.raise_for_errors()
     return result
+
+
+def materialize_qwen35_paro_moe_c1_layer(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    validate: bool = True,
+) -> Qwen35ParoLayerDeviceWeights:
+    """Materialize the validated MoE c=1 layer slice using normalized names.
+
+    The returned map is keyed by names without model-root prefixes, e.g.
+    ``layers.0.mlp.experts.0.gate_proj.qweight``. This keeps runtime model code
+    independent from Hugging Face checkpoint root conventions while preserving
+    the original ``TensorInfo`` source on each allocation for diagnostics.
+    """
+
+    validation = validate_qwen35_paro_moe_c1_layout(index, layer_id=layer_id, raise_on_error=validate)
+    if not validation.passed:
+        validation.raise_for_errors()
+    normalized = _normalized_tensor_map(index)
+    required = required_moe_c1_tensor_names(layer_id=layer_id, num_experts=validation.config.num_experts)
+    allocations: dict[str, DeviceTensorAllocation] = {}
+    try:
+        for normalized_name in required:
+            allocation = load_tensor_info_to_device(normalized[normalized_name], device=device, runtime=runtime)
+            allocations[normalized_name] = DeviceTensorAllocation(
+                name=normalized_name,
+                source=allocation.source,
+                buffer=allocation.buffer,
+                tensor=allocation.tensor,
+            )
+    except Exception:
+        DeviceWeightMap(allocations).free(runtime=runtime)
+        raise
+    return Qwen35ParoLayerDeviceWeights(
+        config=validation.config,
+        layer_id=layer_id,
+        weights=DeviceWeightMap(allocations),
+    )
 
 
 def _normalized_tensor_map(index: WeightIndex) -> dict[str, TensorInfo]:

@@ -2534,3 +2534,35 @@ Results:
 ### Next
 
 - Build Qwen3.5/PARO weight-plan objects on top of the safetensors index/materializer so model code can request normalized logical weights and receive device `Tensor` handles for the landed raw-pointer kernels.
+
+---
+
+## 2026-05-14 — Add Qwen3.5/PARO normalized device weight map for MoE c=1
+
+### Scope
+
+- Extended `hipengine/loading/qwen35_paro.py` with a Qwen-specific materialization layer on top of the safetensors index and generic device materializer:
+  - `Qwen35ParoLayerDeviceWeights`
+  - `materialize_qwen35_paro_moe_c1_layer(...)`
+- The returned weight map is keyed by normalized names (for example `layers.0.mlp.experts.1.down_proj.qweight`) while preserving the original `TensorInfo` source name for diagnostics.
+- Added `DType.INT16` and safetensors `I16` materialization support for PARO pair metadata tensors.
+- Exported the Qwen materialization helper from `hipengine.loading`.
+- Added CPU-safe tests with a fake HIP runtime that validate normalized name lookup, exact byte copies for packed weights, INT16 metadata tensors, and owned-buffer cleanup.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_loading_materialize.py tests/test_qwen35_paro_layout.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Targeted loader tests: `10 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Define a minimal Qwen3.5/PARO runtime state object that combines materialized layer weights, scratch/workspace buffers, and landed kernel wrappers into a one-token decode step.

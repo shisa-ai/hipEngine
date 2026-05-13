@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import json
 
 import numpy as np
@@ -9,11 +10,36 @@ from safetensors.numpy import save_file
 from hipengine.loading import (
     MissingTensorError,
     load_weight_index,
+    materialize_qwen35_paro_moe_c1_layer,
     normalize_qwen35_weight_name,
     qwen35_paro_config_from_hf,
     required_moe_c1_tensor_names,
     validate_qwen35_paro_moe_c1_layout,
 )
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.hip import HipMemcpyKind
+
+
+class FakeRuntime:
+    def __init__(self) -> None:
+        self.next_ptr = 0x4000
+        self.buffers: dict[int, bytearray] = {}
+        self.freed: list[int] = []
+
+    def malloc(self, nbytes: int) -> int:
+        ptr = self.next_ptr
+        self.next_ptr += max(nbytes, 1) + 0x100
+        self.buffers[ptr] = bytearray(nbytes)
+        return ptr
+
+    def free(self, ptr: int) -> None:
+        self.freed.append(ptr)
+        self.buffers.pop(ptr, None)
+
+    def memcpy(self, dst: int, src: int, count: int, kind: HipMemcpyKind) -> None:
+        assert kind == HipMemcpyKind.HOST_TO_DEVICE
+        self.buffers[dst][:count] = ctypes.string_at(src, count)
 
 
 def _write_config(path, *, quant_method: str = "paroquant") -> None:
@@ -101,6 +127,34 @@ def test_validate_qwen35_paro_moe_c1_layout_passes(tmp_path) -> None:
     assert result.config.num_experts == 2
     assert not result.missing
     assert not result.shape_errors
+
+
+def test_materialize_qwen35_paro_moe_c1_layer_uses_normalized_device_names(tmp_path) -> None:
+    _write_config(tmp_path)
+    tensors = _valid_tensors()
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+    runtime = FakeRuntime()
+
+    layer = materialize_qwen35_paro_moe_c1_layer(index, device=Device("hip", 0), runtime=runtime)
+
+    qweight_name = "layers.0.mlp.experts.1.down_proj.qweight"
+    prefixed_name = f"model.{qweight_name}"
+    assert layer.config.hidden_size == 4
+    assert layer.layer_id == 0
+    assert layer.tensor(prefixed_name) == layer.tensor(qweight_name)
+    assert layer.tensor(qweight_name).dtype is DType.INT32
+    assert layer.tensor(qweight_name).shape == tensors[prefixed_name].shape
+    qweight_alloc = layer.allocation(qweight_name)
+    assert qweight_alloc.name == qweight_name
+    assert qweight_alloc.source.name == prefixed_name
+    assert bytes(runtime.buffers[qweight_alloc.buffer.ptr]) == tensors[prefixed_name].tobytes()
+
+    pairs = layer.tensor("layers.0.mlp.experts.gate_up_weight_pairs")
+    assert pairs.dtype is DType.INT16
+    assert pairs.shape == (1, 4)
+    layer.free(runtime=runtime)
+    assert len(runtime.freed) == len(required_moe_c1_tensor_names(layer_id=0, num_experts=2))
 
 
 def test_validate_qwen35_paro_moe_c1_layout_reports_missing_and_shapes(tmp_path) -> None:

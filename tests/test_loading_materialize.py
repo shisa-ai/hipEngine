@@ -50,6 +50,7 @@ def test_dtype_from_safetensors_maps_supported_runtime_dtypes() -> None:
     assert dtype_from_safetensors("BF16") is DType.BF16
     assert dtype_from_safetensors("F16") is DType.FP16
     assert dtype_from_safetensors("F32") is DType.FP32
+    assert dtype_from_safetensors("I16") is DType.INT16
     assert dtype_from_safetensors("I32") is DType.INT32
     assert dtype_from_safetensors("I64") is DType.INT64
     with pytest.raises(ValueError, match="unsupported safetensors dtype"):

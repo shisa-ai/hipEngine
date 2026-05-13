@@ -17,6 +17,7 @@ from hipengine.loading.safetensors import TensorInfo, WeightIndex
 _SAFETENSORS_DTYPE_TO_DTYPE = {
     "BOOL": DType.BOOL,
     "I8": DType.INT8,
+    "I16": DType.INT16,
     "I32": DType.INT32,
     "I64": DType.INT64,
     "F16": DType.FP16,
