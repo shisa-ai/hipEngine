@@ -36,6 +36,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Synthetic c=1 MoE decode vertical smoke (`paro-moe-c1-hip`) chaining RMSNorm, router, selected W4 experts, W8A16 shared branch, and weighted/shared/residual combine.
 - [ ] Port MoE prefill compact-WMMA slice (lane grouping/gather, compact tile map, compact WMMA, weighted lanes, GEMV fallback).
 - [ ] Port full-inference dependencies outside MoE (w4_paro loader/layout, Qwen3.5 model plugin, non-MoE projections, linear attention/GDN, full attention/KV, W8A16 lm_head, graph replay).
+  - [x] Register `w4_paro` quant plugin metadata for dispatch/planning.
 - [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.
 
 ## Notes

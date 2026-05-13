@@ -36,3 +36,14 @@ def test_builtin_bf16_quant_plugin_is_registered() -> None:
     assert plugin.weight_storage == "bf16"
     assert plugin.compute_dtype == "bf16"
     assert plugin.kernel_family == "bf16"
+
+
+def test_builtin_w4_paro_quant_plugin_is_registered() -> None:
+    plugin = resolve_quant("w4_paro")
+
+    assert plugin.weight_storage == "uint4_pack8_awq"
+    assert plugin.activation_preprocess == "bf16_pairwise_rotation"
+    assert plugin.compute_dtype == "bf16"
+    assert plugin.scale_granularity == "group128_per_output_channel"
+    assert plugin.calibration_artifact == "paroquant_theta_pairs_scales"
+    assert plugin.kernel_family == "paro_awq_pack8"

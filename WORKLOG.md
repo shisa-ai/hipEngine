@@ -1733,3 +1733,32 @@ Results:
 ### Next
 
 - The synthetic c=1 kernel chain works. Remaining path to "all works" is no longer the c=1 MoE kernel dependency set; it is model/weight-loader/full-inference plumbing: w4_paro loader/layout, Qwen3.5 model plugin, non-MoE projections, attention/KV, lm-head route, and graph replay.
+
+---
+
+## 2026-05-13 — Register w4_paro quant plugin metadata
+
+### Scope
+
+- Added `hipengine.quant.w4_paro.W4ParoQuant` and registered built-in `w4_paro` quant plugin.
+- Captures six quant axes for dispatch/planning:
+  - weight storage: `uint4_pack8_awq`
+  - activation preprocess: `bf16_pairwise_rotation`
+  - compute dtype: `bf16`
+  - scale granularity: `group128_per_output_channel`
+  - calibration artifact: `paroquant_theta_pairs_scales`
+  - kernel family: `paro_awq_pack8`
+- Updated quant import surface and tests.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest -q
+```
+
+Results: `48 passed`.
+
+### Next
+
+- Add Qwen3.5/PARO model plugin metadata and loader-side tensor-name/layout scaffolding.
