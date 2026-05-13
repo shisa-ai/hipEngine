@@ -3152,3 +3152,41 @@ Results:
 ### Next
 
 - Add the missing single-output PARO rotation / F32→BF16 cast glue for linear-attention `out_proj`, then feed the result into post-attention RMSNorm + MoE for a real first-layer partial generate smoke.
+
+---
+
+## 2026-05-14 — Wire Qwen3.5/PARO linear-attention out_proj
+
+### Scope
+
+- Added torch-free gfx1100 runtime cast helpers (`f32_to_bf16`, `bf16_to_f32`) for small projection glue buffers.
+- Added `paro_rotate1_bf16`, the single-output PARO pairwise rotation specialization needed by projection tails.
+- Extended `Qwen35ParoLinearAttentionScratch` with recurrent BF16, rotated `out_proj` input, and projected output buffers.
+- Added `project_linear_attention_out_bf16(...)` and `run_linear_attention_out_proj_bf16(...)` to cast GDN FP32 output, rotate `linear_attn.out_proj`, and run the generic pack8 PARO GEMV.
+- Updated `docs/IMPLEMENTATION.md` and `docs/KERNELS.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_decode_state.py -q
+python3 -m pytest -q
+(rocm-smi --showpids --showuse --showmeminfo vram || true) | sed -n '1,120p'
+python3 - <<'PY'
+# Real layer-0 GPU smoke on /models/.../Qwen3.5-35B-A3B-PARO:
+# materialize linear-attention+MoE runtime tensors, zero BF16 hidden, zero FP32 conv/recurrent states,
+# run rotate2 -> qkv/z pack8 -> a/b dense -> conv -> GDN -> f32_to_bf16 -> rotate1 -> out_proj pack8.
+PY
+```
+
+Results:
+
+- Decode-state tests: `18 passed`.
+- Full test suite: all tests passed.
+- GPU was idle before the smoke (`GPU use 0%`, no KFD PIDs).
+- Real checkpoint layer-0 out-projection smoke completed on W7900:
+  - `linear_attn_out_proj (1, 2048) bf16`, first output BF16 words all zero for zero input/state.
+
+### Next
+
+- Feed this projected linear-attention output into post-attention PARO add-RMSNorm + c=1 MoE to produce a full layer-0 BF16 output, then build the minimal real-model token loop.

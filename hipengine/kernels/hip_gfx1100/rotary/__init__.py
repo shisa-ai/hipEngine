@@ -2,6 +2,7 @@
 
 from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import (
     build_paro_rotate,
+    paro_rotate1_bf16,
     paro_rotate2_bf16,
     paro_rotate3_bf16,
     plan_paro_rotate_build,
@@ -19,6 +20,7 @@ from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
 __all__ = [
     "build_paro_rotate",
     "build_qwen35_rotary",
+    "paro_rotate1_bf16",
     "paro_rotate2_bf16",
     "paro_rotate3_bf16",
     "plan_paro_rotate_build",

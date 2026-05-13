@@ -11,6 +11,7 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("paro_rotate.hip")
 _OUTPUT_NAME = "paro_rotate.so"
+_SYMBOL_ROTATE1 = "hipengine_paro_rotate1_bf16"
 _SYMBOL_ROTATE2 = "hipengine_paro_rotate2_bf16"
 _SYMBOL_ROTATE3 = "hipengine_paro_rotate3_bf16"
 
@@ -51,6 +52,55 @@ def build_paro_rotate(
         load=load,
         require_cached=require_cached,
     )
+
+
+def paro_rotate1_bf16(
+    x_ptr: int,
+    out_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    scales_ptr: int,
+    tokens: int,
+    hidden: int,
+    group_size: int,
+    krot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch parent PARO single-output pairwise rotation kernel for BF16 buffers."""
+
+    _check_rotate_shape(tokens, hidden, group_size, krot)
+    library = library or build_paro_rotate(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ROTATE1)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(pairs_ptr),
+        ctypes.c_void_p(theta_ptr),
+        ctypes.c_void_p(scales_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(krot),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def paro_rotate2_bf16(
@@ -188,6 +238,11 @@ def paro_rotate3_bf16(
 
 
 def register_paro_rotate_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey("hip_gfx1100", "paro_rotate1", "w4_paro", "bf16"),
+        paro_rotate1_bf16,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "paro_rotate2", "w4_paro", "bf16"),
         paro_rotate2_bf16,

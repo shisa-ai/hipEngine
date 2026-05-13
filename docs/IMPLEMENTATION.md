@@ -45,6 +45,8 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add real-runtime materialization for Qwen3.5/PARO full-attention+MoE c=1 tensors with F16→BF16 conversion for BF16 kernel ABIs.
   - [x] Add Qwen3.5/PARO linear-attention+MoE c=1 runtime materialization for first real-model decode layers.
   - [x] Wire Qwen3.5/PARO linear-attention c=1 decode-state chain through GDN recurrent output.
+  - [x] Add F32→BF16 runtime cast glue and single-output PARO rotation for runtime projections.
+  - [x] Wire Qwen3.5/PARO linear-attention `out_proj` over GDN recurrent output.
   - [x] Add Qwen3.5/PARO parent-compatible prepared MoE host/device layouts (router+shared gate, stacked expert pack8 tensors).
   - [x] Add torch-free named runtime workspace allocator for scratch/device tensors.
   - [x] Add minimal Qwen3.5/PARO one-token decode-state scratch scaffold.
@@ -58,7 +60,8 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add Qwen3.5/PARO MoE c=1 checkpoint layout validator over tensor metadata.
   - [x] Port PARO BF16 dense GEMV (`dense_gemv_out`) for auxiliary dense projection paths.
   - [x] Port generic PARO pack8 GEMV (`gemv_awq_pack8*`, `gemv_awq_dual_pack8*`) for non-MoE Q/K/QKV/Z projection paths.
-  - [x] Port PARO pairwise rotation helpers (`paro_rotate2`, `paro_rotate3`) for multi-projection PARO paths.
+  - [x] Port PARO pairwise rotation helpers (`paro_rotate1`, `paro_rotate2`, `paro_rotate3`) for PARO projection paths.
+  - [x] Port runtime BF16/F32 cast helpers (`f32_to_bf16`, `bf16_to_f32`) for projection glue.
   - [x] Port Qwen full-attention prelude kernels (`partial_rotary`, `head_rmsnorm+partial_rotary`, position variant).
   - [x] Port Qwen linear-attention decode convolution (`qwen35_linear_attn_conv_decode*`, FP32/BF16 input variants).
   - [x] Port Qwen linear-attention recurrent GDN lowp RMSNorm+gate (`qwen35_gdn_recurrent_rmsnorm_gate_lowp`).

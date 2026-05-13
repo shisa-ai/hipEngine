@@ -11,6 +11,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
 )
+from hipengine.kernels.hip_gfx1100.convert import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import weighted_sum_shared_gate_combine_residual_out_bf16_f32w
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_dual_out_bf16, silu_mul_dual_rotate_out_bf16
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
@@ -23,7 +24,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_pack8_transposed_bf16,
 )
-from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import paro_rotate2_bf16
+from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import paro_rotate1_bf16, paro_rotate2_bf16
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights, normalize_qwen35_weight_name
 from hipengine.runtime.workspace import RuntimeWorkspace
@@ -52,6 +53,9 @@ class Qwen35ParoLinearAttentionScratch:
     b: Tensor
     conv_out: Tensor
     recurrent_out: Tensor
+    recurrent_bf16: Tensor
+    out_rot: Tensor
+    out_proj: Tensor
 
 
 @dataclass(frozen=True)
@@ -176,6 +180,9 @@ class Qwen35ParoDecodeState:
             b=self.workspace.reserve_tensor("linear_attn.b", (tokens, cfg.linear_num_value_heads), DType.BF16),
             conv_out=self.workspace.reserve_tensor("linear_attn.conv_out", (tokens, qkv_width), DType.FP32),
             recurrent_out=self.workspace.reserve_tensor("linear_attn.recurrent_out", (tokens, z_width), DType.FP32),
+            recurrent_bf16=self.workspace.reserve_tensor("linear_attn.recurrent_bf16", (tokens, z_width), DType.BF16),
+            out_rot=self.workspace.reserve_tensor("linear_attn.out_rot", (tokens, z_width), DType.BF16),
+            out_proj=self.workspace.reserve_tensor("linear_attn.out_proj", (tokens, cfg.hidden_size), DType.BF16),
         )
 
     def rotate_linear_attention_inputs_bf16(
@@ -321,6 +328,82 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         return scratch.recurrent_out
+
+    def project_linear_attention_out_bf16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> Tensor:
+        """Cast, rotate, and project the FP32 GDN output through linear_attn.out_proj."""
+
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn.out_proj"
+        width = scratch.recurrent_out.shape[-1]
+        f32_to_bf16(
+            scratch.recurrent_out.ptr,
+            scratch.recurrent_bf16.ptr,
+            tokens * width,
+            library=_library_for(library, "cast"),
+            runtime=self.runtime,
+        )
+        pairs = self.tensor(f"{prefix}.pairs")
+        theta = self.tensor(f"{prefix}.theta")
+        scales = self.tensor(f"{prefix}.channel_scales")
+        paro_rotate1_bf16(
+            scratch.recurrent_bf16.ptr,
+            scratch.out_rot.ptr,
+            pairs.ptr,
+            theta.ptr,
+            scales.ptr,
+            tokens,
+            width,
+            group_size,
+            _rotation_krot(pairs),
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+        self.project_pack8_bf16(
+            scratch.out_rot,
+            scratch.out_proj,
+            weight_prefix=prefix,
+            rows=tokens,
+            in_features=width,
+            group_size=group_size,
+            library=library,
+        )
+        return scratch.out_proj
+
+    def run_linear_attention_out_proj_bf16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> Tensor:
+        if tokens != 1:
+            raise ValueError("linear-attention out-proj orchestrator currently requires tokens=1")
+        scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens)
+        self.run_linear_attention_state_bf16(
+            hidden,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            scratch=scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+        )
+        return self.project_linear_attention_out_bf16(
+            scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+        )
 
     def run_linear_attention_state_bf16(
         self,

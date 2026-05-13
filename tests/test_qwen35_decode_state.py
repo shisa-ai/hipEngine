@@ -225,12 +225,20 @@ def _linear_weights() -> DeviceWeightMap:
             f"{prefix}.in_proj_z.channel_scales": _allocation(
                 f"{prefix}.in_proj_z.channel_scales", 0x9600, (1, 4096), "bf16"
             ),
+            f"{prefix}.out_proj.pairs": _allocation(f"{prefix}.out_proj.pairs", 0x9650, (8, 4096), "int16"),
+            f"{prefix}.out_proj.theta": _allocation(f"{prefix}.out_proj.theta", 0x9660, (8, 2048), "bf16"),
+            f"{prefix}.out_proj.channel_scales": _allocation(
+                f"{prefix}.out_proj.channel_scales", 0x9670, (1, 4096), "bf16"
+            ),
             f"{prefix}.in_proj_qkv.qweight": _allocation(f"{prefix}.in_proj_qkv.qweight", 0x9700, (4096, 1024), "int32"),
             f"{prefix}.in_proj_qkv.qzeros": _allocation(f"{prefix}.in_proj_qkv.qzeros", 0x9800, (32, 1024), "int32"),
             f"{prefix}.in_proj_qkv.scales": _allocation(f"{prefix}.in_proj_qkv.scales", 0x9900, (32, 8192), "bf16"),
             f"{prefix}.in_proj_z.qweight": _allocation(f"{prefix}.in_proj_z.qweight", 0x9A00, (4096, 512), "int32"),
             f"{prefix}.in_proj_z.qzeros": _allocation(f"{prefix}.in_proj_z.qzeros", 0x9B00, (32, 512), "int32"),
             f"{prefix}.in_proj_z.scales": _allocation(f"{prefix}.in_proj_z.scales", 0x9C00, (32, 4096), "bf16"),
+            f"{prefix}.out_proj.qweight": _allocation(f"{prefix}.out_proj.qweight", 0x9C10, (4096, 512), "int32"),
+            f"{prefix}.out_proj.qzeros": _allocation(f"{prefix}.out_proj.qzeros", 0x9C20, (32, 512), "int32"),
+            f"{prefix}.out_proj.scales": _allocation(f"{prefix}.out_proj.scales", 0x9C30, (32, 4096), "bf16"),
             f"{prefix}.in_proj_a.weight": _allocation(f"{prefix}.in_proj_a.weight", 0x9D00, (32, 4096), "bf16"),
             f"{prefix}.in_proj_b.weight": _allocation(f"{prefix}.in_proj_b.weight", 0x9E00, (32, 4096), "bf16"),
             f"{prefix}.conv1d.weight": _allocation(f"{prefix}.conv1d.weight", 0x9F00, (8192, 1, 4), "fp32"),
@@ -253,6 +261,9 @@ def test_qwen35_decode_state_reserves_linear_attention_scratch() -> None:
     assert scratch.b.shape == (1, 32)
     assert scratch.conv_out.dtype is DType.FP32
     assert scratch.recurrent_out.shape == (1, 4096)
+    assert scratch.recurrent_bf16.shape == (1, 4096)
+    assert scratch.out_rot.shape == (1, 4096)
+    assert scratch.out_proj.shape == (1, 4096)
 
 
 def test_qwen35_decode_state_runs_linear_attention_state_chain(monkeypatch) -> None:
@@ -310,6 +321,64 @@ def test_qwen35_decode_state_runs_linear_attention_state_chain(monkeypatch) -> N
         128,
         128,
     )
+
+
+def test_qwen35_decode_state_projects_linear_attention_out(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    scratch = state.reserve_linear_attention_scratch(tokens=1)
+    calls = []
+
+    def record(name):
+        def fake(*args, **kwargs):
+            calls.append((name, args, kwargs))
+        return fake
+
+    monkeypatch.setattr(qwen_runtime, "f32_to_bf16", record("cast"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", record("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
+
+    out = state.project_linear_attention_out_bf16(scratch)
+
+    assert out is scratch.out_proj
+    assert [name for name, _, _ in calls] == ["cast", "rotate1", "pack8"]
+    assert calls[0][1] == (scratch.recurrent_out.ptr, scratch.recurrent_bf16.ptr, 4096)
+    assert calls[0][2] == {"library": None, "runtime": runtime}
+    assert calls[1][1] == (scratch.recurrent_bf16.ptr, scratch.out_rot.ptr, 0x9650, 0x9660, 0x9670, 1, 4096, 128, 8)
+    assert calls[1][2] == {"library": None, "runtime": runtime}
+    assert calls[2][1][:5] == (scratch.out_rot.ptr, 0x9C10, 0x9C20, 0x9C30, scratch.out_proj.ptr)
+    assert calls[2][1][5:] == (1, 4096, 512, 128)
+    assert calls[2][2] == {"threads": 128, "library": None, "runtime": runtime}
+
+
+def test_qwen35_decode_state_runs_linear_attention_out_proj_chain(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    hidden = _tensor(0xC000, (1, 4096), "bf16")
+    conv_state = _tensor(0xC100, (8192, 4), "fp32")
+    recurrent_state = _tensor(0xC200, (32, 128, 128), "fp32")
+    scratch = state.reserve_linear_attention_scratch(tokens=1)
+    order = []
+
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", lambda *a, **k: order.append("rotate2"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", lambda *a, **k: order.append("pack8"))
+    monkeypatch.setattr(qwen_runtime, "dense_gemv_out_bf16", lambda *a, **k: order.append("dense"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_decode_bf16", lambda *a, **k: order.append("conv"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16", lambda *a, **k: order.append("gdn"))
+    monkeypatch.setattr(qwen_runtime, "f32_to_bf16", lambda *a, **k: order.append("cast"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", lambda *a, **k: order.append("rotate1"))
+
+    out = state.run_linear_attention_out_proj_bf16(
+        hidden,
+        conv_state=conv_state,
+        recurrent_state=recurrent_state,
+        scratch=scratch,
+    )
+
+    assert out is scratch.out_proj
+    assert order == ["rotate2", "pack8", "pack8", "dense", "dense", "conv", "gdn", "cast", "rotate1", "pack8"]
+    with pytest.raises(ValueError, match="tokens=1"):
+        state.run_linear_attention_out_proj_bf16(hidden, conv_state=conv_state, recurrent_state=recurrent_state, tokens=2)
 
 
 def test_qwen35_decode_state_appends_kv_with_scratch_pointers(monkeypatch) -> None:
