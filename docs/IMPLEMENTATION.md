@@ -20,6 +20,18 @@ Active implementation checklist. Keep this file lightweight; durable architectur
 - [x] Port first real gfx1100 model-layer family: Qwen3.5 BF16 `rmsnorm` raw-pointer wrappers.
 - [ ] Add minimal `scripts/smoke.py` path that exercises `LLM.generate()` once the engine loop exists.
 
+## OPTIMAL MoE/PARO reproduction exercise
+
+Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependency map.
+
+- [x] Map current `~/amd-gpu-tuning/docs/OPTIMAL.md` route against current parent HEAD and HIPENGINE-landed status.
+- [ ] Add parent-baseline/HIPENGINE-blocked benchmark artifacts for OPTIMAL 512/128 and 4K/128.
+- [ ] Port PARO RMSNorm out-kernels (`paro_rmsnorm_out`, `paro_add_rmsnorm_out`).
+- [ ] Port MoE c=1 decode vertical slice (router, selected pack8 GEMV, fused activation/down-rotation, W8A16 shared expert, weighted shared-gate residual combine).
+- [ ] Port MoE prefill compact-WMMA slice (lane grouping/gather, compact tile map, compact WMMA, weighted lanes, GEMV fallback).
+- [ ] Port full-inference dependencies outside MoE (w4_paro loader/layout, Qwen3.5 model plugin, non-MoE projections, linear attention/GDN, full attention/KV, W8A16 lm_head, graph replay).
+- [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.
+
 ## Notes
 
 - Kernel R&D remains in `~/amd-gpu-tuning/`; this repo receives stable ports.

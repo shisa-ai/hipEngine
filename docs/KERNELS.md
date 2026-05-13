@@ -251,7 +251,9 @@ The last manual HIPENGINE catalog audit (`docs/source_lineage.json` baseline `22
 - `gemm_awq_selected_dual_pack8_wmma_kernel`
 - `gemm_awq_selected_pack8_wmma_kernel`
 
-`~/amd-gpu-tuning/docs/OPTIMAL.md` now promotes a compact-WMMA route, and `scripts/check_lineage.py` reports drift in `qwen35_expert.hip`, `extension.cpp`, `paroquant_kernels.py`, `paroquant.py`, and `expert.py` after `22405a9`. Therefore, treat the 120-kernel catalog above as the **baseline catalog**, not the final PARO/WMMA port inventory. Before porting PARO/WMMA, refresh the exact kernel list from current parent source, read the listed WORKLOG/OPTIMAL evidence, and update this catalog in the same commit as the port-source refresh.
+`~/amd-gpu-tuning/docs/OPTIMAL.md` now promotes a compact-WMMA route, and `scripts/check_lineage.py` reports drift in `qwen35_expert.hip`, `extension.cpp`, `paroquant_kernels.py`, `paroquant.py`, and `expert.py` after `22405a9`. Therefore, treat the 120-kernel catalog above as the **baseline catalog**, not the final PARO/WMMA port inventory.
+
+Current OPTIMAL source refresh at `nano-vllm-amd@59195ed` adds **5 kernels** over the baseline catalog: `qwen35_moe_wmma_tile_map_kernel` in `qwen35_expert.hip`, plus `gemm_awq_selected_dual_pack8_wmma_kernel`, `gemm_awq_selected_pack8_wmma_kernel`, `gemm_awq_selected_dual_pack8_wmma_compact_kernel`, and `gemm_awq_selected_pack8_wmma_compact_kernel` in `paroquant_kernels.py`. The current full Qwen/PARO HIP inventory is **96** monolithic kernels + **29** PARO/WMMA kernels = **125** kernels, excluding `smoke_add`. Before porting PARO/WMMA, read the listed WORKLOG/OPTIMAL evidence and keep this checklist synchronized with the source commit used.
 
 ## Qwen3.5 MoE / PARO path map
 
@@ -288,6 +290,63 @@ Correctness hierarchy for these rows: HF PARO oracle for model correctness; scal
 - **Attention:** full-attention gate fusion, full-attention Q/K pack8 fusion, grouped-GQA paged context attention, paged max splits `512`.
 - **Linear/projections:** W8A16 `lm_head`, W8A16 shared expert dense branch, fused linear-attention A/B projection, pack8 fused linear-attention QKV+Z projection.
 - **Routing threshold:** native router prefill path begins at `512` tokens.
+
+### Current OPTIMAL MoE port checklist (`nano-vllm-amd@59195ed`)
+
+The checklist below is the active port map for reproducing the parent compact-WMMA + graph-replay route. Status values are HIPENGINE status, not parent status.
+
+#### Source refresh deltas since baseline `22405a9`
+
+| Source | Current status | Required action |
+| --- | --- | --- |
+| `csrc/amd/qwen35_expert.hip` | DRIFT; 96 kernels | Include new `qwen35_moe_wmma_tile_map_kernel` with grouped MoE / compact WMMA port. |
+| `csrc/amd/extension.cpp` | DRIFT; + bindings for tile-map path | Retype affected launch wrapper(s), do not copy PyTorch/TORCH_LIBRARY plumbing. |
+| `nanovllm/native/qwen35/paroquant_kernels.py` | DRIFT; 29 kernels, 35 `m.def` exports | Extract current V8 + WMMA embedded HIP, including four WMMA kernels and compact wrappers. |
+| `nanovllm/native/qwen35/paroquant.py` | DRIFT; dispatch logic changed | Adapt routing decisions into model/quant/kernel-plan plugins, not env-var branches in engine code. |
+| `nanovllm/native/qwen35/expert.py` | DRIFT; added `hip_qwen35_moe_wmma_tile_map` | Port tile-map raw-pointer wrapper with grouped MoE metadata family. |
+
+#### MoE decode c=1 path
+
+| Stage | Parent kernels / wrappers | HIPENGINE status | Notes / gate |
+| --- | --- | --- | --- |
+| RMSNorm / residual | `paro_rmsnorm_out_kernel`, `paro_add_rmsnorm_out_kernel`; Qwen BF16 `qwen35_*rmsnorm*` family | **Partial:** Qwen BF16 family landed; PARO out-kernels missing | PARO out-kernels multiply direct norm weights; Qwen kernels use `1.0 + weight_delta`. Port PARO subset before claiming native-PARO RMSNorm parity. |
+| Router + shared gate | `qwen35_router_logits_kernel`, `qwen35_router_select_kernel`, `hip_qwen35_router_topk_shared_out` | Missing | Native router must accept FP16/BF16 hidden input and write logits/selected/routing buffers. |
+| Selected gate/up GEMV | `gemv_awq_selected_dual_pack8_strided_kernel`, `gemv_awq_selected_dual_pack8_kernel`, optional rotate-out variant | Missing | Decode path uses stacked/repacked selected-expert W4 pack8 qweights. Preserve small-K safety fix from `59195ed`. |
+| Activation + down rotation | `silu_mul_dual_rotate_out_kernel` (fallback `silu_mul_dual_out_kernel` + rotate) | Missing | Default `NANOVLLM_PARO_MOE_SILU_DOWN_ROTATE_FUSED=1`; preserve fused path and unfused fallback. |
+| Selected down GEMV | `gemv_awq_selected_pack8_kernel` / strided wrapper | Missing | Used for selected down projection; small-K specialization applies where safe. |
+| Shared expert | W8A16 shared gate/up/down (`w8a16_*shared*`, `w8a16_single_*`, `w8a16_linear*`) | Missing | Required by `NANOVLLM_PARO_SHARED_EXPERT_W8A16=1`; also needed for final `lm_head` route. |
+| Weighted combine + residual | `weighted_sum_shared_gate_combine_residual_out_kernel`; fallback `weighted_sum_out_kernel`, `shared_gate_combine*` | Missing | c=1 decode promoted path fuses selected sum, shared sigmoid/gate combine, and residual add. |
+
+#### MoE prefill compact-WMMA path
+
+| Stage | Parent kernels / wrappers | HIPENGINE status | Notes / gate |
+| --- | --- | --- | --- |
+| Lane grouping | `qwen35_moe_group_count_kernel`, `qwen35_moe_group_prefix_kernel`, `qwen35_moe_group_scatter[_gather]_kernel`, `qwen35_moe_gather_packed_hidden_kernel` | Missing | Required before either GEMV fallback or WMMA path can run. |
+| Compact WMMA tile map | `qwen35_moe_wmma_tile_map_kernel` | Missing | New current-OPTIMAL kernel; maps compact expert starts to WMMA tiles without pad-multiple=16 overhead. |
+| Gate/up compact WMMA | `gemm_awq_selected_dual_pack8_wmma_compact_kernel` | Missing | Current prefill route for `tokens >= 64`; noncompact WMMA and GEMV-only remain fallback/comparison paths. |
+| Activation + down rotation | `silu_mul_dual_rotate_out_kernel` | Missing | `NANOVLLM_PARO_MOE_GROUPED_STACKED_SILU_ROTATE_FUSED=1` default. |
+| Down compact WMMA | `gemm_awq_selected_pack8_wmma_compact_kernel` | Missing | Paired with compact tile map and compact buffers. |
+| Weighted lane accumulation | `weighted_lanes_sum_out_kernel` | Missing | Default-on grouped-stacked weighted-lane accumulation; parent spot check +3.1% prefill at 512/128. |
+| GEMV fallback/comparison | `gemv_awq_selected_dual_pack8*`, `gemv_awq_selected_pack8*` | Missing | Needed for token counts below WMMA crossover and for regression comparisons. |
+
+#### Full-inference dependencies outside MoE
+
+| Area | Required for reproducing parent inference | HIPENGINE status |
+| --- | --- | --- |
+| PARO quant plugin / weight layout | `w4_paro` plugin, pack8 replacement layout, compact stacked MoE weights, W8A16 shared/lm-head replacements | Missing; only `bf16` plugin landed. |
+| Model plugin / scheduler | Qwen3.5 hybrid full-attn + linear-attn/GDN + MoE layer sequence, static decode buffers, one-step graph replay | Missing; `LLM.generate()` is still scaffolded. |
+| Linear projections | `gemv_awq_pack8`, `gemv_awq_dual_pack8`, `dense_gemv_out`, rotation helpers | Missing. |
+| Linear attention / GDN | `qwen35_linear_attn_conv_*`, `qwen35_gdn_*` incl. lowp recurrent RMSNorm gate | Missing. |
+| Full attention / KV | `qwen35_head_rmsnorm_partial_rotary*`, `qwen35_write_paged_kv_mixed_value*`, paged/split-K full-attention decode family, `full_attn_gate_mul_out` | Missing; must be reconciled with HIPENGINE `KVLiveSpans` ABI rather than parent `(block_table, context_len)` shortcuts. |
+| Final head | W8A16 `lm_head` replacement path | Missing. |
+| Eval harness | Parent baseline JSON capture + HIPENGINE JSON schema-2 artifacts + KL/top-1/sample/graph validation gates | Not yet landed. |
+
+#### Port order for the OPTIMAL exercise
+
+1. **Measurement harness first:** run/record the parent `512/128` and `4K/128` OPTIMAL commands as source-lineage artifacts, then create a blocked HIPENGINE artifact until `LLM.generate()` exists.
+2. **MoE c=1 decode vertical slice:** PARO RMSNorm out-kernels → router/shared-gate → selected pack8 GEMV → fused activation/down-rotation → W8A16 shared expert → weighted shared-gate residual combine.
+3. **MoE prefill compact-WMMA slice:** lane grouping/gather → compact tile map → compact dual/single WMMA → weighted-lane accumulation → GEMV fallback.
+4. **Full-inference closure:** weight loader/model plugin, non-MoE projections, linear attention/GDN, full attention/KV, final head, graph replay, then end-to-end correctness/perf comparison.
 
 ### Prefill route
 

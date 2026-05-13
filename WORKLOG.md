@@ -1019,3 +1019,84 @@ Results:
   - `Grid_Size_X=512` (2 blocks × 256 threads), `Workgroup_Size_X=256`
   - `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`
 - Lineage drift still noted for `csrc/amd/qwen35_expert.hip` at `6e2b19b`, but current diff hunks are compact-WMMA related, not RMSNorm.
+
+---
+
+## 2026-05-13 — Map current OPTIMAL MoE/PARO port dependencies
+
+### Prompt / concern
+
+- User suggested using the current `~/amd-gpu-tuning/docs/OPTIMAL.md` MoE path as the next port target so HIPENGINE can exercise the full `docs/KERNELS.md` checklist, correctness gates, and benchmark robustness against the parent performance rows.
+
+### Source review
+
+- Re-read `docs/KERNELS.md`, `docs/PLAN.md` kernel port strategy, latest WORKLOG entries, and `~/amd-gpu-tuning/docs/OPTIMAL.md`.
+- Ran lineage check:
+
+```bash
+python3 scripts/check_lineage.py --diff stat --evidence-limit 4
+```
+
+Current parent checkout:
+
+- `nano-vllm-amd` branch `gfx1100-qwen3.5`, HEAD `59195ed`.
+- Drift vs HIPENGINE baseline `22405a9` in:
+  - `csrc/amd/qwen35_expert.hip`
+  - `csrc/amd/extension.cpp`
+  - `nanovllm/native/qwen35/paroquant_kernels.py`
+  - `nanovllm/native/qwen35/paroquant.py`
+  - `nanovllm/native/qwen35/expert.py`
+- Current kernel inventory from parent source:
+  - `qwen35_expert.hip`: 96 `__global__` kernels (baseline had 95).
+  - `paroquant_kernels.py`: 29 `__global__` kernels (baseline had 25).
+  - Current Qwen/PARO total: 125 kernels excluding `smoke_add`.
+- Added since baseline:
+  - `qwen35_moe_wmma_tile_map_kernel`
+  - `gemm_awq_selected_dual_pack8_wmma_kernel`
+  - `gemm_awq_selected_pack8_wmma_kernel`
+  - `gemm_awq_selected_dual_pack8_wmma_compact_kernel`
+  - `gemm_awq_selected_pack8_wmma_compact_kernel`
+
+### Docs changed
+
+- Updated `docs/KERNELS.md`:
+  - Recorded current OPTIMAL inventory as 96 + 29 = 125 kernels.
+  - Added "Current OPTIMAL MoE port checklist (`nano-vllm-amd@59195ed`)".
+  - Broke dependencies into source refresh deltas, MoE c=1 decode, MoE prefill compact-WMMA, full-inference dependencies outside MoE, and proposed port order.
+  - Explicitly marked current HIPENGINE status: only Qwen BF16 RMSNorm subset is partial/landed; PARO RMSNorm out-kernels, router, selected GEMV, fused activation/down-rotation, W8A16 shared/lm-head, compact WMMA, attention/KV, model/plugin/loader, and eval harness remain missing.
+- Updated `docs/IMPLEMENTATION.md`:
+  - Added an OPTIMAL MoE/PARO reproduction exercise punchlist keyed to `docs/KERNELS.md`.
+
+### Key conclusion
+
+- We should not start by copying a random MoE kernel. The fastest path to a meaningful exercise is:
+  1. add parent-baseline + HIPENGINE-blocked benchmark artifacts for 512/128 and 4K/128,
+  2. port the MoE c=1 decode vertical slice,
+  3. port the compact-WMMA prefill slice,
+  4. only then close full inference with loader/model/attention/graph replay.
+- Full OPTIMAL inference cannot be replicated yet because HIPENGINE still lacks `LLM.generate()`, `w4_paro` weight loading/layout, the Qwen3.5 model plugin, attention/KV/linear-attn/lm-head dependencies, and graph replay.
+
+### Verification
+
+```bash
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 - <<'PY'
+from pathlib import Path
+for path in [Path('docs/KERNELS.md'), Path('docs/IMPLEMENTATION.md')]:
+    text = path.read_text()
+    assert text.endswith('\n'), path
+assert 'Current OPTIMAL MoE port checklist' in Path('docs/KERNELS.md').read_text()
+assert 'qwen35_moe_wmma_tile_map_kernel' in Path('docs/KERNELS.md').read_text()
+assert '125' in Path('docs/KERNELS.md').read_text()
+print('optimal moe checklist docs sanity ok')
+PY
+git diff --check
+```
+
+Results:
+
+- `python3 -m pytest -q`: `32 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Docs sanity: `optimal moe checklist docs sanity ok`.
+- `git diff --check`: pass.
