@@ -47,6 +47,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Port Qwen linear-attention decode convolution (`qwen35_linear_attn_conv_decode*`, FP32/BF16 input variants).
   - [x] Port Qwen linear-attention recurrent GDN lowp RMSNorm+gate (`qwen35_gdn_recurrent_rmsnorm_gate_lowp`).
   - [x] Add `KVLiveSpans` scaffold and span-shaped Qwen paged-KV append bridge (`qwen35_write_paged_kv*_position_tensor`).
+  - [x] Port span-shaped Qwen paged full-attention context-tensor decode (`qwen35_paged_full_attn_decode_context_tensor`).
 - [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.
 
 ## Notes

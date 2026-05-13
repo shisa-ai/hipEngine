@@ -2243,3 +2243,50 @@ Results:
 ### Next
 
 - Port paged full-attention decode wrappers using the same `KVLiveSpans` public boundary, then bring over the split-K/gated-reduce variants from the parent optimal path.
+
+---
+
+## 2026-05-14 — Port Qwen paged full-attention context decode via KVLiveSpans wrapper
+
+### Scope
+
+- Ported the known-good Qwen paged full-attention context-tensor decode kernel from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip` at `nano-vllm-amd@59195ed`:
+  - `qwen35_paged_full_attn_decode_context_tensor_kernel`
+- Preserved the parent kernel body byte-for-byte and added a raw-pointer C ABI wrapper that uses span-shaped inputs:
+  - `hipengine_qwen35_paged_full_attn_decode_context_bf16_spans`
+- Public Python wrapper accepts `KVLiveSpans`, not a raw `(block_table, context_len)` API. For this fixed-page bridge, `spans.base_offsets` carries the int32 physical block table and `spans.live_counts` carries the int64 device context-length tensor consumed by the parent context-tensor decoder.
+- Added registry key `paged_attn_decode` / `w4_paro` / `bf16_context_spans`.
+- Added `scripts/smoke.py --mode qwen35-paged-attn-decode-hip` to validate against a deterministic NumPy softmax oracle.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.attention import build_qwen35_paged_attn_decode
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_qwen35_paged_attn_decode(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode qwen35-paged-attn-decode-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-paged-attn-decode-trace -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-decode-hip \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: all tests passed.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_paged_attn_decode-428bd101d5630017/qwen35_paged_attn_decode.so`.
+- Paged attention smoke: `max_abs=2.98e-08` vs NumPy softmax oracle.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-qwen35-paged-attn-decode-trace/epyc/4144082_kernel_trace.csv`.
+- Target kernel row: `qwen35_paged_full_attn_decode_context_tensor_kernel`: `DurationNs=7640`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size_X=512`.
+
+### Next
+
+- Port the parent split-K paged attention variants and reduce/gated-reduce kernels behind the same `KVLiveSpans` public boundary.
