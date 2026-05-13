@@ -2637,3 +2637,47 @@ Results:
 ### Next
 
 - Build a minimal one-token Qwen3.5/PARO decode-state scaffold that reserves the full-attention/MoE scratch tensors using `RuntimeWorkspace` and can call the already-smoked kernels with materialized device weights.
+
+---
+
+## 2026-05-14 — Add minimal Qwen3.5/PARO one-token decode-state scratch scaffold
+
+### Scope
+
+- Added `hipengine/runtime/qwen35_paro.py` with a concrete decode-state scaffold:
+  - `Qwen35ParoDecodeState`
+  - `Qwen35ParoAttentionScratch`
+  - `Qwen35ParoMoeScratch`
+- The state combines materialized normalized layer weights with `RuntimeWorkspace` scratch reservations.
+- Added full-attention scratch reservations for the landed paged/split-K/gated attention kernels:
+  - query/key/value/gate views
+  - `partial_out`, `partial_m`, `partial_l`
+  - FP32 attention output
+  - BF16/FP16/FP32 gated attention output
+- Added MoE c=1 scratch reservations for the landed MoE vertical path:
+  - normed hidden
+  - router logits
+  - routing weights / selected expert IDs
+  - gate/up intermediate
+  - shared branch intermediate
+  - final MoE output
+- Exported the Qwen runtime state from `hipengine.runtime`.
+- Added CPU-safe fake-runtime tests for scratch shapes, dtypes, reuse/replacement, validation errors, and cleanup.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_runtime_workspace.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Targeted runtime tests: `10 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Start wiring the one-token decode state into actual kernel-call methods: full-attention path first (`q/k/v` projection outputs + paged KV append + GQA split-K gated attention), then the MoE c=1 path using the materialized normalized weights.

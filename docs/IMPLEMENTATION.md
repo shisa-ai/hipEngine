@@ -43,6 +43,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add Qwen3.5/PARO MoE c=1 normalized device-weight materialization map.
   - [x] Add Qwen3.5/PARO full-attention+MoE c=1 normalized device-weight materialization map.
   - [x] Add torch-free named runtime workspace allocator for scratch/device tensors.
+  - [x] Add minimal Qwen3.5/PARO one-token decode-state scratch scaffold.
   - [x] Add Qwen3.5/PARO MoE c=1 checkpoint layout validator over tensor metadata.
   - [x] Port PARO BF16 dense GEMV (`dense_gemv_out`) for auxiliary dense projection paths.
   - [x] Port generic PARO pack8 GEMV (`gemv_awq_pack8*`, `gemv_awq_dual_pack8*`) for non-MoE Q/K/QKV/Z projection paths.
