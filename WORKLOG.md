@@ -2093,3 +2093,53 @@ Results:
 ### Next
 
 - Port KV append (`qwen35_write_paged_kv_mixed_value*`) and paged full-attention decode from the committed parent kernels, adapting wrappers to HIPENGINE `KVLiveSpans` instead of changing kernel bodies.
+
+---
+
+## 2026-05-14 — Port Qwen linear-attention decode convolution kernels
+
+### Scope
+
+- Ported the known-good Qwen linear-attention decode convolution kernels from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip` at `nano-vllm-amd@59195ed`:
+  - `qwen35_linear_attn_conv_decode_kernel`
+  - `qwen35_linear_attn_conv_decode_lowp_kernel`
+- Preserved the parent kernel bodies byte-for-byte and added only raw-pointer C ABI wrappers:
+  - `hipengine_qwen35_linear_attn_conv_decode_f32`
+  - `hipengine_qwen35_linear_attn_conv_decode_bf16`
+- Added ctypes wrappers and registry keys for `linear_attn_conv_decode` under `w4_paro` variants `f32` and `bf16`.
+- Added `scripts/smoke.py --mode qwen35-linear-attn-conv-hip` to validate output and recurrent conv-state update for FP32 and BF16 inputs.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.linear_attn import build_qwen35_linear_attn_conv
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_qwen35_linear_attn_conv(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode qwen35-linear-attn-conv-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-linear-attn-conv-trace -- \
+  python3 scripts/smoke.py --mode qwen35-linear-attn-conv-hip \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `70 passed`.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_linear_attn_conv-032cc49571a8bb4e/qwen35_linear_attn_conv.so`.
+- Linear-attn conv smoke: `f32_out_max_abs=7.45e-09`, `f32_state_max_abs=0`, `bf16_out_max_abs=7.45e-09`, `bf16_state_max_abs=0`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-qwen35-linear-attn-conv-trace/epyc/4018022_kernel_trace.csv`.
+- Target kernel rows:
+  - `qwen35_linear_attn_conv_decode_kernel`: `DurationNs=2960`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`.
+  - `qwen35_linear_attn_conv_decode_lowp_kernel<uint16_t>`: `DurationNs=2720`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`.
+
+### Next
+
+- Port the parent GDN recurrent RMSNorm+gate lowp kernel (`qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel`) and then resume KV append with a `KVLiveSpans` wrapper boundary.

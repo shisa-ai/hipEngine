@@ -33,6 +33,7 @@ def main() -> int:
             "paro-rmsnorm-hip",
             "qwen35-router-hip",
             "qwen35-rotary-hip",
+            "qwen35-linear-attn-conv-hip",
             "paro-selected-gemv-hip",
             "paro-selected-gemv-rotate-hip",
             "paro-pack8-gemv-hip",
@@ -107,6 +108,11 @@ def main() -> int:
         )
     if args.mode == "qwen35-rotary-hip":
         return qwen35_rotary_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-linear-attn-conv-hip":
+        return qwen35_linear_attn_conv_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -492,6 +498,131 @@ def paro_rmsnorm_hip_smoke(
     ) else 1
 
 
+
+
+def qwen35_linear_attn_conv_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.linear_attn import (
+        build_qwen35_linear_attn_conv,
+        qwen35_linear_attn_conv_decode_bf16,
+        qwen35_linear_attn_conv_decode_f32,
+    )
+
+    channels = 8
+    kernel_size = 4
+    hidden_f32 = np.asarray([-0.5, -0.25, 0.25, 0.5, -0.5, -0.25, 0.25, 0.5], dtype=np.float32)
+    hidden_bits = _float32_to_bf16_bits(hidden_f32)
+    conv_state_base = np.asarray(
+        [[0.125 * ((channel + k) % 5 - 2) for k in range(kernel_size)] for channel in range(channels)],
+        dtype=np.float32,
+    )
+    conv_weight = np.asarray(
+        [[0.25 * ((channel + 2 * k) % 5 - 2) for k in range(kernel_size)] for channel in range(channels)],
+        dtype=np.float32,
+    )
+    state_f32 = conv_state_base.copy()
+    state_bf16 = conv_state_base.copy()
+    out_f32 = np.empty(channels, dtype=np.float32)
+    out_bf16 = np.empty(channels, dtype=np.float32)
+
+    def conv_ref(hidden: np.ndarray, state: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        new_state = state.copy()
+        out = np.empty(channels, dtype=np.float32)
+        for channel in range(channels):
+            acc = np.float32(0.0)
+            for idx in range(kernel_size - 1):
+                value = np.float32(new_state[channel, idx + 1])
+                acc = np.float32(acc + np.float32(value * conv_weight[channel, idx]))
+                new_state[channel, idx] = value
+            newest = np.float32(hidden[channel])
+            acc = np.float32(acc + np.float32(newest * conv_weight[channel, kernel_size - 1]))
+            new_state[channel, kernel_size - 1] = newest
+            out[channel] = _silu_np(acc)
+        return out, new_state
+
+    expected_f32, expected_state_f32 = conv_ref(hidden_f32, conv_state_base)
+    expected_bf16, expected_state_bf16 = conv_ref(_bf16_bits_to_float32(hidden_bits), conv_state_base)
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_linear_attn_conv(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        hidden_f32_dev = dev(hidden_f32)
+        hidden_bf16_dev = dev(hidden_bits)
+        state_f32_dev = dev(state_f32)
+        state_bf16_dev = dev(state_bf16)
+        weight_dev = dev(conv_weight)
+        out_f32_dev = out_dev(out_f32)
+        out_bf16_dev = out_dev(out_bf16)
+        qwen35_linear_attn_conv_decode_f32(
+            hidden_f32_dev.ptr,
+            state_f32_dev.ptr,
+            weight_dev.ptr,
+            out_f32_dev.ptr,
+            channels,
+            kernel_size,
+            library=library,
+            runtime=runtime,
+        )
+        qwen35_linear_attn_conv_decode_bf16(
+            hidden_bf16_dev.ptr,
+            state_bf16_dev.ptr,
+            weight_dev.ptr,
+            out_bf16_dev.ptr,
+            channels,
+            kernel_size,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_f32), out_f32_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_bf16), out_bf16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(state_f32), state_f32_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(state_bf16), state_bf16_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    f32_out_max_abs = float(np.max(np.abs(out_f32 - expected_f32)))
+    f32_state_max_abs = float(np.max(np.abs(state_f32 - expected_state_f32)))
+    bf16_out_max_abs = float(np.max(np.abs(out_bf16 - expected_bf16)))
+    bf16_state_max_abs = float(np.max(np.abs(state_bf16 - expected_state_bf16)))
+    print(
+        f"channels={channels} kernel_size={kernel_size} "
+        f"f32_out_max_abs={f32_out_max_abs:.3g} f32_state_max_abs={f32_state_max_abs:.3g} "
+        f"bf16_out_max_abs={bf16_out_max_abs:.3g} bf16_state_max_abs={bf16_state_max_abs:.3g}"
+    )
+    print("conv_f32=", out_f32.tolist())
+    return 0 if max(f32_out_max_abs, f32_state_max_abs, bf16_out_max_abs, bf16_state_max_abs) <= 1.0e-6 else 1
 
 def qwen35_rotary_hip_smoke(
     *,
