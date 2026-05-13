@@ -3,6 +3,7 @@
   "description": "External source-lineage files HIPENGINE ports from or audits before a port.",
   "evidence_paths": [
     "/home/lhl/amd-gpu-tuning/WORKLOG.md",
+    "/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md",
     "/home/lhl/amd-gpu-tuning/docs/PARO.md",
     "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT.md",
     "/home/lhl/amd-gpu-tuning/PLAN-MOE2.md"

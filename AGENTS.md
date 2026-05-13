@@ -15,6 +15,7 @@ Instruction precedence: if this file conflicts with platform / system / develope
 - **Correctness gate for any new/ported kernel:** KL ≤ 0.05 AND top-1 agreement ≥ 90% vs `kernels/cpu_reference/` on fixture inputs.
 - **Default hardware:** AMD Radeon Pro W7900, gfx1100/RDNA3. Claims about other backends require the corresponding hardware or are marked explicitly unverified.
 - **Kernel R&D lives in `~/amd-gpu-tuning/`**, not here. HIPENGINE ingests *stable* kernels via port; micro-tuning, `rocprofv3` iteration loops, and the device-code gotcha catalog stay in the parent workspace.
+- **Kernel catalog must stay current.** Before any kernel port, check `docs/KERNELS.md` and run `scripts/check_lineage.py`; update the catalog/path map if parent kernels or dispatch changed.
 
 ## Architectural Invariants
 
@@ -34,7 +35,8 @@ Do not drift these casually. They define what HIPENGINE is.
 | `docs/PLAN.md` | Architecture, phase roadmap, LoC budgets, extensibility design. |
 | `docs/BENCHMARK.md` | Benchmark protocols, baselines to beat, correctness gate, artifact format. |
 | `docs/TESTING.md` | RED/GREEN workflow, correctness oracles, fixture policy, validation matrix. |
-| `docs/KERNELS.md` | Kernel port playbook, JIT cache gotcha, build profiles. |
+| `docs/KERNELS.md` | Kernel catalog, source-lineage drift workflow, Qwen3.5/PARO optimal path map, port playbook, JIT cache gotcha, build profiles. |
+| `docs/source_lineage.json` | External parent-file manifest used by `scripts/check_lineage.py`. |
 | `docs/ROOFLINE.md` | RDNA3 W7900 performance model: hardware, regimes, decision tree, what-not-to-chase. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |
 | `WORKLOG.md` | Append-only cross-session journal. |
@@ -51,7 +53,8 @@ Do not drift these casually. They define what HIPENGINE is.
    python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
    rocminfo | grep -E 'Name:|gfx'
    ```
-4. For a perf claim, define the baseline (model, quant, workload shape, hardware, command) from `docs/BENCHMARK.md` before making the change.
+4. Before any kernel port, read `docs/KERNELS.md` for the current catalog/path map and run `python3 scripts/check_lineage.py --kind kernel --diff stat` (or a narrower `--file` filter). Inspect DRIFT commits/diffs and parent WORKLOG/OPTIMAL evidence before copying code.
+5. For a perf claim, define the baseline (model, quant, workload shape, hardware, command) from `docs/BENCHMARK.md` before making the change.
 
 ### During Work
 
@@ -87,8 +90,9 @@ Explicit, auto-commit-after-validation. Many small, atomic, working-state commit
 
 ### Commit Timing
 
-- **Commit immediately** after a logical unit is complete and validation passes. Do not ask, do not wait to be asked.
+- **Commit immediately** after a logical unit is complete and validation passes. Do not ask, do not wait to be asked, and do not start the next logical task until the previous validated unit is committed.
 - Include related handoff docs in the same unit (a change that needed a `WORKLOG.md` entry or a `docs/PLAN.md` update commits them together).
+- Always commit `WORKLOG.md` with the logical unit that required it. Re-read the live tail before appending/staging; same-file append contention is expected, but stop for conflict markers or garbled interleaving.
 - Do not commit mid-task while exploring, debugging, or in a broken state.
 - Docs, plans, repo-setup, and dependency additions are first-class logical units.
 

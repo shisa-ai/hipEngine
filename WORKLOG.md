@@ -639,3 +639,70 @@ Results:
 - Before porting any real kernel family, run `python3 scripts/check_lineage.py --kind kernel --diff stat` and inspect DRIFT entries.
 - For a drifted file selected for port, use `--diff patch --file '<pattern>'` and read the listed parent WORKLOG evidence before copying code.
 - Do not advance `docs/source_lineage.json` baseline until HIPENGINE's catalog/port plan is intentionally refreshed and logged.
+
+---
+
+## 2026-05-13 — Wire OPTIMAL.md into kernel path and hygiene docs
+
+### Prompt / concern
+
+- User noted `~/amd-gpu-tuning/docs/OPTIMAL.md` should be up to date with the optimal PARO inference path and should likely be referenced from HIPENGINE's kernel catalog.
+- User also asked to review `~/amd-gpu-tuning/AGENTS.md` for git/benchmark hygiene worth adopting in HIPENGINE.
+- Follow-up explicit rule requested: before porting, check `docs/KERNELS.md` and use the lineage script to ensure the kernel catalog/path map is up to date.
+
+### Sources reviewed
+
+- `~/amd-gpu-tuning/docs/OPTIMAL.md`:
+  - Current optimal path: compact-WMMA prefill + one-step graph-replay decode for Qwen3.5-35B-A3B-PARO.
+  - Latest retained sweep: 512/128 `2557 / 115.7`, 1K/128 `2876 / 112.9`, 4K/128 `2703 / 112.0`, 32K/128 `1880 / 98.8`, 128K/128 `914 / 62.6` prefill/decode tok/s, graph/step validation true.
+  - 23 base flags, long-prefill chunking overrides, graph replay caveats, and decode profiling note that AWQ/GEMV decode is the next target.
+- `~/amd-gpu-tuning/AGENTS.md`:
+  - Already covered by HIPENGINE: explicit staging rules, no destructive cleanup, WORKLOG with logical unit, audit-first kernel tuning, raw artifact exclusion.
+  - Adopted/tightened here: do not start next logical task until previous validated unit is committed; post-run benchmark quality gates (finite logits / graph validation / sample match / memory); source-lineage check before ports.
+
+### Files changed
+
+- `AGENTS.md`:
+  - Added summary rule: kernel catalog must stay current; before any kernel port, check `docs/KERNELS.md`, run `scripts/check_lineage.py`, and update catalog/path map if parent kernels or dispatch changed.
+  - Updated Key Files entry for `docs/KERNELS.md` and added `docs/source_lineage.json`.
+  - Added Before Starting step for kernel ports: run the lineage checker and inspect DRIFT commits/diffs plus parent WORKLOG/OPTIMAL evidence before copying code.
+  - Tightened commit timing: do not start the next logical task until the prior validated unit is committed; commit `WORKLOG.md` with the unit that required it.
+- `docs/KERNELS.md`:
+  - Added `~/amd-gpu-tuning/docs/OPTIMAL.md` as the canonical current optimal route source.
+  - Replaced stale 2026-05-11 compact path rows with OPTIMAL.md's 2026-05-13 compact-WMMA + graph-replay route.
+  - Added base-flag summary and updated prefill route: compact WMMA from 64 tokens, grouped-stacked max tokens 4096, weighted-lane accumulation, grouped SiLU+down-rotation fusion, and long-prefill chunking overrides.
+  - Clarified the 120-kernel catalog is now the baseline catalog; `scripts/check_lineage.py` reports drift after `22405a9`, so PARO/WMMA ports must refresh the exact kernel inventory before copying.
+- `docs/source_lineage.json`:
+  - Added `/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md` to evidence paths searched by `scripts/check_lineage.py`.
+- `docs/BENCHMARK.md`:
+  - Added post-run quality gates: finite logits, graph replay validation, generated sample matching, prefill/decode/wall reporting, memory reporting, 24 GiB PARO usability gate, and compact comparison tables.
+
+### Verification
+
+CPU/read-only; no GPU/HIP/profiler commands.
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 scripts/check_lineage.py --file 'paroquant*' --diff stat --evidence-limit 4 >/tmp/hipengine-lineage-paroquant-optimal.txt
+python3 scripts/check_lineage.py --json >/tmp/hipengine-lineage-default-optimal.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+manifest = json.loads(Path('docs/source_lineage.json').read_text())
+assert '/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md' in manifest['evidence_paths']
+report = json.loads(Path('/tmp/hipengine-lineage-default-optimal.json').read_text())
+changed = [s for s in report['sources'] if s['changed']]
+print(f'lineage json ok: tracked={len(report["sources"])} changed={len(changed)} optimal=present')
+assert changed
+PY
+git diff --check
+```
+
+Results:
+
+- `python3 -m pytest -q`: `26 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Lineage JSON smoke: `tracked=17 changed=5 optimal=present`.
+- `git diff --check`: pass.

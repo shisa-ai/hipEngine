@@ -173,6 +173,26 @@ Runs the full `LLM.generate()` path on a fixed prompt set, saves logits, diffs a
 
 Fixtures (prompts + reference logits) are tiny (< 10 MB) and *are* committed under `fixtures/`. They are not "benchmark outputs" and do not count against the never-commit rule.
 
+## Post-run Quality Gates
+
+After every E2E benchmark attempt, extract and record these fields before presenting throughput:
+
+1. **Correctness / sanity**
+   - `finite_prefill_logits` must be `true` when the benchmark emits it. `false` or `null` means the run is NaN-corrupted or incomplete; mark it `rejected_correctness` or `blocked`.
+   - Graph replay validation, when active, must pass (`decode_step_graph_validation=true` or equivalent).
+   - For same-prompt A/B comparisons, `generated_sample` token sequences must match unless the run is explicitly a stochastic-quality comparison with a documented seed/protocol.
+2. **Performance**
+   - Report `prefill_tok_s`, `decode_tok_s`, and total `wall_seconds` with units.
+   - If a run is warm-started, say so; do not compare warm-start to cold-start without labeling it.
+3. **Memory**
+   - Report `allocated_after_load_gib` when available and peak allocated/reserved bytes as GiB.
+   - Flag any run above the 24 GiB PARO usability gate separately from W7900-only diagnostic rows.
+4. **Presentation**
+   - For multiple configs, use a compact table containing correctness, prefill/decode, wall time, and memory in one view.
+   - Include external baselines (llama.cpp HIP/Vulkan, parent `docs/OPTIMAL.md`, or previous HIPENGINE artifact) when the shape has a known comparable row.
+
+Throughput without these fields is not a retained benchmark number.
+
 ## Microbenchmark & rocprofv3
 
 For any port-parity or fusion-win claim, capture a kernel trace. Dumps go under `/tmp/hipengine-profile/` (gitignored). Keep only the compact JSON artifact (below) per run.

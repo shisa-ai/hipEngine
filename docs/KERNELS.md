@@ -9,7 +9,8 @@ See also:
 - `docs/TESTING.md` — RED/GREEN, CPU-reference fixtures, and math-correctness gates.
 - `~/amd-gpu-tuning/AGENTS.md` — audit-first-via-rocprofv3, time-share/occupancy/iters-per-thread/VGPR discipline.
 - `~/amd-gpu-tuning/LESSONS-LEARNED.md` — device-code gotchas and kernel lineage results.
-- `~/amd-gpu-tuning/PLAN-PAROQUANT.md` and `~/amd-gpu-tuning/docs/PARO.md` — current Qwen3.5/PARO path map and evidence rows.
+- `~/amd-gpu-tuning/docs/OPTIMAL.md` — current optimal Qwen3.5/PARO native engine route and flags.
+- `~/amd-gpu-tuning/PLAN-PAROQUANT.md` and `~/amd-gpu-tuning/docs/PARO.md` — Qwen3.5/PARO design history and evidence rows.
 
 ## Status legend
 
@@ -235,9 +236,9 @@ Each fused kernel still requires an unfused fallback chain registered under its 
   - `gemv_awq_selected_dual_pack8_strided_kernel`: selected-expert dual W4 pack8 GEMV over compact/repacked expert weights.
   - `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`: selected-expert dual W4 pack8 GEMV plus output rotation.
 
-### Recent source-lineage additions not yet stable for HIPENGINE defaults (**lineage dirty / experimental**)
+### Source catalog drift requiring refresh before PARO/WMMA ports
 
-The last manual catalog audit (`docs/source_lineage.json` baseline `22405a9`) observed six additional PARO kernels in the parent worktree beyond the committed 25-kernel PARO set:
+The last manual HIPENGINE catalog audit (`docs/source_lineage.json` baseline `22405a9`) counted the committed PARO embedded-HIP set at 25 kernels and observed six additional parent-worktree kernels beyond that committed set:
 
 - `gemv_awq_mbatch_dual_pack8_kernel`
 - `gemv_awq_mbatch_pack8_kernel`
@@ -246,38 +247,58 @@ The last manual catalog audit (`docs/source_lineage.json` baseline `22405a9`) ob
 - `gemm_awq_selected_dual_pack8_wmma_kernel`
 - `gemm_awq_selected_pack8_wmma_kernel`
 
-Treat these as R&D inventory only until they are committed/promoted in `~/amd-gpu-tuning/` with correctness and benchmark evidence.
+`~/amd-gpu-tuning/docs/OPTIMAL.md` now promotes a compact-WMMA route, and `scripts/check_lineage.py` reports drift in `qwen35_expert.hip`, `extension.cpp`, `paroquant_kernels.py`, `paroquant.py`, and `expert.py` after `22405a9`. Therefore, treat the 120-kernel catalog above as the **baseline catalog**, not the final PARO/WMMA port inventory. Before porting PARO/WMMA, refresh the exact kernel list from current parent source, read the listed WORKLOG/OPTIMAL evidence, and update this catalog in the same commit as the port-source refresh.
 
 ## Qwen3.5 MoE / PARO path map
 
 This section maps the current source-lineage inference path that HIPENGINE should preserve when porting `z-lab/Qwen3.5-35B-A3B-PARO` (`w4_paro`, W4A16) from `nano-vllm-amd`. It is **not** an HIPENGINE performance claim yet; it is the target graph/kernel route to reproduce after the port.
 
-### Current 24GB compact speed-best route
+### Current optimal route
 
-Reference from `~/amd-gpu-tuning/PLAN-PAROQUANT.md` and `~/amd-gpu-tuning/docs/PARO.md` (2026-05-11 snapshot): W7900/gfx1100, c=1, compact 24GB path, one-step decode graph replay, warm-start prefill. Current quality-safe speed rows in the parent docs are approximately:
+Canonical source: `~/amd-gpu-tuning/docs/OPTIMAL.md` (2026-05-13 snapshot). Supporting design/history remains in `~/amd-gpu-tuning/PLAN-PAROQUANT.md` and `~/amd-gpu-tuning/docs/PARO.md`.
 
-| Shape | PARO prefill tok/s | PARO decode tok/s | Peak VRAM | Notes |
+The current optimal parent route is compact-WMMA prefill plus one-step graph-replay decode, with all listed parent quality gates passing. Latest retained parent sweep:
+
+| Shape | PARO prefill tok/s | PARO decode tok/s | Peak VRAM | Validation |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | 1107.491 | 115.821 | 18.860 GiB | short-prefill grouped-stacked MoE path |
-| 4K/128 | 1918.755 | 121.251 | 21.559 GiB | compact 24GB path |
-| 4K/4K | 1922.654 | 116.443 | 21.635 GiB | compact 24GB path |
+| 512/128 | 2557 | 115.7 | 18.86 GiB | graph/step true |
+| 1K/128 | 2876 | 112.9 | 19.34 GiB | graph/step true |
+| 4K/128 | 2703 | 112.0 | 21.64 GiB | graph/step true |
+| 32K/128 | 1880 | 98.8 | 21.37 GiB | graph/step true |
+| 128K/128 | 914 | 62.6 | 27.42 GiB | graph/step true |
+
+Post-sweep parent spot checks retained these defaults:
+
+- Native weighted-lane grouped-stacked accumulation: `2642.1` vs `2561.5` prefill tok/s at 512/128, graph validation true.
+- Grouped SiLU + down-rotation fusion: `2632.2` vs `2631.4` prefill tok/s at 512/128, graph validation true.
+- WMMA extension load is not the Vulkan decode-gap source: graph decode was `115.56` vs `115.04` tok/s with WMMA disabled.
 
 Correctness hierarchy for these rows: HF PARO oracle for model correctness; scalar eager pure-native as the native debug reference; tensorized eager as serving/graph ABI reference; graph replay must match tensorized eager. Long scalar-vs-tensorized greedy equality is a diagnostic, not the only promotion gate; use KL/NLL/top-k/top-1 and repetition/coherence/long-context quality gates.
 
+### Base flags to preserve
+
+`OPTIMAL.md` lists 23 base environment flags. HIPENGINE should preserve the same routing decisions as registry/plugin configuration rather than copying env-var checks into engine code:
+
+- **MoE dispatch:** compact stacked layout, in-place selected-MoE repack replacement, GPU expert gather, grouped-stacked max tokens `4096`, native weighted lanes, grouped-stacked SiLU+rotate fusion, decode selected-MoE SiLU/down-rotate fusion, native router.
+- **GEMV / WMMA:** PARO vec8 GEMV, pack8 qweight replacement, transposed pack8 disabled on W7900, WMMA GEMM enabled for prefill MoE, compact WMMA buffers, `WMMA_MIN_TOKENS=64` (crossover vs GEMV is ~48 tokens).
+- **Attention:** full-attention gate fusion, full-attention Q/K pack8 fusion, grouped-GQA paged context attention, paged max splits `512`.
+- **Linear/projections:** W8A16 `lm_head`, W8A16 shared expert dense branch, fused linear-attention A/B projection, pack8 fused linear-attention QKV+Z projection.
+- **Routing threshold:** native router prefill path begins at `512` tokens.
+
 ### Prefill route
 
-- Warm-start benchmark protocol: 64-token warm-up prefill plus up to 8 decode tokens before timed measurement.
+- Benchmark protocol: `OPTIMAL.md` uses the parent `scripts/run_moe2_baselines.py` sweep and graph-replay bench command; short/mid-context quick start targets `--prompt-len 4096 --decode-len 128 --decode-use-step-graph-replay`.
 - Router/MoE:
   - Real router runs per MoE layer; no HF model execution in the pure-native path.
-  - Prompt length `<= 1024`: grouped-stacked W4 path avoids the grouped-device-gather dequant/materialization storm seen at 512 prefill (`dequant_awq_pack8_kernel` was 33.7% of selected-region time across 19,285 launches before the split).
-  - Prompt length `> 1024`: grouped-device-gather W4 prefill path wins for 2K/4K shapes.
-  - Long-prefill low-memory mode chunks GDN/MoE/full-attention work, streams projection/QK/attention/post chunks, disables only pack8 qweight materialization, and keeps pack8 kernels available via strided paths.
-- Attention:
-  - Bulk/native prefill path is used where available.
-  - Long full-attention prefill must be chunkable; default pure-native path OOMs at 32K, while low-memory mode is green through 128K/0 in the parent workspace.
+  - Compact WMMA prefill MoE is the current optimal grouped-stacked route for `>=64` tokens; GEMV-only only wins at ~32 tokens.
+  - Grouped-stacked max tokens is now `4096`, not the older 1024 short-prefill cap.
+  - Weighted-lane accumulation and grouped-stacked SiLU+down-rotation fusion are default-on parent optimizations.
+- Long prefill:
+  - For `>=32K`, add chunking overrides from `OPTIMAL.md`: linear chunk `1024`, MoE chunk `1024`, full-attention post/RoPE chunk `1024`, and full-attention query chunk `4096`.
+  - Do **not** set long-prefill chunking overrides for `<=4K`; they change the MoE prefill path and reduce throughput.
 - Projection/quant:
   - Non-expert W4 pack8 replacement uses `[out/8, in]` pack8 qweights and frees original eligible AWQ qweights.
-  - `lm_head` uses the W8A16 replacement path in the compact route.
+  - `lm_head` uses the W8A16 replacement path in the optimal route.
 
 ### Decode route
 
@@ -294,7 +315,9 @@ The target c=1 decode path is static-buffer, graph-replay-friendly, and mostly d
 9. **KV append:** BF16 full-attention KV cache with native mixed-input paged-KV writer; no tiny per-token framework appends.
 10. **Full attention decode:** contiguous path for short contexts; paged/split-K path defaults at context `>= 1024`, with warp-cooperative context tensor QK, physical-offset address hoist, grouped-GQA reuse, split cap 512 for 128K-class rows, and gated split-K reduce where applicable.
 11. **Final head:** W8A16 `lm_head` replacement path.
-12. **Graph replay:** one reusable decode-step graph replay is the promoted graph shape; multi-step capture was tested and rejected in the parent workspace.
+12. **Graph replay:** one reusable decode-step graph replay is the promoted graph shape; keep `--decode-step-graph-capture-steps=1`. Multi-step capture was tested and not promoted.
+
+Parent decode profiling note from `OPTIMAL.md`: fused `lm_head + argmax` is not a current lever; the next decode target is the AWQ/GEMV decode family, about 40% of selected-region kernel time in the 512/128 graph profile.
 
 ### Alternative paths and caveats
 
