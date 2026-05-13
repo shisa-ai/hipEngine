@@ -3112,3 +3112,43 @@ Results:
 
 - Wire the linear-attention decode-state call chain over these materialized tensors:
   `paro_rotate2 -> in_proj_qkv/z pack8 GEMV -> dense a/b GEMV -> conv decode -> GDN recurrent RMSNorm+gate -> rotated out_proj`.
+
+---
+
+## 2026-05-14 — Wire Qwen3.5/PARO linear-attention decode-state chain through GDN
+
+### Scope
+
+- Added `Qwen35ParoLinearAttentionScratch` and `Qwen35ParoDecodeState.reserve_linear_attention_scratch(...)`.
+- Wired the parent-order c=1 linear-attention decode-state chain through the existing raw-pointer wrappers:
+  1. `paro_rotate2_bf16` for shared input rotation into qkv/z inputs
+  2. PARO pack8 GEMV for `linear_attn.in_proj_qkv` and `linear_attn.in_proj_z`
+  3. BF16 dense GEMV for `linear_attn.in_proj_a` and `linear_attn.in_proj_b`
+  4. BF16-input linear-attention convolution decode
+  5. BF16-gated GDN recurrent RMSNorm+gate
+- Added `run_linear_attention_state_bf16(...)` orchestrator that returns the FP32 recurrent/GDN output. The rotated output projection is still the next slice.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_decode_state.py -q
+python3 -m pytest -q
+python3 - <<'PY'
+# Real layer-0 GPU smoke, zero hidden/state inputs.
+# Materializes /models/.../Qwen3.5-35B-A3B-PARO layer 0 and runs:
+# rotate2 -> qkv/z pack8 GEMV -> a/b dense GEMV -> conv -> GDN.
+PY
+```
+
+Results:
+
+- Decode-state tests: `16 passed`.
+- Full test suite: all tests passed.
+- Real checkpoint layer-0 GPU smoke completed on idle W7900:
+  - `linear_attn_out (1, 4096) fp32`
+
+### Next
+
+- Add the missing single-output PARO rotation / F32→BF16 cast glue for linear-attention `out_proj`, then feed the result into post-attention RMSNorm + MoE for a real first-layer partial generate smoke.

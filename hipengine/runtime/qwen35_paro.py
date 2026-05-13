@@ -13,6 +13,9 @@ from hipengine.kernels.hip_gfx1100.attention import (
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import weighted_sum_shared_gate_combine_residual_out_bf16_f32w
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_dual_out_bf16, silu_mul_dual_rotate_out_bf16
+from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
+from hipengine.kernels.hip_gfx1100.linear_attn.conv import qwen35_linear_attn_conv_decode_bf16
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_lowp_out
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
@@ -20,6 +23,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_pack8_transposed_bf16,
 )
+from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import paro_rotate2_bf16
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights, normalize_qwen35_weight_name
 from hipengine.runtime.workspace import RuntimeWorkspace
@@ -36,6 +40,18 @@ class Qwen35ParoAttentionScratch:
     partial_l: Tensor
     attn_out: Tensor
     gated_attn: Tensor
+
+
+@dataclass(frozen=True)
+class Qwen35ParoLinearAttentionScratch:
+    qkv_rot: Tensor
+    z_rot: Tensor
+    qkv: Tensor
+    z: Tensor
+    a: Tensor
+    b: Tensor
+    conv_out: Tensor
+    recurrent_out: Tensor
 
 
 @dataclass(frozen=True)
@@ -144,6 +160,191 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         return out
+
+    def reserve_linear_attention_scratch(self, *, tokens: int = 1) -> Qwen35ParoLinearAttentionScratch:
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        cfg = self.config
+        qkv_width = _linear_qkv_width(cfg)
+        z_width = _linear_value_width(cfg)
+        return Qwen35ParoLinearAttentionScratch(
+            qkv_rot=self.workspace.reserve_tensor("linear_attn.qkv_rot", (tokens, cfg.hidden_size), DType.BF16),
+            z_rot=self.workspace.reserve_tensor("linear_attn.z_rot", (tokens, cfg.hidden_size), DType.BF16),
+            qkv=self.workspace.reserve_tensor("linear_attn.qkv", (tokens, qkv_width), DType.BF16),
+            z=self.workspace.reserve_tensor("linear_attn.z", (tokens, z_width), DType.BF16),
+            a=self.workspace.reserve_tensor("linear_attn.a", (tokens, cfg.linear_num_value_heads), DType.BF16),
+            b=self.workspace.reserve_tensor("linear_attn.b", (tokens, cfg.linear_num_value_heads), DType.BF16),
+            conv_out=self.workspace.reserve_tensor("linear_attn.conv_out", (tokens, qkv_width), DType.FP32),
+            recurrent_out=self.workspace.reserve_tensor("linear_attn.recurrent_out", (tokens, z_width), DType.FP32),
+        )
+
+    def rotate_linear_attention_inputs_bf16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> tuple[Tensor, Tensor]:
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        qkv = f"{prefix}.in_proj_qkv"
+        z = f"{prefix}.in_proj_z"
+        pairs_qkv = self.tensor(f"{qkv}.pairs")
+        pairs_z = self.tensor(f"{z}.pairs")
+        theta_qkv = self.tensor(f"{qkv}.theta")
+        theta_z = self.tensor(f"{z}.theta")
+        scales_qkv = self.tensor(f"{qkv}.channel_scales")
+        scales_z = self.tensor(f"{z}.channel_scales")
+        paro_rotate2_bf16(
+            hidden.ptr,
+            scratch.qkv_rot.ptr,
+            scratch.z_rot.ptr,
+            pairs_qkv.ptr,
+            pairs_z.ptr,
+            theta_qkv.ptr,
+            theta_z.ptr,
+            scales_qkv.ptr,
+            scales_z.ptr,
+            tokens,
+            self.config.hidden_size,
+            group_size,
+            _rotation_krot(pairs_qkv),
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+        return scratch.qkv_rot, scratch.z_rot
+
+    def project_linear_attention_qkv_z_bf16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> tuple[Tensor, Tensor]:
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        self.project_pack8_bf16(
+            scratch.qkv_rot,
+            scratch.qkv,
+            weight_prefix=f"{prefix}.in_proj_qkv",
+            rows=tokens,
+            group_size=group_size,
+            library=library,
+        )
+        self.project_pack8_bf16(
+            scratch.z_rot,
+            scratch.z,
+            weight_prefix=f"{prefix}.in_proj_z",
+            rows=tokens,
+            group_size=group_size,
+            library=library,
+        )
+        return scratch.qkv, scratch.z
+
+    def project_linear_attention_ab_bf16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int = 1,
+        threads: int = 64,
+        library=None,
+    ) -> tuple[Tensor, Tensor]:
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        a_weight = self.tensor(f"{prefix}.in_proj_a.weight")
+        b_weight = self.tensor(f"{prefix}.in_proj_b.weight")
+        dense_gemv_out_bf16(
+            hidden.ptr,
+            a_weight.ptr,
+            scratch.a.ptr,
+            tokens,
+            self.config.hidden_size,
+            self.config.linear_num_value_heads,
+            threads=threads,
+            library=_library_for(library, "dense"),
+            runtime=self.runtime,
+        )
+        dense_gemv_out_bf16(
+            hidden.ptr,
+            b_weight.ptr,
+            scratch.b.ptr,
+            tokens,
+            self.config.hidden_size,
+            self.config.linear_num_value_heads,
+            threads=threads,
+            library=_library_for(library, "dense"),
+            runtime=self.runtime,
+        )
+        return scratch.a, scratch.b
+
+    def run_linear_attention_conv_gdn_bf16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        eps: float | None = None,
+        library=None,
+    ) -> Tensor:
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        conv_weight = self.tensor(f"{prefix}.conv1d.weight")
+        dt_bias = self.tensor(f"{prefix}.dt_bias")
+        a_log = self.tensor(f"{prefix}.A_log")
+        norm_weight = self.tensor(f"{prefix}.norm.weight")
+        qwen35_linear_attn_conv_decode_bf16(
+            scratch.qkv.ptr,
+            conv_state.ptr,
+            conv_weight.ptr,
+            scratch.conv_out.ptr,
+            _linear_qkv_width(self.config),
+            self.config.linear_conv_kernel_dim,
+            library=_library_for(library, "linear_conv"),
+            runtime=self.runtime,
+        )
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
+            scratch.conv_out.ptr,
+            scratch.z.ptr,
+            scratch.a.ptr,
+            scratch.b.ptr,
+            dt_bias.ptr,
+            a_log.ptr,
+            norm_weight.ptr,
+            recurrent_state.ptr,
+            scratch.recurrent_out.ptr,
+            self.config.rms_norm_eps if eps is None else eps,
+            self.config.linear_num_key_heads,
+            self.config.linear_num_value_heads,
+            self.config.linear_key_head_dim,
+            self.config.linear_value_head_dim,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        return scratch.recurrent_out
+
+    def run_linear_attention_state_bf16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> Tensor:
+        if tokens != 1:
+            raise ValueError("linear-attention state orchestrator currently requires tokens=1")
+        scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens)
+        self.rotate_linear_attention_inputs_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library)
+        self.project_linear_attention_qkv_z_bf16(scratch, tokens=tokens, group_size=group_size, library=library)
+        self.project_linear_attention_ab_bf16(hidden, scratch, tokens=tokens, library=library)
+        return self.run_linear_attention_conv_gdn_bf16(
+            scratch,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            library=library,
+        )
 
     def append_full_attention_kv(
         self,
@@ -492,6 +693,14 @@ def _out_packed_from_transposed_qweight(qweight: Tensor) -> int:
     if len(qweight.shape) < 3:
         raise ValueError("transposed stacked qweight must have shape [experts, out_packed, in_features]")
     return qweight.shape[1]
+
+
+def _linear_value_width(config) -> int:
+    return int(config.linear_num_value_heads) * int(config.linear_value_head_dim)
+
+
+def _linear_qkv_width(config) -> int:
+    return 2 * int(config.linear_num_key_heads) * int(config.linear_key_head_dim) + _linear_value_width(config)
 
 
 def _rotation_krot(pairs: Tensor) -> int:
