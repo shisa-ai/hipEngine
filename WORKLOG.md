@@ -1988,3 +1988,55 @@ Results:
 ### Next
 
 - Continue porting the parent optimal stack verbatim: pairwise `paro_rotate2/paro_rotate3` kernels and then full-attention/KV decode kernels from the committed parent path.
+
+---
+
+## 2026-05-14 — Port PARO rotate2/rotate3 pairwise rotation kernels
+
+### Scope
+
+- Ported the known-good optimized PARO pairwise rotation helpers from `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` at `nano-vllm-amd@59195ed`:
+  - `paro_rotate2_kernel`
+  - `paro_rotate3_kernel`
+- Preserved the parent kernel bodies byte-for-byte and added only raw-pointer C ABI wrappers:
+  - `hipengine_paro_rotate2_bf16`
+  - `hipengine_paro_rotate3_bf16`
+- Added ctypes wrappers and registry keys:
+  - `paro_rotate2` / `w4_paro` / `bf16`
+  - `paro_rotate3` / `w4_paro` / `bf16`
+- Added `scripts/smoke.py --mode paro-rotate-hip` to validate rotate2 and rotate3 outputs against deterministic no-op-theta channel-scaling references.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.rotary import build_paro_rotate
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_paro_rotate(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode paro-rotate-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-paro-rotate-trace -- \
+  python3 scripts/smoke.py --mode paro-rotate-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `64 passed`.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/paro_rotate-96af3d5e223a911a/paro_rotate.so`.
+- Rotate smoke: `mismatches=[0, 0, 0, 0, 0]`, `max_abs=0.0`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-paro-rotate-trace/epyc/3959357_kernel_trace.csv`.
+- Target kernel rows:
+  - `paro_rotate2_kernel<uint16_t>`: `DurationNs=3400`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=4`, `Grid_Size=(8,2,2)`.
+  - `paro_rotate3_kernel<uint16_t>`: `DurationNs=3160`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=4`, `Grid_Size=(8,2,3)`.
+
+### Next
+
+- Port the committed parent attention/KV decode kernels instead of inventing a new ABI, then adapt wrappers to HIPENGINE's `KVLiveSpans` ABI at the host boundary.

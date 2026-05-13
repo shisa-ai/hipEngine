@@ -35,6 +35,7 @@ def main() -> int:
             "paro-selected-gemv-hip",
             "paro-selected-gemv-rotate-hip",
             "paro-pack8-gemv-hip",
+            "paro-rotate-hip",
             "paro-silu-hip",
             "paro-combine-hip",
             "dense-gemv-hip",
@@ -119,6 +120,13 @@ def main() -> int:
         )
     if args.mode == "paro-pack8-gemv-hip":
         return paro_pack8_gemv_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "paro-rotate-hip":
+        return paro_rotate_hip_smoke(
             args.rows,
             args.hidden_size,
             compiler_version=compiler_version,
@@ -2040,6 +2048,159 @@ def paro_pack8_gemv_hip_smoke(
         else 1
     )
 
+
+
+def paro_rotate_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.rotary import (
+        build_paro_rotate,
+        paro_rotate2_bf16,
+        paro_rotate3_bf16,
+    )
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 8 or hidden_size % 8 != 0:
+        raise ValueError("--hidden-size must be >= 8 and divisible by 8")
+
+    group_size = 8
+    krot = 1
+    x_f32 = np.empty((rows, hidden_size), dtype=np.float32)
+    for row in range(rows):
+        x_f32[row] = np.asarray(
+            [[-0.5, -0.25, 0.25, 0.5][(row + col) % 4] for col in range(hidden_size)],
+            dtype=np.float32,
+        )
+    x_bits = _float32_to_bf16_bits(x_f32)
+    pairs = np.empty((krot, hidden_size), dtype=np.int16)
+    half_group = group_size // 2
+    for group in range(hidden_size // group_size):
+        base = group * group_size
+        for lane in range(half_group):
+            pairs[0, base + 2 * lane] = lane
+            pairs[0, base + 2 * lane + 1] = lane + half_group
+    theta_bits = _float32_to_bf16_bits(np.zeros((krot, hidden_size // 2), dtype=np.float32))
+    pattern = [1.0, 0.5, 0.25, 2.0, 1.0, 0.5, 0.25, 2.0]
+    scale_sets = [
+        np.asarray([pattern[(i + salt) % 8] for i in range(hidden_size)], dtype=np.float32)
+        for salt in range(3)
+    ]
+    scale_bits = [_float32_to_bf16_bits(values) for values in scale_sets]
+    expected = [_float32_to_bf16_bits(x_f32 * values.reshape(1, hidden_size)) for values in scale_sets]
+    rotate2_out0 = np.empty_like(x_bits)
+    rotate2_out1 = np.empty_like(x_bits)
+    rotate3_out0 = np.empty_like(x_bits)
+    rotate3_out1 = np.empty_like(x_bits)
+    rotate3_out2 = np.empty_like(x_bits)
+
+    runtime = get_hip_runtime()
+    library = build_paro_rotate(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = dev(x_bits)
+        pairs_dev = dev(pairs)
+        theta_dev = dev(theta_bits)
+        scales_dev = [dev(bits) for bits in scale_bits]
+        r2o0_dev = out_dev(rotate2_out0)
+        r2o1_dev = out_dev(rotate2_out1)
+        r3o0_dev = out_dev(rotate3_out0)
+        r3o1_dev = out_dev(rotate3_out1)
+        r3o2_dev = out_dev(rotate3_out2)
+        paro_rotate2_bf16(
+            x_dev.ptr,
+            r2o0_dev.ptr,
+            r2o1_dev.ptr,
+            pairs_dev.ptr,
+            pairs_dev.ptr,
+            theta_dev.ptr,
+            theta_dev.ptr,
+            scales_dev[0].ptr,
+            scales_dev[1].ptr,
+            rows,
+            hidden_size,
+            group_size,
+            krot,
+            library=library,
+            runtime=runtime,
+        )
+        paro_rotate3_bf16(
+            x_dev.ptr,
+            r3o0_dev.ptr,
+            r3o1_dev.ptr,
+            r3o2_dev.ptr,
+            pairs_dev.ptr,
+            pairs_dev.ptr,
+            pairs_dev.ptr,
+            theta_dev.ptr,
+            theta_dev.ptr,
+            theta_dev.ptr,
+            scales_dev[0].ptr,
+            scales_dev[1].ptr,
+            scales_dev[2].ptr,
+            rows,
+            hidden_size,
+            group_size,
+            krot,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(rotate2_out0), r2o0_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotate2_out1), r2o1_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotate3_out0), r3o0_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotate3_out1), r3o1_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotate3_out2), r3o2_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    outputs = [rotate2_out0, rotate2_out1, rotate3_out0, rotate3_out1, rotate3_out2]
+    expect = [expected[0], expected[1], expected[0], expected[1], expected[2]]
+    mismatches = [int(np.count_nonzero(out != exp)) for out, exp in zip(outputs, expect, strict=True)]
+    max_abs = float(
+        max(
+            np.max(np.abs(_bf16_bits_to_float32(out) - _bf16_bits_to_float32(exp)))
+            for out, exp in zip(outputs, expect, strict=True)
+        )
+    )
+    print(
+        f"rows={rows} hidden_size={hidden_size} group_size={group_size} krot={krot} "
+        f"mismatches={mismatches} max_abs={max_abs}"
+    )
+    print("rotate2_0=", _bf16_bits_to_float32(rotate2_out0)[0].tolist())
+    print("rotate3_2=", _bf16_bits_to_float32(rotate3_out2)[0].tolist())
+    return 0 if max(mismatches) == 0 else 1
 
 def paro_selected_gemv_rotate_hip_smoke(
     rows: int,

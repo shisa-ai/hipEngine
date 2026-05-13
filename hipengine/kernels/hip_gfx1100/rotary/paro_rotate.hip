@@ -1,0 +1,276 @@
+// Ported from nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py @ 59195ed.
+// PARO pairwise rotate2/rotate3 kernel bodies are preserved; wrappers are HIPENGINE C ABI.
+
+#include <hip/hip_runtime.h>
+#include <stdint.h>
+
+namespace {
+
+__device__ inline float bf16_bits_to_float(uint16_t value) {
+  union {
+    uint32_t u32;
+    float f32;
+  } out;
+  out.u32 = static_cast<uint32_t>(value) << 16;
+  return out.f32;
+}
+
+__device__ inline uint16_t float_to_bf16_bits(float value) {
+  union {
+    float f32;
+    uint32_t u32;
+  } in;
+  in.f32 = value;
+  const uint32_t lsb = (in.u32 >> 16) & 1U;
+  in.u32 += 0x7FFFU + lsb;
+  return static_cast<uint16_t>(in.u32 >> 16);
+}
+
+template <typename scalar_t>
+__device__ inline scalar_t float_to_scalar(float v) {
+  return static_cast<scalar_t>(v);
+}
+
+template <>
+__device__ inline uint16_t float_to_scalar<uint16_t>(float v) {
+  return float_to_bf16_bits(v);
+}
+
+template <typename scalar_t>
+__device__ inline float scalar_to_float(scalar_t v) {
+  return static_cast<float>(v);
+}
+
+template <>
+__device__ inline float scalar_to_float<uint16_t>(uint16_t v) {
+  return bf16_bits_to_float(v);
+}
+
+template <typename scalar_t>
+__global__ void paro_rotate2_kernel(
+    const scalar_t* __restrict__ x,
+    scalar_t* __restrict__ out0,
+    scalar_t* __restrict__ out1,
+    const int16_t* __restrict__ pairs0,
+    const int16_t* __restrict__ pairs1,
+    const scalar_t* __restrict__ theta0,
+    const scalar_t* __restrict__ theta1,
+    const scalar_t* __restrict__ scales0,
+    const scalar_t* __restrict__ scales1,
+    int64_t tokens,
+    int64_t hidden,
+    int group_size,
+    int krot) {
+  const int row = blockIdx.x;
+  const int group = blockIdx.y;
+  const int rotation = blockIdx.z;
+  const int lane = threadIdx.x;
+  const int half_group = group_size / 2;
+  extern __shared__ float buf[];
+
+  if (row >= tokens || lane >= half_group) {
+    return;
+  }
+
+  const int base = group * group_size;
+  const int col0 = base + lane;
+  const int col1 = col0 + half_group;
+  const int64_t row_base = static_cast<int64_t>(row) * hidden;
+  const int16_t* __restrict__ pairs = (rotation == 0) ? pairs0 : pairs1;
+  const scalar_t* __restrict__ theta = (rotation == 0) ? theta0 : theta1;
+  const scalar_t* __restrict__ scales = (rotation == 0) ? scales0 : scales1;
+  scalar_t* __restrict__ out = (rotation == 0) ? out0 : out1;
+
+  float v0 = scalar_to_float(x[row_base + col0]) * scalar_to_float(scales[col0]);
+  float v1 = scalar_to_float(x[row_base + col1]) * scalar_to_float(scales[col1]);
+  buf[lane] = v0;
+  buf[lane + half_group] = v1;
+  __syncthreads();
+
+  for (int r = 0; r < krot; ++r) {
+    const int pair_base = r * static_cast<int>(hidden) + base + 2 * lane;
+    const int i = static_cast<int>(pairs[pair_base + 0]);
+    const int j = static_cast<int>(pairs[pair_base + 1]);
+    const float angle = scalar_to_float(theta[r * (hidden / 2) + group * half_group + lane]);
+    float s, c;
+    sincosf(angle, &s, &c);
+    const float xi = buf[i];
+    const float xj = buf[j];
+    buf[i] = fmaf(xj, s, xi * c);
+    buf[j] = fmaf(xi, -s, xj * c);
+    __syncthreads();
+  }
+
+  out[row_base + col0] = float_to_scalar<scalar_t>(buf[lane]);
+  out[row_base + col1] = float_to_scalar<scalar_t>(buf[lane + half_group]);
+}
+
+template <typename scalar_t>
+__global__ void paro_rotate3_kernel(
+    const scalar_t* __restrict__ x,
+    scalar_t* __restrict__ out0,
+    scalar_t* __restrict__ out1,
+    scalar_t* __restrict__ out2,
+    const int16_t* __restrict__ pairs0,
+    const int16_t* __restrict__ pairs1,
+    const int16_t* __restrict__ pairs2,
+    const scalar_t* __restrict__ theta0,
+    const scalar_t* __restrict__ theta1,
+    const scalar_t* __restrict__ theta2,
+    const scalar_t* __restrict__ scales0,
+    const scalar_t* __restrict__ scales1,
+    const scalar_t* __restrict__ scales2,
+    int64_t tokens,
+    int64_t hidden,
+    int group_size,
+    int krot) {
+  const int row = blockIdx.x;
+  const int group = blockIdx.y;
+  const int rotation = blockIdx.z;
+  const int lane = threadIdx.x;
+  const int half_group = group_size / 2;
+  extern __shared__ float buf[];
+
+  if (row >= tokens || lane >= half_group) {
+    return;
+  }
+
+  const int base = group * group_size;
+  const int col0 = base + lane;
+  const int col1 = col0 + half_group;
+  const int64_t row_base = static_cast<int64_t>(row) * hidden;
+  const int16_t* __restrict__ pairs = pairs0;
+  const scalar_t* __restrict__ theta = theta0;
+  const scalar_t* __restrict__ scales = scales0;
+  scalar_t* __restrict__ out = out0;
+  if (rotation == 1) {
+    pairs = pairs1;
+    theta = theta1;
+    scales = scales1;
+    out = out1;
+  } else if (rotation == 2) {
+    pairs = pairs2;
+    theta = theta2;
+    scales = scales2;
+    out = out2;
+  }
+
+  float v0 = scalar_to_float(x[row_base + col0]) * scalar_to_float(scales[col0]);
+  float v1 = scalar_to_float(x[row_base + col1]) * scalar_to_float(scales[col1]);
+  buf[lane] = v0;
+  buf[lane + half_group] = v1;
+  __syncthreads();
+
+  for (int r = 0; r < krot; ++r) {
+    const int pair_base = r * static_cast<int>(hidden) + base + 2 * lane;
+    const int i = static_cast<int>(pairs[pair_base + 0]);
+    const int j = static_cast<int>(pairs[pair_base + 1]);
+    const float angle = scalar_to_float(theta[r * (hidden / 2) + group * half_group + lane]);
+    float s, c;
+    sincosf(angle, &s, &c);
+    const float xi = buf[i];
+    const float xj = buf[j];
+    buf[i] = fmaf(xj, s, xi * c);
+    buf[j] = fmaf(xi, -s, xj * c);
+    __syncthreads();
+  }
+
+  out[row_base + col0] = float_to_scalar<scalar_t>(buf[lane]);
+  out[row_base + col1] = float_to_scalar<scalar_t>(buf[lane + half_group]);
+}
+
+
+bool valid_rotate_shape(int64_t tokens, int64_t hidden, int64_t group_size, int64_t krot) {
+  return tokens > 0 && hidden > 0 && group_size > 0 && krot >= 0 &&
+      (group_size % 2) == 0 && (hidden % group_size) == 0 && (group_size / 2) <= 1024;
+}
+
+}  // namespace
+
+extern "C" int hipengine_paro_rotate2_bf16(
+    const uint16_t* x,
+    uint16_t* out0,
+    uint16_t* out1,
+    const int16_t* pairs0,
+    const int16_t* pairs1,
+    const uint16_t* theta0,
+    const uint16_t* theta1,
+    const uint16_t* scales0,
+    const uint16_t* scales1,
+    int64_t tokens,
+    int64_t hidden,
+    int64_t group_size,
+    int64_t krot,
+    hipStream_t stream) {
+  if (!valid_rotate_shape(tokens, hidden, group_size, krot)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (paro_rotate2_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(hidden / group_size), 2U),
+      dim3(static_cast<unsigned int>(group_size / 2)),
+      static_cast<unsigned int>(group_size * sizeof(float)),
+      stream,
+      x,
+      out0,
+      out1,
+      pairs0,
+      pairs1,
+      theta0,
+      theta1,
+      scales0,
+      scales1,
+      tokens,
+      hidden,
+      static_cast<int>(group_size),
+      static_cast<int>(krot));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_paro_rotate3_bf16(
+    const uint16_t* x,
+    uint16_t* out0,
+    uint16_t* out1,
+    uint16_t* out2,
+    const int16_t* pairs0,
+    const int16_t* pairs1,
+    const int16_t* pairs2,
+    const uint16_t* theta0,
+    const uint16_t* theta1,
+    const uint16_t* theta2,
+    const uint16_t* scales0,
+    const uint16_t* scales1,
+    const uint16_t* scales2,
+    int64_t tokens,
+    int64_t hidden,
+    int64_t group_size,
+    int64_t krot,
+    hipStream_t stream) {
+  if (!valid_rotate_shape(tokens, hidden, group_size, krot)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (paro_rotate3_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(hidden / group_size), 3U),
+      dim3(static_cast<unsigned int>(group_size / 2)),
+      static_cast<unsigned int>(group_size * sizeof(float)),
+      stream,
+      x,
+      out0,
+      out1,
+      out2,
+      pairs0,
+      pairs1,
+      pairs2,
+      theta0,
+      theta1,
+      theta2,
+      scales0,
+      scales1,
+      scales2,
+      tokens,
+      hidden,
+      static_cast<int>(group_size),
+      static_cast<int>(krot));
+  return static_cast<int>(hipGetLastError());
+}
