@@ -28,6 +28,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
 - [x] Add parent-baseline/HIPENGINE-blocked benchmark artifacts for OPTIMAL 512/128 and 4K/128.
 - [x] Port PARO RMSNorm out-kernels (`paro_rmsnorm_out`, `paro_add_rmsnorm_out`).
 - [ ] Port MoE c=1 decode vertical slice (router, selected pack8 GEMV, fused activation/down-rotation, W8A16 shared expert, weighted shared-gate residual combine).
+  - [x] Router/shared-gate BF16 hidden/weight raw-pointer path (`qwen35_router_topk_shared_out`).
 - [ ] Port MoE prefill compact-WMMA slice (lane grouping/gather, compact tile map, compact WMMA, weighted lanes, GEMV fallback).
 - [ ] Port full-inference dependencies outside MoE (w4_paro loader/layout, Qwen3.5 model plugin, non-MoE projections, linear attention/GDN, full attention/KV, W8A16 lm_head, graph replay).
 - [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.

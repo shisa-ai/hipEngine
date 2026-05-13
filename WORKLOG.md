@@ -1252,3 +1252,67 @@ Results:
 ### Next
 
 - Continue the MoE c=1 decode vertical slice: router/shared-gate, selected pack8 GEMV, fused activation/down-rotation, W8A16 shared expert, and weighted shared-gate residual combine.
+
+---
+
+## 2026-05-13 — Port Qwen3.5 BF16 router/shared-gate kernels
+
+### Scope
+
+- Ported native router top-k subset from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip` at `nano-vllm-amd@59195ed`:
+  - `qwen35_router_logits_kernel`
+  - `qwen35_router_select_kernel`
+- Added `hipengine/kernels/hip_gfx1100/moe/router.hip` with raw-pointer wrappers:
+  - `hipengine_qwen35_router_logits_bf16`
+  - `hipengine_qwen35_router_select`
+  - `hipengine_qwen35_router_topk_shared_out_bf16`
+- Added ctypes wrappers and registry keys:
+  - `KernelKey("hip_gfx1100", "router_logits", "bf16")`
+  - `KernelKey("hip_gfx1100", "router_select", "fp32")`
+  - `KernelKey("hip_gfx1100", "router_topk_shared", "bf16", "out")`
+  - `KernelKey("hip_gfx1100", "router_topk_shared", "w4_paro", "out")`
+- Added `scripts/smoke.py --mode qwen35-router-hip`, using a deterministic BF16 hidden/combined-weight fixture and validating logits, selected top-k indices, and softmax routing weights.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md` to mark the router/shared-gate BF16 slice as partial-landed.
+
+### Correctness / preservation / profiler gate
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.moe import build_qwen35_router
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+artifact = build_qwen35_router(load=False, compiler_version=version)
+print(artifact.output_path)
+PY
+python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-router-trace -- \
+  python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `35 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Router GPU smoke: `logits_max_abs=0.0`, `routing_max_abs=1.4901161193847656e-08`, `selected_match=True`.
+- Existing Qwen RMSNorm and PARO RMSNorm smokes still pass bit-exactly.
+- Source-body preservation check found current parent bodies verbatim in `moe/router.hip`:
+  - `qwen35_router_logits_kernel`: 46 lines
+  - `qwen35_router_select_kernel`: 109 lines
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_router-a65ac6ed49424f49/qwen35_router.so`.
+- `rocprofv3` trace (raw CSV not committed): `/tmp/hipengine-qwen35-router-trace/epyc/2910857_kernel_trace.csv`.
+- Target kernel rows:
+  - `qwen35_router_logits_kernel<unsigned short>`: computed `DurationNs=3520`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=64`.
+  - `qwen35_router_select_kernel`: computed `DurationNs=5920`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`.
+
+### Caveat / next
+
+- This first HIPENGINE router wrapper supports BF16 hidden and BF16 combined weights. The parent accepts FP16 or BF16 hidden inputs; if the final HIPENGINE OPTIMAL route keeps FP16 router inputs, add an FP16 hidden specialization before claiming full router parity.
+- Next MoE c=1 dependencies remain selected pack8 GEMV, fused activation/down-rotation, W8A16 shared expert, and weighted shared-gate residual combine.

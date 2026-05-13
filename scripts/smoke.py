@@ -31,6 +31,7 @@ def main() -> int:
             "smoke-add-hip",
             "qwen35-rmsnorm-hip",
             "paro-rmsnorm-hip",
+            "qwen35-router-hip",
         ),
         default="registry",
     )
@@ -79,7 +80,14 @@ def main() -> int:
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
-    return paro_rmsnorm_hip_smoke(
+    if args.mode == "paro-rmsnorm-hip":
+        return paro_rmsnorm_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    return qwen35_router_hip_smoke(
         args.rows,
         args.hidden_size,
         compiler_version=compiler_version,
@@ -397,6 +405,117 @@ def paro_rmsnorm_hip_smoke(
         and add_norm_bit_mismatch == 0
         and residual_bit_mismatch == 0
     ) else 1
+
+
+def qwen35_router_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.moe import (
+        build_qwen35_router,
+        qwen35_router_topk_shared_out_bf16,
+    )
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 1:
+        raise ValueError("--hidden-size must be >= 1")
+
+    num_experts = 8
+    num_rows = num_experts + 1
+    top_k = 4
+    threads = 64
+    x_f32 = np.linspace(-0.75, 1.25, rows * hidden_size, dtype=np.float32).reshape(
+        rows, hidden_size
+    )
+    # Make expert rows separated enough that top-k order is stable despite reduction-order noise.
+    weight_f32 = np.empty((num_rows, hidden_size), dtype=np.float32)
+    base = np.linspace(-0.5, 0.75, hidden_size, dtype=np.float32)
+    for expert in range(num_rows):
+        weight_f32[expert] = base * (0.25 + expert * 0.125) + expert * 0.05
+    x_bits = _float32_to_bf16_bits(x_f32)
+    weight_bits = _float32_to_bf16_bits(weight_f32)
+    logits = np.empty((rows, num_rows), dtype=np.float32)
+    selected = np.empty((rows, top_k), dtype=np.int64)
+    routing = np.empty((rows, top_k), dtype=np.float32)
+
+    x_bf32 = _bf16_bits_to_float32(x_bits)
+    weight_bf32 = _bf16_bits_to_float32(weight_bits)
+    expected_logits = (x_bf32.astype(np.float32) @ weight_bf32.astype(np.float32).T).astype(
+        np.float32
+    )
+    router_logits = expected_logits[:, :num_experts]
+    expected_selected = np.argsort(-router_logits, axis=1)[:, :top_k].astype(np.int64)
+    topk_logits = np.take_along_axis(router_logits, expected_selected, axis=1)
+    shifted = topk_logits - np.max(topk_logits, axis=1, keepdims=True)
+    expected_routing = np.exp(shifted).astype(np.float32)
+    expected_routing = (expected_routing / np.sum(expected_routing, axis=1, keepdims=True)).astype(
+        np.float32
+    )
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_router(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    x_dev = weight_dev = logits_dev = selected_dev = routing_dev = None
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        weight_dev = malloc(weight_bits.nbytes, runtime=runtime)
+        logits_dev = malloc(logits.nbytes, runtime=runtime)
+        selected_dev = malloc(selected.nbytes, runtime=runtime)
+        routing_dev = malloc(routing.nbytes, runtime=runtime)
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(weight_dev, host_array_ptr(weight_bits), runtime=runtime)
+        qwen35_router_topk_shared_out_bf16(
+            x_dev.ptr,
+            weight_dev.ptr,
+            logits_dev.ptr,
+            selected_dev.ptr,
+            routing_dev.ptr,
+            rows,
+            hidden_size,
+            num_rows,
+            num_experts,
+            top_k,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(logits), logits_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(selected), selected_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(routing), routing_dev, runtime=runtime)
+    finally:
+        for buffer in (routing_dev, selected_dev, logits_dev, weight_dev, x_dev):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+
+    logits_max_abs = float(np.max(np.abs(logits - expected_logits)))
+    routing_max_abs = float(np.max(np.abs(routing - expected_routing)))
+    selected_match = bool(np.array_equal(selected, expected_selected))
+    print(
+        f"rows={rows} hidden_size={hidden_size} num_experts={num_experts} top_k={top_k} "
+        f"logits_max_abs={logits_max_abs} routing_max_abs={routing_max_abs} "
+        f"selected_match={selected_match}"
+    )
+    print("selected0=", selected[0].tolist())
+    print("routing0=", routing[0].tolist())
+    return 0 if selected_match and logits_max_abs <= 2e-5 and routing_max_abs <= 2e-5 else 1
 
 
 def _float32_to_bf16_bits(values: object):

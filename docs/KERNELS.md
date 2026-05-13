@@ -49,6 +49,7 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `a
 | `rmsnorm` | `bf16` | `hipengine/kernels/hip_gfx1100/norm/rmsnorm.hip` | `qwen35_rmsnorm_bf16(...)` | `python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16` → `max_abs=0.0`, `bit_mismatch=0`; `rocprofv3` shows `qwen35_rmsnorm_kernel`, computed `DurationNs=6560`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0` on W7900 |
 | `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` | `bf16` | same | `qwen35_add_rmsnorm_bf16(...)`, `qwen35_add_rmsnorm_f32_bf16(...)`, `qwen35_head_rmsnorm_f32_bf16(...)` | Build/registration tests landed; launch wrappers are source-family peers of `qwen35_rmsnorm_kernel` and share the same `.so` |
 | `rmsnorm`, `add_rmsnorm` variant `paro_out` | `bf16`, `w4_paro` | same | `paro_rmsnorm_out_bf16(...)`, `paro_add_rmsnorm_out_bf16(...)` | `python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16` → bit-exact norm/add/residual; `rocprofv3` shows `paro_rmsnorm_out_kernel` (`DurationNs=5760`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=1024`) and `paro_add_rmsnorm_out_kernel` (`DurationNs=5040`, `VGPR_Count=56`, `Scratch_Size=0`, `LDS_Block_Size=1024`) on W7900 |
+| `router_logits`, `router_select`, `router_topk_shared` variant `out` | `bf16`, `fp32` select, `w4_paro` shared route | `hipengine/kernels/hip_gfx1100/moe/router.hip` | `qwen35_router_logits_bf16(...)`, `qwen35_router_select(...)`, `qwen35_router_topk_shared_out_bf16(...)` | `python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16` → `logits_max_abs=0.0`, `routing_max_abs=1.49e-08`, `selected_match=True`; `rocprofv3` shows `qwen35_router_logits_kernel` (`DurationNs=3520`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`) and `qwen35_router_select_kernel` (`DurationNs=5920`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=512`) on W7900 |
 
 `smoke_add` is a build/runtime smoke, not a model-layer primitive. It proves `hipengine.core.build`, lazy `libamdhip64.so`, device allocation/copy, launch, synchronize, and copyback without torch.
 
@@ -138,9 +139,10 @@ The stable source-lineage port set at the current HIPENGINE catalog baseline is 
   - `qwen35_moe_gather_quantize_packed_hidden_kernel`
   - `qwen35_build_lane_to_sorted_kernel`
   - `qwen35_moe_combine_kernel`
-- `moe/router.hip` (6):
+- `moe/router.hip` top-k subset (2) — **HIPENGINE landed for BF16 hidden/weight raw-pointer wrappers**:
   - `qwen35_router_logits_kernel`
   - `qwen35_router_select_kernel`
+- `moe/router.hip` token-rank/top2 subset (4):
   - `qwen35_token_rank_count_partial_kernel`
   - `qwen35_token_rank_count_finalize_kernel`
   - `qwen35_token_top2_partial_kernel`
@@ -311,7 +313,7 @@ The checklist below is the active port map for reproducing the parent compact-WM
 | Stage | Parent kernels / wrappers | HIPENGINE status | Notes / gate |
 | --- | --- | --- | --- |
 | RMSNorm / residual | `paro_rmsnorm_out_kernel`, `paro_add_rmsnorm_out_kernel`; Qwen BF16 `qwen35_*rmsnorm*` family | **Landed for BF16 raw-pointer wrappers** | PARO out-kernels multiply direct norm weights; Qwen kernels use `1.0 + weight_delta`. Full inference still needs router/MoE/shared/attention dependencies. |
-| Router + shared gate | `qwen35_router_logits_kernel`, `qwen35_router_select_kernel`, `hip_qwen35_router_topk_shared_out` | Missing | Native router must accept FP16/BF16 hidden input and write logits/selected/routing buffers. |
+| Router + shared gate | `qwen35_router_logits_kernel`, `qwen35_router_select_kernel`, `hip_qwen35_router_topk_shared_out` | **Partial:** BF16 hidden/weight raw-pointer shared-out route landed | Current wrapper writes logits/selected/routing buffers and shared-gate logits; add FP16 hidden specialization if the final HIPENGINE path keeps FP16 router inputs. |
 | Selected gate/up GEMV | `gemv_awq_selected_dual_pack8_strided_kernel`, `gemv_awq_selected_dual_pack8_kernel`, optional rotate-out variant | Missing | Decode path uses stacked/repacked selected-expert W4 pack8 qweights. Preserve small-K safety fix from `59195ed`. |
 | Activation + down rotation | `silu_mul_dual_rotate_out_kernel` (fallback `silu_mul_dual_out_kernel` + rotate) | Missing | Default `NANOVLLM_PARO_MOE_SILU_DOWN_ROTATE_FUSED=1`; preserve fused path and unfused fallback. |
 | Selected down GEMV | `gemv_awq_selected_pack8_kernel` / strided wrapper | Missing | Used for selected down projection; small-K specialization applies where safe. |
