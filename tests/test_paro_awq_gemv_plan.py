@@ -8,6 +8,7 @@ from hipengine.kernels.hip_gfx1100.quant import (
     gemv_awq_pack8_strided_bf16,
     gemv_awq_pack8_transposed_bf16,
     gemv_awq_selected_dual_pack8_strided_bf16,
+    gemv_awq_selected_dual_pack8_strided_rotate_out_bf16,
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_pack8_strided_bf16,
     gemv_awq_selected_pack8_transposed_bf16,
@@ -54,6 +55,15 @@ def test_paro_awq_gemv_registers_pack8_variants() -> None:
             variant="transposed",
         )
         is gemv_awq_dual_pack8_transposed_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="rotate+selected_dual_pack8_gemv",
+            quant="w4_paro",
+            variant="strided",
+        )
+        is gemv_awq_selected_dual_pack8_strided_rotate_out_bf16
     )
     assert (
         resolve(
@@ -119,6 +129,10 @@ def test_paro_awq_gemv_wrappers_validate_before_gpu_load() -> None:
         gemv_awq_dual_pack8_strided_bf16(0, 0, 0, 0, 0, 0, 0, 0, 2, 16, 1, 1, 4)
     with pytest.raises(ValueError, match="threads must be one of 64 or 128"):
         gemv_awq_dual_pack8_transposed_bf16(0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 16, 1, 1, 8, threads=256)
+    with pytest.raises(ValueError, match="krot must be non-negative"):
+        gemv_awq_selected_dual_pack8_strided_rotate_out_bf16(
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 16, 1, 1, 2, 8, -1
+        )
     with pytest.raises(ValueError, match="x_rows must be positive"):
         gemv_awq_selected_dual_pack8_strided_bf16(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 16, 1, 1, 2, 8)
     with pytest.raises(ValueError, match="x_rows must be 1 or match rows"):

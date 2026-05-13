@@ -133,6 +133,7 @@ python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-selected-gemv-hip --rows 2 --hidden-size 16
+python3 scripts/smoke.py --mode paro-selected-gemv-rotate-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16

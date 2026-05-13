@@ -1941,3 +1941,50 @@ Results:
 ### Next
 
 - Continue porting the parent optimal full-inference stack, not redesigning it: pairwise rotation wrappers for non-MoE projections and then attention/KV kernels from `qwen35_expert.hip` / `full_attention.py` / `linear_attention.py`.
+
+---
+
+## 2026-05-14 — Port fused rotate→selected dual PARO pack8 GEMV
+
+### Scope
+
+- Ported the known-good optimized fused selected-dual pack8 rotate-out kernel from `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` at `nano-vllm-amd@59195ed`:
+  - `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`
+- Preserved the parent kernel body byte-for-byte and added only a raw-pointer C ABI wrapper:
+  - `hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16`
+- Added ctypes wrapper and registry key:
+  - `rotate+selected_dual_pack8_gemv` / `w4_paro` / `strided`
+- Added `scripts/smoke.py --mode paro-selected-gemv-rotate-hip` to validate the fused path against the existing pack8 oracle after deterministic channel scaling/no-op pair rotation.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.quant import build_paro_awq_gemv
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_paro_awq_gemv(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode paro-selected-gemv-rotate-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-paro-selected-rotate-trace -- \
+  python3 scripts/smoke.py --mode paro-selected-gemv-rotate-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `61 passed`.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/paro_awq_gemv-9d6e2c5b926292df/paro_awq_gemv.so`.
+- Fused rotate-selected smoke: `mismatch=0`, `max_abs=0.0`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-paro-selected-rotate-trace/epyc/3940715_kernel_trace.csv`.
+- Target kernel row: `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel<uint16_t,false>`: `DurationNs=7361`, `VGPR_Count=96`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(128,2,1)`.
+
+### Next
+
+- Continue porting the parent optimal stack verbatim: pairwise `paro_rotate2/paro_rotate3` kernels and then full-attention/KV decode kernels from the committed parent path.

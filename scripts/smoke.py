@@ -33,6 +33,7 @@ def main() -> int:
             "paro-rmsnorm-hip",
             "qwen35-router-hip",
             "paro-selected-gemv-hip",
+            "paro-selected-gemv-rotate-hip",
             "paro-pack8-gemv-hip",
             "paro-silu-hip",
             "paro-combine-hip",
@@ -104,6 +105,13 @@ def main() -> int:
         )
     if args.mode == "paro-selected-gemv-hip":
         return paro_selected_gemv_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "paro-selected-gemv-rotate-hip":
+        return paro_selected_gemv_rotate_hip_smoke(
             args.rows,
             args.hidden_size,
             compiler_version=compiler_version,
@@ -2031,6 +2039,166 @@ def paro_pack8_gemv_hip_smoke(
         and dual_transposed_mismatch == 0
         else 1
     )
+
+
+def paro_selected_gemv_rotate_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant import (
+        build_paro_awq_gemv,
+        gemv_awq_selected_dual_pack8_strided_rotate_out_bf16,
+    )
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 8 or hidden_size % 8 != 0:
+        raise ValueError("--hidden-size must be >= 8 and divisible by 8")
+
+    group_size = 8
+    threads = 64
+    num_experts = 2
+    out_packed_a = out_packed_b = 1
+    krot = 1
+    selected = np.arange(rows, dtype=np.int64) % num_experts
+    x_f32 = np.empty((rows, hidden_size), dtype=np.float32)
+    for row in range(rows):
+        x_f32[row] = np.asarray(
+            [[-0.5, -0.25, 0.25, 0.5][(row + col) % 4] for col in range(hidden_size)],
+            dtype=np.float32,
+        )
+    x_bits = _float32_to_bf16_bits(x_f32)
+    channel_scales_f32 = np.asarray(
+        [1.0, 0.5, 0.25, 2.0, 1.0, 0.5, 0.25, 2.0] * (hidden_size // 8),
+        dtype=np.float32,
+    )
+    channel_scales_bits = _float32_to_bf16_bits(channel_scales_f32)
+    pairs = np.empty((krot, hidden_size), dtype=np.int16)
+    theta = np.zeros((krot, hidden_size // 2), dtype=np.float32)
+    half_group = group_size // 2
+    for group in range(hidden_size // group_size):
+        base = group * group_size
+        for lane in range(half_group):
+            pairs[0, base + 2 * lane] = lane
+            pairs[0, base + 2 * lane + 1] = lane + half_group
+    theta_bits = _float32_to_bf16_bits(theta)
+
+    qweight_a, qzeros_a, scales_a_bits = _make_pack8_fixture(
+        num_experts, hidden_size, out_packed_a, group_size, salt=23
+    )
+    qweight_b, qzeros_b, scales_b_bits = _make_pack8_fixture(
+        num_experts, hidden_size, out_packed_b, group_size, salt=29
+    )
+    out_bits = np.empty((rows, (out_packed_a + out_packed_b) * 8), dtype=np.uint16)
+
+    rotated = _bf16_bits_to_float32(x_bits) * _bf16_bits_to_float32(channel_scales_bits).reshape(
+        1, hidden_size
+    )
+    rotated_bits = _float32_to_bf16_bits(rotated)
+    expected_a = _selected_pack8_reference(
+        rotated_bits,
+        selected,
+        qweight_a,
+        qzeros_a,
+        scales_a_bits,
+        group_size,
+        qweight_transposed=False,
+    )
+    expected_b = _selected_pack8_reference(
+        rotated_bits,
+        selected,
+        qweight_b,
+        qzeros_b,
+        scales_b_bits,
+        group_size,
+        qweight_transposed=False,
+    )
+    expected_bits = np.concatenate([expected_a, expected_b], axis=1)
+
+    runtime = get_hip_runtime()
+    library = build_paro_awq_gemv(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = dev(x_bits)
+        selected_dev = dev(selected)
+        pairs_dev = dev(pairs)
+        theta_dev = dev(theta_bits)
+        channel_scales_dev = dev(channel_scales_bits)
+        qweight_a_dev = dev(qweight_a)
+        qzeros_a_dev = dev(qzeros_a)
+        scales_a_dev = dev(scales_a_bits)
+        qweight_b_dev = dev(qweight_b)
+        qzeros_b_dev = dev(qzeros_b)
+        scales_b_dev = dev(scales_b_bits)
+        out_dev_buf = out_dev(out_bits)
+        gemv_awq_selected_dual_pack8_strided_rotate_out_bf16(
+            x_dev.ptr,
+            selected_dev.ptr,
+            pairs_dev.ptr,
+            theta_dev.ptr,
+            channel_scales_dev.ptr,
+            qweight_a_dev.ptr,
+            qzeros_a_dev.ptr,
+            scales_a_dev.ptr,
+            qweight_b_dev.ptr,
+            qzeros_b_dev.ptr,
+            scales_b_dev.ptr,
+            out_dev_buf.ptr,
+            rows,
+            rows,
+            hidden_size,
+            out_packed_a,
+            out_packed_b,
+            num_experts,
+            group_size,
+            krot,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_bits), out_dev_buf, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    mismatch = int(np.count_nonzero(out_bits != expected_bits))
+    max_abs = float(np.max(np.abs(_bf16_bits_to_float32(out_bits) - _bf16_bits_to_float32(expected_bits))))
+    print(
+        f"rows={rows} hidden_size={hidden_size} threads={threads} krot={krot} "
+        f"mismatch={mismatch} max_abs={max_abs}"
+    )
+    print("rotate_selected0=", _bf16_bits_to_float32(out_bits)[0].tolist())
+    return 0 if mismatch == 0 else 1
 
 def paro_selected_gemv_hip_smoke(
     rows: int,

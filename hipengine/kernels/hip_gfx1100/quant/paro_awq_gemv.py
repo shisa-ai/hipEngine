@@ -15,6 +15,7 @@ _SYMBOL_PACK8_STRIDED = "hipengine_gemv_awq_pack8_strided_bf16"
 _SYMBOL_PACK8_TRANSPOSED = "hipengine_gemv_awq_pack8_transposed_bf16"
 _SYMBOL_DUAL_PACK8_STRIDED = "hipengine_gemv_awq_dual_pack8_strided_bf16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED = "hipengine_gemv_awq_dual_pack8_transposed_bf16"
+_SYMBOL_SELECTED_DUAL_ROTATE_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16"
 _SYMBOL_SELECTED_DUAL_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_bf16"
 _SYMBOL_SELECTED_DUAL_TRANSPOSED = "hipengine_gemv_awq_selected_dual_pack8_transposed_bf16"
 _SYMBOL_SELECTED_STRIDED = "hipengine_gemv_awq_selected_pack8_strided_bf16"
@@ -215,6 +216,64 @@ def gemv_awq_dual_pack8_transposed_bf16(
         out_packed_a,
         out_packed_b,
         group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_selected_dual_pack8_strided_rotate_out_bf16(
+    x_ptr: int,
+    selected_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    channel_scales_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    num_experts: int,
+    group_size: int,
+    krot: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch parent fused rotate + selected dual pack8 GEMV strided kernel."""
+
+    _launch_selected_dual_rotate(
+        _SYMBOL_SELECTED_DUAL_ROTATE_STRIDED,
+        x_ptr,
+        selected_ptr,
+        pairs_ptr,
+        theta_ptr,
+        channel_scales_ptr,
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        num_experts,
+        group_size,
+        krot,
         threads=threads,
         stream=stream,
         library=library,
@@ -423,6 +482,11 @@ def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "rotate+selected_dual_pack8_gemv", "w4_paro", "strided"),
+        gemv_awq_selected_dual_pack8_strided_rotate_out_bf16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "selected_dual_pack8_gemv", "w4_paro", "strided"),
         gemv_awq_selected_dual_pack8_strided_bf16,
         replace=replace,
@@ -554,6 +618,100 @@ def _launch_pack8_dual(
         ctypes.c_int64(out_packed_a),
         ctypes.c_int64(out_packed_b),
         ctypes.c_int64(group_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_selected_dual_rotate(
+    symbol: str,
+    x_ptr: int,
+    selected_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    channel_scales_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    num_experts: int,
+    group_size: int,
+    krot: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_selected_dual_rotate_shape(
+        x_rows,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        num_experts,
+        group_size,
+        krot,
+        threads,
+    )
+    library = library or build_paro_awq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(pairs_ptr),
+        ctypes.c_void_p(theta_ptr),
+        ctypes.c_void_p(channel_scales_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qzeros_a_ptr),
+        ctypes.c_void_p(scales_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(qzeros_b_ptr),
+        ctypes.c_void_p(scales_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(x_rows),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_packed_a),
+        ctypes.c_int64(out_packed_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(krot),
         ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )
@@ -734,6 +892,31 @@ def _check_pack8_common(in_features: int, group_size: int, threads: int) -> None
         raise ValueError("group_size must be a multiple of 8")
     if threads not in _ALLOWED_THREADS:
         raise ValueError("threads must be one of 64 or 128")
+
+
+def _check_selected_dual_rotate_shape(
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    num_experts: int,
+    group_size: int,
+    krot: int,
+    threads: int,
+) -> None:
+    _check_selected_dual_shape(
+        x_rows,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        num_experts,
+        group_size,
+        threads,
+    )
+    if krot < 0:
+        raise ValueError("krot must be non-negative")
 
 def _check_selected_dual_shape(
     x_rows: int,

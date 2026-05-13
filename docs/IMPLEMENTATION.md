@@ -29,7 +29,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
 - [x] Port PARO RMSNorm out-kernels (`paro_rmsnorm_out`, `paro_add_rmsnorm_out`).
 - [ ] Port MoE c=1 decode vertical slice (router, selected pack8 GEMV, fused activation/down-rotation, W8A16 shared expert, weighted shared-gate residual combine).
   - [x] Router/shared-gate BF16 hidden/weight raw-pointer path (`qwen35_router_topk_shared_out`).
-  - [x] Selected gate/up and down pack8 BF16 raw-pointer wrappers (`gemv_awq_selected_dual_pack8_*`, `gemv_awq_selected_pack8_*`); fused rotate-out variant still pending.
+  - [x] Selected gate/up and down pack8 BF16 raw-pointer wrappers (`gemv_awq_selected_dual_pack8_*`, `gemv_awq_selected_pack8_*`) plus fused rotate→selected dual GEMV (`gemv_awq_selected_dual_pack8_strided_rotate_out`).
   - [x] Fused SiLU/down-rotation and fallback BF16 raw-pointer wrappers (`silu_mul_dual_rotate_out`, `silu_mul_dual_out`, `silu_mul_pair_rotate_out`).
   - [x] Weighted selected/shared-gate/residual combine BF16 raw-pointer wrappers (`weighted_sum_shared_gate_combine_residual_out`, `weighted_sum_out`, `shared_gate_combine*`).
   - [x] W8A16 linear BF16/F32 raw-pointer kernels used by shared expert and lm-head (`w8a16_linear*`) plus composite W8A16 shared-expert smoke.
