@@ -1462,3 +1462,71 @@ Results:
 
 - This does not port the selected-dual GEMV fused rotate-out variant; the default c=1 path is now covered by selected GEMV followed by fused SiLU/down-rotation.
 - Next MoE c=1 dependencies: W8A16 shared expert and weighted shared-gate residual combine.
+
+---
+
+## 2026-05-13 — Port PARO weighted/shared-gate combine kernels
+
+### Scope
+
+- Ported c=1 combine kernels from `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` at `nano-vllm-amd@59195ed`:
+  - `weighted_sum_out_kernel`
+  - `weighted_sum_shared_gate_combine_residual_out_kernel`
+  - `shared_gate_combine_out_kernel`
+  - `shared_gate_combine_residual_out_kernel`
+- Added `hipengine/kernels/hip_gfx1100/fused/paro_combine.hip` with BF16 value/output and FP32 weight/gate-logit C ABI wrappers:
+  - `hipengine_weighted_sum_out_bf16_f32w`
+  - `hipengine_weighted_sum_shared_gate_combine_residual_out_bf16_f32w`
+  - `hipengine_shared_gate_combine_out_bf16`
+  - `hipengine_shared_gate_combine_residual_out_bf16`
+- Added ctypes wrappers and BF16/`w4_paro` registry keys for weighted sum, fused weighted shared-gate residual, and shared-gate fallback combine layers.
+- Added `scripts/smoke.py --mode paro-combine-hip`, with a deterministic BF16 CPU oracle for weighted sum, fused weighted/shared/residual combine, and shared-gate fallback kernels.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md` for the weighted combine slice.
+
+### Correctness / preservation / profiler gate
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+python3 scripts/smoke.py --mode smoke-add-plan
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.fused import build_paro_combine
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+artifact = build_paro_combine(load=False, compiler_version=version)
+print(artifact.output_path)
+PY
+python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-paro-combine-trace -- \
+  python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `44 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Source-body preservation check found the current parent combine block verbatim in `fused/paro_combine.hip`: 71 lines.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/paro_combine-880f59d30e9f6d27/paro_combine.so`.
+- Combine smoke is bit-exact:
+  - `weighted_mismatch=0`, `weighted_max_abs=0.0`
+  - `fused_mismatch=0`, `fused_max_abs=0.0`
+  - `shared_mismatch=0`, `shared_max_abs=0.0`
+  - `shared_residual_mismatch=0`, `shared_residual_max_abs=0.0`
+- `rocprofv3` trace (raw CSV not committed): `/tmp/hipengine-paro-combine-trace/epyc/3003790_kernel_trace.csv`.
+- Target kernel rows:
+  - `weighted_sum_out_kernel<unsigned short, float>`: computed `DurationNs=3160`, `VGPR_Count=8`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`.
+  - `weighted_sum_shared_gate_combine_residual_out_kernel<unsigned short, float>`: computed `DurationNs=3120`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`.
+  - `shared_gate_combine_out_kernel<unsigned short>`: computed `DurationNs=3160`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`.
+  - `shared_gate_combine_residual_out_kernel<unsigned short>`: computed `DurationNs=2400`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`.
+
+### Caveat / next
+
+- The scalar-weight fallback template instantiations are not wrapped yet; current OPTIMAL c=1 path uses FP32 router/routing weights and FP32 gate logits.
+- Remaining MoE c=1 dependency before this vertical slice can execute end-to-end is W8A16 shared expert (gate/up/down/shared/lm-head family), plus the higher-level model/weight-loader plumbing.

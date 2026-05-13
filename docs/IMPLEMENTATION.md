@@ -31,6 +31,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Router/shared-gate BF16 hidden/weight raw-pointer path (`qwen35_router_topk_shared_out`).
   - [x] Selected gate/up and down pack8 BF16 raw-pointer wrappers (`gemv_awq_selected_dual_pack8_*`, `gemv_awq_selected_pack8_*`); fused rotate-out variant still pending.
   - [x] Fused SiLU/down-rotation and fallback BF16 raw-pointer wrappers (`silu_mul_dual_rotate_out`, `silu_mul_dual_out`, `silu_mul_pair_rotate_out`).
+  - [x] Weighted selected/shared-gate/residual combine BF16 raw-pointer wrappers (`weighted_sum_shared_gate_combine_residual_out`, `weighted_sum_out`, `shared_gate_combine*`).
 - [ ] Port MoE prefill compact-WMMA slice (lane grouping/gather, compact tile map, compact WMMA, weighted lanes, GEMV fallback).
 - [ ] Port full-inference dependencies outside MoE (w4_paro loader/layout, Qwen3.5 model plugin, non-MoE projections, linear attention/GDN, full attention/KV, W8A16 lm_head, graph replay).
 - [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.

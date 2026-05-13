@@ -52,6 +52,7 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `a
 | `router_logits`, `router_select`, `router_topk_shared` variant `out` | `bf16`, `fp32` select, `w4_paro` shared route | `hipengine/kernels/hip_gfx1100/moe/router.hip` | `qwen35_router_logits_bf16(...)`, `qwen35_router_select(...)`, `qwen35_router_topk_shared_out_bf16(...)` | `python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16` → `logits_max_abs=0.0`, `routing_max_abs=1.49e-08`, `selected_match=True`; `rocprofv3` shows `qwen35_router_logits_kernel` (`DurationNs=3520`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`) and `qwen35_router_select_kernel` (`DurationNs=5920`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=512`) on W7900 |
 | `selected_dual_pack8_gemv`, `selected_pack8_gemv` variants `strided`, `transposed` | `w4_paro` with BF16 activations/scales | `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip` | `gemv_awq_selected_dual_pack8_*_bf16(...)`, `gemv_awq_selected_pack8_*_bf16(...)` | `python3 scripts/smoke.py --mode paro-selected-gemv-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact dual/single, strided/transposed (`dual_mismatch=0/0`, `single_mismatch=0/0`); `rocprofv3` shows both selected GEMV kernels with `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64` on W7900 |
 | `silu_mul_dual`, `silu_mul_dual_rotate`, `silu_mul_pair_rotate` variant `out` | `bf16`, `w4_paro` | `hipengine/kernels/hip_gfx1100/fused/paro_silu.hip` | `silu_mul_dual_out_bf16(...)`, `silu_mul_dual_rotate_out_bf16(...)`, `silu_mul_pair_rotate_out_bf16(...)` | `python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact dual SiLU and dual/pair rotate (`*_mismatch=0`); `rocprofv3` shows all three kernels with `Scratch_Size=0` on W7900 |
+| `weighted_sum`, `weighted_sum+shared_gate+residual`, `shared_gate_combine`, `shared_gate_combine+residual` variant `out` | `bf16`, `w4_paro` with FP32 weights/gate logits | `hipengine/kernels/hip_gfx1100/fused/paro_combine.hip` | `weighted_sum_out_bf16_f32w(...)`, `weighted_sum_shared_gate_combine_residual_out_bf16_f32w(...)`, `shared_gate_combine*_bf16(...)` | `python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact weighted/shared/residual combine; `rocprofv3` shows all four kernels with `Scratch_Size=0` on W7900 |
 
 `smoke_add` is a build/runtime smoke, not a model-layer primitive. It proves `hipengine.core.build`, lazy `libamdhip64.so`, device allocation/copy, launch, synchronize, and copyback without torch.
 
@@ -60,6 +61,8 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `a
 `paro_awq_gemv` ports the selected-expert pack8 GEMV bodies used by the current OPTIMAL MoE c=1 route for gate/up and down projections. The fused rotation variant is still missing; the landed wrappers cover strided and transposed qweight layouts for BF16 activation/scale buffers.
 
 `paro_silu` ports the selected-expert activation and down-rotation stage, including the fused `silu_mul_dual_rotate_out_kernel` path used by the parent default and the unfused/separate-gate fallback kernels.
+
+`paro_combine` ports the c=1 selected-weighted/shared-gate/residual combine kernels. The current HIPENGINE wrappers cover the parent default FP32 router-weight/gate-logit path; scalar-weight variants can be added if a future route needs them.
 
 ## Source-lineage drift check
 
@@ -324,7 +327,7 @@ The checklist below is the active port map for reproducing the parent compact-WM
 | Activation + down rotation | `silu_mul_dual_rotate_out_kernel` (fallback `silu_mul_dual_out_kernel` + rotate) | **Landed for BF16 raw-pointer fused and fallback wrappers** | Default `NANOVLLM_PARO_MOE_SILU_DOWN_ROTATE_FUSED=1`; fused dual rotate plus dual/pair fallback kernels are registered. |
 | Selected down GEMV | `gemv_awq_selected_pack8_kernel` / strided wrapper | **Landed for BF16 raw-pointer strided/transposed pack8 wrappers** | Used for selected down projection; small-K specialization applies where safe. |
 | Shared expert | W8A16 shared gate/up/down (`w8a16_*shared*`, `w8a16_single_*`, `w8a16_linear*`) | Missing | Required by `NANOVLLM_PARO_SHARED_EXPERT_W8A16=1`; also needed for final `lm_head` route. |
-| Weighted combine + residual | `weighted_sum_shared_gate_combine_residual_out_kernel`; fallback `weighted_sum_out_kernel`, `shared_gate_combine*` | Missing | c=1 decode promoted path fuses selected sum, shared sigmoid/gate combine, and residual add. |
+| Weighted combine + residual | `weighted_sum_shared_gate_combine_residual_out_kernel`; fallback `weighted_sum_out_kernel`, `shared_gate_combine*` | **Landed for BF16 values with FP32 weights/gate logits** | c=1 decode promoted path fuses selected sum, shared sigmoid/gate combine, and residual add; scalar-weight fallback remains unported. |
 
 #### MoE prefill compact-WMMA path
 

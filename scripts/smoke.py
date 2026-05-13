@@ -34,6 +34,7 @@ def main() -> int:
             "qwen35-router-hip",
             "paro-selected-gemv-hip",
             "paro-silu-hip",
+            "paro-combine-hip",
         ),
         default="registry",
     )
@@ -103,7 +104,14 @@ def main() -> int:
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
-    return paro_silu_hip_smoke(
+    if args.mode == "paro-silu-hip":
+        return paro_silu_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    return paro_combine_hip_smoke(
         args.rows,
         args.hidden_size,
         compiler_version=compiler_version,
@@ -532,6 +540,215 @@ def qwen35_router_hip_smoke(
     print("selected0=", selected[0].tolist())
     print("routing0=", routing[0].tolist())
     return 0 if selected_match and logits_max_abs <= 2e-5 and routing_max_abs <= 2e-5 else 1
+
+
+def paro_combine_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.fused import (
+        build_paro_combine,
+        shared_gate_combine_out_bf16,
+        shared_gate_combine_residual_out_bf16,
+        weighted_sum_out_bf16_f32w,
+        weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
+    )
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 1:
+        raise ValueError("--hidden-size must be >= 1")
+
+    features = hidden_size
+    threads = 256
+    values = np.empty((rows, features), dtype=np.float32)
+    for row in range(rows):
+        values[row] = np.asarray(
+            [[-0.5, -0.25, 0.25, 0.5][(row + col) % 4] for col in range(features)],
+            dtype=np.float32,
+        )
+    weights = np.asarray([0.125, 0.25, -0.5, 1.0] * ((rows + 3) // 4), dtype=np.float32)[:rows]
+    expert = np.asarray([[0.125, -0.25, 0.5, -1.0] * ((features + 3) // 4)], dtype=np.float32)[:, :features]
+    shared = np.asarray([[0.5, -0.5, 0.25, -0.25] * ((features + 3) // 4)], dtype=np.float32)[:, :features]
+    residual = np.asarray([[1.0, -0.75, 0.375, -0.125] * ((features + 3) // 4)], dtype=np.float32)[:, :features]
+    gate_logits = np.asarray([0.0], dtype=np.float32)
+
+    values_bits = _float32_to_bf16_bits(values)
+    expert_bits = _float32_to_bf16_bits(expert)
+    shared_bits = _float32_to_bf16_bits(shared)
+    residual_bits = _float32_to_bf16_bits(residual)
+    weighted_bits = np.empty((1, features), dtype=np.uint16)
+    weighted_shared_residual_bits = np.empty_like(weighted_bits)
+    shared_combine_bits = np.empty_like(weighted_bits)
+    shared_residual_bits = np.empty_like(weighted_bits)
+
+    values_bf32 = _bf16_bits_to_float32(values_bits)
+    expert_bf32 = _bf16_bits_to_float32(expert_bits)
+    shared_bf32 = _bf16_bits_to_float32(shared_bits)
+    residual_bf32 = _bf16_bits_to_float32(residual_bits)
+    weighted_acc = np.sum(values_bf32 * weights.reshape(rows, 1), axis=0, dtype=np.float32).reshape(1, features)
+    expected_weighted_bits = _float32_to_bf16_bits(weighted_acc)
+    expected_weighted = _bf16_bits_to_float32(expected_weighted_bits)
+    gate = np.float32(0.5)
+    expected_shared_combine_bits = _float32_to_bf16_bits(expert_bf32 + gate * shared_bf32)
+    expected_shared_residual_bits = _float32_to_bf16_bits(
+        residual_bf32 + expert_bf32 + gate * shared_bf32
+    )
+    expected_weighted_shared_residual_bits = _float32_to_bf16_bits(
+        residual_bf32 + expected_weighted + gate * shared_bf32
+    )
+
+    runtime = get_hip_runtime()
+    library = build_paro_combine(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        values_dev = dev(values_bits)
+        weights_dev = dev(weights)
+        expert_dev = dev(expert_bits)
+        shared_dev = dev(shared_bits)
+        residual_dev = dev(residual_bits)
+        gate_logits_dev = dev(gate_logits)
+        weighted_dev = out_dev(weighted_bits)
+        weighted_shared_residual_dev = out_dev(weighted_shared_residual_bits)
+        shared_combine_dev = out_dev(shared_combine_bits)
+        shared_residual_dev = out_dev(shared_residual_bits)
+        weighted_sum_out_bf16_f32w(
+            values_dev.ptr,
+            weights_dev.ptr,
+            weighted_dev.ptr,
+            rows,
+            features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
+            values_dev.ptr,
+            weights_dev.ptr,
+            shared_dev.ptr,
+            gate_logits_dev.ptr,
+            residual_dev.ptr,
+            weighted_shared_residual_dev.ptr,
+            rows,
+            features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        shared_gate_combine_out_bf16(
+            expert_dev.ptr,
+            shared_dev.ptr,
+            gate_logits_dev.ptr,
+            shared_combine_dev.ptr,
+            features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        shared_gate_combine_residual_out_bf16(
+            expert_dev.ptr,
+            shared_dev.ptr,
+            gate_logits_dev.ptr,
+            residual_dev.ptr,
+            shared_residual_dev.ptr,
+            features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(weighted_bits), weighted_dev, runtime=runtime)
+        copy_device_to_host(
+            host_array_ptr(weighted_shared_residual_bits),
+            weighted_shared_residual_dev,
+            runtime=runtime,
+        )
+        copy_device_to_host(host_array_ptr(shared_combine_bits), shared_combine_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(shared_residual_bits), shared_residual_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    weighted_mismatch = int(np.count_nonzero(weighted_bits != expected_weighted_bits))
+    fused_mismatch = int(
+        np.count_nonzero(weighted_shared_residual_bits != expected_weighted_shared_residual_bits)
+    )
+    shared_mismatch = int(np.count_nonzero(shared_combine_bits != expected_shared_combine_bits))
+    shared_residual_mismatch = int(
+        np.count_nonzero(shared_residual_bits != expected_shared_residual_bits)
+    )
+    weighted_max_abs = float(
+        np.max(np.abs(_bf16_bits_to_float32(weighted_bits) - _bf16_bits_to_float32(expected_weighted_bits)))
+    )
+    fused_max_abs = float(
+        np.max(
+            np.abs(
+                _bf16_bits_to_float32(weighted_shared_residual_bits)
+                - _bf16_bits_to_float32(expected_weighted_shared_residual_bits)
+            )
+        )
+    )
+    shared_max_abs = float(
+        np.max(
+            np.abs(
+                _bf16_bits_to_float32(shared_combine_bits)
+                - _bf16_bits_to_float32(expected_shared_combine_bits)
+            )
+        )
+    )
+    shared_residual_max_abs = float(
+        np.max(
+            np.abs(
+                _bf16_bits_to_float32(shared_residual_bits)
+                - _bf16_bits_to_float32(expected_shared_residual_bits)
+            )
+        )
+    )
+    print(
+        f"rows={rows} hidden_size={hidden_size} "
+        f"weighted_mismatch={weighted_mismatch} weighted_max_abs={weighted_max_abs} "
+        f"fused_mismatch={fused_mismatch} fused_max_abs={fused_max_abs} "
+        f"shared_mismatch={shared_mismatch} shared_max_abs={shared_max_abs} "
+        f"shared_residual_mismatch={shared_residual_mismatch} "
+        f"shared_residual_max_abs={shared_residual_max_abs}"
+    )
+    print("weighted=", _bf16_bits_to_float32(weighted_bits)[0, : min(8, features)].tolist())
+    print("fused=", _bf16_bits_to_float32(weighted_shared_residual_bits)[0, : min(8, features)].tolist())
+    return 0 if (
+        weighted_mismatch == 0
+        and fused_mismatch == 0
+        and shared_mismatch == 0
+        and shared_residual_mismatch == 0
+    ) else 1
 
 
 def paro_silu_hip_smoke(
