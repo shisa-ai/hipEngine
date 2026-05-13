@@ -12,6 +12,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.loading import (
     dtype_from_safetensors,
+    load_host_array_to_device,
     load_tensor_to_device,
     load_tensors_to_device,
     load_weight_index,
@@ -95,6 +96,20 @@ def test_load_tensors_to_device_frees_partial_allocations_on_failure(tmp_path) -
 
     assert runtime.freed == [0x1000]
     assert runtime.buffers == {}
+
+
+def test_load_host_array_to_device_copies_prepared_array() -> None:
+    array = np.arange(6, dtype=np.int16).reshape(2, 3)
+    runtime = FakeRuntime()
+
+    allocation = load_host_array_to_device("prepared", array, runtime=runtime)
+
+    assert allocation.name == "prepared"
+    assert allocation.source.name == "prepared"
+    assert allocation.source.dtype == "I16"
+    assert allocation.tensor.dtype is DType.INT16
+    assert allocation.tensor.shape == (2, 3)
+    assert bytes(runtime.buffers[allocation.buffer.ptr]) == array.tobytes()
 
 
 def test_load_tensors_to_device_returns_tensor_map(tmp_path) -> None:

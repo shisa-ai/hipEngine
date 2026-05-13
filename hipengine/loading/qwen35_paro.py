@@ -8,7 +8,12 @@ from typing import Any
 from hipengine.core.device import Device
 from hipengine.core.hip import HipRuntime
 from hipengine.core.tensor import Tensor
-from hipengine.loading.materialize import DeviceTensorAllocation, DeviceWeightMap, load_tensor_info_to_device
+from hipengine.loading.materialize import (
+    DeviceTensorAllocation,
+    DeviceWeightMap,
+    load_host_array_to_device,
+    load_tensor_info_to_device,
+)
 from hipengine.loading.safetensors import MissingTensorError, TensorInfo, WeightIndex
 
 ROOT_PREFIXES = ("model.language_model.", "language_model.", "model.")
@@ -145,6 +150,22 @@ def required_full_attention_moe_c1_tensor_names(*, layer_id: int, num_experts: i
     )
 
 
+def prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    prefix = f"layers.{layer_id}.mlp"
+    experts = f"{prefix}.experts"
+    names = [f"{prefix}.router_shared_gate.weight"]
+    for proj in ("gate", "up", "down"):
+        names.extend(
+            (
+                f"{experts}.stacked_{proj}_qweight",
+                f"{experts}.stacked_{proj}_qweight_pack8_decode",
+                f"{experts}.stacked_{proj}_qzeros",
+                f"{experts}.stacked_{proj}_scales",
+            )
+        )
+    return tuple(names)
+
+
 def required_moe_c1_tensor_names(*, layer_id: int, num_experts: int) -> tuple[str, ...]:
     prefix = f"layers.{layer_id}.mlp"
     names = [
@@ -272,6 +293,117 @@ def materialize_qwen35_paro_full_attention_moe_c1_layer(
         num_experts=validation.config.num_experts,
     )
     return _materialize_normalized_layer(index, validation.config, layer_id, required, device=device, runtime=runtime)
+
+
+def prepare_qwen35_paro_moe_c1_host_tensors(index: WeightIndex, *, layer_id: int = 0) -> dict[str, object]:
+    """Prepare parent-compatible MoE c=1 host layouts without torch.
+
+    This mirrors the optimized parent stack's load-time preparation: router and
+    shared-gate rows are concatenated, per-expert gate/up/down tensors are
+    stacked on expert dimension 0, and decode pack8 qweights are transposed on
+    the last two dimensions.
+    """
+
+    config = qwen35_paro_config_from_hf(index.config)
+    normalized = _normalized_tensor_map(index)
+    prefix = f"layers.{layer_id}.mlp"
+    experts = f"{prefix}.experts"
+    prepared: dict[str, object] = {}
+    gate = _read_normalized_numpy_tensor(normalized, f"{prefix}.gate.weight")
+    shared_gate = _read_normalized_numpy_tensor(normalized, f"{prefix}.shared_expert_gate.weight")
+    prepared[f"{prefix}.router_shared_gate.weight"] = _concat_rows((gate, shared_gate))
+    for proj, hf_proj in (("gate", "gate_proj"), ("up", "up_proj"), ("down", "down_proj")):
+        qweight = _stack_expert_refs(normalized, layer_id=layer_id, num_experts=config.num_experts, proj=hf_proj, suffix="qweight")
+        prepared[f"{experts}.stacked_{proj}_qweight"] = qweight
+        prepared[f"{experts}.stacked_{proj}_qweight_pack8_decode"] = _transpose_decode_qweight(qweight)
+        prepared[f"{experts}.stacked_{proj}_qzeros"] = _stack_expert_refs(
+            normalized,
+            layer_id=layer_id,
+            num_experts=config.num_experts,
+            proj=hf_proj,
+            suffix="qzeros",
+        )
+        prepared[f"{experts}.stacked_{proj}_scales"] = _stack_expert_refs(
+            normalized,
+            layer_id=layer_id,
+            num_experts=config.num_experts,
+            proj=hf_proj,
+            suffix="scales",
+        )
+    return prepared
+
+
+def materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    validate: bool = True,
+) -> Qwen35ParoLayerDeviceWeights:
+    validation = validate_qwen35_paro_full_attention_moe_c1_layout(
+        index,
+        layer_id=layer_id,
+        raise_on_error=validate,
+    )
+    if not validation.passed:
+        validation.raise_for_errors()
+    required = required_full_attention_moe_c1_tensor_names(
+        layer_id=layer_id,
+        num_experts=validation.config.num_experts,
+    )
+    base = _materialize_normalized_layer(index, validation.config, layer_id, required, device=device, runtime=runtime)
+    allocations = dict(base.weights.tensors)
+    try:
+        for name, array in prepare_qwen35_paro_moe_c1_host_tensors(index, layer_id=layer_id).items():
+            allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
+    except Exception:
+        DeviceWeightMap(allocations).free(runtime=runtime)
+        raise
+    return Qwen35ParoLayerDeviceWeights(
+        config=validation.config,
+        layer_id=layer_id,
+        weights=DeviceWeightMap(allocations),
+    )
+
+
+def _read_normalized_numpy_tensor(tensors: dict[str, TensorInfo], name: str):
+    from safetensors import safe_open
+
+    info = tensors[name]
+    with safe_open(str(info.shard_path), framework="numpy") as handle:
+        return handle.get_tensor(info.name)
+
+
+def _stack_expert_refs(
+    tensors: dict[str, TensorInfo],
+    *,
+    layer_id: int,
+    num_experts: int,
+    proj: str,
+    suffix: str,
+):
+    import numpy as np
+
+    arrays = [
+        _read_normalized_numpy_tensor(tensors, f"layers.{layer_id}.mlp.experts.{expert}.{proj}.{suffix}")
+        for expert in range(num_experts)
+    ]
+    return np.ascontiguousarray(np.stack(arrays, axis=0))
+
+
+def _concat_rows(arrays: tuple[object, ...]):
+    import numpy as np
+
+    return np.ascontiguousarray(np.concatenate(arrays, axis=0))
+
+
+def _transpose_decode_qweight(array: object):
+    import numpy as np
+
+    if len(getattr(array, "shape")) < 3:
+        raise ValueError("stacked qweight must have expert, input, and packed-output dimensions")
+    return np.ascontiguousarray(np.swapaxes(array, 1, 2))
 
 
 def _materialize_normalized_layer(

@@ -10,9 +10,12 @@ from safetensors.numpy import save_file
 from hipengine.loading import (
     MissingTensorError,
     load_weight_index,
+    materialize_qwen35_paro_full_attention_moe_c1_prepared_layer,
     materialize_qwen35_paro_full_attention_moe_c1_layer,
     materialize_qwen35_paro_moe_c1_layer,
     normalize_qwen35_weight_name,
+    prepare_qwen35_paro_moe_c1_host_tensors,
+    prepared_moe_c1_tensor_names,
     qwen35_paro_config_from_hf,
     required_full_attention_c1_tensor_names,
     required_full_attention_moe_c1_tensor_names,
@@ -221,6 +224,51 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_layer(tmp_path) -> None:
     assert bytes(runtime.buffers[layer.allocation(o_proj_name).buffer.ptr]) == tensors[o_proj_prefixed].tobytes()
     layer.free(runtime=runtime)
     assert len(runtime.freed) == len(required_full_attention_moe_c1_tensor_names(layer_id=0, num_experts=2))
+
+
+def test_prepare_qwen35_paro_moe_c1_host_tensors_matches_parent_stacking(tmp_path) -> None:
+    _write_config(tmp_path)
+    tensors = {**_valid_attention_tensors(), **_valid_tensors()}
+    tensors["model.layers.0.mlp.gate.weight"] = np.arange(8, dtype=np.float16).reshape(2, 4)
+    tensors["model.layers.0.mlp.shared_expert_gate.weight"] = np.arange(4, dtype=np.float16).reshape(1, 4) + 100
+    for expert in range(2):
+        base = f"model.layers.0.mlp.experts.{expert}.gate_proj.qweight"
+        tensors[base] = (np.arange(4, dtype=np.int32).reshape(4, 1) + expert * 10)
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+
+    prepared = prepare_qwen35_paro_moe_c1_host_tensors(index)
+
+    assert set(prepared_moe_c1_tensor_names(layer_id=0)) == set(prepared)
+    combined = prepared["layers.0.mlp.router_shared_gate.weight"]
+    assert combined.shape == (3, 4)
+    np.testing.assert_array_equal(combined[:2], tensors["model.layers.0.mlp.gate.weight"])
+    np.testing.assert_array_equal(combined[2:], tensors["model.layers.0.mlp.shared_expert_gate.weight"])
+    stacked = prepared["layers.0.mlp.experts.stacked_gate_qweight"]
+    transposed = prepared["layers.0.mlp.experts.stacked_gate_qweight_pack8_decode"]
+    assert stacked.shape == (2, 4, 1)
+    assert transposed.shape == (2, 1, 4)
+    np.testing.assert_array_equal(transposed, np.swapaxes(stacked, 1, 2))
+
+
+def test_materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(tmp_path) -> None:
+    _write_config(tmp_path)
+    tensors = {**_valid_attention_tensors(), **_valid_tensors()}
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+    runtime = FakeRuntime()
+
+    layer = materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(index, runtime=runtime)
+
+    prepared_name = "layers.0.mlp.experts.stacked_gate_qweight_pack8_decode"
+    assert layer.tensor(prepared_name).shape == (2, 1, 4)
+    assert layer.tensor(prepared_name).dtype is DType.INT32
+    assert layer.tensor("layers.0.mlp.router_shared_gate.weight").shape == (3, 4)
+    expected_count = len(required_full_attention_moe_c1_tensor_names(layer_id=0, num_experts=2)) + len(
+        prepared_moe_c1_tensor_names(layer_id=0)
+    )
+    layer.free(runtime=runtime)
+    assert len(runtime.freed) == expected_count
 
 
 def test_validate_qwen35_paro_moe_c1_layout_reports_missing_and_shapes(tmp_path) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable, Mapping
 
 from safetensors import safe_open
@@ -23,6 +24,15 @@ _SAFETENSORS_DTYPE_TO_DTYPE = {
     "F16": DType.FP16,
     "BF16": DType.BF16,
     "F32": DType.FP32,
+}
+_NUMPY_DTYPE_TO_SAFETENSORS = {
+    "bool": "BOOL",
+    "int8": "I8",
+    "int16": "I16",
+    "int32": "I32",
+    "int64": "I64",
+    "float16": "F16",
+    "float32": "F32",
 }
 
 
@@ -118,6 +128,40 @@ def load_tensor_info_to_device(
     return DeviceTensorAllocation(name=info.name, source=info, buffer=buffer, tensor=tensor)
 
 
+def load_host_array_to_device(
+    name: str,
+    array: object,
+    *,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+) -> DeviceTensorAllocation:
+    """Materialize an already prepared contiguous host array to device memory."""
+
+    if not name:
+        raise ValueError("tensor name must be non-empty")
+    if not _is_contiguous(array):
+        import numpy as np
+
+        array = np.ascontiguousarray(array)
+    dtype_name = _numpy_dtype_name(array)
+    safetensors_dtype = _NUMPY_DTYPE_TO_SAFETENSORS.get(dtype_name)
+    if safetensors_dtype is None:
+        valid = ", ".join(sorted(_NUMPY_DTYPE_TO_SAFETENSORS))
+        raise ValueError(f"unsupported host array dtype {dtype_name!r}; expected one of: {valid}")
+    dtype = dtype_from_safetensors(safetensors_dtype)
+    shape = tuple(int(dim) for dim in getattr(array, "shape"))
+    nbytes = int(getattr(array, "nbytes"))
+    buffer = malloc(nbytes, runtime=runtime)
+    try:
+        copy_host_to_device(buffer, host_array_ptr(array), nbytes, runtime=runtime)
+    except Exception:
+        free(buffer, runtime=runtime)
+        raise
+    source = TensorInfo(name=name, shard_path=index_virtual_path(name), dtype=safetensors_dtype, shape=shape)
+    tensor = Tensor.from_handle(buffer.ptr, shape, dtype, device or Device("hip", 0))
+    return DeviceTensorAllocation(name=name, source=source, buffer=buffer, tensor=tensor)
+
+
 def load_tensors_to_device(
     index: WeightIndex,
     names: Iterable[str],
@@ -135,9 +179,21 @@ def load_tensors_to_device(
     return DeviceWeightMap(allocations)
 
 
+def index_virtual_path(name: str) -> Path:
+    return Path(f"<prepared:{name}>")
+
+
 def _read_numpy_tensor(info: TensorInfo):
     with safe_open(str(info.shard_path), framework="numpy") as handle:
         return handle.get_tensor(info.name)
+
+
+def _numpy_dtype_name(array: object) -> str:
+    dtype = getattr(array, "dtype", None)
+    name = getattr(dtype, "name", None)
+    if name is None:
+        raise TypeError("host array does not expose dtype.name")
+    return str(name)
 
 
 def _is_contiguous(array: object) -> bool:

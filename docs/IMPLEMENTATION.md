@@ -42,6 +42,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add torch-free safetensors host-to-device materialization helpers with owned raw-pointer tensor handles.
   - [x] Add Qwen3.5/PARO MoE c=1 normalized device-weight materialization map.
   - [x] Add Qwen3.5/PARO full-attention+MoE c=1 normalized device-weight materialization map.
+  - [x] Add Qwen3.5/PARO parent-compatible prepared MoE host/device layouts (router+shared gate, stacked expert pack8 tensors).
   - [x] Add torch-free named runtime workspace allocator for scratch/device tensors.
   - [x] Add minimal Qwen3.5/PARO one-token decode-state scratch scaffold.
   - [x] Wire decode-state full-attention KV append and GQA BF16-gated attention wrapper calls.

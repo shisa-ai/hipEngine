@@ -2740,3 +2740,38 @@ Results:
 ### Next
 
 - Wire the MoE c=1 calls into `Qwen35ParoDecodeState`: router, selected gate/up, selected down, W8A16 shared branch, and weighted/shared/residual combine using normalized materialized weights.
+
+---
+
+## 2026-05-14 — Add Qwen3.5/PARO prepared MoE c=1 device layouts
+
+### Scope
+
+- Added torch-free host preparation for the parent optimized MoE c=1 layouts:
+  - `prepare_qwen35_paro_moe_c1_host_tensors(...)`
+  - `prepared_moe_c1_tensor_names(...)`
+  - `materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(...)`
+- Prepared tensors mirror the parent stack's load-time transformations:
+  - `layers.N.mlp.router_shared_gate.weight` concatenates router expert rows with the shared-gate row.
+  - `stacked_{gate,up,down}_{qweight,qzeros,scales}` stacks per-expert tensors on expert dimension 0.
+  - `stacked_{gate,up,down}_qweight_pack8_decode` swaps qweight dimensions 1 and 2 for decode pack8 kernels.
+- Added `load_host_array_to_device(...)` for byte-preserving materialization of prepared NumPy arrays into owned raw-pointer tensor allocations.
+- Added CPU-safe tests for prepared array materialization, router/shared-gate concatenation, expert qweight stacking/transpose, prepared device tensor shapes/dtypes, and cleanup.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_loading_materialize.py tests/test_qwen35_paro_layout.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Targeted loader tests: `15 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Wire `Qwen35ParoDecodeState` MoE c=1 methods against the prepared names: combined router/shared-gate, selected dual gate/up GEMV, selected down GEMV, and weighted/shared/residual combine.
