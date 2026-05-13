@@ -1,6 +1,7 @@
 """Quant plugins and registry."""
 
 from hipengine.quant.base import QuantPlugin
+from hipengine.quant.bf16 import BF16, BF16Quant
 from hipengine.quant.fp16 import FP16, FP16Quant
 from hipengine.quant.registry import (
     DuplicateQuantError,
@@ -11,6 +12,8 @@ from hipengine.quant.registry import (
 )
 
 __all__ = [
+    "BF16",
+    "BF16Quant",
     "DuplicateQuantError",
     "FP16",
     "FP16Quant",

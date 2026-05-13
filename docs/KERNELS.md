@@ -46,8 +46,12 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `a
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
 | `smoke_add` | `fp16` registry key, FP32 buffers | `hipengine/kernels/hip_gfx1100/smoke/smoke_add.hip` | `smoke_add_f32(...)` | `python3 scripts/smoke.py --mode smoke-add-hip --n 1024` → `max_abs=0.0` on W7900 |
+| `rmsnorm` | `bf16` | `hipengine/kernels/hip_gfx1100/norm/rmsnorm.hip` | `qwen35_rmsnorm_bf16(...)` | `python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16` → `max_abs=0.0`, `bit_mismatch=0`; `rocprofv3` shows `qwen35_rmsnorm_kernel`, computed `DurationNs=6560`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0` on W7900 |
+| `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` | `bf16` | same | `qwen35_add_rmsnorm_bf16(...)`, `qwen35_add_rmsnorm_f32_bf16(...)`, `qwen35_head_rmsnorm_f32_bf16(...)` | Build/registration tests landed; launch wrappers are source-family peers of `qwen35_rmsnorm_kernel` and share the same `.so` |
 
 `smoke_add` is a build/runtime smoke, not a model-layer primitive. It proves `hipengine.core.build`, lazy `libamdhip64.so`, device allocation/copy, launch, synchronize, and copyback without torch.
+
+`qwen35_rmsnorm` is the first real model-layer HIP family port. It is BF16-bit (`uint16_t`) at the raw pointer ABI; Qwen weights store deltas and the kernel applies `1.0 + weight_delta`.
 
 ## Source-lineage drift check
 
@@ -79,7 +83,7 @@ If a file reports **DRIFT**, inspect the listed commits/diff and read the eviden
 
 The stable source-lineage port set at the current HIPENGINE catalog baseline is the committed `nano-vllm-amd` Qwen3.5/PARO kernel set: **95** kernels from `csrc/amd/qwen35_expert.hip` plus **25** PARO kernels from `nanovllm/native/qwen35/paroquant_kernels.py` = **120 Qwen/PARO kernels**, plus the separate `smoke_add` build smoke. HIPENGINE ports these by family; bodies are preserved byte-for-byte except for includes and raw-pointer host-wrapper retyping.
 
-### Atomic / primitive-oriented kernel families (**lineage green, not yet HIPENGINE-landed**)
+### Atomic / primitive-oriented kernel families (**source-lineage status; HIPENGINE-landed where noted**)
 
 - `wmma/wmma_i8_gemm.hip` (4):
   - `qwen35_wmma_i8_tile_kernel`
@@ -158,7 +162,7 @@ The stable source-lineage port set at the current HIPENGINE catalog baseline is 
   - `qwen35_gdn_prefill_recurrent_k2_kernel`
   - `qwen35_gdn_recurrent_rmsnorm_gate_kernel`
   - `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel`
-- `norm/rmsnorm.hip` Qwen primitive subset (4):
+- `norm/rmsnorm.hip` Qwen primitive subset (4) — **HIPENGINE landed for BF16 raw-pointer wrappers**:
   - `qwen35_rmsnorm_kernel`
   - `qwen35_add_rmsnorm_kernel`
   - `qwen35_add_rmsnorm_f32_kernel`

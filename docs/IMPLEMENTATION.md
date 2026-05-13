@@ -17,6 +17,7 @@ Active implementation checklist. Keep this file lightweight; durable architectur
 - [x] Run first HIP smoke kernel (`smoke_add`) on GPU after explicit clearance.
 - [x] Add source-lineage drift checker for `~/amd-gpu-tuning/nano-vllm-amd` port inputs.
 - [x] Resolve `rocprofv3` trace hang for Python/ctypes smoke before first real kernel port.
+- [x] Port first real gfx1100 model-layer family: Qwen3.5 BF16 `rmsnorm` raw-pointer wrappers.
 - [ ] Add minimal `scripts/smoke.py` path that exercises `LLM.generate()` once the engine loop exists.
 
 ## Notes

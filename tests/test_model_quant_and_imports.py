@@ -28,3 +28,11 @@ def test_builtin_fp16_quant_plugin_is_registered() -> None:
     assert plugin.weight_storage == "fp16"
     assert plugin.compute_dtype == "fp16"
     assert plugin.kernel_family == "fp16"
+
+
+def test_builtin_bf16_quant_plugin_is_registered() -> None:
+    plugin = resolve_quant("bf16")
+
+    assert plugin.weight_storage == "bf16"
+    assert plugin.compute_dtype == "bf16"
+    assert plugin.kernel_family == "bf16"

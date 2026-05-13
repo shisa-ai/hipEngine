@@ -954,3 +954,68 @@ Results:
 
 - Do not port code from this repo into HIPENGINE.
 - Optional future doc update: add it to `docs/PLAN.md` references only as a lightweight Rust host-shape / test-harness reference, not as a kernel or tiered offload source.
+
+---
+
+## 2026-05-13 — Port Qwen3.5 BF16 RMSNorm HIP family
+
+### Scope
+
+- Ported the first real model-layer gfx1100 kernel family into HIPENGINE: Qwen3.5 BF16 RMSNorm from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip`.
+- Source commit: `nano-vllm-amd@59195ed` (`gfx1100-qwen3.5`). The lineage checker reports drift vs baseline `22405a9`, but `git diff 22405a9..HEAD -- csrc/amd/qwen35_expert.hip` shows the RMSNorm region is not touched by the current compact-WMMA drift.
+
+### Files changed
+
+- Added `hipengine/kernels/hip_gfx1100/norm/rmsnorm.hip`:
+  - Preserved Qwen kernel bodies for `qwen35_rmsnorm_kernel`, `qwen35_add_rmsnorm_kernel`, `qwen35_add_rmsnorm_f32_kernel`, and `qwen35_head_rmsnorm_kernel`.
+  - Added HIPENGINE C ABI launch wrappers taking raw pointers, shapes, `eps`, and `hipStream_t`.
+- Added `hipengine/kernels/hip_gfx1100/norm/rmsnorm.py` and exported from `norm/__init__.py`:
+  - `plan_qwen35_rmsnorm_build`, `build_qwen35_rmsnorm`.
+  - Raw-pointer ctypes wrappers for all four kernels.
+  - Registry keys under `KernelKey("hip_gfx1100", <layer>, "bf16")` for `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, and `head_rmsnorm`.
+- Added `hipengine/quant/bf16.py` and registered a BF16 unquantized quant plugin.
+- Added `scripts/smoke.py --mode qwen35-rmsnorm-hip` for a deterministic BF16-bit GPU smoke.
+- Added `tests/test_qwen35_rmsnorm_plan.py` and updated quant/plugin tests.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md` with the landed family and smoke/profiler command.
+
+### Correctness / profiler gate
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 scripts/check_lineage.py --file '*qwen35_expert.hip' --diff stat --evidence-limit 3
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.norm import build_qwen35_rmsnorm
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+artifact = build_qwen35_rmsnorm(load=False, compiler_version=version)
+print('prebuilt', artifact.output_path)
+print('exists', artifact.output_path.exists())
+PY
+python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rm -rf /tmp/hipengine-qwen35-rmsnorm-trace
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-rmsnorm-trace -- \
+  python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+git diff --check
+```
+
+Results:
+
+- `python3 -m pytest -q`: `32 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- RMSNorm GPU smoke: `rows=2 hidden_size=16 max_abs=0.0 bit_mismatch=0`.
+- Kernel-body preservation check found all four source bodies verbatim in `rmsnorm.hip` (`31`, `36`, `82`, and `30` lines respectively).
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_rmsnorm-0d9c4c5794992635/qwen35_rmsnorm.so`.
+- `rocprofv3` trace (raw CSV not committed): `/tmp/hipengine-qwen35-rmsnorm-trace/epyc/2868072_kernel_trace.csv`.
+- Target kernel row:
+  - `(anonymous namespace)::qwen35_rmsnorm_kernel(unsigned short const*, unsigned short const*, unsigned short*, float, long)`
+  - computed `DurationNs=6560`
+  - `Grid_Size_X=512` (2 blocks × 256 threads), `Workgroup_Size_X=256`
+  - `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`
+- Lineage drift still noted for `csrc/amd/qwen35_expert.hip` at `6e2b19b`, but current diff hunks are compact-WMMA related, not RMSNorm.
