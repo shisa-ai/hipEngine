@@ -33,6 +33,7 @@ def main() -> int:
             "paro-rmsnorm-hip",
             "qwen35-router-hip",
             "paro-selected-gemv-hip",
+            "paro-silu-hip",
         ),
         default="registry",
     )
@@ -95,7 +96,14 @@ def main() -> int:
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
-    return paro_selected_gemv_hip_smoke(
+    if args.mode == "paro-selected-gemv-hip":
+        return paro_selected_gemv_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    return paro_silu_hip_smoke(
         args.rows,
         args.hidden_size,
         compiler_version=compiler_version,
@@ -524,6 +532,165 @@ def qwen35_router_hip_smoke(
     print("selected0=", selected[0].tolist())
     print("routing0=", routing[0].tolist())
     return 0 if selected_match and logits_max_abs <= 2e-5 and routing_max_abs <= 2e-5 else 1
+
+
+def paro_silu_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.fused import (
+        build_paro_silu,
+        silu_mul_dual_out_bf16,
+        silu_mul_dual_rotate_out_bf16,
+        silu_mul_pair_rotate_out_bf16,
+    )
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 2 or hidden_size % 2 != 0:
+        raise ValueError("--hidden-size must be >= 2 and even")
+
+    features = hidden_size
+    group_size = hidden_size
+    krot = 1
+    gate = np.linspace(-1.0, 1.0, rows * features, dtype=np.float32).reshape(rows, features)
+    up = np.linspace(0.75, -0.5, rows * features, dtype=np.float32).reshape(rows, features)
+    gate_up = np.concatenate([gate, up], axis=1)
+    scales = np.asarray([0.25, 0.5, 1.0, 0.125] * ((features + 3) // 4), dtype=np.float32)[:features]
+    pairs = np.empty((krot, features), dtype=np.int16)
+    half_group = group_size // 2
+    for lane in range(half_group):
+        pairs[0, 2 * lane] = lane
+        pairs[0, 2 * lane + 1] = lane + half_group
+    theta = np.zeros((krot, features // 2), dtype=np.float32)
+
+    gate_bits = _float32_to_bf16_bits(gate)
+    up_bits = _float32_to_bf16_bits(up)
+    gate_up_bits = _float32_to_bf16_bits(gate_up)
+    scales_bits = _float32_to_bf16_bits(scales)
+    theta_bits = _float32_to_bf16_bits(theta)
+    dual_out_bits = np.empty((rows, features), dtype=np.uint16)
+    dual_rotate_bits = np.empty_like(dual_out_bits)
+    pair_rotate_bits = np.empty_like(dual_out_bits)
+
+    gate_bf32 = _bf16_bits_to_float32(gate_bits)
+    up_bf32 = _bf16_bits_to_float32(up_bits)
+    scales_bf32 = _bf16_bits_to_float32(scales_bits)
+    act = gate_bf32 * (1.0 / (1.0 + np.exp(-gate_bf32, dtype=np.float32))) * up_bf32
+    expected_dual_bits = _float32_to_bf16_bits(act)
+    rounded_act = _bf16_bits_to_float32(expected_dual_bits)
+    expected_rotate_bits = _float32_to_bf16_bits(rounded_act * scales_bf32.reshape(1, features))
+
+    runtime = get_hip_runtime()
+    library = build_paro_silu(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        gate_up_dev = dev(gate_up_bits)
+        gate_dev = dev(gate_bits)
+        up_dev = dev(up_bits)
+        pairs_dev = dev(pairs)
+        theta_dev = dev(theta_bits)
+        scales_dev = dev(scales_bits)
+        dual_out_dev = out_dev(dual_out_bits)
+        dual_rotate_dev = out_dev(dual_rotate_bits)
+        pair_rotate_dev = out_dev(pair_rotate_bits)
+        silu_mul_dual_out_bf16(
+            gate_up_dev.ptr,
+            dual_out_dev.ptr,
+            rows,
+            features,
+            threads=256,
+            library=library,
+            runtime=runtime,
+        )
+        silu_mul_dual_rotate_out_bf16(
+            gate_up_dev.ptr,
+            pairs_dev.ptr,
+            theta_dev.ptr,
+            scales_dev.ptr,
+            dual_rotate_dev.ptr,
+            rows,
+            features,
+            group_size,
+            krot,
+            library=library,
+            runtime=runtime,
+        )
+        silu_mul_pair_rotate_out_bf16(
+            gate_dev.ptr,
+            up_dev.ptr,
+            pairs_dev.ptr,
+            theta_dev.ptr,
+            scales_dev.ptr,
+            pair_rotate_dev.ptr,
+            rows,
+            features,
+            group_size,
+            krot,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(dual_out_bits), dual_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(dual_rotate_bits), dual_rotate_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(pair_rotate_bits), pair_rotate_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    dual_out = _bf16_bits_to_float32(dual_out_bits)
+    dual_rotate = _bf16_bits_to_float32(dual_rotate_bits)
+    pair_rotate = _bf16_bits_to_float32(pair_rotate_bits)
+    expected_dual = _bf16_bits_to_float32(expected_dual_bits)
+    expected_rotate = _bf16_bits_to_float32(expected_rotate_bits)
+    dual_max_abs = float(np.max(np.abs(dual_out - expected_dual)))
+    dual_rotate_max_abs = float(np.max(np.abs(dual_rotate - expected_rotate)))
+    pair_rotate_max_abs = float(np.max(np.abs(pair_rotate - expected_rotate)))
+    dual_mismatch = int(np.count_nonzero(dual_out_bits != expected_dual_bits))
+    dual_rotate_mismatch = int(np.count_nonzero(dual_rotate_bits != expected_rotate_bits))
+    pair_rotate_mismatch = int(np.count_nonzero(pair_rotate_bits != expected_rotate_bits))
+    print(
+        f"rows={rows} hidden_size={hidden_size} "
+        f"dual_max_abs={dual_max_abs} dual_mismatch={dual_mismatch} "
+        f"dual_rotate_max_abs={dual_rotate_max_abs} dual_rotate_mismatch={dual_rotate_mismatch} "
+        f"pair_rotate_max_abs={pair_rotate_max_abs} pair_rotate_mismatch={pair_rotate_mismatch}"
+    )
+    print("dual0=", dual_out[0, : min(8, features)].tolist())
+    print("rotate0=", dual_rotate[0, : min(8, features)].tolist())
+    return 0 if (
+        dual_max_abs <= 2e-2
+        and dual_rotate_max_abs <= 2e-2
+        and pair_rotate_max_abs <= 2e-2
+    ) else 1
 
 
 def paro_selected_gemv_hip_smoke(

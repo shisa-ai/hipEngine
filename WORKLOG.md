@@ -1392,3 +1392,73 @@ Results:
 
 - The selected gate/up fused rotate-out kernel is still missing; it belongs with the activation/down-rotation slice.
 - Next MoE c=1 dependencies: fused SiLU/down rotation, W8A16 shared expert, and weighted shared-gate residual combine.
+
+---
+
+## 2026-05-13 — Port PARO SiLU/down-rotation kernels
+
+### Scope
+
+- Ported selected-expert activation/down-rotation kernels from `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` at `nano-vllm-amd@59195ed`:
+  - `silu_mul_dual_out_kernel`
+  - `silu_mul_dual_rotate_out_kernel`
+  - `silu_mul_pair_rotate_out_kernel`
+- Added `hipengine/kernels/hip_gfx1100/fused/paro_silu.hip` with BF16 raw-pointer C ABI wrappers:
+  - `hipengine_silu_mul_dual_out_bf16`
+  - `hipengine_silu_mul_dual_rotate_out_bf16`
+  - `hipengine_silu_mul_pair_rotate_out_bf16`
+- Added ctypes wrappers and BF16/`w4_paro` registry keys for:
+  - `KernelKey("hip_gfx1100", "silu_mul_dual", quant, "out")`
+  - `KernelKey("hip_gfx1100", "silu_mul_dual_rotate", quant, "out")`
+  - `KernelKey("hip_gfx1100", "silu_mul_pair_rotate", quant, "out")`
+- Added `scripts/smoke.py --mode paro-silu-hip`, with a deterministic BF16 CPU oracle for packed dual SiLU, fused dual rotate, and separate gate/up pair-rotate fallback.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md` for the activation/down-rotation slice.
+
+### Correctness / preservation / profiler gate
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+python3 scripts/smoke.py --mode smoke-add-plan
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.fused import build_paro_silu
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+artifact = build_paro_silu(load=False, compiler_version=version)
+print(artifact.output_path)
+PY
+python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-paro-silu-trace -- \
+  python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `41 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Source-body preservation check found current parent bodies verbatim in `fused/paro_silu.hip`:
+  - `silu_mul_dual_out_kernel`: 18 lines
+  - `silu_mul_dual_rotate_out_kernel`: 56 lines
+  - `silu_mul_pair_rotate_out_kernel`: 56 lines
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/paro_silu-38ebcf975b9a1e88/paro_silu.so`.
+- SiLU smoke is bit-exact for the deterministic fixture:
+  - `dual_mismatch=0`, `dual_max_abs=0.0`
+  - `dual_rotate_mismatch=0`, `dual_rotate_max_abs=0.0`
+  - `pair_rotate_mismatch=0`, `pair_rotate_max_abs=0.0`
+- `rocprofv3` trace (raw CSV not committed): `/tmp/hipengine-paro-silu-trace/epyc/2986071_kernel_trace.csv`.
+- Target kernel rows:
+  - `silu_mul_dual_out_kernel<unsigned short>`: computed `DurationNs=4200`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size=(256,1,1)`.
+  - `silu_mul_dual_rotate_out_kernel<unsigned short>`: computed `DurationNs=14120`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=8`, `Grid_Size=(16,1,1)`.
+  - `silu_mul_pair_rotate_out_kernel<unsigned short>`: computed `DurationNs=6000`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=8`, `Grid_Size=(16,1,1)`.
+
+### Caveat / next
+
+- This does not port the selected-dual GEMV fused rotate-out variant; the default c=1 path is now covered by selected GEMV followed by fused SiLU/down-rotation.
+- Next MoE c=1 dependencies: W8A16 shared expert and weighted shared-gate residual combine.
