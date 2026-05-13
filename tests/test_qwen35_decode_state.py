@@ -137,10 +137,10 @@ def test_qwen35_decode_state_reserves_moe_c1_scratch() -> None:
     scratch = state.reserve_moe_c1_scratch(tokens=1)
 
     assert scratch.normed.shape == (1, 4096)
-    assert scratch.router_logits.shape == (1, 128)
+    assert scratch.router_logits.shape == (1, 129)
     assert scratch.routing_weights.shape == (1, 8)
     assert scratch.selected_experts.shape == (1, 8)
-    assert scratch.selected_experts.dtype is DType.INT32
+    assert scratch.selected_experts.dtype is DType.INT64
     assert scratch.gate_up.shape == (1, 8, 1536)
     assert scratch.down_input.shape == (1, 8, 768)
     assert scratch.down_out.shape == (1, 8, 4096)

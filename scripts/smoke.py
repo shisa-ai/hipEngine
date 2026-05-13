@@ -51,6 +51,7 @@ def main() -> int:
             "w8a16-linear-hip",
             "w8a16-shared-expert-hip",
             "paro-moe-c1-hip",
+            "paro-moe-c1-state-hip",
         ),
         default="registry",
     )
@@ -217,6 +218,12 @@ def main() -> int:
     if args.mode == "w8a16-shared-expert-hip":
         return w8a16_shared_expert_hip_smoke(
             args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "paro-moe-c1-state-hip":
+        return paro_moe_c1_state_hip_smoke(
             args.hidden_size,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
@@ -2454,6 +2461,303 @@ def paro_moe_c1_hip_smoke(
         else 1
     )
 
+
+
+def paro_moe_c1_state_hip_smoke(
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.core.tensor import Tensor
+    from hipengine.kernels.hip_gfx1100.fused import build_paro_combine, build_paro_silu
+    from hipengine.kernels.hip_gfx1100.moe import build_qwen35_router
+    from hipengine.kernels.hip_gfx1100.norm import build_qwen35_rmsnorm, paro_rmsnorm_out_bf16
+    from hipengine.kernels.hip_gfx1100.quant import build_paro_awq_gemv, build_w8a16_linear
+    from hipengine.loading.materialize import DeviceTensorAllocation, DeviceWeightMap
+    from hipengine.loading.qwen35_paro import Qwen35ParoConfig, Qwen35ParoLayerDeviceWeights
+    from hipengine.loading.safetensors import TensorInfo
+    from hipengine.runtime import Qwen35ParoDecodeState, RuntimeWorkspace
+
+    if hidden_size != 8:
+        raise ValueError("paro-moe-c1-state-hip currently uses --hidden-size 8")
+
+    tokens = 1
+    top_k = 2
+    num_experts = 3
+    num_router_rows = num_experts + 1
+    intermediate_size = 8
+    group_size = 8
+    out_packed = hidden_size // 8
+    eps = 1.0e-6
+
+    hidden_f32 = np.asarray(
+        [[-1.0, -0.75, -0.375, -0.125, 0.25, 0.5, 0.875, 1.125]], dtype=np.float32
+    )
+    residual_bits = _float32_to_bf16_bits(hidden_f32)
+    norm_weight_bits = _float32_to_bf16_bits(
+        np.asarray([1.0, 0.875, 1.125, 0.75, 1.25, 0.625, 1.375, 0.5], dtype=np.float32)
+    )
+    router_weight_bits = _float32_to_bf16_bits(
+        np.asarray(
+            [
+                [0.125, -0.25, 0.375, -0.5, 0.625, -0.75, 0.875, -1.0],
+                [-0.5, 0.375, -0.25, 0.125, 1.0, -0.875, 0.75, -0.625],
+                [0.875, 0.125, -0.75, -0.25, 0.5, 0.375, -1.0, -0.625],
+                [0.25, 0.5, -0.125, -0.375, 0.75, -0.625, 1.0, -0.875],
+            ],
+            dtype=np.float32,
+        )
+    )
+    qweight_gate, qzeros_gate, scales_gate_bits = _make_pack8_fixture(
+        num_experts, hidden_size, out_packed, group_size, salt=5
+    )
+    qweight_up, qzeros_up, scales_up_bits = _make_pack8_fixture(
+        num_experts, hidden_size, out_packed, group_size, salt=7
+    )
+    qweight_down, qzeros_down, scales_down_bits = _make_pack8_fixture(
+        num_experts, intermediate_size, out_packed, group_size, salt=9
+    )
+    qweight_gate_t = np.ascontiguousarray(np.swapaxes(qweight_gate, 1, 2))
+    qweight_up_t = np.ascontiguousarray(np.swapaxes(qweight_up, 1, 2))
+    qweight_down_t = np.ascontiguousarray(np.swapaxes(qweight_down, 1, 2))
+    down_pairs = np.asarray([[0, 4, 1, 5, 2, 6, 3, 7]], dtype=np.int16)
+    down_theta_bits = _float32_to_bf16_bits(np.zeros((1, hidden_size // 2), dtype=np.float32))
+    down_scales_bits = _float32_to_bf16_bits(np.ones((intermediate_size,), dtype=np.float32))
+    shared_gate_up_weight = _int8_pattern(2 * intermediate_size, hidden_size, salt=11)
+    shared_gate_up_scale = np.asarray(
+        [0.125, 0.25, 0.5, 1.0] * ((2 * intermediate_size + 3) // 4), dtype=np.float32
+    )[: 2 * intermediate_size]
+    shared_down_weight = _int8_pattern(hidden_size, intermediate_size, salt=13)
+    shared_down_scale = np.asarray([0.0625, 0.125, 0.25, 0.5] * 2, dtype=np.float32)[:hidden_size]
+
+    expected_norm_bits = _paro_rmsnorm_reference(residual_bits, norm_weight_bits, eps)
+    expected_norm = _bf16_bits_to_float32(expected_norm_bits)
+    expected_logits = expected_norm @ _bf16_bits_to_float32(router_weight_bits).T
+    expected_selected, expected_routing = _router_topk_reference(expected_logits[0, :num_experts], top_k)
+    expected_gate_bits = _selected_pack8_reference(
+        expected_norm_bits,
+        expected_selected,
+        qweight_gate_t,
+        qzeros_gate,
+        scales_gate_bits,
+        group_size,
+        qweight_transposed=True,
+    )
+    expected_up_bits = _selected_pack8_reference(
+        expected_norm_bits,
+        expected_selected,
+        qweight_up_t,
+        qzeros_up,
+        scales_up_bits,
+        group_size,
+        qweight_transposed=True,
+    )
+    expected_gate_up_bits = np.concatenate([expected_gate_bits, expected_up_bits], axis=1)
+    expected_gate_up = _bf16_bits_to_float32(expected_gate_up_bits)
+    expected_down_input_bits = _float32_to_bf16_bits(
+        _silu_np(expected_gate_up[:, :intermediate_size]) * expected_gate_up[:, intermediate_size:]
+    )
+    expected_selected_down_bits = _selected_pack8_reference(
+        expected_down_input_bits,
+        expected_selected,
+        qweight_down_t,
+        qzeros_down,
+        scales_down_bits,
+        group_size,
+        qweight_transposed=True,
+    )
+    expected_shared_gate_up_bits = _float32_to_bf16_bits(
+        (expected_norm @ shared_gate_up_weight.astype(np.float32).T).astype(np.float32)
+        * shared_gate_up_scale.reshape(1, 2 * intermediate_size)
+    )
+    expected_shared_gate_up = _bf16_bits_to_float32(expected_shared_gate_up_bits)
+    expected_shared_act_bits = _float32_to_bf16_bits(
+        _silu_np(expected_shared_gate_up[:, :intermediate_size]) * expected_shared_gate_up[:, intermediate_size:]
+    )
+    expected_shared_act = _bf16_bits_to_float32(expected_shared_act_bits)
+    expected_shared_out_bits = _float32_to_bf16_bits(
+        (expected_shared_act @ shared_down_weight.astype(np.float32).T).astype(np.float32)
+        * shared_down_scale.reshape(1, hidden_size)
+    )
+    selected_down_f32 = _bf16_bits_to_float32(expected_selected_down_bits)
+    expected_weighted_bits = _float32_to_bf16_bits(
+        np.sum(selected_down_f32 * expected_routing.reshape(top_k, 1), axis=0, dtype=np.float32).reshape(1, hidden_size)
+    )
+    expected_weighted = _bf16_bits_to_float32(expected_weighted_bits)
+    shared_gate = np.float32(1.0) / (
+        np.float32(1.0) + np.exp(-np.float32(expected_logits[0, num_experts]), dtype=np.float32)
+    )
+    expected_final_bits = _float32_to_bf16_bits(
+        _bf16_bits_to_float32(residual_bits)
+        + expected_weighted
+        + shared_gate * _bf16_bits_to_float32(expected_shared_out_bits)
+    )
+
+    runtime = get_hip_runtime()
+    libraries = {
+        "router": build_qwen35_router(load=True, compiler_version=compiler_version, require_cached=require_cached_build),
+        "awq": build_paro_awq_gemv(load=True, compiler_version=compiler_version, require_cached=require_cached_build),
+        "silu": build_paro_silu(load=True, compiler_version=compiler_version, require_cached=require_cached_build),
+        "w8a16": build_w8a16_linear(load=True, compiler_version=compiler_version, require_cached=require_cached_build),
+        "combine": build_paro_combine(load=True, compiler_version=compiler_version, require_cached=require_cached_build),
+    }
+    norm_library = build_qwen35_rmsnorm(load=True, compiler_version=compiler_version, require_cached=require_cached_build)
+    buffers = []
+    state = None
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    def weight(name: str, array: np.ndarray, dtype: str) -> DeviceTensorAllocation:
+        buffer = malloc(array.nbytes, runtime=runtime)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        source_dtype = {"bf16": "BF16", "fp32": "F32", "int8": "I8", "int16": "I16", "int32": "I32"}[dtype]
+        return DeviceTensorAllocation(
+            name=name,
+            source=TensorInfo(name=name, shard_path=Path(__file__), dtype=source_dtype, shape=tuple(array.shape)),
+            buffer=buffer,
+            tensor=Tensor.from_handle(buffer.ptr, array.shape, dtype, Device("hip", 0)),
+        )
+
+    try:
+        hidden_dev = dev(residual_bits)
+        norm_weight_dev = dev(norm_weight_bits)
+        norm_bits = np.empty((tokens, hidden_size), dtype=np.uint16)
+        norm_dev = out_dev(norm_bits)
+        paro_rmsnorm_out_bf16(
+            hidden_dev.ptr,
+            norm_weight_dev.ptr,
+            norm_dev.ptr,
+            tokens,
+            hidden_size,
+            eps,
+            library=norm_library,
+            runtime=runtime,
+        )
+        weights = DeviceWeightMap(
+            {
+                "layers.0.mlp.router_shared_gate.weight": weight("layers.0.mlp.router_shared_gate.weight", router_weight_bits, "bf16"),
+                "layers.0.mlp.experts.stacked_gate_qweight_pack8_decode": weight("layers.0.mlp.experts.stacked_gate_qweight_pack8_decode", qweight_gate_t, "int32"),
+                "layers.0.mlp.experts.stacked_gate_qzeros": weight("layers.0.mlp.experts.stacked_gate_qzeros", qzeros_gate, "int32"),
+                "layers.0.mlp.experts.stacked_gate_scales": weight("layers.0.mlp.experts.stacked_gate_scales", scales_gate_bits, "bf16"),
+                "layers.0.mlp.experts.stacked_up_qweight_pack8_decode": weight("layers.0.mlp.experts.stacked_up_qweight_pack8_decode", qweight_up_t, "int32"),
+                "layers.0.mlp.experts.stacked_up_qzeros": weight("layers.0.mlp.experts.stacked_up_qzeros", qzeros_up, "int32"),
+                "layers.0.mlp.experts.stacked_up_scales": weight("layers.0.mlp.experts.stacked_up_scales", scales_up_bits, "bf16"),
+                "layers.0.mlp.experts.stacked_down_qweight_pack8_decode": weight("layers.0.mlp.experts.stacked_down_qweight_pack8_decode", qweight_down_t, "int32"),
+                "layers.0.mlp.experts.stacked_down_qzeros": weight("layers.0.mlp.experts.stacked_down_qzeros", qzeros_down, "int32"),
+                "layers.0.mlp.experts.stacked_down_scales": weight("layers.0.mlp.experts.stacked_down_scales", scales_down_bits, "bf16"),
+                "layers.0.mlp.experts.down_weight_pairs": weight("layers.0.mlp.experts.down_weight_pairs", down_pairs, "int16"),
+                "layers.0.mlp.experts.down_weight_theta": weight("layers.0.mlp.experts.down_weight_theta", down_theta_bits, "bf16"),
+                "layers.0.mlp.experts.down_weight_channel_scales": weight("layers.0.mlp.experts.down_weight_channel_scales", down_scales_bits, "bf16"),
+                "layers.0.mlp.shared_expert.gate_up_weight_w8a16": weight("layers.0.mlp.shared_expert.gate_up_weight_w8a16", shared_gate_up_weight, "int8"),
+                "layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale": weight("layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale", shared_gate_up_scale, "fp32"),
+                "layers.0.mlp.shared_expert.down_weight_w8a16": weight("layers.0.mlp.shared_expert.down_weight_w8a16", shared_down_weight, "int8"),
+                "layers.0.mlp.shared_expert.down_weight_w8a16_scale": weight("layers.0.mlp.shared_expert.down_weight_w8a16_scale", shared_down_scale, "fp32"),
+            }
+        )
+        config = Qwen35ParoConfig(
+            architecture="Qwen3_5MoeForConditionalGeneration",
+            num_hidden_layers=1,
+            hidden_size=hidden_size,
+            num_attention_heads=1,
+            num_key_value_heads=1,
+            head_dim=hidden_size,
+            num_experts=num_experts,
+            num_experts_per_tok=top_k,
+            moe_intermediate_size=intermediate_size,
+            shared_expert_intermediate_size=intermediate_size,
+            layer_types=("full_attention",),
+            quant_method="paroquant",
+        )
+        state = Qwen35ParoDecodeState(
+            layer_weights=Qwen35ParoLayerDeviceWeights(config=config, layer_id=0, weights=weights),
+            workspace=RuntimeWorkspace(runtime=runtime),
+            runtime=runtime,
+        )
+        norm_tensor = Tensor.from_handle(norm_dev.ptr, norm_bits.shape, "bf16", Device("hip", 0))
+        residual_tensor = Tensor.from_handle(hidden_dev.ptr, residual_bits.shape, "bf16", Device("hip", 0))
+        scratch = state.reserve_moe_c1_scratch(tokens=tokens)
+        final_tensor = state.run_moe_c1_bf16(norm_tensor, residual_tensor, scratch=scratch, group_size=group_size, library=libraries)
+        runtime.device_synchronize()
+        final_bits = np.empty((tokens, hidden_size), dtype=np.uint16)
+        selected = np.empty((tokens, top_k), dtype=np.int64)
+        routing = np.empty((tokens, top_k), dtype=np.float32)
+        router_logits = np.empty((tokens, num_router_rows), dtype=np.float32)
+        gate_up_bits = np.empty((top_k, 2 * intermediate_size), dtype=np.uint16)
+        down_input_bits = np.empty((top_k, intermediate_size), dtype=np.uint16)
+        down_out_bits = np.empty((top_k, hidden_size), dtype=np.uint16)
+        shared_out_bits = np.empty((tokens, hidden_size), dtype=np.uint16)
+        copy_device_to_host(host_array_ptr(norm_bits), norm_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(final_bits), DeviceBuffer(final_tensor.ptr, final_bits.nbytes), runtime=runtime)
+        copy_device_to_host(host_array_ptr(selected), state.workspace.allocation("moe.selected_experts").buffer, runtime=runtime)
+        copy_device_to_host(host_array_ptr(routing), state.workspace.allocation("moe.routing_weights").buffer, runtime=runtime)
+        copy_device_to_host(host_array_ptr(router_logits), state.workspace.allocation("moe.router_logits").buffer, runtime=runtime)
+        copy_device_to_host(host_array_ptr(gate_up_bits), state.workspace.allocation("moe.gate_up").buffer, runtime=runtime)
+        copy_device_to_host(host_array_ptr(down_input_bits), state.workspace.allocation("moe.down_input").buffer, runtime=runtime)
+        copy_device_to_host(host_array_ptr(down_out_bits), state.workspace.allocation("moe.down_out").buffer, runtime=runtime)
+        copy_device_to_host(host_array_ptr(shared_out_bits), state.workspace.allocation("moe.shared_out").buffer, runtime=runtime)
+        state.free()
+        state = None
+    finally:
+        if state is not None:
+            state.free()
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    norm_mismatch = int(np.count_nonzero(norm_bits != expected_norm_bits))
+    selected_match = bool(np.array_equal(selected.reshape(-1), expected_selected))
+    routing_max_abs = float(np.max(np.abs(routing.reshape(-1) - expected_routing)))
+    logits_max_abs = float(np.max(np.abs(router_logits - expected_logits)))
+    gate_up_mismatch = int(np.count_nonzero(gate_up_bits != expected_gate_up_bits))
+    down_input_mismatch = int(np.count_nonzero(down_input_bits != expected_down_input_bits))
+    down_out_mismatch = int(np.count_nonzero(down_out_bits != expected_selected_down_bits))
+    shared_out_mismatch = int(np.count_nonzero(shared_out_bits != expected_shared_out_bits))
+    final_mismatch = int(np.count_nonzero(final_bits != expected_final_bits))
+    final_max_abs = float(np.max(np.abs(_bf16_bits_to_float32(final_bits) - _bf16_bits_to_float32(expected_final_bits))))
+    print(
+        f"hidden_size={hidden_size} top_k={top_k} state_path=1 "
+        f"norm_mismatch={norm_mismatch} selected_match={selected_match} "
+        f"logits_max_abs={logits_max_abs} routing_max_abs={routing_max_abs} "
+        f"gate_up_mismatch={gate_up_mismatch} down_input_mismatch={down_input_mismatch} "
+        f"down_out_mismatch={down_out_mismatch} shared_out_mismatch={shared_out_mismatch} "
+        f"final_mismatch={final_mismatch} final_max_abs={final_max_abs}"
+    )
+    print("selected=", selected.reshape(-1).tolist(), "routing=", routing.reshape(-1).tolist())
+    print("final=", _bf16_bits_to_float32(final_bits)[0].tolist())
+    return (
+        0
+        if norm_mismatch == 0
+        and selected_match
+        and logits_max_abs <= 2e-5
+        and routing_max_abs <= 2e-5
+        and gate_up_mismatch == 0
+        and down_input_mismatch == 0
+        and down_out_mismatch == 0
+        and shared_out_mismatch == 0
+        and final_mismatch == 0
+        else 1
+    )
 
 def dense_gemv_hip_smoke(
     rows: int,

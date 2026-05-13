@@ -2877,3 +2877,53 @@ Results:
 ### Next
 
 - Add a real-GPU decode-state smoke that reuses the existing synthetic `paro-moe-c1-hip` fixtures but routes through `Qwen35ParoDecodeState.run_moe_c1_bf16(...)`, then move to full-attention+MoE one-token integration.
+
+---
+
+## 2026-05-14 — Add decode-state GPU smoke for Qwen3.5/PARO MoE c=1
+
+### Scope
+
+- Fixed two runtime scratch ABI bugs exposed by the real GPU smoke:
+  - `selected_experts` scratch is now `int64`, matching `qwen35_router_select_kernel` and selected GEMV kernels.
+  - `router_logits` scratch is now `num_experts + 1` wide, matching the combined router/shared-gate kernel output.
+- Added `scripts/smoke.py --mode paro-moe-c1-state-hip --hidden-size 8`.
+- The new smoke reuses the staged synthetic c=1 MoE fixture but routes the MoE body through `Qwen35ParoDecodeState.run_moe_c1_bf16(...)` with normalized prepared device weights and `RuntimeWorkspace` scratch.
+- The smoke uses identity down-rotation metadata to exercise the fused `silu_mul_dual_rotate_out` call while preserving the existing BF16 oracle.
+- Updated `docs/IMPLEMENTATION.md`, `docs/TESTING.md`, and `docs/KERNELS.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_qwen35_decode_state.py -q
+python3 -m pytest -q
+python3 scripts/smoke.py --mode paro-moe-c1-state-hip --hidden-size 8 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-paro-moe-c1-state-trace -- \
+  python3 scripts/smoke.py --mode paro-moe-c1-state-hip --hidden-size 8 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- Decode-state tests: `14 passed`.
+- Full test suite: all tests passed.
+- Decode-state MoE GPU smoke: `norm_mismatch=0`, `selected_match=True`, `logits_max_abs=0.0`, `routing_max_abs=0.0`, `gate_up_mismatch=0`, `down_input_mismatch=0`, `down_out_mismatch=0`, `shared_out_mismatch=0`, `final_mismatch=0`, `final_max_abs=0.0`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-paro-moe-c1-state-trace/epyc/220036_kernel_trace.csv`.
+- Target kernel rows all had `Scratch_Size=0` except expected LDS use:
+  - `paro_rmsnorm_out_kernel<unsigned short>`: `DurationNs=4880`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=1024`.
+  - `qwen35_router_logits_kernel<unsigned short>`: `DurationNs=3240`, `VGPR_Count=24`, `Scratch_Size=0`.
+  - `qwen35_router_select_kernel`: `DurationNs=4200`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=512`.
+  - `gemv_awq_selected_dual_pack8_strided_kernel<unsigned short, true>`: `DurationNs=8760`, `VGPR_Count=112`, `Scratch_Size=0`, `LDS_Block_Size=512`.
+  - `silu_mul_dual_rotate_out_kernel<unsigned short>`: `DurationNs=3520`, `VGPR_Count=24`, `Scratch_Size=0`.
+  - `gemv_awq_selected_pack8_kernel<unsigned short, true>`: `DurationNs=5240`, `VGPR_Count=112`, `Scratch_Size=0`, `LDS_Block_Size=512`.
+  - `w8a16_linear_lowp_out_kernel<hip_bfloat16>`: two launches, `DurationNs=3320` and `2200`, `VGPR_Count=24`, `Scratch_Size=0`.
+  - `silu_mul_dual_out_kernel<unsigned short>`: `DurationNs=11240`, `VGPR_Count=16`, `Scratch_Size=0`.
+  - `weighted_sum_shared_gate_combine_residual_out_kernel<unsigned short, float>`: `DurationNs=2520`, `VGPR_Count=16`, `Scratch_Size=0`.
+
+### Next
+
+- Wire a one-token full-attention+MoE decode-state smoke: projection outputs → KV append → GQA split-K gated attention → MoE c=1 orchestrator.

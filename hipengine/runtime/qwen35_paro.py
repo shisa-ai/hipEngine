@@ -140,7 +140,7 @@ class Qwen35ParoDecodeState:
             qweight.shape[0],
             group_size,
             threads=threads,
-            library=library,
+            library=_library_for(library, "awq"),
             runtime=self.runtime,
         )
         return out
@@ -164,7 +164,7 @@ class Qwen35ParoDecodeState:
             block_size,
             self.config.num_key_value_heads,
             self.config.head_dim,
-            library=library,
+            library=_library_for(library, "kv"),
             runtime=self.runtime,
         )
 
@@ -200,7 +200,7 @@ class Qwen35ParoDecodeState:
             scratch.gate.shape[-1],
             1,
             (self.config.head_dim ** -0.5) if scale is None else scale,
-            library=library,
+            library=_library_for(library, "attention"),
             runtime=self.runtime,
         )
         return scratch.gated_attn
@@ -228,7 +228,7 @@ class Qwen35ParoDecodeState:
             cfg.num_experts,
             cfg.num_experts_per_tok,
             threads=threads,
-            library=library,
+            library=_library_for(library, "router"),
             runtime=self.runtime,
         )
         return scratch.selected_experts, scratch.routing_weights
@@ -269,7 +269,7 @@ class Qwen35ParoDecodeState:
             self.config.num_experts,
             group_size,
             threads=threads,
-            library=library,
+            library=_library_for(library, "awq"),
             runtime=self.runtime,
         )
         return scratch.gate_up
@@ -296,7 +296,7 @@ class Qwen35ParoDecodeState:
             self.config.moe_intermediate_size,
             group_size,
             _rotation_krot(pairs),
-            library=library,
+            library=_library_for(library, "silu"),
             runtime=self.runtime,
         )
         return scratch.down_input
@@ -329,7 +329,7 @@ class Qwen35ParoDecodeState:
             self.config.num_experts,
             group_size,
             threads=threads,
-            library=library,
+            library=_library_for(library, "awq"),
             runtime=self.runtime,
         )
         return scratch.down_out
@@ -357,7 +357,7 @@ class Qwen35ParoDecodeState:
             self.config.hidden_size,
             2 * self.config.shared_expert_intermediate_size,
             threads=threads,
-            library=library,
+            library=_library_for(library, "w8a16"),
             runtime=self.runtime,
         )
         silu_mul_dual_out_bf16(
@@ -365,7 +365,7 @@ class Qwen35ParoDecodeState:
             scratch.shared_intermediate.ptr,
             tokens,
             self.config.shared_expert_intermediate_size,
-            library=library,
+            library=_library_for(library, "silu"),
             runtime=self.runtime,
         )
         w8a16_linear_bf16_lowp_out(
@@ -377,7 +377,7 @@ class Qwen35ParoDecodeState:
             self.config.shared_expert_intermediate_size,
             self.config.hidden_size,
             threads=threads,
-            library=library,
+            library=_library_for(library, "w8a16"),
             runtime=self.runtime,
         )
         return scratch.shared_out
@@ -407,7 +407,7 @@ class Qwen35ParoDecodeState:
             self.config.num_experts_per_tok,
             self.config.hidden_size,
             threads=threads,
-            library=library,
+            library=_library_for(library, "combine"),
             runtime=self.runtime,
         )
         return target
@@ -447,9 +447,9 @@ class Qwen35ParoDecodeState:
             raise ValueError("config.num_experts_per_tok must be positive")
         return Qwen35ParoMoeScratch(
             normed=self.workspace.reserve_tensor("moe.normed", (tokens, cfg.hidden_size), DType.BF16),
-            router_logits=self.workspace.reserve_tensor("moe.router_logits", (tokens, cfg.num_experts), DType.FP32),
+            router_logits=self.workspace.reserve_tensor("moe.router_logits", (tokens, cfg.num_experts + 1), DType.FP32),
             routing_weights=self.workspace.reserve_tensor("moe.routing_weights", (tokens, top_k), DType.FP32),
-            selected_experts=self.workspace.reserve_tensor("moe.selected_experts", (tokens, top_k), DType.INT32),
+            selected_experts=self.workspace.reserve_tensor("moe.selected_experts", (tokens, top_k), DType.INT64),
             gate_up=self.workspace.reserve_tensor(
                 "moe.gate_up",
                 (tokens, top_k, 2 * cfg.moe_intermediate_size),
@@ -475,6 +475,12 @@ class Qwen35ParoDecodeState:
         self.workspace.free()
         self.layer_weights.free(runtime=self.runtime)
 
+
+
+def _library_for(library, family: str):
+    if isinstance(library, dict):
+        return library.get(family)
+    return library
 
 def _out_packed_from_transposed_qweight(qweight: Tensor) -> int:
     if len(qweight.shape) < 3:

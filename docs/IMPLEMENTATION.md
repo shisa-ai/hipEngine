@@ -50,6 +50,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Wire decode-state MoE c=1 router, selected gate/up, selected down, and weighted shared-residual wrapper calls.
   - [x] Wire decode-state fused MoE activation/down-rotation and W8A16 shared-expert calls.
   - [x] Add parent-order decode-state MoE c=1 orchestrator over landed wrapper calls.
+  - [x] Add GPU decode-state MoE c=1 smoke (`paro-moe-c1-state-hip`) through `Qwen35ParoDecodeState.run_moe_c1_bf16`.
   - [x] Add Qwen3.5/PARO MoE c=1 checkpoint layout validator over tensor metadata.
   - [x] Port PARO BF16 dense GEMV (`dense_gemv_out`) for auxiliary dense projection paths.
   - [x] Port generic PARO pack8 GEMV (`gemv_awq_pack8*`, `gemv_awq_dual_pack8*`) for non-MoE Q/K/QKV/Z projection paths.

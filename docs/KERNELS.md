@@ -82,7 +82,7 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `a
 
 `paro_rotate` ports the parent PARO pairwise rotation helpers used by multi-projection PARO paths (`paro_rotate2`, `paro_rotate3`). `qwen35_rotary` ports the parent full-attention prelude (`partial_rotary`, fused head RMSNorm + partial rotary, and table-positioned fused head RMSNorm + partial rotary).
 
-`w8a16_linear` ports the parent W8A16 GEMV kernels used by the current shared-expert default (`hip_w8a16_linear_lowp_out`) and W8A16 lm-head/auxiliary dense route. `scripts/smoke.py --mode w8a16-shared-expert-hip` chains W8A16 gate/up → `silu_mul_dual_out` → W8A16 down and is bit-exact against the staged BF16 NumPy oracle. `scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8` is the synthetic c=1 decode vertical smoke: PARO RMSNorm → router/shared-gate → selected W4 gate/up → SiLU → selected W4 down → W8A16 shared branch → weighted/shared/residual combine.
+`w8a16_linear` ports the parent W8A16 GEMV kernels used by the current shared-expert default (`hip_w8a16_linear_lowp_out`) and W8A16 lm-head/auxiliary dense route. `scripts/smoke.py --mode w8a16-shared-expert-hip` chains W8A16 gate/up → `silu_mul_dual_out` → W8A16 down and is bit-exact against the staged BF16 NumPy oracle. `scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8` is the direct synthetic c=1 decode vertical smoke; `scripts/smoke.py --mode paro-moe-c1-state-hip --hidden-size 8` drives the same staged fixture through `Qwen35ParoDecodeState.run_moe_c1_bf16(...)` and validates the normalized prepared-weight/runtime-workspace path.
 
 ## Source-lineage drift check
 
@@ -348,7 +348,7 @@ The checklist below is the active port map for reproducing the parent compact-WM
 | Selected down GEMV | `gemv_awq_selected_pack8_kernel` / strided wrapper | **Landed for BF16 raw-pointer strided/transposed pack8 wrappers** | Used for selected down projection; small-K specialization applies where safe. |
 | Shared expert | W8A16 shared gate/up/down (`w8a16_*shared*`, `w8a16_single_*`, `w8a16_linear*`) | **Landed for current parent lowp-linear route** | `w8a16-shared-expert-hip` validates W8A16 gate/up → `silu_mul_dual_out` → W8A16 down (`gate_up_mismatch=0`, `intermediate_mismatch=0`, `out_mismatch=0`); specialized `w8a16_*shared*` fusion remains optional/future. |
 | Weighted combine + residual | `weighted_sum_shared_gate_combine_residual_out_kernel`; fallback `weighted_sum_out_kernel`, `shared_gate_combine*` | **Landed for BF16 values with FP32 weights/gate logits** | c=1 decode promoted path fuses selected sum, shared sigmoid/gate combine, and residual add; scalar-weight fallback remains unported. |
-| Synthetic c=1 vertical smoke | RMSNorm → router → selected W4 gate/up/down → W8A16 shared → weighted/shared/residual combine | **Landed** | `paro-moe-c1-hip --hidden-size 8`: all staged BF16 oracle checks bit-exact (`final_mismatch=0`); full model path still needs loader/model/attention plumbing. |
+| Synthetic c=1 vertical smoke | RMSNorm → router → selected W4 gate/up/down → W8A16 shared → weighted/shared/residual combine | **Landed** | `paro-moe-c1-hip --hidden-size 8`: direct wrapper chain bit-exact; `paro-moe-c1-state-hip --hidden-size 8`: decode-state path bit-exact (`final_mismatch=0`) and uses normalized prepared weights + `RuntimeWorkspace`; full model path still needs tokenizer/model loop/attention plumbing. |
 
 #### MoE prefill compact-WMMA path
 
