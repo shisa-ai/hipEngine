@@ -163,6 +163,15 @@ def prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
                 f"{experts}.stacked_{proj}_scales",
             )
         )
+    shared = f"{prefix}.shared_expert"
+    names.extend(
+        (
+            f"{shared}.gate_up_weight_w8a16",
+            f"{shared}.gate_up_weight_w8a16_scale",
+            f"{shared}.down_weight_w8a16",
+            f"{shared}.down_weight_w8a16_scale",
+        )
+    )
     return tuple(names)
 
 
@@ -330,6 +339,16 @@ def prepare_qwen35_paro_moe_c1_host_tensors(index: WeightIndex, *, layer_id: int
             proj=hf_proj,
             suffix="scales",
         )
+    shared = f"{prefix}.shared_expert"
+    shared_gate = _read_normalized_numpy_tensor(normalized, f"{shared}.gate_proj.weight")
+    shared_up = _read_normalized_numpy_tensor(normalized, f"{shared}.up_proj.weight")
+    shared_down = _read_normalized_numpy_tensor(normalized, f"{shared}.down_proj.weight")
+    gate_up_q, gate_up_scale = _quantize_w8a16_host(_concat_rows((shared_gate, shared_up)))
+    down_q, down_scale = _quantize_w8a16_host(shared_down)
+    prepared[f"{shared}.gate_up_weight_w8a16"] = gate_up_q
+    prepared[f"{shared}.gate_up_weight_w8a16_scale"] = gate_up_scale
+    prepared[f"{shared}.down_weight_w8a16"] = down_q
+    prepared[f"{shared}.down_weight_w8a16_scale"] = down_scale
     return prepared
 
 
@@ -404,6 +423,16 @@ def _transpose_decode_qweight(array: object):
     if len(getattr(array, "shape")) < 3:
         raise ValueError("stacked qweight must have expert, input, and packed-output dimensions")
     return np.ascontiguousarray(np.swapaxes(array, 1, 2))
+
+
+def _quantize_w8a16_host(weight: object):
+    import numpy as np
+
+    weight_f32 = np.asarray(weight, dtype=np.float32)
+    scale = np.maximum(np.max(np.abs(weight_f32), axis=1), 1.0e-8).astype(np.float32) / np.float32(127.0)
+    quantized = np.rint(weight_f32 / scale[:, None])
+    quantized = np.clip(quantized, -127, 127).astype(np.int8)
+    return np.ascontiguousarray(quantized), np.ascontiguousarray(scale)
 
 
 def _materialize_normalized_layer(

@@ -91,6 +91,23 @@ def _prepared_moe_weights() -> DeviceWeightMap:
             ),
             f"{experts}.stacked_down_qzeros": _allocation(f"{experts}.stacked_down_qzeros", 0xB800, (128, 6, 512), "int32"),
             f"{experts}.stacked_down_scales": _allocation(f"{experts}.stacked_down_scales", 0xB900, (128, 6, 512), "fp16"),
+            f"{experts}.down_weight_pairs": _allocation(f"{experts}.down_weight_pairs", 0xBA00, (6, 128), "int16"),
+            f"{experts}.down_weight_theta": _allocation(f"{experts}.down_weight_theta", 0xBB00, (6, 64), "bf16"),
+            f"{experts}.down_weight_channel_scales": _allocation(
+                f"{experts}.down_weight_channel_scales", 0xBC00, (768,), "bf16"
+            ),
+            f"{prefix}.shared_expert.gate_up_weight_w8a16": _allocation(
+                f"{prefix}.shared_expert.gate_up_weight_w8a16", 0xBD00, (1536, 4096), "int8"
+            ),
+            f"{prefix}.shared_expert.gate_up_weight_w8a16_scale": _allocation(
+                f"{prefix}.shared_expert.gate_up_weight_w8a16_scale", 0xBE00, (1536,), "fp32"
+            ),
+            f"{prefix}.shared_expert.down_weight_w8a16": _allocation(
+                f"{prefix}.shared_expert.down_weight_w8a16", 0xBF00, (4096, 768), "int8"
+            ),
+            f"{prefix}.shared_expert.down_weight_w8a16_scale": _allocation(
+                f"{prefix}.shared_expert.down_weight_w8a16_scale", 0xC000, (4096,), "fp32"
+            ),
         }
     )
 
@@ -128,6 +145,8 @@ def test_qwen35_decode_state_reserves_moe_c1_scratch() -> None:
     assert scratch.down_input.shape == (1, 8, 768)
     assert scratch.down_out.shape == (1, 8, 4096)
     assert scratch.shared_up.shape == (1, 1536)
+    assert scratch.shared_intermediate.shape == (1, 768)
+    assert scratch.shared_out.shape == (1, 4096)
     assert scratch.moe_out.shape == (1, 4096)
 
 
@@ -280,6 +299,25 @@ def test_qwen35_decode_state_routes_moe_topk_shared(monkeypatch) -> None:
     assert kwargs == {"threads": 512, "library": None, "runtime": runtime}
 
 
+def test_qwen35_decode_state_activates_and_rotates_moe_down(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=1)
+    calls = []
+
+    def fake_silu_rotate(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", fake_silu_rotate)
+
+    out = state.activate_rotate_moe_down_bf16(scratch)
+
+    assert out is scratch.down_input
+    args, kwargs = calls[0]
+    assert args == (scratch.gate_up.ptr, 0xBA00, 0xBB00, 0xBC00, scratch.down_input.ptr, 8, 768, 128, 6)
+    assert kwargs == {"library": None, "runtime": runtime}
+
+
 def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
@@ -339,6 +377,34 @@ def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
     assert down_kwargs == {"threads": 128, "library": None, "runtime": runtime}
 
 
+def test_qwen35_decode_state_runs_shared_expert_w8a16(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=1)
+    hidden = _tensor(0xCA00, (1, 4096), "bf16")
+    linear_calls = []
+    silu_calls = []
+
+    def fake_linear(*args, **kwargs):
+        linear_calls.append((args, kwargs))
+
+    def fake_silu(*args, **kwargs):
+        silu_calls.append((args, kwargs))
+
+    monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", fake_linear)
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", fake_silu)
+
+    out = state.shared_expert_w8a16_bf16(hidden, scratch)
+
+    assert out is scratch.shared_out
+    assert linear_calls[0][0] == (hidden.ptr, 0xBD00, 0xBE00, scratch.shared_up.ptr, 1, 4096, 1536)
+    assert linear_calls[0][1] == {"threads": 64, "library": None, "runtime": runtime}
+    assert silu_calls[0][0] == (scratch.shared_up.ptr, scratch.shared_intermediate.ptr, 1, 768)
+    assert silu_calls[0][1] == {"library": None, "runtime": runtime}
+    assert linear_calls[1][0] == (scratch.shared_intermediate.ptr, 0xBF00, 0xC000, scratch.shared_out.ptr, 1, 768, 4096)
+    assert linear_calls[1][1] == {"threads": 64, "library": None, "runtime": runtime}
+
+
 def test_qwen35_decode_state_combines_moe_shared_residual(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
@@ -393,4 +459,4 @@ def test_qwen35_decode_state_free_releases_workspace() -> None:
     state.free()
 
     assert runtime.allocations == {}
-    assert len(runtime.freed) == 18
+    assert len(runtime.freed) == 20

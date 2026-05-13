@@ -249,6 +249,12 @@ def test_prepare_qwen35_paro_moe_c1_host_tensors_matches_parent_stacking(tmp_pat
     assert stacked.shape == (2, 4, 1)
     assert transposed.shape == (2, 1, 4)
     np.testing.assert_array_equal(transposed, np.swapaxes(stacked, 1, 2))
+    gate_up_q = prepared["layers.0.mlp.shared_expert.gate_up_weight_w8a16"]
+    gate_up_scale = prepared["layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale"]
+    assert gate_up_q.dtype == np.int8
+    assert gate_up_q.shape == (6, 4)
+    assert gate_up_scale.dtype == np.float32
+    assert gate_up_scale.shape == (6,)
 
 
 def test_materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(tmp_path) -> None:
@@ -264,6 +270,8 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(tmp_path) 
     assert layer.tensor(prepared_name).shape == (2, 1, 4)
     assert layer.tensor(prepared_name).dtype is DType.INT32
     assert layer.tensor("layers.0.mlp.router_shared_gate.weight").shape == (3, 4)
+    assert layer.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16").dtype is DType.INT8
+    assert layer.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale").dtype is DType.FP32
     expected_count = len(required_full_attention_moe_c1_tensor_names(layer_id=0, num_experts=2)) + len(
         prepared_moe_c1_tensor_names(layer_id=0)
     )

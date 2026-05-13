@@ -12,6 +12,8 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_write_paged_kv_mixed_value_bf16_spans,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import weighted_sum_shared_gate_combine_residual_out_bf16_f32w
+from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_dual_out_bf16, silu_mul_dual_rotate_out_bf16
+from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_lowp_out
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_pack8_strided_bf16,
@@ -46,6 +48,8 @@ class Qwen35ParoMoeScratch:
     down_input: Tensor
     down_out: Tensor
     shared_up: Tensor
+    shared_intermediate: Tensor
+    shared_out: Tensor
     moe_out: Tensor
 
 
@@ -270,6 +274,33 @@ class Qwen35ParoDecodeState:
         )
         return scratch.gate_up
 
+    def activate_rotate_moe_down_bf16(
+        self,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> Tensor:
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
+        pairs = self.tensor(f"{prefix}.down_weight_pairs")
+        theta = self.tensor(f"{prefix}.down_weight_theta")
+        scales = self.tensor(f"{prefix}.down_weight_channel_scales")
+        silu_mul_dual_rotate_out_bf16(
+            scratch.gate_up.ptr,
+            pairs.ptr,
+            theta.ptr,
+            scales.ptr,
+            scratch.down_input.ptr,
+            tokens * self.config.num_experts_per_tok,
+            self.config.moe_intermediate_size,
+            group_size,
+            _rotation_krot(pairs),
+            library=library,
+            runtime=self.runtime,
+        )
+        return scratch.down_input
+
     def selected_moe_down_pack8_bf16(
         self,
         down_input: Tensor,
@@ -302,6 +333,54 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         return scratch.down_out
+
+    def shared_expert_w8a16_bf16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        tokens: int = 1,
+        threads: int = 64,
+        library=None,
+    ) -> Tensor:
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
+        gate_up_weight = self.tensor(f"{prefix}.gate_up_weight_w8a16")
+        gate_up_scale = self.tensor(f"{prefix}.gate_up_weight_w8a16_scale")
+        down_weight = self.tensor(f"{prefix}.down_weight_w8a16")
+        down_scale = self.tensor(f"{prefix}.down_weight_w8a16_scale")
+        w8a16_linear_bf16_lowp_out(
+            hidden.ptr,
+            gate_up_weight.ptr,
+            gate_up_scale.ptr,
+            scratch.shared_up.ptr,
+            tokens,
+            self.config.hidden_size,
+            2 * self.config.shared_expert_intermediate_size,
+            threads=threads,
+            library=library,
+            runtime=self.runtime,
+        )
+        silu_mul_dual_out_bf16(
+            scratch.shared_up.ptr,
+            scratch.shared_intermediate.ptr,
+            tokens,
+            self.config.shared_expert_intermediate_size,
+            library=library,
+            runtime=self.runtime,
+        )
+        w8a16_linear_bf16_lowp_out(
+            scratch.shared_intermediate.ptr,
+            down_weight.ptr,
+            down_scale.ptr,
+            scratch.shared_out.ptr,
+            tokens,
+            self.config.shared_expert_intermediate_size,
+            self.config.hidden_size,
+            threads=threads,
+            library=library,
+            runtime=self.runtime,
+        )
+        return scratch.shared_out
 
     def combine_moe_c1_shared_residual_bf16(
         self,
@@ -357,6 +436,12 @@ class Qwen35ParoDecodeState:
                 (tokens, 2 * cfg.shared_expert_intermediate_size),
                 DType.BF16,
             ),
+            shared_intermediate=self.workspace.reserve_tensor(
+                "moe.shared_intermediate",
+                (tokens, cfg.shared_expert_intermediate_size),
+                DType.BF16,
+            ),
+            shared_out=self.workspace.reserve_tensor("moe.shared_out", (tokens, cfg.hidden_size), DType.BF16),
             moe_out=self.workspace.reserve_tensor("moe.out", (tokens, cfg.hidden_size), DType.BF16),
         )
 
@@ -369,3 +454,9 @@ def _out_packed_from_transposed_qweight(qweight: Tensor) -> int:
     if len(qweight.shape) < 3:
         raise ValueError("transposed stacked qweight must have shape [experts, out_packed, in_features]")
     return qweight.shape[1]
+
+
+def _rotation_krot(pairs: Tensor) -> int:
+    if not pairs.shape:
+        raise ValueError("rotation pairs tensor must have at least one dimension")
+    return pairs.shape[0]

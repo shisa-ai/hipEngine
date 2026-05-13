@@ -2807,3 +2807,39 @@ Results:
 ### Next
 
 - Fill the remaining in-between MoE operation gaps: fused gate/up activation + down-rotation call wiring and W8A16 shared-expert projection calls, then run an end-to-end one-token synthetic decode path over the decode-state methods.
+
+---
+
+## 2026-05-14 — Wire Qwen3.5/PARO MoE activation and W8A16 shared expert calls
+
+### Scope
+
+- Extended prepared MoE host/device layouts with parent shared-expert W8A16 tensors:
+  - `shared_expert.gate_up_weight_w8a16`
+  - `shared_expert.gate_up_weight_w8a16_scale`
+  - `shared_expert.down_weight_w8a16`
+  - `shared_expert.down_weight_w8a16_scale`
+- The W8A16 preparation mirrors the parent `_quantize_w8a16_weight`: rowwise max-abs scale, round, clamp to `[-127, 127]`, and `int8` storage with FP32 scales.
+- Added decode-state methods:
+  - `activate_rotate_moe_down_bf16(...)` calls `silu_mul_dual_rotate_out_bf16(...)` using down-rotation metadata.
+  - `shared_expert_w8a16_bf16(...)` chains W8A16 gate/up → `silu_mul_dual_out_bf16` → W8A16 down using prepared shared-expert tensors.
+- Extended shared-expert scratch with explicit intermediate/output buffers.
+- Added monkeypatched CPU tests for fused activation/down-rotation and W8A16 shared branch wrapper arguments.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Targeted Qwen tests: `23 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Add a CPU-monkeypatched synthetic one-token decode-state chain that invokes the full MoE c=1 route in parent order, then move toward a tiny real-GPU integration smoke over the decode-state methods with prepared synthetic weights.
