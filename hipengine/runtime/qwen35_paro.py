@@ -11,7 +11,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
 )
-from hipengine.kernels.hip_gfx1100.convert import f32_to_bf16
+from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import weighted_sum_shared_gate_combine_residual_out_bf16_f32w
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_dual_out_bf16, silu_mul_dual_rotate_out_bf16
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
@@ -25,7 +25,8 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_pack8_transposed_bf16,
 )
-from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import paro_rotate1_bf16, paro_rotate2_bf16
+from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import paro_rotate1_bf16, paro_rotate2_bf16, paro_rotate3_bf16
+from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_head_rmsnorm_partial_rotary_position_f32_bf16
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights, normalize_qwen35_weight_name
 from hipengine.runtime.workspace import RuntimeWorkspace
@@ -33,6 +34,14 @@ from hipengine.runtime.workspace import RuntimeWorkspace
 
 @dataclass(frozen=True)
 class Qwen35ParoAttentionScratch:
+    attn_input: Tensor
+    q_rot: Tensor
+    k_rot: Tensor
+    v_rot: Tensor
+    q_proj: Tensor
+    key_bf16: Tensor
+    query_raw: Tensor
+    key_raw: Tensor
     query: Tensor
     key: Tensor
     value: Tensor
@@ -42,6 +51,8 @@ class Qwen35ParoAttentionScratch:
     partial_l: Tensor
     attn_out: Tensor
     gated_attn: Tensor
+    o_rot: Tensor
+    o_proj: Tensor
 
 
 @dataclass(frozen=True)
@@ -115,10 +126,19 @@ class Qwen35ParoDecodeState:
             raise ValueError("num_splits must be positive")
         cfg = self.config
         q_width = cfg.num_attention_heads * cfg.head_dim
+        kv_width = cfg.num_key_value_heads * cfg.head_dim
         gated = DType.parse(gated_dtype)
         if gated not in {DType.BF16, DType.FP16, DType.FP32}:
             raise ValueError("gated_dtype must be bf16, fp16, or fp32")
         return Qwen35ParoAttentionScratch(
+            attn_input=self.workspace.reserve_tensor("attn.input", (tokens, cfg.hidden_size), DType.BF16),
+            q_rot=self.workspace.reserve_tensor("attn.q_rot", (tokens, cfg.hidden_size), DType.BF16),
+            k_rot=self.workspace.reserve_tensor("attn.k_rot", (tokens, cfg.hidden_size), DType.BF16),
+            v_rot=self.workspace.reserve_tensor("attn.v_rot", (tokens, cfg.hidden_size), DType.BF16),
+            q_proj=self.workspace.reserve_tensor("attn.q_proj", (tokens, 2 * q_width), DType.BF16),
+            key_bf16=self.workspace.reserve_tensor("attn.key_bf16", (tokens, kv_width), DType.BF16),
+            query_raw=self.workspace.reserve_tensor("attn.query_raw", (tokens, cfg.num_attention_heads, cfg.head_dim), DType.FP32),
+            key_raw=self.workspace.reserve_tensor("attn.key_raw", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
             query=self.workspace.reserve_tensor("attn.query", (tokens, cfg.num_attention_heads, cfg.head_dim), DType.FP32),
             key=self.workspace.reserve_tensor("attn.key", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
             value=self.workspace.reserve_tensor("attn.value", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.BF16),
@@ -132,6 +152,8 @@ class Qwen35ParoDecodeState:
             partial_l=self.workspace.reserve_tensor("attn.partial_l", (cfg.num_attention_heads, num_splits), DType.FP32),
             attn_out=self.workspace.reserve_tensor("attn.out", (cfg.num_attention_heads, cfg.head_dim), DType.FP32),
             gated_attn=self.workspace.reserve_tensor("attn.gated", (tokens, q_width), gated),
+            o_rot=self.workspace.reserve_tensor("attn.o_rot", (tokens, q_width), DType.BF16),
+            o_proj=self.workspace.reserve_tensor("attn.o_proj", (tokens, cfg.hidden_size), DType.BF16),
         )
 
     def project_pack8_bf16(
@@ -167,6 +189,174 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         return out
+
+    def rotate_full_attention_inputs_bf16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
+        q = f"{prefix}.q_proj"
+        k = f"{prefix}.k_proj"
+        v = f"{prefix}.v_proj"
+        q_pairs = self.tensor(f"{q}.pairs")
+        k_pairs = self.tensor(f"{k}.pairs")
+        v_pairs = self.tensor(f"{v}.pairs")
+        paro_rotate3_bf16(
+            hidden.ptr,
+            scratch.q_rot.ptr,
+            scratch.k_rot.ptr,
+            scratch.v_rot.ptr,
+            q_pairs.ptr,
+            k_pairs.ptr,
+            v_pairs.ptr,
+            self.tensor(f"{q}.theta").ptr,
+            self.tensor(f"{k}.theta").ptr,
+            self.tensor(f"{v}.theta").ptr,
+            self.tensor(f"{q}.channel_scales").ptr,
+            self.tensor(f"{k}.channel_scales").ptr,
+            self.tensor(f"{v}.channel_scales").ptr,
+            tokens,
+            self.config.hidden_size,
+            group_size,
+            _rotation_krot(q_pairs),
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+        return scratch.q_rot, scratch.k_rot, scratch.v_rot
+
+    def project_full_attention_qkv_bf16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
+        self.project_pack8_bf16(
+            scratch.q_rot,
+            scratch.q_proj,
+            weight_prefix=f"{prefix}.q_proj",
+            rows=tokens,
+            group_size=group_size,
+            library=library,
+        )
+        self.project_pack8_bf16(
+            scratch.k_rot,
+            scratch.key_bf16,
+            weight_prefix=f"{prefix}.k_proj",
+            rows=tokens,
+            group_size=group_size,
+            library=library,
+        )
+        self.project_pack8_bf16(
+            scratch.v_rot,
+            scratch.value,
+            weight_prefix=f"{prefix}.v_proj",
+            rows=tokens,
+            group_size=group_size,
+            library=library,
+        )
+        return scratch.q_proj, scratch.key_bf16, scratch.value
+
+    def prepare_full_attention_qkv_bf16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        cos_table: Tensor,
+        sin_table: Tensor,
+        position: Tensor,
+        max_positions: int,
+        tokens: int = 1,
+        library=None,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        if tokens != 1:
+            raise ValueError("full-attention qkv prepare currently requires tokens=1")
+        cfg = self.config
+        q_width = cfg.num_attention_heads * cfg.head_dim
+        kv_width = cfg.num_key_value_heads * cfg.head_dim
+        bf16_to_f32(
+            scratch.q_proj.ptr,
+            scratch.query_raw.ptr,
+            q_width,
+            library=_library_for(library, "cast"),
+            runtime=self.runtime,
+        )
+        bf16_to_f32(
+            scratch.key_bf16.ptr,
+            scratch.key_raw.ptr,
+            kv_width,
+            library=_library_for(library, "cast"),
+            runtime=self.runtime,
+        )
+        prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
+        qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
+            scratch.query_raw.ptr,
+            scratch.key_raw.ptr,
+            self.tensor(f"{prefix}.q_norm.weight").ptr,
+            self.tensor(f"{prefix}.k_norm.weight").ptr,
+            cos_table.ptr,
+            sin_table.ptr,
+            position.ptr,
+            scratch.query.ptr,
+            scratch.key.ptr,
+            self.config.rms_norm_eps,
+            cfg.num_attention_heads,
+            cfg.num_key_value_heads,
+            cfg.head_dim,
+            cfg.rotary_dim or cfg.head_dim,
+            max_positions,
+            library=_library_for(library, "qwen_rotary"),
+            runtime=self.runtime,
+        )
+        gate = Tensor.from_handle(
+            scratch.q_proj.ptr + q_width * DType.BF16.itemsize,
+            (tokens, cfg.num_attention_heads, cfg.head_dim),
+            DType.BF16,
+            scratch.q_proj.device,
+        )
+        return scratch.query, scratch.key, scratch.value, gate
+
+    def project_full_attention_o_bf16(
+        self,
+        gated_attn: Tensor,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> Tensor:
+        prefix = f"layers.{self.layer_weights.layer_id}.self_attn.o_proj"
+        q_width = self.config.num_attention_heads * self.config.head_dim
+        pairs = self.tensor(f"{prefix}.pairs")
+        paro_rotate1_bf16(
+            gated_attn.ptr,
+            scratch.o_rot.ptr,
+            pairs.ptr,
+            self.tensor(f"{prefix}.theta").ptr,
+            self.tensor(f"{prefix}.channel_scales").ptr,
+            tokens,
+            q_width,
+            group_size,
+            _rotation_krot(pairs),
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+        self.project_pack8_bf16(
+            scratch.o_rot,
+            scratch.o_proj,
+            weight_prefix=prefix,
+            rows=tokens,
+            in_features=q_width,
+            group_size=group_size,
+            library=library,
+        )
+        return scratch.o_proj
 
     def reserve_linear_attention_scratch(self, *, tokens: int = 1) -> Qwen35ParoLinearAttentionScratch:
         if tokens <= 0:
@@ -554,15 +744,17 @@ class Qwen35ParoDecodeState:
         spans: KVLiveSpans,
         chunk_size: int,
         num_splits: int,
+        gate: Tensor | None = None,
         block_size: int = 256,
         scale: float | None = None,
         library=None,
     ) -> Tensor:
+        gate_tensor = scratch.gate if gate is None else gate
         qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
             scratch.query.ptr,
             key_cache.ptr,
             value_cache.ptr,
-            scratch.gate.ptr,
+            gate_tensor.ptr,
             scratch.gated_attn.ptr,
             scratch.partial_out.ptr,
             scratch.partial_m.ptr,
@@ -574,13 +766,103 @@ class Qwen35ParoDecodeState:
             self.config.num_attention_heads,
             self.config.num_key_value_heads,
             self.config.head_dim,
-            scratch.gate.shape[-1],
+            gate_tensor.shape[-1],
             1,
             (self.config.head_dim ** -0.5) if scale is None else scale,
             library=_library_for(library, "attention"),
             runtime=self.runtime,
         )
         return scratch.gated_attn
+
+    def run_full_attention_moe_c1_layer_bf16(
+        self,
+        hidden: Tensor,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        append_spans: KVLiveSpans,
+        decode_spans: KVLiveSpans,
+        cos_table: Tensor,
+        sin_table: Tensor,
+        position: Tensor,
+        max_positions: int,
+        attention_scratch: Qwen35ParoAttentionScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | None = None,
+        tokens: int = 1,
+        group_size: int = 128,
+        block_size: int = 256,
+        chunk_size: int = 256,
+        num_splits: int = 1,
+        library=None,
+    ) -> Tensor:
+        if tokens != 1:
+            raise ValueError("full-attention+MoE c=1 layer orchestrator currently requires tokens=1")
+        attention_scratch = attention_scratch or self.reserve_full_attention_scratch(tokens=tokens, num_splits=num_splits)
+        moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens)
+        self.input_rmsnorm_bf16(hidden, attention_scratch.attn_input, tokens=tokens, library=library)
+        self.rotate_full_attention_inputs_bf16(
+            attention_scratch.attn_input,
+            attention_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+        )
+        self.project_full_attention_qkv_bf16(
+            attention_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+        )
+        _query, _key, _value, gate = self.prepare_full_attention_qkv_bf16(
+            attention_scratch,
+            cos_table=cos_table,
+            sin_table=sin_table,
+            position=position,
+            max_positions=max_positions,
+            tokens=tokens,
+            library=library,
+        )
+        self.append_full_attention_kv(
+            attention_scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=append_spans,
+            block_size=block_size,
+            library=library,
+        )
+        gated = self.decode_full_attention_gqa_gate_bf16(
+            attention_scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=decode_spans,
+            chunk_size=chunk_size,
+            num_splits=num_splits,
+            gate=gate,
+            block_size=block_size,
+            library=library,
+        )
+        attn_out = self.project_full_attention_o_bf16(
+            gated,
+            attention_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+        )
+        mlp_input, residual = self.post_attention_add_rmsnorm_bf16(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=tokens,
+            library=library,
+        )
+        return self.run_moe_c1_bf16(
+            mlp_input,
+            residual,
+            scratch=moe_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+        )
 
     def route_moe_topk_shared_bf16(
         self,

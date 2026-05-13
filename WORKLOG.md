@@ -3227,3 +3227,42 @@ Results:
 ### Next
 
 - Add a real-model partial decode/generate harness around embeddings/layer sequencing/lm-head so the validated layer chain can advance an actual token.
+
+---
+
+## 2026-05-14 — Wire Qwen3.5/PARO full-attention+MoE layer chain
+
+### Scope
+
+- Extended full-attention scratch with input rotation, Q/K/V projection, BF16→FP32 head-norm inputs, and output-projection buffers.
+- Added full-attention decode-state helpers for:
+  input RMSNorm → PARO rotate3 → Q/K/V pack8 projections → Q/K head RMSNorm+partial RoPE → paged KV append/decode with BF16 gate → PARO `o_proj` → post-attention add-RMSNorm → c=1 MoE.
+- Added runtime materialization for rotated `self_attn.o_proj` metadata (`theta`, `pairs`, `channel_scales`).
+- Materialized `self_attn.q_norm/k_norm.weight` as Qwen delta weights (`weight - 1`) for the preserved Qwen head-RMSNorm kernel ABI.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py -q
+python3 -m pytest -q
+(rocm-smi --showpids --showuse --showmeminfo vram || true) | awk '/GPU use|No KFD|PID|python3|VRAM Total Used/ {print}'
+python3 - <<'PY'
+# Real layer-3 GPU smoke on /models/.../Qwen3.5-35B-A3B-PARO:
+# materialize runtime full-attention layer tensors, zero hidden/KV inputs, one-token spans,
+# run full-attention+MoE layer chain.
+PY
+```
+
+Results:
+
+- Decode-state + layout tests: `34 passed`.
+- Full test suite: all tests passed.
+- Waited for GPU to become idle before the smoke (`No KFD PIDs currently running`).
+- Real checkpoint layer-3 full-attention chain completed on W7900:
+  - `full_layer_out (1, 2048) bf16 nonzero=0`, first output BF16 words all zero for zero input/KV.
+
+### Next
+
+- Build the minimal all-layer real-model decode harness: embedding lookup, layer-state/KV allocation, final norm, lm-head, and tokenizer-visible next-token output.

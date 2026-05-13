@@ -163,7 +163,16 @@ def required_full_attention_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]
             )
         )
     base = f"{prefix}.o_proj"
-    names.extend((f"{base}.qweight", f"{base}.qzeros", f"{base}.scales"))
+    names.extend(
+        (
+            f"{base}.qweight",
+            f"{base}.qzeros",
+            f"{base}.scales",
+            f"{base}.theta",
+            f"{base}.pairs",
+            f"{base}.channel_scales",
+        )
+    )
     return tuple(names)
 
 
@@ -285,7 +294,16 @@ def runtime_full_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, .
             )
         )
     base = f"{attn}.o_proj"
-    names.extend((f"{base}.qweight", f"{base}.qzeros", f"{base}.scales"))
+    names.extend(
+        (
+            f"{base}.qweight",
+            f"{base}.qzeros",
+            f"{base}.scales",
+            f"{base}.theta",
+            f"{base}.pairs",
+            f"{base}.channel_scales",
+        )
+    )
     names.extend(
         (
             f"{experts}.down_weight_pairs",
@@ -702,6 +720,10 @@ def _runtime_tensor_needs_f32(name: str) -> bool:
     )
 
 
+def _runtime_tensor_needs_qwen_norm_offset(name: str) -> bool:
+    return name.endswith(".self_attn.q_norm.weight") or name.endswith(".self_attn.k_norm.weight")
+
+
 def _runtime_tensor_needs_bf16_bits(name: str) -> bool:
     return (
         name.endswith(".weight")
@@ -739,6 +761,18 @@ def _materialize_runtime_layer(
                     name,
                     array,
                     DType.FP32,
+                    device=device,
+                    runtime=runtime,
+                )
+            elif _runtime_tensor_needs_qwen_norm_offset(name):
+                import numpy as np
+
+                direct = np.asarray(_read_normalized_numpy_tensor(normalized, name), dtype=np.float32)
+                array = float_array_to_bf16_bits(np.ascontiguousarray(direct - np.float32(1.0)))
+                allocations[name] = load_host_array_to_device_as_dtype(
+                    name,
+                    array,
+                    DType.BF16,
                     device=device,
                     runtime=runtime,
                 )

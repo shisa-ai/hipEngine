@@ -124,6 +124,12 @@ def test_qwen35_decode_state_reserves_full_attention_split_k_scratch() -> None:
 
     scratch = state.reserve_full_attention_scratch(tokens=1, num_splits=2, gated_dtype="bf16")
 
+    assert scratch.attn_input.shape == (1, 4096)
+    assert scratch.q_rot.shape == (1, 4096)
+    assert scratch.q_proj.shape == (1, 8192)
+    assert scratch.key_bf16.shape == (1, 512)
+    assert scratch.query_raw.shape == (1, 16, 256)
+    assert scratch.key_raw.shape == (1, 2, 256)
     assert scratch.query.shape == (1, 16, 256)
     assert scratch.key.shape == (1, 2, 256)
     assert scratch.value.shape == (1, 2, 256)
@@ -134,6 +140,8 @@ def test_qwen35_decode_state_reserves_full_attention_split_k_scratch() -> None:
     assert scratch.attn_out.shape == (16, 256)
     assert scratch.gated_attn.shape == (1, 4096)
     assert scratch.gated_attn.dtype is DType.BF16
+    assert scratch.o_rot.shape == (1, 4096)
+    assert scratch.o_proj.shape == (1, 4096)
 
 
 def test_qwen35_decode_state_reserves_moe_c1_scratch() -> None:
@@ -250,6 +258,44 @@ def _linear_weights() -> DeviceWeightMap:
             f"{prefix}.dt_bias": _allocation(f"{prefix}.dt_bias", 0xA100, (32,), "fp32"),
             f"{prefix}.A_log": _allocation(f"{prefix}.A_log", 0xA200, (32,), "fp32"),
             f"{prefix}.norm.weight": _allocation(f"{prefix}.norm.weight", 0xA300, (128,), "fp32"),
+        }
+    )
+
+
+def _full_attention_weights() -> DeviceWeightMap:
+    prefix = "layers.0.self_attn"
+    return DeviceWeightMap(
+        {
+            "layers.0.input_layernorm.weight": _allocation("layers.0.input_layernorm.weight", 0x8100, (4096,), "bf16"),
+            "layers.0.post_attention_layernorm.weight": _allocation(
+                "layers.0.post_attention_layernorm.weight", 0x8110, (4096,), "bf16"
+            ),
+            f"{prefix}.q_norm.weight": _allocation(f"{prefix}.q_norm.weight", 0x8120, (256,), "bf16"),
+            f"{prefix}.k_norm.weight": _allocation(f"{prefix}.k_norm.weight", 0x8130, (256,), "bf16"),
+            f"{prefix}.q_proj.pairs": _allocation(f"{prefix}.q_proj.pairs", 0x8200, (8, 4096), "int16"),
+            f"{prefix}.q_proj.theta": _allocation(f"{prefix}.q_proj.theta", 0x8210, (8, 2048), "bf16"),
+            f"{prefix}.q_proj.channel_scales": _allocation(f"{prefix}.q_proj.channel_scales", 0x8220, (1, 4096), "bf16"),
+            f"{prefix}.q_proj.qweight": _allocation(f"{prefix}.q_proj.qweight", 0x8230, (4096, 1024), "int32"),
+            f"{prefix}.q_proj.qzeros": _allocation(f"{prefix}.q_proj.qzeros", 0x8240, (32, 1024), "int32"),
+            f"{prefix}.q_proj.scales": _allocation(f"{prefix}.q_proj.scales", 0x8250, (32, 8192), "bf16"),
+            f"{prefix}.k_proj.pairs": _allocation(f"{prefix}.k_proj.pairs", 0x8300, (8, 4096), "int16"),
+            f"{prefix}.k_proj.theta": _allocation(f"{prefix}.k_proj.theta", 0x8310, (8, 2048), "bf16"),
+            f"{prefix}.k_proj.channel_scales": _allocation(f"{prefix}.k_proj.channel_scales", 0x8320, (1, 4096), "bf16"),
+            f"{prefix}.k_proj.qweight": _allocation(f"{prefix}.k_proj.qweight", 0x8330, (4096, 64), "int32"),
+            f"{prefix}.k_proj.qzeros": _allocation(f"{prefix}.k_proj.qzeros", 0x8340, (32, 64), "int32"),
+            f"{prefix}.k_proj.scales": _allocation(f"{prefix}.k_proj.scales", 0x8350, (32, 512), "bf16"),
+            f"{prefix}.v_proj.pairs": _allocation(f"{prefix}.v_proj.pairs", 0x8400, (8, 4096), "int16"),
+            f"{prefix}.v_proj.theta": _allocation(f"{prefix}.v_proj.theta", 0x8410, (8, 2048), "bf16"),
+            f"{prefix}.v_proj.channel_scales": _allocation(f"{prefix}.v_proj.channel_scales", 0x8420, (1, 4096), "bf16"),
+            f"{prefix}.v_proj.qweight": _allocation(f"{prefix}.v_proj.qweight", 0x8430, (4096, 64), "int32"),
+            f"{prefix}.v_proj.qzeros": _allocation(f"{prefix}.v_proj.qzeros", 0x8440, (32, 64), "int32"),
+            f"{prefix}.v_proj.scales": _allocation(f"{prefix}.v_proj.scales", 0x8450, (32, 512), "bf16"),
+            f"{prefix}.o_proj.pairs": _allocation(f"{prefix}.o_proj.pairs", 0x8500, (8, 4096), "int16"),
+            f"{prefix}.o_proj.theta": _allocation(f"{prefix}.o_proj.theta", 0x8510, (8, 2048), "bf16"),
+            f"{prefix}.o_proj.channel_scales": _allocation(f"{prefix}.o_proj.channel_scales", 0x8520, (1, 4096), "bf16"),
+            f"{prefix}.o_proj.qweight": _allocation(f"{prefix}.o_proj.qweight", 0x8530, (4096, 512), "int32"),
+            f"{prefix}.o_proj.qzeros": _allocation(f"{prefix}.o_proj.qzeros", 0x8540, (32, 512), "int32"),
+            f"{prefix}.o_proj.scales": _allocation(f"{prefix}.o_proj.scales", 0x8550, (32, 4096), "bf16"),
         }
     )
 
@@ -464,6 +510,102 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
     )
     with pytest.raises(ValueError, match="tokens=1"):
         state.run_linear_attention_moe_c1_layer_bf16(hidden, conv_state=conv_state, recurrent_state=recurrent_state, tokens=2)
+
+
+def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    weights = DeviceWeightMap({**_full_attention_weights().tensors, **_prepared_moe_weights().tensors})
+    state = _state(runtime, weights)
+    hidden = _tensor(0xC000, (1, 4096), "bf16")
+    key_cache = _tensor(0xE000, (1, 256, 2, 256), "bf16")
+    value_cache = _tensor(0xF000, (1, 256, 2, 256), "bf16")
+    cos_table = _tensor(0xD200, (4, 256), "fp32")
+    sin_table = _tensor(0xD300, (4, 256), "fp32")
+    position = _tensor(0xD400, (1,), "int64")
+    attn = state.reserve_full_attention_scratch(tokens=1, num_splits=1)
+    moe = state.reserve_moe_c1_scratch(tokens=1)
+    calls = []
+
+    def record(name):
+        def fake(*args, **kwargs):
+            calls.append((name, args, kwargs))
+        return fake
+
+    monkeypatch.setattr(qwen_runtime, "paro_rmsnorm_out_bf16", record("input_norm"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate3_bf16", record("rotate3"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
+    monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("bf16_to_f32"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_head_rmsnorm_partial_rotary_position_f32_bf16", record("head_rotary"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_write_paged_kv_mixed_value_bf16_spans", record("kv"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans", record("attention"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", record("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "paro_add_rmsnorm_out_bf16", record("post_norm"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_bf16", record("router"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", record("gate_up"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", record("silu_rotate"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", record("down"))
+    monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", record("w8a16"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", record("shared_silu"))
+    monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_out_bf16_f32w", record("combine"))
+
+    out = state.run_full_attention_moe_c1_layer_bf16(
+        hidden,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        append_spans=_spans(),
+        decode_spans=_spans(),
+        cos_table=cos_table,
+        sin_table=sin_table,
+        position=position,
+        max_positions=4,
+        attention_scratch=attn,
+        moe_scratch=moe,
+    )
+
+    assert out is moe.moe_out
+    assert [name for name, _, _ in calls] == [
+        "input_norm",
+        "rotate3",
+        "pack8",
+        "pack8",
+        "pack8",
+        "bf16_to_f32",
+        "bf16_to_f32",
+        "head_rotary",
+        "kv",
+        "attention",
+        "rotate1",
+        "pack8",
+        "post_norm",
+        "router",
+        "gate_up",
+        "silu_rotate",
+        "down",
+        "w8a16",
+        "shared_silu",
+        "w8a16",
+        "combine",
+    ]
+    assert calls[1][1][:4] == (attn.attn_input.ptr, attn.q_rot.ptr, attn.k_rot.ptr, attn.v_rot.ptr)
+    assert calls[5][1] == (attn.q_proj.ptr, attn.query_raw.ptr, 4096)
+    assert calls[6][1] == (attn.key_bf16.ptr, attn.key_raw.ptr, 512)
+    assert calls[7][1][:9] == (attn.query_raw.ptr, attn.key_raw.ptr, 0x8120, 0x8130, 0xD200, 0xD300, 0xD400, attn.query.ptr, attn.key.ptr)
+    assert calls[9][1][3] == attn.q_proj.ptr + 4096 * DType.BF16.itemsize
+    assert calls[10][1][:5] == (attn.gated_attn.ptr, attn.o_rot.ptr, 0x8500, 0x8510, 0x8520)
+    assert calls[12][1][:5] == (hidden.ptr, attn.o_proj.ptr, 0x8110, moe.normed.ptr, moe.residual.ptr)
+    with pytest.raises(ValueError, match="tokens=1"):
+        state.run_full_attention_moe_c1_layer_bf16(
+            hidden,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            append_spans=_spans(),
+            decode_spans=_spans(),
+            cos_table=cos_table,
+            sin_table=sin_table,
+            position=position,
+            max_positions=4,
+            tokens=2,
+        )
 
 
 def test_qwen35_decode_state_appends_kv_with_scratch_pointers(monkeypatch) -> None:
@@ -748,4 +890,4 @@ def test_qwen35_decode_state_free_releases_workspace() -> None:
     state.free()
 
     assert runtime.allocations == {}
-    assert len(runtime.freed) == 21
+    assert len(runtime.freed) == 31

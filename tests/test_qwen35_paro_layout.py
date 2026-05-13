@@ -107,6 +107,9 @@ def _valid_attention_tensors() -> dict[str, np.ndarray]:
     tensors[f"{base}.qweight"] = np.zeros((4, 1), dtype=np.int32)
     tensors[f"{base}.qzeros"] = np.zeros((1, 1), dtype=np.int32)
     tensors[f"{base}.scales"] = np.zeros((1, 8), dtype=np.float16)
+    tensors[f"{base}.theta"] = np.zeros((1, 2), dtype=np.float16)
+    tensors[f"{base}.pairs"] = np.zeros((1, 4), dtype=np.int16)
+    tensors[f"{base}.channel_scales"] = np.zeros((4,), dtype=np.float16)
     return tensors
 
 
@@ -202,6 +205,7 @@ def test_required_full_attention_names_include_rotated_qkv_and_o_proj() -> None:
     assert "layers.3.self_attn.q_proj.theta" in names
     assert "layers.3.self_attn.v_proj.channel_scales" in names
     assert "layers.3.self_attn.o_proj.qweight" in names
+    assert "layers.3.self_attn.o_proj.theta" in names
     assert "layers.3.mlp.experts.1.down_proj.scales" in combined
 
 
@@ -368,6 +372,8 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_bf16_k
     tensors = {**_valid_attention_tensors(), **_valid_tensors()}
     tensors["model.layers.0.self_attn.q_proj.scales"] = np.full((1, 8), 1.0, dtype=np.float16)
     tensors["model.layers.0.self_attn.q_proj.theta"] = np.full((1, 2), 0.5, dtype=np.float16)
+    tensors["model.layers.0.self_attn.q_norm.weight"] = np.full((2,), 1.25, dtype=np.float16)
+    tensors["model.layers.0.self_attn.k_norm.weight"] = np.full((2,), 0.75, dtype=np.float16)
     tensors["model.layers.0.mlp.gate.weight"] = np.ones((2, 4), dtype=np.float16)
     tensors["model.layers.0.mlp.shared_expert_gate.weight"] = np.full((1, 4), 2.0, dtype=np.float16)
     tensors["model.layers.0.mlp.experts.down_weight_theta"] = np.full((1, 2), -1.0, dtype=np.float16)
@@ -389,6 +395,10 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_bf16_k
     q_scales = layer.allocation("layers.0.self_attn.q_proj.scales")
     assert bytes(runtime.buffers[q_scales.buffer.ptr]) == float_array_to_bf16_bits(
         tensors["model.layers.0.self_attn.q_proj.scales"]
+    ).tobytes()
+    q_norm = layer.allocation("layers.0.self_attn.q_norm.weight")
+    assert bytes(runtime.buffers[q_norm.buffer.ptr]) == float_array_to_bf16_bits(
+        tensors["model.layers.0.self_attn.q_norm.weight"].astype(np.float32) - np.float32(1.0)
     ).tobytes()
     layer.free(runtime=runtime)
     assert len(runtime.freed) == len(runtime_full_attention_moe_c1_tensor_names(layer_id=0))
