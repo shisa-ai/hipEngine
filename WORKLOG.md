@@ -919,3 +919,38 @@ Results:
 - `tests/test_build.py`: `5 passed`.
 - Decode-profile smoke build succeeded at `/home/lhl/.cache/hipengine/build/smoke_decode_flag_test-1ea75e71405c6088/smoke_add.so`.
 - Flags printed: `('-mllvm', '-amdgpu-unroll-threshold-local=600', '-mcumode')`.
+
+---
+
+## 2026-05-13 — Reviewed AICL-Lab/hetero-paged-infer relevance
+
+### Scope
+
+- Reviewed `https://github.com/AICL-Lab/hetero-paged-infer` at commit `a9765bd69aefd8a64591d930867d21ed3dd7fd90` as a potential reference for HIPENGINE's scheduler / paged-KV / tiered-memory design.
+- Local read-only clone: `/tmp/pi-github-repos/AICL-Lab/hetero-paged-infer`.
+
+### Evidence
+
+```bash
+cd /tmp/pi-github-repos/AICL-Lab/hetero-paged-infer
+git rev-parse HEAD
+cargo test --quiet
+```
+
+Results:
+
+- Commit: `a9765bd69aefd8a64591d930867d21ed3dd7fd90`.
+- Tests passed: `87 passed`, `13 passed`, `6 passed`, `29 passed`, `1 ignored` across cargo test binaries.
+- Source size sampled with `wc -l`: `7,740` lines across `src/`, `tests/`, and `benches/`.
+
+### Findings
+
+- The repo is a Rust prototype around PagedAttention-style block allocation, continuous batching, memory-pressure rejection, an OpenAI-compatible server, and trait-shaped executor interfaces.
+- It does **not** contain production kernels: README and architecture docs mark the GPU executor as mock and real CUDA kernels / pinned memory / async CPU-GPU overlap as planned or not implemented.
+- Its KV abstraction is classic uniform fixed-page `block_table + context_len`. This is useful as a small scheduler/block-manager sanity reference, but it is less general than HIPENGINE's planned `KVLiveSpans` ABI and `KVPolicy.admission_cap()` contract for DMS / H2O / SnapKV / sliding policies.
+- No architecture change adopted. If we need a future sanity check for host-only scheduler invariants, its property tests and simple `BlockPool`/`PageTable` model are a reasonable reference. For tiered/offloaded decode scheduling, APEX and Neo are more relevant research references than this repo.
+
+### Next
+
+- Do not port code from this repo into HIPENGINE.
+- Optional future doc update: add it to `docs/PLAN.md` references only as a lightweight Rust host-shape / test-harness reference, not as a kernel or tiered offload source.
