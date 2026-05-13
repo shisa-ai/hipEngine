@@ -16,6 +16,10 @@ class DType(str, Enum):
     BOOL = "bool"
     INT4_PARO = "int4_paro"
 
+    @property
+    def itemsize(self) -> int:
+        return dtype_itemsize(self)
+
     @classmethod
     def parse(cls, value: str | "DType") -> "DType":
         if isinstance(value, cls):
@@ -25,3 +29,23 @@ class DType(str, Enum):
         except ValueError as exc:
             valid = ", ".join(dtype.value for dtype in cls)
             raise ValueError(f"unknown dtype {value!r}; expected one of: {valid}") from exc
+
+
+_DTYPE_ITEMSIZE = {
+    DType.FP16: 2,
+    DType.BF16: 2,
+    DType.FP32: 4,
+    DType.INT64: 8,
+    DType.INT32: 4,
+    DType.INT16: 2,
+    DType.INT8: 1,
+    DType.BOOL: 1,
+}
+
+
+def dtype_itemsize(dtype: str | DType) -> int:
+    parsed = DType.parse(dtype)
+    try:
+        return _DTYPE_ITEMSIZE[parsed]
+    except KeyError as exc:
+        raise ValueError(f"dtype {parsed.value!r} does not have a fixed element byte size") from exc

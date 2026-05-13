@@ -2566,3 +2566,36 @@ Results:
 ### Next
 
 - Define a minimal Qwen3.5/PARO runtime state object that combines materialized layer weights, scratch/workspace buffers, and landed kernel wrappers into a one-token decode step.
+
+---
+
+## 2026-05-14 — Add torch-free runtime workspace allocator
+
+### Scope
+
+- Added `hipengine/runtime/workspace.py` with a named scratch allocator:
+  - `RuntimeWorkspace.reserve_tensor(name, shape, dtype)` returns a raw-pointer `Tensor` backed by an owned `DeviceBuffer`.
+  - Exact shape/dtype/device matches are reused; changed specs free the old buffer before replacement.
+  - `RuntimeWorkspace.free()` releases owned scratch buffers in reverse allocation order.
+- Added `WorkspaceAllocation` and `tensor_nbytes(...)` helpers.
+- Added fixed element byte sizing via `DType.itemsize` and `dtype_itemsize(...)` for workspace-safe dtypes.
+- Exported runtime workspace helpers from `hipengine.runtime` and `dtype_itemsize` from `hipengine.core`.
+- Added CPU-safe fake-runtime tests for reuse, replacement/free, reverse-order cleanup, and shape/name validation.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_runtime_workspace.py tests/test_loading_materialize.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Targeted runtime/materializer tests: `9 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Use `RuntimeWorkspace` to define a minimal Qwen3.5/PARO one-token decode state: materialized layer weights + KV spans + scratch tensors + calls into the landed full-attention/MoE kernel wrappers.
