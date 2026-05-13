@@ -3042,3 +3042,73 @@ Results:
   - rotated PARO projections for q/k/v/o and linear-attention projections,
   - linear-attention decode state wiring,
   - final norm + lm-head + argmax/tokenizer loop.
+
+---
+
+## 2026-05-14 — Add Qwen3.5/PARO linear-attention runtime loading slice
+
+### Scope
+
+- Extended `Qwen35ParoConfig` with the real-model metadata needed beyond full-attention layers:
+  - vocab size, RMSNorm eps, RoPE theta/rotary dim,
+  - linear-attention key/value head counts and dims,
+  - linear convolution kernel width.
+- Added required/runtime tensor name helpers for Qwen3.5/PARO linear-attention+MoE c=1 layers.
+- Added `validate_qwen35_paro_linear_attention_moe_c1_layout(...)`.
+- Added `materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(...)`.
+- Runtime materialization converts:
+  - PARO W4 scales/theta/channel-scales and dense a/b projection weights to BF16 bit buffers,
+  - linear-attention `conv1d.weight`, `A_log`, `dt_bias`, and `linear_attn.norm.weight` to FP32 buffers for the existing conv/GDN kernels,
+  - MoE expert tensors to stacked/pack8 prepared runtime layout.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_paro_layout.py -q
+python3 -m pytest -q
+python3 - <<'PY'
+from hipengine.core.hip import get_hip_runtime
+from hipengine.loading.safetensors import load_weight_index
+from hipengine.loading.qwen35_paro import materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer
+model='/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd'
+runtime=get_hip_runtime()
+idx=load_weight_index(model)
+layer=materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(idx, layer_id=0, runtime=runtime)
+try:
+    print('layer_id=', layer.layer_id, 'tensor_count=', len(layer.weights.tensors))
+    for name in [
+        'layers.0.linear_attn.in_proj_qkv.qweight',
+        'layers.0.linear_attn.in_proj_qkv.scales',
+        'layers.0.linear_attn.in_proj_a.weight',
+        'layers.0.linear_attn.conv1d.weight',
+        'layers.0.linear_attn.A_log',
+        'layers.0.linear_attn.norm.weight',
+        'layers.0.mlp.experts.stacked_gate_qweight_pack8_decode',
+    ]:
+        t=layer.tensor(name)
+        print(name, t.shape, t.dtype.value)
+finally:
+    layer.free(runtime=runtime)
+PY
+```
+
+Results:
+
+- Qwen3.5/PARO layout tests: all passed.
+- Full test suite: all passed.
+- Real checkpoint layer-0 runtime materialization succeeded on idle W7900:
+  - `tensor_count=43`
+  - `layers.0.linear_attn.in_proj_qkv.qweight`: `(2048, 1024) int32`
+  - `layers.0.linear_attn.in_proj_qkv.scales`: `(16, 8192) bf16`
+  - `layers.0.linear_attn.in_proj_a.weight`: `(32, 2048) bf16`
+  - `layers.0.linear_attn.conv1d.weight`: `(8192, 1, 4) fp32`
+  - `layers.0.linear_attn.A_log`: `(32,) fp32`
+  - `layers.0.linear_attn.norm.weight`: `(128,) fp32`
+  - `layers.0.mlp.experts.stacked_gate_qweight_pack8_decode`: `(256, 64, 2048) int32`
+
+### Next
+
+- Wire the linear-attention decode-state call chain over these materialized tensors:
+  `paro_rotate2 -> in_proj_qkv/z pack8 GEMV -> dense a/b GEMV -> conv decode -> GDN recurrent RMSNorm+gate -> rotated out_proj`.

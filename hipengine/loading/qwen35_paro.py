@@ -36,6 +36,15 @@ class Qwen35ParoConfig:
     shared_expert_intermediate_size: int
     layer_types: tuple[str, ...]
     quant_method: str
+    vocab_size: int = 0
+    rms_norm_eps: float = 1.0e-6
+    rope_theta: float = 1000000.0
+    rotary_dim: int = 0
+    linear_num_key_heads: int = 0
+    linear_num_value_heads: int = 0
+    linear_key_head_dim: int = 0
+    linear_value_head_dim: int = 0
+    linear_conv_kernel_dim: int = 0
 
 
 @dataclass(frozen=True)
@@ -106,6 +115,9 @@ def qwen35_paro_config_from_hf(config: dict[str, Any]) -> Qwen35ParoConfig:
     num_attention_heads = int(text.get("num_attention_heads", 0) or 0)
     num_key_value_heads = int(text.get("num_key_value_heads", num_attention_heads) or 0)
     head_dim = int(text.get("head_dim", (hidden_size // num_attention_heads) if num_attention_heads else 0) or 0)
+    rope_parameters = text.get("rope_parameters") if isinstance(text.get("rope_parameters"), dict) else {}
+    partial_rotary_factor = text.get("partial_rotary_factor", rope_parameters.get("partial_rotary_factor", 1.0))
+    rotary_dim = int(head_dim * float(partial_rotary_factor)) if head_dim else 0
     return Qwen35ParoConfig(
         architecture=architecture,
         num_hidden_layers=num_layers,
@@ -119,6 +131,15 @@ def qwen35_paro_config_from_hf(config: dict[str, Any]) -> Qwen35ParoConfig:
         shared_expert_intermediate_size=int(text.get("shared_expert_intermediate_size", 0) or 0),
         layer_types=layer_types,
         quant_method=quant_method,
+        vocab_size=int(text.get("vocab_size", 0) or 0),
+        rms_norm_eps=float(text.get("rms_norm_eps", 1.0e-6) or 1.0e-6),
+        rope_theta=float(text.get("rope_theta", rope_parameters.get("rope_theta", 1000000.0)) or 1000000.0),
+        rotary_dim=rotary_dim,
+        linear_num_key_heads=int(text.get("linear_num_key_heads", 0) or 0),
+        linear_num_value_heads=int(text.get("linear_num_value_heads", 0) or 0),
+        linear_key_head_dim=int(text.get("linear_key_head_dim", 0) or 0),
+        linear_value_head_dim=int(text.get("linear_value_head_dim", 0) or 0),
+        linear_conv_kernel_dim=int(text.get("linear_conv_kernel_dim", 0) or 0),
     )
 
 
@@ -148,6 +169,41 @@ def required_full_attention_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]
 
 def required_full_attention_moe_c1_tensor_names(*, layer_id: int, num_experts: int) -> tuple[str, ...]:
     return required_full_attention_c1_tensor_names(layer_id=layer_id) + required_moe_c1_tensor_names(
+        layer_id=layer_id,
+        num_experts=num_experts,
+    )
+
+
+def required_linear_attention_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    prefix = f"layers.{layer_id}.linear_attn"
+    names = [f"layers.{layer_id}.input_layernorm.weight"]
+    for proj in ("in_proj_qkv", "in_proj_z", "out_proj"):
+        base = f"{prefix}.{proj}"
+        names.extend(
+            (
+                f"{base}.qweight",
+                f"{base}.qzeros",
+                f"{base}.scales",
+                f"{base}.theta",
+                f"{base}.pairs",
+                f"{base}.channel_scales",
+            )
+        )
+    names.extend(
+        (
+            f"{prefix}.in_proj_a.weight",
+            f"{prefix}.in_proj_b.weight",
+            f"{prefix}.conv1d.weight",
+            f"{prefix}.A_log",
+            f"{prefix}.dt_bias",
+            f"{prefix}.norm.weight",
+        )
+    )
+    return tuple(names)
+
+
+def required_linear_attention_moe_c1_tensor_names(*, layer_id: int, num_experts: int) -> tuple[str, ...]:
+    return required_linear_attention_c1_tensor_names(layer_id=layer_id) + required_moe_c1_tensor_names(
         layer_id=layer_id,
         num_experts=num_experts,
     )
@@ -205,7 +261,7 @@ def runtime_prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
 
 
 def runtime_full_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
-    """Normalized tensors needed by the current real decode-state runtime path."""
+    """Normalized tensors needed by the current real full-attention runtime path."""
 
     attn = f"layers.{layer_id}.self_attn"
     mlp = f"layers.{layer_id}.mlp"
@@ -232,6 +288,44 @@ def runtime_full_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, .
     names.extend((f"{base}.qweight", f"{base}.qzeros", f"{base}.scales"))
     names.extend(
         (
+            f"{experts}.down_weight_pairs",
+            f"{experts}.down_weight_theta",
+            f"{experts}.down_weight_channel_scales",
+        )
+    )
+    names.extend(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id))
+    return tuple(names)
+
+
+def runtime_linear_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    """Normalized tensors needed by the current real linear-attention runtime path."""
+
+    prefix = f"layers.{layer_id}.linear_attn"
+    experts = f"layers.{layer_id}.mlp.experts"
+    names = [
+        f"layers.{layer_id}.input_layernorm.weight",
+        f"layers.{layer_id}.post_attention_layernorm.weight",
+    ]
+    for proj in ("in_proj_qkv", "in_proj_z", "out_proj"):
+        base = f"{prefix}.{proj}"
+        names.extend(
+            (
+                f"{base}.qweight",
+                f"{base}.qzeros",
+                f"{base}.scales",
+                f"{base}.theta",
+                f"{base}.pairs",
+                f"{base}.channel_scales",
+            )
+        )
+    names.extend(
+        (
+            f"{prefix}.in_proj_a.weight",
+            f"{prefix}.in_proj_b.weight",
+            f"{prefix}.conv1d.weight",
+            f"{prefix}.A_log",
+            f"{prefix}.dt_bias",
+            f"{prefix}.norm.weight",
             f"{experts}.down_weight_pairs",
             f"{experts}.down_weight_theta",
             f"{experts}.down_weight_channel_scales",
@@ -370,6 +464,39 @@ def materialize_qwen35_paro_full_attention_moe_c1_layer(
     return _materialize_normalized_layer(index, validation.config, layer_id, required, device=device, runtime=runtime)
 
 
+def validate_qwen35_paro_linear_attention_moe_c1_layout(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    raise_on_error: bool = False,
+) -> Qwen35ParoLayoutValidation:
+    config = qwen35_paro_config_from_hf(index.config)
+    if layer_id < 0 or layer_id >= config.num_hidden_layers:
+        raise ValueError(f"layer_id {layer_id} outside [0, {config.num_hidden_layers})")
+    if config.layer_types[layer_id] != "linear_attention":
+        raise ValueError(f"layer {layer_id} is {config.layer_types[layer_id]!r}, expected 'linear_attention'")
+    if config.linear_num_key_heads <= 0 or config.linear_num_value_heads <= 0:
+        raise ValueError("linear-attention layout requires linear_num_key_heads and linear_num_value_heads")
+    if config.linear_key_head_dim <= 0 or config.linear_value_head_dim <= 0 or config.linear_conv_kernel_dim <= 0:
+        raise ValueError("linear-attention layout requires key/value head dims and conv kernel dim")
+    if config.quant_method and config.quant_method != "paroquant":
+        raise ValueError(f"expected quant_method='paroquant', got {config.quant_method!r}")
+
+    normalized = _normalized_tensor_map(index)
+    required = required_linear_attention_moe_c1_tensor_names(layer_id=layer_id, num_experts=config.num_experts)
+    present = tuple(name for name in required if name in normalized)
+    missing = tuple(name for name in required if name not in normalized)
+    shape_errors = _validate_linear_attention_shapes(normalized, config, layer_id=layer_id) + _validate_moe_c1_shapes(
+        normalized,
+        config,
+        layer_id=layer_id,
+    )
+    result = Qwen35ParoLayoutValidation(config=config, present=present, missing=missing, shape_errors=shape_errors)
+    if raise_on_error:
+        result.raise_for_errors()
+    return result
+
+
 def prepare_qwen35_paro_moe_c1_host_tensors(index: WeightIndex, *, layer_id: int = 0) -> dict[str, object]:
     """Prepare parent-compatible MoE c=1 host layouts without torch.
 
@@ -471,13 +598,7 @@ def materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(
     runtime: HipRuntime | None = None,
     validate: bool = True,
 ) -> Qwen35ParoLayerDeviceWeights:
-    """Materialize the current real decode-state layer path for kernel ABIs.
-
-    Unlike the byte-preserving scaffolding loaders, this function converts F16
-    checkpoint tensors consumed by BF16 raw-pointer kernels into rounded BF16
-    bit buffers. It also omits per-expert tensors that the runtime replaces with
-    stacked/pack8 prepared layouts.
-    """
+    """Materialize the current real full-attention decode-state layer path."""
 
     validation = validate_qwen35_paro_full_attention_moe_c1_layout(
         index,
@@ -486,48 +607,40 @@ def materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(
     )
     if not validation.passed:
         validation.raise_for_errors()
-    normalized = _normalized_tensor_map(index)
-    allocations: dict[str, DeviceTensorAllocation] = {}
-    try:
-        for name in runtime_full_attention_moe_c1_tensor_names(layer_id=layer_id):
-            if name in runtime_prepared_moe_c1_tensor_names(layer_id=layer_id):
-                continue
-            info = normalized[name]
-            if _runtime_tensor_needs_bf16_bits(name):
-                array = float_array_to_bf16_bits(_read_normalized_numpy_tensor(normalized, name))
-                allocations[name] = load_host_array_to_device_as_dtype(
-                    name,
-                    array,
-                    DType.BF16,
-                    device=device,
-                    runtime=runtime,
-                )
-            else:
-                allocation = load_tensor_info_to_device(info, device=device, runtime=runtime)
-                allocations[name] = DeviceTensorAllocation(
-                    name=name,
-                    source=allocation.source,
-                    buffer=allocation.buffer,
-                    tensor=allocation.tensor,
-                )
-        for name, array in prepare_qwen35_paro_moe_c1_runtime_host_tensors(index, layer_id=layer_id).items():
-            if _runtime_tensor_needs_bf16_bits(name):
-                allocations[name] = load_host_array_to_device_as_dtype(
-                    name,
-                    array,
-                    DType.BF16,
-                    device=device,
-                    runtime=runtime,
-                )
-            else:
-                allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
-    except Exception:
-        DeviceWeightMap(allocations).free(runtime=runtime)
-        raise
-    return Qwen35ParoLayerDeviceWeights(
-        config=validation.config,
+    return _materialize_runtime_layer(
+        index,
+        validation.config,
+        layer_id,
+        runtime_full_attention_moe_c1_tensor_names(layer_id=layer_id),
+        device=device,
+        runtime=runtime,
+    )
+
+
+def materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    validate: bool = True,
+) -> Qwen35ParoLayerDeviceWeights:
+    """Materialize the current real linear-attention decode-state layer path."""
+
+    validation = validate_qwen35_paro_linear_attention_moe_c1_layout(
+        index,
         layer_id=layer_id,
-        weights=DeviceWeightMap(allocations),
+        raise_on_error=validate,
+    )
+    if not validation.passed:
+        validation.raise_for_errors()
+    return _materialize_runtime_layer(
+        index,
+        validation.config,
+        layer_id,
+        runtime_linear_attention_moe_c1_tensor_names(layer_id=layer_id),
+        device=device,
+        runtime=runtime,
     )
 
 
@@ -580,6 +693,15 @@ def _quantize_w8a16_host(weight: object):
     return np.ascontiguousarray(quantized), np.ascontiguousarray(scale)
 
 
+def _runtime_tensor_needs_f32(name: str) -> bool:
+    return (
+        name.endswith(".conv1d.weight")
+        or name.endswith(".A_log")
+        or name.endswith(".dt_bias")
+        or name.endswith(".linear_attn.norm.weight")
+    )
+
+
 def _runtime_tensor_needs_bf16_bits(name: str) -> bool:
     return (
         name.endswith(".weight")
@@ -590,6 +712,72 @@ def _runtime_tensor_needs_bf16_bits(name: str) -> bool:
         or name.endswith(".channel_scales")
         or name.endswith("_channel_scales")
     ) and not name.endswith("_w8a16_scale")
+
+
+def _materialize_runtime_layer(
+    index: WeightIndex,
+    config: Qwen35ParoConfig,
+    layer_id: int,
+    names: tuple[str, ...],
+    *,
+    device: Device | None,
+    runtime: HipRuntime | None,
+) -> Qwen35ParoLayerDeviceWeights:
+    normalized = _normalized_tensor_map(index)
+    prepared_names = set(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id))
+    allocations: dict[str, DeviceTensorAllocation] = {}
+    try:
+        for name in names:
+            if name in prepared_names:
+                continue
+            info = normalized[name]
+            if _runtime_tensor_needs_f32(name):
+                import numpy as np
+
+                array = np.ascontiguousarray(_read_normalized_numpy_tensor(normalized, name), dtype=np.float32)
+                allocations[name] = load_host_array_to_device_as_dtype(
+                    name,
+                    array,
+                    DType.FP32,
+                    device=device,
+                    runtime=runtime,
+                )
+            elif _runtime_tensor_needs_bf16_bits(name):
+                array = float_array_to_bf16_bits(_read_normalized_numpy_tensor(normalized, name))
+                allocations[name] = load_host_array_to_device_as_dtype(
+                    name,
+                    array,
+                    DType.BF16,
+                    device=device,
+                    runtime=runtime,
+                )
+            else:
+                allocation = load_tensor_info_to_device(info, device=device, runtime=runtime)
+                allocations[name] = DeviceTensorAllocation(
+                    name=name,
+                    source=allocation.source,
+                    buffer=allocation.buffer,
+                    tensor=allocation.tensor,
+                )
+        for name, array in prepare_qwen35_paro_moe_c1_runtime_host_tensors(index, layer_id=layer_id).items():
+            if _runtime_tensor_needs_bf16_bits(name):
+                allocations[name] = load_host_array_to_device_as_dtype(
+                    name,
+                    array,
+                    DType.BF16,
+                    device=device,
+                    runtime=runtime,
+                )
+            else:
+                allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
+    except Exception:
+        DeviceWeightMap(allocations).free(runtime=runtime)
+        raise
+    return Qwen35ParoLayerDeviceWeights(
+        config=config,
+        layer_id=layer_id,
+        weights=DeviceWeightMap(allocations),
+    )
 
 
 def _materialize_normalized_layer(
@@ -643,6 +831,31 @@ def _validate_full_attention_shapes(
         f"layers.{layer_id}.input_layernorm.weight": (config.hidden_size,),
         f"{prefix}.q_norm.weight": (config.head_dim,),
         f"{prefix}.k_norm.weight": (config.head_dim,),
+    }
+    errors: list[str] = []
+    for name, shape in expected.items():
+        info = tensors.get(name)
+        if info is not None and info.shape != shape:
+            errors.append(f"{name}: expected {shape}, got {info.shape}")
+    return tuple(errors)
+
+
+def _validate_linear_attention_shapes(
+    tensors: dict[str, TensorInfo],
+    config: Qwen35ParoConfig,
+    *,
+    layer_id: int,
+) -> tuple[str, ...]:
+    prefix = f"layers.{layer_id}.linear_attn"
+    qkv_width = 2 * config.linear_num_key_heads * config.linear_key_head_dim + config.linear_num_value_heads * config.linear_value_head_dim
+    expected: dict[str, tuple[int, ...]] = {
+        f"layers.{layer_id}.input_layernorm.weight": (config.hidden_size,),
+        f"{prefix}.in_proj_a.weight": (config.linear_num_value_heads, config.hidden_size),
+        f"{prefix}.in_proj_b.weight": (config.linear_num_value_heads, config.hidden_size),
+        f"{prefix}.conv1d.weight": (qkv_width, 1, config.linear_conv_kernel_dim),
+        f"{prefix}.A_log": (config.linear_num_value_heads,),
+        f"{prefix}.dt_bias": (config.linear_num_value_heads,),
+        f"{prefix}.norm.weight": (config.linear_value_head_dim,),
     }
     errors: list[str] = []
     for name, shape in expected.items():

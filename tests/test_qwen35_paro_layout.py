@@ -13,6 +13,7 @@ from hipengine.loading import (
     load_weight_index,
     materialize_qwen35_paro_full_attention_moe_c1_prepared_layer,
     materialize_qwen35_paro_full_attention_moe_c1_runtime_layer,
+    materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer,
     materialize_qwen35_paro_full_attention_moe_c1_layer,
     materialize_qwen35_paro_moe_c1_layer,
     normalize_qwen35_weight_name,
@@ -20,11 +21,15 @@ from hipengine.loading import (
     prepare_qwen35_paro_moe_c1_runtime_host_tensors,
     prepared_moe_c1_tensor_names,
     runtime_full_attention_moe_c1_tensor_names,
+    runtime_linear_attention_moe_c1_tensor_names,
     qwen35_paro_config_from_hf,
     required_full_attention_c1_tensor_names,
     required_full_attention_moe_c1_tensor_names,
+    required_linear_attention_c1_tensor_names,
+    required_linear_attention_moe_c1_tensor_names,
     required_moe_c1_tensor_names,
     validate_qwen35_paro_full_attention_moe_c1_layout,
+    validate_qwen35_paro_linear_attention_moe_c1_layout,
     validate_qwen35_paro_moe_c1_layout,
 )
 from hipengine.core.device import Device
@@ -53,7 +58,7 @@ class FakeRuntime:
         self.buffers[dst][:count] = ctypes.string_at(src, count)
 
 
-def _write_config(path, *, quant_method: str = "paroquant") -> None:
+def _write_config(path, *, quant_method: str = "paroquant", layer_types: list[str] | None = None) -> None:
     (path / "config.json").write_text(
         json.dumps(
             {
@@ -68,7 +73,15 @@ def _write_config(path, *, quant_method: str = "paroquant") -> None:
                 "num_experts_per_tok": 2,
                 "moe_intermediate_size": 3,
                 "shared_expert_intermediate_size": 3,
-                "layer_types": ["full_attention"],
+                "linear_num_key_heads": 1,
+                "linear_num_value_heads": 1,
+                "linear_key_head_dim": 2,
+                "linear_value_head_dim": 4,
+                "linear_conv_kernel_dim": 4,
+                "rope_parameters": {"rope_theta": 10000000.0, "partial_rotary_factor": 0.5},
+                "vocab_size": 16,
+                "rms_norm_eps": 1.0e-6,
+                "layer_types": layer_types or ["full_attention"],
                 "quantization_config": {"quant_method": quant_method},
             }
         ),
@@ -94,6 +107,26 @@ def _valid_attention_tensors() -> dict[str, np.ndarray]:
     tensors[f"{base}.qweight"] = np.zeros((4, 1), dtype=np.int32)
     tensors[f"{base}.qzeros"] = np.zeros((1, 1), dtype=np.int32)
     tensors[f"{base}.scales"] = np.zeros((1, 8), dtype=np.float16)
+    return tensors
+
+
+def _valid_linear_attention_tensors() -> dict[str, np.ndarray]:
+    prefix = "model.layers.0.linear_attn"
+    tensors: dict[str, np.ndarray] = {"model.layers.0.input_layernorm.weight": np.zeros((4,), dtype=np.float16)}
+    for proj in ("in_proj_qkv", "in_proj_z", "out_proj"):
+        base = f"{prefix}.{proj}"
+        tensors[f"{base}.qweight"] = np.zeros((4, 1), dtype=np.int32)
+        tensors[f"{base}.qzeros"] = np.zeros((1, 1), dtype=np.int32)
+        tensors[f"{base}.scales"] = np.zeros((1, 8), dtype=np.float16)
+        tensors[f"{base}.theta"] = np.zeros((1, 2), dtype=np.float16)
+        tensors[f"{base}.pairs"] = np.zeros((1, 4), dtype=np.int16)
+        tensors[f"{base}.channel_scales"] = np.zeros((4,), dtype=np.float16)
+    tensors[f"{prefix}.in_proj_a.weight"] = np.zeros((1, 4), dtype=np.float16)
+    tensors[f"{prefix}.in_proj_b.weight"] = np.zeros((1, 4), dtype=np.float16)
+    tensors[f"{prefix}.conv1d.weight"] = np.zeros((8, 1, 4), dtype=np.float16)
+    tensors[f"{prefix}.A_log"] = np.zeros((1,), dtype=np.float16)
+    tensors[f"{prefix}.dt_bias"] = np.zeros((1,), dtype=np.float16)
+    tensors[f"{prefix}.norm.weight"] = np.zeros((4,), dtype=np.float16)
     return tensors
 
 
@@ -143,6 +176,9 @@ def test_qwen35_paro_config_and_weight_name_normalization() -> None:
     assert config.num_attention_heads == 2
     assert config.num_key_value_heads == 1
     assert config.head_dim == 4
+    assert config.rotary_dim == 4
+    assert config.linear_num_key_heads == 0
+    assert config.rms_norm_eps == 1.0e-6
     assert config.quant_method == "paroquant"
     assert normalize_qwen35_weight_name("model.layers.0.mlp.gate.weight") == "layers.0.mlp.gate.weight"
     assert normalize_qwen35_weight_name("language_model.layers.0.x") == "layers.0.x"
@@ -167,6 +203,19 @@ def test_required_full_attention_names_include_rotated_qkv_and_o_proj() -> None:
     assert "layers.3.self_attn.v_proj.channel_scales" in names
     assert "layers.3.self_attn.o_proj.qweight" in names
     assert "layers.3.mlp.experts.1.down_proj.scales" in combined
+
+
+def test_required_linear_attention_names_include_rotated_projections_and_state() -> None:
+    names = required_linear_attention_c1_tensor_names(layer_id=0)
+    combined = required_linear_attention_moe_c1_tensor_names(layer_id=0, num_experts=2)
+
+    assert "layers.0.linear_attn.in_proj_qkv.theta" in names
+    assert "layers.0.linear_attn.in_proj_z.channel_scales" in names
+    assert "layers.0.linear_attn.out_proj.qweight" in names
+    assert "layers.0.linear_attn.in_proj_a.weight" in names
+    assert "layers.0.linear_attn.conv1d.weight" in names
+    assert "layers.0.linear_attn.A_log" in names
+    assert "layers.0.mlp.experts.1.up_proj.qweight" in combined
 
 
 def test_validate_qwen35_paro_moe_c1_layout_passes(tmp_path) -> None:
@@ -343,6 +392,37 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_bf16_k
     ).tobytes()
     layer.free(runtime=runtime)
     assert len(runtime.freed) == len(runtime_full_attention_moe_c1_tensor_names(layer_id=0))
+
+
+def test_materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer_uses_state_dtypes(tmp_path) -> None:
+    _write_config(tmp_path, layer_types=["linear_attention"])
+    tensors = {**_valid_linear_attention_tensors(), **_valid_tensors()}
+    tensors["model.layers.0.linear_attn.conv1d.weight"] = np.full((8, 1, 4), 0.5, dtype=np.float16)
+    tensors["model.layers.0.linear_attn.A_log"] = np.full((1,), -2.0, dtype=np.float16)
+    tensors["model.layers.0.linear_attn.dt_bias"] = np.full((1,), 1.0, dtype=np.float16)
+    tensors["model.layers.0.linear_attn.norm.weight"] = np.full((4,), 0.25, dtype=np.float16)
+    tensors["model.layers.0.linear_attn.in_proj_a.weight"] = np.full((1, 4), 2.0, dtype=np.float16)
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+    runtime = FakeRuntime()
+
+    validation = validate_qwen35_paro_linear_attention_moe_c1_layout(index)
+    layer = materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(index, runtime=runtime)
+
+    assert validation.passed
+    assert set(layer.weights.tensors) == set(runtime_linear_attention_moe_c1_tensor_names(layer_id=0))
+    assert layer.config.linear_num_key_heads == 1
+    assert layer.config.linear_value_head_dim == 4
+    assert layer.tensor("layers.0.linear_attn.conv1d.weight").dtype is DType.FP32
+    assert layer.tensor("layers.0.linear_attn.A_log").dtype is DType.FP32
+    assert layer.tensor("layers.0.linear_attn.dt_bias").dtype is DType.FP32
+    assert layer.tensor("layers.0.linear_attn.norm.weight").dtype is DType.FP32
+    assert layer.tensor("layers.0.linear_attn.in_proj_a.weight").dtype is DType.BF16
+    assert layer.tensor("layers.0.linear_attn.in_proj_qkv.scales").dtype is DType.BF16
+    conv = layer.allocation("layers.0.linear_attn.conv1d.weight")
+    assert bytes(runtime.buffers[conv.buffer.ptr]) == tensors["model.layers.0.linear_attn.conv1d.weight"].astype(np.float32).tobytes()
+    layer.free(runtime=runtime)
+    assert len(runtime.freed) == len(runtime_linear_attention_moe_c1_tensor_names(layer_id=0))
 
 
 def test_validate_qwen35_paro_moe_c1_layout_reports_missing_and_shapes(tmp_path) -> None:
