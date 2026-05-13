@@ -2,6 +2,10 @@
 
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     build_paro_awq_gemv,
+    gemv_awq_dual_pack8_strided_bf16,
+    gemv_awq_dual_pack8_transposed_bf16,
+    gemv_awq_pack8_strided_bf16,
+    gemv_awq_pack8_transposed_bf16,
     gemv_awq_selected_dual_pack8_strided_bf16,
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_pack8_strided_bf16,
@@ -21,6 +25,10 @@ from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
 __all__ = [
     "build_paro_awq_gemv",
     "build_w8a16_linear",
+    "gemv_awq_dual_pack8_strided_bf16",
+    "gemv_awq_dual_pack8_transposed_bf16",
+    "gemv_awq_pack8_strided_bf16",
+    "gemv_awq_pack8_transposed_bf16",
     "gemv_awq_selected_dual_pack8_strided_bf16",
     "gemv_awq_selected_dual_pack8_transposed_bf16",
     "gemv_awq_selected_pack8_strided_bf16",

@@ -1,4 +1,4 @@
-"""Raw-pointer wrappers for PARO selected-expert AWQ pack8 GEMV kernels."""
+"""Raw-pointer wrappers for PARO AWQ pack8 GEMV kernels."""
 
 from __future__ import annotations
 
@@ -11,6 +11,10 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("paro_awq_gemv.hip")
 _OUTPUT_NAME = "paro_awq_gemv.so"
+_SYMBOL_PACK8_STRIDED = "hipengine_gemv_awq_pack8_strided_bf16"
+_SYMBOL_PACK8_TRANSPOSED = "hipengine_gemv_awq_pack8_transposed_bf16"
+_SYMBOL_DUAL_PACK8_STRIDED = "hipengine_gemv_awq_dual_pack8_strided_bf16"
+_SYMBOL_DUAL_PACK8_TRANSPOSED = "hipengine_gemv_awq_dual_pack8_transposed_bf16"
 _SYMBOL_SELECTED_DUAL_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_bf16"
 _SYMBOL_SELECTED_DUAL_TRANSPOSED = "hipengine_gemv_awq_selected_dual_pack8_transposed_bf16"
 _SYMBOL_SELECTED_STRIDED = "hipengine_gemv_awq_selected_pack8_strided_bf16"
@@ -55,6 +59,167 @@ def build_paro_awq_gemv(
         require_cached=require_cached,
     )
 
+
+
+def gemv_awq_pack8_strided_bf16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch generic single-projection pack8 GEMV with strided qweight layout."""
+
+    _launch_pack8_single(
+        _SYMBOL_PACK8_STRIDED,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_pack8_transposed_bf16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch generic single-projection pack8 GEMV with transposed qweight layout."""
+
+    _launch_pack8_single(
+        _SYMBOL_PACK8_TRANSPOSED,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_dual_pack8_strided_bf16(
+    x_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch generic dual pack8 GEMV with one shared input and strided qweights."""
+
+    _launch_pack8_dual(
+        _SYMBOL_DUAL_PACK8_STRIDED,
+        (x_ptr,),
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_dual_pack8_transposed_bf16(
+    x_a_ptr: int,
+    x_b_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch generic dual pack8 GEMV with separate inputs and transposed qweights."""
+
+    _launch_pack8_dual(
+        _SYMBOL_DUAL_PACK8_TRANSPOSED,
+        (x_a_ptr, x_b_ptr),
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 def gemv_awq_selected_dual_pack8_strided_bf16(
     x_ptr: int,
@@ -238,6 +403,26 @@ def gemv_awq_selected_pack8_transposed_bf16(
 
 def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
     register(
+        KernelKey("hip_gfx1100", "pack8_gemv", "w4_paro", "strided"),
+        gemv_awq_pack8_strided_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "pack8_gemv", "w4_paro", "transposed"),
+        gemv_awq_pack8_transposed_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dual_pack8_gemv", "w4_paro", "strided"),
+        gemv_awq_dual_pack8_strided_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dual_pack8_gemv", "w4_paro", "transposed"),
+        gemv_awq_dual_pack8_transposed_bf16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "selected_dual_pack8_gemv", "w4_paro", "strided"),
         gemv_awq_selected_dual_pack8_strided_bf16,
         replace=replace,
@@ -258,6 +443,121 @@ def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
 
+
+
+def _launch_pack8_single(
+    symbol: str,
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_pack8_single_shape(rows, in_features, out_packed, group_size, threads)
+    library = library or build_paro_awq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(qzeros_ptr),
+        ctypes.c_void_p(scales_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_packed),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_pack8_dual(
+    symbol: str,
+    input_ptrs: tuple[int, ...],
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    if len(input_ptrs) not in (1, 2):
+        raise ValueError("input_ptrs must contain one or two pointers")
+    _check_pack8_dual_shape(rows, in_features, out_packed_a, out_packed_b, group_size, threads)
+    library = library or build_paro_awq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [*(ctypes.c_void_p for _ in input_ptrs)] + [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        *(ctypes.c_void_p(ptr) for ptr in input_ptrs),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qzeros_a_ptr),
+        ctypes.c_void_p(scales_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(qzeros_b_ptr),
+        ctypes.c_void_p(scales_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_packed_a),
+        ctypes.c_int64(out_packed_b),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 def _launch_selected_dual(
     symbol: str,
@@ -396,6 +696,44 @@ def _launch_selected_single(
     )
     _check_launch(runtime, err)
 
+
+
+def _check_pack8_single_shape(
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    threads: int,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(in_features, "in_features")
+    _check_positive(out_packed, "out_packed")
+    _check_pack8_common(in_features, group_size, threads)
+
+
+def _check_pack8_dual_shape(
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    threads: int,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(in_features, "in_features")
+    _check_positive(out_packed_a, "out_packed_a")
+    _check_positive(out_packed_b, "out_packed_b")
+    _check_pack8_common(in_features, group_size, threads)
+
+
+def _check_pack8_common(in_features: int, group_size: int, threads: int) -> None:
+    _check_positive(group_size, "group_size")
+    if in_features % group_size != 0:
+        raise ValueError("in_features must be divisible by group_size")
+    if group_size % 8 != 0:
+        raise ValueError("group_size must be a multiple of 8")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64 or 128")
 
 def _check_selected_dual_shape(
     x_rows: int,

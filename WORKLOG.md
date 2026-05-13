@@ -1885,3 +1885,59 @@ Results:
 ### Next
 
 - Continue outside-MoE full-inference dependencies: generic PARO pack8 GEMV for non-MoE projections and attention/KV kernels.
+
+---
+
+## 2026-05-14 — Port generic PARO pack8 GEMV optimal kernels
+
+### Scope
+
+- Ported the known-good optimized generic non-selected pack8 GEMV kernels from `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` at `nano-vllm-amd@59195ed` into the existing `paro_awq_gemv` family:
+  - `gemv_awq_pack8_kernel`
+  - `gemv_awq_dual_pack8_kernel`
+- Kept the parent kernel bodies intact and added only raw-pointer C ABI wrappers:
+  - `hipengine_gemv_awq_pack8_strided_bf16`
+  - `hipengine_gemv_awq_pack8_transposed_bf16`
+  - `hipengine_gemv_awq_dual_pack8_strided_bf16`
+  - `hipengine_gemv_awq_dual_pack8_transposed_bf16`
+- Added ctypes wrappers and registry keys:
+  - `pack8_gemv` / `w4_paro` / `strided|transposed`
+  - `dual_pack8_gemv` / `w4_paro` / `strided|transposed`
+- Added `scripts/smoke.py --mode paro-pack8-gemv-hip` to validate generic single/dual, strided/transposed variants against the existing AWQ pack8 reference helper.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.quant import build_paro_awq_gemv
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_paro_awq_gemv(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-paro-pack8-gemv-trace -- \
+  python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `61 passed`.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/paro_awq_gemv-6fed2869770219a0/paro_awq_gemv.so`.
+- Generic pack8 smoke: `single_mismatch=0/0`, `dual_mismatch=0/0`, `max_abs=0.0`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-paro-pack8-gemv-trace/epyc/3920744_kernel_trace.csv`.
+- Target kernel rows:
+  - `gemv_awq_pack8_kernel<uint16_t,false>`: `DurationNs=5520`, `VGPR_Count=72`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(64,2,1)`.
+  - `gemv_awq_pack8_kernel<uint16_t,true>`: `DurationNs=5000`, `VGPR_Count=72`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(64,2,1)`.
+  - `gemv_awq_dual_pack8_kernel<uint16_t,false,false>`: `DurationNs=4720`, `VGPR_Count=72`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(128,2,1)`.
+  - `gemv_awq_dual_pack8_kernel<uint16_t,true,true>`: `DurationNs=4880`, `VGPR_Count=72`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(128,2,1)`.
+
+### Next
+
+- Continue porting the parent optimal full-inference stack, not redesigning it: pairwise rotation wrappers for non-MoE projections and then attention/KV kernels from `qwen35_expert.hip` / `full_attention.py` / `linear_attention.py`.

@@ -3,6 +3,10 @@ from __future__ import annotations
 import pytest
 
 from hipengine.kernels.hip_gfx1100.quant import (
+    gemv_awq_dual_pack8_strided_bf16,
+    gemv_awq_dual_pack8_transposed_bf16,
+    gemv_awq_pack8_strided_bf16,
+    gemv_awq_pack8_transposed_bf16,
     gemv_awq_selected_dual_pack8_strided_bf16,
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_pack8_strided_bf16,
@@ -17,9 +21,40 @@ def setup_function() -> None:
     clear_registry_for_tests()
 
 
-def test_paro_awq_gemv_registers_selected_pack8_variants() -> None:
+def test_paro_awq_gemv_registers_pack8_variants() -> None:
     register_paro_awq_gemv_kernels()
 
+    assert (
+        resolve(backend="hip_gfx1100", layer="pack8_gemv", quant="w4_paro", variant="strided")
+        is gemv_awq_pack8_strided_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="pack8_gemv",
+            quant="w4_paro",
+            variant="transposed",
+        )
+        is gemv_awq_pack8_transposed_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="dual_pack8_gemv",
+            quant="w4_paro",
+            variant="strided",
+        )
+        is gemv_awq_dual_pack8_strided_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="dual_pack8_gemv",
+            quant="w4_paro",
+            variant="transposed",
+        )
+        is gemv_awq_dual_pack8_transposed_bf16
+    )
     assert (
         resolve(
             backend="hip_gfx1100",
@@ -76,6 +111,14 @@ def test_paro_awq_gemv_build_plan_is_dry_run_safe(tmp_path) -> None:
 
 
 def test_paro_awq_gemv_wrappers_validate_before_gpu_load() -> None:
+    with pytest.raises(ValueError, match="rows must be positive"):
+        gemv_awq_pack8_strided_bf16(0, 0, 0, 0, 0, 0, 16, 1, 8)
+    with pytest.raises(ValueError, match="in_features must be divisible"):
+        gemv_awq_pack8_transposed_bf16(0, 0, 0, 0, 0, 2, 18, 1, 8)
+    with pytest.raises(ValueError, match="group_size must be a multiple of 8"):
+        gemv_awq_dual_pack8_strided_bf16(0, 0, 0, 0, 0, 0, 0, 0, 2, 16, 1, 1, 4)
+    with pytest.raises(ValueError, match="threads must be one of 64 or 128"):
+        gemv_awq_dual_pack8_transposed_bf16(0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 16, 1, 1, 8, threads=256)
     with pytest.raises(ValueError, match="x_rows must be positive"):
         gemv_awq_selected_dual_pack8_strided_bf16(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 16, 1, 1, 2, 8)
     with pytest.raises(ValueError, match="x_rows must be 1 or match rows"):
