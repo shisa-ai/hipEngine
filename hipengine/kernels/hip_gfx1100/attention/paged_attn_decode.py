@@ -16,6 +16,7 @@ _OUTPUT_NAME = "qwen35_paged_attn_decode.so"
 _SYMBOL_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_context_bf16_spans"
 _SYMBOL_SPLIT_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
 _SYMBOL_SPLIT_REDUCE = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_f32"
+_SYMBOL_SPLIT_REDUCE_GATE_F32 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_f32"
 
 
 def plan_qwen35_paged_attn_decode_build(
@@ -121,6 +122,88 @@ def qwen35_paged_full_attn_decode_context_bf16_spans(
 
 
 
+
+def qwen35_paged_full_attn_decode_split_k_gate_f32_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run parent split-K paged BF16 attention and FP32 gated reduce via spans."""
+
+    _check_split_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_split_context(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+    reduce_gate = getattr(library, _SYMBOL_SPLIT_REDUCE_GATE_F32)
+    reduce_gate.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    reduce_gate.restype = ctypes.c_int
+    err = reduce_gate(
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_splits),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(gate_stride1),
+        ctypes.c_int64(gate_stride2),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
 def qwen35_paged_full_attn_decode_split_k_bf16_spans(
     query_ptr: int,
     key_cache_ptr: int,
@@ -147,6 +230,120 @@ def qwen35_paged_full_attn_decode_split_k_bf16_spans(
     _check_split_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
     library = library or build_qwen35_paged_attn_decode(load=True)
     runtime = runtime or get_hip_runtime()
+    _launch_split_context(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+    reduce = getattr(library, _SYMBOL_SPLIT_REDUCE)
+    reduce.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    reduce.restype = ctypes.c_int
+    err = reduce(
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_splits),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_context_spans"),
+        qwen35_paged_full_attn_decode_context_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_spans"),
+        qwen35_paged_full_attn_decode_split_k_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_gate_f32_spans"),
+        qwen35_paged_full_attn_decode_split_k_gate_f32_spans,
+        replace=replace,
+    )
+
+
+def _check_decode_shape(
+    spans: KVLiveSpans,
+    max_context_len: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> None:
+    if spans.spans_mode != "uniform":
+        raise ValueError("paged attention decode currently requires uniform spans")
+    if spans.storage_dtype != DType.BF16:
+        raise ValueError("paged attention decode currently requires bf16 storage spans")
+    if spans.live_counts.dtype != DType.INT64:
+        raise ValueError("paged attention decode parent bridge requires int64 live_counts")
+    _check_positive(max_context_len, "max_context_len")
+    _check_positive(block_size, "block_size")
+    if block_size != 256:
+        raise ValueError("paged attention decode parent kernel requires block_size=256")
+    _check_positive(spans.base_offsets.numel, "block_table_len")
+    _check_positive(num_q_heads, "num_q_heads")
+    _check_positive(num_kv_heads, "num_kv_heads")
+    if num_q_heads % num_kv_heads != 0:
+        raise ValueError("num_q_heads must be divisible by num_kv_heads")
+    _check_positive(head_dim, "head_dim")
+    if head_dim > 256:
+        raise ValueError("head_dim must be <= 256")
+    if ((max_context_len + block_size - 1) // block_size) > spans.base_offsets.numel:
+        raise ValueError("span base_offsets block table is too short for max_context_len")
+
+
+
+
+def _launch_split_context(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int,
+    library: ctypes.CDLL,
+    runtime: HipRuntime,
+) -> None:
     split = getattr(library, _SYMBOL_SPLIT_CONTEXT)
     split.argtypes = [
         ctypes.c_void_p,
@@ -188,74 +385,6 @@ def qwen35_paged_full_attn_decode_split_k_bf16_spans(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
-
-    reduce = getattr(library, _SYMBOL_SPLIT_REDUCE)
-    reduce.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    reduce.restype = ctypes.c_int
-    err = reduce(
-        ctypes.c_void_p(partial_out_ptr),
-        ctypes.c_void_p(partial_m_ptr),
-        ctypes.c_void_p(partial_l_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(num_q_heads),
-        ctypes.c_int64(num_splits),
-        ctypes.c_int64(head_dim),
-        ctypes.c_void_p(stream),
-    )
-    _check_launch(runtime, err)
-
-def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
-    register(
-        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_context_spans"),
-        qwen35_paged_full_attn_decode_context_bf16_spans,
-        replace=replace,
-    )
-    register(
-        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_spans"),
-        qwen35_paged_full_attn_decode_split_k_bf16_spans,
-        replace=replace,
-    )
-
-
-def _check_decode_shape(
-    spans: KVLiveSpans,
-    max_context_len: int,
-    block_size: int,
-    num_q_heads: int,
-    num_kv_heads: int,
-    head_dim: int,
-) -> None:
-    if spans.spans_mode != "uniform":
-        raise ValueError("paged attention decode currently requires uniform spans")
-    if spans.storage_dtype != DType.BF16:
-        raise ValueError("paged attention decode currently requires bf16 storage spans")
-    if spans.live_counts.dtype != DType.INT64:
-        raise ValueError("paged attention decode parent bridge requires int64 live_counts")
-    _check_positive(max_context_len, "max_context_len")
-    _check_positive(block_size, "block_size")
-    if block_size != 256:
-        raise ValueError("paged attention decode parent kernel requires block_size=256")
-    _check_positive(spans.base_offsets.numel, "block_table_len")
-    _check_positive(num_q_heads, "num_q_heads")
-    _check_positive(num_kv_heads, "num_kv_heads")
-    if num_q_heads % num_kv_heads != 0:
-        raise ValueError("num_q_heads must be divisible by num_kv_heads")
-    _check_positive(head_dim, "head_dim")
-    if head_dim > 256:
-        raise ValueError("head_dim must be <= 256")
-    if ((max_context_len + block_size - 1) // block_size) > spans.base_offsets.numel:
-        raise ValueError("span base_offsets block table is too short for max_context_len")
-
-
 
 def _check_split_shape(
     spans: KVLiveSpans,

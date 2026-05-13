@@ -17,6 +17,19 @@ __device__ inline float bf16_bits_to_float(uint16_t value) {
   return out.f32;
 }
 
+__device__ inline float sigmoid_f32(float value) {
+  return 1.0f / (1.0f + expf(-value));
+}
+
+__device__ inline float softplus_f32(float value) {
+  return value > 20.0f ? value : log1pf(expf(value));
+}
+
+template <typename scalar_t>
+__device__ inline float scalar_to_float_qwen35(scalar_t value) {
+  return static_cast<float>(value);
+}
+
 // Packed dot product for paged attention key cache.
 // Loads 8 bf16 values at a time via 128-bit vector loads (v_load_dwordx4).
 // Requires head_dim divisible by 8 and k_offset aligned to 16 bytes.
@@ -350,6 +363,65 @@ __global__ void qwen35_paged_full_attn_decode_split_k_reduce_kernel(
 }
 
 
+template <typename scalar_t>
+__global__ void qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel(
+    const float* __restrict__ partial_out,   // [num_q_heads, num_splits, head_dim]
+    const float* __restrict__ partial_m,     // [num_q_heads, num_splits]
+    const float* __restrict__ partial_l,     // [num_q_heads, num_splits]
+    const scalar_t* __restrict__ gate,       // [1, num_q_heads, head_dim] view-compatible
+    scalar_t* __restrict__ out,              // [1, num_q_heads * head_dim]
+    int64_t num_splits,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2) {
+  const int64_t q_head = blockIdx.x;
+
+  extern __shared__ float sred[];
+  float* sm = sred;
+  float* sl = sred + num_splits;
+  float* sw = sl + num_splits;
+
+  for (int64_t i = threadIdx.x; i < num_splits; i += blockDim.x) {
+    sm[i] = partial_m[q_head * num_splits + i];
+    sl[i] = partial_l[q_head * num_splits + i];
+  }
+  __syncthreads();
+
+  if (static_cast<int64_t>(threadIdx.x) >= head_dim) {
+    return;
+  }
+  const int64_t dim = threadIdx.x;
+
+  if (threadIdx.x == 0) {
+    float m_global = -3.4028234663852886e38f;
+    for (int64_t s = 0; s < num_splits; ++s) {
+      m_global = fmaxf(m_global, sm[s]);
+    }
+    float l_global = 0.0f;
+    for (int64_t s = 0; s < num_splits; ++s) {
+      const float li = sl[s];
+      const float weight = (li > 0.0f) ? expf(sm[s] - m_global) : 0.0f;
+      sw[s] = weight;
+      l_global += li * weight;
+    }
+    const float inv_l = 1.0f / fmaxf(l_global, 1.0e-20f);
+    for (int64_t s = 0; s < num_splits; ++s) {
+      sw[s] *= inv_l;
+    }
+  }
+  __syncthreads();
+
+  float acc = 0.0f;
+  for (int64_t s = 0; s < num_splits; ++s) {
+    acc += partial_out[(q_head * num_splits + s) * head_dim + dim] * sw[s];
+  }
+
+  const int64_t gate_idx = q_head * gate_stride1 + dim * gate_stride2;
+  const float gate_v = scalar_to_float_qwen35(gate[gate_idx]);
+  out[q_head * head_dim + dim] = static_cast<scalar_t>(acc * sigmoid_f32(gate_v));
+}
+
+
 bool valid_paged_attn_shape(
     int64_t max_context_len,
     int64_t block_size,
@@ -439,6 +511,43 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_f32(
       out,
       num_splits,
       head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+
+extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_f32(
+    const float* partial_out,
+    const float* partial_m,
+    const float* partial_l,
+    const float* gate,
+    float* out,
+    int64_t num_q_heads,
+    int64_t num_splits,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    hipStream_t stream) {
+  if (num_q_heads <= 0 || num_splits <= 0 || head_dim <= 0 || head_dim > 1024 ||
+      gate_stride1 <= 0 || gate_stride2 <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int reduce_threads = static_cast<int>(head_dim);
+  const size_t shared_bytes = static_cast<size_t>(num_splits) * 3 * sizeof(float);
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<float>),
+      dim3(static_cast<unsigned int>(num_q_heads)),
+      dim3(reduce_threads),
+      shared_bytes,
+      stream,
+      partial_out,
+      partial_m,
+      partial_l,
+      gate,
+      out,
+      num_splits,
+      head_dim,
+      gate_stride1,
+      gate_stride2);
   return static_cast<int>(hipGetLastError());
 }
 
