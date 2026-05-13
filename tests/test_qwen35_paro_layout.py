@@ -9,13 +9,17 @@ from safetensors.numpy import save_file
 
 from hipengine.loading import (
     MissingTensorError,
+    float_array_to_bf16_bits,
     load_weight_index,
     materialize_qwen35_paro_full_attention_moe_c1_prepared_layer,
+    materialize_qwen35_paro_full_attention_moe_c1_runtime_layer,
     materialize_qwen35_paro_full_attention_moe_c1_layer,
     materialize_qwen35_paro_moe_c1_layer,
     normalize_qwen35_weight_name,
     prepare_qwen35_paro_moe_c1_host_tensors,
+    prepare_qwen35_paro_moe_c1_runtime_host_tensors,
     prepared_moe_c1_tensor_names,
+    runtime_full_attention_moe_c1_tensor_names,
     qwen35_paro_config_from_hf,
     required_full_attention_c1_tensor_names,
     required_full_attention_moe_c1_tensor_names,
@@ -277,6 +281,68 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(tmp_path) 
     )
     layer.free(runtime=runtime)
     assert len(runtime.freed) == expected_count
+
+
+def test_prepare_qwen35_paro_moe_c1_runtime_host_tensors_converts_kernel_bf16_inputs(tmp_path) -> None:
+    _write_config(tmp_path)
+    tensors = {**_valid_attention_tensors(), **_valid_tensors()}
+    tensors["model.layers.0.mlp.gate.weight"] = np.asarray(
+        [[1.0, -2.5, 0.5, 0.0], [3.0, 4.0, -1.0, -0.25]], dtype=np.float16
+    )
+    tensors["model.layers.0.mlp.shared_expert_gate.weight"] = np.asarray([[2.0, 0.25, -0.5, 1.5]], dtype=np.float16)
+    for expert in range(2):
+        tensors[f"model.layers.0.mlp.experts.{expert}.gate_proj.scales"] = np.full((1, 8), 1.0 + expert, dtype=np.float16)
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+
+    prepared = prepare_qwen35_paro_moe_c1_runtime_host_tensors(index)
+
+    router = prepared["layers.0.mlp.router_shared_gate.weight"]
+    assert router.dtype == np.uint16
+    np.testing.assert_array_equal(
+        router,
+        float_array_to_bf16_bits(
+            np.concatenate(
+                (tensors["model.layers.0.mlp.gate.weight"], tensors["model.layers.0.mlp.shared_expert_gate.weight"]),
+                axis=0,
+            )
+        ),
+    )
+    scales = prepared["layers.0.mlp.experts.stacked_gate_scales"]
+    assert scales.dtype == np.uint16
+    assert prepared["layers.0.mlp.experts.stacked_gate_qweight_pack8_decode"].dtype == np.int32
+    assert prepared["layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale"].dtype == np.float32
+
+
+def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_bf16_kernel_buffers(tmp_path) -> None:
+    _write_config(tmp_path)
+    tensors = {**_valid_attention_tensors(), **_valid_tensors()}
+    tensors["model.layers.0.self_attn.q_proj.scales"] = np.full((1, 8), 1.0, dtype=np.float16)
+    tensors["model.layers.0.self_attn.q_proj.theta"] = np.full((1, 2), 0.5, dtype=np.float16)
+    tensors["model.layers.0.mlp.gate.weight"] = np.ones((2, 4), dtype=np.float16)
+    tensors["model.layers.0.mlp.shared_expert_gate.weight"] = np.full((1, 4), 2.0, dtype=np.float16)
+    tensors["model.layers.0.mlp.experts.down_weight_theta"] = np.full((1, 2), -1.0, dtype=np.float16)
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+    runtime = FakeRuntime()
+
+    layer = materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(index, runtime=runtime)
+
+    names = set(layer.weights.tensors)
+    assert names == set(runtime_full_attention_moe_c1_tensor_names(layer_id=0))
+    assert "layers.0.mlp.experts.0.gate_proj.qweight" not in names
+    assert layer.tensor("layers.0.self_attn.q_proj.scales").dtype is DType.BF16
+    assert layer.tensor("layers.0.self_attn.q_proj.theta").dtype is DType.BF16
+    assert layer.tensor("layers.0.self_attn.q_proj.qweight").dtype is DType.INT32
+    assert layer.tensor("layers.0.mlp.router_shared_gate.weight").dtype is DType.BF16
+    assert layer.tensor("layers.0.mlp.experts.stacked_gate_scales").dtype is DType.BF16
+    assert layer.tensor("layers.0.mlp.experts.down_weight_theta").dtype is DType.BF16
+    q_scales = layer.allocation("layers.0.self_attn.q_proj.scales")
+    assert bytes(runtime.buffers[q_scales.buffer.ptr]) == float_array_to_bf16_bits(
+        tensors["model.layers.0.self_attn.q_proj.scales"]
+    ).tobytes()
+    layer.free(runtime=runtime)
+    assert len(runtime.freed) == len(runtime_full_attention_moe_c1_tensor_names(layer_id=0))
 
 
 def test_validate_qwen35_paro_moe_c1_layout_reports_missing_and_shapes(tmp_path) -> None:

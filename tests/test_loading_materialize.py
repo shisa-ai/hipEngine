@@ -12,7 +12,9 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.loading import (
     dtype_from_safetensors,
+    float_array_to_bf16_bits,
     load_host_array_to_device,
+    load_host_array_to_device_as_dtype,
     load_tensor_to_device,
     load_tensors_to_device,
     load_weight_index,
@@ -110,6 +112,27 @@ def test_load_host_array_to_device_copies_prepared_array() -> None:
     assert allocation.tensor.dtype is DType.INT16
     assert allocation.tensor.shape == (2, 3)
     assert bytes(runtime.buffers[allocation.buffer.ptr]) == array.tobytes()
+
+
+def test_load_host_array_to_device_as_dtype_supports_bf16_bits() -> None:
+    values = np.asarray([1.0, -2.5, 0.5], dtype=np.float32)
+    bits = float_array_to_bf16_bits(values)
+    runtime = FakeRuntime()
+
+    allocation = load_host_array_to_device_as_dtype("bf16_prepared", bits, DType.BF16, runtime=runtime)
+
+    assert bits.dtype == np.uint16
+    assert bits.tolist() == [0x3F80, 0xC020, 0x3F00]
+    assert allocation.source.dtype == "BF16"
+    assert allocation.tensor.dtype is DType.BF16
+    assert allocation.tensor.shape == (3,)
+    assert bytes(runtime.buffers[allocation.buffer.ptr]) == bits.tobytes()
+
+
+def test_load_host_array_to_device_as_dtype_rejects_size_mismatch() -> None:
+    runtime = FakeRuntime()
+    with pytest.raises(ValueError, match="does not match dtype"):
+        load_host_array_to_device_as_dtype("bad", np.arange(3, dtype=np.uint16), DType.FP32, runtime=runtime)
 
 
 def test_load_tensors_to_device_returns_tensor_map(tmp_path) -> None:

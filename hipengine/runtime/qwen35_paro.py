@@ -137,7 +137,7 @@ class Qwen35ParoDecodeState:
             out.ptr,
             rows,
             x.shape[-1] if in_features is None else in_features,
-            qweight.shape[0],
+            _out_packed_from_strided_qweight(qweight),
             group_size,
             threads=threads,
             library=_library_for(library, "awq"),
@@ -481,6 +481,12 @@ def _library_for(library, family: str):
     if isinstance(library, dict):
         return library.get(family)
     return library
+
+def _out_packed_from_strided_qweight(qweight: Tensor) -> int:
+    if len(qweight.shape) < 2:
+        raise ValueError("strided qweight must have at least two dimensions")
+    return qweight.shape[-1]
+
 
 def _out_packed_from_transposed_qweight(qweight: Tensor) -> int:
     if len(qweight.shape) < 3:

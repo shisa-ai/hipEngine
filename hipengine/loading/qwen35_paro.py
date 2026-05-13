@@ -6,12 +6,15 @@ from dataclasses import dataclass
 from typing import Any
 
 from hipengine.core.device import Device
+from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime
 from hipengine.core.tensor import Tensor
 from hipengine.loading.materialize import (
     DeviceTensorAllocation,
     DeviceWeightMap,
+    float_array_to_bf16_bits,
     load_host_array_to_device,
+    load_host_array_to_device_as_dtype,
     load_tensor_info_to_device,
 )
 from hipengine.loading.safetensors import MissingTensorError, TensorInfo, WeightIndex
@@ -172,6 +175,69 @@ def prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
             f"{shared}.down_weight_w8a16_scale",
         )
     )
+    return tuple(names)
+
+
+def runtime_prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    """Prepared MoE tensors actually consumed by the decode-state c=1 path."""
+
+    prefix = f"layers.{layer_id}.mlp"
+    experts = f"{prefix}.experts"
+    names = [f"{prefix}.router_shared_gate.weight"]
+    for proj in ("gate", "up", "down"):
+        names.extend(
+            (
+                f"{experts}.stacked_{proj}_qweight_pack8_decode",
+                f"{experts}.stacked_{proj}_qzeros",
+                f"{experts}.stacked_{proj}_scales",
+            )
+        )
+    shared = f"{prefix}.shared_expert"
+    names.extend(
+        (
+            f"{shared}.gate_up_weight_w8a16",
+            f"{shared}.gate_up_weight_w8a16_scale",
+            f"{shared}.down_weight_w8a16",
+            f"{shared}.down_weight_w8a16_scale",
+        )
+    )
+    return tuple(names)
+
+
+def runtime_full_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    """Normalized tensors needed by the current real decode-state runtime path."""
+
+    attn = f"layers.{layer_id}.self_attn"
+    mlp = f"layers.{layer_id}.mlp"
+    experts = f"{mlp}.experts"
+    names = [
+        f"layers.{layer_id}.input_layernorm.weight",
+        f"layers.{layer_id}.post_attention_layernorm.weight",
+        f"{attn}.q_norm.weight",
+        f"{attn}.k_norm.weight",
+    ]
+    for proj in ("q_proj", "k_proj", "v_proj"):
+        base = f"{attn}.{proj}"
+        names.extend(
+            (
+                f"{base}.qweight",
+                f"{base}.qzeros",
+                f"{base}.scales",
+                f"{base}.theta",
+                f"{base}.pairs",
+                f"{base}.channel_scales",
+            )
+        )
+    base = f"{attn}.o_proj"
+    names.extend((f"{base}.qweight", f"{base}.qzeros", f"{base}.scales"))
+    names.extend(
+        (
+            f"{experts}.down_weight_pairs",
+            f"{experts}.down_weight_theta",
+            f"{experts}.down_weight_channel_scales",
+        )
+    )
+    names.extend(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id))
     return tuple(names)
 
 
@@ -386,6 +452,85 @@ def materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(
     )
 
 
+def prepare_qwen35_paro_moe_c1_runtime_host_tensors(index: WeightIndex, *, layer_id: int = 0) -> dict[str, object]:
+    """Prepare decode-runtime MoE tensors with BF16 bit buffers where required."""
+
+    prepared = prepare_qwen35_paro_moe_c1_host_tensors(index, layer_id=layer_id)
+    runtime_prepared: dict[str, object] = {}
+    for name in runtime_prepared_moe_c1_tensor_names(layer_id=layer_id):
+        array = prepared[name]
+        runtime_prepared[name] = float_array_to_bf16_bits(array) if _runtime_tensor_needs_bf16_bits(name) else array
+    return runtime_prepared
+
+
+def materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    validate: bool = True,
+) -> Qwen35ParoLayerDeviceWeights:
+    """Materialize the current real decode-state layer path for kernel ABIs.
+
+    Unlike the byte-preserving scaffolding loaders, this function converts F16
+    checkpoint tensors consumed by BF16 raw-pointer kernels into rounded BF16
+    bit buffers. It also omits per-expert tensors that the runtime replaces with
+    stacked/pack8 prepared layouts.
+    """
+
+    validation = validate_qwen35_paro_full_attention_moe_c1_layout(
+        index,
+        layer_id=layer_id,
+        raise_on_error=validate,
+    )
+    if not validation.passed:
+        validation.raise_for_errors()
+    normalized = _normalized_tensor_map(index)
+    allocations: dict[str, DeviceTensorAllocation] = {}
+    try:
+        for name in runtime_full_attention_moe_c1_tensor_names(layer_id=layer_id):
+            if name in runtime_prepared_moe_c1_tensor_names(layer_id=layer_id):
+                continue
+            info = normalized[name]
+            if _runtime_tensor_needs_bf16_bits(name):
+                array = float_array_to_bf16_bits(_read_normalized_numpy_tensor(normalized, name))
+                allocations[name] = load_host_array_to_device_as_dtype(
+                    name,
+                    array,
+                    DType.BF16,
+                    device=device,
+                    runtime=runtime,
+                )
+            else:
+                allocation = load_tensor_info_to_device(info, device=device, runtime=runtime)
+                allocations[name] = DeviceTensorAllocation(
+                    name=name,
+                    source=allocation.source,
+                    buffer=allocation.buffer,
+                    tensor=allocation.tensor,
+                )
+        for name, array in prepare_qwen35_paro_moe_c1_runtime_host_tensors(index, layer_id=layer_id).items():
+            if _runtime_tensor_needs_bf16_bits(name):
+                allocations[name] = load_host_array_to_device_as_dtype(
+                    name,
+                    array,
+                    DType.BF16,
+                    device=device,
+                    runtime=runtime,
+                )
+            else:
+                allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
+    except Exception:
+        DeviceWeightMap(allocations).free(runtime=runtime)
+        raise
+    return Qwen35ParoLayerDeviceWeights(
+        config=validation.config,
+        layer_id=layer_id,
+        weights=DeviceWeightMap(allocations),
+    )
+
+
 def _read_normalized_numpy_tensor(tensors: dict[str, TensorInfo], name: str):
     from safetensors import safe_open
 
@@ -433,6 +578,18 @@ def _quantize_w8a16_host(weight: object):
     quantized = np.rint(weight_f32 / scale[:, None])
     quantized = np.clip(quantized, -127, 127).astype(np.int8)
     return np.ascontiguousarray(quantized), np.ascontiguousarray(scale)
+
+
+def _runtime_tensor_needs_bf16_bits(name: str) -> bool:
+    return (
+        name.endswith(".weight")
+        or name.endswith(".scales")
+        or name.endswith("_scales")
+        or name.endswith(".theta")
+        or name.endswith("_theta")
+        or name.endswith(".channel_scales")
+        or name.endswith("_channel_scales")
+    ) and not name.endswith("_w8a16_scale")
 
 
 def _materialize_normalized_layer(

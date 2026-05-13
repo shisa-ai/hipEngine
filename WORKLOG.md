@@ -2970,3 +2970,75 @@ Results:
 ### Next
 
 - Combine the two state smokes into a one-token attention→MoE smoke: GQA gated attention output feeds `run_moe_c1_bf16(...)` with prepared MoE weights.
+
+---
+
+## 2026-05-14 — Prepare real Qwen3.5/PARO runtime loading for E2E generate
+
+### Scope
+
+- Discovered the local real PARO target checkpoint:
+  - `/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd`
+  - Single safetensors payload, ~20 GiB via HF cache symlink.
+  - Config: `quant_method=paroquant`, `num_hidden_layers=40`, `hidden_size=2048`, `num_attention_heads=16`, `num_key_value_heads=2`, `head_dim=256`, `num_experts=256`, `num_experts_per_tok=8`, `moe_intermediate_size=512`, `shared_expert_intermediate_size=512`, layer pattern `linear_attention, linear_attention, linear_attention, full_attention, ...`.
+- Fixed `Qwen35ParoDecodeState.project_pack8_bf16(...)` to infer generic strided PARO `out_packed` from qweight's last dimension (`[in_features, out_packed]`), matching the real checkpoint layout.
+- Added explicit runtime host materialization helpers for BF16 bit buffers:
+  - `float_array_to_bf16_bits(...)`
+  - `load_host_array_to_device_as_dtype(...)`
+- Added a runtime-focused Qwen3.5/PARO layer materializer:
+  - `materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(...)`
+  - Converts F16 checkpoint tensors consumed by BF16 raw-pointer kernels into rounded BF16 bit buffers.
+  - Omits per-expert individual tensors that are replaced by stacked/pack8 prepared layouts.
+- Added runtime tensor-name helpers for the current decode-state path.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_loading_materialize.py tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q
+python3 -m pytest -q
+python3 - <<'PY'
+from hipengine.core.hip import get_hip_runtime
+from hipengine.loading.safetensors import load_weight_index
+from hipengine.loading.qwen35_paro import materialize_qwen35_paro_full_attention_moe_c1_runtime_layer
+model='/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd'
+runtime=get_hip_runtime()
+idx=load_weight_index(model)
+layer=materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(idx, layer_id=3, runtime=runtime)
+try:
+    print('layer_id=', layer.layer_id, 'tensor_count=', len(layer.weights.tensors))
+    for name in [
+        'layers.3.self_attn.q_proj.qweight',
+        'layers.3.self_attn.q_proj.scales',
+        'layers.3.mlp.router_shared_gate.weight',
+        'layers.3.mlp.experts.stacked_gate_qweight_pack8_decode',
+        'layers.3.mlp.experts.stacked_gate_scales',
+        'layers.3.mlp.shared_expert.gate_up_weight_w8a16',
+    ]:
+        t=layer.tensor(name)
+        print(name, t.shape, t.dtype.value)
+finally:
+    layer.free(runtime=runtime)
+PY
+```
+
+Results:
+
+- Targeted tests: `33 passed`.
+- Full test suite: all tests passed.
+- Real checkpoint layer-3 runtime materialization succeeded on idle W7900 and freed allocations:
+  - `tensor_count=42`
+  - `layers.3.self_attn.q_proj.qweight`: `(2048, 1024) int32`
+  - `layers.3.self_attn.q_proj.scales`: `(16, 8192) bf16`
+  - `layers.3.mlp.router_shared_gate.weight`: `(257, 2048) bf16`
+  - `layers.3.mlp.experts.stacked_gate_qweight_pack8_decode`: `(256, 64, 2048) int32`
+  - `layers.3.mlp.experts.stacked_gate_scales`: `(256, 16, 512) bf16`
+  - `layers.3.mlp.shared_expert.gate_up_weight_w8a16`: `(1024, 2048) int8`
+
+### Next
+
+- Port the remaining decode-state host path needed for full real-model generate:
+  - rotated PARO projections for q/k/v/o and linear-attention projections,
+  - linear-attention decode state wiring,
+  - final norm + lm-head + argmax/tokenizer loop.

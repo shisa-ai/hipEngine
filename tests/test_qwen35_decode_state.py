@@ -168,9 +168,9 @@ def test_qwen35_decode_state_projects_pack8_with_normalized_weight_prefix(monkey
     prefix = "layers.0.self_attn.o_proj"
     weights = DeviceWeightMap(
         {
-            f"{prefix}.qweight": _allocation(f"{prefix}.qweight", 0xB000, (32, 512), "int32"),
-            f"{prefix}.qzeros": _allocation(f"{prefix}.qzeros", 0xB100, (1, 32), "int32"),
-            f"{prefix}.scales": _allocation(f"{prefix}.scales", 0xB200, (32, 128), "fp16"),
+            f"{prefix}.qweight": _allocation(f"{prefix}.qweight", 0xB000, (4096, 512), "int32"),
+            f"{prefix}.qzeros": _allocation(f"{prefix}.qzeros", 0xB100, (32, 512), "int32"),
+            f"{prefix}.scales": _allocation(f"{prefix}.scales", 0xB200, (32, 4096), "bf16"),
         }
     )
     state = _state(runtime, weights)
@@ -188,7 +188,7 @@ def test_qwen35_decode_state_projects_pack8_with_normalized_weight_prefix(monkey
     assert result is out
     assert len(calls) == 1
     args, kwargs = calls[0]
-    assert args == (0xC000, 0xB000, 0xB100, 0xB200, 0xC100, 1, 4096, 32, 128)
+    assert args == (0xC000, 0xB000, 0xB100, 0xB200, 0xC100, 1, 4096, 512, 128)
     assert kwargs == {"threads": 128, "library": None, "runtime": runtime}
 
 

@@ -34,6 +34,7 @@ _NUMPY_DTYPE_TO_SAFETENSORS = {
     "float16": "F16",
     "float32": "F32",
 }
+_DTYPE_TO_SAFETENSORS = {dtype: safetensors for safetensors, dtype in _SAFETENSORS_DTYPE_TO_DTYPE.items()}
 
 
 @dataclass(frozen=True)
@@ -148,18 +149,73 @@ def load_host_array_to_device(
     if safetensors_dtype is None:
         valid = ", ".join(sorted(_NUMPY_DTYPE_TO_SAFETENSORS))
         raise ValueError(f"unsupported host array dtype {dtype_name!r}; expected one of: {valid}")
-    dtype = dtype_from_safetensors(safetensors_dtype)
+    return load_host_array_to_device_as_dtype(
+        name,
+        array,
+        dtype_from_safetensors(safetensors_dtype),
+        source_dtype=safetensors_dtype,
+        device=device,
+        runtime=runtime,
+    )
+
+
+def load_host_array_to_device_as_dtype(
+    name: str,
+    array: object,
+    dtype: str | DType,
+    *,
+    source_dtype: str | None = None,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+) -> DeviceTensorAllocation:
+    """Materialize a host array while assigning an explicit runtime dtype.
+
+    This is used for BF16 runtime buffers prepared as raw ``uint16`` bit arrays:
+    NumPy has no portable builtin BF16 dtype, but the kernel ABI still needs the
+    tensor handle to advertise ``DType.BF16``.
+    """
+
+    if not name:
+        raise ValueError("tensor name must be non-empty")
+    if not _is_contiguous(array):
+        import numpy as np
+
+        array = np.ascontiguousarray(array)
+    parsed = DType.parse(dtype)
     shape = tuple(int(dim) for dim in getattr(array, "shape"))
     nbytes = int(getattr(array, "nbytes"))
+    expected_nbytes = parsed.itemsize
+    for dim in shape:
+        expected_nbytes *= dim
+    if nbytes != expected_nbytes:
+        raise ValueError(
+            f"host array byte size {nbytes} does not match dtype {parsed.value!r} and shape {shape}: "
+            f"expected {expected_nbytes}"
+        )
     buffer = malloc(nbytes, runtime=runtime)
     try:
         copy_host_to_device(buffer, host_array_ptr(array), nbytes, runtime=runtime)
     except Exception:
         free(buffer, runtime=runtime)
         raise
+    safetensors_dtype = source_dtype or _DTYPE_TO_SAFETENSORS.get(parsed)
+    if safetensors_dtype is None:
+        raise ValueError(f"dtype {parsed.value!r} cannot be represented as safetensors metadata")
     source = TensorInfo(name=name, shard_path=index_virtual_path(name), dtype=safetensors_dtype, shape=shape)
-    tensor = Tensor.from_handle(buffer.ptr, shape, dtype, device or Device("hip", 0))
+    tensor = Tensor.from_handle(buffer.ptr, shape, parsed, device or Device("hip", 0))
     return DeviceTensorAllocation(name=name, source=source, buffer=buffer, tensor=tensor)
+
+
+def float_array_to_bf16_bits(array: object):
+    """Convert a float-like host array to rounded BF16 bits as ``np.uint16``."""
+
+    import numpy as np
+
+    f32 = np.asarray(array, dtype=np.float32)
+    bits = f32.view(np.uint32)
+    lsb = (bits >> np.uint32(16)) & np.uint32(1)
+    rounded = bits + np.uint32(0x7FFF) + lsb
+    return np.ascontiguousarray((rounded >> np.uint32(16)).astype(np.uint16))
 
 
 def load_tensors_to_device(
