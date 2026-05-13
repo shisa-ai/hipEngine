@@ -3,11 +3,15 @@ from __future__ import annotations
 import pytest
 
 from hipengine.core.device import Device
+from pathlib import Path
+
 from hipengine.core.dtype import DType
+from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.kvcache import KVLiveSpans
-from hipengine.loading.materialize import DeviceWeightMap
+from hipengine.loading.materialize import DeviceTensorAllocation, DeviceWeightMap
 from hipengine.loading.qwen35_paro import Qwen35ParoConfig, Qwen35ParoLayerDeviceWeights
+from hipengine.loading.safetensors import TensorInfo
 from hipengine.runtime import Qwen35ParoDecodeState, RuntimeWorkspace
 import hipengine.runtime.qwen35_paro as qwen_runtime
 
@@ -46,8 +50,17 @@ def _config() -> Qwen35ParoConfig:
     )
 
 
-def _state(runtime: FakeRuntime) -> Qwen35ParoDecodeState:
-    layer = Qwen35ParoLayerDeviceWeights(config=_config(), layer_id=0, weights=DeviceWeightMap({}))
+def _allocation(name: str, ptr: int, shape: tuple[int, ...], dtype: str) -> DeviceTensorAllocation:
+    return DeviceTensorAllocation(
+        name=name,
+        source=TensorInfo(name=f"model.{name}", shard_path=Path("/tmp/fake.safetensors"), dtype="F16", shape=shape),
+        buffer=DeviceBuffer(ptr=ptr, nbytes=1),
+        tensor=Tensor.from_handle(ptr, shape, dtype, Device("hip", 0)),
+    )
+
+
+def _state(runtime: FakeRuntime, weights: DeviceWeightMap | None = None) -> Qwen35ParoDecodeState:
+    layer = Qwen35ParoLayerDeviceWeights(config=_config(), layer_id=0, weights=weights or DeviceWeightMap({}))
     return Qwen35ParoDecodeState(
         layer_weights=layer,
         workspace=RuntimeWorkspace(runtime=runtime),
@@ -100,6 +113,35 @@ def test_qwen35_decode_state_reuses_and_replaces_named_scratch() -> None:
     assert second.partial_out.ptr == first.partial_out.ptr
     assert changed.partial_out.ptr != first.partial_out.ptr
     assert first.partial_out.ptr in runtime.freed
+
+
+def test_qwen35_decode_state_projects_pack8_with_normalized_weight_prefix(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    prefix = "layers.0.self_attn.o_proj"
+    weights = DeviceWeightMap(
+        {
+            f"{prefix}.qweight": _allocation(f"{prefix}.qweight", 0xB000, (32, 512), "int32"),
+            f"{prefix}.qzeros": _allocation(f"{prefix}.qzeros", 0xB100, (1, 32), "int32"),
+            f"{prefix}.scales": _allocation(f"{prefix}.scales", 0xB200, (32, 128), "fp16"),
+        }
+    )
+    state = _state(runtime, weights)
+    x = Tensor.from_handle(0xC000, (1, 4096), "bf16", Device("hip", 0))
+    out = Tensor.from_handle(0xC100, (1, 4096), "bf16", Device("hip", 0))
+    calls = []
+
+    def fake_gemv(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", fake_gemv)
+
+    result = state.project_pack8_bf16(x, out, weight_prefix=f"model.{prefix}", rows=1, group_size=128)
+
+    assert result is out
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == (0xC000, 0xB000, 0xB100, 0xB200, 0xC100, 1, 4096, 32, 128)
+    assert kwargs == {"threads": 128, "library": None, "runtime": runtime}
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:

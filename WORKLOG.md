@@ -2711,3 +2711,32 @@ Results:
 ### Next
 
 - Wire projection/MoE calls into the decode state: q/k/v/o PARO pack8 GEMV and the MoE c=1 kernel chain against materialized normalized weights.
+
+---
+
+## 2026-05-14 — Wire Qwen3.5/PARO decode-state pack8 projection calls
+
+### Scope
+
+- Added `Qwen35ParoDecodeState.project_pack8_bf16(...)`.
+- The method normalizes HF-prefixed weight prefixes, resolves `{qweight,qzeros,scales}` from the materialized normalized weight map, and calls the landed `gemv_awq_pack8_strided_bf16(...)` wrapper.
+- This covers q/k/v/o-style single PARO pack8 projections once the caller supplies the appropriate pre-rotated input/output scratch tensors.
+- Added monkeypatched CPU tests that verify normalized weight lookup and exact GEMV raw pointer/shape/group-size/runtime arguments without launching GPU.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_decode_state.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Decode-state tests: `8 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Wire the MoE c=1 calls into `Qwen35ParoDecodeState`: router, selected gate/up, selected down, W8A16 shared branch, and weighted/shared/residual combine using normalized materialized weights.

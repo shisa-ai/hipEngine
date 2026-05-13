@@ -11,8 +11,9 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
 )
+from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import gemv_awq_pack8_strided_bf16
 from hipengine.kvcache import KVLiveSpans
-from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights
+from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights, normalize_qwen35_weight_name
 from hipengine.runtime.workspace import RuntimeWorkspace
 
 
@@ -97,6 +98,40 @@ class Qwen35ParoDecodeState:
             attn_out=self.workspace.reserve_tensor("attn.out", (cfg.num_attention_heads, cfg.head_dim), DType.FP32),
             gated_attn=self.workspace.reserve_tensor("attn.gated", (tokens, q_width), gated),
         )
+
+    def project_pack8_bf16(
+        self,
+        x: Tensor,
+        out: Tensor,
+        *,
+        weight_prefix: str,
+        rows: int = 1,
+        in_features: int | None = None,
+        group_size: int = 128,
+        threads: int = 128,
+        library=None,
+    ) -> Tensor:
+        prefix = normalize_qwen35_weight_name(weight_prefix)
+        qweight = self.tensor(f"{prefix}.qweight")
+        qzeros = self.tensor(f"{prefix}.qzeros")
+        scales = self.tensor(f"{prefix}.scales")
+        if not qweight.shape:
+            raise ValueError(f"{prefix}.qweight must have at least one dimension")
+        gemv_awq_pack8_strided_bf16(
+            x.ptr,
+            qweight.ptr,
+            qzeros.ptr,
+            scales.ptr,
+            out.ptr,
+            rows,
+            x.shape[-1] if in_features is None else in_features,
+            qweight.shape[0],
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=self.runtime,
+        )
+        return out
 
     def append_full_attention_kv(
         self,
