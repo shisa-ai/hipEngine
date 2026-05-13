@@ -2843,3 +2843,37 @@ Results:
 ### Next
 
 - Add a CPU-monkeypatched synthetic one-token decode-state chain that invokes the full MoE c=1 route in parent order, then move toward a tiny real-GPU integration smoke over the decode-state methods with prepared synthetic weights.
+
+---
+
+## 2026-05-14 — Add Qwen3.5/PARO decode-state MoE c=1 orchestrator
+
+### Scope
+
+- Added `Qwen35ParoDecodeState.run_moe_c1_bf16(...)`, a single parent-order one-token MoE chain over the landed call methods:
+  1. router/shared-gate top-k
+  2. selected gate/up pack8 GEMV
+  3. fused SiLU + down rotation
+  4. selected down pack8 GEMV
+  5. W8A16 shared-expert branch
+  6. weighted selected output + shared gate + residual combine
+- The method uses prepared normalized MoE tensors and existing `RuntimeWorkspace` scratch; it remains a host wiring/orchestration layer and introduces no backend conditionals.
+- Added a monkeypatched CPU test that asserts wrapper invocation order and final output handle without launching GPU.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_decode_state.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Decode-state tests: `14 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Add a real-GPU decode-state smoke that reuses the existing synthetic `paro-moe-c1-hip` fixtures but routes through `Qwen35ParoDecodeState.run_moe_c1_bf16(...)`, then move to full-attention+MoE one-token integration.

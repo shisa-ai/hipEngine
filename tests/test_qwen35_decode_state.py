@@ -437,6 +437,34 @@ def test_qwen35_decode_state_combines_moe_shared_residual(monkeypatch) -> None:
         state.combine_moe_c1_shared_residual_bf16(scratch, shared=shared, residual=residual, tokens=2)
 
 
+def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=1)
+    hidden = _tensor(0xCA00, (1, 4096), "bf16")
+    residual = _tensor(0xCC00, (1, 4096), "bf16")
+    order = []
+
+    monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_bf16", lambda *a, **k: order.append("router"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", lambda *a, **k: order.append("gate_up"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", lambda *a, **k: order.append("silu_rotate"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", lambda *a, **k: order.append("down"))
+    monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", lambda *a, **k: order.append("w8a16"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", lambda *a, **k: order.append("shared_silu"))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "weighted_sum_shared_gate_combine_residual_out_bf16_f32w",
+        lambda *a, **k: order.append("combine"),
+    )
+
+    out = state.run_moe_c1_bf16(hidden, residual, scratch=scratch)
+
+    assert out is scratch.moe_out
+    assert order == ["router", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine"]
+    with pytest.raises(ValueError, match="tokens=1"):
+        state.run_moe_c1_bf16(hidden, residual, tokens=2)
+
+
 def test_qwen35_decode_state_validates_scratch_requests() -> None:
     runtime = FakeRuntime()
     state = _state(runtime)

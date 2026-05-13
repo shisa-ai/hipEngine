@@ -412,6 +412,32 @@ class Qwen35ParoDecodeState:
         )
         return target
 
+    def run_moe_c1_bf16(
+        self,
+        hidden: Tensor,
+        residual: Tensor,
+        *,
+        scratch: Qwen35ParoMoeScratch | None = None,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+    ) -> Tensor:
+        if tokens != 1:
+            raise ValueError("MoE c=1 orchestrator currently requires tokens=1")
+        scratch = scratch or self.reserve_moe_c1_scratch(tokens=tokens)
+        self.route_moe_topk_shared_bf16(hidden, scratch, tokens=tokens, library=library)
+        self.selected_moe_gate_up_pack8_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library)
+        self.activate_rotate_moe_down_bf16(scratch, tokens=tokens, group_size=group_size, library=library)
+        self.selected_moe_down_pack8_bf16(scratch.down_input, scratch, tokens=tokens, group_size=group_size, library=library)
+        shared = self.shared_expert_w8a16_bf16(hidden, scratch, tokens=tokens, library=library)
+        return self.combine_moe_c1_shared_residual_bf16(
+            scratch,
+            shared=shared,
+            residual=residual,
+            tokens=tokens,
+            library=library,
+        )
+
     def reserve_moe_c1_scratch(self, *, tokens: int = 1) -> Qwen35ParoMoeScratch:
         if tokens <= 0:
             raise ValueError("tokens must be positive")
