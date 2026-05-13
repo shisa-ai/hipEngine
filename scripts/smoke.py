@@ -32,16 +32,17 @@ def main() -> int:
             "qwen35-rmsnorm-hip",
             "paro-rmsnorm-hip",
             "qwen35-router-hip",
+            "paro-selected-gemv-hip",
         ),
         default="registry",
     )
     parser.add_argument("--n", type=int, default=1024, help="Element count for smoke-add-hip.")
-    parser.add_argument("--rows", type=int, default=2, help="Rows for qwen35-rmsnorm-hip.")
+    parser.add_argument("--rows", type=int, default=2, help="Rows/tokens for HIP smoke modes.")
     parser.add_argument(
         "--hidden-size",
         type=int,
         default=16,
-        help="Hidden size for qwen35-rmsnorm-hip.",
+        help="Hidden/input feature size for HIP smoke modes.",
     )
     parser.add_argument(
         "--compiler-version-file",
@@ -49,13 +50,13 @@ def main() -> int:
         default=None,
         help=(
             "Read the precomputed hipcc --version text from this file before building/loading "
-            "smoke_add. Use under rocprofv3 to avoid spawning hipcc inside the profiler."
+            "HIP smoke libraries. Use under rocprofv3 to avoid spawning hipcc inside the profiler."
         ),
     )
     parser.add_argument(
         "--require-cached-build",
         action="store_true",
-        help="Fail instead of invoking hipcc if the expected smoke_add cache artifact is absent.",
+        help="Fail instead of invoking hipcc if the expected HIP cache artifact is absent.",
     )
     args = parser.parse_args()
     if args.mode == "registry":
@@ -87,7 +88,14 @@ def main() -> int:
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
-    return qwen35_router_hip_smoke(
+    if args.mode == "qwen35-router-hip":
+        return qwen35_router_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    return paro_selected_gemv_hip_smoke(
         args.rows,
         args.hidden_size,
         compiler_version=compiler_version,
@@ -516,6 +524,347 @@ def qwen35_router_hip_smoke(
     print("selected0=", selected[0].tolist())
     print("routing0=", routing[0].tolist())
     return 0 if selected_match and logits_max_abs <= 2e-5 and routing_max_abs <= 2e-5 else 1
+
+
+def paro_selected_gemv_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant import (
+        build_paro_awq_gemv,
+        gemv_awq_selected_dual_pack8_strided_bf16,
+        gemv_awq_selected_dual_pack8_transposed_bf16,
+        gemv_awq_selected_pack8_strided_bf16,
+        gemv_awq_selected_pack8_transposed_bf16,
+    )
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 8 or hidden_size % 8 != 0:
+        raise ValueError("--hidden-size must be >= 8 and divisible by 8")
+
+    group_size = 8
+    threads = 64
+    num_experts = 3
+    out_packed_a = out_packed_b = out_packed = 1
+    selected = (np.arange(rows, dtype=np.int64) % num_experts).astype(np.int64)
+    x_dual_f32 = np.array(
+        [[[-0.5, -0.25, 0.25, 0.5][i % 4] for i in range(hidden_size)]],
+        dtype=np.float32,
+    )
+    x_single_f32 = np.empty((rows, hidden_size), dtype=np.float32)
+    for row in range(rows):
+        x_single_f32[row] = x_dual_f32[0] * (1.0 if (row % 2) == 0 else -1.0)
+    x_dual_bits = _float32_to_bf16_bits(x_dual_f32)
+    x_single_bits = _float32_to_bf16_bits(x_single_f32)
+
+    qweight_a, qzeros_a, scales_a_bits = _make_pack8_fixture(
+        num_experts, hidden_size, out_packed_a, group_size, salt=0
+    )
+    qweight_b, qzeros_b, scales_b_bits = _make_pack8_fixture(
+        num_experts, hidden_size, out_packed_b, group_size, salt=2
+    )
+    qweight_single, qzeros_single, scales_single_bits = _make_pack8_fixture(
+        num_experts, hidden_size, out_packed, group_size, salt=4
+    )
+    qweight_a_t = np.transpose(qweight_a, (0, 2, 1)).copy()
+    qweight_b_t = np.transpose(qweight_b, (0, 2, 1)).copy()
+    qweight_single_t = np.transpose(qweight_single, (0, 2, 1)).copy()
+
+    dual_strided_bits = np.empty((rows, (out_packed_a + out_packed_b) * 8), dtype=np.uint16)
+    dual_transposed_bits = np.empty_like(dual_strided_bits)
+    single_strided_bits = np.empty((rows, out_packed * 8), dtype=np.uint16)
+    single_transposed_bits = np.empty_like(single_strided_bits)
+
+    expected_dual_a = _selected_pack8_reference(
+        x_dual_bits,
+        selected,
+        qweight_a,
+        qzeros_a,
+        scales_a_bits,
+        group_size,
+        qweight_transposed=False,
+    )
+    expected_dual_b = _selected_pack8_reference(
+        x_dual_bits,
+        selected,
+        qweight_b,
+        qzeros_b,
+        scales_b_bits,
+        group_size,
+        qweight_transposed=False,
+    )
+    expected_dual_bits = np.concatenate([expected_dual_a, expected_dual_b], axis=1)
+    expected_single_bits = _selected_pack8_reference(
+        x_single_bits,
+        selected,
+        qweight_single,
+        qzeros_single,
+        scales_single_bits,
+        group_size,
+        qweight_transposed=False,
+    )
+
+    runtime = get_hip_runtime()
+    library = build_paro_awq_gemv(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dual_dev = dev(x_dual_bits)
+        x_single_dev = dev(x_single_bits)
+        selected_dev = dev(selected)
+        qweight_a_dev = dev(qweight_a)
+        qweight_a_t_dev = dev(qweight_a_t)
+        qzeros_a_dev = dev(qzeros_a)
+        scales_a_dev = dev(scales_a_bits)
+        qweight_b_dev = dev(qweight_b)
+        qweight_b_t_dev = dev(qweight_b_t)
+        qzeros_b_dev = dev(qzeros_b)
+        scales_b_dev = dev(scales_b_bits)
+        qweight_single_dev = dev(qweight_single)
+        qweight_single_t_dev = dev(qweight_single_t)
+        qzeros_single_dev = dev(qzeros_single)
+        scales_single_dev = dev(scales_single_bits)
+        dual_strided_dev = out_dev(dual_strided_bits)
+        dual_transposed_dev = out_dev(dual_transposed_bits)
+        single_strided_dev = out_dev(single_strided_bits)
+        single_transposed_dev = out_dev(single_transposed_bits)
+
+        gemv_awq_selected_dual_pack8_strided_bf16(
+            x_dual_dev.ptr,
+            selected_dev.ptr,
+            qweight_a_dev.ptr,
+            qzeros_a_dev.ptr,
+            scales_a_dev.ptr,
+            qweight_b_dev.ptr,
+            qzeros_b_dev.ptr,
+            scales_b_dev.ptr,
+            dual_strided_dev.ptr,
+            1,
+            rows,
+            hidden_size,
+            out_packed_a,
+            out_packed_b,
+            num_experts,
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gemv_awq_selected_dual_pack8_transposed_bf16(
+            x_dual_dev.ptr,
+            selected_dev.ptr,
+            qweight_a_t_dev.ptr,
+            qzeros_a_dev.ptr,
+            scales_a_dev.ptr,
+            qweight_b_t_dev.ptr,
+            qzeros_b_dev.ptr,
+            scales_b_dev.ptr,
+            dual_transposed_dev.ptr,
+            1,
+            rows,
+            hidden_size,
+            out_packed_a,
+            out_packed_b,
+            num_experts,
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gemv_awq_selected_pack8_strided_bf16(
+            x_single_dev.ptr,
+            selected_dev.ptr,
+            qweight_single_dev.ptr,
+            qzeros_single_dev.ptr,
+            scales_single_dev.ptr,
+            single_strided_dev.ptr,
+            rows,
+            hidden_size,
+            out_packed,
+            num_experts,
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gemv_awq_selected_pack8_transposed_bf16(
+            x_single_dev.ptr,
+            selected_dev.ptr,
+            qweight_single_t_dev.ptr,
+            qzeros_single_dev.ptr,
+            scales_single_dev.ptr,
+            single_transposed_dev.ptr,
+            rows,
+            hidden_size,
+            out_packed,
+            num_experts,
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(dual_strided_bits), dual_strided_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(dual_transposed_bits), dual_transposed_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(single_strided_bits), single_strided_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(single_transposed_bits), single_transposed_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    dual_strided_mismatch = int(np.count_nonzero(dual_strided_bits != expected_dual_bits))
+    dual_transposed_mismatch = int(np.count_nonzero(dual_transposed_bits != expected_dual_bits))
+    single_strided_mismatch = int(np.count_nonzero(single_strided_bits != expected_single_bits))
+    single_transposed_mismatch = int(np.count_nonzero(single_transposed_bits != expected_single_bits))
+    dual_max_abs = float(
+        max(
+            np.max(np.abs(_bf16_bits_to_float32(dual_strided_bits) - _bf16_bits_to_float32(expected_dual_bits))),
+            np.max(np.abs(_bf16_bits_to_float32(dual_transposed_bits) - _bf16_bits_to_float32(expected_dual_bits))),
+        )
+    )
+    single_max_abs = float(
+        max(
+            np.max(np.abs(_bf16_bits_to_float32(single_strided_bits) - _bf16_bits_to_float32(expected_single_bits))),
+            np.max(np.abs(_bf16_bits_to_float32(single_transposed_bits) - _bf16_bits_to_float32(expected_single_bits))),
+        )
+    )
+    print(
+        f"rows={rows} hidden_size={hidden_size} threads={threads} "
+        f"dual_mismatch={dual_strided_mismatch}/{dual_transposed_mismatch} "
+        f"single_mismatch={single_strided_mismatch}/{single_transposed_mismatch} "
+        f"dual_max_abs={dual_max_abs} single_max_abs={single_max_abs}"
+    )
+    print("dual0=", _bf16_bits_to_float32(dual_strided_bits)[0].tolist())
+    print("single0=", _bf16_bits_to_float32(single_strided_bits)[0].tolist())
+    return 0 if (
+        dual_strided_mismatch == 0
+        and dual_transposed_mismatch == 0
+        and single_strided_mismatch == 0
+        and single_transposed_mismatch == 0
+    ) else 1
+
+
+def _make_pack8_fixture(
+    num_experts: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    salt: int,
+):
+    import numpy as np
+
+    groups = in_features // group_size
+    qweight = np.empty((num_experts, in_features, out_packed), dtype=np.int32)
+    qzeros = np.empty((num_experts, groups, out_packed), dtype=np.int32)
+    scales = np.empty((num_experts, groups, out_packed * 8), dtype=np.float32)
+    scale_choices = np.asarray([0.125, 0.25, 0.5, 1.0], dtype=np.float32)
+    for expert in range(num_experts):
+        for group in range(groups):
+            for out_pack in range(out_packed):
+                zeros = np.full(8, 8, dtype=np.int32)
+                qzeros[expert, group, out_pack] = _pack_awq_lanes(zeros)
+                for lane in range(out_pack * 8, out_pack * 8 + 8):
+                    scales[expert, group, lane] = scale_choices[(expert + group + lane + salt) % 4]
+        for in_col in range(in_features):
+            for out_pack in range(out_packed):
+                deltas = np.asarray(
+                    [((expert + in_col + lane + salt) % 5) - 2 for lane in range(8)],
+                    dtype=np.int32,
+                )
+                qweight[expert, in_col, out_pack] = _pack_awq_lanes(8 + deltas)
+    return qweight, qzeros, _float32_to_bf16_bits(scales)
+
+
+def _selected_pack8_reference(
+    x_bits: object,
+    selected: object,
+    qweight: object,
+    qzeros: object,
+    scales_bits: object,
+    group_size: int,
+    *,
+    qweight_transposed: bool,
+):
+    import numpy as np
+
+    x = _bf16_bits_to_float32(x_bits)
+    selected_arr = np.asarray(selected, dtype=np.int64)
+    qweight_arr = np.asarray(qweight, dtype=np.int32)
+    qzeros_arr = np.asarray(qzeros, dtype=np.int32)
+    scales = _bf16_bits_to_float32(scales_bits)
+    rows = selected_arr.shape[0]
+    num_experts = qweight_arr.shape[0]
+    out_packed = qweight_arr.shape[1] if qweight_transposed else qweight_arr.shape[2]
+    in_features = qweight_arr.shape[2] if qweight_transposed else qweight_arr.shape[1]
+    out = np.empty((rows, out_packed * 8), dtype=np.float32)
+    for row in range(rows):
+        expert = int(selected_arr[row])
+        if expert < 0 or expert >= num_experts:
+            out[row].fill(0.0)
+            continue
+        x_row = 0 if x.shape[0] == 1 else row
+        for out_pack in range(out_packed):
+            acc = np.zeros(8, dtype=np.float32)
+            for in_col in range(in_features):
+                group = in_col // group_size
+                packed_w = int(
+                    qweight_arr[expert, out_pack, in_col]
+                    if qweight_transposed
+                    else qweight_arr[expert, in_col, out_pack]
+                )
+                packed_z = int(qzeros_arr[expert, group, out_pack])
+                xv = np.float32(x[x_row, in_col])
+                for lane in range(8):
+                    q = (packed_w >> _awq_shift_for_pack_lane(lane)) & 0xF
+                    z = (packed_z >> _awq_shift_for_pack_lane(lane)) & 0xF
+                    scale = np.float32(scales[expert, group, out_pack * 8 + lane])
+                    acc[lane] = np.float32(acc[lane] + np.float32(xv * np.float32(q - z) * scale))
+            out[row, out_pack * 8 : out_pack * 8 + 8] = acc
+    return _float32_to_bf16_bits(out)
+
+
+def _pack_awq_lanes(lanes: object):
+    import numpy as np
+
+    packed = 0
+    for lane, value in enumerate(np.asarray(lanes, dtype=np.int32).tolist()):
+        packed |= (int(value) & 0xF) << _awq_shift_for_pack_lane(lane)
+    return np.asarray([packed], dtype=np.uint32).view(np.int32)[0]
+
+
+def _awq_shift_for_pack_lane(lane: int) -> int:
+    packed_pos = (4 + (lane >> 1)) if (lane & 1) else (lane >> 1)
+    return packed_pos * 4
 
 
 def _float32_to_bf16_bits(values: object):

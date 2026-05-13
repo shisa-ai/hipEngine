@@ -1316,3 +1316,79 @@ Results:
 
 - This first HIPENGINE router wrapper supports BF16 hidden and BF16 combined weights. The parent accepts FP16 or BF16 hidden inputs; if the final HIPENGINE OPTIMAL route keeps FP16 router inputs, add an FP16 hidden specialization before claiming full router parity.
 - Next MoE c=1 dependencies remain selected pack8 GEMV, fused activation/down-rotation, W8A16 shared expert, and weighted shared-gate residual combine.
+
+---
+
+## 2026-05-13 — Port PARO selected pack8 GEMV kernels
+
+### Scope
+
+- Ported selected-expert W4 pack8 GEMV bodies from `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` at `nano-vllm-amd@59195ed`:
+  - `gemv_awq_selected_dual_pack8_strided_kernel`
+  - `gemv_awq_selected_pack8_kernel`
+  - shared `awq_shift_for_pack_lane` / `PARO_PACK8_SHFL_REDUCE` helper block, including the current small-K/half-wave safety fix.
+- Added `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip` with BF16 raw-pointer C ABI wrappers:
+  - `hipengine_gemv_awq_selected_dual_pack8_strided_bf16`
+  - `hipengine_gemv_awq_selected_dual_pack8_transposed_bf16`
+  - `hipengine_gemv_awq_selected_pack8_strided_bf16`
+  - `hipengine_gemv_awq_selected_pack8_transposed_bf16`
+- Added ctypes wrappers and registry keys:
+  - `KernelKey("hip_gfx1100", "selected_dual_pack8_gemv", "w4_paro", "strided")`
+  - `KernelKey("hip_gfx1100", "selected_dual_pack8_gemv", "w4_paro", "transposed")`
+  - `KernelKey("hip_gfx1100", "selected_pack8_gemv", "w4_paro", "strided")`
+  - `KernelKey("hip_gfx1100", "selected_pack8_gemv", "w4_paro", "transposed")`
+- Added `scripts/smoke.py --mode paro-selected-gemv-hip`, with a deterministic BF16/pack8 CPU oracle that validates dual gate/up and single/down strided/transposed layouts bit-for-bit.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md` for the selected pack8 GEMV slice.
+
+### Correctness / preservation / profiler gate
+
+GPU sharing note: another agent launched `scripts/bench_paro_native_engine.py` while this work was in progress. I waited until `rocm-smi --showpids --showuse --showmeminfo vram` reported `No KFD PIDs currently running` and ~28 MiB VRAM before the retained selected-GEMV smoke/profile below. Earlier overlapped smoke output was discarded as final evidence.
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+python3 scripts/smoke.py --mode smoke-add-plan
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.quant import build_paro_awq_gemv
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+artifact = build_paro_awq_gemv(load=False, compiler_version=version)
+print(artifact.output_path)
+PY
+python3 scripts/smoke.py --mode paro-selected-gemv-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-paro-selected-gemv-trace -- \
+  python3 scripts/smoke.py --mode paro-selected-gemv-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `38 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Source-body preservation check found current parent bodies verbatim in `quant/paro_awq_gemv.hip`:
+  - `awq_shift_for_pack_lane` / `PARO_PACK8_SHFL_REDUCE`: 57 lines
+  - `gemv_awq_selected_dual_pack8_strided_kernel`: 125 lines
+  - `gemv_awq_selected_pack8_kernel`: 112 lines
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/paro_awq_gemv-0dc886e96bcd9cd2/paro_awq_gemv.so`.
+- Selected GEMV smoke is bit-exact:
+  - `dual_mismatch=0/0` for strided/transposed dual gate/up.
+  - `single_mismatch=0/0` for strided/transposed single/down.
+  - `dual_max_abs=0.0`, `single_max_abs=0.0`.
+- `rocprofv3` trace (raw CSV not committed): `/tmp/hipengine-paro-selected-gemv-trace/epyc/2968040_kernel_trace.csv`.
+- Target kernel rows:
+  - `gemv_awq_selected_dual_pack8_strided_kernel<unsigned short, false>`: computed `DurationNs=20603`, `VGPR_Count=104`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(128,2,1)`.
+  - `gemv_awq_selected_dual_pack8_strided_kernel<unsigned short, true>`: computed `DurationNs=16722`, `VGPR_Count=112`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(128,2,1)`.
+  - `gemv_awq_selected_pack8_kernel<unsigned short, false>`: computed `DurationNs=12601`, `VGPR_Count=104`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(64,2,1)`.
+  - `gemv_awq_selected_pack8_kernel<unsigned short, true>`: computed `DurationNs=12882`, `VGPR_Count=112`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(64,2,1)`.
+
+### Caveat / next
+
+- The selected gate/up fused rotate-out kernel is still missing; it belongs with the activation/down-rotation slice.
+- Next MoE c=1 dependencies: fused SiLU/down rotation, W8A16 shared expert, and weighted shared-gate residual combine.
