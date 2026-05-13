@@ -1789,3 +1789,29 @@ Results: `49 passed`.
 ### Next
 
 - Start loader-side safetensors/config scaffolding for `w4_paro` tensor discovery and layout validation, still torch-free.
+
+---
+
+## 2026-05-13 — Add torch-free safetensors metadata loader
+
+### Scope
+
+- Added `hipengine.loading.safetensors` with:
+  - `read_config()` for `config.json`.
+  - `discover_safetensor_shards()` for single-file, unindexed multi-file, and `model.safetensors.index.json` layouts.
+  - `load_weight_index()` returning tensor names, shard paths, dtypes, shapes, and byte counts without loading tensors into torch.
+  - clean `MissingConfigError`, `MissingWeightsError`, and `MissingTensorError` errors.
+- Added loading import surface and tests using `safetensors.numpy` fixtures.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest -q
+```
+
+Results: `53 passed`.
+
+### Next
+
+- Add Qwen3.5/PARO layout validator over `WeightIndex` to check required config fields and required tensor-name families before actual device loading.
