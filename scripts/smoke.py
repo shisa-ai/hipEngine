@@ -35,6 +35,7 @@ def main() -> int:
             "paro-selected-gemv-hip",
             "paro-silu-hip",
             "paro-combine-hip",
+            "dense-gemv-hip",
             "w8a16-linear-hip",
             "w8a16-shared-expert-hip",
             "paro-moe-c1-hip",
@@ -116,6 +117,13 @@ def main() -> int:
         )
     if args.mode == "paro-combine-hip":
         return paro_combine_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "dense-gemv-hip":
+        return dense_gemv_hip_smoke(
             args.rows,
             args.hidden_size,
             compiler_version=compiler_version,
@@ -981,6 +989,100 @@ def paro_moe_c1_hip_smoke(
         and final_mismatch == 0
         else 1
     )
+
+
+def dense_gemv_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.linear import build_dense_gemv, dense_gemv_out_bf16
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 1:
+        raise ValueError("--hidden-size must be >= 1")
+
+    out_features = 8
+    threads = 256
+    x_f32 = np.linspace(-0.75, 1.0, rows * hidden_size, dtype=np.float32).reshape(
+        rows, hidden_size
+    )
+    weight_f32 = np.empty((out_features, hidden_size), dtype=np.float32)
+    for row in range(out_features):
+        weight_f32[row] = np.asarray(
+            [[-0.5, -0.25, 0.25, 0.5][(row + col) % 4] for col in range(hidden_size)],
+            dtype=np.float32,
+        )
+    x_bits = _float32_to_bf16_bits(x_f32)
+    weight_bits = _float32_to_bf16_bits(weight_f32)
+    out_bits = np.empty((rows, out_features), dtype=np.uint16)
+    expected_bits = _float32_to_bf16_bits(
+        _bf16_bits_to_float32(x_bits) @ _bf16_bits_to_float32(weight_bits).T
+    )
+
+    runtime = get_hip_runtime()
+    library = build_dense_gemv(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = dev(x_bits)
+        weight_dev = dev(weight_bits)
+        out_dev_buf = out_dev(out_bits)
+        dense_gemv_out_bf16(
+            x_dev.ptr,
+            weight_dev.ptr,
+            out_dev_buf.ptr,
+            rows,
+            hidden_size,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_bits), out_dev_buf, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    mismatch = int(np.count_nonzero(out_bits != expected_bits))
+    max_abs = float(
+        np.max(np.abs(_bf16_bits_to_float32(out_bits) - _bf16_bits_to_float32(expected_bits)))
+    )
+    print(
+        f"rows={rows} hidden_size={hidden_size} out_features={out_features} "
+        f"mismatch={mismatch} max_abs={max_abs}"
+    )
+    print("dense_gemv_row0=", _bf16_bits_to_float32(out_bits)[0, : min(8, out_features)].tolist())
+    return 0 if mismatch == 0 else 1
 
 def w8a16_shared_expert_hip_smoke(
     rows: int,

@@ -40,6 +40,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Register Qwen3.5/PARO MoE model plugin metadata and representative decode layer sequence.
   - [x] Add torch-free safetensors/config discovery and tensor metadata index for loader scaffolding.
   - [x] Add Qwen3.5/PARO MoE c=1 checkpoint layout validator over tensor metadata.
+  - [x] Port PARO BF16 dense GEMV (`dense_gemv_out`) for auxiliary dense projection paths.
 - [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.
 
 ## Notes

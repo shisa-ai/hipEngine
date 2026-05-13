@@ -1841,3 +1841,47 @@ Results: `58 passed`.
 ### Next
 
 - Add actual tensor materialization/layout planning records (pack8/W8A16 staging descriptors) that can sit between `WeightIndex` and device buffers.
+
+---
+
+## 2026-05-13 — Port PARO dense BF16 GEMV
+
+### Scope
+
+- Ported `dense_gemv_out_kernel` from `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` at `nano-vllm-amd@59195ed`.
+- Added `hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip` with raw-pointer BF16 C ABI wrapper `hipengine_dense_gemv_out_bf16`.
+- Added ctypes wrapper `dense_gemv_out_bf16`, registry keys for `bf16` and `w4_paro` quant variants, CPU-safe plan tests, and `scripts/smoke.py --mode dense-gemv-hip`.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.linear import build_dense_gemv
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_dense_gemv(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode dense-gemv-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-dense-gemv-trace -- \
+  python3 scripts/smoke.py --mode dense-gemv-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `61 passed`.
+- Source-body preservation: `dense_gemv_out_kernel` current parent body found verbatim in the port (47 lines).
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/dense_gemv-bd2a7b8b20172459/dense_gemv.so`.
+- Dense GEMV smoke: `rows=2 hidden_size=16 out_features=8 mismatch=0 max_abs=0.0`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-dense-gemv-trace/epyc/3743505_kernel_trace.csv`.
+- Target kernel row: `dense_gemv_out_kernel<unsigned short>` computed `DurationNs=7280`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=1024`, `Workgroup_Size_X=256`, `Grid_Size=(2048,2,1)`.
+
+### Next
+
+- Continue outside-MoE full-inference dependencies: generic PARO pack8 GEMV for non-MoE projections and attention/KV kernels.

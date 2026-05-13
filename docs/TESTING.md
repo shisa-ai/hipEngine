@@ -135,6 +135,7 @@ python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-selected-gemv-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16
+python3 scripts/smoke.py --mode dense-gemv-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode w8a16-shared-expert-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8

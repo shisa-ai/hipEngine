@@ -1,0 +1,124 @@
+// Ported from nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py @ 59195ed.
+// dense_gemv_out kernel body is preserved; wrappers are HIPENGINE C ABI.
+
+#include <hip/hip_runtime.h>
+#include <stdint.h>
+
+namespace {
+
+__device__ inline float bf16_bits_to_float(uint16_t value) {
+  union {
+    uint32_t u32;
+    float f32;
+  } out;
+  out.u32 = static_cast<uint32_t>(value) << 16;
+  return out.f32;
+}
+
+__device__ inline uint16_t float_to_bf16_bits(float value) {
+  union {
+    float f32;
+    uint32_t u32;
+  } in;
+  in.f32 = value;
+  const uint32_t lsb = (in.u32 >> 16) & 1U;
+  in.u32 += 0x7FFFU + lsb;
+  return static_cast<uint16_t>(in.u32 >> 16);
+}
+
+template <typename scalar_t>
+__device__ inline float scalar_to_float(scalar_t value);
+
+template <>
+__device__ inline float scalar_to_float<uint16_t>(uint16_t value) {
+  return bf16_bits_to_float(value);
+}
+
+template <typename scalar_t>
+__device__ inline scalar_t float_to_scalar(float value);
+
+template <>
+__device__ inline uint16_t float_to_scalar<uint16_t>(float value) {
+  return float_to_bf16_bits(value);
+}
+
+template <typename scalar_t>
+__global__ void dense_gemv_out_kernel(
+    const scalar_t* __restrict__ x,
+    const scalar_t* __restrict__ weight,
+    scalar_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int64_t x_base = row * in_features;
+  const int64_t w_base = out_col * in_features;
+
+  float acc = 0.0f;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const scalar_t* x_ptr = x + x_base + k_base;
+    const scalar_t* w_ptr = weight + w_base + k_base;
+    acc = fmaf(scalar_to_float(x_ptr[0]), scalar_to_float(w_ptr[0]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[1]), scalar_to_float(w_ptr[1]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[2]), scalar_to_float(w_ptr[2]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[3]), scalar_to_float(w_ptr[3]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[4]), scalar_to_float(w_ptr[4]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[5]), scalar_to_float(w_ptr[5]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[6]), scalar_to_float(w_ptr[6]), acc);
+    acc = fmaf(scalar_to_float(x_ptr[7]), scalar_to_float(w_ptr[7]), acc);
+  }
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    acc = fmaf(scalar_to_float(x[x_base + in_col]), scalar_to_float(weight[w_base + in_col]), acc);
+  }
+
+  __shared__ float sdata[256];
+  sdata[tid] = acc;
+  __syncthreads();
+  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
+    if (tid < s) {
+      sdata[tid] += sdata[tid + s];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    out[row * out_features + out_col] = float_to_scalar<scalar_t>(sdata[0]);
+  }
+}
+
+
+bool valid_threads(int64_t threads) {
+  return threads == 64 || threads == 128 || threads == 256;
+}
+
+}  // namespace
+
+extern "C" int hipengine_dense_gemv_out_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_gemv_out_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
