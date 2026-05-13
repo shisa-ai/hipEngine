@@ -135,6 +135,7 @@ python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-selected-gemv-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16
+python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16
 ```
 
 For real kernel ports, also require a working profiler trace. When the workload JIT-builds a ctypes-loaded HIP `.so`, prebuild it first and feed the exact compiler version into the profiled process so `rocprofv3` does not recursively preload into `hipcc`/clang children:

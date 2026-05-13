@@ -1530,3 +1530,71 @@ Results:
 
 - The scalar-weight fallback template instantiations are not wrapped yet; current OPTIMAL c=1 path uses FP32 router/routing weights and FP32 gate logits.
 - Remaining MoE c=1 dependency before this vertical slice can execute end-to-end is W8A16 shared expert (gate/up/down/shared/lm-head family), plus the higher-level model/weight-loader plumbing.
+
+---
+
+## 2026-05-13 — Port W8A16 linear kernels
+
+### Scope
+
+- Ported W8A16 GEMV kernels from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip` at `nano-vllm-amd@59195ed`:
+  - `w8a16_linear_kernel`
+  - `w8a16_linear_lowp_out_kernel`
+  - `w8a16_linear_f32_kernel`
+- Added `hipengine/kernels/hip_gfx1100/quant/w8a16_linear.hip` with raw-pointer C ABI wrappers:
+  - `hipengine_w8a16_linear_bf16_f32_out`
+  - `hipengine_w8a16_linear_bf16_lowp_out`
+  - `hipengine_w8a16_linear_f32_f32_out`
+- Used HIP `hip_bfloat16` for the lowp BF16 template instantiation so the parent kernel body's `static_cast<scalar_t>` preserves BF16 rounding semantics while the public ABI remains raw `uint16_t*` BF16 bits.
+- Added ctypes wrappers and registry keys under `w8a16` and `w4_paro` quant keys for `bf16_f32_out`, `bf16_lowp_out`, and `f32_f32_out` variants.
+- Added `scripts/smoke.py --mode w8a16-linear-hip`, validating BF16→FP32, BF16→BF16 lowp, and FP32→FP32 paths against deterministic NumPy oracles.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md` for the W8A16 linear slice.
+
+### Correctness / preservation / profiler gate
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+python3 scripts/smoke.py --mode smoke-add-plan
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.quant import build_w8a16_linear
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+artifact = build_w8a16_linear(load=False, compiler_version=version)
+print(artifact.output_path)
+PY
+python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-w8a16-linear-trace -- \
+  python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `47 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Source-body preservation check found current parent bodies verbatim in `quant/w8a16_linear.hip`:
+  - `w8a16_linear_kernel`: 47 lines
+  - `w8a16_linear_lowp_out_kernel`: 48 lines
+  - `w8a16_linear_f32_kernel`: 46 lines
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/w8a16_linear-617c51c3658bde8b/w8a16_linear.so`.
+- W8A16 smoke results:
+  - `bf16_f32_max_abs=0.0`
+  - `f32_f32_max_abs=4.76837158203125e-07`
+  - `lowp_mismatch=0`, `lowp_max_abs=0.0`
+- `rocprofv3` trace (raw CSV not committed): `/tmp/hipengine-w8a16-linear-trace/epyc/3521718_kernel_trace.csv`.
+- Target kernel rows:
+  - `w8a16_linear_kernel`: computed `DurationNs=10200`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=64`, `Grid_Size=(512,2,1)`.
+  - `w8a16_linear_lowp_out_kernel<hip_bfloat16>`: computed `DurationNs=8600`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=64`, `Grid_Size=(512,2,1)`.
+  - `w8a16_linear_f32_kernel`: computed `DurationNs=8560`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=64`, `Grid_Size=(512,2,1)`.
+
+### Caveat / next
+
+- This lands the low-level W8A16 linear path used by parent shared expert and lm-head/auxiliary dense routes.
+- Next step is a composite HIPENGINE shared-expert smoke chaining W8A16 gate/up → `silu_mul_dual_out` → W8A16 down, then a c=1 MoE vertical smoke that includes selected W4 experts and shared branch combine.
