@@ -15,6 +15,8 @@ _SOURCE = Path(__file__).with_name("paged_attn_decode.hip")
 _OUTPUT_NAME = "qwen35_paged_attn_decode.so"
 _SYMBOL_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_context_bf16_spans"
 _SYMBOL_SPLIT_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
+_SYMBOL_SPLIT_WARP_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_warp_context_bf16_spans"
+_SYMBOL_SPLIT_GQA_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_bf16_spans"
 _SYMBOL_SPLIT_REDUCE = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_f32"
 _SYMBOL_SPLIT_REDUCE_GATE_F32 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_f32"
 _SYMBOL_SPLIT_REDUCE_GATE_BF16 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16"
@@ -123,6 +125,195 @@ def qwen35_paged_full_attn_decode_context_bf16_spans(
 
 
 
+
+
+def qwen35_paged_full_attn_decode_split_k_warp_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run parent Qwen3.5 warp-specialized split-K context and reduce."""
+
+    _check_qwen35_gqa_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_split_context(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        symbol=_SYMBOL_SPLIT_WARP_CONTEXT,
+    )
+    _launch_reduce(
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        out_ptr,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run parent Qwen3.5 grouped-GQA split-K context and reduce."""
+
+    _check_qwen35_gqa_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_split_context(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        symbol=_SYMBOL_SPLIT_GQA_CONTEXT,
+    )
+    _launch_reduce(
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        out_ptr,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run parent grouped-GQA split-K context and BF16 gated reduce."""
+
+    _check_qwen35_gqa_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_split_context(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        symbol=_SYMBOL_SPLIT_GQA_CONTEXT,
+    )
+    _launch_gate_reduce(
+        _SYMBOL_SPLIT_REDUCE_GATE_BF16,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        gate_ptr,
+        out_ptr,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        gate_stride1,
+        gate_stride2,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 def qwen35_paged_full_attn_decode_split_k_gate_f32_spans(
     query_ptr: int,
@@ -306,29 +497,18 @@ def qwen35_paged_full_attn_decode_split_k_bf16_spans(
         runtime=runtime,
     )
 
-    reduce = getattr(library, _SYMBOL_SPLIT_REDUCE)
-    reduce.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    reduce.restype = ctypes.c_int
-    err = reduce(
-        ctypes.c_void_p(partial_out_ptr),
-        ctypes.c_void_p(partial_m_ptr),
-        ctypes.c_void_p(partial_l_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(num_q_heads),
-        ctypes.c_int64(num_splits),
-        ctypes.c_int64(head_dim),
-        ctypes.c_void_p(stream),
+    _launch_reduce(
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        out_ptr,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
     )
-    _check_launch(runtime, err)
 
 def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
     register(
@@ -339,6 +519,21 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_spans"),
         qwen35_paged_full_attn_decode_split_k_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_warp_spans"),
+        qwen35_paged_full_attn_decode_split_k_warp_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_gqa_spans"),
+        qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_gqa_gate_bf16_spans"),
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
         replace=replace,
     )
     register(
@@ -385,6 +580,44 @@ def _check_decode_shape(
 
 
 
+
+
+def _launch_reduce(
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    out_ptr: int,
+    num_q_heads: int,
+    num_splits: int,
+    head_dim: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL,
+    runtime: HipRuntime,
+) -> None:
+    reduce = getattr(library, _SYMBOL_SPLIT_REDUCE)
+    reduce.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    reduce.restype = ctypes.c_int
+    err = reduce(
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_splits),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 def _launch_gate_reduce(
     symbol: str,
@@ -452,8 +685,9 @@ def _launch_split_context(
     stream: int,
     library: ctypes.CDLL,
     runtime: HipRuntime,
+    symbol: str = _SYMBOL_SPLIT_CONTEXT,
 ) -> None:
-    split = getattr(library, _SYMBOL_SPLIT_CONTEXT)
+    split = getattr(library, symbol)
     split.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -518,6 +752,20 @@ def _check_split_shape(
         raise ValueError("split-K paged attention requires head_dim divisible by 8")
     if head_dim > 1024:
         raise ValueError("head_dim must fit in one reduce block")
+
+
+def _check_qwen35_gqa_shape(
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> None:
+    _check_split_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
+    if block_size != 256 or num_q_heads != 16 or num_kv_heads != 2 or head_dim != 256:
+        raise ValueError("Qwen3.5 GQA split-K specialization requires block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256")
 
 def _check_positive(value: int, name: str) -> None:
     if value <= 0:

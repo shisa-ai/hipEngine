@@ -2442,3 +2442,59 @@ Results:
 ### Next
 
 - Port GQA-specialized split-K context kernels (`qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel`, `*_gqa_kernel<8,16,2>`) for the target long-context shape.
+
+---
+
+## 2026-05-14 — Port Qwen3.5 GQA-specialized split-K paged attention context kernels
+
+### Scope
+
+- Extended the Qwen paged attention family with the parent Qwen3.5 long-context GQA-specialized context kernels from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip` at `nano-vllm-amd@59195ed`:
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>`
+- Preserved the parent kernel bodies byte-for-byte and added raw-pointer C ABI wrappers:
+  - `hipengine_qwen35_paged_full_attn_decode_split_k_warp_context_bf16_spans`
+  - `hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_bf16_spans`
+- Added public Python wrappers and registry keys behind `KVLiveSpans`:
+  - `qwen35_paged_full_attn_decode_split_k_warp_bf16_spans(...)`
+  - `qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans(...)`
+  - `qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(...)`
+  - variants `bf16_split_k_warp_spans`, `bf16_split_k_gqa_spans`, `bf16_split_k_gqa_gate_bf16_spans`
+- Added `scripts/smoke.py --mode qwen35-paged-attn-gqa-hip` to validate the warp context, grouped-GQA context, and grouped-GQA+BF16-gated reduce paths at the target Qwen3.5 full-attention shape (`num_q_heads=16`, `num_kv_heads=2`, `head_dim=256`, `block_size=256`).
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.attention import build_qwen35_paged_attn_decode
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_qwen35_paged_attn_decode(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-paged-attn-gqa-trace -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: all tests passed.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_paged_attn_decode-636e558f3a2069c1/qwen35_paged_attn_decode.so`.
+- GQA smoke (`ctx=512`, `chunk_size=256`, `num_splits=2`): `warp_max_abs=4.1e-08`, `gqa_max_abs=4.1e-08`, `gqa_gate_bf16_mismatch=0`, `gqa_gate_bf16_max_abs=0` vs NumPy oracle.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-qwen35-paged-attn-gqa-trace/epyc/58429_kernel_trace.csv`.
+- Target kernel rows:
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel`: `DurationNs=65401`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size_X=4096`.
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>`: `DurationNs=63081` and `55201`, `VGPR_Count=80`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size_X=512`.
+  - `qwen35_paged_full_attn_decode_split_k_reduce_kernel`: `DurationNs=2440` and `2200`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size_X=4096`.
+  - `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>`: `DurationNs=3440`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size_X=4096`.
+
+### Next
+
+- Move from kernel-family parity toward runtime integration: device buffer allocation/materialization for safetensors weights and the minimal Qwen3.5/PARO decode loop that calls the landed kernel stack.
