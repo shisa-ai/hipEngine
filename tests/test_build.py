@@ -73,6 +73,60 @@ def test_build_hip_dry_run_does_not_create_cache_or_run_compiler(tmp_path: Path)
     assert not artifact.cache_dir.exists()
 
 
+def test_build_hip_uses_version_file_for_cached_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    version = "hipcc cached test version"
+    version_file = tmp_path / "hipcc-version.txt"
+    version_file.write_text(version + "\n")
+    expected = plan_hip_build(
+        sources=[source],
+        family="smoke",
+        profile="baseline",
+        cache_root=tmp_path / "cache",
+        compiler="definitely-not-a-real-hipcc",
+        compiler_version=version,
+    )
+    expected.cache_dir.mkdir(parents=True)
+    expected.output_path.write_bytes(b"not a real shared object")
+    monkeypatch.setenv("HIPENGINE_COMPILER_VERSION_FILE", str(version_file))
+
+    artifact = build_hip(
+        sources=[source],
+        family="smoke",
+        profile="baseline",
+        cache_root=tmp_path / "cache",
+        compiler="definitely-not-a-real-hipcc",
+        load=False,
+        require_cached=True,
+    )
+
+    assert artifact.cache_key == expected.cache_key
+    assert artifact.output_path == expected.output_path
+    assert artifact.compiler_version == version
+
+
+def test_build_hip_require_cached_rejects_missing_artifact_without_compiling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    version_file = tmp_path / "hipcc-version.txt"
+    version_file.write_text("hipcc cached test version\n")
+    monkeypatch.setenv("HIPENGINE_COMPILER_VERSION_FILE", str(version_file))
+
+    with pytest.raises(FileNotFoundError, match="cached build artifact missing"):
+        build_hip(
+            sources=[source],
+            family="smoke",
+            profile="baseline",
+            cache_root=tmp_path / "cache",
+            compiler="definitely-not-a-real-hipcc",
+            load=False,
+            require_cached=True,
+        )
+
+
 def test_plan_hip_build_rejects_bad_profile_and_missing_source(tmp_path: Path) -> None:
     source = write_source(tmp_path / "smoke.hip", "// ok\n")
 

@@ -769,3 +769,109 @@ Results:
 - CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
 - Docs sanity: `benchmark docs sanity ok`.
 - `git diff --check`: pass.
+
+---
+
+## 2026-05-13 — Resolve rocprofv3 Python/ctypes smoke trace hang
+
+### Prompt / concern
+
+- User confirmed the W7900 GPU is available and asked to continue HIP debugging.
+- Active blocker was `rocprofv3` hanging on the Python/ctypes `smoke_add` path before any real kernel port.
+
+### Diagnosis
+
+- Plain HIP smoke still passed:
+  - `python3 scripts/smoke.py --mode smoke-add-hip --n 1024` → `n=1024 max_abs=0.0`.
+- `rocprofv3 --kernel-trace` launched Python successfully for no-GPU scripts and for HIP malloc/copy-only snippets.
+- The hang started when the profiled Python process called `build_smoke_add()`, before launching `hipengine_smoke_add_f32_kernel`.
+- Reproducer: `rocprofv3 --kernel-trace -- python3 -c "import subprocess; subprocess.run(('hipcc','--version'))"` hung. `os.system('hipcc --version')` exposed nested profiler launch into `hipcc`/clang and clang aborted with:
+  - `CommandLine Error: Option 'sanitizer-early-opt-ep' registered more than once!`
+  - `LLVM ERROR: inconsistency in registered CommandLine options`
+- Root cause: `rocprofv3` launch mode recursively preloads/profiles child processes. Our build path probed `hipcc --version` inside the profiled Python process, so the profiler entered `hipcc`/clang children.
+
+### Fix
+
+- Added `require_cached=True` support to `hipengine.core.build.build_hip()` so profiled smoke paths can refuse to spawn `hipcc` when the expected `.so` is absent.
+- Added compiler-version environment/file support for cache-key computation without probing `hipcc`:
+  - `HIPENGINE_<COMPILER>_VERSION_TEXT`
+  - `HIPENGINE_COMPILER_VERSION_TEXT`
+  - `HIPENGINE_<COMPILER>_VERSION_FILE`
+  - `HIPENGINE_COMPILER_VERSION_FILE`
+- Plumbed `compiler_version` + `require_cached` through `build_smoke_add()` and `scripts/smoke.py`:
+  - `--compiler-version-file /tmp/hipengine-hipcc-version.txt`
+  - `--require-cached-build`
+- Updated `docs/TESTING.md`, `docs/KERNELS.md`, `docs/BENCHMARK.md`, `AGENTS.md`, and `docs/IMPLEMENTATION.md` with the profiler-safe workflow and ROCm 7.13 timestamp-field note.
+
+### Verified profiler-safe command
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.smoke import build_smoke_add
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+artifact = build_smoke_add(load=False, compiler_version=version)
+print('prebuilt', artifact.output_path)
+print('exists', artifact.output_path.exists())
+print('compiler', artifact.compiler_version.splitlines()[0])
+PY
+python3 scripts/smoke.py --mode smoke-add-hip --n 1024 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rm -rf /tmp/hipengine-smoke-add-trace-fixed
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-smoke-add-trace-fixed -- \
+  python3 scripts/smoke.py --mode smoke-add-hip --n 1024 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+python3 - <<'PY'
+import csv, pathlib
+path = next(pathlib.Path('/tmp/hipengine-smoke-add-trace-fixed').glob('*/*_kernel_trace.csv'))
+with path.open(newline='') as f:
+    rows = list(csv.DictReader(f))
+assert any('hipengine_smoke_add_f32_kernel' in str(row) for row in rows)
+for row in rows:
+    if row['Kernel_Name'] == 'hipengine_smoke_add_f32_kernel':
+        print(row['Kernel_Name'], int(row['End_Timestamp']) - int(row['Start_Timestamp']), row['VGPR_Count'], row['Scratch_Size'], row['LDS_Block_Size'])
+PY
+```
+
+Results:
+
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/smoke-83b75faf4ae01990/smoke_add.so`.
+- Cache-only smoke: `n=1024 max_abs=0.0`, `first5=[1.0, 4.0, 7.0, 10.0, 13.0]`.
+- `rocprofv3` exit code: `0`.
+- Raw trace (not committed): `/tmp/hipengine-smoke-add-trace-fixed/epyc/2837678_kernel_trace.csv`.
+- Kernel trace summary for target kernel:
+  - `Kernel_Name=hipengine_smoke_add_f32_kernel`
+  - grid `1024x1x1`, workgroup `256x1x1`
+  - computed `DurationNs=2480` from `End_Timestamp - Start_Timestamp`
+  - `VGPR_Count=8`, `Scratch_Size=0`, `LDS_Block_Size=0`
+- Trace also contained three `__amd_rocclr_copyBuffer` rows for host/device copies.
+
+### Verification
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 scripts/check_lineage.py --kind kernel --diff stat --evidence-limit 2
+python3 scripts/smoke.py --mode smoke-add-hip --n 1024 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-smoke-add-trace-fixed -- \
+  python3 scripts/smoke.py --mode smoke-add-hip --n 1024 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+git diff --check
+```
+
+Results:
+
+- `python3 -m pytest -q`: `28 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Lineage check still reports current parent kernel drift vs baseline `22405a9`:
+  - `csrc/amd/qwen35_expert.hip` drift at `6e2b19b`.
+  - `nanovllm/native/qwen35/paroquant_kernels.py` drift through `59195ed`.
+- GPU smoke and profiler trace passed as above.
+- `git diff --check`: pass.

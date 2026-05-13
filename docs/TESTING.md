@@ -131,14 +131,24 @@ Run only when the GPU is explicitly clear:
 python3 scripts/smoke.py --mode smoke-add-hip --n 1024
 ```
 
-For real kernel ports, also require a working profiler trace:
+For real kernel ports, also require a working profiler trace. When the workload JIT-builds a ctypes-loaded HIP `.so`, prebuild it first and feed the exact compiler version into the profiled process so `rocprofv3` does not recursively preload into `hipcc`/clang children:
 
 ```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.smoke import build_smoke_add
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+artifact = build_smoke_add(load=False, compiler_version=version)
+print(artifact.output_path)
+PY
 rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-trace -- \
-  python3 scripts/smoke.py <target workload>
+  python3 scripts/smoke.py --mode smoke-add-hip --n 1024 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
 ```
 
-Current blocker: `rocprofv3` hangs on the Python/ctypes `smoke_add` path. Do not start real kernel-family ports until the trace procedure is fixed or an explicitly-approved equivalent trace path exists.
+For future smoke modes, use the same pattern or set `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt` and require a cached build before launching the profiled workload.
 
 ### 4. Kernel correctness gate
 

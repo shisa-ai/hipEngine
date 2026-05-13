@@ -126,16 +126,25 @@ def build_hip(
     force: bool = False,
     dry_run: bool = False,
     load: bool = True,
+    require_cached: bool = False,
 ) -> ctypes.CDLL | BuildArtifact:
     """Build a HIP shared object into the hash cache and load it with ``ctypes``.
 
     ``dry_run=True`` returns the planned artifact without creating directories or invoking
     ``hipcc``. ``load=False`` builds or reuses the shared object but returns metadata instead
     of calling ``ctypes.CDLL``.
+
+    ``require_cached=True`` refuses to invoke ``hipcc`` when the expected ``.so`` is missing.
+    This is useful under ``rocprofv3`` because the profiler preloads into child processes and
+    can hang or abort when a profiled Python process spawns ``hipcc``/clang. Pair it with an
+    explicit ``compiler_version`` or ``HIPENGINE_COMPILER_VERSION_FILE`` so the cache key can be
+    computed without probing ``hipcc --version``.
     """
 
-    version = compiler_version or (
-        f"{compiler}:unprobed" if dry_run else compiler_version_text(compiler)
+    version = _resolve_compiler_version(
+        compiler=compiler,
+        compiler_version=compiler_version,
+        dry_run=dry_run,
     )
     artifact = plan_hip_build(
         sources=sources,
@@ -152,6 +161,12 @@ def build_hip(
         return artifact
 
     if force or not artifact.output_path.exists():
+        if require_cached:
+            raise FileNotFoundError(
+                "cached build artifact missing for require_cached=True: "
+                f"{artifact.output_path}. Prebuild outside rocprofv3 or pass the same "
+                "compiler_version used by the cached artifact."
+            )
         artifact.cache_dir.mkdir(parents=True, exist_ok=True)
         _write_manifest(artifact)
         subprocess.run(artifact.command, check=True)
@@ -169,6 +184,41 @@ def compiler_version_text(compiler: str) -> str:
         stderr=subprocess.STDOUT,
     )
     return result.stdout.strip()
+
+
+def _resolve_compiler_version(
+    *,
+    compiler: str,
+    compiler_version: str | None,
+    dry_run: bool,
+) -> str:
+    if compiler_version is not None:
+        return compiler_version.strip()
+    env_version = _compiler_version_from_environment(compiler)
+    if env_version is not None:
+        return env_version
+    if dry_run:
+        return f"{compiler}:unprobed"
+    return compiler_version_text(compiler)
+
+
+def _compiler_version_from_environment(compiler: str) -> str | None:
+    specific = _compiler_env_prefix(compiler)
+    for name in (f"{specific}_VERSION_TEXT", "HIPENGINE_COMPILER_VERSION_TEXT"):
+        value = os.environ.get(name)
+        if value:
+            return value.strip()
+    for name in (f"{specific}_VERSION_FILE", "HIPENGINE_COMPILER_VERSION_FILE"):
+        value = os.environ.get(name)
+        if value:
+            return Path(value).expanduser().read_text().strip()
+    return None
+
+
+def _compiler_env_prefix(compiler: str) -> str:
+    basename = Path(compiler).name or compiler
+    safe = "".join(char if char.isalnum() else "_" for char in basename).upper()
+    return f"HIPENGINE_{safe}"
 
 
 def _profile(name: ProfileName) -> BuildProfile:

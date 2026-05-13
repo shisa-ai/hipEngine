@@ -65,13 +65,14 @@ Do not drift these casually. They define what HIPENGINE is.
 - Keep changes scoped to one logical unit (one kernel family, one plugin, one doc, one phase milestone).
 - Write or update the targeted test/fixture before implementation when behavior or math changes. If RED-first is impractical, record why in `WORKLOG.md`.
 - Log non-trivial decisions, measurements, and dependency additions in `WORKLOG.md` as they happen.
+- When profiling Python/ctypes JIT-built kernels with `rocprofv3`, prebuild the `.so` outside the profiler and run the profiled command with a precomputed compiler-version file plus `require_cached`; do not let the profiled process spawn `hipcc`/clang.
 - Do not silently add `import torch`, `flash_attn`, or other CUDA-only deps to hot-path modules.
 - Do not add `if backend == "..."` or `if quant == "..."` branches in engine / dispatch / model code.
 
 ### After Changes (before claiming done)
 
 - Run the narrowest relevant test, then the applicable `docs/TESTING.md` gate before claiming done.
-- For a new / ported kernel: correctness gate vs `kernels/cpu_reference/` + a `rocprofv3 --kernel-trace` entry showing the kernel ran under the expected name with plausible `DurationNs`. See `docs/KERNELS.md`.
+- For a new / ported kernel: correctness gate vs `kernels/cpu_reference/` + a `rocprofv3 --kernel-trace` entry showing the kernel ran under the expected name with plausible duration (`DurationNs` or `End_Timestamp - Start_Timestamp`). See `docs/KERNELS.md`.
 - For a perf change: record baseline + new measurements in `WORKLOG.md` with exact commands, emit/update the JSON artifact under `benchmarks/results/`, update `benchmarks/README.md` with the retained row and `Last updated` date, and add a dated changelog one-liner with old→new metric, % delta, reason, and artifact/source.
 - Update `docs/PLAN.md` if architectural plans shifted.
 - **Commit immediately** when the logical unit is complete and validation passes.

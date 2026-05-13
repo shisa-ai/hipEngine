@@ -141,7 +141,7 @@ For kernel-local claims (port parity, fusion wins):
 - Warmup: 50 iterations
 - Measure: 200 iterations.
 - Report for each measured metric: samples count, median, p95, min, max, and stdev.
-- Report profiler fields: `DurationNs`, `Grid_Size`, `Workgroup_Size`, `VGPR_Count`, `Scratch_Size`, `LDS_Block_Size` from `rocprofv3 --kernel-trace`.
+- Report profiler fields: kernel name, grid size, workgroup size, duration, `VGPR_Count`, `Scratch_Size`, and `LDS_Block_Size` from `rocprofv3 --kernel-trace`. If the CSV has `Start_Timestamp` / `End_Timestamp` instead of `DurationNs`, compute `DurationNs = End_Timestamp - Start_Timestamp` in the compact summary/artifact.
 
 Kernel-local wins that do not translate to ≥ 1% E2E impact on the c=1 short workload are recorded but not defended — see `docs/ROOFLINE.md` §11 "What Not To Chase" (~100 iterations on a 19%-of-time kernel while 76.9% sat untouched is the canonical anti-pattern).
 

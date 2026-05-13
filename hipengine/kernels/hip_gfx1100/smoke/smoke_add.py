@@ -17,12 +17,17 @@ _SOURCE = Path(__file__).with_name("smoke_add.hip")
 _SYMBOL = "hipengine_smoke_add_f32"
 
 
-def plan_smoke_add_build(*, cache_root: str | Path | None = None) -> BuildArtifact:
+def plan_smoke_add_build(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+) -> BuildArtifact:
     return plan_hip_build(
         sources=[_SOURCE],
         family="smoke",
         profile="baseline",
         cache_root=cache_root,
+        compiler_version=compiler_version,
         output_name="smoke_add.so",
     )
 
@@ -30,17 +35,21 @@ def plan_smoke_add_build(*, cache_root: str | Path | None = None) -> BuildArtifa
 def build_smoke_add(
     *,
     cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
     dry_run: bool = False,
     load: bool = True,
+    require_cached: bool = False,
 ) -> ctypes.CDLL | BuildArtifact:
     return build_hip(
         sources=[_SOURCE],
         family="smoke",
         profile="baseline",
         cache_root=cache_root,
+        compiler_version=compiler_version,
         output_name="smoke_add.so",
         dry_run=dry_run,
         load=load,
+        require_cached=require_cached,
     )
 
 

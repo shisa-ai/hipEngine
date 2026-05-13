@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Early scaffold smokes.
 
-All default modes are CPU-only and safe before GPU clearance. The real HIP smoke mode will be
-added when we are ready to run non-dry ``smoke_add``.
+Default modes are CPU-only and safe before GPU clearance. ``smoke-add-hip`` is the explicit
+GPU/JIT path for the first raw-pointer HIP smoke kernel.
 """
 
 from __future__ import annotations
@@ -28,6 +28,20 @@ def main() -> int:
         default="registry",
     )
     parser.add_argument("--n", type=int, default=1024, help="Element count for smoke-add-hip.")
+    parser.add_argument(
+        "--compiler-version-file",
+        type=Path,
+        default=None,
+        help=(
+            "Read the precomputed hipcc --version text from this file before building/loading "
+            "smoke_add. Use under rocprofv3 to avoid spawning hipcc inside the profiler."
+        ),
+    )
+    parser.add_argument(
+        "--require-cached-build",
+        action="store_true",
+        help="Fail instead of invoking hipcc if the expected smoke_add cache artifact is absent.",
+    )
     args = parser.parse_args()
     if args.mode == "registry":
         return registry_smoke()
@@ -35,7 +49,14 @@ def main() -> int:
         return cpu_fixture_smoke()
     if args.mode == "smoke-add-plan":
         return smoke_add_plan_smoke()
-    return smoke_add_hip_smoke(args.n)
+    compiler_version = None
+    if args.compiler_version_file is not None:
+        compiler_version = _read_compiler_version(args.compiler_version_file)
+    return smoke_add_hip_smoke(
+        args.n,
+        compiler_version=compiler_version,
+        require_cached_build=args.require_cached_build,
+    )
 
 
 def registry_smoke() -> int:
@@ -78,7 +99,19 @@ def smoke_add_plan_smoke() -> int:
     return 0
 
 
-def smoke_add_hip_smoke(n: int) -> int:
+def _read_compiler_version(path: Path) -> str:
+    text = path.expanduser().read_text().strip()
+    if not text:
+        raise ValueError(f"compiler version file is empty: {path}")
+    return text
+
+
+def smoke_add_hip_smoke(
+    n: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
     import numpy as np
 
     from hipengine.core.hip import get_hip_runtime
@@ -99,7 +132,11 @@ def smoke_add_hip_smoke(n: int) -> int:
     out_host = np.empty_like(a_host)
 
     runtime = get_hip_runtime()
-    library = build_smoke_add(load=True)
+    library = build_smoke_add(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
     a_dev = b_dev = out_dev = None
     try:
         a_dev = malloc(a_host.nbytes, runtime=runtime)

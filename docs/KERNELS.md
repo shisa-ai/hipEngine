@@ -387,10 +387,26 @@ rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-smoke -- \
   uv run python scripts/smoke.py <model> <workload>
 ```
 
-Expected output: a CSV with `KernelName`, `Grid_Size`, `Workgroup_Size`, `DurationNs`, `VGPR_Count`, `Scratch_Size`, `LDS_Block_Size`. Check:
+If the target path uses `hipengine.core.build` JIT from Python, prebuild outside the profiler and make the profiled process cache-only. `rocprofv3` launch mode preloads into child processes; letting a profiled Python process spawn `hipcc`/clang can hang or abort in LLVM initialization.
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.smoke import build_smoke_add
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_smoke_add(load=False, compiler_version=version).output_path)
+PY
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-smoke -- \
+  python3 scripts/smoke.py --mode smoke-add-hip --n 1024 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Expected output: a CSV with a kernel-name column (`Kernel_Name` / `KernelName`), grid/workgroup columns, `VGPR_Count`, `Scratch_Size`, and `LDS_Block_Size`. Some ROCm 7.13 traces emit `Start_Timestamp` + `End_Timestamp` instead of `DurationNs`; compute `DurationNs = End_Timestamp - Start_Timestamp` for summaries. Check:
 
 - The expected kernel name appears.
-- `DurationNs` is plausible (same order of magnitude as the reference).
+- Duration is plausible (same order of magnitude as the reference).
 - `Scratch_Size > 0` on a hot-path kernel is a red flag — escalate to `~/amd-gpu-tuning/` for audit.
 - `VGPR_Count ≥ 96` may be squeezing occupancy — same.
 
