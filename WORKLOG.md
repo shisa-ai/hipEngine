@@ -2498,3 +2498,39 @@ Results:
 ### Next
 
 - Move from kernel-family parity toward runtime integration: device buffer allocation/materialization for safetensors weights and the minimal Qwen3.5/PARO decode loop that calls the landed kernel stack.
+
+---
+
+## 2026-05-14 — Add torch-free safetensors device materialization helpers
+
+### Scope
+
+- Added `hipengine/loading/materialize.py` with byte-preserving safetensors-to-device helpers:
+  - `dtype_from_safetensors(...)`
+  - `load_tensor_info_to_device(...)`
+  - `load_tensor_to_device(...)`
+  - `load_tensors_to_device(...)`
+- Added owned allocation wrappers:
+  - `DeviceTensorAllocation` = source `TensorInfo` + `DeviceBuffer` + raw-pointer `Tensor` view.
+  - `DeviceWeightMap` = collection of owned materialized weights with deterministic reverse-order `free()`.
+- The loader copies contiguous raw bytes via `hipengine.core.memory` and never imports torch. This preserves packed quantized weights and BF16 buffers without dtype conversion.
+- Exported the materializer helpers from `hipengine.loading`.
+- Added CPU-safe tests with a fake HIP runtime that verifies exact copied bytes and partial-allocation cleanup on failure.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_loading_materialize.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Materializer tests: `4 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Build Qwen3.5/PARO weight-plan objects on top of the safetensors index/materializer so model code can request normalized logical weights and receive device `Tensor` handles for the landed raw-pointer kernels.
