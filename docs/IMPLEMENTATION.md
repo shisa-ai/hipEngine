@@ -39,6 +39,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Register `w4_paro` quant plugin metadata for dispatch/planning.
   - [x] Register Qwen3.5/PARO MoE model plugin metadata and representative decode layer sequence.
   - [x] Add torch-free safetensors/config discovery and tensor metadata index for loader scaffolding.
+  - [x] Add Qwen3.5/PARO MoE c=1 checkpoint layout validator over tensor metadata.
 - [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.
 
 ## Notes

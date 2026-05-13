@@ -1815,3 +1815,29 @@ Results: `53 passed`.
 ### Next
 
 - Add Qwen3.5/PARO layout validator over `WeightIndex` to check required config fields and required tensor-name families before actual device loading.
+
+---
+
+## 2026-05-13 — Add Qwen3.5/PARO layout validator
+
+### Scope
+
+- Added `hipengine.loading.qwen35_paro`:
+  - normalizes HF checkpoint names by stripping `model.language_model.`, `language_model.`, or `model.` prefixes.
+  - parses the Qwen3.5/PARO config subset needed by loader planning.
+  - enumerates required MoE c=1 tensor names for a layer, including router/shared branch, per-expert qweight/qzeros/scales triples, and shared rotation metadata.
+  - validates required tensor presence and key dense tensor shapes against `WeightIndex` metadata.
+- Exported validator APIs from `hipengine.loading` and added tests.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest -q
+```
+
+Results: `58 passed`.
+
+### Next
+
+- Add actual tensor materialization/layout planning records (pack8/W8A16 staging descriptors) that can sit between `WeightIndex` and device buffers.
