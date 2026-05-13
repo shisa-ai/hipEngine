@@ -49,8 +49,8 @@ def test_plan_hip_build_hashes_source_flags_and_compiler_version(tmp_path: Path)
     assert artifact_a.cache_key != artifact_d.cache_key
     assert artifact_a.cache_dir.name.startswith("smoke-")
     assert artifact_a.output_path.name == "smoke.so"
+    assert artifact_a.flags[:2] == ("-mllvm", "-amdgpu-unroll-threshold-local=600")
     assert "-mcumode" in artifact_a.flags
-    assert "-amdgpu-unroll-threshold-local=600" in artifact_a.flags
     assert artifact_a.profile.wavefront == 64
 
 

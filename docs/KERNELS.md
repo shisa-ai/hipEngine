@@ -336,7 +336,7 @@ The initial port is mechanical, not creative. Kernel bodies are preserved byte-f
 2. **Launch wrappers retyped.** Host-side wrappers go from `torch::Tensor` to raw pointer + shape/stride/dtype signatures. Scripted, ~1 day.
 3. **Embedded HIP extracted.** `paroquant_kernels.py`'s `r'''...'''` block becomes real `.hip` files compiled through `hipengine.core.build` instead of `torch.utils.cpp_extension.load_inline`.
 
-Preserve all `__launch_bounds__`, template specializations, and compiler flags (`-mcumode` for decode, `-amdgpu-unroll-threshold-local=600` for both profiles). A port that rewrites kernel bodies is not a port.
+Preserve all `__launch_bounds__`, template specializations, and compiler flags (`-mllvm -amdgpu-unroll-threshold-local=600` for decode/prefill, plus `-mcumode` for decode). A port that rewrites kernel bodies is not a port.
 
 ## Port correctness gate (non-negotiable)
 
@@ -356,8 +356,8 @@ HIPENGINE uses its own build layer, not `torch.utils.cpp_extension`. It calls `h
 
 | Profile | Flags | Wavefront | Used for |
 | --- | --- | --- | --- |
-| `decode` | `-mcumode`, `-amdgpu-unroll-threshold-local=600` | 64 | Decode-phase kernels (paged attention, W8A8 grouped MoE decode, paro GEMV) |
-| `prefill` | `-amdgpu-unroll-threshold-local=600` (WGP mode) | 32 | Prefill-phase kernels (GEMM, W8A16 linear prefill) |
+| `decode` | `-mllvm`, `-amdgpu-unroll-threshold-local=600`, `-mcumode` | 64 | Decode-phase kernels (paged attention, W8A8 grouped MoE decode, paro GEMV) |
+| `prefill` | `-mllvm`, `-amdgpu-unroll-threshold-local=600` (WGP mode) | 32 | Prefill-phase kernels (GEMM, W8A16 linear prefill) |
 | `baseline` | (none) | 32 | Debug / fallback |
 
 Write device code for the target profile's wavefront width. Use `warpSize` (built-in), not a hard-coded 32 or 64.

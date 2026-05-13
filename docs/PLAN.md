@@ -557,7 +557,7 @@ Pure-Python dispatch under `nano-vllm-amd/nanovllm/native/qwen35/` totals **~10,
 
 #### Split Plan
 
-The monolithic `qwen35_expert.hip` + `paroquant_kernels.py` embedded string are partitioned by family into the target tree below. Kernels are preserved byte-for-byte (modulo `#include` headers); the split is mechanical and must preserve `__launch_bounds__`, template specializations, and compiler flags (`-mcumode` for decode, `-amdgpu-unroll-threshold-local=600` for both profiles).
+The monolithic `qwen35_expert.hip` + `paroquant_kernels.py` embedded string are partitioned by family into the target tree below. Kernels are preserved byte-for-byte (modulo `#include` headers); the split is mechanical and must preserve `__launch_bounds__`, template specializations, and compiler flags (`-mllvm -amdgpu-unroll-threshold-local=600` for decode/prefill, plus `-mcumode` for decode).
 
 | Target file (`hipengine/kernels/hip_gfx1100/...`) | Kernels (count) | Source origin | Proven win |
 |---|---|---|---|
@@ -587,7 +587,7 @@ The monolithic `qwen35_expert.hip` + `paroquant_kernels.py` embedded string are 
 
 **Correctness gate for the split:** after partitioning, verify (a) every kernel name still resolves via the Python extension module, (b) `rocprofv3 --kernel-trace` reports the same kernel set with matching `DurationNs` distribution on the Qwen3.6-35B-A3B decode smoke, (c) KL ≤ 0.05 and top-1 ≥ 90% vs the monolithic build on the correctness fixtures.
 
-Build system: **no `torch.utils.cpp_extension`**. HIPENGINE's own build layer (`hipengine.core.build`) calls `hipcc` (or `nvcc` for CUDA backends) via `subprocess.run`, links with `ctypes.CDLL`, and caches by source+flags hash. Three HIP profiles adopted from `nano-vllm-amd/nanovllm/native/amd/extension.py` — `decode` (`-mcumode` + `-amdgpu-unroll-threshold-local=600`, wavefront-64), `prefill` (unroll-600, WGP/wavefront-32), and `baseline` (no flags). The edit→bench loop stays at ~5–10 s per kernel change.
+Build system: **no `torch.utils.cpp_extension`**. HIPENGINE's own build layer (`hipengine.core.build`) calls `hipcc` (or `nvcc` for CUDA backends) via `subprocess.run`, links with `ctypes.CDLL`, and caches by source+flags hash. Three HIP profiles adopted from `nano-vllm-amd/nanovllm/native/amd/extension.py` — `decode` (`-mllvm -amdgpu-unroll-threshold-local=600` + `-mcumode`, wavefront-64), `prefill` (`-mllvm -amdgpu-unroll-threshold-local=600`, WGP/wavefront-32), and `baseline` (no flags). The edit→bench loop stays at ~5–10 s per kernel change.
 
 ### Reference backend for correctness
 

@@ -44,12 +44,12 @@ class BuildArtifact:
 PROFILES: dict[ProfileName, BuildProfile] = {
     "decode": BuildProfile(
         name="decode",
-        flags=("-mcumode", "-amdgpu-unroll-threshold-local=600"),
+        flags=("-mllvm", "-amdgpu-unroll-threshold-local=600", "-mcumode"),
         wavefront=64,
     ),
     "prefill": BuildProfile(
         name="prefill",
-        flags=("-amdgpu-unroll-threshold-local=600",),
+        flags=("-mllvm", "-amdgpu-unroll-threshold-local=600"),
         wavefront=32,
     ),
     "baseline": BuildProfile(name="baseline", flags=(), wavefront=32),

@@ -875,3 +875,47 @@ Results:
   - `nanovllm/native/qwen35/paroquant_kernels.py` drift through `59195ed`.
 - GPU smoke and profiler trace passed as above.
 - `git diff --check`: pass.
+
+---
+
+## 2026-05-13 — Fix HIP build profile flag spelling before RMSNorm port
+
+### Context
+
+- While preparing the first real `norm/rmsnorm.hip` port, tested a `profile="decode"` build with the existing profile flags.
+- `hipcc` failed with `clang++: error: unknown argument: '-amdgpu-unroll-threshold-local=600'` because the LLVM option must be passed after `-mllvm`, matching `nano-vllm-amd/nanovllm/native/amd/extension.py`.
+
+### Files changed
+
+- Updated `hipengine.core.build.PROFILES`:
+  - `decode`: `-mllvm -amdgpu-unroll-threshold-local=600 -mcumode`
+  - `prefill`: `-mllvm -amdgpu-unroll-threshold-local=600`
+  - `baseline`: unchanged.
+- Updated `docs/KERNELS.md` and `docs/PLAN.md` to record the exact profile flag spelling.
+- Tightened `tests/test_build.py` to assert the `-mllvm` prefix.
+
+### Verification
+
+```bash
+python3 -m pytest tests/test_build.py -q
+python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.smoke.smoke_add import _SOURCE
+from hipengine.core.build import build_hip
+artifact = build_hip(
+    sources=[_SOURCE],
+    family='smoke_decode_flag_test',
+    profile='decode',
+    output_name='smoke_add.so',
+    load=False,
+    force=True,
+)
+print(artifact.output_path)
+print('flags', artifact.flags)
+PY
+```
+
+Results:
+
+- `tests/test_build.py`: `5 passed`.
+- Decode-profile smoke build succeeded at `/home/lhl/.cache/hipengine/build/smoke_decode_flag_test-1ea75e71405c6088/smoke_add.so`.
+- Flags printed: `('-mllvm', '-amdgpu-unroll-threshold-local=600', '-mcumode')`.
