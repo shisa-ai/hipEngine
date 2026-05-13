@@ -1181,3 +1181,74 @@ Results:
 - `python3 -m pytest -q`: `32 passed`.
 - CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
 - `git diff --check`: pass.
+
+---
+
+## 2026-05-13 — Port PARO BF16 RMSNorm out-kernels
+
+### Scope
+
+- Ported the PARO-native RMSNorm caller-output kernels from `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` at `nano-vllm-amd@59195ed`:
+  - `paro_rmsnorm_out_kernel`
+  - `paro_add_rmsnorm_out_kernel`
+- Added HIPENGINE raw-pointer C ABI wrappers in the existing `norm/rmsnorm.hip` family:
+  - `hipengine_paro_rmsnorm_out_bf16`
+  - `hipengine_paro_add_rmsnorm_out_bf16`
+- Added ctypes wrappers and registry keys:
+  - `KernelKey("hip_gfx1100", "rmsnorm", "bf16", "paro_out")`
+  - `KernelKey("hip_gfx1100", "add_rmsnorm", "bf16", "paro_out")`
+  - `KernelKey("hip_gfx1100", "rmsnorm", "w4_paro", "paro_out")`
+  - `KernelKey("hip_gfx1100", "add_rmsnorm", "w4_paro", "paro_out")`
+- Added `scripts/smoke.py --mode paro-rmsnorm-hip`, checking both direct PARO RMSNorm and residual-add RMSNorm bit-for-bit against a NumPy BF16-bit reference.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md` to mark the PARO RMSNorm out-kernel slice landed.
+
+### Correctness / preservation / profiler gate
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.norm import build_qwen35_rmsnorm
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+artifact = build_qwen35_rmsnorm(load=False, compiler_version=version)
+print(artifact.output_path)
+PY
+python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-paro-rmsnorm-trace -- \
+  python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `32 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Existing Qwen RMSNorm smoke remains exact: `max_abs=0.0`, `bit_mismatch=0`.
+- PARO RMSNorm smoke is bit-exact:
+  - `norm_max_abs=0.0`, `norm_bit_mismatch=0`
+  - `add_norm_max_abs=0.0`, `add_norm_bit_mismatch=0`
+  - `residual_max_abs=0.0`, `residual_bit_mismatch=0`
+- Source-body preservation check found current parent bodies verbatim in `rmsnorm.hip`:
+  - `paro_rmsnorm_out_kernel`: 60 lines
+  - `rounded_residual_sum`: 5 lines
+  - `paro_add_rmsnorm_out_kernel`: 80 lines
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_rmsnorm-1d3c74de02f98c59/qwen35_rmsnorm.so`.
+- `rocprofv3` trace (raw CSV not committed): `/tmp/hipengine-paro-rmsnorm-trace/epyc/2903189_kernel_trace.csv`.
+- Target kernel rows:
+  - `paro_rmsnorm_out_kernel<unsigned short>`: computed `DurationNs=5760`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=1024`, `Workgroup_Size_X=256`.
+  - `paro_add_rmsnorm_out_kernel<unsigned short>`: computed `DurationNs=5040`, `VGPR_Count=56`, `Scratch_Size=0`, `LDS_Block_Size=1024`, `Workgroup_Size_X=256`.
+
+### Next
+
+- Continue the MoE c=1 decode vertical slice: router/shared-gate, selected pack8 GEMV, fused activation/down-rotation, W8A16 shared expert, and weighted shared-gate residual combine.

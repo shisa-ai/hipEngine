@@ -48,10 +48,11 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, and masked `a
 | `smoke_add` | `fp16` registry key, FP32 buffers | `hipengine/kernels/hip_gfx1100/smoke/smoke_add.hip` | `smoke_add_f32(...)` | `python3 scripts/smoke.py --mode smoke-add-hip --n 1024` → `max_abs=0.0` on W7900 |
 | `rmsnorm` | `bf16` | `hipengine/kernels/hip_gfx1100/norm/rmsnorm.hip` | `qwen35_rmsnorm_bf16(...)` | `python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16` → `max_abs=0.0`, `bit_mismatch=0`; `rocprofv3` shows `qwen35_rmsnorm_kernel`, computed `DurationNs=6560`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0` on W7900 |
 | `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` | `bf16` | same | `qwen35_add_rmsnorm_bf16(...)`, `qwen35_add_rmsnorm_f32_bf16(...)`, `qwen35_head_rmsnorm_f32_bf16(...)` | Build/registration tests landed; launch wrappers are source-family peers of `qwen35_rmsnorm_kernel` and share the same `.so` |
+| `rmsnorm`, `add_rmsnorm` variant `paro_out` | `bf16`, `w4_paro` | same | `paro_rmsnorm_out_bf16(...)`, `paro_add_rmsnorm_out_bf16(...)` | `python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16` → bit-exact norm/add/residual; `rocprofv3` shows `paro_rmsnorm_out_kernel` (`DurationNs=5760`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=1024`) and `paro_add_rmsnorm_out_kernel` (`DurationNs=5040`, `VGPR_Count=56`, `Scratch_Size=0`, `LDS_Block_Size=1024`) on W7900 |
 
 `smoke_add` is a build/runtime smoke, not a model-layer primitive. It proves `hipengine.core.build`, lazy `libamdhip64.so`, device allocation/copy, launch, synchronize, and copyback without torch.
 
-`qwen35_rmsnorm` is the first real model-layer HIP family port. It is BF16-bit (`uint16_t`) at the raw pointer ABI; Qwen weights store deltas and the kernel applies `1.0 + weight_delta`.
+`qwen35_rmsnorm` is the first real model-layer HIP family port. It is BF16-bit (`uint16_t`) at the raw pointer ABI; Qwen weights store deltas and the kernel applies `1.0 + weight_delta`. PARO `paro_out` RMSNorm variants use direct norm weights and caller-owned output buffers, matching the parent native PARO serving path.
 
 ## Source-lineage drift check
 
@@ -167,6 +168,9 @@ The stable source-lineage port set at the current HIPENGINE catalog baseline is 
   - `qwen35_add_rmsnorm_kernel`
   - `qwen35_add_rmsnorm_f32_kernel`
   - `qwen35_head_rmsnorm_kernel`
+- `norm/rmsnorm.hip` PARO subset (2) — **HIPENGINE landed for BF16 raw-pointer wrappers**:
+  - `paro_rmsnorm_out_kernel`
+  - `paro_add_rmsnorm_out_kernel`
 - `rotary/rotary.hip` Qwen primitive subset (1):
   - `qwen35_partial_rotary_kernel`
 - `attention/full_attn_decode.hip` (2):
@@ -204,9 +208,6 @@ The stable source-lineage port set at the current HIPENGINE catalog baseline is 
 - `quant/paro_awq_dequant.hip` (2):
   - `dequant_awq_pack8_kernel`
   - `dequant_awq_pack8_dual_kernel`
-- `norm/rmsnorm.hip` PARO subset (2):
-  - `paro_rmsnorm_out_kernel`
-  - `paro_add_rmsnorm_out_kernel`
 - `rotary/rotary.hip` PARO subset (2):
   - `paro_rotate2_kernel`
   - `paro_rotate3_kernel`
@@ -309,7 +310,7 @@ The checklist below is the active port map for reproducing the parent compact-WM
 
 | Stage | Parent kernels / wrappers | HIPENGINE status | Notes / gate |
 | --- | --- | --- | --- |
-| RMSNorm / residual | `paro_rmsnorm_out_kernel`, `paro_add_rmsnorm_out_kernel`; Qwen BF16 `qwen35_*rmsnorm*` family | **Partial:** Qwen BF16 family landed; PARO out-kernels missing | PARO out-kernels multiply direct norm weights; Qwen kernels use `1.0 + weight_delta`. Port PARO subset before claiming native-PARO RMSNorm parity. |
+| RMSNorm / residual | `paro_rmsnorm_out_kernel`, `paro_add_rmsnorm_out_kernel`; Qwen BF16 `qwen35_*rmsnorm*` family | **Landed for BF16 raw-pointer wrappers** | PARO out-kernels multiply direct norm weights; Qwen kernels use `1.0 + weight_delta`. Full inference still needs router/MoE/shared/attention dependencies. |
 | Router + shared gate | `qwen35_router_logits_kernel`, `qwen35_router_select_kernel`, `hip_qwen35_router_topk_shared_out` | Missing | Native router must accept FP16/BF16 hidden input and write logits/selected/routing buffers. |
 | Selected gate/up GEMV | `gemv_awq_selected_dual_pack8_strided_kernel`, `gemv_awq_selected_dual_pack8_kernel`, optional rotate-out variant | Missing | Decode path uses stacked/repacked selected-expert W4 pack8 qweights. Preserve small-K safety fix from `59195ed`. |
 | Activation + down rotation | `silu_mul_dual_rotate_out_kernel` (fallback `silu_mul_dual_out_kernel` + rotate) | Missing | Default `NANOVLLM_PARO_MOE_SILU_DOWN_ROTATE_FUSED=1`; preserve fused path and unfused fallback. |

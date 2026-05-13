@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 
 from hipengine.kernels.hip_gfx1100.norm import (
+    paro_add_rmsnorm_out_bf16,
+    paro_rmsnorm_out_bf16,
     plan_qwen35_rmsnorm_build,
     qwen35_add_rmsnorm_bf16,
     qwen35_add_rmsnorm_f32_bf16,
@@ -33,6 +35,23 @@ def test_qwen35_rmsnorm_registers_bf16_family() -> None:
         resolve(backend="hip_gfx1100", layer="head_rmsnorm", quant="bf16")
         is qwen35_head_rmsnorm_f32_bf16
     )
+    assert (
+        resolve(backend="hip_gfx1100", layer="rmsnorm", quant="bf16", variant="paro_out")
+        is paro_rmsnorm_out_bf16
+    )
+    assert (
+        resolve(backend="hip_gfx1100", layer="rmsnorm", quant="w4_paro", variant="paro_out")
+        is paro_rmsnorm_out_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="add_rmsnorm",
+            quant="w4_paro",
+            variant="paro_out",
+        )
+        is paro_add_rmsnorm_out_bf16
+    )
 
 
 def test_qwen35_rmsnorm_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -57,3 +76,7 @@ def test_qwen35_rmsnorm_wrapper_validates_shape_before_gpu_load() -> None:
         qwen35_rmsnorm_bf16(0, 0, 0, 0, 16)
     with pytest.raises(ValueError, match="hidden_size must be positive"):
         qwen35_rmsnorm_bf16(0, 0, 0, 1, 0)
+    with pytest.raises(ValueError, match="rows must be positive"):
+        paro_rmsnorm_out_bf16(0, 0, 0, 0, 16)
+    with pytest.raises(ValueError, match="hidden_size must be positive"):
+        paro_add_rmsnorm_out_bf16(0, 0, 0, 0, 0, 1, 0)

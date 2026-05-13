@@ -30,6 +30,7 @@ def main() -> int:
             "smoke-add-plan",
             "smoke-add-hip",
             "qwen35-rmsnorm-hip",
+            "paro-rmsnorm-hip",
         ),
         default="registry",
     )
@@ -71,7 +72,14 @@ def main() -> int:
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
-    return qwen35_rmsnorm_hip_smoke(
+    if args.mode == "qwen35-rmsnorm-hip":
+        return qwen35_rmsnorm_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    return paro_rmsnorm_hip_smoke(
         args.rows,
         args.hidden_size,
         compiler_version=compiler_version,
@@ -253,6 +261,142 @@ def qwen35_rmsnorm_hip_smoke(
     print(f"rows={rows} hidden_size={hidden_size} max_abs={max_abs} bit_mismatch={bit_mismatch}")
     print("first_row=", out[0, : min(5, hidden_size)].tolist())
     return 0 if np.allclose(out, expected, atol=2e-2, rtol=2e-2) else 1
+
+
+def paro_rmsnorm_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.norm import (
+        build_qwen35_rmsnorm,
+        paro_add_rmsnorm_out_bf16,
+        paro_rmsnorm_out_bf16,
+    )
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 1:
+        raise ValueError("--hidden-size must be >= 1")
+
+    x_f32 = np.linspace(-1.25, 1.75, rows * hidden_size, dtype=np.float32).reshape(
+        rows, hidden_size
+    )
+    add_f32 = np.linspace(0.5, -0.75, rows * hidden_size, dtype=np.float32).reshape(
+        rows, hidden_size
+    )
+    weight_f32 = np.linspace(0.75, 1.25, hidden_size, dtype=np.float32)
+    x_bits = _float32_to_bf16_bits(x_f32)
+    add_bits = _float32_to_bf16_bits(add_f32)
+    weight_bits = _float32_to_bf16_bits(weight_f32)
+    norm_out_bits = np.empty_like(x_bits)
+    add_norm_out_bits = np.empty_like(x_bits)
+    residual_out_bits = np.empty_like(x_bits)
+
+    x_bf32 = _bf16_bits_to_float32(x_bits)
+    add_bf32 = _bf16_bits_to_float32(add_bits)
+    weight_bf32 = _bf16_bits_to_float32(weight_bits)
+
+    inv_rms = np.reciprocal(np.sqrt(np.mean(x_bf32 * x_bf32, axis=-1, keepdims=True) + 1e-6))
+    expected_norm_bits = _float32_to_bf16_bits(x_bf32 * inv_rms * weight_bf32)
+    expected_norm = _bf16_bits_to_float32(expected_norm_bits)
+
+    residual_bits = _float32_to_bf16_bits(x_bf32 + add_bf32)
+    residual_bf32 = _bf16_bits_to_float32(residual_bits)
+    add_inv_rms = np.reciprocal(
+        np.sqrt(np.mean(residual_bf32 * residual_bf32, axis=-1, keepdims=True) + 1e-6)
+    )
+    expected_add_norm_bits = _float32_to_bf16_bits(residual_bf32 * add_inv_rms * weight_bf32)
+    expected_add_norm = _bf16_bits_to_float32(expected_add_norm_bits)
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_rmsnorm(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    x_dev = add_dev = weight_dev = norm_out_dev = add_norm_out_dev = residual_out_dev = None
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        add_dev = malloc(add_bits.nbytes, runtime=runtime)
+        weight_dev = malloc(weight_bits.nbytes, runtime=runtime)
+        norm_out_dev = malloc(norm_out_bits.nbytes, runtime=runtime)
+        add_norm_out_dev = malloc(add_norm_out_bits.nbytes, runtime=runtime)
+        residual_out_dev = malloc(residual_out_bits.nbytes, runtime=runtime)
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(add_dev, host_array_ptr(add_bits), runtime=runtime)
+        copy_host_to_device(weight_dev, host_array_ptr(weight_bits), runtime=runtime)
+        paro_rmsnorm_out_bf16(
+            x_dev.ptr,
+            weight_dev.ptr,
+            norm_out_dev.ptr,
+            rows,
+            hidden_size,
+            1e-6,
+            library=library,
+            runtime=runtime,
+        )
+        paro_add_rmsnorm_out_bf16(
+            x_dev.ptr,
+            add_dev.ptr,
+            weight_dev.ptr,
+            add_norm_out_dev.ptr,
+            residual_out_dev.ptr,
+            rows,
+            hidden_size,
+            1e-6,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(norm_out_bits), norm_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(add_norm_out_bits), add_norm_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(residual_out_bits), residual_out_dev, runtime=runtime)
+    finally:
+        for buffer in (
+            residual_out_dev,
+            add_norm_out_dev,
+            norm_out_dev,
+            weight_dev,
+            add_dev,
+            x_dev,
+        ):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+
+    norm_out = _bf16_bits_to_float32(norm_out_bits)
+    add_norm_out = _bf16_bits_to_float32(add_norm_out_bits)
+    residual_out = _bf16_bits_to_float32(residual_out_bits)
+    norm_max_abs = float(np.max(np.abs(norm_out - expected_norm)))
+    add_norm_max_abs = float(np.max(np.abs(add_norm_out - expected_add_norm)))
+    residual_max_abs = float(np.max(np.abs(residual_out - residual_bf32)))
+    norm_bit_mismatch = int(np.count_nonzero(norm_out_bits != expected_norm_bits))
+    add_norm_bit_mismatch = int(np.count_nonzero(add_norm_out_bits != expected_add_norm_bits))
+    residual_bit_mismatch = int(np.count_nonzero(residual_out_bits != residual_bits))
+    print(
+        f"rows={rows} hidden_size={hidden_size} "
+        f"norm_max_abs={norm_max_abs} norm_bit_mismatch={norm_bit_mismatch} "
+        f"add_norm_max_abs={add_norm_max_abs} add_norm_bit_mismatch={add_norm_bit_mismatch} "
+        f"residual_max_abs={residual_max_abs} residual_bit_mismatch={residual_bit_mismatch}"
+    )
+    print("first_row=", norm_out[0, : min(5, hidden_size)].tolist())
+    return 0 if (
+        norm_bit_mismatch == 0
+        and add_norm_bit_mismatch == 0
+        and residual_bit_mismatch == 0
+    ) else 1
 
 
 def _float32_to_bf16_bits(values: object):

@@ -1,6 +1,7 @@
-"""Raw-pointer wrappers for the Qwen3.5 RMSNorm HIP family.
+"""Raw-pointer wrappers for the Qwen3.5/PARO RMSNorm HIP family.
 
-The device kernels are ported from ``nano-vllm-amd/csrc/amd/qwen35_expert.hip``.
+The Qwen device kernels are ported from ``nano-vllm-amd/csrc/amd/qwen35_expert.hip``.
+The PARO out-kernels are ported from ``nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py``.
 Importing this module registers ctypes launch wrappers but does not build or load ROCm until a
 wrapper is called.
 """
@@ -20,6 +21,8 @@ _SYMBOL_RMSNORM = "hipengine_qwen35_rmsnorm_bf16"
 _SYMBOL_ADD_RMSNORM = "hipengine_qwen35_add_rmsnorm_bf16"
 _SYMBOL_ADD_RMSNORM_F32 = "hipengine_qwen35_add_rmsnorm_f32_bf16"
 _SYMBOL_HEAD_RMSNORM = "hipengine_qwen35_head_rmsnorm_f32_bf16"
+_SYMBOL_PARO_RMSNORM_OUT = "hipengine_paro_rmsnorm_out_bf16"
+_SYMBOL_PARO_ADD_RMSNORM_OUT = "hipengine_paro_add_rmsnorm_out_bf16"
 
 
 def plan_qwen35_rmsnorm_build(
@@ -232,6 +235,95 @@ def qwen35_head_rmsnorm_f32_bf16(
     _check_launch(runtime, err)
 
 
+def paro_rmsnorm_out_bf16(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch PARO BF16 RMSNorm into a caller-owned output buffer.
+
+    Unlike the Qwen3.5 delta-weight kernels, PARO norm weights are direct scale values.
+    """
+
+    _check_positive_shape(rows, hidden_size, "rows", "hidden_size")
+    library = library or build_qwen35_rmsnorm(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PARO_RMSNORM_OUT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_float(float(eps)),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def paro_add_rmsnorm_out_bf16(
+    x_ptr: int,
+    add_ptr: int,
+    weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch PARO BF16 residual-add + RMSNorm into caller-owned output buffers."""
+
+    _check_positive_shape(rows, hidden_size, "rows", "hidden_size")
+    library = library or build_qwen35_rmsnorm(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PARO_ADD_RMSNORM_OUT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(add_ptr),
+        ctypes.c_void_p(weight_ptr),
+        ctypes.c_void_p(norm_out_ptr),
+        ctypes.c_void_p(residual_out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_float(float(eps)),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_qwen35_rmsnorm_kernels(*, replace: bool = True) -> None:
     register(KernelKey("hip_gfx1100", "rmsnorm", "bf16"), qwen35_rmsnorm_bf16, replace=replace)
     register(
@@ -249,6 +341,17 @@ def register_qwen35_rmsnorm_kernels(*, replace: bool = True) -> None:
         qwen35_head_rmsnorm_f32_bf16,
         replace=replace,
     )
+    for quant in ("bf16", "w4_paro"):
+        register(
+            KernelKey("hip_gfx1100", "rmsnorm", quant, "paro_out"),
+            paro_rmsnorm_out_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "add_rmsnorm", quant, "paro_out"),
+            paro_add_rmsnorm_out_bf16,
+            replace=replace,
+        )
 
 
 def _check_positive_shape(outer: int, inner: int, outer_name: str, inner_name: str) -> None:

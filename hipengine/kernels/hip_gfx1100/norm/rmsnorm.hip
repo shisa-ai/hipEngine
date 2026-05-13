@@ -1,5 +1,7 @@
-// Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed.
-// Kernel bodies are preserved from the Qwen3.5 RMSNorm family; wrappers are HIPENGINE C ABI.
+// Ported from nano-vllm-amd @ 59195ed.
+// Qwen kernels come from csrc/amd/qwen35_expert.hip.
+// PARO out-kernels come from nanovllm/native/qwen35/paroquant_kernels.py.
+// Kernel bodies are preserved from the source families; wrappers are HIPENGINE C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
@@ -24,6 +26,22 @@ __device__ inline uint16_t float_to_bf16_bits(float value) {
   const uint32_t lsb = (in.u32 >> 16) & 1U;
   in.u32 += 0x7FFFU + lsb;
   return static_cast<uint16_t>(in.u32 >> 16);
+}
+
+template <typename scalar_t>
+__device__ inline scalar_t float_to_scalar(float value);
+
+template <>
+__device__ inline uint16_t float_to_scalar<uint16_t>(float value) {
+  return float_to_bf16_bits(value);
+}
+
+template <typename scalar_t>
+__device__ inline float scalar_to_float(scalar_t value);
+
+template <>
+__device__ inline float scalar_to_float<uint16_t>(uint16_t value) {
+  return bf16_bits_to_float(value);
 }
 
 __global__ void qwen35_rmsnorm_kernel(
@@ -209,6 +227,151 @@ __global__ void qwen35_head_rmsnorm_kernel(
   }
 }
 
+template <typename scalar_t>
+__global__ void paro_rmsnorm_out_kernel(
+    const scalar_t* __restrict__ x,
+    const scalar_t* __restrict__ weight,
+    scalar_t* __restrict__ out,
+    float eps,
+    int64_t rows,
+    int64_t hidden) {
+  const int64_t row = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t row_base = row * hidden;
+
+  float sumsq = 0.0f;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (hidden / vec_stride) * vec_stride;
+  for (int64_t idx = static_cast<int64_t>(tid) * 8; idx < main_end; idx += vec_stride) {
+    const int64_t off = row_base + idx;
+    const float v0 = scalar_to_float(x[off + 0]);
+    const float v1 = scalar_to_float(x[off + 1]);
+    const float v2 = scalar_to_float(x[off + 2]);
+    const float v3 = scalar_to_float(x[off + 3]);
+    const float v4 = scalar_to_float(x[off + 4]);
+    const float v5 = scalar_to_float(x[off + 5]);
+    const float v6 = scalar_to_float(x[off + 6]);
+    const float v7 = scalar_to_float(x[off + 7]);
+    sumsq += v0 * v0 + v1 * v1 + v2 * v2 + v3 * v3 + v4 * v4 + v5 * v5 + v6 * v6 + v7 * v7;
+  }
+  for (int64_t idx = main_end + tid; idx < hidden; idx += blockDim.x) {
+    const float value = scalar_to_float(x[row_base + idx]);
+    sumsq += value * value;
+  }
+
+  __shared__ float partial[256];
+  partial[tid] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(hidden) + eps);
+  for (int64_t idx = static_cast<int64_t>(tid) * 8; idx < main_end; idx += vec_stride) {
+    const int64_t off = row_base + idx;
+    out[off + 0] = float_to_scalar<scalar_t>(scalar_to_float(x[off + 0]) * inv_rms * scalar_to_float(weight[idx + 0]));
+    out[off + 1] = float_to_scalar<scalar_t>(scalar_to_float(x[off + 1]) * inv_rms * scalar_to_float(weight[idx + 1]));
+    out[off + 2] = float_to_scalar<scalar_t>(scalar_to_float(x[off + 2]) * inv_rms * scalar_to_float(weight[idx + 2]));
+    out[off + 3] = float_to_scalar<scalar_t>(scalar_to_float(x[off + 3]) * inv_rms * scalar_to_float(weight[idx + 3]));
+    out[off + 4] = float_to_scalar<scalar_t>(scalar_to_float(x[off + 4]) * inv_rms * scalar_to_float(weight[idx + 4]));
+    out[off + 5] = float_to_scalar<scalar_t>(scalar_to_float(x[off + 5]) * inv_rms * scalar_to_float(weight[idx + 5]));
+    out[off + 6] = float_to_scalar<scalar_t>(scalar_to_float(x[off + 6]) * inv_rms * scalar_to_float(weight[idx + 6]));
+    out[off + 7] = float_to_scalar<scalar_t>(scalar_to_float(x[off + 7]) * inv_rms * scalar_to_float(weight[idx + 7]));
+  }
+  for (int64_t idx = main_end + tid; idx < hidden; idx += blockDim.x) {
+    out[row_base + idx] = float_to_scalar<scalar_t>(
+        scalar_to_float(x[row_base + idx]) * inv_rms * scalar_to_float(weight[idx]));
+  }
+}
+
+template <typename scalar_t>
+__device__ inline float rounded_residual_sum(scalar_t x, scalar_t add) {
+  return scalar_to_float(float_to_scalar<scalar_t>(scalar_to_float(x) + scalar_to_float(add)));
+}
+
+template <typename scalar_t>
+__global__ void paro_add_rmsnorm_out_kernel(
+    const scalar_t* __restrict__ x,
+    const scalar_t* __restrict__ add,
+    const scalar_t* __restrict__ weight,
+    scalar_t* __restrict__ norm_out,
+    scalar_t* __restrict__ residual_out,
+    float eps,
+    int64_t rows,
+    int64_t hidden) {
+  const int64_t row = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t row_base = row * hidden;
+
+  float sumsq = 0.0f;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (hidden / vec_stride) * vec_stride;
+  for (int64_t idx = static_cast<int64_t>(tid) * 8; idx < main_end; idx += vec_stride) {
+    const int64_t off = row_base + idx;
+    const float v0 = rounded_residual_sum(x[off + 0], add[off + 0]);
+    const float v1 = rounded_residual_sum(x[off + 1], add[off + 1]);
+    const float v2 = rounded_residual_sum(x[off + 2], add[off + 2]);
+    const float v3 = rounded_residual_sum(x[off + 3], add[off + 3]);
+    const float v4 = rounded_residual_sum(x[off + 4], add[off + 4]);
+    const float v5 = rounded_residual_sum(x[off + 5], add[off + 5]);
+    const float v6 = rounded_residual_sum(x[off + 6], add[off + 6]);
+    const float v7 = rounded_residual_sum(x[off + 7], add[off + 7]);
+    sumsq += v0 * v0 + v1 * v1 + v2 * v2 + v3 * v3 + v4 * v4 + v5 * v5 + v6 * v6 + v7 * v7;
+  }
+  for (int64_t idx = main_end + tid; idx < hidden; idx += blockDim.x) {
+    const float value = rounded_residual_sum(x[row_base + idx], add[row_base + idx]);
+    sumsq += value * value;
+  }
+
+  __shared__ float partial[256];
+  partial[tid] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(hidden) + eps);
+  for (int64_t idx = static_cast<int64_t>(tid) * 8; idx < main_end; idx += vec_stride) {
+    const int64_t off = row_base + idx;
+    const float v0 = rounded_residual_sum(x[off + 0], add[off + 0]);
+    const float v1 = rounded_residual_sum(x[off + 1], add[off + 1]);
+    const float v2 = rounded_residual_sum(x[off + 2], add[off + 2]);
+    const float v3 = rounded_residual_sum(x[off + 3], add[off + 3]);
+    const float v4 = rounded_residual_sum(x[off + 4], add[off + 4]);
+    const float v5 = rounded_residual_sum(x[off + 5], add[off + 5]);
+    const float v6 = rounded_residual_sum(x[off + 6], add[off + 6]);
+    const float v7 = rounded_residual_sum(x[off + 7], add[off + 7]);
+    residual_out[off + 0] = float_to_scalar<scalar_t>(v0);
+    residual_out[off + 1] = float_to_scalar<scalar_t>(v1);
+    residual_out[off + 2] = float_to_scalar<scalar_t>(v2);
+    residual_out[off + 3] = float_to_scalar<scalar_t>(v3);
+    residual_out[off + 4] = float_to_scalar<scalar_t>(v4);
+    residual_out[off + 5] = float_to_scalar<scalar_t>(v5);
+    residual_out[off + 6] = float_to_scalar<scalar_t>(v6);
+    residual_out[off + 7] = float_to_scalar<scalar_t>(v7);
+    norm_out[off + 0] = float_to_scalar<scalar_t>(v0 * inv_rms * scalar_to_float(weight[idx + 0]));
+    norm_out[off + 1] = float_to_scalar<scalar_t>(v1 * inv_rms * scalar_to_float(weight[idx + 1]));
+    norm_out[off + 2] = float_to_scalar<scalar_t>(v2 * inv_rms * scalar_to_float(weight[idx + 2]));
+    norm_out[off + 3] = float_to_scalar<scalar_t>(v3 * inv_rms * scalar_to_float(weight[idx + 3]));
+    norm_out[off + 4] = float_to_scalar<scalar_t>(v4 * inv_rms * scalar_to_float(weight[idx + 4]));
+    norm_out[off + 5] = float_to_scalar<scalar_t>(v5 * inv_rms * scalar_to_float(weight[idx + 5]));
+    norm_out[off + 6] = float_to_scalar<scalar_t>(v6 * inv_rms * scalar_to_float(weight[idx + 6]));
+    norm_out[off + 7] = float_to_scalar<scalar_t>(v7 * inv_rms * scalar_to_float(weight[idx + 7]));
+  }
+  for (int64_t idx = main_end + tid; idx < hidden; idx += blockDim.x) {
+    const int64_t off = row_base + idx;
+    const float value = rounded_residual_sum(x[off], add[off]);
+    residual_out[off] = float_to_scalar<scalar_t>(value);
+    norm_out[off] = float_to_scalar<scalar_t>(value * inv_rms * scalar_to_float(weight[idx]));
+  }
+}
+
 constexpr int kRmsNormThreads = 256;
 
 }  // namespace
@@ -318,5 +481,61 @@ extern "C" int hipengine_qwen35_head_rmsnorm_f32_bf16(
       out,
       eps,
       head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_paro_rmsnorm_out_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      paro_rmsnorm_out_kernel<uint16_t>,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(kRmsNormThreads),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      eps,
+      rows,
+      hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_paro_add_rmsnorm_out_bf16(
+    const uint16_t* x,
+    const uint16_t* add,
+    const uint16_t* weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      paro_add_rmsnorm_out_kernel<uint16_t>,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(kRmsNormThreads),
+      0,
+      stream,
+      x,
+      add,
+      weight,
+      norm_out,
+      residual_out,
+      eps,
+      rows,
+      hidden_size);
   return static_cast<int>(hipGetLastError());
 }
