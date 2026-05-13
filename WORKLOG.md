@@ -1656,3 +1656,80 @@ Results:
 ### Next
 
 - Build a native c=1 MoE vertical smoke that chains: PARO RMSNorm → router/shared gate → selected W4 gate/up → SiLU/down rotation → selected W4 down → W8A16 shared branch → weighted/shared/residual combine.
+
+---
+
+## 2026-05-13 — Add synthetic PARO MoE c=1 vertical smoke
+
+### Scope
+
+- Added `scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8`.
+- The smoke chains the landed c=1 decode kernels end-to-end on a deterministic toy workload:
+  1. `paro_rmsnorm_out_bf16`
+  2. `qwen35_router_topk_shared_out_bf16`
+  3. `gemv_awq_selected_dual_pack8_strided_bf16`
+  4. `silu_mul_dual_out_bf16`
+  5. `gemv_awq_selected_pack8_strided_bf16`
+  6. W8A16 shared branch (`w8a16_linear_bf16_lowp_out` → `silu_mul_dual_out_bf16` → `w8a16_linear_bf16_lowp_out`)
+  7. `weighted_sum_shared_gate_combine_residual_out_bf16_f32w`
+- Added staged BF16 NumPy oracles for RMSNorm, router top-k/softmax, selected AWQ pack8, SiLU, W8A16 lowp, and final weighted/shared/residual combine.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md` to list the synthetic vertical smoke.
+
+### Validation
+
+```bash
+python3 -m compileall -q scripts/smoke.py
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.norm import build_qwen35_rmsnorm
+from hipengine.kernels.hip_gfx1100.moe import build_qwen35_router
+from hipengine.kernels.hip_gfx1100.quant import build_paro_awq_gemv, build_w8a16_linear
+from hipengine.kernels.hip_gfx1100.fused import build_paro_silu, build_paro_combine
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+for name, fn in [
+    ('rmsnorm', build_qwen35_rmsnorm),
+    ('router', build_qwen35_router),
+    ('awq', build_paro_awq_gemv),
+    ('silu', build_paro_silu),
+    ('w8a16', build_w8a16_linear),
+    ('combine', build_paro_combine),
+]:
+    print(name, fn(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-paro-moe-c1-trace -- \
+  python3 scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: `47 passed`.
+- Prebuilt artifacts:
+  - `qwen35_rmsnorm-1d3c74de02f98c59/qwen35_rmsnorm.so`
+  - `qwen35_router-a65ac6ed49424f49/qwen35_router.so`
+  - `paro_awq_gemv-0dc886e96bcd9cd2/paro_awq_gemv.so`
+  - `paro_silu-38ebcf975b9a1e88/paro_silu.so`
+  - `w8a16_linear-617c51c3658bde8b/w8a16_linear.so`
+  - `paro_combine-880f59d30e9f6d27/paro_combine.so`
+- Vertical smoke output:
+  - `hidden_size=8 top_k=2 norm_mismatch=0 selected_match=True logits_max_abs=0.0 routing_max_abs=0.0 selected_gate_up_mismatch=0 selected_act_mismatch=0 selected_down_mismatch=0 shared_out_mismatch=0 final_mismatch=0 final_max_abs=0.0`
+  - `selected=[1, 0]`, `routing=[0.6870266199111938, 0.31297338008880615]`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-paro-moe-c1-trace/epyc/3702994_kernel_trace.csv`.
+- Target kernel rows from trace:
+  - `paro_rmsnorm_out_kernel`: `DurationNs=15040`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=1024`, `Workgroup_Size_X=256`, `Grid_Size=(256,1,1)`.
+  - `qwen35_router_logits_kernel`: `DurationNs=10600`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=512`, `Grid_Size=(2048,1,1)`.
+  - `qwen35_router_select_kernel`: `DurationNs=14120`, `VGPR_Count=40`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=512`, `Grid_Size=(512,1,1)`.
+  - `gemv_awq_selected_dual_pack8_strided_kernel`: `DurationNs=16440`, `VGPR_Count=104`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(128,2,1)`.
+  - `silu_mul_dual_out_kernel`: two launches, `DurationNs=20001` and `6720`, `VGPR_Count=16`, `Scratch_Size=0`.
+  - `gemv_awq_selected_pack8_kernel` (small-K-selected strided path): `DurationNs=15121`, `VGPR_Count=104`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=64`, `Grid_Size=(64,2,1)`.
+  - `w8a16_linear_lowp_out_kernel<hip_bfloat16>`: two launches, `DurationNs=9561` and `8641`, `VGPR_Count=24`, `Scratch_Size=0`.
+  - `weighted_sum_shared_gate_combine_residual_out_kernel`: `DurationNs=7001`, `VGPR_Count=16`, `Scratch_Size=0`, `Workgroup_Size_X=256`, `Grid_Size=(256,1,1)`.
+
+### Next
+
+- The synthetic c=1 kernel chain works. Remaining path to "all works" is no longer the c=1 MoE kernel dependency set; it is model/weight-loader/full-inference plumbing: w4_paro loader/layout, Qwen3.5 model plugin, non-MoE projections, attention/KV, lm-head route, and graph replay.
