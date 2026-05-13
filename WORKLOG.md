@@ -1100,3 +1100,84 @@ Results:
 - CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
 - Docs sanity: `optimal moe checklist docs sanity ok`.
 - `git diff --check`: pass.
+
+---
+
+## 2026-05-13 — Capture OPTIMAL parent parity artifacts and blocked HIPENGINE row
+
+### Scope
+
+- Ran the parent `nano-vllm-amd` OPTIMAL Qwen3.5-35B-A3B-PARO command for `512/128` and `4K/128` on W7900 to validate the benchmark output shape and create concrete comparison artifacts before porting more kernels.
+- Created a blocked HIPENGINE artifact for the same parity exercise so the missing dependencies are tracked in `benchmarks/results/`, not just prose.
+
+### Parent commands
+
+Both runs used the 23 base flags from `~/amd-gpu-tuning/docs/OPTIMAL.md`, `PYTHONPATH=nano-vllm-amd:paroquant`, `mamba run -n therock --no-capture-output`, and `--decode-use-step-graph-replay`.
+
+```bash
+cd /home/lhl/amd-gpu-tuning
+# base NANOVLLM_* OPTIMAL flags from docs/OPTIMAL.md
+PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output \
+  python3 scripts/bench_paro_native_engine.py \
+    --prompt-len 512 --decode-len 128 \
+    --decode-use-step-graph-replay \
+    --output /tmp/hipengine-parent-optimal-512-128.json --json
+PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output \
+  python3 scripts/bench_paro_native_engine.py \
+    --prompt-len 4096 --decode-len 128 \
+    --decode-use-step-graph-replay \
+    --output /tmp/hipengine-parent-optimal-4k-128.json --json
+```
+
+### Results
+
+| Engine | Shape | Prefill tok/s | Decode tok/s | Peak GiB | finite | Graph validation | Artifact |
+| --- | --- | ---: | ---: | ---: | --- | --- | --- |
+| `nano-vllm-amd@59195ed` parent | 512/128 | 2696.442 | 116.050 | 18.797 | true | graph/eager true, graph-compatible true | `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json` |
+| `nano-vllm-amd@59195ed` parent | 4K/128 | 2741.489 | 113.049 | 21.644 | true | graph/eager true, graph-compatible true | `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json` |
+| HIPENGINE | OPTIMAL parity | — | — | — | not reached | blocked | `benchmarks/results/2026-05-13-hipengine-qwen35-paro-optimal-blocked.json` |
+
+Blocked HIPENGINE reason: `LLM.generate`, `w4_paro` loader/layout, Qwen3.5 model plugin, MoE/attention/linear/lm-head dependency kernels, and graph replay are not landed yet.
+
+### Files changed
+
+- Added three compact benchmark artifacts under `benchmarks/results/`.
+- Updated `benchmarks/README.md` source-lineage rows for 512/128 and 4K/128 to point at artifacts and use the local rerun values.
+- Updated `benchmarks/CHANGELOG.md` with lineage-measured deltas and the blocked HIPENGINE row.
+- Updated `docs/BENCHMARK.md` with the OPTIMAL MoE/PARO parity artifact policy.
+- Updated `docs/IMPLEMENTATION.md` to mark parent/blocked artifacts complete.
+
+### Verification
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+paths = sorted(Path('benchmarks/results').glob('2026-05-13-*optimal*.json'))
+assert len(paths) == 3, paths
+for path in paths:
+    data = json.loads(path.read_text())
+    assert data['schema'] == 2, path
+    assert data['status'] in {'accepted', 'blocked', 'rejected_correctness', 'rejected_variance'}, path
+    assert data['workload']['model'] == 'Qwen3.5-35B-A3B-PARO', path
+readme = Path('benchmarks/README.md').read_text()
+for path in paths:
+    data = json.loads(path.read_text())
+    if data['status'] == 'accepted':
+        assert path.name in readme, path
+changelog = Path('benchmarks/CHANGELOG.md').read_text()
+for path in paths:
+    assert path.name in changelog, path
+print('artifact sanity ok')
+PY
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+git diff --check
+```
+
+Results:
+
+- Artifact sanity: pass.
+- `python3 -m pytest -q`: `32 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- `git diff --check`: pass.

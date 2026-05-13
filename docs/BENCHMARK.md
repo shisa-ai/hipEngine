@@ -134,6 +134,22 @@ For KV-policy and long-context work.
 
 Protocol TBD once the scheduler is stable. Will mirror `mini-sglang`'s concurrent decode harness so numbers are directly comparable.
 
+### OPTIMAL MoE/PARO parity rows
+
+For the Qwen3.5-35B-A3B-PARO exercise, first keep source-lineage parent rows and HIPENGINE attempts as separate artifacts:
+
+- Parent/source-lineage rows use `~/amd-gpu-tuning/scripts/bench_paro_native_engine.py` with the 23 base flags from `~/amd-gpu-tuning/docs/OPTIMAL.md` and `--decode-use-step-graph-replay`.
+- Initial parity shapes are `512/128` and `4K/128`; later add `1K/128`, `32K/128`, and `128K/128` after the port path is stable.
+- Parent rows can be `accepted` source-lineage artifacts when finite logits and graph/eager validation pass. They are comparison targets, not HIPENGINE measurements.
+- HIPENGINE rows stay `blocked` until `LLM.generate()`, `w4_paro` loading/layout, Qwen3.5 model plugin, required kernels, and graph replay exist.
+- When HIPENGINE runs, compare against the matching parent artifact and require the same post-run quality gates plus HIPENGINE's KL/top-1 gate.
+
+Current local parent artifacts:
+
+- `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json`
+- `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json`
+- `benchmarks/results/2026-05-13-hipengine-qwen35-paro-optimal-blocked.json`
+
 ### Microbenchmark (single kernel)
 
 For kernel-local claims (port parity, fusion wins):

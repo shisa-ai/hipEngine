@@ -48,9 +48,9 @@ graph-replay decode, all parent-listed quality gates passing.
 
 | Model | Quant | Backend/source | Workload | Prefill tok/s | Decode tok/s | Peak GiB | Validation | Source | Last updated |
 | --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
-| Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 512/128 | 2557 | 115.7 | 18.86 | graph/step true | `~/amd-gpu-tuning/docs/OPTIMAL.md` | 2026-05-13 |
+| Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 512/128 | 2696.4 | 116.05 | 18.80 | graph/step true | [`2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json`](results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json) | 2026-05-13 |
 | Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 1K/128 | 2876 | 112.9 | 19.34 | graph/step true | `~/amd-gpu-tuning/docs/OPTIMAL.md` | 2026-05-13 |
-| Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 4K/128 | 2703 | 112.0 | 21.64 | graph/step true | `~/amd-gpu-tuning/docs/OPTIMAL.md` | 2026-05-13 |
+| Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 4K/128 | 2741.5 | 113.05 | 21.64 | graph/step true | [`2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json`](results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json) | 2026-05-13 |
 | Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 32K/128 | 1880 | 98.8 | 21.37 | graph/step true | `~/amd-gpu-tuning/docs/OPTIMAL.md` | 2026-05-13 |
 | Qwen3.5-35B-A3B-PARO | w4a16 AWQ/PARO | `nano-vllm-amd` parent | 128K/128 | 914 | 62.6 | 27.42 | graph/step true | `~/amd-gpu-tuning/docs/OPTIMAL.md` | 2026-05-13 |
 

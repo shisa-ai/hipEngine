@@ -1,0 +1,207 @@
+{
+  "schema": 2,
+  "status": "accepted",
+  "timestamp": "2026-05-13T04:49:36.987924+00:00",
+  "run_tag": "source-lineage-qwen35-paro-optimal-512-128",
+  "summary": "Source-lineage parent OPTIMAL Qwen3.5-PARO 512/128 run for HIPENGINE parity target",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "vram_total_bytes": 48301604864
+  },
+  "software": {
+    "rocm_hip": "7.13.26162",
+    "hipcc_version": "HIP version: 7.2.53211-d40244d\nAMD clang version 22.0.0git (/startdir/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "python": "3.12.9",
+    "torch_rocm": "2.11.0+rocm7.13.0a20260423",
+    "hipengine_commit": "5ecbef7",
+    "hipengine_dirty": false,
+    "source_lineage_repo": "/home/lhl/amd-gpu-tuning/nano-vllm-amd",
+    "source_lineage_commit": "59195ed",
+    "source_lineage_status": "## gfx1100-qwen3.5...origin/gfx1100-qwen3.5 [ahead 31]\n?? autoresearch-hook-context.json\n?? autoresearch-hook-context.json.lock\n?? autoresearch-lessons.md\n?? autoresearch-state.json\n?? research-results.tsv"
+  },
+  "workload": {
+    "shape": "512/128",
+    "model": "Qwen3.5-35B-A3B-PARO",
+    "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+    "model_revision": "dca2736e88e9f70855128fc81a8e918043a163cd",
+    "quant": "w4a16_awq_paro",
+    "prompt_tokens": 512,
+    "gen_tokens": 128,
+    "concurrency": 1,
+    "kv_policy": "parent_dense_paged",
+    "warmup_runs": 0,
+    "measured_runs": 1,
+    "engine": "nano-vllm-amd parent PARO native c=1"
+  },
+  "commands": {
+    "environment": [
+      "rocminfo | grep -E 'Name:|gfx' | head -4",
+      "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "hipcc --version",
+      "python3 -c 'import torch; print(torch.__version__, torch.version.hip)'"
+    ],
+    "correctness": [
+      "bench_paro_native_engine.py graph/eager validation built into --decode-use-step-graph-replay"
+    ],
+    "benchmark": "cd /home/lhl/amd-gpu-tuning && export NANOVLLM_AMD_ROUTER_PREFILL_MIN_TOKENS=512; export NANOVLLM_PARO_GEMV_PACK8_REPLACE=1; export NANOVLLM_PARO_LM_HEAD_W8A16=1; export NANOVLLM_PARO_MOE_STACKED_COMPACT=1; export NANOVLLM_PARO_MOE_STACKED_REPACK_REPLACE=1; export NANOVLLM_PARO_GEMV_PACK8_TRANSPOSE_MIN_OUT_FEATURES=999999; export NANOVLLM_PARO_MOE_GROUPED_DEVICE_GATHER=1; export NANOVLLM_PARO_MOE_GROUPED_STACKED_MAX_TOKENS=4096; export NANOVLLM_PARO_MOE_GROUPED_STACKED_WEIGHTED_LANES=1; export NANOVLLM_PARO_MOE_GROUPED_STACKED_SILU_ROTATE_FUSED=1; export NANOVLLM_PARO_WMMA_GEMM=1; export NANOVLLM_PARO_WMMA_COMPACT=1; export NANOVLLM_PARO_WMMA_MIN_TOKENS=64; export NANOVLLM_PARO_GEMV_V8=1; export NANOVLLM_PARO_NATIVE_ROUTER=1; export NANOVLLM_PARO_FULL_ATTN_FUSED_GATE=1; export NANOVLLM_PARO_MOE_SILU_DOWN_ROTATE_FUSED=1; export NANOVLLM_PARO_SHARED_EXPERT_W8A16=1; export NANOVLLM_PARO_LINEAR_ATTN_AB_FUSED=1; export NANOVLLM_PARO_LINEAR_ATTN_QKV_Z_PACK8_FUSED=1; export NANOVLLM_PARO_FULL_ATTN_QK_PACK8_FUSED=1; export NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX=1; export NANOVLLM_AMD_PAGED_ATTN_MAX_SPLITS=512; PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output python3 scripts/bench_paro_native_engine.py --prompt-len 512 --decode-len 128 --decode-use-step-graph-replay --output /tmp/hipengine-parent-optimal-512-128.json --json",
+    "profiler": null
+  },
+  "correctness": {
+    "passed": true,
+    "oracle": "parent graph replay vs eager and graph-compatible eager",
+    "finite_prefill_logits": true,
+    "decode_graph_replay_match": true,
+    "decode_graph_replay_graph_compatible_match": true,
+    "decode_graph_compatible_eager_match": true,
+    "generated_sample": [
+      1739,
+      220,
+      16,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15
+    ],
+    "last_token": 15
+  },
+  "measurements": {
+    "prefill_tok_s": {
+      "samples": [
+        2696.4422279659416
+      ],
+      "median": 2696.4422279659416,
+      "p95": 2696.4422279659416,
+      "min": 2696.4422279659416,
+      "max": 2696.4422279659416,
+      "stdev": 0.0
+    },
+    "decode_tok_s": {
+      "samples": [
+        116.04961191700822
+      ],
+      "median": 116.04961191700822,
+      "p95": 116.04961191700822,
+      "min": 116.04961191700822,
+      "max": 116.04961191700822,
+      "stdev": 0.0
+    },
+    "prefill_seconds": {
+      "samples": [
+        0.18987983302213252
+      ],
+      "median": 0.18987983302213252,
+      "p95": 0.18987983302213252,
+      "min": 0.18987983302213252,
+      "max": 0.18987983302213252,
+      "stdev": 0.0
+    },
+    "decode_seconds": {
+      "samples": [
+        1.1029765449929982
+      ],
+      "median": 1.1029765449929982,
+      "p95": 1.1029765449929982,
+      "min": 1.1029765449929982,
+      "max": 1.1029765449929982,
+      "stdev": 0.0
+    }
+  },
+  "memory": {
+    "allocated_after_load_bytes": 19644674560,
+    "reserved_after_load_bytes": 19667091456,
+    "allocator_allocated_peak_bytes": 20183256064,
+    "allocator_reserved_peak_bytes": 20224933888,
+    "peak_allocated_gib": 18.79712200164795,
+    "peak_reserved_gib": 18.8359375
+  },
+  "profiler": {
+    "status": "not_captured",
+    "raw_trace_path": null,
+    "expected_kernels_present": null,
+    "top_kernels": [],
+    "notes": "Parent parity target run only; profiler capture is a later comparison gate."
+  },
+  "source_lineage": {
+    "doc": "~/amd-gpu-tuning/docs/OPTIMAL.md",
+    "raw_parent_json_path": "/tmp/hipengine-parent-optimal-512-128.json",
+    "mode_ledger": {
+      "native_aux_add_rmsnorm_out_calls": 10680,
+      "native_aux_dense_linear_calls": 280,
+      "native_aux_dense_w8a16_gemv_calls": 267,
+      "native_aux_embedding_calls": 267,
+      "native_aux_rmsnorm_out_calls": 10987,
+      "native_dequant_or_direct_awq_bridge_calls": 13510,
+      "native_full_attention_batched_input_rotation_calls": 2670,
+      "native_full_attention_decode_calls": 2650,
+      "native_full_attention_gate_mul_out_calls": 2650,
+      "native_full_attention_head_rmsnorm_rope_calls": 2650,
+      "native_full_attention_hip_decode_calls": 1360,
+      "native_full_attention_hip_decode_context_tensor_calls": 1290,
+      "native_full_attention_kv_cache_append_calls": 20,
+      "native_full_attention_kv_cache_native_append_calls": 1360,
+      "native_full_attention_kv_cache_native_append_position_tensor_calls": 1290,
+      "native_full_attention_prefill_calls": 20,
+      "native_full_attention_qk_pack8_fused_calls": 2650,
+      "native_linear_attention_ab_dense_gemv_calls": 7950,
+      "native_linear_attention_batched_input_rotation_calls": 8010,
+      "native_linear_attention_decode_calls": 7950,
+      "native_linear_attention_decode_state_native_gdn_calls": 7950,
+      "native_linear_attention_prefill_calls": 60,
+      "native_linear_attention_qkv_z_pack8_fused_calls": 7950,
+      "native_linear_attention_state_cache_bulk_update_calls": 60,
+      "native_linear_attention_state_cache_update_calls": 7950,
+      "native_moe_gate_up_rotation_bridge_calls": 10680,
+      "native_paro_moe_grouped_stacked_bridge_calls": 80,
+      "native_paro_moe_grouped_stacked_lanes_weighted_accum_calls": 80,
+      "native_paro_moe_grouped_stacked_silu_down_rotate_fused_calls": 80,
+      "native_paro_moe_grouped_stacked_wmma_calls": 80,
+      "native_paro_moe_grouped_stacked_wmma_down_calls": 80,
+      "native_paro_moe_grouped_stacked_wmma_gate_up_calls": 80,
+      "native_paro_moe_silu_down_rotate_fused_calls": 10600,
+      "native_paro_moe_stacked_bridge_calls": 10600,
+      "native_paro_moe_weighted_shared_gate_residual_out_calls": 10600,
+      "native_rotation_bridge_calls": 10680,
+      "native_shared_expert_dense_calls": 80,
+      "native_shared_expert_w8a16_gemv_calls": 10600,
+      "native_sparse_moe_block_native_router_calls": 10680,
+      "native_sparse_moe_block_native_router_out_calls": 10600,
+      "native_sparse_moe_block_selected_native_router_calls": 80,
+      "native_sparse_moe_block_weighted_shared_gate_residual_out_calls": 10600
+    }
+  },
+  "baseline": {
+    "name": "OPTIMAL.md retained row before local refresh",
+    "source": "~/amd-gpu-tuning/docs/OPTIMAL.md"
+  },
+  "decision": {
+    "accepted": true,
+    "reason": "Source-lineage parity target captured for HIPENGINE comparison"
+  },
+  "notes": "This is not a HIPENGINE measurement; it is the parent source-lineage target row to reproduce."
+}

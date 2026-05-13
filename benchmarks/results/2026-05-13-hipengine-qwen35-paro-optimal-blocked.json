@@ -1,0 +1,64 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-13T04:49:36.987924+00:00",
+  "run_tag": "hipengine-qwen35-paro-optimal-blocked",
+  "summary": "HIPENGINE full OPTIMAL Qwen3.5-PARO inference parity benchmark is blocked before LLM.generate and dependency ports land",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "vram_total_bytes": 48301604864
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-d40244d\nAMD clang version 22.0.0git (/startdir/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "python": "3.12.9",
+    "torch_rocm": null,
+    "hipengine_commit": "5ecbef7",
+    "hipengine_dirty": false
+  },
+  "workload": {
+    "shape": "512/128 and 4K/128 target parity",
+    "model": "Qwen3.5-35B-A3B-PARO",
+    "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+    "quant": "w4a16_awq_paro",
+    "prompt_tokens": null,
+    "gen_tokens": 128,
+    "concurrency": 1,
+    "kv_policy": "planned_dense_paged_kvlivespans",
+    "warmup_runs": 0,
+    "measured_runs": 0,
+    "engine": "HIPENGINE"
+  },
+  "commands": {
+    "benchmark": "python3 - <<'PY'\nfrom hipengine import LLM, SamplingParams\nLLM('/models/.../Qwen3.5-35B-A3B-PARO', quant='w4_paro').generate('...', SamplingParams(max_tokens=128))\nPY",
+    "correctness": [
+      "python3 scripts/check_fixtures.py"
+    ],
+    "profiler": null
+  },
+  "correctness": {
+    "passed": false,
+    "oracle": "not reached",
+    "command_exit_code": null
+  },
+  "measurements": {},
+  "memory": {},
+  "profiler": {
+    "status": "not_run",
+    "raw_trace_path": null,
+    "expected_kernels_present": false,
+    "top_kernels": []
+  },
+  "baseline": {
+    "name": "source-lineage parent OPTIMAL 512/128 and 4K/128 local refresh",
+    "artifacts": [
+      "benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json",
+      "benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json"
+    ]
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "Blocked: HIPENGINE LLM.generate, w4_paro loader/layout, Qwen3.5 model plugin, MoE/attention/linear/lm_head kernels, and graph replay are not landed yet."
+  },
+  "notes": "Use docs/KERNELS.md Current OPTIMAL MoE port checklist to unblock this benchmark."
+}
