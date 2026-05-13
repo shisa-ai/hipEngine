@@ -46,6 +46,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add torch-free named runtime workspace allocator for scratch/device tensors.
   - [x] Add minimal Qwen3.5/PARO one-token decode-state scratch scaffold.
   - [x] Wire decode-state full-attention KV append and GQA BF16-gated attention wrapper calls.
+  - [x] Add GPU decode-state GQA attention smoke (`qwen35-paged-attn-gqa-state-hip`) through KV append + split-K gated attention.
   - [x] Wire decode-state generic PARO pack8 projection calls with normalized weight lookup.
   - [x] Wire decode-state MoE c=1 router, selected gate/up, selected down, and weighted shared-residual wrapper calls.
   - [x] Wire decode-state fused MoE activation/down-rotation and W8A16 shared-expert calls.

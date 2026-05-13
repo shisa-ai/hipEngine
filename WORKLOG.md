@@ -2927,3 +2927,46 @@ Results:
 ### Next
 
 - Wire a one-token full-attention+MoE decode-state smoke: projection outputs → KV append → GQA split-K gated attention → MoE c=1 orchestrator.
+
+---
+
+## 2026-05-14 — Add decode-state GPU smoke for Qwen3.5 GQA attention
+
+### Scope
+
+- Added `scripts/smoke.py --mode qwen35-paged-attn-gqa-state-hip`.
+- The smoke validates the runtime-state full-attention path through `Qwen35ParoDecodeState`:
+  1. reserve full-attention scratch for Qwen3.5 shape (`num_q_heads=16`, `num_kv_heads=2`, `head_dim=256`)
+  2. append one FP32-K/BF16-V token into a paged BF16 KV cache via `append_full_attention_kv(...)`
+  3. update the span count tensor from append position to decode context length
+  4. run `decode_full_attention_gqa_gate_bf16(...)` over `ctx=512`, `chunk_size=256`, `num_splits=2`
+- The fixture validates both the appended cache row and BF16 gated attention output against a NumPy softmax+sigmoid oracle.
+- Updated `docs/IMPLEMENTATION.md`, `docs/TESTING.md`, and `docs/KERNELS.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-state-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-paged-attn-gqa-state-trace -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-state-hip \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- Full test suite: all tests passed.
+- Decode-state GQA attention GPU smoke: `appended_key_mismatch=0`, `appended_value_mismatch=0`, `gqa_gate_bf16_mismatch=0`, `gqa_gate_bf16_max_abs=0`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-qwen35-paged-attn-gqa-state-trace/epyc/229594_kernel_trace.csv`.
+- Target kernel rows:
+  - `qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>`: `DurationNs=3080`, `VGPR_Count=8`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size_X=512`.
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>`: `DurationNs=67560`, `VGPR_Count=80`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size_X=512`, `Grid_Size_Y=2`.
+  - `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>`: `DurationNs=2760`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`, `Grid_Size_X=4096`.
+
+### Next
+
+- Combine the two state smokes into a one-token attention→MoE smoke: GQA gated attention output feeds `run_moe_c1_bf16(...)` with prepared MoE weights.

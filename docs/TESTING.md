@@ -141,6 +141,7 @@ python3 scripts/smoke.py --mode qwen35-paged-attn-split-k-hip
 python3 scripts/smoke.py --mode qwen35-paged-attn-gate-hip
 python3 scripts/smoke.py --mode qwen35-paged-attn-gate-bf16-hip
 python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip
+python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-state-hip
 python3 scripts/smoke.py --mode paro-selected-gemv-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-selected-gemv-rotate-hip --rows 2 --hidden-size 16
 python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16
