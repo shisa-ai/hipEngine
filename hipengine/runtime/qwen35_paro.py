@@ -11,7 +11,13 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
 )
-from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import gemv_awq_pack8_strided_bf16
+from hipengine.kernels.hip_gfx1100.fused.paro_combine import weighted_sum_shared_gate_combine_residual_out_bf16_f32w
+from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16
+from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
+    gemv_awq_pack8_strided_bf16,
+    gemv_awq_selected_dual_pack8_transposed_bf16,
+    gemv_awq_selected_pack8_transposed_bf16,
+)
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights, normalize_qwen35_weight_name
 from hipengine.runtime.workspace import RuntimeWorkspace
@@ -37,6 +43,8 @@ class Qwen35ParoMoeScratch:
     routing_weights: Tensor
     selected_experts: Tensor
     gate_up: Tensor
+    down_input: Tensor
+    down_out: Tensor
     shared_up: Tensor
     moe_out: Tensor
 
@@ -193,6 +201,138 @@ class Qwen35ParoDecodeState:
         )
         return scratch.gated_attn
 
+    def route_moe_topk_shared_bf16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        tokens: int = 1,
+        threads: int = 512,
+        library=None,
+    ) -> tuple[Tensor, Tensor]:
+        cfg = self.config
+        combined = self.tensor(f"layers.{self.layer_weights.layer_id}.mlp.router_shared_gate.weight")
+        qwen35_router_topk_shared_out_bf16(
+            hidden.ptr,
+            combined.ptr,
+            scratch.router_logits.ptr,
+            scratch.selected_experts.ptr,
+            scratch.routing_weights.ptr,
+            tokens,
+            cfg.hidden_size,
+            cfg.num_experts + 1,
+            cfg.num_experts,
+            cfg.num_experts_per_tok,
+            threads=threads,
+            library=library,
+            runtime=self.runtime,
+        )
+        return scratch.selected_experts, scratch.routing_weights
+
+    def selected_moe_gate_up_pack8_bf16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        threads: int = 128,
+        library=None,
+    ) -> Tensor:
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
+        gate_qweight = self.tensor(f"{prefix}.stacked_gate_qweight_pack8_decode")
+        gate_qzeros = self.tensor(f"{prefix}.stacked_gate_qzeros")
+        gate_scales = self.tensor(f"{prefix}.stacked_gate_scales")
+        up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
+        up_qzeros = self.tensor(f"{prefix}.stacked_up_qzeros")
+        up_scales = self.tensor(f"{prefix}.stacked_up_scales")
+        rows = tokens * self.config.num_experts_per_tok
+        gemv_awq_selected_dual_pack8_transposed_bf16(
+            hidden.ptr,
+            scratch.selected_experts.ptr,
+            gate_qweight.ptr,
+            gate_qzeros.ptr,
+            gate_scales.ptr,
+            up_qweight.ptr,
+            up_qzeros.ptr,
+            up_scales.ptr,
+            scratch.gate_up.ptr,
+            tokens,
+            rows,
+            hidden.shape[-1],
+            _out_packed_from_transposed_qweight(gate_qweight),
+            _out_packed_from_transposed_qweight(up_qweight),
+            self.config.num_experts,
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=self.runtime,
+        )
+        return scratch.gate_up
+
+    def selected_moe_down_pack8_bf16(
+        self,
+        down_input: Tensor,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        threads: int = 128,
+        library=None,
+    ) -> Tensor:
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
+        qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
+        qzeros = self.tensor(f"{prefix}.stacked_down_qzeros")
+        scales = self.tensor(f"{prefix}.stacked_down_scales")
+        rows = tokens * self.config.num_experts_per_tok
+        gemv_awq_selected_pack8_transposed_bf16(
+            down_input.ptr,
+            scratch.selected_experts.ptr,
+            qweight.ptr,
+            qzeros.ptr,
+            scales.ptr,
+            scratch.down_out.ptr,
+            rows,
+            down_input.shape[-1],
+            _out_packed_from_transposed_qweight(qweight),
+            self.config.num_experts,
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=self.runtime,
+        )
+        return scratch.down_out
+
+    def combine_moe_c1_shared_residual_bf16(
+        self,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        shared: Tensor,
+        residual: Tensor,
+        out: Tensor | None = None,
+        tokens: int = 1,
+        threads: int = 256,
+        library=None,
+    ) -> Tensor:
+        if tokens != 1:
+            raise ValueError("combined MoE c=1 residual helper currently requires tokens=1")
+        target = out or scratch.moe_out
+        shared_gate_logits_ptr = scratch.router_logits.ptr + self.config.num_experts * DType.FP32.itemsize
+        weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
+            scratch.down_out.ptr,
+            scratch.routing_weights.ptr,
+            shared.ptr,
+            shared_gate_logits_ptr,
+            residual.ptr,
+            target.ptr,
+            self.config.num_experts_per_tok,
+            self.config.hidden_size,
+            threads=threads,
+            library=library,
+            runtime=self.runtime,
+        )
+        return target
+
     def reserve_moe_c1_scratch(self, *, tokens: int = 1) -> Qwen35ParoMoeScratch:
         if tokens <= 0:
             raise ValueError("tokens must be positive")
@@ -210,6 +350,8 @@ class Qwen35ParoDecodeState:
                 (tokens, top_k, 2 * cfg.moe_intermediate_size),
                 DType.BF16,
             ),
+            down_input=self.workspace.reserve_tensor("moe.down_input", (tokens, top_k, cfg.moe_intermediate_size), DType.BF16),
+            down_out=self.workspace.reserve_tensor("moe.down_out", (tokens, top_k, cfg.hidden_size), DType.BF16),
             shared_up=self.workspace.reserve_tensor(
                 "moe.shared_up",
                 (tokens, 2 * cfg.shared_expert_intermediate_size),
@@ -221,3 +363,9 @@ class Qwen35ParoDecodeState:
     def free(self) -> None:
         self.workspace.free()
         self.layer_weights.free(runtime=self.runtime)
+
+
+def _out_packed_from_transposed_qweight(qweight: Tensor) -> int:
+    if len(qweight.shape) < 3:
+        raise ValueError("transposed stacked qweight must have shape [experts, out_packed, in_features]")
+    return qweight.shape[1]

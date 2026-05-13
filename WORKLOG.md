@@ -2775,3 +2775,35 @@ Results:
 ### Next
 
 - Wire `Qwen35ParoDecodeState` MoE c=1 methods against the prepared names: combined router/shared-gate, selected dual gate/up GEMV, selected down GEMV, and weighted/shared/residual combine.
+
+---
+
+## 2026-05-14 — Wire Qwen3.5/PARO decode-state MoE c=1 kernel calls
+
+### Scope
+
+- Added MoE c=1 call methods to `Qwen35ParoDecodeState`:
+  - `route_moe_topk_shared_bf16(...)` calls `qwen35_router_topk_shared_out_bf16(...)` using prepared `router_shared_gate.weight`.
+  - `selected_moe_gate_up_pack8_bf16(...)` calls `gemv_awq_selected_dual_pack8_transposed_bf16(...)` using prepared `stacked_gate/up_qweight_pack8_decode`, qzeros, and scales.
+  - `selected_moe_down_pack8_bf16(...)` calls `gemv_awq_selected_pack8_transposed_bf16(...)` using prepared `stacked_down_qweight_pack8_decode`, qzeros, and scales.
+  - `combine_moe_c1_shared_residual_bf16(...)` calls `weighted_sum_shared_gate_combine_residual_out_bf16_f32w(...)` with the shared-gate logit addressed from the combined router logits row.
+- Extended MoE scratch with `down_input` and `down_out` buffers so selected down GEMV and weighted combine have explicit owned workspaces.
+- Added monkeypatched CPU tests verifying raw pointer, shape, split/top-k, packed-width, and runtime arguments for all new calls without launching GPU.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_decode_state.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Decode-state tests: `11 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Fill the remaining in-between MoE operation gaps: fused gate/up activation + down-rotation call wiring and W8A16 shared-expert projection calls, then run an end-to-end one-token synthetic decode path over the decode-state methods.

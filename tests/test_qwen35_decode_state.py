@@ -68,6 +68,33 @@ def _state(runtime: FakeRuntime, weights: DeviceWeightMap | None = None) -> Qwen
     )
 
 
+def _prepared_moe_weights() -> DeviceWeightMap:
+    prefix = "layers.0.mlp"
+    experts = f"{prefix}.experts"
+    return DeviceWeightMap(
+        {
+            f"{prefix}.router_shared_gate.weight": _allocation(
+                f"{prefix}.router_shared_gate.weight", 0xB000, (129, 4096), "bf16"
+            ),
+            f"{experts}.stacked_gate_qweight_pack8_decode": _allocation(
+                f"{experts}.stacked_gate_qweight_pack8_decode", 0xB100, (128, 96, 4096), "int32"
+            ),
+            f"{experts}.stacked_gate_qzeros": _allocation(f"{experts}.stacked_gate_qzeros", 0xB200, (128, 32, 96), "int32"),
+            f"{experts}.stacked_gate_scales": _allocation(f"{experts}.stacked_gate_scales", 0xB300, (128, 32, 96), "fp16"),
+            f"{experts}.stacked_up_qweight_pack8_decode": _allocation(
+                f"{experts}.stacked_up_qweight_pack8_decode", 0xB400, (128, 96, 4096), "int32"
+            ),
+            f"{experts}.stacked_up_qzeros": _allocation(f"{experts}.stacked_up_qzeros", 0xB500, (128, 32, 96), "int32"),
+            f"{experts}.stacked_up_scales": _allocation(f"{experts}.stacked_up_scales", 0xB600, (128, 32, 96), "fp16"),
+            f"{experts}.stacked_down_qweight_pack8_decode": _allocation(
+                f"{experts}.stacked_down_qweight_pack8_decode", 0xB700, (128, 512, 768), "int32"
+            ),
+            f"{experts}.stacked_down_qzeros": _allocation(f"{experts}.stacked_down_qzeros", 0xB800, (128, 6, 512), "int32"),
+            f"{experts}.stacked_down_scales": _allocation(f"{experts}.stacked_down_scales", 0xB900, (128, 6, 512), "fp16"),
+        }
+    )
+
+
 def test_qwen35_decode_state_reserves_full_attention_split_k_scratch() -> None:
     runtime = FakeRuntime()
     state = _state(runtime)
@@ -98,6 +125,8 @@ def test_qwen35_decode_state_reserves_moe_c1_scratch() -> None:
     assert scratch.selected_experts.shape == (1, 8)
     assert scratch.selected_experts.dtype is DType.INT32
     assert scratch.gate_up.shape == (1, 8, 1536)
+    assert scratch.down_input.shape == (1, 8, 768)
+    assert scratch.down_out.shape == (1, 8, 4096)
     assert scratch.shared_up.shape == (1, 1536)
     assert scratch.moe_out.shape == (1, 4096)
 
@@ -218,6 +247,130 @@ def test_qwen35_decode_state_decodes_gqa_gate_with_scratch_pointers(monkeypatch)
     assert kwargs == {"library": None, "runtime": runtime}
 
 
+def test_qwen35_decode_state_routes_moe_topk_shared(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=1)
+    hidden = _tensor(0xCA00, (1, 4096), "bf16")
+    calls = []
+
+    def fake_router(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_bf16", fake_router)
+
+    selected, weights = state.route_moe_topk_shared_bf16(hidden, scratch)
+
+    assert selected is scratch.selected_experts
+    assert weights is scratch.routing_weights
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == (
+        hidden.ptr,
+        0xB000,
+        scratch.router_logits.ptr,
+        scratch.selected_experts.ptr,
+        scratch.routing_weights.ptr,
+        1,
+        4096,
+        129,
+        128,
+        8,
+    )
+    assert kwargs == {"threads": 512, "library": None, "runtime": runtime}
+
+
+def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=1)
+    hidden = _tensor(0xCA00, (1, 4096), "bf16")
+    gate_calls = []
+    down_calls = []
+
+    def fake_gate(*args, **kwargs):
+        gate_calls.append((args, kwargs))
+
+    def fake_down(*args, **kwargs):
+        down_calls.append((args, kwargs))
+
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", fake_gate)
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", fake_down)
+
+    gate_up = state.selected_moe_gate_up_pack8_bf16(hidden, scratch)
+    down = state.selected_moe_down_pack8_bf16(scratch.down_input, scratch)
+
+    assert gate_up is scratch.gate_up
+    assert down is scratch.down_out
+    gate_args, gate_kwargs = gate_calls[0]
+    assert gate_args == (
+        hidden.ptr,
+        scratch.selected_experts.ptr,
+        0xB100,
+        0xB200,
+        0xB300,
+        0xB400,
+        0xB500,
+        0xB600,
+        scratch.gate_up.ptr,
+        1,
+        8,
+        4096,
+        96,
+        96,
+        128,
+        128,
+    )
+    assert gate_kwargs == {"threads": 128, "library": None, "runtime": runtime}
+    down_args, down_kwargs = down_calls[0]
+    assert down_args == (
+        scratch.down_input.ptr,
+        scratch.selected_experts.ptr,
+        0xB700,
+        0xB800,
+        0xB900,
+        scratch.down_out.ptr,
+        8,
+        768,
+        512,
+        128,
+        128,
+    )
+    assert down_kwargs == {"threads": 128, "library": None, "runtime": runtime}
+
+
+def test_qwen35_decode_state_combines_moe_shared_residual(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=1)
+    shared = _tensor(0xCB00, (1, 4096), "bf16")
+    residual = _tensor(0xCC00, (1, 4096), "bf16")
+    calls = []
+
+    def fake_combine(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_out_bf16_f32w", fake_combine)
+
+    out = state.combine_moe_c1_shared_residual_bf16(scratch, shared=shared, residual=residual)
+
+    assert out is scratch.moe_out
+    args, kwargs = calls[0]
+    assert args == (
+        scratch.down_out.ptr,
+        scratch.routing_weights.ptr,
+        shared.ptr,
+        scratch.router_logits.ptr + 128 * 4,
+        residual.ptr,
+        scratch.moe_out.ptr,
+        8,
+        4096,
+    )
+    assert kwargs == {"threads": 256, "library": None, "runtime": runtime}
+    with pytest.raises(ValueError, match="tokens=1"):
+        state.combine_moe_c1_shared_residual_bf16(scratch, shared=shared, residual=residual, tokens=2)
+
+
 def test_qwen35_decode_state_validates_scratch_requests() -> None:
     runtime = FakeRuntime()
     state = _state(runtime)
@@ -240,4 +393,4 @@ def test_qwen35_decode_state_free_releases_workspace() -> None:
     state.free()
 
     assert runtime.allocations == {}
-    assert len(runtime.freed) == 16
+    assert len(runtime.freed) == 18
