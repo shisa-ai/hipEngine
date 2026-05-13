@@ -2599,3 +2599,41 @@ Results:
 ### Next
 
 - Use `RuntimeWorkspace` to define a minimal Qwen3.5/PARO one-token decode state: materialized layer weights + KV spans + scratch tensors + calls into the landed full-attention/MoE kernel wrappers.
+
+---
+
+## 2026-05-14 — Add Qwen3.5/PARO full-attention+MoE c=1 device weight map
+
+### Scope
+
+- Extended `Qwen35ParoConfig` with attention metadata needed for full-attention decode planning:
+  - `num_attention_heads`
+  - `num_key_value_heads`
+  - `head_dim`
+- Added full-attention required-name helpers:
+  - `required_full_attention_c1_tensor_names(...)`
+  - `required_full_attention_moe_c1_tensor_names(...)`
+- Added validation/materialization for the combined full-attention + MoE c=1 layer slice:
+  - `validate_qwen35_paro_full_attention_moe_c1_layout(...)`
+  - `materialize_qwen35_paro_full_attention_moe_c1_layer(...)`
+- Full-attention required names include input layernorm, q/k RMSNorm weights, rotated q/k/v PARO metadata (`qweight`, `qzeros`, `scales`, `theta`, `pairs`, `channel_scales`), and o-proj quant tensors.
+- Reused the normalized-name device materialization map, so runtime code can request `layers.0.self_attn.q_proj.pairs` or the HF-prefixed equivalent and receive the same raw-pointer `Tensor` handle.
+- Added CPU-safe fake-runtime tests for required-name coverage, full-attention validation, exact byte copies for o-proj weights, INT16 q/k/v rotation pairs, and cleanup.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_paro_layout.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Qwen layout/materialization tests: `8 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Build a minimal one-token Qwen3.5/PARO decode-state scaffold that reserves the full-attention/MoE scratch tensors using `RuntimeWorkspace` and can call the already-smoked kernels with materialized device weights.

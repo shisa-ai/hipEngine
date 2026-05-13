@@ -13,9 +13,13 @@ from hipengine.loading.qwen35_paro import (
     Qwen35ParoLayerDeviceWeights,
     Qwen35ParoLayoutValidation,
     normalize_qwen35_weight_name,
+    materialize_qwen35_paro_full_attention_moe_c1_layer,
     materialize_qwen35_paro_moe_c1_layer,
     qwen35_paro_config_from_hf,
+    required_full_attention_c1_tensor_names,
+    required_full_attention_moe_c1_tensor_names,
     required_moe_c1_tensor_names,
+    validate_qwen35_paro_full_attention_moe_c1_layout,
     validate_qwen35_paro_moe_c1_layout,
 )
 from hipengine.loading.safetensors import (
@@ -42,6 +46,7 @@ __all__ = [
     "WeightIndex",
     "discover_safetensor_shards",
     "dtype_from_safetensors",
+    "materialize_qwen35_paro_full_attention_moe_c1_layer",
     "materialize_qwen35_paro_moe_c1_layer",
     "normalize_qwen35_weight_name",
     "qwen35_paro_config_from_hf",
@@ -50,6 +55,9 @@ __all__ = [
     "load_tensors_to_device",
     "load_weight_index",
     "read_config",
+    "required_full_attention_c1_tensor_names",
+    "required_full_attention_moe_c1_tensor_names",
     "required_moe_c1_tensor_names",
+    "validate_qwen35_paro_full_attention_moe_c1_layout",
     "validate_qwen35_paro_moe_c1_layout",
 ]

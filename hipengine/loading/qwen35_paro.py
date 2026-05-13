@@ -19,6 +19,9 @@ class Qwen35ParoConfig:
     architecture: str
     num_hidden_layers: int
     hidden_size: int
+    num_attention_heads: int
+    num_key_value_heads: int
+    head_dim: int
     num_experts: int
     num_experts_per_tok: int
     moe_intermediate_size: int
@@ -91,16 +94,54 @@ def qwen35_paro_config_from_hf(config: dict[str, Any]) -> Qwen35ParoConfig:
         raise ValueError(f"layer_types has {len(layer_types)} entries for {num_layers} layers")
     quant = config.get("quantization_config") or text.get("quantization_config") or {}
     quant_method = str(quant.get("quant_method", ""))
+    hidden_size = int(text["hidden_size"])
+    num_attention_heads = int(text.get("num_attention_heads", 0) or 0)
+    num_key_value_heads = int(text.get("num_key_value_heads", num_attention_heads) or 0)
+    head_dim = int(text.get("head_dim", (hidden_size // num_attention_heads) if num_attention_heads else 0) or 0)
     return Qwen35ParoConfig(
         architecture=architecture,
         num_hidden_layers=num_layers,
-        hidden_size=int(text["hidden_size"]),
+        hidden_size=hidden_size,
+        num_attention_heads=num_attention_heads,
+        num_key_value_heads=num_key_value_heads,
+        head_dim=head_dim,
         num_experts=int(text.get("num_experts", 0) or 0),
         num_experts_per_tok=int(text.get("num_experts_per_tok", 0) or 0),
         moe_intermediate_size=int(text.get("moe_intermediate_size", text.get("intermediate_size", 0)) or 0),
         shared_expert_intermediate_size=int(text.get("shared_expert_intermediate_size", 0) or 0),
         layer_types=layer_types,
         quant_method=quant_method,
+    )
+
+
+def required_full_attention_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    prefix = f"layers.{layer_id}.self_attn"
+    names = [
+        f"layers.{layer_id}.input_layernorm.weight",
+        f"{prefix}.q_norm.weight",
+        f"{prefix}.k_norm.weight",
+    ]
+    for proj in ("q_proj", "k_proj", "v_proj"):
+        base = f"{prefix}.{proj}"
+        names.extend(
+            (
+                f"{base}.qweight",
+                f"{base}.qzeros",
+                f"{base}.scales",
+                f"{base}.theta",
+                f"{base}.pairs",
+                f"{base}.channel_scales",
+            )
+        )
+    base = f"{prefix}.o_proj"
+    names.extend((f"{base}.qweight", f"{base}.qzeros", f"{base}.scales"))
+    return tuple(names)
+
+
+def required_full_attention_moe_c1_tensor_names(*, layer_id: int, num_experts: int) -> tuple[str, ...]:
+    return required_full_attention_c1_tensor_names(layer_id=layer_id) + required_moe_c1_tensor_names(
+        layer_id=layer_id,
+        num_experts=num_experts,
     )
 
 
@@ -176,8 +217,73 @@ def materialize_qwen35_paro_moe_c1_layer(
     validation = validate_qwen35_paro_moe_c1_layout(index, layer_id=layer_id, raise_on_error=validate)
     if not validation.passed:
         validation.raise_for_errors()
-    normalized = _normalized_tensor_map(index)
     required = required_moe_c1_tensor_names(layer_id=layer_id, num_experts=validation.config.num_experts)
+    return _materialize_normalized_layer(index, validation.config, layer_id, required, device=device, runtime=runtime)
+
+
+def validate_qwen35_paro_full_attention_moe_c1_layout(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    raise_on_error: bool = False,
+) -> Qwen35ParoLayoutValidation:
+    config = qwen35_paro_config_from_hf(index.config)
+    if layer_id < 0 or layer_id >= config.num_hidden_layers:
+        raise ValueError(f"layer_id {layer_id} outside [0, {config.num_hidden_layers})")
+    if config.layer_types[layer_id] != "full_attention":
+        raise ValueError(f"layer {layer_id} is {config.layer_types[layer_id]!r}, expected 'full_attention'")
+    if config.num_attention_heads <= 0 or config.num_key_value_heads <= 0 or config.head_dim <= 0:
+        raise ValueError("full-attention layout requires num_attention_heads, num_key_value_heads, and head_dim")
+    if config.quant_method and config.quant_method != "paroquant":
+        raise ValueError(f"expected quant_method='paroquant', got {config.quant_method!r}")
+
+    normalized = _normalized_tensor_map(index)
+    required = required_full_attention_moe_c1_tensor_names(layer_id=layer_id, num_experts=config.num_experts)
+    present = tuple(name for name in required if name in normalized)
+    missing = tuple(name for name in required if name not in normalized)
+    shape_errors = _validate_full_attention_shapes(normalized, config, layer_id=layer_id) + _validate_moe_c1_shapes(
+        normalized,
+        config,
+        layer_id=layer_id,
+    )
+    result = Qwen35ParoLayoutValidation(config=config, present=present, missing=missing, shape_errors=shape_errors)
+    if raise_on_error:
+        result.raise_for_errors()
+    return result
+
+
+def materialize_qwen35_paro_full_attention_moe_c1_layer(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    validate: bool = True,
+) -> Qwen35ParoLayerDeviceWeights:
+    validation = validate_qwen35_paro_full_attention_moe_c1_layout(
+        index,
+        layer_id=layer_id,
+        raise_on_error=validate,
+    )
+    if not validation.passed:
+        validation.raise_for_errors()
+    required = required_full_attention_moe_c1_tensor_names(
+        layer_id=layer_id,
+        num_experts=validation.config.num_experts,
+    )
+    return _materialize_normalized_layer(index, validation.config, layer_id, required, device=device, runtime=runtime)
+
+
+def _materialize_normalized_layer(
+    index: WeightIndex,
+    config: Qwen35ParoConfig,
+    layer_id: int,
+    required: tuple[str, ...],
+    *,
+    device: Device | None,
+    runtime: HipRuntime | None,
+) -> Qwen35ParoLayerDeviceWeights:
+    normalized = _normalized_tensor_map(index)
     allocations: dict[str, DeviceTensorAllocation] = {}
     try:
         for normalized_name in required:
@@ -192,7 +298,7 @@ def materialize_qwen35_paro_moe_c1_layer(
         DeviceWeightMap(allocations).free(runtime=runtime)
         raise
     return Qwen35ParoLayerDeviceWeights(
-        config=validation.config,
+        config=config,
         layer_id=layer_id,
         weights=DeviceWeightMap(allocations),
     )
@@ -206,6 +312,26 @@ def _normalized_tensor_map(index: WeightIndex) -> dict[str, TensorInfo]:
             raise ValueError(f"duplicate normalized tensor name {normalized!r}")
         out[normalized] = info
     return out
+
+
+def _validate_full_attention_shapes(
+    tensors: dict[str, TensorInfo],
+    config: Qwen35ParoConfig,
+    *,
+    layer_id: int,
+) -> tuple[str, ...]:
+    prefix = f"layers.{layer_id}.self_attn"
+    expected: dict[str, tuple[int, ...]] = {
+        f"layers.{layer_id}.input_layernorm.weight": (config.hidden_size,),
+        f"{prefix}.q_norm.weight": (config.head_dim,),
+        f"{prefix}.k_norm.weight": (config.head_dim,),
+    }
+    errors: list[str] = []
+    for name, shape in expected.items():
+        info = tensors.get(name)
+        if info is not None and info.shape != shape:
+            errors.append(f"{name}: expected {shape}, got {info.shape}")
+    return tuple(errors)
 
 
 def _validate_moe_c1_shapes(

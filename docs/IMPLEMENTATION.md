@@ -41,6 +41,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add torch-free safetensors/config discovery and tensor metadata index for loader scaffolding.
   - [x] Add torch-free safetensors host-to-device materialization helpers with owned raw-pointer tensor handles.
   - [x] Add Qwen3.5/PARO MoE c=1 normalized device-weight materialization map.
+  - [x] Add Qwen3.5/PARO full-attention+MoE c=1 normalized device-weight materialization map.
   - [x] Add torch-free named runtime workspace allocator for scratch/device tensors.
   - [x] Add Qwen3.5/PARO MoE c=1 checkpoint layout validator over tensor metadata.
   - [x] Port PARO BF16 dense GEMV (`dense_gemv_out`) for auxiliary dense projection paths.
