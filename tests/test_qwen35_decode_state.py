@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import pytest
 
+from hipengine.core.device import Device
 from hipengine.core.dtype import DType
+from hipengine.core.tensor import Tensor
+from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.materialize import DeviceWeightMap
 from hipengine.loading.qwen35_paro import Qwen35ParoConfig, Qwen35ParoLayerDeviceWeights
 from hipengine.runtime import Qwen35ParoDecodeState, RuntimeWorkspace
+import hipengine.runtime.qwen35_paro as qwen_runtime
 
 
 class FakeRuntime:
@@ -96,6 +100,80 @@ def test_qwen35_decode_state_reuses_and_replaces_named_scratch() -> None:
     assert second.partial_out.ptr == first.partial_out.ptr
     assert changed.partial_out.ptr != first.partial_out.ptr
     assert first.partial_out.ptr in runtime.freed
+
+
+def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
+    return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
+
+
+def _spans() -> KVLiveSpans:
+    return KVLiveSpans.paged_uniform(
+        block_table=_tensor(0xD000, (2,), "int32"),
+        live_counts=_tensor(0xD100, (1,), "int64"),
+        max_live_count=1,
+        storage_dtype="bf16",
+    )
+
+
+def test_qwen35_decode_state_appends_kv_with_scratch_pointers(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime)
+    scratch = state.reserve_full_attention_scratch(tokens=1, num_splits=2)
+    key_cache = _tensor(0xE000, (2, 256, 2, 256), "bf16")
+    value_cache = _tensor(0xF000, (2, 256, 2, 256), "bf16")
+    calls = []
+
+    def fake_append(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(qwen_runtime, "qwen35_write_paged_kv_mixed_value_bf16_spans", fake_append)
+
+    state.append_full_attention_kv(scratch, key_cache=key_cache, value_cache=value_cache, spans=_spans())
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args[:4] == (scratch.key.ptr, scratch.value.ptr, key_cache.ptr, value_cache.ptr)
+    assert args[5:] == (256, 2, 256)
+    assert kwargs == {"library": None, "runtime": runtime}
+
+
+def test_qwen35_decode_state_decodes_gqa_gate_with_scratch_pointers(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime)
+    scratch = state.reserve_full_attention_scratch(tokens=1, num_splits=2)
+    key_cache = _tensor(0xE000, (2, 256, 2, 256), "bf16")
+    value_cache = _tensor(0xF000, (2, 256, 2, 256), "bf16")
+    calls = []
+
+    def fake_decode(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans", fake_decode)
+
+    out = state.decode_full_attention_gqa_gate_bf16(
+        scratch,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        spans=_spans(),
+        chunk_size=256,
+        num_splits=2,
+    )
+
+    assert out is scratch.gated_attn
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args[:8] == (
+        scratch.query.ptr,
+        key_cache.ptr,
+        value_cache.ptr,
+        scratch.gate.ptr,
+        scratch.gated_attn.ptr,
+        scratch.partial_out.ptr,
+        scratch.partial_m.ptr,
+        scratch.partial_l.ptr,
+    )
+    assert args[9:18] == (256, 2, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+    assert kwargs == {"library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_validates_scratch_requests() -> None:

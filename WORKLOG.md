@@ -2681,3 +2681,33 @@ Results:
 ### Next
 
 - Start wiring the one-token decode state into actual kernel-call methods: full-attention path first (`q/k/v` projection outputs + paged KV append + GQA split-K gated attention), then the MoE c=1 path using the materialized normalized weights.
+
+---
+
+## 2026-05-14 — Wire Qwen3.5/PARO decode-state full-attention kernel calls
+
+### Scope
+
+- Added first kernel-call methods to `Qwen35ParoDecodeState`:
+  - `append_full_attention_kv(...)` calls `qwen35_write_paged_kv_mixed_value_bf16_spans(...)` using reserved `scratch.key` / `scratch.value` tensors and caller-provided paged KV cache tensors/spans.
+  - `decode_full_attention_gqa_gate_bf16(...)` calls `qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(...)` using reserved query/gate/partial/gated-output scratch tensors and caller-provided paged KV cache tensors/spans.
+- The methods keep the public boundary span-shaped via `KVLiveSpans`; they do not expose a raw `(block_table, context_len)` API.
+- Added monkeypatched CPU tests that verify exact raw pointer, shape, split, stride, scale, library, and runtime arguments without launching GPU.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_decode_state.py -q
+python3 -m pytest -q
+```
+
+Results:
+
+- Decode-state tests: `7 passed`.
+- Full test suite: all tests passed.
+
+### Next
+
+- Wire projection/MoE calls into the decode state: q/k/v/o PARO pack8 GEMV and the MoE c=1 kernel chain against materialized normalized weights.

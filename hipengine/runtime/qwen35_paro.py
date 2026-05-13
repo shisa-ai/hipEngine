@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.hip_gfx1100.attention import (
+    qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
+    qwen35_write_paged_kv_mixed_value_bf16_spans,
+)
+from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights
 from hipengine.runtime.workspace import RuntimeWorkspace
 
@@ -92,6 +97,66 @@ class Qwen35ParoDecodeState:
             attn_out=self.workspace.reserve_tensor("attn.out", (cfg.num_attention_heads, cfg.head_dim), DType.FP32),
             gated_attn=self.workspace.reserve_tensor("attn.gated", (tokens, q_width), gated),
         )
+
+    def append_full_attention_kv(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        block_size: int = 256,
+        library=None,
+    ) -> None:
+        qwen35_write_paged_kv_mixed_value_bf16_spans(
+            scratch.key.ptr,
+            scratch.value.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            spans,
+            block_size,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            library=library,
+            runtime=self.runtime,
+        )
+
+    def decode_full_attention_gqa_gate_bf16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        chunk_size: int,
+        num_splits: int,
+        block_size: int = 256,
+        scale: float | None = None,
+        library=None,
+    ) -> Tensor:
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
+            scratch.query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            scratch.gate.ptr,
+            scratch.gated_attn.ptr,
+            scratch.partial_out.ptr,
+            scratch.partial_m.ptr,
+            scratch.partial_l.ptr,
+            spans,
+            chunk_size,
+            num_splits,
+            block_size,
+            self.config.num_attention_heads,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            scratch.gate.shape[-1],
+            1,
+            (self.config.head_dim ** -0.5) if scale is None else scale,
+            library=library,
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
 
     def reserve_moe_c1_scratch(self, *, tokens: int = 1) -> Qwen35ParoMoeScratch:
         if tokens <= 0:
