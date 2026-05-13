@@ -34,6 +34,7 @@ def main() -> int:
             "qwen35-router-hip",
             "qwen35-rotary-hip",
             "qwen35-linear-attn-conv-hip",
+            "qwen35-linear-attn-gdn-hip",
             "paro-selected-gemv-hip",
             "paro-selected-gemv-rotate-hip",
             "paro-pack8-gemv-hip",
@@ -113,6 +114,11 @@ def main() -> int:
         )
     if args.mode == "qwen35-linear-attn-conv-hip":
         return qwen35_linear_attn_conv_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-linear-attn-gdn-hip":
+        return qwen35_linear_attn_gdn_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -499,6 +505,177 @@ def paro_rmsnorm_hip_smoke(
 
 
 
+
+
+def qwen35_linear_attn_gdn_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.linear_attn import (
+        build_qwen35_linear_attn_gdn,
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+    )
+
+    num_k_heads = 1
+    num_v_heads = 2
+    head_k_dim = 8
+    head_v_dim = 4
+    eps = 1.0e-6
+    key_dim = num_k_heads * head_k_dim
+    conv_dim = 2 * key_dim + num_v_heads * head_v_dim
+    conv_out = np.asarray([((idx % 7) - 3) * 0.125 for idx in range(conv_dim)], dtype=np.float32)
+    gate = _float32_to_bf16_bits(
+        np.asarray([((idx % 5) - 2) * 0.25 for idx in range(num_v_heads * head_v_dim)], dtype=np.float32)
+    )
+    a = _float32_to_bf16_bits(np.asarray([-0.25, 0.5], dtype=np.float32))
+    b = _float32_to_bf16_bits(np.asarray([0.25, -0.5], dtype=np.float32))
+    dt_bias = np.asarray([0.125, -0.25], dtype=np.float32)
+    a_log = np.asarray([-1.0, -0.5], dtype=np.float32)
+    norm_weight = np.asarray([1.0, 0.5, 0.25, 2.0], dtype=np.float32)
+    recurrent_state = np.asarray(
+        [
+            ((v * 17 + k * 5 + d * 3) % 11 - 5) * 0.03125
+            for v in range(num_v_heads)
+            for k in range(head_k_dim)
+            for d in range(head_v_dim)
+        ],
+        dtype=np.float32,
+    ).reshape(num_v_heads, head_k_dim, head_v_dim)
+    out = np.empty((num_v_heads, head_v_dim), dtype=np.float32)
+
+    def softplus(x: np.float32) -> np.float32:
+        return np.float32(x if x > np.float32(20.0) else np.log1p(np.exp(x, dtype=np.float32), dtype=np.float32))
+
+    def sigmoid(x: np.float32) -> np.float32:
+        return np.float32(1.0) / (np.float32(1.0) + np.exp(-x, dtype=np.float32))
+
+    expected_state = recurrent_state.copy()
+    expected_acc = np.empty_like(out)
+    gate_f32 = _bf16_bits_to_float32(gate).reshape(num_v_heads, head_v_dim)
+    a_f32 = _bf16_bits_to_float32(a)
+    b_f32 = _bf16_bits_to_float32(b)
+    for v_head in range(num_v_heads):
+        k_head = v_head // (num_v_heads // num_k_heads)
+        q_base = k_head * head_k_dim
+        k_base = key_dim + q_base
+        q = conv_out[q_base : q_base + head_k_dim].astype(np.float32)
+        k = conv_out[k_base : k_base + head_k_dim].astype(np.float32)
+        q_sum = np.sum(q * q, dtype=np.float32)
+        k_sum = np.sum(k * k, dtype=np.float32)
+        q_scale = np.float32(1.0) / np.sqrt(q_sum + np.float32(1.0e-6), dtype=np.float32)
+        q_scale = np.float32(q_scale * (np.float32(1.0) / np.sqrt(np.float32(head_k_dim), dtype=np.float32)))
+        k_scale = np.float32(1.0) / np.sqrt(k_sum + np.float32(1.0e-6), dtype=np.float32)
+        beta = sigmoid(b_f32[v_head])
+        decay = np.exp(
+            -np.exp(a_log[v_head], dtype=np.float32)
+            * softplus(np.float32(a_f32[v_head] + dt_bias[v_head])),
+            dtype=np.float32,
+        )
+        values = conv_out[2 * key_dim + v_head * head_v_dim : 2 * key_dim + (v_head + 1) * head_v_dim]
+        for value_idx in range(head_v_dim):
+            state_vec = expected_state[v_head, :, value_idx].copy()
+            kv_mem = np.float32(0.0)
+            for idx in range(head_k_dim):
+                kv_mem = np.float32(
+                    kv_mem + np.float32(np.float32(k[idx] * k_scale) * np.float32(state_vec[idx] * decay))
+                )
+            delta = np.float32(np.float32(values[value_idx] - kv_mem) * beta)
+            out_acc = np.float32(0.0)
+            for idx in range(head_k_dim):
+                k_norm = np.float32(k[idx] * k_scale)
+                q_norm = np.float32(q[idx] * q_scale)
+                new_state = np.float32(np.float32(state_vec[idx] * decay) + np.float32(k_norm * delta))
+                expected_state[v_head, idx, value_idx] = new_state
+                out_acc = np.float32(out_acc + np.float32(q_norm * new_state))
+            expected_acc[v_head, value_idx] = out_acc
+    expected_out = np.empty_like(out)
+    for v_head in range(num_v_heads):
+        inv_rms = np.float32(1.0) / np.sqrt(
+            np.sum(expected_acc[v_head] * expected_acc[v_head], dtype=np.float32) / np.float32(head_v_dim)
+            + np.float32(eps),
+            dtype=np.float32,
+        )
+        for value_idx in range(head_v_dim):
+            expected_out[v_head, value_idx] = np.float32(
+                expected_acc[v_head, value_idx]
+                * inv_rms
+                * norm_weight[value_idx]
+                * _silu_np(gate_f32[v_head, value_idx])
+            )
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_linear_attn_gdn(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        conv_out_dev = dev(conv_out)
+        gate_dev = dev(gate)
+        a_dev = dev(a)
+        b_dev = dev(b)
+        dt_bias_dev = dev(dt_bias)
+        a_log_dev = dev(a_log)
+        norm_weight_dev = dev(norm_weight)
+        recurrent_state_dev = dev(recurrent_state)
+        out_dev_buf = out_dev(out)
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
+            conv_out_dev.ptr,
+            gate_dev.ptr,
+            a_dev.ptr,
+            b_dev.ptr,
+            dt_bias_dev.ptr,
+            a_log_dev.ptr,
+            norm_weight_dev.ptr,
+            recurrent_state_dev.ptr,
+            out_dev_buf.ptr,
+            eps,
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out), out_dev_buf, runtime=runtime)
+        copy_device_to_host(host_array_ptr(recurrent_state), recurrent_state_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    out_max_abs = float(np.max(np.abs(out - expected_out)))
+    state_max_abs = float(np.max(np.abs(recurrent_state - expected_state)))
+    print(
+        f"num_k_heads={num_k_heads} num_v_heads={num_v_heads} head_k_dim={head_k_dim} "
+        f"head_v_dim={head_v_dim} out_max_abs={out_max_abs:.3g} state_max_abs={state_max_abs:.3g}"
+    )
+    print("gdn_out=", out.reshape(-1).tolist())
+    return 0 if max(out_max_abs, state_max_abs) <= 1.0e-6 else 1
 
 def qwen35_linear_attn_conv_hip_smoke(
     *,

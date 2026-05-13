@@ -7,11 +7,21 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
     register_qwen35_linear_attn_conv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    build_qwen35_linear_attn_gdn,
+    plan_qwen35_linear_attn_gdn_build,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+    register_qwen35_linear_attn_gdn_kernels,
+)
 
 __all__ = [
     "build_qwen35_linear_attn_conv",
+    "build_qwen35_linear_attn_gdn",
     "plan_qwen35_linear_attn_conv_build",
+    "plan_qwen35_linear_attn_gdn_build",
+    "qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16",
     "qwen35_linear_attn_conv_decode_bf16",
     "qwen35_linear_attn_conv_decode_f32",
     "register_qwen35_linear_attn_conv_kernels",
+    "register_qwen35_linear_attn_gdn_kernels",
 ]

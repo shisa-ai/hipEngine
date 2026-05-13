@@ -2143,3 +2143,49 @@ Results:
 ### Next
 
 - Port the parent GDN recurrent RMSNorm+gate lowp kernel (`qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel`) and then resume KV append with a `KVLiveSpans` wrapper boundary.
+
+---
+
+## 2026-05-14 — Port Qwen linear-attention GDN lowp recurrent RMSNorm+gate kernel
+
+### Scope
+
+- Ported the known-good Qwen linear-attention decode recurrent kernel from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip` at `nano-vllm-amd@59195ed`:
+  - `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel`
+- Preserved the parent kernel body byte-for-byte and added only a raw-pointer C ABI wrapper:
+  - `hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16`
+- Added ctypes wrapper and registry key `gdn_recurrent_rmsnorm_gate` / `w4_paro` / `bf16_lowp`.
+- Added `scripts/smoke.py --mode qwen35-linear-attn-gdn-hip` to validate output and recurrent-state update against a deterministic NumPy oracle.
+- Updated `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.linear_attn import build_qwen35_linear_attn_gdn
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+print(build_qwen35_linear_attn_gdn(load=False, compiler_version=version).output_path)
+PY
+python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen35-linear-attn-gdn-trace -- \
+  python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Results:
+
+- `python3 -m pytest -q`: all tests passed.
+- Prebuilt artifact: `/home/lhl/.cache/hipengine/build/qwen35_linear_attn_gdn-c4397ddc15ac4854/qwen35_linear_attn_gdn.so`.
+- GDN smoke: `out_max_abs=2.98e-08`, `state_max_abs=1.49e-08`.
+- Uncontended `rocprofv3` trace: `/tmp/hipengine-qwen35-linear-attn-gdn-trace/epyc/4043784_kernel_trace.csv`.
+- Target kernel row: `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<uint16_t>`: `DurationNs=12360`, `VGPR_Count=56`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=128`, `Grid_Size_X=256`.
+
+### Next
+
+- Resume KV append and paged full-attention decode with public wrappers shaped around HIPENGINE `KVLiveSpans`, while preserving parent kernel bodies internally.

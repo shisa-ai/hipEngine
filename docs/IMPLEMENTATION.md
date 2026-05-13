@@ -45,6 +45,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Port PARO pairwise rotation helpers (`paro_rotate2`, `paro_rotate3`) for multi-projection PARO paths.
   - [x] Port Qwen full-attention prelude kernels (`partial_rotary`, `head_rmsnorm+partial_rotary`, position variant).
   - [x] Port Qwen linear-attention decode convolution (`qwen35_linear_attn_conv_decode*`, FP32/BF16 input variants).
+  - [x] Port Qwen linear-attention recurrent GDN lowp RMSNorm+gate (`qwen35_gdn_recurrent_rmsnorm_gate_lowp`).
 - [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.
 
 ## Notes
