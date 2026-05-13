@@ -4,6 +4,8 @@ Protocols, baselines, and artifact formats for every perf claim HIPENGINE retain
 
 See `docs/ROOFLINE.md` for the RDNA3 / W7900 hardware model, per-bucket decode analysis, and the "what not to chase" catalog. This doc is the operational layer on top of it.
 
+Human-readable rollup: `benchmarks/README.md` tracks current fastest accepted rows, comparison baselines, source-lineage targets, and last-updated dates. `benchmarks/CHANGELOG.md` keeps reverse-chronological one-line history so the README stays compact. Machine-readable artifacts live under `benchmarks/results/`.
+
 ## Evidence Policy (restated)
 
 Every retained performance number must carry:
@@ -38,6 +40,21 @@ Allowed artifact statuses:
 | `blocked` | Benchmark could not complete (OOM, hang, profiler failure, missing dependency, GPU busy). Record symptom and command. |
 
 A JSON artifact with `status != "accepted"` is still useful evidence, but it is not a retained performance number.
+
+## Human-readable Rollup
+
+`benchmarks/README.md` is the scoreboard. It exists because humans need a quick way to see current fastest rows across models/quants/backends without diffing JSON artifacts.
+
+Maintain it with every retained benchmark:
+
+1. Update the top `Last updated: YYYY-MM-DD` line.
+2. Add or replace the row keyed by `(model, quant, backend, workload, policy)`.
+3. Link the compact JSON artifact in `benchmarks/results/` for HIPENGINE measurements.
+4. Include correctness/validation, peak memory, source command/artifact, and per-row last-updated date.
+5. Add a dated one-line entry to `benchmarks/CHANGELOG.md` for the rollup change: model / quant / workload, metric `old -> new`, percent delta, reason/change, and artifact/source.
+6. Keep source-lineage targets and external baselines in separate tables from HIPENGINE measurements.
+
+Blocked/rejected benchmark attempts may be summarized there only if clearly marked as blocked/rejected; otherwise they live in JSON artifacts and `WORKLOG.md`. Git history for `benchmarks/README.md` and `benchmarks/CHANGELOG.md` is the human-readable performance history; JSON artifacts are the durable evidence.
 
 ## Hardware & Software Context (default)
 
@@ -334,8 +351,8 @@ Minimum sequence for a retained number:
 3. **Warmup run.** One full workload-shape pass, discarded.
 4. **Measurement.** Run the workload; `torch.cuda.synchronize()` around prefill and decode phases when torch is in play; `hipStreamSynchronize` on the default stream otherwise.
 5. **Correctness.** Run the layer-level and smoke gates (above). A failing gate kills the number — do not publish.
-6. **Artifact write.** Emit the JSON under `benchmarks/results/`. Stage and commit with the code change if there is one, or as its own `perf:` commit otherwise.
-7. **Log.** Append an entry to `WORKLOG.md` summarizing the number, the delta vs prior baseline, and any anomalies (high VGPR, scratch, unexpected kernel in trace).
+6. **Artifact + rollup.** Emit the JSON under `benchmarks/results/`, update `benchmarks/README.md`, and add a short entry to `benchmarks/CHANGELOG.md`.
+7. **Log.** Append an entry to `WORKLOG.md` summarizing the number, the delta vs prior baseline, and any anomalies (high VGPR, scratch, unexpected kernel in trace). Stage and commit the artifact/rollup/changelog/log with the code change if there is one, or as its own `perf:` commit otherwise.
 
 If the number contradicts the roofline prediction by > 2×, stop and re-audit before publishing. Overperformance usually means a measurement bug; underperformance usually means a pathology worth naming.
 

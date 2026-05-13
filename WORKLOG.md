@@ -706,3 +706,66 @@ Results:
 - CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
 - Lineage JSON smoke: `tracked=17 changed=5 optimal=present`.
 - `git diff --check`: pass.
+
+---
+
+## 2026-05-13 — Add benchmark rollup and changelog contract
+
+### Prompt / concern
+
+- User requested a human-readable way to track current fastest performance, similar to `~/amd-gpu-tuning/PLAN-MOE2.md`, without relying only on JSON artifacts.
+- Desired shape: `benchmarks/README.md` as the current scoreboard near `benchmarks/results/`, plus a reverse-chronological `benchmarks/CHANGELOG.md` so historical changes do not make the README unwieldy.
+- User clarified changelog entries should be concise dated one-liners like: model/workload metric `old -> new`, percent gain/loss, reason, and artifact/source.
+
+### Files changed
+
+- Added `benchmarks/README.md`:
+  - `Last updated: 2026-05-13` at the top.
+  - Maintenance contract for retained benchmark rows.
+  - Current fastest HIPENGINE table (empty until first accepted E2E `LLM.generate()` benchmark).
+  - Source-lineage target table from `~/amd-gpu-tuning/docs/OPTIMAL.md` for Qwen3.5-35B-A3B-PARO compact-WMMA + graph-replay route.
+  - External comparison baseline tables from `docs/BENCHMARK.md` / parent WORKLOG.
+  - `smoke_add` listed as non-throughput build/runtime smoke.
+- Added `benchmarks/CHANGELOG.md`:
+  - Reverse-chronological benchmark rollup history.
+  - Explicit entry format: `[scope] model / quant / workload: metric old -> new (+/-X%) due to reason/change; artifact/source.`
+  - Initial entries for the scoreboard creation, source-lineage target rows, external baselines, and `smoke_add` smoke row.
+- Updated `AGENTS.md`:
+  - Benchmark rollup rule now requires `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and a compact artifact under `benchmarks/results/` for every retained benchmark.
+  - Perf-change after-work rule now requires a changelog one-liner with old/new metric, percent delta, reason, and artifact/source.
+- Updated `docs/BENCHMARK.md`:
+  - Added the human-readable rollup contract.
+  - Added `benchmarks/CHANGELOG.md` as the compact history layer.
+  - Updated benchmark playbook to write JSON + README + CHANGELOG + WORKLOG together.
+
+### Verification
+
+CPU-only; no GPU/HIP/profiler commands.
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest -q
+python3 scripts/check_fixtures.py
+python3 - <<'PY'
+from pathlib import Path
+for path in [
+    Path('AGENTS.md'),
+    Path('docs/BENCHMARK.md'),
+    Path('benchmarks/README.md'),
+    Path('benchmarks/CHANGELOG.md'),
+]:
+    text = path.read_text()
+    assert text.endswith('\n'), f'{path} missing final newline'
+assert 'Last updated: 2026-05-13' in Path('benchmarks/README.md').read_text()
+assert 'old -> new' in Path('benchmarks/CHANGELOG.md').read_text()
+print('benchmark docs sanity ok')
+PY
+git diff --check
+```
+
+Results:
+
+- `python3 -m pytest -q`: `26 passed`.
+- CPU fixtures: all four pass with `max_abs=0`, `max_rel=0`.
+- Docs sanity: `benchmark docs sanity ok`.
+- `git diff --check`: pass.

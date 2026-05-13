@@ -12,6 +12,7 @@ Instruction precedence: if this file conflicts with platform / system / develope
 - **Cross-session handoff:** `WORKLOG.md`. Append-only, chronological; log decisions, commands, measurements, and next actions as they happen.
 - **Testing discipline:** math changes are guilty until proven correct. Follow RED/GREEN where practical, and use `docs/TESTING.md` for fixture/oracle/gate details.
 - **Evidence policy:** every performance claim carries model + quant + workload shape + hardware + exact command + result + correctness gate. No exceptions (see `docs/PLAN.md` "Evidence Policy" and `docs/BENCHMARK.md`).
+- **Benchmark rollup stays current.** Every retained benchmark updates `benchmarks/README.md` (`Last updated` plus table row), `benchmarks/CHANGELOG.md` (dated one-liner with old→new metric, % delta, reason, artifact/source), and a compact artifact under `benchmarks/results/`.
 - **Correctness gate for any new/ported kernel:** KL ≤ 0.05 AND top-1 agreement ≥ 90% vs `kernels/cpu_reference/` on fixture inputs.
 - **Default hardware:** AMD Radeon Pro W7900, gfx1100/RDNA3. Claims about other backends require the corresponding hardware or are marked explicitly unverified.
 - **Kernel R&D lives in `~/amd-gpu-tuning/`**, not here. HIPENGINE ingests *stable* kernels via port; micro-tuning, `rocprofv3` iteration loops, and the device-code gotcha catalog stay in the parent workspace.
@@ -33,13 +34,16 @@ Do not drift these casually. They define what HIPENGINE is.
 | Path | Purpose |
 | --- | --- |
 | `docs/PLAN.md` | Architecture, phase roadmap, LoC budgets, extensibility design. |
-| `docs/BENCHMARK.md` | Benchmark protocols, baselines to beat, correctness gate, artifact format. |
+| `docs/BENCHMARK.md` | Benchmark protocols, baselines to beat, correctness gate, artifact/rollup format. |
 | `docs/TESTING.md` | RED/GREEN workflow, correctness oracles, fixture policy, validation matrix. |
 | `docs/KERNELS.md` | Kernel catalog, source-lineage drift workflow, Qwen3.5/PARO optimal path map, port playbook, JIT cache gotcha, build profiles. |
 | `docs/source_lineage.json` | External parent-file manifest used by `scripts/check_lineage.py`. |
 | `docs/ROOFLINE.md` | RDNA3 W7900 performance model: hardware, regimes, decision tree, what-not-to-chase. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |
 | `WORKLOG.md` | Append-only cross-session journal. |
+| `benchmarks/README.md` | Human-readable current-fastest benchmark rollup and comparison tables. |
+| `benchmarks/CHANGELOG.md` | Reverse-chronological one-line history of benchmark rollup updates. |
+| `benchmarks/results/` | Compact JSON artifacts for accepted/blocked/rejected benchmark attempts. |
 | `pyproject.toml` | Package metadata and extras. Do not casually add hard deps. |
 
 ## Workflow
@@ -54,7 +58,7 @@ Do not drift these casually. They define what HIPENGINE is.
    rocminfo | grep -E 'Name:|gfx'
    ```
 4. Before any kernel port, read `docs/KERNELS.md` for the current catalog/path map and run `python3 scripts/check_lineage.py --kind kernel --diff stat` (or a narrower `--file` filter). Inspect DRIFT commits/diffs and parent WORKLOG/OPTIMAL evidence before copying code.
-5. For a perf claim, define the baseline (model, quant, workload shape, hardware, command) from `docs/BENCHMARK.md` before making the change.
+5. For a perf claim, define the baseline (model, quant, workload shape, hardware, command) from `docs/BENCHMARK.md` and `benchmarks/README.md` before making the change.
 
 ### During Work
 
@@ -68,7 +72,7 @@ Do not drift these casually. They define what HIPENGINE is.
 
 - Run the narrowest relevant test, then the applicable `docs/TESTING.md` gate before claiming done.
 - For a new / ported kernel: correctness gate vs `kernels/cpu_reference/` + a `rocprofv3 --kernel-trace` entry showing the kernel ran under the expected name with plausible `DurationNs`. See `docs/KERNELS.md`.
-- For a perf change: record baseline + new measurements in `WORKLOG.md` with exact commands, per `docs/BENCHMARK.md`.
+- For a perf change: record baseline + new measurements in `WORKLOG.md` with exact commands, emit/update the JSON artifact under `benchmarks/results/`, update `benchmarks/README.md` with the retained row and `Last updated` date, and add a dated changelog one-liner with old→new metric, % delta, reason, and artifact/source.
 - Update `docs/PLAN.md` if architectural plans shifted.
 - **Commit immediately** when the logical unit is complete and validation passes.
 
