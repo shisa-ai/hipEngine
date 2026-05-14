@@ -4110,3 +4110,25 @@ Result: cached-build guarded resident smoke passed and produced token id `62406`
 ### Next
 
 - Use this guard for any future `rocprofv3` resident benchmark/profile command.
+
+---
+
+## 2026-05-14 — Add SpecDec interfaces and KV transaction smoke
+
+### Scope
+
+- Added `DraftBatch`, `AcceptResult`, `DraftModel`, and `Verifier` under `hipengine.speculative`.
+- Draft batches carry request ids, candidate rows, parent positions, draft depths, row-to-request maps, optional tree parents, and verify mode.
+- Added smoke tests wiring draft batches through `FixedPagedKVPolicy.begin_transaction`, `commit`, and `rollback`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests && python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py -q
+```
+
+Results: all tests passed.
+
+### Next
+
+- Attach MTP/EAGLE3/DFlash draft providers as plugins once target-model batch verification is available.
