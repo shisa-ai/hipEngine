@@ -929,13 +929,17 @@ SpecDec is planned as a scheduler + plugin feature that reuses the same target-m
 |------------|--------|-------------------|
 | Medusa-style heads | Planned | Model-advertised heads produce shallow candidate rows. |
 | Lookahead decoding | Planned | Scheduler-side n-gram/cache provider emits candidate chains. |
-| MTP (multi-token pred) | Research | Qwen3.5 MTP layers provide `DraftBatch` chains attached to the target model. |
+| MTP (multi-token pred) | Research | Qwen3.5 MTP layers provide `DraftBatch` chains attached to the target model; detailed native plan: [`docs/MTP.md`](MTP.md). |
 | EAGLE3 | Research | Draft-model plugin emits feature-conditioned candidate chains/trees. |
-| DFlash (draft model) | Research | `~/FastKMS` lineage; draft-model plugin plus kernel-level acceptance experiments. |
+| DFlash (draft model) | Research | z-lab/FastKMS-lineage draft-model plugin plus DDTree/tree-verify support; detailed native plan: [`docs/DFLASH.md`](DFLASH.md). |
+
+Method-specific details live in `docs/MTP.md` and `docs/DFLASH.md`; the shared
+contract below remains authoritative for plugin boundaries and scheduler/KV
+integration.
 
 Required contract:
 
-- `DraftModel.propose(batch_state) -> DraftBatch` emits candidate tokens plus `request_id`, `draft_depth`, parent position, optional tree parent, and active mask metadata.
+- `DraftModel.propose(batch_state) -> DraftBatch` emits candidate tokens plus `request_id`, `draft_depth`, parent position, optional tree parent, and active mask metadata. `DraftBatch` carries candidate rows only; verifier implementations may insert a root/current-token row into an internal verify batch.
 - `Verifier.verify(target_state, draft_batch) -> AcceptResult` runs target verification over flattened rows using `KVLiveSpans` in verify mode.
 - `AcceptResult` records accepted counts/tokens per request and the replacement token for the first rejection.
 - Canonical KV is updated only through transactional commit/rollback hooks; rejected draft writes never leak into committed request state.

@@ -25,7 +25,9 @@ problem is no longer a draft-policy problem. It is a native runtime problem:
 
 The immediate target is **Qwen3.6/Qwen3.5 27B PARO + z-lab DFlash drafter** on
 W7900/gfx1100. The same infrastructure should later support MTP and other
-speculative decoders, but DFlash is the first native block-verifier target.
+speculative decoders, but DFlash is the first native block-verifier target. See
+[`MTP.md`](MTP.md) for the target-attached multi-token predictor plan that
+reuses this verifier/commit infrastructure after DFlash lands.
 
 ## Current evidence from `~/amd-gpu-tuning`
 
@@ -148,7 +150,9 @@ host overhead.
    topk=1/chain cannot beat AR, topk>1 policy work is premature.
 
 3. **Verify is one target forward over `N` rows.**
-   Public runtime shape:
+   HIPENGINE's speculative plugin boundary stays `DraftBatch`: it carries
+   candidate rows only, not the already-committed root. The verifier internally
+   materializes a `TargetVerifyBatch` with root at slot 0 plus candidate rows:
 
    ```text
    target_verify(tokens[N], positions[N], parents[N], tree_mask[N,N], start_pos)
@@ -370,7 +374,8 @@ Promotion gates:
 ### Flat tree ABI
 
 DDTree is not a different verifier; it is a different way to fill the same
-verify batch:
+verifier-internal `TargetVerifyBatch`. The public `DraftBatch` still carries
+candidate rows only; the verifier inserts the root row:
 
 ```text
 slot 0: root / current target token
