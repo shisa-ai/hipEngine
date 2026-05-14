@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "status": "accepted_correctness_smoke",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "mode": "resident_c2_serial_slot_runner_correctness",
+  "command": "python3 scripts/qwen35_batch_serial_correctness.py --prompt-length 16 --max-layers 2 --batch-size 2 --json benchmarks/results/2026-05-15-hipengine-qwen35-c2-serial-slot-runner-accepted.json",
+  "batch_size": 2,
+  "prompt_lengths": [
+    16,
+    16
+  ],
+  "max_layers": 2,
+  "expected_c1": [
+    {
+      "seed": 396,
+      "decode": 261,
+      "seed_logit": 10.162565231323242,
+      "decode_logit": 8.042011260986328
+    },
+    {
+      "seed": 4979,
+      "decode": 275,
+      "seed_logit": 8.566851615905762,
+      "decode_logit": 9.145906448364258
+    }
+  ],
+  "batch_serial": [
+    {
+      "seed": 396,
+      "decode": 261,
+      "seed_logit": 10.162565231323242,
+      "decode_logit": 8.042011260986328
+    },
+    {
+      "seed": 4979,
+      "decode": 275,
+      "seed_logit": 8.566851615905762,
+      "decode_logit": 9.145906448364258
+    }
+  ],
+  "passed": true,
+  "notes": [
+    "Correctness-first serial c>N bridge over batch-shaped resident slot buffers; not a throughput claim.",
+    "Compares a shared resident session against independent c=1 resident sessions."
+  ]
+}

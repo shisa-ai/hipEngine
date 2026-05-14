@@ -5022,3 +5022,51 @@ Results:
 ### Next
 
 - Continue the parity TaskList with the now-unblocked c>N/native compact prefill items before promoting any throughput claims.
+
+---
+
+## 2026-05-15 — Add Qwen3.5/PARO c>N serial slot runner bridge
+
+### Scope
+
+- Started Task #33 after c=1 parent fixture parity was unblocked.
+- Added `Qwen35ParoResidentSession.step_batch_serial(...)`, a correctness-first c>N bridge that runs one decode token per physical batch slot using the existing parent-parity c=1 layer path.
+- The bridge is explicitly serial (not a throughput path): it consumes batch-shaped resident slot buffers and per-slot state/cache views while native c-aware layer kernels remain future work.
+
+### Implementation notes
+
+- Added slot-offset helpers for:
+  - batch hidden/next-hidden row views;
+  - per-slot position/context scalar tensors and `KVLiveSpans`;
+  - per-slot linear-attention conv/recurrent state views;
+  - per-slot full-attention KV cache views.
+- Extended `_run_layers(...)` with `slot` and `persist_aliases` parameters so normal c=1 `step(...)` keeps existing alias behavior, while `step_batch_serial(...)` runs rows without permanently replacing the c=1 aliases.
+- Added `scripts/qwen35_batch_serial_correctness.py` and a unit test for slot pointer offsets/spans in `tests/test_qwen35_resident_batch_layout.py`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+
+python3 scripts/qwen35_batch_serial_correctness.py \
+  --prompt-length 16 --max-layers 2 --batch-size 2 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-c2-serial-slot-runner-accepted.json
+```
+
+Results:
+
+- Scheduler/layout tests: `13 passed`.
+- c=2 serial slot-runner smoke passed for two deterministic 16-token prompts at `max_layers=2`:
+  - independent c=1 expected row 0: seed `396`, decode `261`;
+  - c=2 batch-serial row 0: seed `396`, decode `261`;
+  - independent c=1 expected row 1: seed `4979`, decode `275`;
+  - c=2 batch-serial row 1: seed `4979`, decode `275`;
+  - logits matched exactly for the sampled seed/decode tokens.
+- Artifact: `benchmarks/results/2026-05-15-hipengine-qwen35-c2-serial-slot-runner-accepted.json`.
+- No performance claim retained; this is a correctness bridge and remains serial.
+
+### Next
+
+- Wire `step_batch_serial(...)` through `ResidentBatchScheduler` prompt/decode ownership and extend the c>N correctness harness to generated-token equality.
+- Replace serial row execution with native c-aware layer kernels only after scheduler correctness is green.

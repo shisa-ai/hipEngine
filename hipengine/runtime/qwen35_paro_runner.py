@@ -664,6 +664,49 @@ class Qwen35ParoResidentSession:
             return None
         return self._sample_from_hidden(hidden)
 
+    def step_batch_serial(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        positions: list[int] | tuple[int, ...],
+        slots: list[int] | tuple[int, ...] | None = None,
+        sample: bool = True,
+    ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
+        """Run one decode token per physical batch slot using the resident c=1 layer path.
+
+        This is a correctness-first c>N bridge: it consumes batch-shaped hidden,
+        linear-state, and KV-cache rows but executes active rows serially until
+        native c-aware layer kernels replace the fallback.
+        """
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        tokens = tuple(int(token) for token in token_ids)
+        pos = tuple(int(position) for position in positions)
+        if len(tokens) != len(pos):
+            raise ValueError("token_ids and positions must have the same length")
+        if not tokens:
+            raise ValueError("token_ids must be non-empty")
+        slot_ids = tuple(range(len(tokens))) if slots is None else tuple(int(slot) for slot in slots)
+        if len(slot_ids) != len(tokens):
+            raise ValueError("slots must match token_ids length")
+        if len(set(slot_ids)) != len(slot_ids):
+            raise ValueError("slots must be unique")
+
+        saved_hidden, saved_next_hidden = self.hidden, self.next_hidden
+        results: list[Qwen35ParoAutoregressiveStepResult | None] = []
+        try:
+            for token_id, position, slot in zip(tokens, pos, slot_ids, strict=True):
+                self._check_slot(slot)
+                self._check_position(position)
+                self._set_slot_token_embedding(token_id, slot=slot)
+                self._set_slot_position(position, slot=slot)
+                hidden = self._run_layers(position=position, slot=slot, persist_aliases=False, stream=0)
+                results.append(self._sample_from_hidden(hidden) if sample else None)
+            return tuple(results)
+        finally:
+            self.hidden, self.next_hidden = saved_hidden, saved_next_hidden
+
     def prefill_linear_tokens_native(
         self,
         token_ids: list[int] | tuple[int, ...],
@@ -781,6 +824,64 @@ class Qwen35ParoResidentSession:
                 runtime=self.runtime,
             )
 
+    def _slot_hidden_view(self, tensor: Tensor, slot: int) -> Tensor:
+        self._check_slot(slot)
+        return Tensor.from_handle(
+            tensor.ptr + int(slot) * self.hidden_nbytes,
+            (1, self.config.hidden_size),
+            tensor.dtype,
+            tensor.device,
+        )
+
+    def _slot_scalar_tensor(self, buffer: DeviceBuffer, slot: int, dtype: DType) -> Tensor:
+        self._check_slot(slot)
+        return Tensor.from_handle(buffer.ptr + int(slot) * dtype.itemsize, (1,), dtype, self.device)
+
+    def _slot_linear_state(self, layer_id: int, slot: int) -> tuple[Tensor, Tensor]:
+        self._check_slot(slot)
+        conv_state, recurrent_state, conv_buf, recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+        conv_nbytes = int(np.prod(conv_state.shape)) * conv_state.dtype.itemsize
+        recurrent_nbytes = int(np.prod(recurrent_state.shape)) * recurrent_state.dtype.itemsize
+        return (
+            Tensor.from_handle(conv_buf.ptr + int(slot) * conv_nbytes, conv_state.shape, conv_state.dtype, conv_state.device),
+            Tensor.from_handle(
+                recurrent_buf.ptr + int(slot) * recurrent_nbytes,
+                recurrent_state.shape,
+                recurrent_state.dtype,
+                recurrent_state.device,
+            ),
+        )
+
+    def _slot_full_cache(self, layer_id: int, slot: int) -> tuple[Tensor, Tensor]:
+        self._check_slot(slot)
+        key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
+        cache_nbytes = int(np.prod(key_cache.shape)) * key_cache.dtype.itemsize
+        return (
+            Tensor.from_handle(key_buf.ptr + int(slot) * cache_nbytes, key_cache.shape, key_cache.dtype, key_cache.device),
+            Tensor.from_handle(value_buf.ptr + int(slot) * cache_nbytes, value_cache.shape, value_cache.dtype, value_cache.device),
+        )
+
+    def _slot_spans(self, slot: int) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
+        position_tensor = self._slot_scalar_tensor(self.position_buf, slot, DType.INT64)
+        context_tensor = self._slot_scalar_tensor(self.context_buf, slot, DType.INT64)
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=self.block_table,
+            live_counts=position_tensor,
+            max_live_count=self.max_sequence_length - 1,
+            storage_dtype=DType.BF16,
+        )
+        decode_spans = KVLiveSpans.paged_uniform(
+            block_table=self.block_table,
+            live_counts=context_tensor,
+            max_live_count=self.max_sequence_length,
+            storage_dtype=DType.BF16,
+        )
+        return position_tensor, append_spans, decode_spans
+
+    def _check_slot(self, slot: int) -> None:
+        if slot < 0 or slot >= self.max_batch_size:
+            raise ValueError(f"slot {slot} outside batch capacity {self.max_batch_size}")
+
     def _run_linear_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
@@ -811,13 +912,26 @@ class Qwen35ParoResidentSession:
             hidden, next_hidden = next_hidden, hidden
         return hidden
 
-    def _run_layers(self, *, position: int, num_splits_override: int | None = None, stream: int = 0) -> Tensor:
-        hidden = self.hidden
-        next_hidden = self.next_hidden
+    def _run_layers(
+        self,
+        *,
+        position: int,
+        num_splits_override: int | None = None,
+        slot: int = 0,
+        persist_aliases: bool = True,
+        stream: int = 0,
+    ) -> Tensor:
+        if slot == 0 and persist_aliases:
+            hidden = self.hidden
+            next_hidden = self.next_hidden
+        else:
+            hidden = self._slot_hidden_view(self.batch_hidden, slot)
+            next_hidden = self._slot_hidden_view(self.batch_next_hidden, slot)
+        position_tensor, append_spans, decode_spans = self._slot_spans(slot)
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
-                conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+                conv_state, recurrent_state = self._slot_linear_state(layer_id, slot)
                 out = state.run_linear_attention_moe_c1_layer_fp16(
                     hidden,
                     conv_state=conv_state,
@@ -828,17 +942,17 @@ class Qwen35ParoResidentSession:
                     stream=stream,
                 )
             elif layer_type == "full_attention":
-                key_cache, value_cache, _key_buf, _value_buf = self.full_caches[layer_id]
+                key_cache, value_cache = self._slot_full_cache(layer_id, slot)
                 num_splits = num_splits_override or max(1, (position + 1 + self.chunk_size - 1) // self.chunk_size)
                 out = state.run_full_attention_moe_c1_layer_fp16(
                     hidden,
                     key_cache=key_cache,
                     value_cache=value_cache,
-                    append_spans=self.append_spans,
-                    decode_spans=self.decode_spans,
+                    append_spans=append_spans,
+                    decode_spans=decode_spans,
                     cos_table=self.cos,
                     sin_table=self.sin,
-                    position=self.position_tensor,
+                    position=position_tensor,
                     max_positions=self.max_sequence_length,
                     attention_scratch=self.full_scratch[layer_id],
                     moe_scratch=self.moe_scratch[layer_id],
@@ -851,8 +965,9 @@ class Qwen35ParoResidentSession:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
             self.runtime.memcpy_async(next_hidden.ptr, out.ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
             hidden, next_hidden = next_hidden, hidden
-        self.hidden = hidden
-        self.next_hidden = next_hidden
+        if persist_aliases:
+            self.hidden = hidden
+            self.next_hidden = next_hidden
         return hidden
 
     def _build(self) -> None:
@@ -1228,10 +1343,42 @@ class Qwen35ParoResidentSession:
                 free(mask_buf, runtime=self.runtime)
             free(pos_buf, runtime=self.runtime)
 
+    def _set_slot_token_embedding(self, token_id: int, *, slot: int, stream: int = 0) -> None:
+        if token_id < 0 or token_id >= self.vocab_size:
+            raise ValueError(f"token_id {token_id} outside [0, {self.vocab_size})")
+        token_ptr = self.token_id_buf.ptr + int(slot) * DType.INT64.itemsize
+        set_i64_scalar(
+            token_ptr,
+            token_id,
+            stream=stream,
+            library=self.libraries["runtime_state"],
+            runtime=self.runtime,
+        )
+        embedding_lookup_fp16_i64(
+            self.embedding.tensor.ptr,
+            token_ptr,
+            self._slot_hidden_view(self.batch_hidden, slot).ptr,
+            self.config.hidden_size,
+            self.vocab_size,
+            stream=stream,
+            library=self.libraries["runtime_state"],
+            runtime=self.runtime,
+        )
+
     def _set_position(self, position: int, *, stream: int = 0) -> None:
         set_decode_position_i64(
             self.position_buf.ptr,
             self.context_buf.ptr,
+            int(position),
+            stream=stream,
+            library=self.libraries["runtime_state"],
+            runtime=self.runtime,
+        )
+
+    def _set_slot_position(self, position: int, *, slot: int, stream: int = 0) -> None:
+        set_decode_position_i64(
+            self.position_buf.ptr + int(slot) * DType.INT64.itemsize,
+            self.context_buf.ptr + int(slot) * DType.INT64.itemsize,
             int(position),
             stream=stream,
             library=self.libraries["runtime_state"],
