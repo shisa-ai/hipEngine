@@ -4692,3 +4692,57 @@ Results:
 ### Next
 
 - Finish task #38's broad wrapper audit with FP16 weighted/shared-gate combine wrappers; then re-evaluate whether task #38 can close or needs runtime materialization from task #39 first.
+
+---
+
+## 2026-05-15 — Add DFlash/DDTree native implementation plan
+
+### Scope
+
+- Created `docs/DFLASH.md` as the HIPENGINE-side plan for a proper native
+  DFlash implementation.
+- Consolidated lessons from `~/amd-gpu-tuning/PLAN-DFLASH.md`,
+  `docs/SPECULATIVE-DECODE.md`, `docs/DFLASH-FRESH-EYES.md`, recent
+  2026-05-15 WORKLOG entries, and local references (`reference/ddtree-mlx`,
+  `reference/hipfire`, `reference/lucebox-hub/dflash`).
+- Main decision recorded: the current Python/PyTorch DFlash harness has proven
+  correctness and the corrected tree-kernel shape, but the remaining speed gap
+  is a native-runtime verifier problem. The production path belongs in
+  HIPENGINE as a torch-free C++/HIP hot loop with stable buffers, persistent
+  state rings, device-side accept summaries, and graph-capturable fixed shapes.
+- Included DDTree-specific ABI/semantics: flat topological tree, `parent_ids`,
+  positions/depths, ancestor mask, target-top1 edge following, no DFS-state
+  contamination, commit by state/KV slot copy, and budget=4 as the default
+  promotion target after chain DFlash beats AR.
+- Added a phased port plan: source-lineage refresh, native chain verifier,
+  device-side top1/accept, native DFlash drafter + draft context KV, DDTree
+  compiler/tree verify, graph capture, and benchmark/promotion gates.
+
+### Validation
+
+```bash
+git -C /home/lhl/hipengine status -sb
+python3 - <<'PY'
+from pathlib import Path
+p = Path('/home/lhl/hipengine/docs/DFLASH.md')
+text = p.read_text()
+assert '# HIPENGINE DFlash / DDTree Native Implementation Plan' in text
+assert 'DDTree details to preserve' in text
+assert 'First concrete HIPENGINE tasks' in text
+print(len(text.splitlines()), 'lines')
+PY
+git -C /home/lhl/hipengine diff --stat -- docs/DFLASH.md WORKLOG.md
+git -C /home/lhl/hipengine diff --staged --name-only
+git -C /home/lhl/hipengine diff --staged -- docs/DFLASH.md WORKLOG.md
+```
+
+Notes:
+
+- No GPU run required; this is docs/process planning only.
+- Left unrelated in-progress FP16 wrapper changes in the worktree untouched.
+
+### Next
+
+- Use `docs/DFLASH.md` as the launch checklist when starting HIPENGINE DFlash:
+  first source-lineage refresh for corrected tree Conv/GDN and pack8 small-row
+  defaults, then a native topk=1 chain verifier before DDTree policy work.
