@@ -18,7 +18,7 @@ Active implementation checklist. Keep this file lightweight; durable architectur
 - [x] Add source-lineage drift checker for `~/amd-gpu-tuning/nano-vllm-amd` port inputs.
 - [x] Resolve `rocprofv3` trace hang for Python/ctypes smoke before first real kernel port.
 - [x] Port first real gfx1100 model-layer family: Qwen3.5 BF16 `rmsnorm` raw-pointer wrappers.
-- [ ] Add minimal `scripts/smoke.py` path that exercises `LLM.generate()` once the engine loop exists.
+- [x] Add minimal `scripts/smoke.py` path that exercises `LLM.generate()` once the engine loop exists.
 
 ## OPTIMAL MoE/PARO reproduction exercise
 
@@ -50,6 +50,9 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Wire Qwen3.5/PARO linear-attention+MoE c=1 full-layer decode-state chain.
   - [x] Wire Qwen3.5/PARO full-attention+MoE c=1 full-layer decode-state chain.
   - [x] Add minimal real-model one-token next-token harness over all Qwen3.5/PARO layers.
+  - [x] Add GPU FP16 lm-head + GPU argmax for the one-token Qwen3.5/PARO harness.
+  - [x] Add resident all-layer loading and progress-visible materialization for the E2E harness.
+  - [x] Wire the Qwen3.5/PARO one-token path through `LLM.generate()` and `scripts/smoke.py`.
   - [x] Add Qwen3.5/PARO parent-compatible prepared MoE host/device layouts (router+shared gate, stacked expert pack8 tensors).
   - [x] Add torch-free named runtime workspace allocator for scratch/device tensors.
   - [x] Add minimal Qwen3.5/PARO one-token decode-state scratch scaffold.

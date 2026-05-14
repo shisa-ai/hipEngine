@@ -6,10 +6,22 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     plan_dense_gemv_build,
     register_dense_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.linear.lm_head import (
+    build_lm_head,
+    lm_head_argmax_stage1_blocks,
+    lm_head_fp16_argmax_bf16,
+    plan_lm_head_build,
+    register_lm_head_kernels,
+)
 
 __all__ = [
     "build_dense_gemv",
     "dense_gemv_out_bf16",
     "plan_dense_gemv_build",
     "register_dense_gemv_kernels",
+    "build_lm_head",
+    "lm_head_argmax_stage1_blocks",
+    "lm_head_fp16_argmax_bf16",
+    "plan_lm_head_build",
+    "register_lm_head_kernels",
 ]

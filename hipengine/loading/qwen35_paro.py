@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import Any
+
+from safetensors import safe_open
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
@@ -515,7 +519,14 @@ def validate_qwen35_paro_linear_attention_moe_c1_layout(
     return result
 
 
-def prepare_qwen35_paro_moe_c1_host_tensors(index: WeightIndex, *, layer_id: int = 0) -> dict[str, object]:
+def prepare_qwen35_paro_moe_c1_host_tensors(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    normalized: dict[str, TensorInfo] | None = None,
+    reader: "_NormalizedTensorReader | None" = None,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, object]:
     """Prepare parent-compatible MoE c=1 host layouts without torch.
 
     This mirrors the optimized parent stack's load-time preparation: router and
@@ -525,42 +536,64 @@ def prepare_qwen35_paro_moe_c1_host_tensors(index: WeightIndex, *, layer_id: int
     """
 
     config = qwen35_paro_config_from_hf(index.config)
-    normalized = _normalized_tensor_map(index)
-    prefix = f"layers.{layer_id}.mlp"
-    experts = f"{prefix}.experts"
-    prepared: dict[str, object] = {}
-    gate = _read_normalized_numpy_tensor(normalized, f"{prefix}.gate.weight")
-    shared_gate = _read_normalized_numpy_tensor(normalized, f"{prefix}.shared_expert_gate.weight")
-    prepared[f"{prefix}.router_shared_gate.weight"] = _concat_rows((gate, shared_gate))
-    for proj, hf_proj in (("gate", "gate_proj"), ("up", "up_proj"), ("down", "down_proj")):
-        qweight = _stack_expert_refs(normalized, layer_id=layer_id, num_experts=config.num_experts, proj=hf_proj, suffix="qweight")
-        prepared[f"{experts}.stacked_{proj}_qweight"] = qweight
-        prepared[f"{experts}.stacked_{proj}_qweight_pack8_decode"] = _transpose_decode_qweight(qweight)
-        prepared[f"{experts}.stacked_{proj}_qzeros"] = _stack_expert_refs(
-            normalized,
-            layer_id=layer_id,
-            num_experts=config.num_experts,
-            proj=hf_proj,
-            suffix="qzeros",
-        )
-        prepared[f"{experts}.stacked_{proj}_scales"] = _stack_expert_refs(
-            normalized,
-            layer_id=layer_id,
-            num_experts=config.num_experts,
-            proj=hf_proj,
-            suffix="scales",
-        )
-    shared = f"{prefix}.shared_expert"
-    shared_gate = _read_normalized_numpy_tensor(normalized, f"{shared}.gate_proj.weight")
-    shared_up = _read_normalized_numpy_tensor(normalized, f"{shared}.up_proj.weight")
-    shared_down = _read_normalized_numpy_tensor(normalized, f"{shared}.down_proj.weight")
-    gate_up_q, gate_up_scale = _quantize_w8a16_host(_concat_rows((shared_gate, shared_up)))
-    down_q, down_scale = _quantize_w8a16_host(shared_down)
-    prepared[f"{shared}.gate_up_weight_w8a16"] = gate_up_q
-    prepared[f"{shared}.gate_up_weight_w8a16_scale"] = gate_up_scale
-    prepared[f"{shared}.down_weight_w8a16"] = down_q
-    prepared[f"{shared}.down_weight_w8a16_scale"] = down_scale
-    return prepared
+    normalized = normalized or _normalized_tensor_map(index)
+    owns_reader = reader is None
+    reader = reader or _NormalizedTensorReader(normalized)
+    try:
+        prefix = f"layers.{layer_id}.mlp"
+        experts = f"{prefix}.experts"
+        prepared: dict[str, object] = {}
+        _emit_progress(progress, "prepare_router_start", layer=layer_id)
+        gate = _read_normalized_numpy_tensor(normalized, f"{prefix}.gate.weight", reader=reader)
+        shared_gate = _read_normalized_numpy_tensor(normalized, f"{prefix}.shared_expert_gate.weight", reader=reader)
+        prepared[f"{prefix}.router_shared_gate.weight"] = _concat_rows((gate, shared_gate))
+        _emit_progress(progress, "prepare_router_done", layer=layer_id)
+        for proj, hf_proj in (("gate", "gate_proj"), ("up", "up_proj"), ("down", "down_proj")):
+            qweight = _stack_expert_refs(
+                normalized,
+                layer_id=layer_id,
+                num_experts=config.num_experts,
+                proj=hf_proj,
+                suffix="qweight",
+                reader=reader,
+                progress=progress,
+            )
+            prepared[f"{experts}.stacked_{proj}_qweight"] = qweight
+            prepared[f"{experts}.stacked_{proj}_qweight_pack8_decode"] = _transpose_decode_qweight(qweight)
+            prepared[f"{experts}.stacked_{proj}_qzeros"] = _stack_expert_refs(
+                normalized,
+                layer_id=layer_id,
+                num_experts=config.num_experts,
+                proj=hf_proj,
+                suffix="qzeros",
+                reader=reader,
+                progress=progress,
+            )
+            prepared[f"{experts}.stacked_{proj}_scales"] = _stack_expert_refs(
+                normalized,
+                layer_id=layer_id,
+                num_experts=config.num_experts,
+                proj=hf_proj,
+                suffix="scales",
+                reader=reader,
+                progress=progress,
+            )
+        shared = f"{prefix}.shared_expert"
+        _emit_progress(progress, "prepare_shared_expert_start", layer=layer_id)
+        shared_gate = _read_normalized_numpy_tensor(normalized, f"{shared}.gate_proj.weight", reader=reader)
+        shared_up = _read_normalized_numpy_tensor(normalized, f"{shared}.up_proj.weight", reader=reader)
+        shared_down = _read_normalized_numpy_tensor(normalized, f"{shared}.down_proj.weight", reader=reader)
+        gate_up_q, gate_up_scale = _quantize_w8a16_host(_concat_rows((shared_gate, shared_up)))
+        down_q, down_scale = _quantize_w8a16_host(shared_down)
+        prepared[f"{shared}.gate_up_weight_w8a16"] = gate_up_q
+        prepared[f"{shared}.gate_up_weight_w8a16_scale"] = gate_up_scale
+        prepared[f"{shared}.down_weight_w8a16"] = down_q
+        prepared[f"{shared}.down_weight_w8a16_scale"] = down_scale
+        _emit_progress(progress, "prepare_shared_expert_done", layer=layer_id)
+        return prepared
+    finally:
+        if owns_reader:
+            reader.close()
 
 
 def materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(
@@ -597,14 +630,31 @@ def materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(
     )
 
 
-def prepare_qwen35_paro_moe_c1_runtime_host_tensors(index: WeightIndex, *, layer_id: int = 0) -> dict[str, object]:
+def prepare_qwen35_paro_moe_c1_runtime_host_tensors(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    normalized: dict[str, TensorInfo] | None = None,
+    reader: "_NormalizedTensorReader | None" = None,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, object]:
     """Prepare decode-runtime MoE tensors with BF16 bit buffers where required."""
 
-    prepared = prepare_qwen35_paro_moe_c1_host_tensors(index, layer_id=layer_id)
+    _emit_progress(progress, "prepare_moe_start", layer=layer_id)
+    prepared = prepare_qwen35_paro_moe_c1_host_tensors(
+        index,
+        layer_id=layer_id,
+        normalized=normalized,
+        reader=reader,
+        progress=progress,
+    )
     runtime_prepared: dict[str, object] = {}
     for name in runtime_prepared_moe_c1_tensor_names(layer_id=layer_id):
         array = prepared[name]
+        _emit_progress(progress, "prepare_runtime_tensor_start", layer=layer_id, name=name)
         runtime_prepared[name] = float_array_to_bf16_bits(array) if _runtime_tensor_needs_bf16_bits(name) else array
+        _emit_progress(progress, "prepare_runtime_tensor_done", layer=layer_id, name=name)
+    _emit_progress(progress, "prepare_moe_done", layer=layer_id)
     return runtime_prepared
 
 
@@ -615,6 +665,7 @@ def materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(
     device: Device | None = None,
     runtime: HipRuntime | None = None,
     validate: bool = True,
+    progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> Qwen35ParoLayerDeviceWeights:
     """Materialize the current real full-attention decode-state layer path."""
 
@@ -632,6 +683,7 @@ def materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(
         runtime_full_attention_moe_c1_tensor_names(layer_id=layer_id),
         device=device,
         runtime=runtime,
+        progress=progress,
     )
 
 
@@ -642,6 +694,7 @@ def materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(
     device: Device | None = None,
     runtime: HipRuntime | None = None,
     validate: bool = True,
+    progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> Qwen35ParoLayerDeviceWeights:
     """Materialize the current real linear-attention decode-state layer path."""
 
@@ -659,15 +712,52 @@ def materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(
         runtime_linear_attention_moe_c1_tensor_names(layer_id=layer_id),
         device=device,
         runtime=runtime,
+        progress=progress,
     )
 
 
-def _read_normalized_numpy_tensor(tensors: dict[str, TensorInfo], name: str):
-    from safetensors import safe_open
+class _NormalizedTensorReader:
+    """Cached safetensors reader for one materialization pass."""
 
-    info = tensors[name]
-    with safe_open(str(info.shard_path), framework="numpy") as handle:
+    def __init__(self, tensors: dict[str, TensorInfo]) -> None:
+        self._tensors = tensors
+        self._stack = ExitStack()
+        self._handles: dict[str, Any] = {}
+
+    def get(self, name: str):
+        info = self._tensors[name]
+        key = str(info.shard_path)
+        handle = self._handles.get(key)
+        if handle is None:
+            handle = self._stack.enter_context(safe_open(key, framework="numpy"))
+            self._handles[key] = handle
         return handle.get_tensor(info.name)
+
+    def close(self) -> None:
+        self._stack.close()
+
+    def __enter__(self) -> "_NormalizedTensorReader":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+def _emit_progress(progress: Callable[[dict[str, Any]], None] | None, event: str, **fields: Any) -> None:
+    if progress is not None:
+        progress({"event": event, **fields})
+
+
+def _read_normalized_numpy_tensor(
+    tensors: dict[str, TensorInfo],
+    name: str,
+    *,
+    reader: _NormalizedTensorReader | None = None,
+):
+    if reader is not None:
+        return reader.get(name)
+    with _NormalizedTensorReader(tensors) as as_reader:
+        return as_reader.get(name)
 
 
 def _stack_expert_refs(
@@ -677,14 +767,28 @@ def _stack_expert_refs(
     num_experts: int,
     proj: str,
     suffix: str,
+    reader: _NormalizedTensorReader | None = None,
+    progress: Callable[[dict[str, Any]], None] | None = None,
 ):
     import numpy as np
 
-    arrays = [
-        _read_normalized_numpy_tensor(tensors, f"layers.{layer_id}.mlp.experts.{expert}.{proj}.{suffix}")
-        for expert in range(num_experts)
-    ]
-    return np.ascontiguousarray(np.stack(arrays, axis=0))
+    arrays = []
+    _emit_progress(progress, "expert_stack_start", layer=layer_id, proj=proj, suffix=suffix, total=num_experts)
+    for expert in range(num_experts):
+        if expert == 0 or (expert + 1) % 32 == 0 or expert + 1 == num_experts:
+            _emit_progress(
+                progress,
+                "expert_stack_progress",
+                layer=layer_id,
+                proj=proj,
+                suffix=suffix,
+                expert=expert + 1,
+                total=num_experts,
+            )
+        arrays.append(_read_normalized_numpy_tensor(tensors, f"layers.{layer_id}.mlp.experts.{expert}.{proj}.{suffix}", reader=reader))
+    stacked = np.ascontiguousarray(np.stack(arrays, axis=0))
+    _emit_progress(progress, "expert_stack_done", layer=layer_id, proj=proj, suffix=suffix, shape=tuple(stacked.shape))
+    return stacked
 
 
 def _concat_rows(arrays: tuple[object, ...]):
@@ -744,19 +848,27 @@ def _materialize_runtime_layer(
     *,
     device: Device | None,
     runtime: HipRuntime | None,
+    progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> Qwen35ParoLayerDeviceWeights:
     normalized = _normalized_tensor_map(index)
     prepared_names = set(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id))
     allocations: dict[str, DeviceTensorAllocation] = {}
+    reader = _NormalizedTensorReader(normalized)
     try:
-        for name in names:
-            if name in prepared_names:
-                continue
-            info = normalized[name]
+        direct_names = tuple(name for name in names if name not in prepared_names)
+        for idx, name in enumerate(direct_names, start=1):
+            _emit_progress(
+                progress,
+                "materialize_tensor_start",
+                layer=layer_id,
+                name=name,
+                index=idx,
+                total=len(direct_names),
+            )
             if _runtime_tensor_needs_f32(name):
                 import numpy as np
 
-                array = np.ascontiguousarray(_read_normalized_numpy_tensor(normalized, name), dtype=np.float32)
+                array = np.ascontiguousarray(_read_normalized_numpy_tensor(normalized, name, reader=reader), dtype=np.float32)
                 allocations[name] = load_host_array_to_device_as_dtype(
                     name,
                     array,
@@ -767,7 +879,7 @@ def _materialize_runtime_layer(
             elif _runtime_tensor_needs_qwen_norm_offset(name):
                 import numpy as np
 
-                direct = np.asarray(_read_normalized_numpy_tensor(normalized, name), dtype=np.float32)
+                direct = np.asarray(_read_normalized_numpy_tensor(normalized, name, reader=reader), dtype=np.float32)
                 array = float_array_to_bf16_bits(np.ascontiguousarray(direct - np.float32(1.0)))
                 allocations[name] = load_host_array_to_device_as_dtype(
                     name,
@@ -777,7 +889,7 @@ def _materialize_runtime_layer(
                     runtime=runtime,
                 )
             elif _runtime_tensor_needs_bf16_bits(name):
-                array = float_array_to_bf16_bits(_read_normalized_numpy_tensor(normalized, name))
+                array = float_array_to_bf16_bits(_read_normalized_numpy_tensor(normalized, name, reader=reader))
                 allocations[name] = load_host_array_to_device_as_dtype(
                     name,
                     array,
@@ -786,14 +898,32 @@ def _materialize_runtime_layer(
                     runtime=runtime,
                 )
             else:
-                allocation = load_tensor_info_to_device(info, device=device, runtime=runtime)
-                allocations[name] = DeviceTensorAllocation(
-                    name=name,
-                    source=allocation.source,
-                    buffer=allocation.buffer,
-                    tensor=allocation.tensor,
-                )
-        for name, array in prepare_qwen35_paro_moe_c1_runtime_host_tensors(index, layer_id=layer_id).items():
+                array = _read_normalized_numpy_tensor(normalized, name, reader=reader)
+                allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
+            _emit_progress(
+                progress,
+                "materialize_tensor_done",
+                layer=layer_id,
+                name=name,
+                index=idx,
+                total=len(direct_names),
+            )
+        prepared = prepare_qwen35_paro_moe_c1_runtime_host_tensors(
+            index,
+            layer_id=layer_id,
+            normalized=normalized,
+            reader=reader,
+            progress=progress,
+        )
+        for idx, (name, array) in enumerate(prepared.items(), start=1):
+            _emit_progress(
+                progress,
+                "materialize_prepared_tensor_start",
+                layer=layer_id,
+                name=name,
+                index=idx,
+                total=len(prepared),
+            )
             if _runtime_tensor_needs_bf16_bits(name):
                 allocations[name] = load_host_array_to_device_as_dtype(
                     name,
@@ -804,9 +934,19 @@ def _materialize_runtime_layer(
                 )
             else:
                 allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
+            _emit_progress(
+                progress,
+                "materialize_prepared_tensor_done",
+                layer=layer_id,
+                name=name,
+                index=idx,
+                total=len(prepared),
+            )
     except Exception:
         DeviceWeightMap(allocations).free(runtime=runtime)
         raise
+    finally:
+        reader.close()
     return Qwen35ParoLayerDeviceWeights(
         config=config,
         layer_id=layer_id,

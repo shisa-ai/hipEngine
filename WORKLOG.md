@@ -3304,3 +3304,44 @@ Results on W7900 / real checkpoint `/models/huggingface/hub/models--z-lab--Qwen3
 - This is a one-token decode smoke, not proper multi-token prefill: prompt tokenization currently selects one input token (or `--token-id`).
 - `lm_head` is CPU NumPy argmax for bring-up only; port/use the GPU lm-head route before making performance claims.
 - Next: wire this harness behind `LLM.generate()` or a smoke mode, then add persistent per-layer state/KV for multi-token generation.
+
+---
+
+## 2026-05-14 — Wire Qwen3.5/PARO E2E harness through resident GPU path
+
+### Scope
+
+- Refactored `scripts/qwen35_paro_next_token.py` into reusable `Qwen35ParoNextTokenRunner` plus a thin CLI.
+- Added a generation registry and wired the Qwen3.5/PARO one-token path through `LLM.generate()` without engine-level backend/quant branches.
+- Added a resident all-layer mode for the harness so all 40 layer states can be materialized before execution.
+- Added cached safetensors shard handles plus progress-visible materialization events for direct tensors, expert stacking, prepared tensors, and layer execution.
+- Added a GPU FP16 lm-head + GPU two-stage argmax kernel (`lm_head_fp16_argmax_bf16`) so the E2E harness no longer needs CPU NumPy for final-token selection.
+- Updated `docs/IMPLEMENTATION.md` and `docs/KERNELS.md`.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/loading/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_next_token.py scripts/smoke.py hipengine/llm.py hipengine/generation/qwen35_paro.py
+python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_lm_head_plan.py tests/test_llm_generate.py tests/test_model_quant_and_imports.py -q
+python3 scripts/smoke.py --mode lm-head-hip --hidden-size 32
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace -d /tmp/hipengine-lm-head-rocprof -f csv -- python3 scripts/smoke.py --mode lm-head-hip --hidden-size 32 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_next_token.py --max-layers 1 --token-id 9707 --resident-layers --lm-head gpu_fp16_argmax --progress
+python3 scripts/qwen35_paro_next_token.py --token-id 9707 --resident-layers --lm-head gpu_fp16_argmax --progress
+```
+
+Results on W7900 / real checkpoint `/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd`:
+
+- Focused tests: `20 passed` for layout + lm-head + LLM dispatch subsets.
+- Standalone GPU lm-head smoke: `lm_head_id=29`, `expected_id=29`, `index_match=True`, logit abs `0.0`.
+- `rocprofv3` kernel trace captured `lm_head_fp16_logits_kernel`, `argmax_stage1_kernel`, and `argmax_stage2_kernel`, all with `Scratch_Size=0`.
+- One-layer resident harness with GPU lm-head matched the earlier CPU sanity output: next token `62406` (`"ullo"`), logit `6.594387054443359`.
+- All-layer resident harness completed all 40 layers (`linear_attention` x30, `full_attention` x10) and GPU lm-head/argmax:
+  - next token `76323` (`"arra"`), GPU lm-head logit `7.267126560211182`.
+  - This matches the prior CPU-argmax token; logit differs only by FP32 roundoff vs prior CPU value `7.267126083374023`.
+
+### Caveats / Next
+
+- This is still one-token decode bring-up, not full multi-token generation/prefill.
+- Host load/prep remains the dominant wall-time because expert stack prep is still Python/NumPy-side; progress now makes that visible.
+- Next performance path: persistent process-level layer state reuse across tokens, real KV/recurrent state advancement, GPU sampling, then graph/captured replay.

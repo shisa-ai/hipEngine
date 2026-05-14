@@ -8,6 +8,7 @@ GPU/JIT path for the first raw-pointer HIP smoke kernel.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -18,6 +19,11 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.dispatch.fusion import FusionPlanner, resolve_plan
 from hipengine.kernels.registry import MissingKernelError
 from hipengine.models import resolve_model
+
+DEFAULT_QWEN35_PARO_MODEL = (
+    "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
+    "snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
+)
 
 
 def main() -> int:
@@ -49,15 +55,24 @@ def main() -> int:
             "paro-silu-hip",
             "paro-combine-hip",
             "dense-gemv-hip",
+            "lm-head-hip",
             "w8a16-linear-hip",
             "w8a16-shared-expert-hip",
             "paro-moe-c1-hip",
             "paro-moe-c1-state-hip",
+            "qwen35-paro-generate-hip",
         ),
         default="registry",
     )
     parser.add_argument("--n", type=int, default=1024, help="Element count for smoke-add-hip.")
     parser.add_argument("--rows", type=int, default=2, help="Rows/tokens for HIP smoke modes.")
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_QWEN35_PARO_MODEL,
+        help="Model path for qwen35-paro-generate-hip.",
+    )
+    parser.add_argument("--prompt", default="Hello", help="Prompt for qwen35-paro-generate-hip.")
+    parser.add_argument("--max-tokens", type=int, default=1, help="Max tokens for generate smoke.")
     parser.add_argument(
         "--hidden-size",
         type=int,
@@ -85,6 +100,8 @@ def main() -> int:
         return cpu_fixture_smoke()
     if args.mode == "smoke-add-plan":
         return smoke_add_plan_smoke()
+    if args.mode == "qwen35-paro-generate-hip":
+        return qwen35_paro_generate_hip_smoke(args.model, args.prompt, args.max_tokens)
     compiler_version = None
     if args.compiler_version_file is not None:
         compiler_version = _read_compiler_version(args.compiler_version_file)
@@ -214,6 +231,12 @@ def main() -> int:
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
+    if args.mode == "lm-head-hip":
+        return lm_head_hip_smoke(
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
     if args.mode == "w8a16-linear-hip":
         return w8a16_linear_hip_smoke(
             args.rows,
@@ -279,6 +302,103 @@ def smoke_add_plan_smoke() -> int:
     print("command:", " ".join(artifact.command))
     print("dry-run only: no hipcc invocation, no GPU access")
     return 0
+
+
+def qwen35_paro_generate_hip_smoke(model: str, prompt: str, max_tokens: int) -> int:
+    from hipengine import LLM, SamplingParams
+
+    llm = LLM(model, backend="hip_gfx1100", quant="w4_paro")
+    outputs = llm.generate(
+        prompt,
+        SamplingParams(max_tokens=max_tokens, temperature=0.0, top_p=1.0),
+    )
+    print(
+        json.dumps(
+            {
+                "model": model,
+                "prompt": prompt,
+                "outputs": outputs,
+                "max_tokens": max_tokens,
+                "path": "LLM.generate/qwen3_5_moe_paro/hip_gfx1100/w4_paro",
+            },
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def lm_head_hip_smoke(
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.kernels.hip_gfx1100.linear import (
+        build_lm_head,
+        lm_head_argmax_stage1_blocks,
+        lm_head_fp16_argmax_bf16,
+    )
+
+    vocab_size = 257
+    hidden_f32 = np.linspace(-0.75, 0.9, hidden_size, dtype=np.float32)
+    hidden_bits = _float32_to_bf16_bits(hidden_f32)
+    hidden_bf32 = _bf16_bits_to_float32(hidden_bits)
+    weight_f32 = np.asarray(
+        [[((row * 17 + col * 5) % 31 - 15) / 16.0 for col in range(hidden_size)] for row in range(vocab_size)],
+        dtype=np.float32,
+    )
+    weight_f16 = np.ascontiguousarray(weight_f32.astype(np.float16))
+    expected_logits = weight_f16.astype(np.float32) @ hidden_bf32.astype(np.float32)
+    expected_id = int(np.argmax(expected_logits))
+    expected_logit = float(expected_logits[expected_id])
+
+    runtime = get_hip_runtime()
+    library = build_lm_head(load=True, compiler_version=compiler_version, require_cached=require_cached_build)
+    threads = 256
+    stage1_blocks = lm_head_argmax_stage1_blocks(vocab_size, threads=threads)
+    buffers = []
+    try:
+        hidden_dev = malloc(hidden_bits.nbytes, runtime=runtime); buffers.append(hidden_dev)
+        weight_dev = malloc(weight_f16.nbytes, runtime=runtime); buffers.append(weight_dev)
+        logits_dev = malloc(vocab_size * np.dtype(np.float32).itemsize, runtime=runtime); buffers.append(logits_dev)
+        block_values_dev = malloc(stage1_blocks * np.dtype(np.float32).itemsize, runtime=runtime); buffers.append(block_values_dev)
+        block_indices_dev = malloc(stage1_blocks * np.dtype(np.int64).itemsize, runtime=runtime); buffers.append(block_indices_dev)
+        out_index_dev = malloc(np.dtype(np.int64).itemsize, runtime=runtime); buffers.append(out_index_dev)
+        out_value_dev = malloc(np.dtype(np.float32).itemsize, runtime=runtime); buffers.append(out_value_dev)
+        copy_host_to_device(hidden_dev, host_array_ptr(hidden_bits), runtime=runtime)
+        copy_host_to_device(weight_dev, host_array_ptr(weight_f16), runtime=runtime)
+        lm_head_fp16_argmax_bf16(
+            hidden_dev.ptr,
+            weight_dev.ptr,
+            logits_dev.ptr,
+            block_values_dev.ptr,
+            block_indices_dev.ptr,
+            out_index_dev.ptr,
+            out_value_dev.ptr,
+            hidden_size,
+            vocab_size,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        out_index = np.empty((1,), dtype=np.int64)
+        out_value = np.empty((1,), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(out_index), out_index_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_value), out_value_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    index_match = int(out_index[0]) == expected_id
+    logit_abs = abs(float(out_value[0]) - expected_logit)
+    print(f"lm_head_id={int(out_index[0])} expected_id={expected_id} index_match={index_match}")
+    print(f"lm_head_logit={float(out_value[0])} expected_logit={expected_logit} abs={logit_abs}")
+    return 0 if index_match and logit_abs <= 1.0e-5 else 1
 
 
 def _read_compiler_version(path: Path) -> str:
