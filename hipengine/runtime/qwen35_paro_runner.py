@@ -28,13 +28,17 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16,
 )
-from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16
+from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16
+from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16, paro_rmsnorm_out_fp16
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     embedding_lookup_batch_bf16_i64,
+    embedding_lookup_batch_fp16_i64,
     embedding_lookup_batch_mapped_bf16_i64,
+    embedding_lookup_batch_mapped_fp16_i64,
     embedding_lookup_bf16_i64,
+    embedding_lookup_fp16_i64,
     set_decode_position_i64,
     set_decode_positions_i64,
     set_i64_scalar,
@@ -694,7 +698,7 @@ class Qwen35ParoResidentSession:
         token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(token_buf, host_array_ptr(token_arr), runtime=self.runtime)
         try:
-            embedding_lookup_batch_bf16_i64(
+            embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
                 token_buf.ptr,
                 self.prefill_hidden.ptr,
@@ -778,8 +782,8 @@ class Qwen35ParoResidentSession:
             )
 
     def _run_linear_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
-        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.BF16, self.device)
-        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.BF16, self.device)
+        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
+        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type != "linear_attention":
@@ -787,13 +791,13 @@ class Qwen35ParoResidentSession:
             conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
             linear_scratch = self.linear_scratch[layer_id]
             if linear_scratch.attn_input.shape[0] < tokens:
-                linear_scratch = state.reserve_linear_attention_scratch(tokens=tokens)
+                linear_scratch = state.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
                 self.linear_scratch[layer_id] = linear_scratch
             moe_scratch = self.moe_scratch[layer_id]
             if moe_scratch.normed.shape[0] < tokens:
-                moe_scratch = state.reserve_moe_c1_scratch(tokens=tokens)
+                moe_scratch = state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
                 self.moe_scratch[layer_id] = moe_scratch
-            out = state.run_linear_attention_moe_c1_layer_bf16(
+            out = state.run_linear_attention_moe_c1_layer_fp16(
                 hidden,
                 conv_state=conv_state,
                 recurrent_state=recurrent_state,
@@ -814,7 +818,7 @@ class Qwen35ParoResidentSession:
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
                 conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
-                out = state.run_linear_attention_moe_c1_layer_bf16(
+                out = state.run_linear_attention_moe_c1_layer_fp16(
                     hidden,
                     conv_state=conv_state,
                     recurrent_state=recurrent_state,
@@ -826,7 +830,7 @@ class Qwen35ParoResidentSession:
             elif layer_type == "full_attention":
                 key_cache, value_cache, _key_buf, _value_buf = self.full_caches[layer_id]
                 num_splits = num_splits_override or max(1, (position + 1 + self.chunk_size - 1) // self.chunk_size)
-                out = state.run_full_attention_moe_c1_layer_bf16(
+                out = state.run_full_attention_moe_c1_layer_fp16(
                     hidden,
                     key_cache=key_cache,
                     value_cache=value_cache,
@@ -904,18 +908,18 @@ class Qwen35ParoResidentSession:
 
     def _load_embedding(self) -> None:
         self._emit("load_embedding_start")
-        embed_bits = float_array_to_bf16_bits(_read_tensor(self.runner.normalized_infos, "language_model.embed_tokens.weight"))
-        if embed_bits.shape[1] != self.config.hidden_size:
-            raise ValueError(f"embedding hidden size {embed_bits.shape[1]} does not match {self.config.hidden_size}")
+        embed_fp16 = np.ascontiguousarray(_read_tensor(self.runner.normalized_infos, "language_model.embed_tokens.weight"), dtype=np.float16)
+        if embed_fp16.shape[1] != self.config.hidden_size:
+            raise ValueError(f"embedding hidden size {embed_fp16.shape[1]} does not match {self.config.hidden_size}")
         self.embedding = load_host_array_to_device_as_dtype(
-            "language_model.embed_tokens.weight.bf16",
-            embed_bits,
-            DType.BF16,
+            "language_model.embed_tokens.weight.fp16",
+            embed_fp16,
+            DType.FP16,
             runtime=self.runtime,
         )
         self.allocations.append(self.embedding)
-        self.vocab_size = int(embed_bits.shape[0])
-        self.hidden_nbytes = int(self.config.hidden_size) * DType.BF16.itemsize
+        self.vocab_size = int(embed_fp16.shape[0])
+        self.hidden_nbytes = int(self.config.hidden_size) * DType.FP16.itemsize
         self.batch_hidden_nbytes = self.max_batch_size * self.hidden_nbytes
         self.prefill_hidden_nbytes = self.max_sequence_length * self.hidden_nbytes
         self._emit("load_embedding_done", vocab_size=self.vocab_size, hidden_size=self.config.hidden_size)
@@ -923,11 +927,11 @@ class Qwen35ParoResidentSession:
     def _load_final_norm_and_head(self) -> None:
         self._emit("load_final_norm_start")
         norm_weight_host = np.asarray(_read_tensor(self.runner.normalized_infos, "language_model.norm.weight"), dtype=np.float32)
-        norm_bits = float_array_to_bf16_bits(norm_weight_host + np.float32(1.0))
+        norm_fp16 = np.ascontiguousarray(norm_weight_host + np.float32(1.0), dtype=np.float16)
         self.norm_weight = load_host_array_to_device_as_dtype(
-            "model.norm.weight",
-            norm_bits,
-            DType.BF16,
+            "model.norm.weight.fp16",
+            norm_fp16,
+            DType.FP16,
             runtime=self.runtime,
         )
         self.allocations.append(self.norm_weight)
@@ -961,25 +965,28 @@ class Qwen35ParoResidentSession:
         hidden_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         next_hidden_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         norm_out_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
+        norm_out_bf16_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         prefill_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
         prefill_next_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
-        self.buffers.extend((hidden_buf, next_hidden_buf, norm_out_buf, prefill_hidden_buf, prefill_next_hidden_buf))
-        self.batch_hidden = Tensor.from_handle(hidden_buf.ptr, self.batch_layout.hidden_shape, DType.BF16, self.device)
-        self.batch_next_hidden = Tensor.from_handle(next_hidden_buf.ptr, self.batch_layout.hidden_shape, DType.BF16, self.device)
-        self.batch_norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.hidden_shape, DType.BF16, self.device)
-        self.hidden = Tensor.from_handle(hidden_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
-        self.next_hidden = Tensor.from_handle(next_hidden_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
-        self.norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
+        self.buffers.extend((hidden_buf, next_hidden_buf, norm_out_buf, norm_out_bf16_buf, prefill_hidden_buf, prefill_next_hidden_buf))
+        self.batch_hidden = Tensor.from_handle(hidden_buf.ptr, self.batch_layout.hidden_shape, DType.FP16, self.device)
+        self.batch_next_hidden = Tensor.from_handle(next_hidden_buf.ptr, self.batch_layout.hidden_shape, DType.FP16, self.device)
+        self.batch_norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.hidden_shape, DType.FP16, self.device)
+        self.batch_norm_out_bf16 = Tensor.from_handle(norm_out_bf16_buf.ptr, self.batch_layout.hidden_shape, DType.BF16, self.device)
+        self.hidden = Tensor.from_handle(hidden_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.FP16, self.device)
+        self.next_hidden = Tensor.from_handle(next_hidden_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.FP16, self.device)
+        self.norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.FP16, self.device)
+        self.norm_out_bf16 = Tensor.from_handle(norm_out_bf16_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
         self.prefill_hidden = Tensor.from_handle(
             prefill_hidden_buf.ptr,
             (self.max_sequence_length, self.config.hidden_size),
-            DType.BF16,
+            DType.FP16,
             self.device,
         )
         self.prefill_next_hidden = Tensor.from_handle(
             prefill_next_hidden_buf.ptr,
             (self.max_sequence_length, self.config.hidden_size),
-            DType.BF16,
+            DType.FP16,
             self.device,
         )
 
@@ -1044,7 +1051,7 @@ class Qwen35ParoResidentSession:
         )
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
-            self.moe_scratch[layer_id] = state.reserve_moe_c1_scratch(tokens=1)
+            self.moe_scratch[layer_id] = state.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16)
             if layer_type == "linear_attention":
                 conv_zero = np.zeros(
                     (self.max_batch_size, qkv_width, self.config.linear_conv_kernel_dim),
@@ -1078,7 +1085,7 @@ class Qwen35ParoResidentSession:
                     self.device,
                 )
                 self.linear_states[layer_id] = (conv_state, recurrent_state, conv_buf, recurrent_buf, conv_zero, recurrent_zero)
-                self.linear_scratch[layer_id] = state.reserve_linear_attention_scratch(tokens=1)
+                self.linear_scratch[layer_id] = state.reserve_linear_attention_scratch(tokens=1, activation_dtype=DType.FP16)
             elif layer_type == "full_attention":
                 key_zero = np.zeros(self.batch_layout.full_kv_shape, dtype=np.uint16)
                 value_zero = np.zeros_like(key_zero)
@@ -1087,7 +1094,12 @@ class Qwen35ParoResidentSession:
                 key_cache = Tensor.from_handle(key_buf.ptr, self.batch_layout.slot0_full_kv_shape, DType.BF16, self.device)
                 value_cache = Tensor.from_handle(value_buf.ptr, self.batch_layout.slot0_full_kv_shape, DType.BF16, self.device)
                 self.full_caches[layer_id] = (key_cache, value_cache, key_buf, value_buf)
-                self.full_scratch[layer_id] = state.reserve_full_attention_scratch(tokens=1, num_splits=self.max_splits)
+                self.full_scratch[layer_id] = state.reserve_full_attention_scratch(
+                    tokens=1,
+                    num_splits=self.max_splits,
+                    activation_dtype=DType.FP16,
+                    gated_dtype=DType.FP16,
+                )
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
 
@@ -1104,7 +1116,7 @@ class Qwen35ParoResidentSession:
         self._set_token_embedding_from_ptr(self.token_id_buf.ptr, stream=stream)
 
     def _set_token_embedding_from_ptr(self, token_id_ptr: int, *, stream: int = 0) -> None:
-        embedding_lookup_bf16_i64(
+        embedding_lookup_fp16_i64(
             self.embedding.tensor.ptr,
             token_id_ptr,
             self.hidden.ptr,
@@ -1154,7 +1166,7 @@ class Qwen35ParoResidentSession:
                     raise ValueError("row_map entries must reference token_ids")
                 row_buf = malloc(row_arr.nbytes, runtime=self.runtime)
                 copy_host_to_device(row_buf, host_array_ptr(row_arr), runtime=self.runtime)
-            embedding_lookup_batch_mapped_bf16_i64(
+            embedding_lookup_batch_mapped_fp16_i64(
                 self.embedding.tensor.ptr,
                 self.token_id_buf.ptr,
                 self.batch_hidden.ptr,
@@ -1167,7 +1179,7 @@ class Qwen35ParoResidentSession:
                 library=self.libraries["runtime_state"],
                 runtime=self.runtime,
             )
-            return Tensor.from_handle(self.batch_hidden.ptr, (rows, self.config.hidden_size), DType.BF16, self.device)
+            return Tensor.from_handle(self.batch_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
         finally:
             if row_buf is not None:
                 free(row_buf, runtime=self.runtime)
@@ -1231,7 +1243,7 @@ class Qwen35ParoResidentSession:
             raise ValueError(f"position {position} outside session capacity {self.max_sequence_length}")
 
     def _sample_device_from_hidden(self, hidden: Tensor, *, stream: int = 0) -> None:
-        paro_rmsnorm_out_bf16(
+        paro_rmsnorm_out_fp16(
             hidden.ptr,
             self.norm_weight.tensor.ptr,
             self.norm_out.ptr,
@@ -1242,8 +1254,16 @@ class Qwen35ParoResidentSession:
             library=self.libraries["norm"],
             runtime=self.runtime,
         )
-        w8a16_linear_bf16_f32_out(
+        fp16_to_bf16(
             self.norm_out.ptr,
+            self.norm_out_bf16.ptr,
+            self.config.hidden_size,
+            stream=stream,
+            library=self.libraries["cast"],
+            runtime=self.runtime,
+        )
+        w8a16_linear_bf16_f32_out(
+            self.norm_out_bf16.ptr,
             self.lm_head_weight.tensor.ptr,
             self.lm_head_scale.tensor.ptr,
             self.lm_logits.ptr,

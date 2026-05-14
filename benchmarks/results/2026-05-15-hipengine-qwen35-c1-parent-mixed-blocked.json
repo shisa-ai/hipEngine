@@ -1,0 +1,74 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-15T05:49:00-07:00",
+  "run_tag": "hipengine-qwen35-c1-parent-mixed-fp16-iter9",
+  "summary": "HIPENGINE resident c=1 now uses parent-mixed FP16 activations/scratch/wrappers with BF16 KV and q/k head-norm exceptions, but the 512-token parent fixture still fails first-token parity.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "commit": "4a35afe+working-tree",
+    "dirty": true
+  },
+  "workload": {
+    "model": "Qwen3.5-35B-A3B-PARO",
+    "quant": "w4_paro",
+    "prompt_tokens": 512,
+    "decode_tokens_run": 1,
+    "fixture_decode_tokens": 32,
+    "concurrency": 1,
+    "prompt_source": "torch_cpu_randint_seed1234",
+    "seed": 1234
+  },
+  "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+  "commands": {
+    "source_lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "hipengine": "python3 scripts/qwen35_e2e_correctness.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-new-tokens 1 --max-layers 0 --repeat 1 --json /tmp/hipengine-qwen35-parent-fp16-iter9.json",
+    "guard": "python3 -m compileall -q hipengine tests scripts && python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q",
+    "rocprof_rotary": "rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-qwen35-fp16-switch-rotary -- python3 scripts/smoke.py --mode qwen35-rotary-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "rocprof_kv": "rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-qwen35-fp16-switch-kv -- python3 scripts/smoke.py --mode qwen35-paged-kv-write-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build"
+  },
+  "correctness": {
+    "passed": false,
+    "finite_logits": true,
+    "deterministic": true,
+    "expected_match": false,
+    "hip_seed_token_ids": [220],
+    "first_mismatch_index": 0,
+    "expected_prefix": [1739],
+    "actual_prefix": [58],
+    "actual_first_top_logit": 9.434697151184082
+  },
+  "measurements_observed_not_claimed": {
+    "hipengine_prefill_tok_s": 120.50416857886741,
+    "hipengine_decode_tok_s": 102.1363665235296,
+    "parent_prefill_tok_s": 2682.660298904437,
+    "parent_decode_tok_s": 116.25779530736419
+  },
+  "memory": {
+    "hipengine_owned_device_bytes": 1625192589,
+    "hipengine_owned_device_gib": 1.5135785462334752,
+    "parent_allocated_after_load_bytes": 19644673536,
+    "parent_peak_allocated_bytes": 20183255040
+  },
+  "fixes_validated": [
+    "resident embedding/hidden/scratch/final-norm paths switched to FP16 activations",
+    "linear-attention, full-attention, MoE, router, dense GEMV, PARO SiLU/rotate/combine, and W8A16 lowp wrappers now have FP16 resident dispatch paths",
+    "full-attention KV remains BF16 while paged KV write accepts FP16 value inputs",
+    "final norm emits FP16 and casts to BF16 before the temporary BF16 lm-head path"
+  ],
+  "kernel_evidence": {
+    "qwen35_split_qgate_fp16_kernel_duration_ns": 3720,
+    "qwen35_write_paged_kv_mixed_value_position_tensor_fp16_duration_ns": 5400,
+    "qwen35_rotary_smoke": "partial_max_abs=0 head_max_abs=2.38e-07 position_max_abs=2.38e-07 split_fp16_query_max_abs=0 split_fp16_gate_mismatch=0",
+    "paged_kv_smoke": "mixed_mismatch=0/0 mixed_fp16_mismatch=0/0 f32_mismatch=0/0 untouched_nonzero=0"
+  },
+  "blockers": [
+    "Parent fixture first decode token still mismatches after parent-mixed FP16 switch: expected 1739, got 58 with top logit 9.434697151184082.",
+    "The HIP prefill sampled seed changed to 220 in this run; next task should bisect the residual parity gap at per-layer logits/hidden states instead of broad BF16-vs-FP16 activation policy.",
+    "HIPENGINE prefill remains sequential c=1 and is not parent bulk/native compact prefill speed-equivalent.",
+    "Observed tok/s are correctness-smoke timings only and are not retained performance claims because correctness failed."
+  ]
+}

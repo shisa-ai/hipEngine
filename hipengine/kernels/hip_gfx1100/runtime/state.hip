@@ -238,6 +238,49 @@ extern "C" int hipengine_embedding_lookup_batch_mapped_bf16_i64(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_embedding_lookup_fp16_i64(
+    const uint16_t* embedding,
+    const int64_t* token_id,
+    uint16_t* out,
+    int64_t hidden_size,
+    int64_t vocab_size,
+    hipStream_t stream) {
+  return hipengine_embedding_lookup_bf16_i64(embedding, token_id, out, hidden_size, vocab_size, stream);
+}
+
+extern "C" int hipengine_embedding_lookup_batch_fp16_i64(
+    const uint16_t* embedding,
+    const int64_t* token_ids,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t vocab_size,
+    hipStream_t stream) {
+  return hipengine_embedding_lookup_batch_bf16_i64(embedding, token_ids, out, tokens, hidden_size, vocab_size, stream);
+}
+
+extern "C" int hipengine_embedding_lookup_batch_mapped_fp16_i64(
+    const uint16_t* embedding,
+    const int64_t* token_ids,
+    const int32_t* row_map,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    int64_t vocab_size,
+    int64_t token_slots,
+    hipStream_t stream) {
+  return hipengine_embedding_lookup_batch_mapped_bf16_i64(
+      embedding,
+      token_ids,
+      row_map,
+      out,
+      rows,
+      hidden_size,
+      vocab_size,
+      token_slots,
+      stream);
+}
+
 extern "C" int hipengine_set_i64_scalar(int64_t* out, int64_t value, hipStream_t stream) {
   hipLaunchKernelGGL(
       set_i64_scalar_kernel,

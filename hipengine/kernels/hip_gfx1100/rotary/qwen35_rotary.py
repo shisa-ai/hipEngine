@@ -12,6 +12,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("qwen35_rotary.hip")
 _OUTPUT_NAME = "qwen35_rotary.so"
 _SYMBOL_SPLIT_QGATE = "hipengine_qwen35_split_qgate_bf16"
+_SYMBOL_SPLIT_QGATE_FP16 = "hipengine_qwen35_split_qgate_fp16"
 _SYMBOL_PARTIAL = "hipengine_qwen35_partial_rotary_f32"
 _SYMBOL_HEAD_RMS = "hipengine_qwen35_head_rmsnorm_partial_rotary_f32_bf16"
 _SYMBOL_HEAD_RMS_POSITION = "hipengine_qwen35_head_rmsnorm_partial_rotary_position_f32_bf16"
@@ -95,6 +96,34 @@ def qwen35_split_qgate_bf16(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def qwen35_split_qgate_fp16(
+    q_proj_ptr: int,
+    query_out_ptr: int,
+    gate_out_ptr: int,
+    tokens: int,
+    num_q_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Split interleaved FP16 Qwen full-attention q_proj rows into FP32 query and FP16 gate buffers."""
+
+    _launch_split_qgate(
+        _SYMBOL_SPLIT_QGATE_FP16,
+        q_proj_ptr,
+        query_out_ptr,
+        gate_out_ptr,
+        tokens,
+        num_q_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def qwen35_partial_rotary_f32(
@@ -246,6 +275,11 @@ def register_qwen35_rotary_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "split_qgate", "w4_paro", "qwen35_fp16"),
+        qwen35_split_qgate_fp16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "partial_rotary", "w4_paro", "qwen35_f32"),
         qwen35_partial_rotary_f32,
         replace=replace,
@@ -265,6 +299,47 @@ def register_qwen35_rotary_kernels(*, replace: bool = True) -> None:
         qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
         replace=replace,
     )
+
+
+def _launch_split_qgate(
+    symbol: str,
+    q_proj_ptr: int,
+    query_out_ptr: int,
+    gate_out_ptr: int,
+    tokens: int,
+    num_q_heads: int,
+    head_dim: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(tokens, "tokens")
+    _check_positive(num_q_heads, "num_q_heads")
+    _check_positive(head_dim, "head_dim")
+    library = library or build_qwen35_rotary(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(q_proj_ptr),
+        ctypes.c_void_p(query_out_ptr),
+        ctypes.c_void_p(gate_out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def _launch_head_rmsnorm_partial_rotary(
@@ -290,6 +365,8 @@ def _launch_head_rmsnorm_partial_rotary(
     runtime: HipRuntime | None,
 ) -> None:
     _check_common_shape(num_q_heads, num_kv_heads, head_dim, rotary_dim)
+    if position_ptr is not None and max_positions <= 0:
+        raise ValueError("max_positions must be positive")
     library = library or build_qwen35_rotary(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
@@ -327,8 +404,6 @@ def _launch_head_rmsnorm_partial_rotary(
             ctypes.c_void_p(stream),
         )
     else:
-        if max_positions <= 0:
-            raise ValueError("max_positions must be positive")
         fn.argtypes = [
             ctypes.c_void_p,
             ctypes.c_void_p,

@@ -1919,6 +1919,7 @@ def qwen35_paged_kv_write_hip_smoke(
         build_qwen35_paged_kv_write,
         qwen35_write_paged_kv_f32_spans,
         qwen35_write_paged_kv_mixed_value_bf16_spans,
+        qwen35_write_paged_kv_mixed_value_fp16_spans,
     )
     from hipengine.kvcache import KVLiveSpans
 
@@ -1939,12 +1940,16 @@ def qwen35_paged_kv_write_hip_smoke(
         [[-0.125, 0.375, -0.625, 0.875], [1.125, -1.375, 1.625, -1.875]], dtype=np.float32
     )
     value_bf16_bits = _float32_to_bf16_bits(value_f32)
+    value_fp16 = value_f32.astype(np.float16)
     mixed_key_cache = np.zeros((blocks, block_size, num_kv_heads, head_dim), dtype=np.uint16)
     mixed_value_cache = np.zeros_like(mixed_key_cache)
+    mixed_fp16_key_cache = np.zeros_like(mixed_key_cache)
+    mixed_fp16_value_cache = np.zeros_like(mixed_key_cache)
     f32_key_cache = np.zeros_like(mixed_key_cache)
     f32_value_cache = np.zeros_like(mixed_key_cache)
     expected_key_bits = _float32_to_bf16_bits(key)
     expected_value_bf16_bits = value_bf16_bits
+    expected_value_fp16_bits = _float32_to_bf16_bits(value_fp16.astype(np.float32))
     expected_value_f32_bits = _float32_to_bf16_bits(value_f32)
 
     runtime = get_hip_runtime()
@@ -1973,8 +1978,11 @@ def qwen35_paged_kv_write_hip_smoke(
         key_dev = dev(key)
         value_f32_dev = dev(value_f32)
         value_bf16_dev = dev(value_bf16_bits)
+        value_fp16_dev = dev(value_fp16)
         mixed_key_cache_dev = out_dev(mixed_key_cache)
         mixed_value_cache_dev = out_dev(mixed_value_cache)
+        mixed_fp16_key_cache_dev = out_dev(mixed_fp16_key_cache)
+        mixed_fp16_value_cache_dev = out_dev(mixed_fp16_value_cache)
         f32_key_cache_dev = out_dev(f32_key_cache)
         f32_value_cache_dev = out_dev(f32_value_cache)
         spans = KVLiveSpans.paged_uniform(
@@ -1999,6 +2007,18 @@ def qwen35_paged_kv_write_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        qwen35_write_paged_kv_mixed_value_fp16_spans(
+            key_dev.ptr,
+            value_fp16_dev.ptr,
+            mixed_fp16_key_cache_dev.ptr,
+            mixed_fp16_value_cache_dev.ptr,
+            spans,
+            block_size,
+            num_kv_heads,
+            head_dim,
+            library=library,
+            runtime=runtime,
+        )
         qwen35_write_paged_kv_f32_spans(
             key_dev.ptr,
             value_f32_dev.ptr,
@@ -2014,6 +2034,8 @@ def qwen35_paged_kv_write_hip_smoke(
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(mixed_key_cache), mixed_key_cache_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(mixed_value_cache), mixed_value_cache_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(mixed_fp16_key_cache), mixed_fp16_key_cache_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(mixed_fp16_value_cache), mixed_fp16_value_cache_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(f32_key_cache), f32_key_cache_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(f32_value_cache), f32_value_cache_dev, runtime=runtime)
     finally:
@@ -2023,6 +2045,8 @@ def qwen35_paged_kv_write_hip_smoke(
     target = (physical_block, block_offset)
     mixed_key_mismatch = int(np.count_nonzero(mixed_key_cache[target] != expected_key_bits))
     mixed_value_mismatch = int(np.count_nonzero(mixed_value_cache[target] != expected_value_bf16_bits))
+    mixed_fp16_key_mismatch = int(np.count_nonzero(mixed_fp16_key_cache[target] != expected_key_bits))
+    mixed_fp16_value_mismatch = int(np.count_nonzero(mixed_fp16_value_cache[target] != expected_value_fp16_bits))
     f32_key_mismatch = int(np.count_nonzero(f32_key_cache[target] != expected_key_bits))
     f32_value_mismatch = int(np.count_nonzero(f32_value_cache[target] != expected_value_f32_bits))
     untouched_mask = np.ones(mixed_key_cache.shape, dtype=bool)
@@ -2031,12 +2055,15 @@ def qwen35_paged_kv_write_hip_smoke(
     print(
         f"block_size={block_size} position={position} physical_block={physical_block} "
         f"mixed_mismatch={mixed_key_mismatch}/{mixed_value_mismatch} "
+        f"mixed_fp16_mismatch={mixed_fp16_key_mismatch}/{mixed_fp16_value_mismatch} "
         f"f32_mismatch={f32_key_mismatch}/{f32_value_mismatch} untouched_nonzero={untouched}"
     )
     print("kv_key=", _bf16_bits_to_float32(mixed_key_cache[target]).reshape(-1).tolist())
     return 0 if (
         mixed_key_mismatch == 0
         and mixed_value_mismatch == 0
+        and mixed_fp16_key_mismatch == 0
+        and mixed_fp16_value_mismatch == 0
         and f32_key_mismatch == 0
         and f32_value_mismatch == 0
     ) else 1
@@ -2930,6 +2957,7 @@ def qwen35_rotary_hip_smoke(
         qwen35_head_rmsnorm_partial_rotary_f32_bf16,
         qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
         qwen35_partial_rotary_f32,
+        qwen35_split_qgate_fp16,
     )
 
     num_q_heads = 2
@@ -2960,6 +2988,12 @@ def qwen35_rotary_hip_smoke(
     head_key = np.empty_like(key)
     position_query = np.empty_like(query)
     position_key = np.empty_like(key)
+    q_proj_fp16 = np.arange(num_q_heads * 2 * head_dim, dtype=np.float32).reshape(1, num_q_heads, 2 * head_dim)
+    q_proj_fp16 = (q_proj_fp16 * np.float32(0.125) - np.float32(1.0)).astype(np.float16)
+    split_query = np.empty((1, num_q_heads, head_dim), dtype=np.float32)
+    split_gate = np.empty((1, num_q_heads, head_dim), dtype=np.float16)
+    expected_split_query = q_proj_fp16[:, :, :head_dim].astype(np.float32)
+    expected_split_gate = q_proj_fp16[:, :, head_dim:]
 
     def head_ref(src: np.ndarray, weight_bits: np.ndarray) -> np.ndarray:
         weight = _bf16_bits_to_float32(weight_bits).reshape(1, head_dim)
@@ -3012,6 +3046,9 @@ def qwen35_rotary_hip_smoke(
         head_key_dev = out_dev(head_key)
         position_query_dev = out_dev(position_query)
         position_key_dev = out_dev(position_key)
+        q_proj_fp16_dev = dev(q_proj_fp16)
+        split_query_dev = out_dev(split_query)
+        split_gate_dev = out_dev(split_gate)
         qwen35_partial_rotary_f32(
             query_dev.ptr,
             key_dev.ptr,
@@ -3043,6 +3080,16 @@ def qwen35_rotary_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        qwen35_split_qgate_fp16(
+            q_proj_fp16_dev.ptr,
+            split_query_dev.ptr,
+            split_gate_dev.ptr,
+            1,
+            num_q_heads,
+            head_dim,
+            library=library,
+            runtime=runtime,
+        )
         qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
             query_dev.ptr,
             key_dev.ptr,
@@ -3069,6 +3116,8 @@ def qwen35_rotary_hip_smoke(
         copy_device_to_host(host_array_ptr(head_key), head_key_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(position_query), position_query_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(position_key), position_key_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(split_query), split_query_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(split_gate), split_gate_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
@@ -3085,13 +3134,22 @@ def qwen35_rotary_hip_smoke(
             np.max(np.abs(position_key - expected_head_key)),
         )
     )
+    split_query_max_abs = float(np.max(np.abs(split_query - expected_split_query)))
+    split_gate_mismatch = int(np.count_nonzero(split_gate.view(np.uint16) != expected_split_gate.view(np.uint16)))
     print(
         f"num_q_heads={num_q_heads} num_kv_heads={num_kv_heads} head_dim={head_dim} "
         f"rotary_dim={rotary_dim} partial_max_abs={partial_max_abs:.3g} "
-        f"head_max_abs={head_max_abs:.3g} position_max_abs={position_max_abs:.3g}"
+        f"head_max_abs={head_max_abs:.3g} position_max_abs={position_max_abs:.3g} "
+        f"split_fp16_query_max_abs={split_query_max_abs:.3g} split_fp16_gate_mismatch={split_gate_mismatch}"
     )
     print("head_query0=", head_query[0].tolist())
-    return 0 if partial_max_abs == 0.0 and head_max_abs <= 1.0e-6 and position_max_abs <= 1.0e-6 else 1
+    return 0 if (
+        partial_max_abs == 0.0
+        and head_max_abs <= 1.0e-6
+        and position_max_abs <= 1.0e-6
+        and split_query_max_abs == 0.0
+        and split_gate_mismatch == 0
+    ) else 1
 
 def qwen35_router_hip_smoke(
     rows: int,

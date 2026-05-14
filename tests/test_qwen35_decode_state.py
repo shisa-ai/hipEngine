@@ -1147,3 +1147,161 @@ def test_qwen35_decode_state_free_releases_workspace() -> None:
 
     assert runtime.allocations == {}
     assert len(runtime.freed) == 30
+
+
+def test_qwen35_decode_state_reserves_parent_mixed_fp16_scratch() -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime)
+
+    attn = state.reserve_full_attention_scratch(tokens=1, num_splits=2, activation_dtype="fp16", gated_dtype="fp16")
+    linear = state.reserve_linear_attention_scratch(tokens=1, activation_dtype="fp16")
+    moe = state.reserve_moe_c1_scratch(tokens=1, activation_dtype="fp16")
+
+    assert attn.attn_input.dtype is DType.FP16
+    assert attn.q_proj.dtype is DType.FP16
+    assert attn.key_bf16.dtype is DType.FP16
+    assert attn.value.dtype is DType.FP16
+    assert attn.query.dtype is DType.FP32
+    assert attn.key.dtype is DType.FP32
+    assert linear.qkv.dtype is DType.FP16
+    assert linear.recurrent_bf16.dtype is DType.FP16
+    assert moe.normed.dtype is DType.FP16
+    assert moe.gate_up.dtype is DType.FP16
+    assert moe.moe_out.dtype is DType.FP16
+
+
+def test_qwen35_decode_state_runs_linear_attention_fp16_out_proj_chain(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    hidden = _tensor(0xC000, (1, 4096), "fp16")
+    conv_state = _tensor(0xC100, (8192, 4), "fp32")
+    recurrent_state = _tensor(0xC200, (32, 128, 128), "fp32")
+    scratch = state.reserve_linear_attention_scratch(tokens=1, activation_dtype="fp16")
+    order = []
+
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_fp16", lambda *a, **k: order.append("rotate2"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_fp16", lambda *a, **k: order.append("dual_pack8"))
+    monkeypatch.setattr(qwen_runtime, "dense_dual_gemv_out_fp16", lambda *a, **k: order.append("dense_dual"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_decode_fp16", lambda *a, **k: order.append("conv"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16", lambda *a, **k: order.append("gdn"))
+    monkeypatch.setattr(qwen_runtime, "f32_to_fp16", lambda *a, **k: order.append("cast"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", lambda *a, **k: order.append("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_fp16", lambda *a, **k: order.append("pack8"))
+
+    out = state.run_linear_attention_out_proj_fp16(
+        hidden,
+        conv_state=conv_state,
+        recurrent_state=recurrent_state,
+        scratch=scratch,
+    )
+
+    assert out is scratch.out_proj
+    assert order == ["rotate2", "dual_pack8", "dense_dual", "conv", "gdn", "cast", "rotate1", "pack8"]
+
+
+def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=1, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (1, 4096), "fp16")
+    residual = _tensor(0xCC00, (1, 4096), "fp16")
+    order = []
+
+    monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_fp16", lambda *a, **k: order.append("router"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_fp16", lambda *a, **k: order.append("gate_up"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_fp16", lambda *a, **k: order.append("silu_rotate"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_fp16", lambda *a, **k: order.append("down"))
+    monkeypatch.setattr(qwen_runtime, "w8a16_linear_fp16_lowp_out", lambda *a, **k: order.append("w8a16"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_fp16", lambda *a, **k: order.append("shared_silu"))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "weighted_sum_shared_gate_combine_residual_out_fp16_f32w",
+        lambda *a, **k: order.append("combine"),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w",
+        lambda *a, **k: order.append("combine_batch"),
+    )
+
+    out = state.run_moe_c1_fp16(hidden, residual, scratch=scratch)
+
+    assert out is scratch.moe_out
+    assert order == ["router", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine"]
+
+
+def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    weights = DeviceWeightMap({**_full_attention_weights().tensors, **_prepared_moe_weights().tensors})
+    state = _state(runtime, weights)
+    hidden = _tensor(0xC000, (1, 4096), "fp16")
+    key_cache = _tensor(0xE000, (1, 256, 2, 256), "bf16")
+    value_cache = _tensor(0xF000, (1, 256, 2, 256), "bf16")
+    cos_table = _tensor(0xD200, (4, 256), "fp32")
+    sin_table = _tensor(0xD300, (4, 256), "fp32")
+    position = _tensor(0xD400, (1,), "int64")
+    attn = state.reserve_full_attention_scratch(tokens=1, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
+    moe = state.reserve_moe_c1_scratch(tokens=1, activation_dtype="fp16")
+    order = []
+
+    for name, label in [
+        ("paro_rmsnorm_out_fp16", "input_norm"),
+        ("paro_rotate3_fp16", "rotate3"),
+        ("gemv_awq_dual_pack8_transposed_fp16", "dual_pack8"),
+        ("gemv_awq_pack8_strided_fp16", "pack8"),
+        ("qwen35_split_qgate_fp16", "split_qgate"),
+        ("fp16_to_f32", "fp16_to_f32"),
+        ("qwen35_head_rmsnorm_partial_rotary_position_f32_bf16", "head_rotary"),
+        ("qwen35_write_paged_kv_mixed_value_fp16_spans", "kv"),
+        ("qwen35_full_attn_decode_context_bf16", "dense_attention_context"),
+        ("qwen35_full_attn_gate_mul_fp16", "attention_gate"),
+        ("paro_rotate1_fp16", "rotate1"),
+        ("paro_add_rmsnorm_out_fp16", "post_norm"),
+        ("qwen35_router_topk_shared_out_fp16", "router"),
+        ("gemv_awq_selected_dual_pack8_transposed_fp16", "gate_up"),
+        ("silu_mul_dual_rotate_out_fp16", "silu_rotate"),
+        ("gemv_awq_selected_pack8_transposed_fp16", "down"),
+        ("w8a16_linear_fp16_lowp_out", "w8a16"),
+        ("silu_mul_dual_out_fp16", "shared_silu"),
+        ("weighted_sum_shared_gate_combine_residual_out_fp16_f32w", "combine"),
+    ]:
+        monkeypatch.setattr(qwen_runtime, name, lambda *a, label=label, **k: order.append(label))
+
+    out = state.run_full_attention_moe_c1_layer_fp16(
+        hidden,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        append_spans=_spans(),
+        decode_spans=_spans(),
+        cos_table=cos_table,
+        sin_table=sin_table,
+        position=position,
+        max_positions=4,
+        attention_scratch=attn,
+        moe_scratch=moe,
+    )
+
+    assert out is moe.moe_out
+    assert order == [
+        "input_norm",
+        "rotate3",
+        "dual_pack8",
+        "pack8",
+        "split_qgate",
+        "fp16_to_f32",
+        "head_rotary",
+        "kv",
+        "dense_attention_context",
+        "attention_gate",
+        "rotate1",
+        "pack8",
+        "post_norm",
+        "router",
+        "gate_up",
+        "silu_rotate",
+        "down",
+        "w8a16",
+        "shared_silu",
+        "w8a16",
+        "combine",
+    ]

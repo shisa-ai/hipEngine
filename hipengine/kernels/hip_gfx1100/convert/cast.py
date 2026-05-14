@@ -13,6 +13,9 @@ _SOURCE = Path(__file__).with_name("cast.hip")
 _OUTPUT_NAME = "cast.so"
 _SYMBOL_F32_TO_BF16 = "hipengine_f32_to_bf16"
 _SYMBOL_BF16_TO_F32 = "hipengine_bf16_to_f32"
+_SYMBOL_F32_TO_FP16 = "hipengine_f32_to_fp16"
+_SYMBOL_FP16_TO_F32 = "hipengine_fp16_to_f32"
+_SYMBOL_FP16_TO_BF16 = "hipengine_fp16_to_bf16"
 
 
 def plan_cast_build(
@@ -81,9 +84,54 @@ def bf16_to_f32(
     _launch_cast(_SYMBOL_BF16_TO_F32, x_ptr, out_ptr, count, stream=stream, library=library, runtime=runtime)
 
 
+def f32_to_fp16(
+    x_ptr: int,
+    out_ptr: int,
+    count: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Convert a contiguous FP32 buffer to FP16."""
+
+    _launch_cast(_SYMBOL_F32_TO_FP16, x_ptr, out_ptr, count, stream=stream, library=library, runtime=runtime)
+
+
+def fp16_to_f32(
+    x_ptr: int,
+    out_ptr: int,
+    count: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Convert a contiguous FP16 buffer to FP32."""
+
+    _launch_cast(_SYMBOL_FP16_TO_F32, x_ptr, out_ptr, count, stream=stream, library=library, runtime=runtime)
+
+
+def fp16_to_bf16(
+    x_ptr: int,
+    out_ptr: int,
+    count: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Convert a contiguous FP16 buffer to BF16 bits."""
+
+    _launch_cast(_SYMBOL_FP16_TO_BF16, x_ptr, out_ptr, count, stream=stream, library=library, runtime=runtime)
+
+
 def register_cast_kernels(*, replace: bool = True) -> None:
     register(KernelKey("hip_gfx1100", "cast_f32_to_bf16", "bf16"), f32_to_bf16, replace=replace)
     register(KernelKey("hip_gfx1100", "cast_bf16_to_f32", "fp32"), bf16_to_f32, replace=replace)
+    register(KernelKey("hip_gfx1100", "cast_f32_to_fp16", "fp16"), f32_to_fp16, replace=replace)
+    register(KernelKey("hip_gfx1100", "cast_fp16_to_f32", "fp32"), fp16_to_f32, replace=replace)
+    register(KernelKey("hip_gfx1100", "cast_fp16_to_bf16", "bf16"), fp16_to_bf16, replace=replace)
 
 
 def _launch_cast(

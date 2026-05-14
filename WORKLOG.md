@@ -4830,3 +4830,54 @@ Results:
 ### Loop record
 
 - After the guard passed, marked Task #39 completed. Active loop measurement recorded `open_or_partial_items=9` with guard `64 passed` and prompt verifier pass; no perf artifact was produced.
+
+---
+
+## 2026-05-15 — Switch resident Qwen3.5/PARO runtime to parent-mixed FP16
+
+### Scope
+
+- Completed Task #40 by switching `Qwen35ParoResidentSession`/`Qwen35ParoDecodeState` resident activations from the BF16-only bring-up path to the parent-mixed FP16 path while preserving the known exceptions:
+  - embedding, hidden, scratch, MoE, router, dense GEMV, PARO SiLU/rotate/combine, linear-attention, full-attention output/gate, final norm, and final lowp scratch now use FP16 resident tensors/wrappers;
+  - full-attention KV caches stay BF16;
+  - full-attention q/k head RMSNorm inputs stay BF16 for the fused parent head-norm/rotary path;
+  - the temporary lm-head path still consumes BF16, so final-norm FP16 output is cast to BF16 before `lm_head_fp16_argmax_bf16(...)`.
+- Added helper variants needed by the resident parent-mixed path:
+  - `qwen35_split_qgate_fp16(...)` for full-attention q/gate split;
+  - FP16 value-input paged-KV write wrappers for scalar and batched `KVLiveSpans` paths;
+  - FP16 runtime embedding lookup helpers;
+  - FP16/BF16 cast wrappers including `fp16_to_bf16(...)`.
+- Updated targeted plan tests and `scripts/smoke.py`; updated `docs/KERNELS.md` and wrote blocked correctness artifact `benchmarks/results/2026-05-15-hipengine-qwen35-c1-parent-mixed-blocked.json`.
+
+### Validation
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+python3 -m compileall -q hipengine tests scripts && python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+python3 scripts/qwen35_e2e_correctness.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-new-tokens 1 --max-layers 0 --repeat 1 --json /tmp/hipengine-qwen35-parent-fp16-iter9.json
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-qwen35-fp16-switch-rotary -- \
+  python3 scripts/smoke.py --mode qwen35-rotary-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-qwen35-fp16-switch-kv -- \
+  python3 scripts/smoke.py --mode qwen35-paged-kv-write-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 -m compileall -q hipengine tests scripts && python3 -m pytest tests/test_cast_plan.py tests/test_qwen35_decode_state.py tests/test_runtime_state_plan.py tests/test_qwen35_paged_kv_write_plan.py tests/test_qwen35_rotary_plan.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Results:
+
+- Source-lineage check reported expected parent drift from `nano-vllm-amd` after baseline `22405a9` (`qwen35_expert.hip`, `smoke.hip`, `paroquant_kernels.py`); this iteration used existing stable HIPENGINE bodies and added local dtype/helper variants only.
+- Active-loop guard passed: 68 targeted tests passed.
+- Extended local test bundle passed (`[100%]`, 80 test dots across cast/runtime/rotary/KV/generation/layout suites).
+- Parent fixture correctness remains blocked but narrower: full resident c=1 fixture run was finite/deterministic, but HIP seed token was `220` and first decode token was `58` with top logit `9.434697151184082`; parent fixture expected first generated token `1739`. No performance claim retained.
+- `rocprofv3` W7900 evidence:
+  - rotary smoke: `partial_max_abs=0`, `head_max_abs=2.38e-07`, `position_max_abs=2.38e-07`, `split_fp16_query_max_abs=0`, `split_fp16_gate_mismatch=0`; dispatch included `qwen35_split_qgate_fp16_kernel`, `DurationNs=3720`.
+  - paged-KV smoke: `mixed_mismatch=0/0`, `mixed_fp16_mismatch=0/0`, `f32_mismatch=0/0`, `untouched_nonzero=0`; dispatch included `qwen35_write_paged_kv_mixed_value_position_tensor_kernel<_Float16>`, `DurationNs=5400`.
+
+### Loop record
+
+- Marked Task #40 completed. Active loop iteration 9 recorded `open_or_partial_items=8` (down from 9), guard pass, prompt-verifier pass, and explicit `parent_fixture_e2e_blocker` failure with token/logit evidence for Task #41.
+
+### Next
+
+- Start Task #41: promote/narrow the parent fixture by bisecting the remaining c=1 parity gap at per-layer hidden/logit checkpoints. The broad BF16-vs-FP16 activation policy is no longer the only blocker; next evidence should identify the first layer or projection where HIPENGINE diverges from parent.
+- Hot-path torch audit for touched runtime/generation paths:
+  `rg -n "^\\s*import torch|^\\s*from torch" hipengine/runtime hipengine/generation hipengine/llm.py hipengine/loading/qwen35_paro.py || true` → no executable torch imports.

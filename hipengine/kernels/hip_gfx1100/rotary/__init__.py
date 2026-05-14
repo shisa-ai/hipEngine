@@ -18,6 +18,7 @@ from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
     qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
     qwen35_partial_rotary_f32,
     qwen35_split_qgate_bf16,
+    qwen35_split_qgate_fp16,
     register_qwen35_rotary_kernels,
 )
 
@@ -36,6 +37,7 @@ __all__ = [
     "qwen35_head_rmsnorm_partial_rotary_position_f32_bf16",
     "qwen35_partial_rotary_f32",
     "qwen35_split_qgate_bf16",
+    "qwen35_split_qgate_fp16",
     "register_paro_rotate_kernels",
     "register_qwen35_rotary_kernels",
 ]

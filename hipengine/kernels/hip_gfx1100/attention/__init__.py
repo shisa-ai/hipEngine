@@ -24,6 +24,8 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     qwen35_write_paged_kv_f32_spans,
     qwen35_write_paged_kv_mixed_value_bf16_batch_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
+    qwen35_write_paged_kv_mixed_value_fp16_batch_spans,
+    qwen35_write_paged_kv_mixed_value_fp16_spans,
     register_qwen35_paged_kv_write_kernels,
 )
 
@@ -48,6 +50,8 @@ __all__ = [
     "qwen35_write_paged_kv_f32_spans",
     "qwen35_write_paged_kv_mixed_value_bf16_batch_spans",
     "qwen35_write_paged_kv_mixed_value_bf16_spans",
+    "qwen35_write_paged_kv_mixed_value_fp16_batch_spans",
+    "qwen35_write_paged_kv_mixed_value_fp16_spans",
     "register_qwen35_paged_attn_decode_kernels",
     "register_qwen35_paged_kv_write_kernels",
 ]

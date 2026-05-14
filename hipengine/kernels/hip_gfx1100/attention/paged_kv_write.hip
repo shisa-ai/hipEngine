@@ -4,6 +4,8 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
+using half_t = _Float16;
+
 namespace {
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
@@ -244,6 +246,82 @@ extern "C" int hipengine_qwen35_write_paged_kv_mixed_value_bf16_batch_spans(
   const int blocks = static_cast<int>((size + threads - 1) / threads);
   hipLaunchKernelGGL(
       (qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(blocks), static_cast<unsigned int>(rows)),
+      dim3(threads),
+      0,
+      stream,
+      key,
+      value,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      rows,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_mixed_value_fp16_spans(
+    const float* key,
+    const half_t* value,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  if (!valid_kv_shape(block_size, block_table_len, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t size = num_kv_heads * head_dim;
+  const int blocks = static_cast<int>((size + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      (qwen35_write_paged_kv_mixed_value_position_tensor_kernel<half_t>),
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      key,
+      value,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_mixed_value_fp16_batch_spans(
+    const float* key,
+    const half_t* value,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  if (!valid_kv_batch_shape(rows, block_size, block_table_len, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t size = num_kv_heads * head_dim;
+  const int blocks = static_cast<int>((size + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      (qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<half_t>),
       dim3(static_cast<unsigned int>(blocks), static_cast<unsigned int>(rows)),
       dim3(threads),
       0,
