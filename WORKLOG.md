@@ -3266,3 +3266,41 @@ Results:
 ### Next
 
 - Build the minimal all-layer real-model decode harness: embedding lookup, layer-state/KV allocation, final norm, lm-head, and tokenizer-visible next-token output.
+
+---
+
+## 2026-05-14 — Add and run real Qwen3.5/PARO one-token next-token harness
+
+### Scope
+
+- Added `scripts/qwen35_paro_next_token.py`, a torch-free bring-up harness that:
+  - reads the real checkpoint/tokenizer metadata,
+  - embeds one token from `embed_tokens.weight`,
+  - runs all Qwen3.5/PARO decode layers through HIPENGINE linear-attention/full-attention c=1 layer chains,
+  - applies final PARO RMSNorm on GPU,
+  - computes `lm_head.weight @ hidden` argmax on CPU with NumPy chunks (temporary correctness path, not a perf path),
+  - emits JSON with layer sequence and decoded next-token text.
+- Updated `docs/IMPLEMENTATION.md`.
+
+### Validation
+
+```bash
+python3 -m py_compile scripts/qwen35_paro_next_token.py
+(rocm-smi --showpids --showuse --showmeminfo vram || true) | awk '/GPU use|No KFD|PID|python3|VRAM Total Used/ {print}'
+python3 scripts/qwen35_paro_next_token.py --max-layers 1 --token-id 9707 --lm-head-chunk 8192
+python3 scripts/qwen35_paro_next_token.py --max-layers 4 --token-id 9707 --lm-head-chunk 8192
+python3 scripts/qwen35_paro_next_token.py --token-id 9707 --lm-head-chunk 8192
+```
+
+Results on W7900 / real checkpoint `/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd`:
+
+- GPU was idle before runs (`GPU use 0%`, no KFD PIDs).
+- 1-layer smoke: layer 0 linear attention completed; next token `62406` (`"ullo"`), CPU lm-head logit `6.594387054443359`.
+- 4-layer smoke: layers 0-2 linear + layer 3 full attention completed; next token `23243` (`"-car"`), CPU lm-head logit `6.177801132202148`.
+- All-layer smoke: all 40 layers completed (`linear_attention` x30, `full_attention` x10); next token `76323` (`"arra"`), CPU lm-head logit `7.267126083374023`.
+
+### Caveats / Next
+
+- This is a one-token decode smoke, not proper multi-token prefill: prompt tokenization currently selects one input token (or `--token-id`).
+- `lm_head` is CPU NumPy argmax for bring-up only; port/use the GPU lm-head route before making performance claims.
+- Next: wire this harness behind `LLM.generate()` or a smoke mode, then add persistent per-layer state/KV for multi-token generation.
