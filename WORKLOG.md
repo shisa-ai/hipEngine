@@ -3795,3 +3795,22 @@ Results:
 
 - Treat Qwen3.5/PARO benchmark rows as c=1 until a c=N correctness harness and batch-state path land.
 - Start any c=8 work with deterministic batched-vs-independent-c1 correctness fixtures before optimizing kernels.
+
+---
+
+## 2026-05-14 — Strengthen c>1 and SpecDec PLAN invariants
+
+### Scope
+
+- Reworked the c>1 PARO roadmap into day-1 invariants for batch-shaped runtime APIs, stable request IDs vs physical slots, continuous batching, transactional KV, draft/verify row metadata, graph shape buckets, and plugin-based c/specdec dispatch.
+- Expanded `KVLiveSpans`/`KVPolicy` design notes so decode rows, prefill rows, and speculative verification rows share one attention/KV-write ABI.
+- Added EAGLE3 to the SpecDec roadmap and documented `DraftModel`, `DraftBatch`, `Verifier`, and `AcceptResult` contracts.
+
+### Validation
+
+- Re-read `docs/PLAN.md` end-to-end.
+- Ran a docs-only term check for the new batching/specdec invariants; no GPU run required.
+
+### Next
+
+- Review the live codebase against these invariants and create implementation tasks for batch-friendliness gaps before adding more c=1-only surfaces.

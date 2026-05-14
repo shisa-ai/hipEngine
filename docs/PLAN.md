@@ -435,22 +435,47 @@ The host is purpose-built because the existing options carry assumptions we don'
 | all of the above | `torch.Tensor` as the universal value type | Our kernels take raw device pointers; torch is optional dlpack interop at the user boundary |
 
 Our host is simpler because **the kernels do the heavy lifting**. The scheduler just needs to:
-1. Batch requests efficiently
-2. Route to the right kernel dispatch path
+1. Continuously batch request work into efficient prefill/decode/verify steps
+2. Route each step to the right kernel dispatch path
 3. Manage KV cache pages with a pluggable policy
+4. Commit sampler outputs and completed requests without stalling the active batch
 
-### Concurrent Decode / c>1 PARO Roadmap
+### Concurrent Decode, Continuous Batching, and SpecDec Readiness
 
 HIPENGINE is a better foundation for c>1 than the current `nano-vllm-amd` native PARO path, but the runnable implementation remains c=1 until the batch-state and c-aware kernels below land. Treat current Qwen3.5/PARO numbers as **single-request decode** unless a benchmark explicitly says otherwise.
+
+Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-shaped and speculative-verification-safe even when the first implementation only runs `C=1`.** Scalar c=1 entrypoints are allowed as smoke wrappers, not as the canonical internal interface.
+
+#### Terminology
+
+| Term | Meaning |
+|---|---|
+| Batched prefill | Multiple prompt tokens, usually for one request chunk; shape is token rows, not necessarily concurrent users. |
+| c>1 / c=N decode | `C` independent live requests advance one target token each in the same decode step. |
+| Continuous batching | Requests are admitted, compacted, finished, and reclaimed while other requests keep decoding. |
+| Speculative verify | Draft candidates are flattened into verification rows (`V`) that may share prefixes, form chains, or form trees; `V` is related to but not identical to `C`. |
+
+#### Day-1 invariants
+
+- **Batch-shaped runtime ABI.** Hidden/logit buffers are `[C, hidden]` or `[rows, hidden]`; token ids, positions, context lengths, finish flags, and active masks are `[C]`; per-layer state is indexed by physical batch row plus stable request id. New scalar-only host state is a design bug unless it is explicitly a test wrapper.
+- **Stable request identity is separate from physical slots.** The scheduler owns `request_id -> slot` and `slot -> request_id` maps, can compact/reorder slots between graph launches, and passes row maps to kernels whose routed lanes are not simply `row == request`.
+- **Continuous batching is the scheduler contract.** Prefill chunks, decode steps, and speculative verification steps are separate work classes sharing the same active-request table, KV allocator, sampler, and completion/reclaim path.
+- **`KVLiveSpans` is the only attention/KV-write ABI.** Dense paged KV, DMS/H2O/SnapKV, c>1 decode, and speculative verification all pass per-sequence spans rather than scalar `(block_table, context_len)` tuples.
+- **KV mutation is transactional.** Canonical KV is changed only through scheduler-owned commit points. Speculative draft/verify writes go to scratch pages or an append journal and are committed by accepted-token count, then rolled back/discarded for rejected candidates.
+- **Draft/verify rows are first-class.** MTP, EAGLE3, DFlash, Medusa, and Lookahead all produce `DraftBatch` metadata: `request_id`, candidate token(s), parent position, draft depth, optional tree parent, and active mask. Verification kernels consume that metadata instead of assuming a linear c=1 chain.
+- **Graph capture buckets include shape, not just batch size.** Buckets are keyed by active `C`, context/page bucket, prefill/decode/verify mode, draft length or tree shape, active-mask density, top-k/experts, and graph-steps-per-replay.
+- **Dispatch remains plugin-based.** c-aware or specdec-aware behavior registers new model/speculative/layer/kernel variants; engine code must not grow `if backend == ...`, `if quant == ...`, or one-off `if spec_method == ...` hot-path branches.
 
 #### Current status
 
 | Question | Answer |
 |---|---|
 | Can current HIPENGINE run real c=8 PARO decode? | No. |
+| Does current HIPENGINE implement continuous batching? | No. |
+| Is current SpecDec wired into generation? | No; only the design/file-tree placeholder exists. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
 | Would just setting `tokens=8` work? | No. |
-| Is HIPENGINE the better place to build c=8+ PARO? | Probably yes. |
+| Is HIPENGINE the better place to build c=8+ PARO and SpecDec? | Probably yes. |
 
 Why the design is better positioned:
 
@@ -458,15 +483,18 @@ Why the design is better positioned:
 - Many wrappers already expose `tokens`, `rows`, or row-shaped grids, so partial batching can be tested without changing the public API.
 - `KVLiveSpans` and `KVPolicy.batch_spans(...)` are intended to represent per-sequence KV state rather than a single scalar `(block_table, context_len)` pair.
 - The kernel registry can add c-specific variants such as `(layer="selected_pack8_gemv", variant="batch8")` or `(layer="paged_attn_decode", variant="gqa_batch")` without engine-wide backend/quant branches.
-- Decode graph capture is already framed as batch-size buckets `[1, 2, 4, 8, 16, ...]`.
+- Decode graph capture is already framed as shape buckets rather than one global graph.
+- Model plugins can advertise optional speculative heads, while speculative methods live under their own plugin boundary instead of forking the engine.
 
 Current blockers that keep Qwen3.5/PARO effectively c=1:
 
 - `hipengine.generation.qwen35_paro.Qwen35ParoOneTokenGenerator` is a smoke path: it requires `max_tokens == 1` and serializes prompts in Python.
 - `Qwen35ParoResidentSession` owns single-request state: `(1, hidden_size)` hidden buffers, scalar token/position/context device buffers, one block table/span object, and one KV cache per full-attention layer.
+- There is no active-request table, no request admission loop, no batch compaction/reclaim path, no mixed prefill+decode scheduler, and no per-request sampler/output queue.
 - Several decode orchestrators still reject `tokens != 1` or only support c1-style GEMV batching; this is useful for prefill bring-up but not a complete concurrent decode scheduler.
 - The current GQA split-K attention kernels consume one query stream with scalar context length. c>1 needs a batch grid dimension plus per-sequence `live_counts`/page tables.
 - Selected MoE GEMV needs a real mapping from token rows to routed lanes. For c=8 and top-k=8 the natural shape is `x_rows=8`, `rows=64`; kernels must gather hidden rows by `lane // top_k` or run grouped/compact expert kernels rather than assuming one hidden row or one row per lane.
+- Speculative decode needs transactional KV scratch/journaling, candidate-row metadata, target verification passes, and scheduler-side accept/reject accounting before MTP/EAGLE3/DFlash can be enabled.
 
 #### Expected c=8 behavior
 
@@ -482,14 +510,17 @@ The key distinction is that many current "batched" kernels are row-parallel GEMV
 
 #### Implementation plan
 
-1. **Batch-state container.** Add a `ResidentBatchSession` or equivalent with `[C, hidden]` buffers, device token ids, per-request positions/context lengths, per-layer linear-attention recurrent/conv state, and per-request/per-layer full-attention KV spans.
-2. **Correctness harness first.** For fixed prompts and greedy sampling, compare c=2/4/8 batch output against independent c=1 runs. Require finite logits, matching generated ids for deterministic fixtures, and per-layer state/KV bounds checks before any perf claim.
-3. **Scheduler contract.** Add request admission and decode-step batching around `KVPolicy.batch_spans(...)`; bucket graph capture by active batch size and shape (`C`, context bucket, top-k, graph-steps-per-replay).
-4. **Attention batch kernels.** Add batched paged GQA decode and KV append variants with a batch grid dimension and per-sequence span metadata. Uniform paged KV is first; DMS/variable spans reuse the same public ABI later.
-5. **Linear-attention state kernels.** Make conv/GDN recurrent decode consume `[C, ...]` state and update each sequence independently.
-6. **MoE batch kernels.** Replace c1 selected-lane assumptions with token→lane mapping, then add grouped-by-expert and compact/WMMA routes once routed-lane counts justify them. Use routed lanes, not token count alone, for the GEMV-vs-WMMA threshold.
-7. **Quantized projection dispatch.** Use c-aware rules: c=1 stays GEMV; c=2/4/8 uses multi-column/MMQ-style kernels where they beat row-GEMV; c>16 moves toward GEMM/WMMA.
-8. **Benchmark protocol.** Add c=N concurrent rows only after the above correctness harness is green. Report aggregate tok/s, per-request tok/s, p50/p95 latency, memory, active batch occupancy, graph bucket, and generated-token equality vs c1.
+1. **Request and batch-state containers.** Add `RequestState` plus `ResidentBatchSession` (or equivalent) with `[C, hidden]` buffers, device token ids, per-request positions/context lengths, active masks, finish flags, per-layer linear-attention recurrent/conv state, and per-request/per-layer full-attention KV spans.
+2. **Continuous-batching scheduler.** Add admission, chunked prefill, decode-step batching, slot compaction, sampler/output routing, and reclaim around `KVPolicy.batch_spans(...)`. The scheduler owns physical slots and stable request ids; kernels only see row metadata.
+3. **Correctness harness first.** For fixed prompts and greedy sampling, compare c=2/4/8 batch output against independent c=1 runs. Require finite logits, matching generated ids for deterministic fixtures, and per-layer state/KV bounds checks before any perf claim.
+4. **Transactional KV hooks.** Extend the KV policy contract with scratch/journal allocation and `commit(request_id, accepted_tokens)` / `rollback(request_id)` semantics before speculative verification writes can touch canonical KV.
+5. **Attention batch kernels.** Add batched paged GQA decode and KV append variants with a batch grid dimension and per-sequence span metadata. Uniform paged KV is first; DMS/variable spans reuse the same public ABI later.
+6. **Linear-attention state kernels.** Make conv/GDN recurrent decode consume `[C, ...]` state and update each sequence independently.
+7. **MoE batch kernels.** Replace c1 selected-lane assumptions with token→lane mapping, then add grouped-by-expert and compact/WMMA routes once routed-lane counts justify them. Use routed lanes, not token count alone, for the GEMV-vs-WMMA threshold.
+8. **Quantized projection dispatch.** Use c-aware rules: c=1 stays GEMV; c=2/4/8 uses multi-column/MMQ-style kernels where they beat row-GEMV; c>16 moves toward GEMM/WMMA.
+9. **SpecDec plugin boundary.** Add `DraftModel`, `DraftBatch`, `Verifier`, and `AcceptResult` interfaces. MTP heads are model-attached draft providers; EAGLE3 and DFlash are draft-model plugins; Lookahead/Medusa are lightweight draft providers. All verify through the same target-model batch runner and transactional KV path.
+10. **Graph bucket policy.** Capture/replay by active `C`, context bucket, mode (`prefill`, `decode`, `verify_chain`, `verify_tree`), draft depth/tree shape, top-k/experts, and replay length. Fall back to uncaptured launches for rare shapes.
+11. **Benchmark protocol.** Add c=N concurrent rows and SpecDec rows only after the corresponding correctness harness is green. Report aggregate tok/s, per-request tok/s, p50/p95 latency, memory, active batch occupancy, graph bucket, acceptance rate, accepted tokens per target pass, and generated-token equality vs non-spec c1.
 
 ### Hot-Path Dispatch Strategy
 
@@ -497,7 +528,7 @@ At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per t
 
 | # | Lever | Removes | Status in HIPENGINE |
 |---|-------|---------|---------------------|
-| 1 | **hipGraph capture per batch-size bucket** | ~100% of Python overhead during decode replay. Python runs once per token (sampling trigger). | **Phase 0, default.** Patterned on `nano-vllm-amd/nanovllm/engine/model_runner.py:250`; buckets `[1, 2, 4, 8, 16, 32, …, max_bs]`. |
+| 1 | **hipGraph capture per shape bucket** | ~100% of Python overhead during decode replay. Python runs once per token (sampling trigger). | **Phase 0 starts with batch-size buckets** patterned on `nano-vllm-amd/nanovllm/engine/model_runner.py:250`; c>1/SpecDec expands the key to `(C, context bucket, mode, draft/tree shape, active mask, experts, replay length)`. |
 | 2 | **C++ engine-step extension (pybind11 / nanobind)** | Remaining Python scheduler-loop overhead. Python calls one C++ function per batch step. | Phase 3, conditional on profiling evidence. Natural extraction point for a future standalone binary. |
 | 3 | **Per-layer kernel batching inside the graph** | Kernel-launch latency (~3–5 µs each on ROCm) in addition to dispatch cost. | Phase 3+. |
 | 4 | **Cython / `mypyc` for non-capturable paths** (prefill, variable-length, prefix lookup) | ~5–10× speedup of pure-Python scheduler loops. | Phase 4+, only if capture doesn't cover. |
@@ -722,7 +753,7 @@ Each model plugin owns:
 - **RoPE variant**: standard, partial (Qwen3), YaRN, NTK, Gemma's 10k+ base, sliding-window rotations.
 - **Chat template**: jinja2 source loaded from `tokenizer_config.json`.
 - **Special tokens**: BOS/EOS/PAD/thinking markers.
-- **Optional speculative head**: MTP layer spec (Qwen3.5 MTP), Medusa heads, draft-model hookup (sansho's DFlash).
+- **Optional speculative capability**: MTP layer spec (Qwen3.5 MTP), Medusa heads, EAGLE3 features, and draft-model hookup (sansho's DFlash). The model plugin advertises capabilities; the speculative plugin owns proposal/verification policy.
 
 The model plugin does **not** know about backends or quant. Those are dispatched at layer granularity.
 
@@ -815,22 +846,26 @@ KV cache has **two orthogonal axes**, plus the standard block-manager concerns. 
 
 #### `KVLiveSpans` — the fundamental kernel interface
 
-Every attention / paged-KV-write kernel takes a `KVLiveSpans` instead of the classic `(block_table, context_len)` tuple. Uniform policies fill it the same for every head; DMS varies it.
+Every attention / paged-KV-write kernel takes a `KVLiveSpans` instead of the classic `(block_table, context_len)` tuple. Uniform policies fill it the same for every head; DMS varies it. `num_seqs` is intentionally a row count: it can mean active decode requests (`C`), prefill chunks, or speculative verification rows (`V`). Stable request identity remains scheduler metadata, not an implicit row index.
 
 ```python
 # hipengine/kvcache/spans.py
 @dataclass(slots=True)
 class KVLiveSpans:
-    """Per-(seq, layer, head) live K/V token spans.
+    """Per-(row, layer, head) live K/V token spans.
     The contract between KV storage and every attention / KV-write kernel.
     Dense policies fill this uniformly across heads; DMS and DMS-like
-    compaction vary spans per head.
+    compaction vary spans per head. Rows can be active requests or
+    speculative verification candidates.
     """
     base_offsets:    Tensor          # [num_seqs, num_layers, num_kv_heads] int32
     live_counts:     Tensor          # [num_seqs, num_layers, num_kv_heads] int32
-    max_live_count:  int             # max across all (seq, layer, head) for grid sizing
+    max_live_count:  int             # max across all (row, layer, head) for grid sizing
     token_positions: Tensor | None   # [num_seqs, total_live] int32 — surviving tok positions
     evict_mask:      Tensor | None   # [num_seqs, max_ctx, num_kv_heads] bool (optional)
+    request_ids:     Tensor | None   # [num_seqs] int64 — stable scheduler ids for row ownership
+    row_positions:   Tensor | None   # [num_seqs] int32 — decode/verify query or write positions
+    span_role:       str             # "prefill", "decode", "verify_chain", "verify_tree"
     storage_dtype:   DType           # dtype of the K/V arena (bf16, fp8, int4, ...)
 ```
 
@@ -848,9 +883,13 @@ class KVPolicy(Protocol):
     def prefill_spans(self, seq: Sequence) -> KVLiveSpans: ...
     def decode_step(self, seqs: list[Sequence],
                     new_k: Tensor, new_v: Tensor, q: Tensor | None) -> None:
-        """Store new K/V. q is passed for policies that need query-conditional
-        eviction (DMS uses the last query channel as the eviction signal)."""
-    def batch_spans(self, batch: list[Sequence]) -> KVLiveSpans: ...
+        """Store committed decode K/V. q is passed for policies that need
+        query-conditional eviction (DMS uses the last query channel as the
+        eviction signal)."""
+    def batch_spans(self, batch: list[Sequence], *, role: str = "decode") -> KVLiveSpans: ...
+    def begin_transaction(self, seqs: list[Sequence], draft: DraftBatch) -> KVTransaction: ...
+    def commit(self, txn: KVTransaction, accepted_counts: Tensor) -> None: ...
+    def rollback(self, txn: KVTransaction) -> None: ...
     def reclaim(self, seq: Sequence) -> None: ...
 
 # Built-in policies (Phase 0/2)
@@ -884,16 +923,23 @@ The FastDMS README lists seven subsystems that a DMS port to vLLM has to change 
 
 ### Speculative Decoding (SpecDec)
 
-HIPENGINE will support multiple draft mechanisms:
+SpecDec is planned as a scheduler + plugin feature that reuses the same target-model batch runner, KV policy, and kernel registry described in the c>1 readiness section. Drafting changes the work shape; it must not fork the engine.
 
-| Draft Type | Status | Notes |
-|------------|--------|-------|
-| Medusa-style heads | Planned | Small MLP heads predict next tokens |
-| Lookahead decoding | Planned | N-gram cache for repetitive text |
-| DFlash (draft model) | Research | Our own `~/FastKMS` work — kernel-level draft acceptance |
-| MTP (multi-token pred) | Research | Qwen3.5-style MTP layers |
+| Draft Type | Status | Integration shape |
+|------------|--------|-------------------|
+| Medusa-style heads | Planned | Model-advertised heads produce shallow candidate rows. |
+| Lookahead decoding | Planned | Scheduler-side n-gram/cache provider emits candidate chains. |
+| MTP (multi-token pred) | Research | Qwen3.5 MTP layers provide `DraftBatch` chains attached to the target model. |
+| EAGLE3 | Research | Draft-model plugin emits feature-conditioned candidate chains/trees. |
+| DFlash (draft model) | Research | `~/FastKMS` lineage; draft-model plugin plus kernel-level acceptance experiments. |
 
-The key design: **speculation is a kernel dispatch path**, not a separate engine. The scheduler decides whether to draft based on acceptance rate economics, and the same attention kernels handle draft verification.
+Required contract:
+
+- `DraftModel.propose(batch_state) -> DraftBatch` emits candidate tokens plus `request_id`, `draft_depth`, parent position, optional tree parent, and active mask metadata.
+- `Verifier.verify(target_state, draft_batch) -> AcceptResult` runs target verification over flattened rows using `KVLiveSpans` in verify mode.
+- `AcceptResult` records accepted counts/tokens per request and the replacement token for the first rejection.
+- Canonical KV is updated only through transactional commit/rollback hooks; rejected draft writes never leak into committed request state.
+- Disabling SpecDec must produce the same deterministic greedy outputs as the non-spec c=1/c=N path on the correctness fixtures.
 
 ### KVTC-Style Tiered Offloading
 
@@ -1069,10 +1115,11 @@ hipengine/
 │   │   └── ep.py                # Expert parallelism
 │   ├── speculative/
 │   │   ├── __init__.py
-│   │   ├── base.py              # DraftModel interface
+│   │   ├── base.py              # DraftModel, DraftBatch, Verifier, AcceptResult
 │   │   ├── medusa.py
 │   │   ├── lookahead.py
 │   │   ├── mtp.py               # Qwen3.5 MTP layers
+│   │   ├── eagle3.py            # feature-conditioned draft model
 │   │   └── dflash.py            # sansho / FastKMS draft acceptance
 │   ├── server/                  # Optional: `pip install hipengine[server]`
 │   │   ├── __init__.py
@@ -1184,7 +1231,7 @@ hipengine/
 | OpenAI API | Yes | Via TabbyAPI | No | Yes | Yes | **Built-in (optional)** |
 | Library API | No | No | Bindings | No | Yes | **Primary** |
 | Benchmark harness | Internal | No | llama-bench | — | Yes | **Built-in, comparable** |
-| Speculative decode | Medusa | No | No | Yes | No | **Phase 4 (Medusa, Lookahead, MTP, DFlash)** |
+| Speculative decode | Medusa | No | No | Yes | No | **Phase 4 (Medusa, Lookahead, MTP, EAGLE3, DFlash)** |
 | KV compression: DMS | Major surgery (per FastDMS README) | No | No | No | Yes (reference impl) | **Phase 4 via `DMSKVPolicy`; `KVLiveSpans` interface designed day-1** |
 | KV compression: H2O / SnapKV / sliding | Sliding (via model) | No | No | — | — | **Phase 3 sliding, Phase 5 H2O/SnapKV** |
 | KV storage dtype (orthogonal to eviction) | bf16, fp8, TurboQuant-4bit | bf16 | Various | — | bf16, fp8, int4-shadow | **Orthogonal `storage_dtype` axis on every `KVPolicy`** |
