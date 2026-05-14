@@ -87,7 +87,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add c>1 row-major Qwen paged full-attention context decode (`qwen35_paged_full_attn_decode_context_bf16_batch_spans`).
   - [x] Port span-shaped Qwen split-K paged full-attention decode/reduce (`qwen35_paged_full_attn_decode_split_k_ctx_tensor`, `*_reduce`).
   - [x] Port span-shaped Qwen split-K gated FP32 reduce (`qwen35_paged_full_attn_decode_split_k_reduce_gate<float>`).
-  - [x] Port span-shaped Qwen split-K gated BF16 reduce (`qwen35_paged_full_attn_decode_split_k_reduce_gate<hip_bfloat16>`).
+  - [x] Port span-shaped Qwen split-K gated BF16/FP16 reduce (`qwen35_paged_full_attn_decode_split_k_reduce_gate<hip_bfloat16/_Float16>`) plus dense-context BF16/FP16 gate-mul wrappers.
   - [x] Port Qwen3.5 GQA-specialized split-K context kernels (`qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp`, `*_gqa<8,16,2>`).
 - [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.
 

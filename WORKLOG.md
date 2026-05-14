@@ -4547,3 +4547,45 @@ Results:
 ### Next
 
 - Finish task #38 by adding FP16 gated full-attention output wrappers, then move to task #39 parent activation dtype materialization.
+
+---
+
+## 2026-05-15 — Add FP16 full-attention gated output wrappers
+
+### Scope
+
+- Added parent-mixed FP16 gated full-attention raw-pointer wrappers:
+  - `qwen35_full_attn_gate_mul_fp16(...)` / `hipengine_qwen35_full_attn_gate_mul_fp16`
+  - `qwen35_paged_full_attn_decode_split_k_gate_fp16_spans(...)` / `hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16`
+  - `qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans(...)` using the existing GQA context kernel plus FP16 gated reduce.
+- Registered `full_attn_gate_mul/fp16`, `paged_attn_decode/bf16_split_k_gate_fp16_spans`, and `paged_attn_decode/bf16_split_k_gqa_gate_fp16_spans` under `w4_paro`.
+- Extended `qwen35-full-attn-decode-hip` and `qwen35-paged-attn-gate-bf16-hip` smokes with bit-exact FP16 output oracles.
+- Updated `docs/KERNELS.md` and `docs/IMPLEMENTATION.md` for the FP16 gated-output coverage.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py -q
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py -q
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-full-attn-decode-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-paged-attn-gate-bf16-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-attn-gate-fp16-full -- \
+  python3 scripts/smoke.py --mode qwen35-full-attn-decode-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-attn-gate-fp16-split -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-gate-bf16-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- Plan/decode-state tests passed: paged-attn plan tests `3 passed`; paged-attn + decode-state set `26 passed`.
+- Dense-context gate smoke passed: attention `max_abs=1.19e-07`, `gated_bf16_mismatch=0`, `gated_fp16_mismatch=0`.
+- Split-K gate smoke passed: `bf16_mismatch=0`, `fp16_mismatch=0`, `bf16_max_abs=0`, `fp16_max_abs=0`.
+- `rocprofv3` confirmed FP16 gated kernels ran on W7900:
+  - `qwen35_full_attn_gate_mul_fp16_kernel`: `DurationNs=1360`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`.
+  - `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<_Float16>`: `DurationNs=10040`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=24`, `Workgroup_Size_X=8`.
+
+### Next
+
+- Continue task #38 by auditing remaining broad FP16 wrapper items from the TaskList (dense/dual GEMV, router hidden, SiLU/down-rotation, weighted combine/residual) before task #39 materialization.

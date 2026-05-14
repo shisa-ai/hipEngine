@@ -1185,6 +1185,7 @@ def qwen35_paged_attn_gate_bf16_hip_smoke(
     from hipengine.kernels.hip_gfx1100.attention import (
         build_qwen35_paged_attn_decode,
         qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
+        qwen35_paged_full_attn_decode_split_k_gate_fp16_spans,
     )
     from hipengine.kvcache import KVLiveSpans
 
@@ -1214,6 +1215,7 @@ def qwen35_paged_attn_gate_bf16_hip_smoke(
         dtype=np.float32,
     )
     gate = _float32_to_bf16_bits(gate_f32)
+    gate_fp16 = gate_f32.astype(np.float16)
     token_grid = np.arange(context_len * num_kv_heads * head_dim, dtype=np.float32).reshape(
         context_len, num_kv_heads, head_dim
     )
@@ -1224,6 +1226,7 @@ def qwen35_paged_attn_gate_bf16_hip_smoke(
     key_cache[0, :context_len] = _float32_to_bf16_bits(key_tokens)
     value_cache[0, :context_len] = _float32_to_bf16_bits(value_tokens)
     out = np.empty((num_q_heads, head_dim), dtype=np.uint16)
+    out_fp16 = np.empty((num_q_heads, head_dim), dtype=np.float16)
     partial_out = np.zeros((num_q_heads, num_splits, head_dim), dtype=np.float32)
     partial_m = np.zeros((num_q_heads, num_splits), dtype=np.float32)
     partial_l = np.zeros((num_q_heads, num_splits), dtype=np.float32)
@@ -1231,6 +1234,7 @@ def qwen35_paged_attn_gate_bf16_hip_smoke(
     key_ref = _bf16_bits_to_float32(key_cache[0, :context_len, 0])
     value_ref = _bf16_bits_to_float32(value_cache[0, :context_len, 0])
     gate_ref = _bf16_bits_to_float32(gate)
+    gate_fp16_ref = gate_fp16.astype(np.float32)
     attn = np.empty((num_q_heads, head_dim), dtype=np.float32)
     for q_head in range(num_q_heads):
         scores = np.asarray([np.dot(query[q_head], key_ref[token]) * scale for token in range(context_len)], dtype=np.float32)
@@ -1239,6 +1243,7 @@ def qwen35_paged_attn_gate_bf16_hip_smoke(
         probs = probs / np.sum(probs, dtype=np.float32)
         attn[q_head] = probs @ value_ref
     expected = _float32_to_bf16_bits(attn * (1.0 / (1.0 + np.exp(-gate_ref, dtype=np.float32))))
+    expected_fp16 = (attn * (1.0 / (1.0 + np.exp(-gate_fp16_ref, dtype=np.float32)))).astype(np.float16)
 
     runtime = get_hip_runtime()
     library = build_qwen35_paged_attn_decode(
@@ -1264,12 +1269,17 @@ def qwen35_paged_attn_gate_bf16_hip_smoke(
         live_counts_dev = dev(live_counts)
         query_dev = dev(query)
         gate_dev = dev(gate)
+        gate_fp16_dev = dev(gate_fp16)
         key_cache_dev = dev(key_cache)
         value_cache_dev = dev(value_cache)
         out_dev_buf = out_dev(out)
+        out_fp16_dev = out_dev(out_fp16)
         partial_out_dev = out_dev(partial_out)
         partial_m_dev = out_dev(partial_m)
         partial_l_dev = out_dev(partial_l)
+        partial_out_fp16_dev = out_dev(partial_out)
+        partial_m_fp16_dev = out_dev(partial_m)
+        partial_l_fp16_dev = out_dev(partial_l)
         spans = KVLiveSpans.paged_uniform(
             block_table=Tensor.from_handle(block_table_dev.ptr, block_table.shape, "int32", Device("hip", 0)),
             live_counts=Tensor.from_handle(live_counts_dev.ptr, live_counts.shape, "int64", Device("hip", 0)),
@@ -1298,20 +1308,46 @@ def qwen35_paged_attn_gate_bf16_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        qwen35_paged_full_attn_decode_split_k_gate_fp16_spans(
+            query_dev.ptr,
+            key_cache_dev.ptr,
+            value_cache_dev.ptr,
+            gate_fp16_dev.ptr,
+            out_fp16_dev.ptr,
+            partial_out_fp16_dev.ptr,
+            partial_m_fp16_dev.ptr,
+            partial_l_fp16_dev.ptr,
+            spans,
+            chunk_size,
+            num_splits,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            head_dim,
+            1,
+            scale,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(out), out_dev_buf, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_fp16), out_fp16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
     mismatch = int(np.count_nonzero(out != expected))
+    fp16_mismatch = int(np.count_nonzero(out_fp16.view(np.uint16) != expected_fp16.view(np.uint16)))
     max_abs = float(np.max(np.abs(_bf16_bits_to_float32(out) - _bf16_bits_to_float32(expected))))
+    fp16_max_abs = float(np.max(np.abs(out_fp16.astype(np.float32) - expected_fp16.astype(np.float32))))
     print(
         f"context_len={context_len} chunk_size={chunk_size} num_splits={num_splits} "
-        f"head_dim={head_dim} bf16_mismatch={mismatch} bf16_max_abs={max_abs:.3g}"
+        f"head_dim={head_dim} bf16_mismatch={mismatch} bf16_max_abs={max_abs:.3g} "
+        f"fp16_mismatch={fp16_mismatch} fp16_max_abs={fp16_max_abs:.3g}"
     )
     print("gated_attn_bf16=", _bf16_bits_to_float32(out).reshape(-1).tolist())
-    return 0 if mismatch == 0 else 1
+    return 0 if mismatch == 0 and fp16_mismatch == 0 else 1
 
 def qwen35_paged_attn_gate_hip_smoke(
     *,
@@ -1612,6 +1648,8 @@ def qwen35_full_attn_decode_hip_smoke(
     from hipengine.kernels.hip_gfx1100.attention import (
         build_qwen35_paged_attn_decode,
         qwen35_full_attn_decode_context_bf16,
+        qwen35_full_attn_gate_mul_bf16,
+        qwen35_full_attn_gate_mul_fp16,
     )
 
     context_len = 3
@@ -1636,7 +1674,15 @@ def qwen35_full_attn_decode_hip_smoke(
     value_cache = np.zeros_like(key_cache)
     key_cache[:context_len] = _float32_to_bf16_bits(key_tokens)
     value_cache[:context_len] = _float32_to_bf16_bits(value_tokens)
+    gate_f32 = np.asarray(
+        [[-1.0, -0.5, 0.0, 0.5], [0.25, -0.25, 0.75, -0.75]],
+        dtype=np.float32,
+    )
+    gate_bf16 = _float32_to_bf16_bits(gate_f32)
+    gate_fp16 = gate_f32.astype(np.float16)
     out = np.empty((num_q_heads, head_dim), dtype=np.float32)
+    gated_bf16 = np.empty((num_q_heads, head_dim), dtype=np.uint16)
+    gated_fp16 = np.empty((num_q_heads, head_dim), dtype=np.float16)
 
     key_ref = _bf16_bits_to_float32(key_cache[:context_len, 0])
     value_ref = _bf16_bits_to_float32(value_cache[:context_len, 0])
@@ -1647,6 +1693,12 @@ def qwen35_full_attn_decode_hip_smoke(
         probs = np.exp(scores, dtype=np.float32)
         probs = probs / np.sum(probs, dtype=np.float32)
         expected[q_head] = probs @ value_ref
+    expected_gated_bf16 = _float32_to_bf16_bits(
+        expected * (1.0 / (1.0 + np.exp(-_bf16_bits_to_float32(gate_bf16), dtype=np.float32)))
+    )
+    expected_gated_fp16 = (expected * (1.0 / (1.0 + np.exp(-gate_fp16.astype(np.float32), dtype=np.float32)))).astype(
+        np.float16
+    )
 
     runtime = get_hip_runtime()
     library = build_qwen35_paged_attn_decode(
@@ -1672,7 +1724,11 @@ def qwen35_full_attn_decode_hip_smoke(
         query_dev = dev(query)
         key_cache_dev = dev(key_cache)
         value_cache_dev = dev(value_cache)
+        gate_bf16_dev = dev(gate_bf16)
+        gate_fp16_dev = dev(gate_fp16)
         out_dev_buf = out_dev(out)
+        gated_bf16_dev = out_dev(gated_bf16)
+        gated_fp16_dev = out_dev(gated_fp16)
         qwen35_full_attn_decode_context_bf16(
             query_dev.ptr,
             key_cache_dev.ptr,
@@ -1687,19 +1743,40 @@ def qwen35_full_attn_decode_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        qwen35_full_attn_gate_mul_bf16(
+            out_dev_buf.ptr,
+            gate_bf16_dev.ptr,
+            gated_bf16_dev.ptr,
+            num_q_heads * head_dim,
+            library=library,
+            runtime=runtime,
+        )
+        qwen35_full_attn_gate_mul_fp16(
+            out_dev_buf.ptr,
+            gate_fp16_dev.ptr,
+            gated_fp16_dev.ptr,
+            num_q_heads * head_dim,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(out), out_dev_buf, runtime=runtime)
+        copy_device_to_host(host_array_ptr(gated_bf16), gated_bf16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(gated_fp16), gated_fp16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
     max_abs = float(np.max(np.abs(out - expected)))
+    gated_bf16_mismatch = int(np.count_nonzero(gated_bf16 != expected_gated_bf16))
+    gated_fp16_mismatch = int(np.count_nonzero(gated_fp16.view(np.uint16) != expected_gated_fp16.view(np.uint16)))
     print(
         f"context_len={context_len} max_context_len={max_context_len} num_q_heads={num_q_heads} "
-        f"num_kv_heads={num_kv_heads} head_dim={head_dim} max_abs={max_abs:.3g}"
+        f"num_kv_heads={num_kv_heads} head_dim={head_dim} max_abs={max_abs:.3g} "
+        f"gated_bf16_mismatch={gated_bf16_mismatch} gated_fp16_mismatch={gated_fp16_mismatch}"
     )
     print("full_attn_out=", out.reshape(-1).tolist())
-    return 0 if max_abs <= 1.0e-6 else 1
+    return 0 if max_abs <= 1.0e-6 and gated_bf16_mismatch == 0 and gated_fp16_mismatch == 0 else 1
 
 
 def qwen35_paged_attn_decode_hip_smoke(
