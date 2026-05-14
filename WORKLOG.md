@@ -4132,3 +4132,25 @@ Results: all tests passed.
 ### Next
 
 - Attach MTP/EAGLE3/DFlash draft providers as plugins once target-model batch verification is available.
+
+---
+
+## 2026-05-14 — Add c=N benchmark protocol and blocked correctness artifact
+
+### Scope
+
+- Updated `docs/BENCHMARK.md` with c=N concurrent acceptance requirements, initial c=2/4/8 shapes, and required generated-token equality vs independent c=1 sessions.
+- Added blocked artifact `benchmarks/results/2026-05-14-hipengine-qwen35-cn-correctness-blocked.json` recording the c=2/c=4 primitive batch correctness results and explicitly marking full generated-token c>N parity as pending.
+
+### Validation
+
+```bash
+python3 -m json.tool benchmarks/results/2026-05-14-hipengine-qwen35-cn-correctness-blocked.json >/dev/null
+python3 -m compileall -q hipengine scripts tests && python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py -q
+```
+
+Results: JSON artifact is valid; tests passed.
+
+### Next
+
+- Do not retain c=N throughput rows until generated-token equality vs independent c=1 sessions is implemented and green.

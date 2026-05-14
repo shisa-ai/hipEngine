@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "status": "blocked",
+  "artifact_type": "cN_correctness_protocol_bringup",
+  "reason": "Primitive c>N KV/attention correctness passed, but full resident batched generated-token runner is not wired yet; no throughput retained.",
+  "model": "Qwen3.5-35B-A3B-PARO primitive fixture",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 gfx1100",
+  "commit": "1b0c30daab283d0586cb0105ac3125141990f3af",
+  "dirty_state": true,
+  "commands": [
+    "python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-qwen35-batch-c2.json",
+    "python3 scripts/qwen35_batch_correctness.py --rows 4 --json /tmp/hipengine-qwen35-batch-c4.json"
+  ],
+  "correctness": {
+    "c2": {
+      "schema": 1,
+      "rows": 2,
+      "seed": 1234,
+      "block_size": 256,
+      "max_context_len": 4,
+      "num_q_heads": 4,
+      "num_kv_heads": 1,
+      "head_dim": 8,
+      "context_lens": [
+        1,
+        2
+      ],
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.2351741790771484e-08,
+      "passed": true
+    },
+    "c4": {
+      "schema": 1,
+      "rows": 4,
+      "seed": 1234,
+      "block_size": 256,
+      "max_context_len": 4,
+      "num_q_heads": 4,
+      "num_kv_heads": 1,
+      "head_dim": 8,
+      "context_lens": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.9802322387695312e-08,
+      "passed": true
+    },
+    "full_generated_token_batch_vs_c1": "pending_batched_layer_runner"
+  },
+  "performance": null,
+  "acceptance_decision": "not_retained_performance_number"
+}

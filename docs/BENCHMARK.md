@@ -132,7 +132,22 @@ For KV-policy and long-context work.
 
 ### c=N concurrent (Phase 1+)
 
-Protocol TBD once the scheduler is stable. Will mirror `mini-sglang`'s concurrent decode harness so numbers are directly comparable.
+Correctness comes before throughput. A c=N benchmark row is not eligible for `accepted` status until all of the following are true:
+
+- `scripts/qwen35_batch_correctness.py --rows N` passes with `append_key_mismatch=0`, `append_value_mismatch=0`, and `attn_batch_vs_c1_max_abs <= 1e-6` for the kernel families used by the runner.
+- The resident batch runner emits generated-token ids equal to N independent c=1 resident runs for the same fixed prompts (`temperature=0`, SpecDec disabled).
+- The artifact records scheduler occupancy, active mask shape, graph bucket key, KV policy, and whether compaction occurred.
+- For continuous batching, include admission/completion timestamps and per-request p50/p95 latency in addition to aggregate tok/s.
+
+Initial protocol shapes:
+
+| Shape | Purpose | Required correctness command |
+| --- | --- | --- |
+| `c=2`, prompt 512 / decode 128 | bring-up parity and debugging | `python3 scripts/qwen35_batch_correctness.py --rows 2` plus generated-token equality vs two c=1 sessions |
+| `c=4`, prompt 512 / decode 128 | first scheduler/graph bucket row | `python3 scripts/qwen35_batch_correctness.py --rows 4` plus generated-token equality vs four c=1 sessions |
+| `c=8`, prompt 512 / decode 128 | primary early concurrent target | `python3 scripts/qwen35_batch_correctness.py --rows 8` plus generated-token equality vs eight c=1 sessions |
+
+Report both aggregate tok/s and per-request tok/s. Do not compare a c=N aggregate row against c=1 without explicitly showing `aggregate/c1` and `per_request/c1` ratios. SpecDec must be disabled for these rows; SpecDec has a separate acceptance protocol because generated-token equality depends on target verification and KV commit semantics.
 
 ### OPTIMAL MoE/PARO parity rows
 
