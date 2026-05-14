@@ -8,7 +8,11 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
-from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentBatchLayout, Qwen35ParoResidentSession
+from hipengine.runtime.qwen35_paro_runner import (
+    Qwen35ParoResidentBatchLayout,
+    Qwen35ParoResidentSession,
+    qwen35_paro_native_prefill_plan,
+)
 
 
 def test_qwen35_resident_batch_layout_is_batch_shaped_with_slot0_aliases() -> None:
@@ -30,13 +34,15 @@ def test_qwen35_resident_batch_layout_is_batch_shaped_with_slot0_aliases() -> No
 
 
 def test_qwen35_resident_native_prefill_plan_reports_linear_prefix_blocker() -> None:
+    layer_types = ("linear_attention", "linear_attention", "full_attention", "linear_attention")
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.layer_limit = 4
-    session.config = SimpleNamespace(
-        layer_types=("linear_attention", "linear_attention", "full_attention", "linear_attention")
-    )
+    session.config = SimpleNamespace(layer_types=layer_types)
 
     plan = session.native_prefill_plan()
+    pure_plan = qwen35_paro_native_prefill_plan(layer_types, layer_limit=4)
+
+    assert pure_plan == plan
 
     assert plan.path == "linear_attention_prefix_only"
     assert plan.layer_limit == 4
@@ -46,6 +52,11 @@ def test_qwen35_resident_native_prefill_plan_reports_linear_prefix_blocker() -> 
     assert plan.first_unsupported_type == "full_attention"
     assert any("first unsupported layer 2" in blocker for blocker in plan.blockers)
     assert plan.to_json_dict()["linear_prefix_layers"] == 2
+
+
+def test_qwen35_resident_native_prefill_plan_rejects_invalid_layer_limit() -> None:
+    with pytest.raises(ValueError, match="exceeds available"):
+        qwen35_paro_native_prefill_plan(("linear_attention",), layer_limit=2)
 
 
 def test_qwen35_resident_native_prefill_plan_accepts_all_linear_layer_limit() -> None:

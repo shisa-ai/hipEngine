@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -612,6 +612,53 @@ class Qwen35ParoResidentBatchExecution:
         }
 
 
+def qwen35_paro_native_prefill_plan(
+    layer_types: Sequence[str],
+    *,
+    layer_limit: int | None = None,
+) -> Qwen35ParoNativePrefillPlan:
+    """Plan the resident native-prefill coverage for a Qwen3.5/PARO layer prefix."""
+
+    available_layers = len(layer_types)
+    limit = available_layers if layer_limit is None else int(layer_limit)
+    if limit < 0:
+        raise ValueError("layer_limit must be non-negative")
+    if limit > available_layers:
+        raise ValueError(f"layer_limit {limit} exceeds available layer_types {available_layers}")
+    linear_prefix_layers = 0
+    first_unsupported_layer: int | None = None
+    first_unsupported_type: str | None = None
+    for layer_id in range(limit):
+        layer_type = str(layer_types[layer_id])
+        if layer_type == "linear_attention" and first_unsupported_layer is None:
+            linear_prefix_layers += 1
+            continue
+        first_unsupported_layer = layer_id
+        first_unsupported_type = layer_type
+        break
+    full_layer_limit_native = linear_prefix_layers == limit
+    blockers: tuple[str, ...]
+    if full_layer_limit_native:
+        blockers = ()
+        path = "linear_attention_native_full_layer_limit"
+    else:
+        blockers = (
+            "native prefill currently covers only linear-attention layer prefixes",
+            "native compact/grouped MoE and full-attention prefill are not wired",
+            f"first unsupported layer {first_unsupported_layer} is {first_unsupported_type!r}",
+        )
+        path = "linear_attention_prefix_only" if linear_prefix_layers else "serial_only"
+    return Qwen35ParoNativePrefillPlan(
+        path=path,
+        layer_limit=limit,
+        linear_prefix_layers=linear_prefix_layers,
+        full_layer_limit_native=full_layer_limit_native,
+        first_unsupported_layer=first_unsupported_layer,
+        first_unsupported_type=first_unsupported_type,
+        blockers=blockers,
+    )
+
+
 class Qwen35ParoResidentSession:
     """Resident-state autoregressive Qwen3.5/PARO c=1 inference session.
 
@@ -762,38 +809,7 @@ class Qwen35ParoResidentSession:
     def native_prefill_plan(self) -> Qwen35ParoNativePrefillPlan:
         """Return the native prefill coverage currently available for this session."""
 
-        linear_prefix_layers = 0
-        first_unsupported_layer: int | None = None
-        first_unsupported_type: str | None = None
-        for layer_id in range(self.layer_limit):
-            layer_type = self.config.layer_types[layer_id]
-            if layer_type == "linear_attention" and first_unsupported_layer is None:
-                linear_prefix_layers += 1
-                continue
-            first_unsupported_layer = layer_id
-            first_unsupported_type = layer_type
-            break
-        full_layer_limit_native = linear_prefix_layers == self.layer_limit
-        blockers: tuple[str, ...]
-        if full_layer_limit_native:
-            blockers = ()
-            path = "linear_attention_native_full_layer_limit"
-        else:
-            blockers = (
-                "native prefill currently covers only linear-attention layer prefixes",
-                "native compact/grouped MoE and full-attention prefill are not wired",
-                f"first unsupported layer {first_unsupported_layer} is {first_unsupported_type!r}",
-            )
-            path = "linear_attention_prefix_only" if linear_prefix_layers else "serial_only"
-        return Qwen35ParoNativePrefillPlan(
-            path=path,
-            layer_limit=self.layer_limit,
-            linear_prefix_layers=linear_prefix_layers,
-            full_layer_limit_native=full_layer_limit_native,
-            first_unsupported_layer=first_unsupported_layer,
-            first_unsupported_type=first_unsupported_type,
-            blockers=blockers,
-        )
+        return qwen35_paro_native_prefill_plan(self.config.layer_types, layer_limit=self.layer_limit)
 
     def batch_execution_metadata(self, *, scheduler_owned: bool = False) -> Qwen35ParoResidentBatchExecution:
         """Describe whether the resident c>N path is native or a serial fallback."""

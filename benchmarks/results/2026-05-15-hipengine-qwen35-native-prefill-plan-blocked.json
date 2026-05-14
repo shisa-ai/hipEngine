@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "status": "blocked",
+  "blocked_reason": "native compact/full-attention prefill is not implemented past the linear-attention prefix",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "mode": "qwen35_paro_native_prefill_plan",
+  "command": "python3 scripts/qwen35_native_prefill_plan.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-plan-blocked.json",
+  "performance_claim": false,
+  "config": {
+    "architecture": "Qwen3_5MoeForConditionalGeneration",
+    "num_hidden_layers": 40,
+    "layer_limit": 40,
+    "layer_type_counts_in_limit": {
+      "full_attention": 10,
+      "linear_attention": 30
+    },
+    "layer_prefix_preview": [
+      {
+        "layer": 0,
+        "type": "linear_attention"
+      },
+      {
+        "layer": 1,
+        "type": "linear_attention"
+      },
+      {
+        "layer": 2,
+        "type": "linear_attention"
+      },
+      {
+        "layer": 3,
+        "type": "full_attention"
+      },
+      {
+        "layer": 4,
+        "type": "linear_attention"
+      },
+      {
+        "layer": 5,
+        "type": "linear_attention"
+      },
+      {
+        "layer": 6,
+        "type": "linear_attention"
+      },
+      {
+        "layer": 7,
+        "type": "full_attention"
+      }
+    ]
+  },
+  "native_prefill_plan": {
+    "path": "linear_attention_prefix_only",
+    "layer_limit": 40,
+    "linear_prefix_layers": 3,
+    "full_layer_limit_native": false,
+    "first_unsupported_layer": 3,
+    "first_unsupported_type": "full_attention",
+    "blockers": [
+      "native prefill currently covers only linear-attention layer prefixes",
+      "native compact/grouped MoE and full-attention prefill are not wired",
+      "first unsupported layer 3 is 'full_attention'"
+    ]
+  },
+  "next_required_port_scope": [
+    "grouped/compact MoE prefill at the first unsupported layer",
+    "full-attention prefill/KV append for compact token batches",
+    "c-aware decode graph replay after native compact prefill is available"
+  ],
+  "notes": [
+    "This helper reads HF config metadata only; it does not materialize weights or run kernels.",
+    "The payload is blocker evidence for Task #15 and is not a throughput artifact."
+  ]
+}
