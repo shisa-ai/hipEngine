@@ -3483,3 +3483,43 @@ Results:
 ### Next
 
 - Implement a non-default stream + HIP graph replay wrapper using these device-resident state updates.
+
+---
+
+## 2026-05-14 — Diagnostic one-step HIP graph replay for Qwen3.5/PARO decode
+
+### Scope
+
+- Added HIP stream/graph ctypes wrappers to `HipRuntime`.
+- Propagated stream arguments through `Qwen35ParoDecodeState` wrapper/orchestrator calls.
+- Added `Qwen35ParoResidentSession.capture_decode_graph(position=...)`, which captures one generated-token decode step on a non-default stream. The captured step consumes the current device argmax token, runs all resident layers, runs GPU W8A16 lm-head + argmax, writes the next token on device, and advances device position/context.
+- Added `scripts/qwen35_paro_bench.py --graph-replay-decode` for measured decode graph replay.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine scripts tests
+python3 -m pytest -q
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 2 --decode-tokens 1 --warmup-decode-tokens 1 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-graph-1.json
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 2 --decode-tokens 4 --warmup-decode-tokens 1 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-graph-4.json
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-qwen35-paro-512-128-graph.json
+```
+
+1-layer graph-vs-eager sanity:
+
+- `decode_tokens=1`: graph final token/logit matched eager (`229838`, `6.366115570068359`).
+- `decode_tokens=4`: graph final token/logit matched eager (`229838`, `6.246890544891357`).
+
+512/128 W7900 diagnostic:
+
+- Load/materialization: `29.70s`.
+- Token-by-token prefill: `5.25s`, `97.46 tok/s` (actual c=1, not native prefill).
+- Graph replay measured decode: `1.381s`, `92.676 tok/s`, average step `10.79ms`.
+- Current PLAN-MOE2 compact-WMMA 512/128 decode target: `115.666 tok/s`; HIPENGINE graph diagnostic is ~`80.1%` of target.
+
+Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
+
+### Next
+
+- Profile graph replay kernel mix. The remaining ~20% decode gap is no longer explained by tokenizer loading or simple Python per-kernel launch overhead.
+- Native batched/compact prefill remains the largest missing implementation for PLAN-MOE2 prefill parity.

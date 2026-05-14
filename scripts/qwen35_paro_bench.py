@@ -42,6 +42,7 @@ def main() -> int:
     parser.add_argument("--max-layers", type=int, default=0, help="Debug limit; 0 means all layers")
     parser.add_argument("--progress", action="store_true")
     parser.add_argument("--roctx", action="store_true", help="Emit ROCTX ranges for profiler correlation")
+    parser.add_argument("--graph-replay-decode", action="store_true", help="Replay measured decode with a captured one-step HIP graph")
     parser.add_argument("--json", type=Path, default=None, help="Optional output JSON path")
     args = parser.parse_args()
 
@@ -94,19 +95,35 @@ def main() -> int:
         warmup_seconds = time.perf_counter() - warmup_start
 
         decode_start_pos = len(prompt_tokens) + args.warmup_decode_tokens
-        decode_start = time.perf_counter()
-        with roctx.range("hipengine:measured_decode"):
-            for offset in range(args.decode_tokens):
-                step_start = time.perf_counter()
-                with roctx.range("hipengine:measured_decode_step"):
-                    result = session.step(next_token, position=decode_start_pos + offset, sample=True)
-                step_seconds = time.perf_counter() - step_start
-                if result is None:
-                    raise RuntimeError("decode step did not produce a token")
-                decode_samples.append(step_seconds)
+        if args.graph_replay_decode and args.decode_tokens:
+            with roctx.range("hipengine:capture_decode_graph"):
+                graph = session.capture_decode_graph(position=decode_start_pos)
+            try:
+                decode_start = time.perf_counter()
+                with roctx.range("hipengine:measured_decode_graph"):
+                    graph.replay(args.decode_tokens)
+                decode_seconds = time.perf_counter() - decode_start
+                result = graph.read_sample()
+                avg_step = decode_seconds / args.decode_tokens
+                decode_samples.extend([avg_step] * args.decode_tokens)
                 next_token = result.token_id
                 generated.append(result.to_json_dict())
-        decode_seconds = time.perf_counter() - decode_start
+            finally:
+                graph.close()
+        else:
+            decode_start = time.perf_counter()
+            with roctx.range("hipengine:measured_decode"):
+                for offset in range(args.decode_tokens):
+                    step_start = time.perf_counter()
+                    with roctx.range("hipengine:measured_decode_step"):
+                        result = session.step(next_token, position=decode_start_pos + offset, sample=True)
+                    step_seconds = time.perf_counter() - step_start
+                    if result is None:
+                        raise RuntimeError("decode step did not produce a token")
+                    decode_samples.append(step_seconds)
+                    next_token = result.token_id
+                    generated.append(result.to_json_dict())
+            decode_seconds = time.perf_counter() - decode_start
     finally:
         session.close()
 
@@ -124,9 +141,9 @@ def main() -> int:
         "max_layers": args.max_layers or runner.config.num_hidden_layers,
         "tokens_per_step": 1,
         "native_batched_prefill": False,
-        "graph_replay": False,
+        "graph_replay": bool(args.graph_replay_decode),
         "prefill_comparable_to_plan_moe2": False,
-        "decode_comparable_to_plan_moe2": "partial_no_graph_replay",
+        "decode_comparable_to_plan_moe2": "graph_replay_diagnostic" if args.graph_replay_decode else "partial_no_graph_replay",
         "timings": {
             "load_seconds": load_seconds,
             "prefill_seconds": prefill_seconds,
@@ -142,7 +159,11 @@ def main() -> int:
         "generated_preview": generated[:16],
         "notes": [
             "Prefill is actual autoregressive token-by-token c=1, not native batched/compact prefill.",
-            "Decode uses persistent per-layer state/KV and GPU lm-head/argmax, but no graph replay yet.",
+            (
+                "Measured decode uses one-step HIP graph replay with device token/position state."
+                if args.graph_replay_decode
+                else "Decode uses persistent per-layer state/KV and GPU lm-head/argmax, but no graph replay yet."
+            ),
         ],
     }
     text = json.dumps(output, indent=2, ensure_ascii=False)

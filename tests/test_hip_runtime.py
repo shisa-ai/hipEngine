@@ -34,6 +34,16 @@ class FakeHipLibrary:
         self.hipMalloc = FakeFunction(self._malloc)
         self.hipFree = FakeFunction(self._free)
         self.hipMemcpy = FakeFunction(self._memcpy)
+        self.hipMemcpyAsync = FakeFunction(self._memcpy_async)
+        self.hipStreamCreateWithFlags = FakeFunction(self._stream_create_with_flags)
+        self.hipStreamDestroy = FakeFunction(lambda stream: 0)
+        self.hipStreamSynchronize = FakeFunction(lambda stream: 0)
+        self.hipStreamBeginCapture = FakeFunction(lambda stream, mode: 0)
+        self.hipStreamEndCapture = FakeFunction(self._stream_end_capture)
+        self.hipGraphInstantiate = FakeFunction(self._graph_instantiate)
+        self.hipGraphLaunch = FakeFunction(lambda graph_exec, stream: 0)
+        self.hipGraphExecDestroy = FakeFunction(lambda graph_exec: 0)
+        self.hipGraphDestroy = FakeFunction(lambda graph: 0)
         self.hipDeviceSynchronize = FakeFunction(lambda: 0)
         self.hipGetErrorString = FakeFunction(lambda code: b"fake hip error")
 
@@ -50,6 +60,22 @@ class FakeHipLibrary:
         self.copied.append((dst.value, src.value, nbytes.value, kind))
         return 0
 
+    def _memcpy_async(self, dst, src, nbytes, kind, stream):
+        self.copied.append((dst.value, src.value, nbytes.value, kind, stream.value))
+        return 0
+
+    def _stream_create_with_flags(self, out_stream, flags):
+        out_stream._obj.value = 0x5000 + int(flags.value)
+        return 0
+
+    def _stream_end_capture(self, stream, out_graph):
+        out_graph._obj.value = 0x6000
+        return 0
+
+    def _graph_instantiate(self, out_exec, graph, error_node, log_buffer, buffer_size):
+        out_exec._obj.value = 0x7000
+        return 0
+
 
 def setup_function() -> None:
     reset_default_runtime_for_tests()
@@ -59,18 +85,34 @@ def test_importing_runtime_module_does_not_load_default_runtime() -> None:
     assert not is_default_runtime_loaded()
 
 
-def test_fake_runtime_malloc_free_memcpy_and_sync() -> None:
+def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
     lib = FakeHipLibrary()
     runtime = HipRuntime(lib)  # type: ignore[arg-type]
     runtime._configure()
 
     ptr = runtime.malloc(16)
     runtime.memcpy(ptr, 0x2000, 16, HipMemcpyKind.HOST_TO_DEVICE)
+    stream = runtime.stream_create()
+    runtime.memcpy_async(ptr, 0x3000, 8, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+    runtime.stream_begin_capture(stream)
+    graph = runtime.stream_end_capture(stream)
+    graph_exec = runtime.graph_instantiate(graph)
+    runtime.graph_launch(graph_exec, stream)
+    runtime.stream_synchronize(stream)
+    runtime.graph_exec_destroy(graph_exec)
+    runtime.graph_destroy(graph)
+    runtime.stream_destroy(stream)
     runtime.device_synchronize()
     runtime.free(ptr)
 
     assert ptr == 0x1000
-    assert lib.copied == [(0x1000, 0x2000, 16, int(HipMemcpyKind.HOST_TO_DEVICE))]
+    assert stream == 0x5001
+    assert graph == 0x6000
+    assert graph_exec == 0x7000
+    assert lib.copied == [
+        (0x1000, 0x2000, 16, int(HipMemcpyKind.HOST_TO_DEVICE)),
+        (0x1000, 0x3000, 8, int(HipMemcpyKind.DEVICE_TO_DEVICE), stream),
+    ]
     assert lib.freed == [0x1000]
 
 

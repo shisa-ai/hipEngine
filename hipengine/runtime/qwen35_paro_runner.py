@@ -30,6 +30,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
 from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
 from hipengine.kernels.hip_gfx1100.runtime import (
+    advance_decode_position_i64,
     embedding_lookup_bf16_i64,
     set_decode_position_i64,
     set_i64_scalar,
@@ -579,10 +580,67 @@ class Qwen35ParoResidentSession:
     def step(self, token_id: int, *, position: int, sample: bool = True) -> Qwen35ParoAutoregressiveStepResult | None:
         if self.closed:
             raise RuntimeError("session is closed")
-        if position < 0 or position >= self.max_sequence_length:
-            raise ValueError(f"position {position} outside session capacity {self.max_sequence_length}")
+        self._check_position(position)
         self._set_token_embedding(int(token_id))
         self._set_position(position)
+        hidden = self._run_layers(position=position, stream=0)
+        if not sample:
+            return None
+        return self._sample_from_hidden(hidden)
+
+    def capture_decode_graph(self, *, position: int) -> "Qwen35ParoDecodeGraph":
+        """Capture one generated-token decode step for replay.
+
+        The captured step consumes the current device argmax token (`lm_out_index`),
+        writes the next argmax token back to the same device scalar, and advances
+        device position/context at the end. Host tokenization/text decode is not
+        part of the graph.
+        """
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        self._check_position(position)
+        num_splits = max(1, (position + 1 + self.chunk_size - 1) // self.chunk_size)
+        stream = self.runtime.stream_create()
+        self._set_position(position, stream=stream)
+        self.runtime.stream_synchronize(stream)
+        self.runtime.stream_begin_capture(stream)
+        try:
+            self._step_from_device_token(position=position, num_splits=num_splits, advance_position=True, stream=stream)
+            graph = self.runtime.stream_end_capture(stream)
+        except Exception:
+            # If capture fails, try to end capture so the stream is not left in capture mode.
+            try:
+                self.runtime.stream_end_capture(stream)
+            except Exception:
+                pass
+            self.runtime.stream_destroy(stream)
+            raise
+        graph_exec = self.runtime.graph_instantiate(graph)
+        return Qwen35ParoDecodeGraph(
+            session=self,
+            graph=graph,
+            graph_exec=graph_exec,
+            stream=stream,
+            position=position,
+            num_splits=num_splits,
+        )
+
+    def _step_from_device_token(self, *, position: int, num_splits: int, advance_position: bool, stream: int) -> None:
+        self._check_position(position)
+        self._set_token_embedding_from_ptr(self.lm_out_index.ptr, stream=stream)
+        hidden = self._run_layers(position=position, num_splits_override=num_splits, stream=stream)
+        self._sample_device_from_hidden(hidden, stream=stream)
+        if advance_position:
+            advance_decode_position_i64(
+                self.position_buf.ptr,
+                self.context_buf.ptr,
+                stream=stream,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
+
+    def _run_layers(self, *, position: int, num_splits_override: int | None = None, stream: int = 0) -> Tensor:
         hidden = self.hidden
         next_hidden = self.next_hidden
         for layer_id, state in enumerate(self.states):
@@ -596,10 +654,11 @@ class Qwen35ParoResidentSession:
                     linear_scratch=self.linear_scratch[layer_id],
                     moe_scratch=self.moe_scratch[layer_id],
                     library=self.libraries,
+                    stream=stream,
                 )
             elif layer_type == "full_attention":
                 key_cache, value_cache, _key_buf, _value_buf = self.full_caches[layer_id]
-                num_splits = max(1, (position + 1 + self.chunk_size - 1) // self.chunk_size)
+                num_splits = num_splits_override or max(1, (position + 1 + self.chunk_size - 1) // self.chunk_size)
                 out = state.run_full_attention_moe_c1_layer_bf16(
                     hidden,
                     key_cache=key_cache,
@@ -615,16 +674,15 @@ class Qwen35ParoResidentSession:
                     chunk_size=self.chunk_size,
                     num_splits=num_splits,
                     library=self.libraries,
+                    stream=stream,
                 )
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
-            self.runtime.memcpy(next_hidden.ptr, out.ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+            self.runtime.memcpy_async(next_hidden.ptr, out.ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
             hidden, next_hidden = next_hidden, hidden
         self.hidden = hidden
         self.next_hidden = next_hidden
-        if not sample:
-            return None
-        return self._sample_from_hidden(hidden)
+        return hidden
 
     def _build(self) -> None:
         self._emit("resident_build_start", layers=self.layer_limit, max_sequence_length=self.max_sequence_length)
@@ -818,35 +876,45 @@ class Qwen35ParoResidentSession:
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
 
-    def _set_token_embedding(self, token_id: int) -> None:
+    def _set_token_embedding(self, token_id: int, *, stream: int = 0) -> None:
         if token_id < 0 or token_id >= self.vocab_size:
             raise ValueError(f"token_id {token_id} outside [0, {self.vocab_size})")
         set_i64_scalar(
             self.token_id_buf.ptr,
             token_id,
+            stream=stream,
             library=self.libraries["runtime_state"],
             runtime=self.runtime,
         )
+        self._set_token_embedding_from_ptr(self.token_id_buf.ptr, stream=stream)
+
+    def _set_token_embedding_from_ptr(self, token_id_ptr: int, *, stream: int = 0) -> None:
         embedding_lookup_bf16_i64(
             self.embedding.tensor.ptr,
-            self.token_id_buf.ptr,
+            token_id_ptr,
             self.hidden.ptr,
             self.config.hidden_size,
             self.vocab_size,
+            stream=stream,
             library=self.libraries["runtime_state"],
             runtime=self.runtime,
         )
 
-    def _set_position(self, position: int) -> None:
+    def _set_position(self, position: int, *, stream: int = 0) -> None:
         set_decode_position_i64(
             self.position_buf.ptr,
             self.context_buf.ptr,
             int(position),
+            stream=stream,
             library=self.libraries["runtime_state"],
             runtime=self.runtime,
         )
 
-    def _sample_from_hidden(self, hidden: Tensor) -> Qwen35ParoAutoregressiveStepResult:
+    def _check_position(self, position: int) -> None:
+        if position < 0 or position >= self.max_sequence_length:
+            raise ValueError(f"position {position} outside session capacity {self.max_sequence_length}")
+
+    def _sample_device_from_hidden(self, hidden: Tensor, *, stream: int = 0) -> None:
         paro_rmsnorm_out_bf16(
             hidden.ptr,
             self.norm_weight.tensor.ptr,
@@ -854,6 +922,7 @@ class Qwen35ParoResidentSession:
             1,
             self.config.hidden_size,
             self.config.rms_norm_eps,
+            stream=stream,
             library=self.libraries["norm"],
             runtime=self.runtime,
         )
@@ -866,6 +935,7 @@ class Qwen35ParoResidentSession:
             self.config.hidden_size,
             self.vocab_size,
             threads=self.lm_head_threads,
+            stream=stream,
             library=self.libraries["w8a16"],
             runtime=self.runtime,
         )
@@ -877,10 +947,17 @@ class Qwen35ParoResidentSession:
             self.lm_out_value.ptr,
             self.vocab_size,
             threads=self.lm_head_threads,
+            stream=stream,
             library=self.libraries["lm_head"],
             runtime=self.runtime,
         )
+
+    def _sample_from_hidden(self, hidden: Tensor) -> Qwen35ParoAutoregressiveStepResult:
+        self._sample_device_from_hidden(hidden)
         self.runtime.device_synchronize()
+        return self._read_sample()
+
+    def _read_sample(self) -> Qwen35ParoAutoregressiveStepResult:
         index_host = np.empty((1,), dtype=np.int64)
         value_host = np.empty((1,), dtype=np.float32)
         copy_device_to_host(host_array_ptr(index_host), self.lm_out_index, runtime=self.runtime)
@@ -901,6 +978,46 @@ class Qwen35ParoResidentSession:
     def _emit(self, event: str, **fields: Any) -> None:
         if self.progress is not None:
             self.progress({"event": event, **fields})
+
+
+@dataclass
+class Qwen35ParoDecodeGraph:
+    session: Qwen35ParoResidentSession
+    graph: int
+    graph_exec: int
+    stream: int
+    position: int
+    num_splits: int
+    closed: bool = False
+
+    def replay(self, steps: int) -> None:
+        if self.closed:
+            raise RuntimeError("decode graph is closed")
+        if steps < 0:
+            raise ValueError("steps must be non-negative")
+        for _ in range(steps):
+            self.session.runtime.graph_launch(self.graph_exec, self.stream)
+        self.session.runtime.stream_synchronize(self.stream)
+
+    def read_sample(self) -> Qwen35ParoAutoregressiveStepResult:
+        if self.closed:
+            raise RuntimeError("decode graph is closed")
+        return self.session._read_sample()
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self.session.runtime.graph_exec_destroy(self.graph_exec)
+        self.session.runtime.graph_destroy(self.graph)
+        if self.stream:
+            self.session.runtime.stream_destroy(self.stream)
+
+    def __enter__(self) -> "Qwen35ParoDecodeGraph":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
 
 def _progress_forwarder(emit: Callable[..., None]) -> Callable[[dict[str, Any]], None]:

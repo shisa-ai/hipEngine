@@ -8,6 +8,7 @@ from hipengine.runtime.qwen35_paro import (
 )
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
+    Qwen35ParoDecodeGraph,
     Qwen35ParoLayerRecord,
     Qwen35ParoNextTokenResult,
     Qwen35ParoNextTokenRunner,
@@ -21,6 +22,7 @@ __all__ = [
     "Qwen35ParoLinearAttentionScratch",
     "Qwen35ParoMoeScratch",
     "Qwen35ParoAutoregressiveStepResult",
+    "Qwen35ParoDecodeGraph",
     "Qwen35ParoLayerRecord",
     "Qwen35ParoNextTokenResult",
     "Qwen35ParoNextTokenRunner",

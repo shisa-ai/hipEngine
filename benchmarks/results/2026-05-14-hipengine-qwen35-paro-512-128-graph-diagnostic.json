@@ -1,0 +1,77 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-14T18:34:04+09:00",
+  "run_tag": "qwen35-paro-512-128-actual-c1-graph-diagnostic",
+  "summary": "HIPENGINE Qwen3.5/PARO actual autoregressive c=1 diagnostic with one-step HIP graph replay for measured decode; native batched prefill and accepted correctness gates still missing.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "commit": "faf4cf9ae2efed064b690e279c6e515a2d32835b",
+    "dirty": true
+  },
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "workload": {
+    "prompt_tokens": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "concurrency": 1,
+    "mode": "actual_autoregressive_c1_resident",
+    "native_batched_prefill": false,
+    "graph_replay": true
+  },
+  "command": "python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-qwen35-paro-512-128-graph.json",
+  "correctness": {
+    "status": "partial_smoke",
+    "evidence": "1-layer graph replay final token/logit matched eager for prompt_length=2, warmup=1, decode_tokens=1 and decode_tokens=4; full KL/top-1 gate not yet landed."
+  },
+  "baseline": {
+    "source": "/home/lhl/amd-gpu-tuning/PLAN-MOE2.md",
+    "current_compact_wmma_2026_05_13": {
+      "shape": "512/128",
+      "prefill_tok_s": 2557.397,
+      "decode_tok_s": 115.666
+    },
+    "post_wmma_revert_2026_05_12": {
+      "shape": "512/128",
+      "prefill_tok_s": 1300.337,
+      "decode_tok_s": 131.128
+    }
+  },
+  "measurements": {
+    "load_seconds": 29.698448017938063,
+    "prefill_seconds": 5.253379875095561,
+    "decode_seconds": 1.3811541870236397,
+    "warmup_decode_seconds": 0.045722201000899076,
+    "token_by_token_prefill_tok_s": 97.4610654803802,
+    "graph_decode_tok_s": 92.67611190886478,
+    "decode_step_average_s": 0.010790267086122185
+  },
+  "comparison": {
+    "decode_vs_current_compact_wmma_ratio": 0.8012390149989175,
+    "decode_vs_post_wmma_revert_ratio": 0.7067606606435299,
+    "prefill_comparable": false,
+    "decode_comparable": "graph_replay_diagnostic"
+  },
+  "blockers": [
+    "native batched/compact prefill kernels not wired; current prefill is token-by-token c=1",
+    "full Qwen3.5/PARO KL/top-1 correctness gate not yet landed",
+    "graph replay is currently exposed through diagnostic benchmark harness, not LLM.generate"
+  ],
+  "generated_preview": [
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.634312152862549
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.678398132324219
+    }
+  ]
+}

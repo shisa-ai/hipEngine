@@ -167,6 +167,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         threads: int = 128,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         prefix = normalize_qwen35_weight_name(weight_prefix)
         qweight = self.tensor(f"{prefix}.qweight")
@@ -185,6 +186,7 @@ class Qwen35ParoDecodeState:
             _out_packed_from_strided_qweight(qweight),
             group_size,
             threads=threads,
+            stream=stream,
             library=_library_for(library, "awq"),
             runtime=self.runtime,
         )
@@ -198,6 +200,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor]:
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
         q = f"{prefix}.q_proj"
@@ -224,6 +227,7 @@ class Qwen35ParoDecodeState:
             self.config.hidden_size,
             group_size,
             _rotation_krot(q_pairs),
+            stream=stream,
             library=_library_for(library, "rotate"),
             runtime=self.runtime,
         )
@@ -236,6 +240,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor]:
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
         self.project_pack8_bf16(
@@ -245,6 +250,7 @@ class Qwen35ParoDecodeState:
             rows=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         self.project_pack8_bf16(
             scratch.k_rot,
@@ -253,6 +259,7 @@ class Qwen35ParoDecodeState:
             rows=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         self.project_pack8_bf16(
             scratch.v_rot,
@@ -261,6 +268,7 @@ class Qwen35ParoDecodeState:
             rows=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         return scratch.q_proj, scratch.key_bf16, scratch.value
 
@@ -274,6 +282,7 @@ class Qwen35ParoDecodeState:
         max_positions: int,
         tokens: int = 1,
         library=None,
+        stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         if tokens != 1:
             raise ValueError("full-attention qkv prepare currently requires tokens=1")
@@ -284,6 +293,7 @@ class Qwen35ParoDecodeState:
             scratch.q_proj.ptr,
             scratch.query_raw.ptr,
             q_width,
+            stream=stream,
             library=_library_for(library, "cast"),
             runtime=self.runtime,
         )
@@ -291,6 +301,7 @@ class Qwen35ParoDecodeState:
             scratch.key_bf16.ptr,
             scratch.key_raw.ptr,
             kv_width,
+            stream=stream,
             library=_library_for(library, "cast"),
             runtime=self.runtime,
         )
@@ -311,6 +322,7 @@ class Qwen35ParoDecodeState:
             cfg.head_dim,
             cfg.rotary_dim or cfg.head_dim,
             max_positions,
+            stream=stream,
             library=_library_for(library, "qwen_rotary"),
             runtime=self.runtime,
         )
@@ -330,6 +342,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn.o_proj"
         q_width = self.config.num_attention_heads * self.config.head_dim
@@ -344,6 +357,7 @@ class Qwen35ParoDecodeState:
             q_width,
             group_size,
             _rotation_krot(pairs),
+            stream=stream,
             library=_library_for(library, "rotate"),
             runtime=self.runtime,
         )
@@ -355,6 +369,7 @@ class Qwen35ParoDecodeState:
             in_features=q_width,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         return scratch.o_proj
 
@@ -387,6 +402,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> tuple[Tensor, Tensor]:
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
         qkv = f"{prefix}.in_proj_qkv"
@@ -411,6 +427,7 @@ class Qwen35ParoDecodeState:
             self.config.hidden_size,
             group_size,
             _rotation_krot(pairs_qkv),
+            stream=stream,
             library=_library_for(library, "rotate"),
             runtime=self.runtime,
         )
@@ -423,6 +440,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> tuple[Tensor, Tensor]:
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
         self.project_pack8_bf16(
@@ -432,6 +450,7 @@ class Qwen35ParoDecodeState:
             rows=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         self.project_pack8_bf16(
             scratch.z_rot,
@@ -440,6 +459,7 @@ class Qwen35ParoDecodeState:
             rows=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         return scratch.qkv, scratch.z
 
@@ -451,6 +471,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         threads: int = 64,
         library=None,
+        stream: int = 0,
     ) -> tuple[Tensor, Tensor]:
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
         a_weight = self.tensor(f"{prefix}.in_proj_a.weight")
@@ -463,6 +484,7 @@ class Qwen35ParoDecodeState:
             self.config.hidden_size,
             self.config.linear_num_value_heads,
             threads=threads,
+            stream=stream,
             library=_library_for(library, "dense"),
             runtime=self.runtime,
         )
@@ -474,6 +496,7 @@ class Qwen35ParoDecodeState:
             self.config.hidden_size,
             self.config.linear_num_value_heads,
             threads=threads,
+            stream=stream,
             library=_library_for(library, "dense"),
             runtime=self.runtime,
         )
@@ -487,6 +510,7 @@ class Qwen35ParoDecodeState:
         recurrent_state: Tensor,
         eps: float | None = None,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
         conv_weight = self.tensor(f"{prefix}.conv1d.weight")
@@ -500,6 +524,7 @@ class Qwen35ParoDecodeState:
             scratch.conv_out.ptr,
             _linear_qkv_width(self.config),
             self.config.linear_conv_kernel_dim,
+            stream=stream,
             library=_library_for(library, "linear_conv"),
             runtime=self.runtime,
         )
@@ -518,6 +543,7 @@ class Qwen35ParoDecodeState:
             self.config.linear_num_value_heads,
             self.config.linear_key_head_dim,
             self.config.linear_value_head_dim,
+            stream=stream,
             library=_library_for(library, "linear_gdn"),
             runtime=self.runtime,
         )
@@ -530,6 +556,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         """Cast, rotate, and project the FP32 GDN output through linear_attn.out_proj."""
 
@@ -539,6 +566,7 @@ class Qwen35ParoDecodeState:
             scratch.recurrent_out.ptr,
             scratch.recurrent_bf16.ptr,
             tokens * width,
+            stream=stream,
             library=_library_for(library, "cast"),
             runtime=self.runtime,
         )
@@ -555,6 +583,7 @@ class Qwen35ParoDecodeState:
             width,
             group_size,
             _rotation_krot(pairs),
+            stream=stream,
             library=_library_for(library, "rotate"),
             runtime=self.runtime,
         )
@@ -566,6 +595,7 @@ class Qwen35ParoDecodeState:
             in_features=width,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         return scratch.out_proj
 
@@ -579,6 +609,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         if tokens != 1:
             raise ValueError("linear-attention out-proj orchestrator currently requires tokens=1")
@@ -591,12 +622,14 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         return self.project_linear_attention_out_bf16(
             scratch,
             tokens=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
 
     def run_linear_attention_state_bf16(
@@ -609,18 +642,20 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         if tokens != 1:
             raise ValueError("linear-attention state orchestrator currently requires tokens=1")
         scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens)
-        self.rotate_linear_attention_inputs_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library)
-        self.project_linear_attention_qkv_z_bf16(scratch, tokens=tokens, group_size=group_size, library=library)
-        self.project_linear_attention_ab_bf16(hidden, scratch, tokens=tokens, library=library)
+        self.rotate_linear_attention_inputs_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        self.project_linear_attention_qkv_z_bf16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        self.project_linear_attention_ab_bf16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         return self.run_linear_attention_conv_gdn_bf16(
             scratch,
             conv_state=conv_state,
             recurrent_state=recurrent_state,
             library=library,
+            stream=stream,
         )
 
     def input_rmsnorm_bf16(
@@ -631,6 +666,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         eps: float | None = None,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         weight = self.tensor(f"layers.{self.layer_weights.layer_id}.input_layernorm.weight")
         paro_rmsnorm_out_bf16(
@@ -640,6 +676,7 @@ class Qwen35ParoDecodeState:
             tokens,
             self.config.hidden_size,
             self.config.rms_norm_eps if eps is None else eps,
+            stream=stream,
             library=_library_for(library, "norm"),
             runtime=self.runtime,
         )
@@ -654,6 +691,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         eps: float | None = None,
         library=None,
+        stream: int = 0,
     ) -> tuple[Tensor, Tensor]:
         weight = self.tensor(f"layers.{self.layer_weights.layer_id}.post_attention_layernorm.weight")
         paro_add_rmsnorm_out_bf16(
@@ -665,6 +703,7 @@ class Qwen35ParoDecodeState:
             tokens,
             self.config.hidden_size,
             self.config.rms_norm_eps if eps is None else eps,
+            stream=stream,
             library=_library_for(library, "norm"),
             runtime=self.runtime,
         )
@@ -681,12 +720,13 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         if tokens != 1:
             raise ValueError("linear-attention+MoE c=1 layer orchestrator currently requires tokens=1")
         linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens)
         moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens)
-        self.input_rmsnorm_bf16(hidden, linear_scratch.attn_input, tokens=tokens, library=library)
+        self.input_rmsnorm_bf16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
         attn_out = self.run_linear_attention_out_proj_bf16(
             linear_scratch.attn_input,
             conv_state=conv_state,
@@ -695,6 +735,7 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         mlp_input, residual = self.post_attention_add_rmsnorm_bf16(
             hidden,
@@ -702,6 +743,7 @@ class Qwen35ParoDecodeState:
             moe_scratch,
             tokens=tokens,
             library=library,
+            stream=stream,
         )
         return self.run_moe_c1_bf16(
             mlp_input,
@@ -710,6 +752,7 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
 
     def append_full_attention_kv(
@@ -721,6 +764,7 @@ class Qwen35ParoDecodeState:
         spans: KVLiveSpans,
         block_size: int = 256,
         library=None,
+        stream: int = 0,
     ) -> None:
         qwen35_write_paged_kv_mixed_value_bf16_spans(
             scratch.key.ptr,
@@ -731,6 +775,7 @@ class Qwen35ParoDecodeState:
             block_size,
             self.config.num_key_value_heads,
             self.config.head_dim,
+            stream=stream,
             library=_library_for(library, "kv"),
             runtime=self.runtime,
         )
@@ -748,6 +793,7 @@ class Qwen35ParoDecodeState:
         block_size: int = 256,
         scale: float | None = None,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         gate_tensor = scratch.gate if gate is None else gate
         qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
@@ -769,6 +815,7 @@ class Qwen35ParoDecodeState:
             gate_tensor.shape[-1],
             1,
             (self.config.head_dim ** -0.5) if scale is None else scale,
+            stream=stream,
             library=_library_for(library, "attention"),
             runtime=self.runtime,
         )
@@ -794,24 +841,27 @@ class Qwen35ParoDecodeState:
         chunk_size: int = 256,
         num_splits: int = 1,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         if tokens != 1:
             raise ValueError("full-attention+MoE c=1 layer orchestrator currently requires tokens=1")
         attention_scratch = attention_scratch or self.reserve_full_attention_scratch(tokens=tokens, num_splits=num_splits)
         moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens)
-        self.input_rmsnorm_bf16(hidden, attention_scratch.attn_input, tokens=tokens, library=library)
+        self.input_rmsnorm_bf16(hidden, attention_scratch.attn_input, tokens=tokens, library=library, stream=stream)
         self.rotate_full_attention_inputs_bf16(
             attention_scratch.attn_input,
             attention_scratch,
             tokens=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         self.project_full_attention_qkv_bf16(
             attention_scratch,
             tokens=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         _query, _key, _value, gate = self.prepare_full_attention_qkv_bf16(
             attention_scratch,
@@ -821,6 +871,7 @@ class Qwen35ParoDecodeState:
             max_positions=max_positions,
             tokens=tokens,
             library=library,
+            stream=stream,
         )
         self.append_full_attention_kv(
             attention_scratch,
@@ -829,6 +880,7 @@ class Qwen35ParoDecodeState:
             spans=append_spans,
             block_size=block_size,
             library=library,
+            stream=stream,
         )
         gated = self.decode_full_attention_gqa_gate_bf16(
             attention_scratch,
@@ -840,6 +892,7 @@ class Qwen35ParoDecodeState:
             gate=gate,
             block_size=block_size,
             library=library,
+            stream=stream,
         )
         attn_out = self.project_full_attention_o_bf16(
             gated,
@@ -847,6 +900,7 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
         mlp_input, residual = self.post_attention_add_rmsnorm_bf16(
             hidden,
@@ -854,6 +908,7 @@ class Qwen35ParoDecodeState:
             moe_scratch,
             tokens=tokens,
             library=library,
+            stream=stream,
         )
         return self.run_moe_c1_bf16(
             mlp_input,
@@ -862,6 +917,7 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             group_size=group_size,
             library=library,
+            stream=stream,
         )
 
     def route_moe_topk_shared_bf16(
@@ -872,6 +928,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         threads: int = 512,
         library=None,
+        stream: int = 0,
     ) -> tuple[Tensor, Tensor]:
         cfg = self.config
         combined = self.tensor(f"layers.{self.layer_weights.layer_id}.mlp.router_shared_gate.weight")
@@ -887,6 +944,7 @@ class Qwen35ParoDecodeState:
             cfg.num_experts,
             cfg.num_experts_per_tok,
             threads=threads,
+            stream=stream,
             library=_library_for(library, "router"),
             runtime=self.runtime,
         )
@@ -901,6 +959,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         threads: int = 128,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
         gate_qweight = self.tensor(f"{prefix}.stacked_gate_qweight_pack8_decode")
@@ -928,6 +987,7 @@ class Qwen35ParoDecodeState:
             self.config.num_experts,
             group_size,
             threads=threads,
+            stream=stream,
             library=_library_for(library, "awq"),
             runtime=self.runtime,
         )
@@ -940,6 +1000,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
         pairs = self.tensor(f"{prefix}.down_weight_pairs")
@@ -955,6 +1016,7 @@ class Qwen35ParoDecodeState:
             self.config.moe_intermediate_size,
             group_size,
             _rotation_krot(pairs),
+            stream=stream,
             library=_library_for(library, "silu"),
             runtime=self.runtime,
         )
@@ -969,6 +1031,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         threads: int = 128,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
         qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
@@ -988,6 +1051,7 @@ class Qwen35ParoDecodeState:
             self.config.num_experts,
             group_size,
             threads=threads,
+            stream=stream,
             library=_library_for(library, "awq"),
             runtime=self.runtime,
         )
@@ -1001,6 +1065,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         threads: int = 64,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
         gate_up_weight = self.tensor(f"{prefix}.gate_up_weight_w8a16")
@@ -1016,6 +1081,7 @@ class Qwen35ParoDecodeState:
             self.config.hidden_size,
             2 * self.config.shared_expert_intermediate_size,
             threads=threads,
+            stream=stream,
             library=_library_for(library, "w8a16"),
             runtime=self.runtime,
         )
@@ -1024,6 +1090,7 @@ class Qwen35ParoDecodeState:
             scratch.shared_intermediate.ptr,
             tokens,
             self.config.shared_expert_intermediate_size,
+            stream=stream,
             library=_library_for(library, "silu"),
             runtime=self.runtime,
         )
@@ -1036,6 +1103,7 @@ class Qwen35ParoDecodeState:
             self.config.shared_expert_intermediate_size,
             self.config.hidden_size,
             threads=threads,
+            stream=stream,
             library=_library_for(library, "w8a16"),
             runtime=self.runtime,
         )
@@ -1051,6 +1119,7 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         threads: int = 256,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         if tokens != 1:
             raise ValueError("combined MoE c=1 residual helper currently requires tokens=1")
@@ -1066,6 +1135,7 @@ class Qwen35ParoDecodeState:
             self.config.num_experts_per_tok,
             self.config.hidden_size,
             threads=threads,
+            stream=stream,
             library=_library_for(library, "combine"),
             runtime=self.runtime,
         )
@@ -1080,21 +1150,23 @@ class Qwen35ParoDecodeState:
         tokens: int = 1,
         group_size: int = 128,
         library=None,
+        stream: int = 0,
     ) -> Tensor:
         if tokens != 1:
             raise ValueError("MoE c=1 orchestrator currently requires tokens=1")
         scratch = scratch or self.reserve_moe_c1_scratch(tokens=tokens)
-        self.route_moe_topk_shared_bf16(hidden, scratch, tokens=tokens, library=library)
-        self.selected_moe_gate_up_pack8_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library)
-        self.activate_rotate_moe_down_bf16(scratch, tokens=tokens, group_size=group_size, library=library)
-        self.selected_moe_down_pack8_bf16(scratch.down_input, scratch, tokens=tokens, group_size=group_size, library=library)
-        shared = self.shared_expert_w8a16_bf16(hidden, scratch, tokens=tokens, library=library)
+        self.route_moe_topk_shared_bf16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        self.selected_moe_gate_up_pack8_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        self.activate_rotate_moe_down_bf16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        self.selected_moe_down_pack8_bf16(scratch.down_input, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        shared = self.shared_expert_w8a16_bf16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         return self.combine_moe_c1_shared_residual_bf16(
             scratch,
             shared=shared,
             residual=residual,
             tokens=tokens,
             library=library,
+            stream=stream,
         )
 
     def reserve_moe_c1_scratch(self, *, tokens: int = 1) -> Qwen35ParoMoeScratch:

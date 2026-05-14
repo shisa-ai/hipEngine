@@ -204,7 +204,7 @@ def test_qwen35_decode_state_projects_pack8_with_normalized_weight_prefix(monkey
     assert len(calls) == 1
     args, kwargs = calls[0]
     assert args == (0xC000, 0xB000, 0xB100, 0xB200, 0xC100, 1, 4096, 512, 128)
-    assert kwargs == {"threads": 128, "library": None, "runtime": runtime}
+    assert kwargs == {"threads": 128, "stream": 0, "library": None, "runtime": runtime}
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
@@ -395,12 +395,12 @@ def test_qwen35_decode_state_projects_linear_attention_out(monkeypatch) -> None:
     assert out is scratch.out_proj
     assert [name for name, _, _ in calls] == ["cast", "rotate1", "pack8"]
     assert calls[0][1] == (scratch.recurrent_out.ptr, scratch.recurrent_bf16.ptr, 4096)
-    assert calls[0][2] == {"library": None, "runtime": runtime}
+    assert calls[0][2] == {"stream": 0, "library": None, "runtime": runtime}
     assert calls[1][1] == (scratch.recurrent_bf16.ptr, scratch.out_rot.ptr, 0x9650, 0x9660, 0x9670, 1, 4096, 128, 8)
-    assert calls[1][2] == {"library": None, "runtime": runtime}
+    assert calls[1][2] == {"stream": 0, "library": None, "runtime": runtime}
     assert calls[2][1][:5] == (scratch.out_rot.ptr, 0x9C10, 0x9C20, 0x9C30, scratch.out_proj.ptr)
     assert calls[2][1][5:] == (1, 4096, 512, 128)
-    assert calls[2][2] == {"threads": 128, "library": None, "runtime": runtime}
+    assert calls[2][2] == {"threads": 128, "stream": 0, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_runs_linear_attention_out_proj_chain(monkeypatch) -> None:
@@ -627,7 +627,7 @@ def test_qwen35_decode_state_appends_kv_with_scratch_pointers(monkeypatch) -> No
     args, kwargs = calls[0]
     assert args[:4] == (scratch.key.ptr, scratch.value.ptr, key_cache.ptr, value_cache.ptr)
     assert args[5:] == (256, 2, 256)
-    assert kwargs == {"library": None, "runtime": runtime}
+    assert kwargs == {"stream": 0, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_decodes_gqa_gate_with_scratch_pointers(monkeypatch) -> None:
@@ -666,7 +666,7 @@ def test_qwen35_decode_state_decodes_gqa_gate_with_scratch_pointers(monkeypatch)
         scratch.partial_l.ptr,
     )
     assert args[9:18] == (256, 2, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
-    assert kwargs == {"library": None, "runtime": runtime}
+    assert kwargs == {"stream": 0, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_routes_moe_topk_shared(monkeypatch) -> None:
@@ -699,7 +699,7 @@ def test_qwen35_decode_state_routes_moe_topk_shared(monkeypatch) -> None:
         128,
         8,
     )
-    assert kwargs == {"threads": 512, "library": None, "runtime": runtime}
+    assert kwargs == {"threads": 512, "stream": 0, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_activates_and_rotates_moe_down(monkeypatch) -> None:
@@ -718,7 +718,7 @@ def test_qwen35_decode_state_activates_and_rotates_moe_down(monkeypatch) -> None
     assert out is scratch.down_input
     args, kwargs = calls[0]
     assert args == (scratch.gate_up.ptr, 0xBA00, 0xBB00, 0xBC00, scratch.down_input.ptr, 8, 768, 128, 6)
-    assert kwargs == {"library": None, "runtime": runtime}
+    assert kwargs == {"stream": 0, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
@@ -762,7 +762,7 @@ def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
         128,
         128,
     )
-    assert gate_kwargs == {"threads": 128, "library": None, "runtime": runtime}
+    assert gate_kwargs == {"threads": 128, "stream": 0, "library": None, "runtime": runtime}
     down_args, down_kwargs = down_calls[0]
     assert down_args == (
         scratch.down_input.ptr,
@@ -777,7 +777,7 @@ def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
         128,
         128,
     )
-    assert down_kwargs == {"threads": 128, "library": None, "runtime": runtime}
+    assert down_kwargs == {"threads": 128, "stream": 0, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_runs_shared_expert_w8a16(monkeypatch) -> None:
@@ -801,11 +801,11 @@ def test_qwen35_decode_state_runs_shared_expert_w8a16(monkeypatch) -> None:
 
     assert out is scratch.shared_out
     assert linear_calls[0][0] == (hidden.ptr, 0xBD00, 0xBE00, scratch.shared_up.ptr, 1, 4096, 1536)
-    assert linear_calls[0][1] == {"threads": 64, "library": None, "runtime": runtime}
+    assert linear_calls[0][1] == {"threads": 64, "stream": 0, "library": None, "runtime": runtime}
     assert silu_calls[0][0] == (scratch.shared_up.ptr, scratch.shared_intermediate.ptr, 1, 768)
-    assert silu_calls[0][1] == {"library": None, "runtime": runtime}
+    assert silu_calls[0][1] == {"stream": 0, "library": None, "runtime": runtime}
     assert linear_calls[1][0] == (scratch.shared_intermediate.ptr, 0xBF00, 0xC000, scratch.shared_out.ptr, 1, 768, 4096)
-    assert linear_calls[1][1] == {"threads": 64, "library": None, "runtime": runtime}
+    assert linear_calls[1][1] == {"threads": 64, "stream": 0, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_combines_moe_shared_residual(monkeypatch) -> None:
@@ -835,7 +835,7 @@ def test_qwen35_decode_state_combines_moe_shared_residual(monkeypatch) -> None:
         8,
         4096,
     )
-    assert kwargs == {"threads": 256, "library": None, "runtime": runtime}
+    assert kwargs == {"threads": 256, "stream": 0, "library": None, "runtime": runtime}
     with pytest.raises(ValueError, match="tokens=1"):
         state.combine_moe_c1_shared_residual_bf16(scratch, shared=shared, residual=residual, tokens=2)
 
