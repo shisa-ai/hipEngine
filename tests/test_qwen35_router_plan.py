@@ -39,7 +39,7 @@ def test_qwen35_router_build_plan_is_dry_run_safe(tmp_path) -> None:
 
     assert artifact.family == "qwen35_router"
     assert artifact.profile.name == "decode"
-    assert artifact.profile.wavefront == 64
+    assert artifact.profile.wavefront == 32
     assert artifact.flags[:2] == ("-mllvm", "-amdgpu-unroll-threshold-local=600")
     assert "-mcumode" in artifact.flags
     assert artifact.output_path.name == "qwen35_router.so"

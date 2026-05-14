@@ -456,11 +456,30 @@ HIPENGINE uses its own build layer, not `torch.utils.cpp_extension`. It calls `h
 
 | Profile | Flags | Wavefront | Used for |
 | --- | --- | --- | --- |
-| `decode` | `-mllvm`, `-amdgpu-unroll-threshold-local=600`, `-mcumode` | 64 | Decode-phase kernels (paged attention, W8A8 grouped MoE decode, paro GEMV) |
+| `decode` | `-mllvm`, `-amdgpu-unroll-threshold-local=600`, `-mcumode` | 32 | Decode-phase kernels (paged attention, W8A8 grouped MoE decode, PARO GEMV). `-mcumode` is not `-mwavefrontsize64`. |
 | `prefill` | `-mllvm`, `-amdgpu-unroll-threshold-local=600` (WGP mode) | 32 | Prefill-phase kernels (GEMM, W8A16 linear prefill) |
 | `baseline` | (none) | 32 | Debug / fallback |
 
-Write device code for the target profile's wavefront width. Use `warpSize` (built-in), not a hard-coded 32 or 64.
+Write device code for wave32 by default on gfx1100. Use `warpSize` for probes and dispatch metadata, but do not assume a 64-thread block is one wave. For block-wide reductions over more than 32 lanes, reduce within 32-lane waves with shuffles and exchange partials through LDS/shared memory.
+
+### Wave32 default; wave64 experiments only
+
+For nano-vllm-amd lineage kernels on W7900/gfx1100:
+
+- Default to **wave32**. Current HIP build flags do not include `-mwavefrontsize64`, and
+  parent probes showed `-mcumode` does not change `warpSize` by itself.
+- RDNA3 wave64 is architecturally supported, but the hardware still issues through
+  32-lane halves. RDNA3 can co-issue eligible wave64 halves on the dual-issue VALU path,
+  while wave32 exposes VOPD pairing directly to the compiler. These scheduling features
+  are orthogonal to the wavefront-size flag.
+- Prefer wave32 + ILP: multiple independent accumulators, unrolled loops, fewer long
+  dependent VALU chains, and low enough VGPR/scratch/LDS pressure to preserve occupancy.
+- Prefer wave32-compatible collectives: `__shfl_down` within 32 lanes, then LDS/shared
+  memory exchange for cross-wave reductions. Do not remove barriers on the theory that a
+  64-thread block is a single wave.
+- Only pursue wave64 as an isolated experiment with explicit `-mwavefrontsize64` build
+  flags, `warpSize`/shuffle probes, correctness fixtures, ISA checks, and E2E benchmarks.
+  There is no retained wave64 default in HIPENGINE.
 
 ### JIT cache gotcha
 

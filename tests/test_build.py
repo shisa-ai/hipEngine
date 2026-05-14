@@ -51,7 +51,8 @@ def test_plan_hip_build_hashes_source_flags_and_compiler_version(tmp_path: Path)
     assert artifact_a.output_path.name == "smoke.so"
     assert artifact_a.flags[:2] == ("-mllvm", "-amdgpu-unroll-threshold-local=600")
     assert "-mcumode" in artifact_a.flags
-    assert artifact_a.profile.wavefront == 64
+    assert "-mwavefrontsize64" not in artifact_a.flags
+    assert artifact_a.profile.wavefront == 32
 
 
 def test_build_hip_dry_run_does_not_create_cache_or_run_compiler(tmp_path: Path) -> None:

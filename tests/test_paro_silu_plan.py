@@ -52,7 +52,7 @@ def test_paro_silu_build_plan_is_dry_run_safe(tmp_path) -> None:
 
     assert artifact.family == "paro_silu"
     assert artifact.profile.name == "decode"
-    assert artifact.profile.wavefront == 64
+    assert artifact.profile.wavefront == 32
     assert artifact.flags[:2] == ("-mllvm", "-amdgpu-unroll-threshold-local=600")
     assert "-mcumode" in artifact.flags
     assert artifact.output_path.name == "paro_silu.so"

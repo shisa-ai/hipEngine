@@ -35,7 +35,7 @@ def test_dense_gemv_build_plan_is_dry_run_safe(tmp_path) -> None:
 
     assert artifact.family == "dense_gemv"
     assert artifact.profile.name == "decode"
-    assert artifact.profile.wavefront == 64
+    assert artifact.profile.wavefront == 32
     assert "-mcumode" in artifact.flags
     assert artifact.output_path.name == "dense_gemv.so"
     assert artifact.compiler_version == "hipcc dense gemv test version"

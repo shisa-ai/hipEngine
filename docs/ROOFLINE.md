@@ -87,13 +87,14 @@ wavefront occupies one SIMD; a wave64 wavefront spans both SIMDs in a CU
 sharing one SIMD's resources.
 
 **WGP mode vs CU mode.** RDNA3 can run wave32 and wave64 code paths, but the
-details are build-profile and compiler dependent. Our PARO v8 extension
-compiles with `-mcumode -mwavefrontsize64`, so device code should assume
-`warpSize == 64` for that extension. llama.cpp HIP on gfx1100 defaults to
-wave32 in the checked path. The Vulkan driver on the same W7900 reports
-subgroup size 64. Do not infer shuffle or reduction correctness from the
-nominal wave size alone; we have observed gfx1100 shuffle/reduction candidates
-that behaved like 32-lane halves even under wave64-oriented builds.
+details are build-profile and compiler dependent. HIPENGINE's gfx1100 decode
+profile uses `-mcumode` without `-mwavefrontsize64`, so device code should
+treat `warpSize == 32` as the default. CU mode and wavefront size are
+orthogonal. llama.cpp HIP on gfx1100 also defaults to wave32 in the checked
+path. The Vulkan driver on the same W7900 reports subgroup size 64. Do not
+infer shuffle or reduction correctness from the nominal wave size alone; we
+have observed gfx1100 shuffle/reduction candidates that behaved like 32-lane
+halves even under wave64-oriented builds.
 
 ### 1.2 Memory Hierarchy
 
@@ -764,7 +765,7 @@ occupancy, or overhead/dispatch:
 | Arithmetic intensity | ~4 FLOP/byte (W4 weight dominated) |
 | Regime | **Deeply memory-bound** (AI ≪ ridge point) |
 | Current inner loop | FP32 FMA over per-element dequantized W4 nibbles |
-| Current reduction | LDS + `__syncthreads()` (wave64 CU mode, 128 threads) |
+| Current reduction | LDS + `__syncthreads()` across wave32 halves (CU mode, 128 threads) |
 | Occupancy | **Max occupancy** (VGPR=48, 32 waves/SIMD, Scratch=0) |
 | Primary limiter | **Instruction overhead from dequant, not raw bandwidth** |
 
@@ -1133,19 +1134,25 @@ instructions don't need VOPD to be fast.
 
 | Mode | Threads/wave | Scheduling shape | Execution | Notes |
 |---|---|---|---|---|
-| Wave32 | 32 | one 32-lane half | native/fine-grained | Default for llama.cpp HIP on RDNA3 in the checked path |
-| Wave64 / subgroup64 | 64 | two 32-lane halves | compiler/driver dependent | Vulkan reports subgroup 64; PARO v8 build uses `-mcumode -mwavefrontsize64` |
+| Wave32 | 32 | one 32-lane half | native/fine-grained | Default for HIPENGINE and llama.cpp HIP on RDNA3 in the checked paths |
+| Wave64 / subgroup64 | 64 | two 32-lane halves | explicit/experimental | Vulkan reports subgroup 64; HIPCC can emit wave64 with `-mwavefrontsize64` |
 
-Trade-offs:
-- Wave64 has half the wave count (fewer scheduling decisions, less dispatch
-  overhead per wave), but each instruction takes 2 cycles to retire
-- Wave32 has finer-grained occupancy (more waves per SIMD) and faster per-wave
-  completion, but double the dispatch traffic
+Scheduling facts and trade-offs:
+- Wave64 remains a first-class RDNA3 ISA mode. It is not deprecated, and LLVM can
+  emit it for gfx1100 with `-mwavefrontsize64` / `+wavefrontsize64`.
+- The hardware SIMD is still physically 32 lanes wide. A wave64 instruction is
+  decomposed into two 32-lane halves.
+- RDNA3 adds dual-issue VALU. For wave32, VOPD packs two independent compatible
+  VALU ops into one instruction word. For wave64, eligible VALU halves can be
+  co-issued in one cycle on the dual-issue path instead of always taking two
+  cycles as on RDNA1/2. The same eligibility limits apply: no cross-lane ops,
+  restricted operand classes, and source-cache/bank constraints.
+- Wave32 has friendlier register-pressure and occupancy accounting, works with
+  gfx11 WMMA `_w32` intrinsics, and gives LLVM direct VOPD pairing choices.
 - For memory-bound decode kernels, the key question is total outstanding memory
-  requests: wave64 with enough VGPRs can hide the same latency as wave32 with
-  double the wave count
-- Our tested wave32/no-LDS GEMV was +3–10% microbench but 0% E2E, suggesting
-  wave shape is not the primary limiter
+  requests and occupancy, not nominal wave size.
+- Parent W7900 experiments have no retained wave64 default win so far. Treat
+  wave64 as an isolated experiment, not a default optimization lane.
 
 Additional guardrail: do not assume `warpSize == 64` implies every shuffle or
 lane-crossing pattern is correct across all 64 lanes. We have hit gfx1100

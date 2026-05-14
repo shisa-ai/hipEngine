@@ -51,9 +51,10 @@ __device__ inline int awq_shift_for_pack_lane(int lane) {
   return packed_pos * 4;
 }
 
-// RDNA3 CU-mode wave64 shuffles only exchange within 32-lane half-waves.
-// Reduce each half-wave with __shfl_down, then explicitly sum however many
-// half-waves the launched block actually has. The pack8 wrappers allow
+// RDNA3 HIP defaults to wave32 for this profile; even wave64-oriented
+// shuffle probes only exchanged within 32-lane halves. Reduce each 32-lane
+// wave with __shfl_down, then explicitly sum however many waves the block has.
+// The pack8 wrappers allow
 // 64/128/256 threads; the previous fixed 4-half-wave sum read uninitialized
 // xchg slots for 64-thread launches and could write past xchg for 256.
 #define PARO_PACK8_SHFL_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7, r0, r1, r2, r3, r4, r5, r6, r7) \

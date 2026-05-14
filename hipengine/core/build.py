@@ -45,7 +45,7 @@ PROFILES: dict[ProfileName, BuildProfile] = {
     "decode": BuildProfile(
         name="decode",
         flags=("-mllvm", "-amdgpu-unroll-threshold-local=600", "-mcumode"),
-        wavefront=64,
+        wavefront=32,
     ),
     "prefill": BuildProfile(
         name="prefill",

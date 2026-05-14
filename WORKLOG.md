@@ -4254,3 +4254,37 @@ Results:
 ### Next
 
 - Decide whether Qwen3.5/PARO parent parity should port FP16 activation variants for the resident path or recapture/define a BF16 parent oracle. Exact generated-token equality against the current parent fixture is not a pure scheduler/cache bug; it crosses the activation dtype boundary.
+
+---
+
+## 2026-05-15 — Make gfx1100 wave32 the documented/build default
+
+### Scope
+
+- Updated the W7900/gfx1100 wavefront policy after the parent workspace probe: `-mcumode` is orthogonal to wavefront size and the HIP decode profile should be treated as wave32 unless `-mwavefrontsize64` is explicitly added for an isolated experiment.
+- Added a `docs/PLAN.md` caveat section near the end: RDNA3 wave64 is architecturally real, but HIPENGINE/nano-vllm-amd defaults to wave32 + ILP/VOPD exposure; wave64 requires separate flags, probes, correctness gates, ISA checks, and E2E benchmarks.
+- Updated `docs/KERNELS.md` and `docs/ROOFLINE.md` to remove stale decode-wave64 wording and to document wave32-compatible reductions (`__shfl_down` within 32 lanes plus LDS/shared-memory exchange across waves).
+- Updated `hipengine.core.build.PROFILES["decode"].wavefront` from `64` to `32`; decode flags remain `-mcumode` plus the unroll threshold and deliberately do not include `-mwavefrontsize64`.
+- Updated dry-run build-plan tests to expect wave32 and added a guard that the decode profile does not carry `-mwavefrontsize64`.
+- Clarified the PARO pack8 GEMV reduction comment: this path reduces 32-lane waves and explicitly sums cross-wave partials; it must not rely on a 64-thread block being one wave.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_build.py tests/test_dense_gemv_plan.py \
+  tests/test_paro_awq_gemv_plan.py tests/test_paro_combine_plan.py \
+  tests/test_paro_rotate_plan.py tests/test_paro_silu_plan.py \
+  tests/test_qwen35_linear_attn_conv_plan.py \
+  tests/test_qwen35_linear_attn_gdn_plan.py \
+  tests/test_qwen35_paged_attn_decode_plan.py \
+  tests/test_qwen35_paged_kv_write_plan.py \
+  tests/test_qwen35_rmsnorm_plan.py tests/test_qwen35_rotary_plan.py \
+  tests/test_qwen35_router_plan.py tests/test_w8a16_linear_plan.py -q
+```
+
+Results: 44 targeted build-plan/kernel-plan tests passed.
+
+### Coordination note
+
+- Left unrelated in-progress FP16 RMSNorm changes in `hipengine/kernels/hip_gfx1100/norm/{__init__.py,rmsnorm.hip,rmsnorm.py}` unstaged for their owner.

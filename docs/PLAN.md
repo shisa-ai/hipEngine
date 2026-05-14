@@ -361,7 +361,7 @@ The kernel layer sees `hipengine.Tensor` (raw device ptr + metadata) on the acti
 
 | Principle | Meaning |
 |-----------|---------|
-| **HIP-first, not CUDA-ported** | Every kernel is written for gfx1100 wavefront-64, vec8 FMA patterns, and RDNA3 cache hierarchy. No PTX, no `cp.async`, no tensor-core assumptions. |
+| **HIP-first, not CUDA-ported** | Every kernel is written for gfx1100/RDNA3 wave32 defaults, vec8 FMA patterns, and cache hierarchy. No PTX, no `cp.async`, no tensor-core assumptions. |
 | **Multi-backend from day one** | The kernel tree is parameterized by target (`hip_gfx1100`, `hip_gfx1151`, `cuda_sm86`, `cpu_reference`). Adding a backend adds a sibling directory and registry entries — no engine rewrites. CUDA, Strix Halo, and future hardware are peers of gfx1100, not ports. |
 | **Clean host, proven kernels** | The Python host is ~700 lines of purpose-built scheduling and dispatch. The kernel layer is ~18,600 lines of proven, profiled HIP + C++ bindings (120 `__global__` kernels) from the nano-vllm-amd research lineage. Kernel bodies take raw device pointers — torch-independent — so only the host-side launch wrappers change when retargeting to a new backend. |
 | **Torch-free at runtime** | HIPENGINE does not import `torch` at inference time. We own a thin `hipengine.Tensor` over HIP/CUDA device pointers, call `hipblasLt` / `hipGraph` / loading libs via `ctypes`, and JIT kernels with `hipcc` + `ctypes.CDLL` (no `torch.utils.cpp_extension`). This removes a 1.7 GiB dependency. Optional `hipengine[torch]` extra exposes dlpack interop for users who want to hand in torch tensors. |
@@ -670,7 +670,7 @@ The monolithic `qwen35_expert.hip` + `paroquant_kernels.py` embedded string are 
 
 **Correctness gate for the split:** after partitioning, verify (a) every kernel name still resolves via the Python extension module, (b) `rocprofv3 --kernel-trace` reports the same kernel set with matching `DurationNs` distribution on the Qwen3.6-35B-A3B decode smoke, (c) KL ≤ 0.05 and top-1 ≥ 90% vs the monolithic build on the correctness fixtures.
 
-Build system: **no `torch.utils.cpp_extension`**. HIPENGINE's own build layer (`hipengine.core.build`) calls `hipcc` (or `nvcc` for CUDA backends) via `subprocess.run`, links with `ctypes.CDLL`, and caches by source+flags hash. Three HIP profiles adopted from `nano-vllm-amd/nanovllm/native/amd/extension.py` — `decode` (`-mllvm -amdgpu-unroll-threshold-local=600` + `-mcumode`, wavefront-64), `prefill` (`-mllvm -amdgpu-unroll-threshold-local=600`, WGP/wavefront-32), and `baseline` (no flags). The edit→bench loop stays at ~5–10 s per kernel change.
+Build system: **no `torch.utils.cpp_extension`**. HIPENGINE's own build layer (`hipengine.core.build`) calls `hipcc` (or `nvcc` for CUDA backends) via `subprocess.run`, links with `ctypes.CDLL`, and caches by source+flags hash. Three HIP profiles adopted from `nano-vllm-amd/nanovllm/native/amd/extension.py` — `decode` (`-mllvm -amdgpu-unroll-threshold-local=600` + `-mcumode`, wave32; CU mode is not wave64), `prefill` (`-mllvm -amdgpu-unroll-threshold-local=600`, WGP/wave32), and `baseline` (no flags, wave32). The edit→bench loop stays at ~5–10 s per kernel change.
 
 ### Reference backend for correctness
 
@@ -1259,8 +1259,36 @@ hipengine/
 | KV cache | `KVPolicy` with `KVLiveSpans` as the kernel ABI and `admission_cap()` as the scheduler unit | Makes DMS, H2O, SnapKV, StreamingLLM all drop-in policy plugins. Avoids the vLLM-DMS "major surgery" (per `~/FastDMS/README.md`). RadixCache default; others plug in. |
 | DMS support | Phase 4, ~2,500 LoC total (`DMSKVPolicy` + 3 HIP kernels + loader) | `KVLiveSpans` + `admission_cap()` designed day-1 so DMS is a policy drop, not a rewrite |
 | Server | FastAPI (optional `[server]` extra) | Not shipped by default; `hipengine.server` is a library import |
-| Wavefront | 64 (CU mode) for decode | Match gfx1100 default; 32 for prefill where applicable |
+| Wavefront | Wave32 default for gfx1100 HIP device code | `-mcumode` is orthogonal to wavefront size; wave64 is only an isolated experiment with explicit flags/probes/gates |
 | Native binary path | Phase 3+ (conditional on profiling) | Extract C++ engine-step extension once dispatch layer is stable; keeps Shape A as Phase 0 |
+
+## RDNA3 Wavefront and Scheduling Caveat
+
+For `hip_gfx1100` / W7900, HIPENGINE treats HIP device code as **wave32 by default**.
+RDNA3 wave64 is architecturally real and LLVM can emit it with `-mwavefrontsize64`, but
+it is not a practical project default for the nano-vllm-amd kernel lineage.
+`-mcumode` and wavefront size are orthogonal: the decode profile keeps `-mcumode` for
+CU scheduling, while still assuming wave32 collectives unless an isolated experiment
+explicitly opts into wave64.
+
+Default optimization focus:
+
+1. **Wave32 + enough ILP** — use multiple independent accumulators, unrolled loops, and
+   avoid long dependent FMA/VALU chains where possible.
+2. **Expose RDNA3 dual-issue / VOPD opportunities** — keep independent VALU ops near each
+   other, avoid unnecessary barriers/shared-memory traffic, and watch VGPR/scratch/LDS so
+   occupancy does not collapse.
+3. **Use wave32-compatible collectives** — `__shfl_down` within 32 lanes, then LDS/shared
+   memory exchange for cross-wave/block reductions. Never assume `64 threads == one wave`.
+4. **Verify hot kernels with measurements** — use `rocprofv3` time share first, check
+   VGPR/scratch/LDS, and inspect generated ISA only for kernels hot enough to justify it.
+
+Wave64 remains available only for isolated experiments with their own build flags,
+`warpSize`/shuffle probes, correctness gates, ISA checks, and end-to-end benchmarks. Treat
+wave64 as architecturally possible on gfx1100, not as a retained default. This also applies
+to gfx1151 / Strix Halo targets: the dual-issue rules remain RDNA3-family, but lower CU
+count and cache/LDS differences make wave32 + explicit ILP/VOPD exposure the safer default
+for AWQ GEMV and grouped-GEMM hot paths.
 
 ## Open Research Questions
 
