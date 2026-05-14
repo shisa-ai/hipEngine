@@ -3113,6 +3113,7 @@ def qwen35_router_hip_smoke(
     from hipengine.kernels.hip_gfx1100.moe import (
         build_qwen35_router,
         qwen35_router_topk_shared_out_bf16,
+        qwen35_router_topk_shared_out_fp16,
     )
 
     if rows < 1:
@@ -3133,10 +3134,14 @@ def qwen35_router_hip_smoke(
     for expert in range(num_rows):
         weight_f32[expert] = base * (0.25 + expert * 0.125) + expert * 0.05
     x_bits = _float32_to_bf16_bits(x_f32)
+    x_fp16 = x_f32.astype(np.float16)
     weight_bits = _float32_to_bf16_bits(weight_f32)
     logits = np.empty((rows, num_rows), dtype=np.float32)
     selected = np.empty((rows, top_k), dtype=np.int64)
     routing = np.empty((rows, top_k), dtype=np.float32)
+    logits_fp16 = np.empty_like(logits)
+    selected_fp16 = np.empty_like(selected)
+    routing_fp16 = np.empty_like(routing)
 
     x_bf32 = _bf16_bits_to_float32(x_bits)
     weight_bf32 = _bf16_bits_to_float32(weight_bits)
@@ -3151,6 +3156,15 @@ def qwen35_router_hip_smoke(
     expected_routing = (expected_routing / np.sum(expected_routing, axis=1, keepdims=True)).astype(
         np.float32
     )
+    expected_logits_fp16 = (x_fp16.astype(np.float32) @ weight_bf32.astype(np.float32).T).astype(np.float32)
+    router_logits_fp16 = expected_logits_fp16[:, :num_experts]
+    expected_selected_fp16 = np.argsort(-router_logits_fp16, axis=1)[:, :top_k].astype(np.int64)
+    topk_logits_fp16 = np.take_along_axis(router_logits_fp16, expected_selected_fp16, axis=1)
+    shifted_fp16 = topk_logits_fp16 - np.max(topk_logits_fp16, axis=1, keepdims=True)
+    expected_routing_fp16 = np.exp(shifted_fp16).astype(np.float32)
+    expected_routing_fp16 = (expected_routing_fp16 / np.sum(expected_routing_fp16, axis=1, keepdims=True)).astype(
+        np.float32
+    )
 
     runtime = get_hip_runtime()
     library = build_qwen35_router(
@@ -3158,14 +3172,20 @@ def qwen35_router_hip_smoke(
         compiler_version=compiler_version,
         require_cached=require_cached_build,
     )
-    x_dev = weight_dev = logits_dev = selected_dev = routing_dev = None
+    x_dev = x_fp16_dev = weight_dev = logits_dev = selected_dev = routing_dev = None
+    logits_fp16_dev = selected_fp16_dev = routing_fp16_dev = None
     try:
         x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        x_fp16_dev = malloc(x_fp16.nbytes, runtime=runtime)
         weight_dev = malloc(weight_bits.nbytes, runtime=runtime)
         logits_dev = malloc(logits.nbytes, runtime=runtime)
         selected_dev = malloc(selected.nbytes, runtime=runtime)
         routing_dev = malloc(routing.nbytes, runtime=runtime)
+        logits_fp16_dev = malloc(logits_fp16.nbytes, runtime=runtime)
+        selected_fp16_dev = malloc(selected_fp16.nbytes, runtime=runtime)
+        routing_fp16_dev = malloc(routing_fp16.nbytes, runtime=runtime)
         copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(x_fp16_dev, host_array_ptr(x_fp16), runtime=runtime)
         copy_host_to_device(weight_dev, host_array_ptr(weight_bits), runtime=runtime)
         qwen35_router_topk_shared_out_bf16(
             x_dev.ptr,
@@ -3182,26 +3202,65 @@ def qwen35_router_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        qwen35_router_topk_shared_out_fp16(
+            x_fp16_dev.ptr,
+            weight_dev.ptr,
+            logits_fp16_dev.ptr,
+            selected_fp16_dev.ptr,
+            routing_fp16_dev.ptr,
+            rows,
+            hidden_size,
+            num_rows,
+            num_experts,
+            top_k,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(logits), logits_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(selected), selected_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(routing), routing_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(logits_fp16), logits_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(selected_fp16), selected_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(routing_fp16), routing_fp16_dev, runtime=runtime)
     finally:
-        for buffer in (routing_dev, selected_dev, logits_dev, weight_dev, x_dev):
+        for buffer in (
+            routing_fp16_dev,
+            selected_fp16_dev,
+            logits_fp16_dev,
+            routing_dev,
+            selected_dev,
+            logits_dev,
+            weight_dev,
+            x_fp16_dev,
+            x_dev,
+        ):
             if buffer is not None:
                 free(buffer, runtime=runtime)
 
     logits_max_abs = float(np.max(np.abs(logits - expected_logits)))
     routing_max_abs = float(np.max(np.abs(routing - expected_routing)))
     selected_match = bool(np.array_equal(selected, expected_selected))
+    fp16_logits_max_abs = float(np.max(np.abs(logits_fp16 - expected_logits_fp16)))
+    fp16_routing_max_abs = float(np.max(np.abs(routing_fp16 - expected_routing_fp16)))
+    fp16_selected_match = bool(np.array_equal(selected_fp16, expected_selected_fp16))
     print(
         f"rows={rows} hidden_size={hidden_size} num_experts={num_experts} top_k={top_k} "
         f"logits_max_abs={logits_max_abs} routing_max_abs={routing_max_abs} "
-        f"selected_match={selected_match}"
+        f"selected_match={selected_match} fp16_logits_max_abs={fp16_logits_max_abs} "
+        f"fp16_routing_max_abs={fp16_routing_max_abs} fp16_selected_match={fp16_selected_match}"
     )
     print("selected0=", selected[0].tolist())
     print("routing0=", routing[0].tolist())
-    return 0 if selected_match and logits_max_abs <= 2e-5 and routing_max_abs <= 2e-5 else 1
+    return 0 if (
+        selected_match
+        and logits_max_abs <= 2e-5
+        and routing_max_abs <= 2e-5
+        and fp16_selected_match
+        and fp16_logits_max_abs <= 2e-5
+        and fp16_routing_max_abs <= 2e-5
+    ) else 1
 
 
 

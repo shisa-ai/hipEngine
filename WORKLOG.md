@@ -4622,3 +4622,36 @@ Results:
 ### Next
 
 - Continue task #38 with router hidden FP16, SiLU/down-rotation FP16, and weighted/shared-gate combine FP16 wrappers as required by the parent-mixed materialization plan.
+
+---
+
+## 2026-05-15 — Add FP16 router hidden wrappers
+
+### Scope
+
+- Added Qwen3.5 router FP16-hidden raw-pointer wrappers while keeping BF16 router/shared-gate weights and FP32 logits/routing:
+  - `qwen35_router_logits_fp16(...)` / `hipengine_qwen35_router_logits_fp16`
+  - `qwen35_router_topk_shared_out_fp16(...)` / `hipengine_qwen35_router_topk_shared_out_fp16`
+- Registered `router_logits/fp16`, `router_logits/w4_paro/fp16_hidden`, `router_topk_shared/*/out_fp16_hidden`, and `router_topk_shared/fp16/out` keys.
+- Extended `qwen35-router-hip` smoke with an FP16 hidden top-k/shared route oracle.
+- Updated `docs/KERNELS.md` to mark router/shared-gate FP16 hidden coverage landed.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_qwen35_router_plan.py -q
+python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-router-fp16 -- \
+  python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- `tests/test_qwen35_router_plan.py`: `3 passed`.
+- Router smoke: BF16 `selected_match=True`, `logits_max_abs=0.0`, `routing_max_abs=1.49e-08`; FP16 hidden `fp16_selected_match=True`, `fp16_logits_max_abs=4.77e-07`, `fp16_routing_max_abs=2.98e-08`.
+- `rocprofv3` confirmed FP16 hidden router logits ran on W7900: `qwen35_router_logits_kernel<_Float16>` `DurationNs=3160`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=256`, `Workgroup_Size_X=64`.
+
+### Next
+
+- Continue task #38 with FP16 SiLU/down-rotation wrappers and FP16 weighted/shared-gate combine wrappers.
