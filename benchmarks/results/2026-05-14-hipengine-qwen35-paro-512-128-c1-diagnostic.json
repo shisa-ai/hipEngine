@@ -1,0 +1,99 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-14T16:43:33+09:00",
+  "run_tag": "qwen35-paro-512-128-actual-c1-diagnostic",
+  "summary": "HIPENGINE Qwen3.5/PARO actual autoregressive c=1 diagnostic; not comparable to native PLAN-MOE2 prefill or graph replay decode yet.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "commit": "20569c22aa749c20c98edcccb080e3b1ce6152f7"
+  },
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "workload": {
+    "prompt_tokens": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "concurrency": 1,
+    "mode": "actual_autoregressive_c1_resident",
+    "native_batched_prefill": false,
+    "graph_replay": false
+  },
+  "command": "python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --json /tmp/hipengine-qwen35-paro-512-128-diagnostic.json",
+  "correctness": {
+    "status": "not_run",
+    "reason": "diagnostic harness bring-up; no KL/top-1 gate yet"
+  },
+  "baseline": {
+    "source": "/home/lhl/amd-gpu-tuning/PLAN-MOE2.md 2026-05-12 post-WMMA row",
+    "shape": "512/128",
+    "prefill_tok_s": 1300.337,
+    "decode_tok_s": 131.128
+  },
+  "measurements": {
+    "load_seconds": 35.34749808511697,
+    "prefill_seconds": 5.541675263084471,
+    "decode_seconds": 40.68034731596708,
+    "warmup_decode_seconds": 1.2638303921557963,
+    "token_by_token_prefill_tok_s": 92.39083412387161,
+    "warmed_decode_tok_s": 3.1464824772958577,
+    "decode_step_median_s": 0.316096200956963
+  },
+  "comparison": {
+    "prefill_vs_plan_ratio": 0.07105145367998573,
+    "decode_vs_plan_ratio": 0.023995504219509623,
+    "prefill_comparable": false,
+    "decode_comparable": "partial_no_graph_replay"
+  },
+  "blockers": [
+    "native batched/compact prefill kernels not wired; current prefill is token-by-token c=1",
+    "decode has no graph replay/lower-overhead dispatch",
+    "correctness gate artifact not yet run for benchmark prompt"
+  ],
+  "generated_preview": [
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.634312152862549
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.714889049530029
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.725833892822266
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.719336986541748
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.712558269500732
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.762296676635742
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.739894866943359
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.741613388061523
+    }
+  ]
+}

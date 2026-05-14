@@ -3386,3 +3386,35 @@ Results on W7900 / real checkpoint:
 - This is now actual autoregressive inference, but prefill is still token-by-token c=1, not native batched/compact prefill; do not compare it to PLAN-MOE2 prefill tok/s.
 - Warmed decode is a real c=1 resident decode measurement, but still lacks graph replay and is far below PLAN-MOE2 decode (~3.2 tok/s vs ~131 tok/s at 512/128 target class).
 - Immediate next bottleneck work: capture a kernel/runtime trace for one measured decode step to separate Python/ctypes launch overhead from GPU kernel time, then add graph/library replay or lower-overhead dispatch before running large 512/128 measurements.
+
+---
+
+## 2026-05-14 — Diagnostic 512/128 actual c=1 benchmark vs PLAN-MOE2
+
+### Command
+
+```bash
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --json /tmp/hipengine-qwen35-paro-512-128-diagnostic.json
+```
+
+### Result
+
+- HIPENGINE actual autoregressive c=1 resident path completed on W7900.
+- Shape: 512 prompt tokens, 4 warmup decode tokens, 128 measured decode tokens, repeated token id `9707`.
+- Load/materialization: `35.35s`.
+- Token-by-token prefill: `5.54s`, `92.39 tok/s` (actual inference, but not native batched/compact prefill).
+- Warmed decode: `40.68s`, `3.146 tok/s`; median step `0.3161s`.
+- Generated preview repeats token `62843` (`"estring"`).
+
+### Comparison to PLAN-MOE2 2026-05-12 512/128 row
+
+- PLAN-MOE2 parent baseline: prefill `1300.337 tok/s`, decode `131.128 tok/s`.
+- HIPENGINE prefill ratio: `0.071x` of parent, **not comparable** because native prefill is not implemented.
+- HIPENGINE warmed decode ratio: `0.024x` of parent, partially comparable but no graph replay/lower-overhead dispatch yet.
+
+Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-c1-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
+
+### Next
+
+- Profile one measured decode step with prebuilt/cached libraries to split GPU kernel time from Python/ctypes launch overhead.
+- Then attack dispatch/graph replay before treating larger warmed decode numbers as meaningful acceptance candidates.
