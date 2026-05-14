@@ -3843,3 +3843,26 @@ Results:
 ### Next
 
 - Review the live codebase against these invariants and create implementation tasks for batch-friendliness gaps before adding more c=1-only surfaces.
+
+---
+
+## 2026-05-14 — Add batch request/slot metadata scaffold
+
+### Scope
+
+- Added torch-free dispatch metadata for c>N work: `RequestState`, `ActiveBatch`, `BatchSlot`, `SlotMove`, `WorkKind`, `WorkItem`, and `BatchShapeKey`.
+- `ActiveBatch` separates stable `request_id` from compactable physical slots, exposes active masks, slot/request maps, routed row maps, and graph shape keys keyed by mode/context/mask/top-k/replay/draft shape.
+- Exported the batch metadata from `hipengine.dispatch` for future ResidentBatchSession, KVPolicy, scheduler, and SpecDec integration.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_dispatch_batch.py -q
+python3 -m compileall -q hipengine tests && python3 -m pytest tests/test_dispatch_batch.py tests/test_llm_generate.py -q
+```
+
+Results: all tests passed.
+
+### Next
+
+- Extend `KVLiveSpans`/`KVPolicy` with row/request metadata and transaction hooks, then vectorize runtime state kernels around these batch slots.
