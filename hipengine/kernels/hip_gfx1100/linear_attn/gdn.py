@@ -12,6 +12,8 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gdn.hip")
 _OUTPUT_NAME = "qwen35_linear_attn_gdn.so"
 _SYMBOL_LOWP = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16"
+_SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
+_SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
 
 
 def plan_qwen35_linear_attn_gdn_build(
@@ -116,12 +118,157 @@ def qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
     _check_launch(runtime, err)
 
 
+def qwen35_gdn_prefill_recurrent_f32(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch native FP32 GDN recurrent prefill kernel."""
+
+    _launch_prefill_recurrent(
+        _SYMBOL_PREFILL,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        tokens,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_prefill_recurrent_k2_f32(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch native FP32 GDN recurrent prefill K2 kernel."""
+
+    _launch_prefill_recurrent(
+        _SYMBOL_PREFILL_K2,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        tokens,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "gdn_recurrent_rmsnorm_gate", "w4_paro", "bf16_lowp"),
         qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
         replace=replace,
     )
+    register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "w4_paro", "f32"),
+        qwen35_gdn_prefill_recurrent_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "w4_paro", "f32_k2"),
+        qwen35_gdn_prefill_recurrent_k2_f32,
+        replace=replace,
+    )
+
+
+def _launch_prefill_recurrent(
+    symbol: str,
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(tokens, "tokens")
+    _check_positive(num_v_heads, "num_v_heads")
+    _check_positive(head_k_dim, "head_k_dim")
+    _check_positive(head_v_dim, "head_v_dim")
+    if head_k_dim != 128:
+        raise ValueError("head_k_dim must be 128 for native prefill GDN")
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(beta_ptr),
+        ctypes.c_void_p(decay_ptr),
+        ctypes.c_void_p(recurrent_state_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def _check_gdn_shape(

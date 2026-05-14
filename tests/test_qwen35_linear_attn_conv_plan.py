@@ -6,6 +6,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn import (
     plan_qwen35_linear_attn_conv_build,
     qwen35_linear_attn_conv_decode_bf16,
     qwen35_linear_attn_conv_decode_f32,
+    qwen35_linear_attn_conv_prefill_f32,
     register_qwen35_linear_attn_conv_kernels,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
@@ -15,7 +16,7 @@ def setup_function() -> None:
     clear_registry_for_tests()
 
 
-def test_qwen35_linear_attn_conv_registers_decode_variants() -> None:
+def test_qwen35_linear_attn_conv_registers_decode_and_prefill_variants() -> None:
     register_qwen35_linear_attn_conv_kernels()
 
     assert (
@@ -35,6 +36,15 @@ def test_qwen35_linear_attn_conv_registers_decode_variants() -> None:
             variant="bf16",
         )
         is qwen35_linear_attn_conv_decode_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_attn_conv_prefill",
+            quant="w4_paro",
+            variant="f32",
+        )
+        is qwen35_linear_attn_conv_prefill_f32
     )
 
 
@@ -60,3 +70,5 @@ def test_qwen35_linear_attn_conv_wrappers_validate_before_gpu_load() -> None:
         qwen35_linear_attn_conv_decode_f32(0, 0, 0, 0, 0, 4)
     with pytest.raises(ValueError, match="kernel_size must be positive"):
         qwen35_linear_attn_conv_decode_bf16(0, 0, 0, 0, 4, 0)
+    with pytest.raises(ValueError, match="tokens >= kernel_size"):
+        qwen35_linear_attn_conv_prefill_f32(0, 0, 0, 0, 2, 4, 4)

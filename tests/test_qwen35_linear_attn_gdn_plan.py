@@ -4,6 +4,8 @@ import pytest
 
 from hipengine.kernels.hip_gfx1100.linear_attn import (
     plan_qwen35_linear_attn_gdn_build,
+    qwen35_gdn_prefill_recurrent_f32,
+    qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     register_qwen35_linear_attn_gdn_kernels,
 )
@@ -14,7 +16,7 @@ def setup_function() -> None:
     clear_registry_for_tests()
 
 
-def test_qwen35_linear_attn_gdn_registers_lowp_decode_variant() -> None:
+def test_qwen35_linear_attn_gdn_registers_decode_and_prefill_variants() -> None:
     register_qwen35_linear_attn_gdn_kernels()
 
     assert (
@@ -25,6 +27,24 @@ def test_qwen35_linear_attn_gdn_registers_lowp_decode_variant() -> None:
             variant="bf16_lowp",
         )
         is qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="w4_paro",
+            variant="f32",
+        )
+        is qwen35_gdn_prefill_recurrent_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="w4_paro",
+            variant="f32_k2",
+        )
+        is qwen35_gdn_prefill_recurrent_k2_f32
     )
 
 
@@ -58,3 +78,7 @@ def test_qwen35_linear_attn_gdn_wrapper_validates_before_gpu_load() -> None:
         qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
             0, 0, 0, 0, 0, 0, 0, 0, 0, 1.0e-6, 1, 2, 8, 129
         )
+    with pytest.raises(ValueError, match="head_k_dim must be 128"):
+        qwen35_gdn_prefill_recurrent_f32(0, 0, 0, 0, 0, 0, 0, 1, 2, 64, 4)
+    with pytest.raises(ValueError, match="tokens must be positive"):
+        qwen35_gdn_prefill_recurrent_k2_f32(0, 0, 0, 0, 0, 0, 0, 0, 2, 128, 4)

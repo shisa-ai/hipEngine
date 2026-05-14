@@ -75,8 +75,8 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Port PARO pairwise rotation helpers (`paro_rotate1`, `paro_rotate2`, `paro_rotate3`) for PARO projection paths.
   - [x] Port runtime BF16/F32 cast helpers (`f32_to_bf16`, `bf16_to_f32`) for projection glue.
   - [x] Port Qwen full-attention prelude kernels (`partial_rotary`, `head_rmsnorm+partial_rotary`, position variant).
-  - [x] Port Qwen linear-attention decode convolution (`qwen35_linear_attn_conv_decode*`, FP32/BF16 input variants).
-  - [x] Port Qwen linear-attention recurrent GDN lowp RMSNorm+gate (`qwen35_gdn_recurrent_rmsnorm_gate_lowp`).
+  - [x] Port Qwen linear-attention decode/prefill convolution (`qwen35_linear_attn_conv_decode*`, `qwen35_linear_attn_conv_prefill`).
+  - [x] Port Qwen linear-attention recurrent GDN decode/prefill kernels (`qwen35_gdn_recurrent_rmsnorm_gate_lowp`, `qwen35_gdn_prefill_recurrent*`).
   - [x] Add `KVLiveSpans` scaffold and span-shaped Qwen paged-KV append bridge (`qwen35_write_paged_kv*_position_tensor`).
   - [x] Port span-shaped Qwen paged full-attention context-tensor decode (`qwen35_paged_full_attn_decode_context_tensor`).
   - [x] Port span-shaped Qwen split-K paged full-attention decode/reduce (`qwen35_paged_full_attn_decode_split_k_ctx_tensor`, `*_reduce`).

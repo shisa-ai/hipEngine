@@ -3650,3 +3650,60 @@ Results:
 - Token-by-token c=1 prefill measured `115.81 tok/s`; still not native batched/compact prefill.
 
 Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-ab-fused-lmhead128-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
+
+---
+
+## 2026-05-14 — Port native linear-attention prefill conv/GDN kernels
+
+### Scope
+
+- Began native batched/compact prefill implementation by porting the parent Qwen3.5 linear-attention prefill state kernels from `nano-vllm-amd` current drifted lineage:
+  - `qwen35_linear_attn_conv_prefill_kernel`
+  - `qwen35_linear_attn_conv_prefill_state_kernel`
+  - `qwen35_gdn_prefill_recurrent_kernel`
+  - `qwen35_gdn_prefill_recurrent_k2_kernel`
+- Added raw-pointer wrappers/registry keys:
+  - `linear_attn_conv_prefill/w4_paro/f32`
+  - `gdn_prefill_recurrent/w4_paro/f32`
+  - `gdn_prefill_recurrent/w4_paro/f32_k2`
+- Added `scripts/smoke.py --mode qwen35-linear-attn-prefill-hip` with NumPy oracles for native conv-prefill state update and GDN recurrent prefill regular/K2 kernels.
+- This is a first native prefill slice. The complete PLAN-MOE2 prefill path still needs Q/K normalization, beta/decay production, RMSNorm+gate, batched output projection, batched/compact MoE, and full resident-session prefill orchestration.
+
+### Lineage
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Observed drift before porting:
+
+- `csrc/amd/qwen35_expert.hip` drifted through `6e2b19b` (`perf: compact WMMA buffers eliminate 44.5% padding overhead at 512 prefill`).
+- `nanovllm/native/qwen35/paroquant_kernels.py` drifted through `59195ed` plus compact-WMMA/GEMV fixes.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_qwen35_linear_attn_conv_plan.py tests/test_qwen35_linear_attn_gdn_plan.py -q
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-linear-prefill-prof --output-file linear-prefill --output-format csv -- \
+  python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Smoke result:
+
+- `conv_out_max_abs=1.49e-08`, `conv_state_max_abs=0`
+- `gdn_out_max_abs=5.59e-09`, `gdn_state_max_abs=7.45e-09`
+- `gdn_k2_out_max_abs=3.73e-09`, `gdn_k2_state_max_abs=7.45e-09`
+
+Profiler confirmed expected kernels launched:
+
+- `qwen35_linear_attn_conv_prefill_kernel`
+- `qwen35_linear_attn_conv_prefill_state_kernel`
+- `qwen35_gdn_prefill_recurrent_kernel`
+- `qwen35_gdn_prefill_recurrent_k2_kernel`
+
+### Next
+
+- Wire a native batched linear-attention prefill state path in `Qwen35ParoDecodeState`: Q/K L2 normalization, beta/decay, GDN RMSNorm+gate, output projection, and state update.
+- Then move to the dominant missing piece: grouped/compact MoE prefill.

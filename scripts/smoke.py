@@ -41,6 +41,7 @@ def main() -> int:
             "qwen35-rotary-hip",
             "qwen35-linear-attn-conv-hip",
             "qwen35-linear-attn-gdn-hip",
+            "qwen35-linear-attn-prefill-hip",
             "qwen35-paged-kv-write-hip",
             "qwen35-paged-attn-decode-hip",
             "qwen35-paged-attn-split-k-hip",
@@ -144,6 +145,11 @@ def main() -> int:
         )
     if args.mode == "qwen35-linear-attn-gdn-hip":
         return qwen35_linear_attn_gdn_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-linear-attn-prefill-hip":
+        return qwen35_linear_attn_prefill_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -1747,6 +1753,249 @@ def qwen35_paged_kv_write_hip_smoke(
         and f32_key_mismatch == 0
         and f32_value_mismatch == 0
     ) else 1
+
+def qwen35_linear_attn_prefill_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.linear_attn import (
+        build_qwen35_linear_attn_conv,
+        build_qwen35_linear_attn_gdn,
+        qwen35_gdn_prefill_recurrent_f32,
+        qwen35_gdn_prefill_recurrent_k2_f32,
+        qwen35_linear_attn_conv_prefill_f32,
+    )
+
+    runtime = get_hip_runtime()
+    conv_library = build_qwen35_linear_attn_conv(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    gdn_library = build_qwen35_linear_attn_gdn(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    def conv_prefill_ref(hidden: np.ndarray, state: np.ndarray, weight: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        tokens, channels = hidden.shape
+        kernel_size = state.shape[1]
+        out = np.empty_like(hidden, dtype=np.float32)
+        for token in range(tokens):
+            for channel in range(channels):
+                acc = np.float32(0.0)
+                for k in range(kernel_size):
+                    padded = token + k
+                    if padded < kernel_size - 1:
+                        value = np.float32(state[channel, padded + 1])
+                    else:
+                        value = np.float32(hidden[padded - (kernel_size - 1), channel])
+                    acc = np.float32(acc + np.float32(value * weight[channel, k]))
+                out[token, channel] = _silu_np(acc)
+        new_state = state.copy()
+        for channel in range(channels):
+            for k in range(kernel_size):
+                new_state[channel, k] = hidden[tokens - kernel_size + k, channel]
+        return out, new_state
+
+    def gdn_prefill_ref(
+        query: np.ndarray,
+        key: np.ndarray,
+        value: np.ndarray,
+        beta: np.ndarray,
+        decay: np.ndarray,
+        state: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        tokens, num_v_heads, head_k_dim = query.shape
+        head_v_dim = value.shape[2]
+        out = np.empty((tokens, num_v_heads, head_v_dim), dtype=np.float32)
+        new_state = state.copy()
+        for token in range(tokens):
+            for v_head in range(num_v_heads):
+                for value_idx in range(head_v_dim):
+                    state_vec = new_state[v_head, :, value_idx].copy()
+                    state_vec = np.asarray(state_vec * decay[token, v_head], dtype=np.float32)
+                    kv_mem = np.sum(key[token, v_head] * state_vec, dtype=np.float32)
+                    delta = np.float32(np.float32(value[token, v_head, value_idx] - kv_mem) * beta[token, v_head])
+                    state_vec = np.asarray(state_vec + key[token, v_head] * delta, dtype=np.float32)
+                    new_state[v_head, :, value_idx] = state_vec
+                    out[token, v_head, value_idx] = np.sum(query[token, v_head] * state_vec, dtype=np.float32)
+        return out, new_state
+
+    conv_tokens = 5
+    channels = 8
+    kernel_size = 4
+    hidden = np.asarray(
+        [[((token * 7 + channel * 3) % 11 - 5) * 0.0625 for channel in range(channels)] for token in range(conv_tokens)],
+        dtype=np.float32,
+    )
+    conv_state = np.asarray(
+        [[0.125 * ((channel + k) % 5 - 2) for k in range(kernel_size)] for channel in range(channels)],
+        dtype=np.float32,
+    )
+    conv_weight = np.asarray(
+        [[0.25 * ((channel + 2 * k) % 5 - 2) for k in range(kernel_size)] for channel in range(channels)],
+        dtype=np.float32,
+    )
+    conv_out = np.empty_like(hidden)
+    expected_conv_out, expected_conv_state = conv_prefill_ref(hidden, conv_state, conv_weight)
+
+    tokens = 3
+    num_v_heads = 2
+    head_k_dim = 128
+    head_v_dim = 4
+    query = np.asarray(
+        [
+            [[((token * 17 + head * 11 + k) % 13 - 6) * 0.015625 for k in range(head_k_dim)] for head in range(num_v_heads)]
+            for token in range(tokens)
+        ],
+        dtype=np.float32,
+    )
+    key = np.asarray(
+        [
+            [[((token * 19 + head * 7 + k * 3) % 17 - 8) * 0.0125 for k in range(head_k_dim)] for head in range(num_v_heads)]
+            for token in range(tokens)
+        ],
+        dtype=np.float32,
+    )
+    value = np.asarray(
+        [
+            [[((token * 5 + head * 3 + d) % 7 - 3) * 0.05 for d in range(head_v_dim)] for head in range(num_v_heads)]
+            for token in range(tokens)
+        ],
+        dtype=np.float32,
+    )
+    beta = np.asarray(
+        [[0.25 + 0.05 * ((token + head) % 3) for head in range(num_v_heads)] for token in range(tokens)],
+        dtype=np.float32,
+    )
+    decay = np.asarray(
+        [[0.8 + 0.03 * ((token * 2 + head) % 4) for head in range(num_v_heads)] for token in range(tokens)],
+        dtype=np.float32,
+    )
+    state = np.asarray(
+        [
+            [[((head * 23 + k * 5 + d * 3) % 19 - 9) * 0.01 for d in range(head_v_dim)] for k in range(head_k_dim)]
+            for head in range(num_v_heads)
+        ],
+        dtype=np.float32,
+    )
+    gdn_out = np.empty((tokens, num_v_heads, head_v_dim), dtype=np.float32)
+    gdn_k2_out = np.empty_like(gdn_out)
+    expected_gdn_out, expected_gdn_state = gdn_prefill_ref(query, key, value, beta, decay, state)
+    state_regular = state.copy()
+    state_k2 = state.copy()
+
+    try:
+        hidden_dev = dev(hidden)
+        conv_state_dev = dev(conv_state.copy())
+        conv_weight_dev = dev(conv_weight)
+        conv_out_dev = out_dev(conv_out)
+        qwen35_linear_attn_conv_prefill_f32(
+            hidden_dev.ptr,
+            conv_state_dev.ptr,
+            conv_weight_dev.ptr,
+            conv_out_dev.ptr,
+            conv_tokens,
+            channels,
+            kernel_size,
+            library=conv_library,
+            runtime=runtime,
+        )
+        query_dev = dev(query)
+        key_dev = dev(key)
+        value_dev = dev(value)
+        beta_dev = dev(beta)
+        decay_dev = dev(decay)
+        state_regular_dev = dev(state_regular)
+        state_k2_dev = dev(state_k2)
+        gdn_out_dev = out_dev(gdn_out)
+        gdn_k2_out_dev = out_dev(gdn_k2_out)
+        qwen35_gdn_prefill_recurrent_f32(
+            query_dev.ptr,
+            key_dev.ptr,
+            value_dev.ptr,
+            beta_dev.ptr,
+            decay_dev.ptr,
+            state_regular_dev.ptr,
+            gdn_out_dev.ptr,
+            tokens,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=gdn_library,
+            runtime=runtime,
+        )
+        qwen35_gdn_prefill_recurrent_k2_f32(
+            query_dev.ptr,
+            key_dev.ptr,
+            value_dev.ptr,
+            beta_dev.ptr,
+            decay_dev.ptr,
+            state_k2_dev.ptr,
+            gdn_k2_out_dev.ptr,
+            tokens,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=gdn_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(conv_out), conv_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(conv_state), conv_state_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(gdn_out), gdn_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(gdn_k2_out), gdn_k2_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(state_regular), state_regular_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(state_k2), state_k2_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    conv_out_max_abs = float(np.max(np.abs(conv_out - expected_conv_out)))
+    conv_state_max_abs = float(np.max(np.abs(conv_state - expected_conv_state)))
+    gdn_out_max_abs = float(np.max(np.abs(gdn_out - expected_gdn_out)))
+    gdn_state_max_abs = float(np.max(np.abs(state_regular - expected_gdn_state)))
+    gdn_k2_out_max_abs = float(np.max(np.abs(gdn_k2_out - expected_gdn_out)))
+    gdn_k2_state_max_abs = float(np.max(np.abs(state_k2 - expected_gdn_state)))
+    print(
+        f"conv_out_max_abs={conv_out_max_abs:.3g} conv_state_max_abs={conv_state_max_abs:.3g} "
+        f"gdn_out_max_abs={gdn_out_max_abs:.3g} gdn_state_max_abs={gdn_state_max_abs:.3g} "
+        f"gdn_k2_out_max_abs={gdn_k2_out_max_abs:.3g} gdn_k2_state_max_abs={gdn_k2_state_max_abs:.3g}"
+    )
+    return 0 if max(
+        conv_out_max_abs,
+        conv_state_max_abs,
+        gdn_out_max_abs,
+        gdn_state_max_abs,
+        gdn_k2_out_max_abs,
+        gdn_k2_state_max_abs,
+    ) <= 1.0e-5 else 1
+
 
 def qwen35_linear_attn_gdn_hip_smoke(
     *,
