@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "status": "blocked",
+  "blocked_reason": "native prefill currently stops at the first non-linear-attention layer boundary",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "mode": "qwen35_paro_native_prefill_boundary_plan",
+  "command": "python3 scripts/qwen35_native_prefill_boundary.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-attn-boundary-blocked.json",
+  "performance_claim": false,
+  "layer_limit": 40,
+  "layer_type_counts": {
+    "linear_attention": 30,
+    "full_attention": 10
+  },
+  "native_prefill_plan": {
+    "path": "linear_attention_prefix_only",
+    "layer_limit": 40,
+    "linear_prefix_layers": 3,
+    "full_layer_limit_native": false,
+    "first_unsupported_layer": 3,
+    "first_unsupported_type": "full_attention",
+    "blockers": [
+      "native prefill currently covers only linear-attention layer prefixes",
+      "native compact/grouped MoE and full-attention prefill are not wired",
+      "first unsupported layer 3 is 'full_attention'"
+    ]
+  },
+  "accepted_linear_prefix_artifact": "benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-scratch-restore-sweep.json",
+  "accepted_linear_prefix_layers": 3,
+  "first_unsupported_layer": 3,
+  "first_unsupported_type": "full_attention",
+  "component_blockers": [
+    {
+      "component": "full_attention_prefill_orchestrator",
+      "path": "hipengine/runtime/qwen35_paro.py",
+      "symbol": "Qwen35ParoDecodeState.run_full_attention_moe_c1_layer_fp16",
+      "current_guard": "raises ValueError when tokens != 1",
+      "required_for_native_prefill": "tokens>1 full-attention prefill orchestration or an explicitly labelled serial fallback"
+    },
+    {
+      "component": "full_attention_qkv_projection_layout",
+      "path": "hipengine/runtime/qwen35_paro.py",
+      "symbol": "Qwen35ParoDecodeState.project_full_attention_qkv_fp16",
+      "current_guard": "raises ValueError when tokens != 1",
+      "required_for_native_prefill": "batched q/k/v projections with contiguous q, key, value, and gate views for downstream RoPE/KV writes"
+    },
+    {
+      "component": "full_attention_rope_prepare_positions",
+      "path": "hipengine/runtime/qwen35_paro.py",
+      "symbol": "Qwen35ParoDecodeState.prepare_full_attention_qkv_fp16",
+      "current_guard": "raises ValueError when tokens != 1 and consumes one device position scalar",
+      "required_for_native_prefill": "per-token prompt positions for Q/K RMSNorm plus partial rotary instead of a single decode position"
+    },
+    {
+      "component": "full_attention_prefill_kv_append",
+      "path": "hipengine/kernels/hip_gfx1100/attention/paged_kv_write.py",
+      "symbol": "qwen35_write_paged_kv_mixed_value_fp16_batch_spans",
+      "current_status": "batch KV writer wrapper exists, but resident native prefill does not wire token row positions/live counts for prompt rows",
+      "required_for_native_prefill": "KVLiveSpans with row/token positions that append all prompt K/V rows at their correct cache positions"
+    },
+    {
+      "component": "full_attention_causal_prefill_attention",
+      "path": "hipengine/runtime/qwen35_paro.py",
+      "symbol": "Qwen35ParoDecodeState.decode_full_attention_context_gate_fp16",
+      "current_status": "decode context attention reads one query against existing cache; no multi-query causal prefill attention path is wired",
+      "required_for_native_prefill": "causal full-attention prefill over the prompt, or a labelled serial c=1 fallback until the native kernel exists"
+    }
+  ],
+  "next_actions": [
+    "Add a layer-boundary diagnostic comparing serial c=1 layer-3 full-attention prefill rows against any new prefill implementation.",
+    "Wire batched full-attention q/k/v projection and per-token RoPE preparation for prompt rows.",
+    "Wire batched KV append with KVLiveSpans row/token positions, then add causal prefill attention or an explicitly-labelled serial c=1 fallback."
+  ],
+  "notes": [
+    "Correctness/blocker planning only; no timings are collected and no throughput claim is made.",
+    "The accepted predecessor is native linear-prefix prefill through the all-linear prefix; this artifact narrows the next blocker to the first unsupported layer boundary."
+  ]
+}

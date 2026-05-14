@@ -60,7 +60,7 @@ def main() -> int:
     parser.add_argument(
         "--native-prefill",
         action="store_true",
-        help="Request diagnostic native batched prefill for a linear-attention-only layer prefix.",
+        help="Request accepted native batched prefill for a linear-attention-only layer prefix.",
     )
     parser.add_argument(
         "--allow-rejected-native-prefill",

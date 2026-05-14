@@ -5861,3 +5861,60 @@ Result: pytest exit code `0`.
 - The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
 - This was a Python/runtime scratch lifetime fix, not a kernel body port; no source-lineage or rocprof evidence required.
 - Next Task #15 target: extend native prefill past the all-linear prefix boundary at layer 3 (`full_attention`) and then return to compact/grouped MoE prefill and c>N correctness/performance.
+
+---
+
+## 2026-05-15 — Narrow native prefill blocker to full-attention boundary components
+
+### Scope
+
+- Continued Task #15 after native linear-prefix prefill was accepted for prefixes 1..3.
+- Added `scripts/qwen35_native_prefill_boundary.py`, a blocker/planning diagnostic that inspects the real Qwen3.5/PARO layer map without collecting timings.
+- Added `tests/test_qwen35_native_prefill_boundary.py` for the pure boundary payload helper.
+- Updated Task #15 with an explicit component list for the next unsupported layer boundary.
+
+### Evidence
+
+```bash
+python3 scripts/qwen35_native_prefill_boundary.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-attn-boundary-blocked.json
+```
+
+Expected result: exits `1` because this is a blocked diagnostic. Artifact key fields:
+
+- `status=blocked`
+- `performance_claim=false`
+- `layer_type_counts={"linear_attention": 30, "full_attention": 10}`
+- `accepted_linear_prefix_layers=3`
+- `first_unsupported_layer=3`
+- `first_unsupported_type="full_attention"`
+- component blockers:
+  - `full_attention_prefill_orchestrator`: `run_full_attention_moe_c1_layer_fp16` has a `tokens != 1` guard.
+  - `full_attention_qkv_projection_layout`: `project_full_attention_qkv_fp16` has a `tokens != 1` guard and needs batched q/k/v projection layout.
+  - `full_attention_rope_prepare_positions`: `prepare_full_attention_qkv_fp16` has a `tokens != 1`/single-position guard and needs per-token positions.
+  - `full_attention_prefill_kv_append`: batch KV writer wrapper exists, but resident native prefill does not wire prompt row positions/live counts.
+  - `full_attention_causal_prefill_attention`: decode context attention handles one query; multi-query causal prefill attention is not wired.
+
+Interpretation: the native linear-prefix correctness blocker is closed; the remaining Task #15 implementation blocker is no longer generic "native prefill mismatch" but specifically layer-3 full-attention prefill/KV/causal attention wiring (or an explicitly labelled serial c=1 fallback), then compact/grouped MoE prefill and c>N work.
+
+### Validation
+
+```bash
+python3 -m compileall -q scripts/qwen35_native_prefill_boundary.py scripts/qwen35_paro_bench.py tests/test_qwen35_native_prefill_boundary.py && \
+  python3 -m pytest tests/test_qwen35_native_prefill_boundary.py tests/test_qwen35_resident_batch_layout.py -q
+```
+
+Result: `17 passed`.
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`75 passed`).
+
+### Notes
+
+- The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
+- This iteration added a diagnostic/planning helper only; no kernel body was ported, so no source-lineage or rocprof evidence is required.
+- Next Task #15 target: add a layer-3 full-attention prefill row diagnostic and then wire either batched full-attention prefill or a clearly-labelled serial c=1 fallback before compact/grouped MoE work.
