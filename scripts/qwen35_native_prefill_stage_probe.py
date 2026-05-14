@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Probe where Qwen3.5/PARO native linear-prefix prefill diverges.
 
-This diagnostic compares the first layer's linear-attention out-projection for
-serial c=1 prompt prefill against the current native linear-prefix prefill helper.
-It is correctness/blocker evidence only, not a benchmark.
+This diagnostic compares the first layer's linear-attention stages for serial
+c=1 prompt prefill against the current native linear-prefix prefill helper.  It
+is correctness/blocker evidence only, not a benchmark.
 """
 
 from __future__ import annotations
@@ -32,6 +32,18 @@ DEFAULT_MODEL = (
     "snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
 )
 
+STAGE_ORDER = (
+    "input_norm",
+    "qkv_rot",
+    "z_rot",
+    "qkv",
+    "z",
+    "ab",
+    "conv_out",
+    "recurrent_out",
+    "attention_out",
+)
+
 
 def _prompt_tokens(token_id: int, prompt_length: int) -> list[int]:
     if prompt_length <= 0:
@@ -39,16 +51,42 @@ def _prompt_tokens(token_id: int, prompt_length: int) -> list[int]:
     return [int(token_id)] * int(prompt_length)
 
 
-def _read_fp16(session: Qwen35ParoResidentSession, ptr: int, shape: tuple[int, ...]) -> np.ndarray:
-    out = np.empty(shape, dtype=np.float16)
+def _host_dtype(dtype: DType) -> type[np.generic]:
+    if dtype is DType.FP16:
+        return np.float16
+    if dtype is DType.FP32:
+        return np.float32
+    raise ValueError(f"unsupported probe dtype {dtype}")
+
+
+def _read_tensor(
+    session: Qwen35ParoResidentSession,
+    tensor: Tensor,
+    *,
+    row: int | None = None,
+) -> np.ndarray:
+    shape = tuple(int(dim) for dim in tensor.shape)
+    dtype = _host_dtype(tensor.dtype)
+    if row is None:
+        out_shape = shape
+        ptr = tensor.ptr
+    else:
+        if len(shape) < 2:
+            raise ValueError(f"cannot read row from tensor shape {shape}")
+        if row < 0 or row >= shape[0]:
+            raise ValueError(f"row {row} outside tensor shape {shape}")
+        row_elems = int(np.prod(shape[1:]))
+        out_shape = shape[1:]
+        ptr = tensor.ptr + row * row_elems * tensor.dtype.itemsize
+    out = np.empty(out_shape, dtype=dtype)
     copy_device_to_host(host_array_ptr(out), DeviceBuffer(ptr, out.nbytes), runtime=session.runtime)
-    return out.astype(np.float32)
+    return out.astype(np.float32).reshape(-1)
 
 
-def _run_serial_layer0_attention(
+def _run_serial_layer0_stages(
     runner: Qwen35ParoNextTokenRunner,
     prompt_tokens: list[int],
-) -> tuple[np.ndarray, dict[str, Any]]:
+) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
     with Qwen35ParoResidentSession(
         runner,
         max_sequence_length=len(prompt_tokens) + 2,
@@ -58,8 +96,9 @@ def _run_serial_layer0_attention(
         state = session.states[0]
         scratch = session.linear_scratch[0]
         conv_state, recurrent_state = session._slot_linear_state(0, 0)
-        final = None
+        stages: dict[str, np.ndarray] = {}
         for position, token_id in enumerate(prompt_tokens):
+            capture = position == len(prompt_tokens) - 1
             session._set_token_embedding(token_id)
             session._set_position(position)
             state.input_rmsnorm_fp16(
@@ -68,26 +107,46 @@ def _run_serial_layer0_attention(
                 tokens=1,
                 library=session.libraries,
             )
-            attn_out = state.run_linear_attention_out_proj_fp16(
+            if capture:
+                stages["input_norm"] = _read_tensor(session, scratch.attn_input)
+            state.rotate_linear_attention_inputs_fp16(
                 scratch.attn_input,
-                conv_state=conv_state,
-                recurrent_state=recurrent_state,
-                scratch=scratch,
+                scratch,
                 tokens=1,
                 library=session.libraries,
             )
+            if capture:
+                stages["qkv_rot"] = _read_tensor(session, scratch.qkv_rot)
+                stages["z_rot"] = _read_tensor(session, scratch.z_rot)
+            state.project_linear_attention_qkv_z_fp16(scratch, tokens=1, library=session.libraries)
+            if capture:
+                stages["qkv"] = _read_tensor(session, scratch.qkv)
+                stages["z"] = _read_tensor(session, scratch.z)
+            state.project_linear_attention_ab_fp16(scratch.attn_input, scratch, tokens=1, library=session.libraries)
+            if capture:
+                stages["ab"] = _read_tensor(session, scratch.ab)
+            state.run_linear_attention_conv_gdn_fp16(
+                scratch,
+                conv_state=conv_state,
+                recurrent_state=recurrent_state,
+                library=session.libraries,
+            )
+            if capture:
+                stages["conv_out"] = _read_tensor(session, scratch.conv_out)
+                stages["recurrent_out"] = _read_tensor(session, scratch.recurrent_out)
+            attn_out = state.project_linear_attention_out_fp16(scratch, tokens=1, library=session.libraries)
             session.runtime.device_synchronize()
-            if position == len(prompt_tokens) - 1:
-                final = _read_fp16(session, attn_out.ptr, attn_out.shape)
-        if final is None:
-            raise RuntimeError("serial attention probe produced no final row")
-    return final.reshape(-1), plan
+            if capture:
+                stages["attention_out"] = _read_tensor(session, attn_out)
+        if not stages:
+            raise RuntimeError("serial stage probe produced no final row")
+    return stages, plan
 
 
-def _run_native_layer0_attention(
+def _run_native_layer0_stages(
     runner: Qwen35ParoNextTokenRunner,
     prompt_tokens: list[int],
-) -> tuple[np.ndarray, dict[str, Any]]:
+) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
     tokens = len(prompt_tokens)
     with Qwen35ParoResidentSession(
         runner,
@@ -116,22 +175,36 @@ def _run_native_layer0_attention(
         state = session.states[0]
         scratch = state.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
         conv_state, recurrent_state = session._slot_linear_state(0, 0)
+        last = tokens - 1
+        stages: dict[str, np.ndarray] = {}
         state.input_rmsnorm_fp16(hidden, scratch.attn_input, tokens=tokens, library=session.libraries)
-        attn_out = state.run_linear_attention_prefill_out_proj_fp16(
-            scratch.attn_input,
+        stages["input_norm"] = _read_tensor(session, scratch.attn_input, row=last)
+        state.rotate_linear_attention_inputs_fp16(scratch.attn_input, scratch, tokens=tokens, library=session.libraries)
+        stages["qkv_rot"] = _read_tensor(session, scratch.qkv_rot, row=last)
+        stages["z_rot"] = _read_tensor(session, scratch.z_rot, row=last)
+        state.project_linear_attention_qkv_z_fp16(scratch, tokens=tokens, library=session.libraries)
+        stages["qkv"] = _read_tensor(session, scratch.qkv, row=last)
+        stages["z"] = _read_tensor(session, scratch.z, row=last)
+        state.project_linear_attention_ab_fp16(scratch.attn_input, scratch, tokens=tokens, library=session.libraries)
+        stages["ab"] = _read_tensor(session, scratch.ab, row=last)
+        state.run_linear_attention_prefill_conv_gdn_fp16(
+            scratch,
             conv_state=conv_state,
             recurrent_state=recurrent_state,
-            scratch=scratch,
             tokens=tokens,
             library=session.libraries,
         )
+        stages["conv_out"] = _read_tensor(session, scratch.conv_out, row=last)
+        stages["recurrent_out"] = _read_tensor(session, scratch.recurrent_out, row=last)
+        attn_out = state.project_linear_attention_prefill_out_fp16(scratch, tokens=tokens, library=session.libraries)
         session.runtime.device_synchronize()
-        last_ptr = attn_out.ptr + (tokens - 1) * session.hidden_nbytes
-        final = _read_fp16(session, last_ptr, (1, session.config.hidden_size))
-    return final.reshape(-1), plan
+        stages["attention_out"] = _read_tensor(session, attn_out, row=last)
+    return stages, plan
 
 
 def _diff_payload(serial: np.ndarray, native: np.ndarray) -> dict[str, Any]:
+    if serial.shape != native.shape:
+        raise ValueError(f"shape mismatch {serial.shape} vs {native.shape}")
     diff = native - serial
     abs_diff = np.abs(diff)
     serial_norm = float(np.linalg.norm(serial))
@@ -141,6 +214,7 @@ def _diff_payload(serial: np.ndarray, native: np.ndarray) -> dict[str, Any]:
         cosine = float(np.dot(serial, native) / (serial_norm * native_norm))
     top = np.argsort(abs_diff)[-8:][::-1]
     return {
+        "elements": int(serial.size),
         "max_abs": float(abs_diff.max()),
         "mean_abs": float(abs_diff.mean()),
         "rms_abs": float(math.sqrt(float(np.mean(diff * diff)))),
@@ -181,32 +255,40 @@ def main(argv: list[str] | None = None) -> int:
 
     prompt_tokens = _prompt_tokens(args.token_id, args.prompt_length)
     runner = Qwen35ParoNextTokenRunner(Path(args.model))
-    serial, serial_plan = _run_serial_layer0_attention(runner, prompt_tokens)
-    native, native_plan = _run_native_layer0_attention(runner, prompt_tokens)
-    diff = _diff_payload(serial, native)
-    passed = bool(diff["max_abs"] <= args.atol)
+    serial_stages, serial_plan = _run_serial_layer0_stages(runner, prompt_tokens)
+    native_stages, native_plan = _run_native_layer0_stages(runner, prompt_tokens)
+    stage_diffs = {
+        stage: _diff_payload(serial_stages[stage], native_stages[stage])
+        for stage in STAGE_ORDER
+    }
+    first_divergent_stage = next(
+        (stage for stage in STAGE_ORDER if stage_diffs[stage]["max_abs"] > args.atol),
+        None,
+    )
+    passed = first_divergent_stage is None
     payload = {
         "schema": 1,
         "status": "accepted" if passed else "rejected_correctness",
-        "blocked_reason": None if passed else "native prefill diverges from serial c=1 inside layer 0 linear-attention out projection",
+        "blocked_reason": None if passed else "native prefill diverges from serial c=1 inside layer 0 linear-attention stages",
         "model": str(Path(args.model)),
         "quant": "w4_paro",
         "backend": "hip_gfx1100",
-        "mode": "qwen35_paro_native_prefill_layer0_attention_probe",
+        "mode": "qwen35_paro_native_prefill_layer0_stage_bisect",
         "command": _command(args),
         "performance_claim": False,
         "prompt_source": "repeated_token_id",
         "token_id": int(args.token_id),
         "prompt_length": len(prompt_tokens),
-        "stage": "layer0_linear_attention_out_proj_last_token",
+        "stage_order": list(STAGE_ORDER),
+        "first_divergent_stage": first_divergent_stage,
         "atol": float(args.atol),
         "serial_native_prefill_plan": serial_plan,
         "native_prefill_plan": native_plan,
-        "diff": diff,
+        "stage_diffs": stage_diffs,
         "passed": passed,
         "notes": [
             "Correctness diagnostic only; timings are intentionally omitted and no throughput claim is made.",
-            "This isolates the native-prefix mismatch before MoE and before later layer-prefix interactions.",
+            "This bisects the native-prefix mismatch within layer0 linear attention before MoE.",
         ],
     }
     text = json.dumps(payload, indent=2, ensure_ascii=False)

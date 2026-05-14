@@ -5559,3 +5559,73 @@ Result: pytest exit code `0`.
 
 - The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`; robust active TaskList count remains `1` (#15 only).
 - No performance claim was made; the new stage probe artifact is explicitly rejected correctness evidence.
+
+---
+
+## 2026-05-15 — Bisect native linear-prefix divergence to conv prefill
+
+### Scope
+
+- Narrowed Task #15 inside the first layer's native linear-attention path.
+- Reworked `scripts/qwen35_native_prefill_stage_probe.py` to compare serial c=1 vs native batched prefill at multiple layer0 stages:
+  - `input_norm`
+  - `qkv_rot`
+  - `z_rot`
+  - `qkv`
+  - `z`
+  - `ab`
+  - `conv_out`
+  - `recurrent_out`
+  - `attention_out`
+- Emitted `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer0-stage-bisect-rejected.json`.
+- Updated Task #15 description with the first divergent stage.
+
+### Artifact
+
+```bash
+python3 scripts/qwen35_native_prefill_stage_probe.py \
+  --prompt-length 4 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer0-stage-bisect-rejected.json
+```
+
+Expected exit: `1` for current rejected correctness.
+
+Key fields:
+
+- `status=rejected_correctness`
+- `performance_claim=false`
+- `first_divergent_stage=conv_out`
+- Stages matching exactly (`max_abs=0.0`):
+  - `input_norm`
+  - `qkv_rot`
+  - `z_rot`
+  - `qkv`
+  - `z`
+  - `ab`
+- First divergent stage:
+  - `conv_out.max_abs=12.14988899230957`
+  - `conv_out.mean_abs=0.0498395711183548`
+  - `conv_out.rms_abs=0.35642884098821453`
+  - `conv_out.cosine=0.9481420516967773`
+- Downstream divergence:
+  - `recurrent_out.max_abs=2.054323196411133`
+  - `attention_out.max_abs=0.30224609375`
+
+### Interpretation
+
+The immediate native linear-prefix blocker is now localized to the native linear-attention prefill convolution/state semantics. Embedding, input RMSNorm, rotations, AWQ qkv/z projection, and a/b projection match serial c=1 exactly for the last prompt token.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0`.
+
+### Notes
+
+- User added four new TaskList items (#42-#45) during this loop. The robust active TaskList count is now `5`, but the Qwen3.5/PARO parity implementation blocker remains Task #15.
+- The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`.
+- No performance claim was made; the new stage-bisect artifact is explicitly rejected correctness evidence.
