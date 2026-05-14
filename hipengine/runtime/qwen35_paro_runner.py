@@ -563,12 +563,37 @@ class Qwen35ParoResidentBatchLayout:
 
 
 @dataclass(frozen=True)
+class Qwen35ParoNativePrefillPlan:
+    """Serializable planning contract for resident native prefill coverage."""
+
+    path: str
+    layer_limit: int
+    linear_prefix_layers: int
+    full_layer_limit_native: bool
+    first_unsupported_layer: int | None
+    first_unsupported_type: str | None
+    blockers: tuple[str, ...]
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "layer_limit": self.layer_limit,
+            "linear_prefix_layers": self.linear_prefix_layers,
+            "full_layer_limit_native": self.full_layer_limit_native,
+            "first_unsupported_layer": self.first_unsupported_layer,
+            "first_unsupported_type": self.first_unsupported_type,
+            "blockers": list(self.blockers),
+        }
+
+
+@dataclass(frozen=True)
 class Qwen35ParoResidentBatchExecution:
     """Serializable status for the current resident c>N execution path."""
 
     path: str
     scheduler_owned: bool
     row_execution: str
+    native_prefill_plan: Qwen35ParoNativePrefillPlan
     native_compact_prefill: bool
     native_caware_decode: bool
     throughput_claim_eligible: bool
@@ -579,6 +604,7 @@ class Qwen35ParoResidentBatchExecution:
             "path": self.path,
             "scheduler_owned": self.scheduler_owned,
             "row_execution": self.row_execution,
+            "native_prefill_plan": self.native_prefill_plan.to_json_dict(),
             "native_compact_prefill": self.native_compact_prefill,
             "native_caware_decode": self.native_caware_decode,
             "throughput_claim_eligible": self.throughput_claim_eligible,
@@ -733,33 +759,61 @@ class Qwen35ParoResidentSession:
         finally:
             self.hidden, self.next_hidden = saved_hidden, saved_next_hidden
 
+    def native_prefill_plan(self) -> Qwen35ParoNativePrefillPlan:
+        """Return the native prefill coverage currently available for this session."""
+
+        linear_prefix_layers = 0
+        first_unsupported_layer: int | None = None
+        first_unsupported_type: str | None = None
+        for layer_id in range(self.layer_limit):
+            layer_type = self.config.layer_types[layer_id]
+            if layer_type == "linear_attention" and first_unsupported_layer is None:
+                linear_prefix_layers += 1
+                continue
+            first_unsupported_layer = layer_id
+            first_unsupported_type = layer_type
+            break
+        full_layer_limit_native = linear_prefix_layers == self.layer_limit
+        blockers: tuple[str, ...]
+        if full_layer_limit_native:
+            blockers = ()
+            path = "linear_attention_native_full_layer_limit"
+        else:
+            blockers = (
+                "native prefill currently covers only linear-attention layer prefixes",
+                "native compact/grouped MoE and full-attention prefill are not wired",
+                f"first unsupported layer {first_unsupported_layer} is {first_unsupported_type!r}",
+            )
+            path = "linear_attention_prefix_only" if linear_prefix_layers else "serial_only"
+        return Qwen35ParoNativePrefillPlan(
+            path=path,
+            layer_limit=self.layer_limit,
+            linear_prefix_layers=linear_prefix_layers,
+            full_layer_limit_native=full_layer_limit_native,
+            first_unsupported_layer=first_unsupported_layer,
+            first_unsupported_type=first_unsupported_type,
+            blockers=blockers,
+        )
+
     def batch_execution_metadata(self, *, scheduler_owned: bool = False) -> Qwen35ParoResidentBatchExecution:
         """Describe whether the resident c>N path is native or a serial fallback."""
 
-        unsupported = [
-            (layer_id, self.config.layer_types[layer_id])
-            for layer_id in range(self.layer_limit)
-            if self.config.layer_types[layer_id] != "linear_attention"
-        ]
+        native_prefill_plan = self.native_prefill_plan()
         blockers = [
             "step_batch_serial executes active physical slots serially through the c=1 layer path",
             "native compact/grouped MoE c>N prefill is not wired",
             "native c-aware full-attention decode graph replay is not wired",
         ]
-        if unsupported:
-            first_layer, first_type = unsupported[0]
-            blockers.append(
-                "native linear-prefix prefill stops before "
-                f"layer {first_layer} ({first_type!r}); full-model prefill still uses the serial bridge"
-            )
+        blockers.extend(native_prefill_plan.blockers)
         return Qwen35ParoResidentBatchExecution(
             path="scheduler_serial_slot_bridge" if scheduler_owned else "serial_slot_bridge",
             scheduler_owned=bool(scheduler_owned),
             row_execution="serial_c1_layer_path",
+            native_prefill_plan=native_prefill_plan,
             native_compact_prefill=False,
             native_caware_decode=False,
             throughput_claim_eligible=False,
-            blockers=tuple(blockers),
+            blockers=tuple(dict.fromkeys(blockers)),
         )
 
     def prefill_linear_tokens_native(
@@ -781,16 +835,12 @@ class Qwen35ParoResidentSession:
             self._check_position(pos)
             if token < 0 or token >= self.vocab_size:
                 raise ValueError(f"token_id {token} outside [0, {self.vocab_size})")
-        unsupported = [
-            (layer_id, self.config.layer_types[layer_id])
-            for layer_id in range(self.layer_limit)
-            if self.config.layer_types[layer_id] != "linear_attention"
-        ]
-        if unsupported:
-            first_layer, first_type = unsupported[0]
+        native_prefill_plan = self.native_prefill_plan()
+        if not native_prefill_plan.full_layer_limit_native:
             raise NotImplementedError(
-                "native batched prefill currently supports linear-attention-only layer prefixes; "
-                f"layer {first_layer} is {first_type!r}"
+                "native batched prefill currently supports linear-attention-only layer limits; "
+                f"first unsupported layer {native_prefill_plan.first_unsupported_layer} "
+                f"is {native_prefill_plan.first_unsupported_type!r}"
             )
         token_arr = np.asarray(tokens, dtype=np.int64)
         token_buf = malloc(token_arr.nbytes, runtime=self.runtime)

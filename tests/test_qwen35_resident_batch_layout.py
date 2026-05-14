@@ -29,6 +29,40 @@ def test_qwen35_resident_batch_layout_is_batch_shaped_with_slot0_aliases() -> No
     assert layout.slot0_full_kv_shape == (4, 256, 2, 256)
 
 
+def test_qwen35_resident_native_prefill_plan_reports_linear_prefix_blocker() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.layer_limit = 4
+    session.config = SimpleNamespace(
+        layer_types=("linear_attention", "linear_attention", "full_attention", "linear_attention")
+    )
+
+    plan = session.native_prefill_plan()
+
+    assert plan.path == "linear_attention_prefix_only"
+    assert plan.layer_limit == 4
+    assert plan.linear_prefix_layers == 2
+    assert not plan.full_layer_limit_native
+    assert plan.first_unsupported_layer == 2
+    assert plan.first_unsupported_type == "full_attention"
+    assert any("first unsupported layer 2" in blocker for blocker in plan.blockers)
+    assert plan.to_json_dict()["linear_prefix_layers"] == 2
+
+
+def test_qwen35_resident_native_prefill_plan_accepts_all_linear_layer_limit() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.layer_limit = 2
+    session.config = SimpleNamespace(layer_types=("linear_attention", "linear_attention", "full_attention"))
+
+    plan = session.native_prefill_plan()
+
+    assert plan.path == "linear_attention_native_full_layer_limit"
+    assert plan.linear_prefix_layers == 2
+    assert plan.full_layer_limit_native
+    assert plan.first_unsupported_layer is None
+    assert plan.first_unsupported_type is None
+    assert plan.blockers == ()
+
+
 def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.layer_limit = 3
@@ -39,11 +73,15 @@ def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> No
     assert metadata.path == "scheduler_serial_slot_bridge"
     assert metadata.scheduler_owned
     assert metadata.row_execution == "serial_c1_layer_path"
+    assert metadata.native_prefill_plan.linear_prefix_layers == 2
+    assert not metadata.native_prefill_plan.full_layer_limit_native
     assert not metadata.native_compact_prefill
     assert not metadata.native_caware_decode
     assert not metadata.throughput_claim_eligible
-    assert any("layer 2" in blocker and "full_attention" in blocker for blocker in metadata.blockers)
-    assert metadata.to_json_dict()["blockers"] == list(metadata.blockers)
+    assert any("unsupported layer 2" in blocker and "full_attention" in blocker for blocker in metadata.blockers)
+    payload = metadata.to_json_dict()
+    assert payload["native_prefill_plan"]["linear_prefix_layers"] == 2
+    assert payload["blockers"] == list(metadata.blockers)
 
 
 def test_qwen35_resident_session_slot_views_offset_batch_state() -> None:

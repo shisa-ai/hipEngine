@@ -5200,3 +5200,52 @@ Result includes `throughput_claim_eligible: False`, `native_compact_prefill: Fal
 ### Notes
 
 - The loop's original TaskList verify command is now stale because completed parity tasks have been compacted out of the active TaskList file; the active TaskList contains only open #12 and #15, and a robust count over that file prints `2`.
+
+---
+
+## 2026-05-15 — Add native-prefill planning metadata for Qwen3.5/PARO
+
+### Scope
+
+- Narrowed Task #15 by making native prefill coverage an explicit runtime planning contract.
+- Added `Qwen35ParoNativePrefillPlan` and `Qwen35ParoResidentSession.native_prefill_plan()`.
+- `batch_execution_metadata()` now embeds the native prefill plan in its JSON payload, so future c>N correctness artifacts record:
+  - `linear_prefix_layers`
+  - `full_layer_limit_native`
+  - `first_unsupported_layer`
+  - `first_unsupported_type`
+  - native-prefill blockers.
+- `prefill_linear_tokens_native()` now uses the same plan for its NotImplemented boundary instead of duplicating the unsupported-layer scan.
+
+### Evidence
+
+For a synthetic Qwen-like layer order `linear_attention, linear_attention, full_attention, linear_attention`, the plan prints:
+
+```text
+path=linear_attention_prefix_only
+linear_prefix_layers=2
+full_layer_limit_native=False
+first_unsupported_layer=2
+first_unsupported_type=full_attention
+```
+
+This makes the remaining native compact prefill blocker narrower: full-model native prefill cannot be claimed until the first full-attention/compact grouped-MoE boundary after the linear prefix is implemented.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q
+```
+
+Result: `12 passed`.
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: `72 passed`.
+
+### Notes
+
+- The original pi-multiloop verify command still fails with `active HIPENGINE parity TaskList not found` because it searches for completed task IDs that are no longer in the active compacted TaskList file. A robust count over the active #12/#15 file still prints `2`.
