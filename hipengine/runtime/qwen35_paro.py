@@ -21,6 +21,7 @@ from hipengine.kernels.hip_gfx1100.norm import paro_add_rmsnorm_out_bf16, paro_r
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_lowp_out
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
+    gemv_awq_dual_pack8_transposed_bf16,
     gemv_awq_pack8_strided_bf16,
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_pack8_transposed_bf16,
@@ -60,6 +61,7 @@ class Qwen35ParoLinearAttentionScratch:
     attn_input: Tensor
     qkv_rot: Tensor
     z_rot: Tensor
+    qkv_z: Tensor
     qkv: Tensor
     z: Tensor
     a: Tensor
@@ -379,12 +381,16 @@ class Qwen35ParoDecodeState:
         cfg = self.config
         qkv_width = _linear_qkv_width(cfg)
         z_width = _linear_value_width(cfg)
+        qkv_z = self.workspace.reserve_tensor("linear_attn.qkv_z", (tokens, qkv_width + z_width), DType.BF16)
+        qkv = Tensor.from_handle(qkv_z.ptr, (tokens, qkv_width), DType.BF16, qkv_z.device)
+        z = Tensor.from_handle(qkv_z.ptr + tokens * qkv_width * DType.BF16.itemsize, (tokens, z_width), DType.BF16, qkv_z.device)
         return Qwen35ParoLinearAttentionScratch(
             attn_input=self.workspace.reserve_tensor("linear_attn.attn_input", (tokens, cfg.hidden_size), DType.BF16),
             qkv_rot=self.workspace.reserve_tensor("linear_attn.qkv_rot", (tokens, cfg.hidden_size), DType.BF16),
             z_rot=self.workspace.reserve_tensor("linear_attn.z_rot", (tokens, cfg.hidden_size), DType.BF16),
-            qkv=self.workspace.reserve_tensor("linear_attn.qkv", (tokens, qkv_width), DType.BF16),
-            z=self.workspace.reserve_tensor("linear_attn.z", (tokens, z_width), DType.BF16),
+            qkv_z=qkv_z,
+            qkv=qkv,
+            z=z,
             a=self.workspace.reserve_tensor("linear_attn.a", (tokens, cfg.linear_num_value_heads), DType.BF16),
             b=self.workspace.reserve_tensor("linear_attn.b", (tokens, cfg.linear_num_value_heads), DType.BF16),
             conv_out=self.workspace.reserve_tensor("linear_attn.conv_out", (tokens, qkv_width), DType.FP32),
@@ -442,24 +448,31 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor]:
+        if tokens != 1:
+            raise ValueError("linear-attention fused qkv/z projection currently requires tokens=1")
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
-        self.project_pack8_bf16(
-            scratch.qkv_rot,
-            scratch.qkv,
-            weight_prefix=f"{prefix}.in_proj_qkv",
-            rows=tokens,
-            group_size=group_size,
-            library=library,
+        qkv = f"{prefix}.in_proj_qkv"
+        z = f"{prefix}.in_proj_z"
+        qkv_qweight = self.tensor(f"{qkv}.qweight_pack8_decode")
+        z_qweight = self.tensor(f"{z}.qweight_pack8_decode")
+        gemv_awq_dual_pack8_transposed_bf16(
+            scratch.qkv_rot.ptr,
+            scratch.z_rot.ptr,
+            qkv_qweight.ptr,
+            self.tensor(f"{qkv}.qzeros").ptr,
+            self.tensor(f"{qkv}.scales").ptr,
+            z_qweight.ptr,
+            self.tensor(f"{z}.qzeros").ptr,
+            self.tensor(f"{z}.scales").ptr,
+            scratch.qkv_z.ptr,
+            tokens,
+            scratch.qkv_rot.shape[-1],
+            _out_packed_from_generic_transposed_qweight(qkv_qweight),
+            _out_packed_from_generic_transposed_qweight(z_qweight),
+            group_size,
             stream=stream,
-        )
-        self.project_pack8_bf16(
-            scratch.z_rot,
-            scratch.z,
-            weight_prefix=f"{prefix}.in_proj_z",
-            rows=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
+            library=_library_for(library, "awq"),
+            runtime=self.runtime,
         )
         return scratch.qkv, scratch.z
 
@@ -1224,6 +1237,12 @@ def _out_packed_from_transposed_qweight(qweight: Tensor) -> int:
     if len(qweight.shape) < 3:
         raise ValueError("transposed stacked qweight must have shape [experts, out_packed, in_features]")
     return qweight.shape[1]
+
+
+def _out_packed_from_generic_transposed_qweight(qweight: Tensor) -> int:
+    if len(qweight.shape) != 2:
+        raise ValueError("generic transposed qweight must have shape [out_packed, in_features]")
+    return qweight.shape[0]
 
 
 def _linear_value_width(config) -> int:

@@ -244,9 +244,15 @@ def _linear_weights() -> DeviceWeightMap:
                 f"{prefix}.out_proj.channel_scales", 0x9670, (1, 4096), "bf16"
             ),
             f"{prefix}.in_proj_qkv.qweight": _allocation(f"{prefix}.in_proj_qkv.qweight", 0x9700, (4096, 1024), "int32"),
+            f"{prefix}.in_proj_qkv.qweight_pack8_decode": _allocation(
+                f"{prefix}.in_proj_qkv.qweight_pack8_decode", 0x9710, (1024, 4096), "int32"
+            ),
             f"{prefix}.in_proj_qkv.qzeros": _allocation(f"{prefix}.in_proj_qkv.qzeros", 0x9800, (32, 1024), "int32"),
             f"{prefix}.in_proj_qkv.scales": _allocation(f"{prefix}.in_proj_qkv.scales", 0x9900, (32, 8192), "bf16"),
             f"{prefix}.in_proj_z.qweight": _allocation(f"{prefix}.in_proj_z.qweight", 0x9A00, (4096, 512), "int32"),
+            f"{prefix}.in_proj_z.qweight_pack8_decode": _allocation(
+                f"{prefix}.in_proj_z.qweight_pack8_decode", 0x9A10, (512, 4096), "int32"
+            ),
             f"{prefix}.in_proj_z.qzeros": _allocation(f"{prefix}.in_proj_z.qzeros", 0x9B00, (32, 512), "int32"),
             f"{prefix}.in_proj_z.scales": _allocation(f"{prefix}.in_proj_z.scales", 0x9C00, (32, 4096), "bf16"),
             f"{prefix}.out_proj.qweight": _allocation(f"{prefix}.out_proj.qweight", 0x9C10, (4096, 512), "int32"),
@@ -307,6 +313,7 @@ def test_qwen35_decode_state_reserves_linear_attention_scratch() -> None:
     scratch = state.reserve_linear_attention_scratch(tokens=1)
 
     assert scratch.attn_input.shape == (1, 4096)
+    assert scratch.qkv_z.shape == (1, 12288)
     assert scratch.qkv.shape == (1, 8192)
     assert scratch.z.shape == (1, 4096)
     assert scratch.a.shape == (1, 32)
@@ -334,6 +341,7 @@ def test_qwen35_decode_state_runs_linear_attention_state_chain(monkeypatch) -> N
 
     monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", record("rotate2"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
     monkeypatch.setattr(qwen_runtime, "dense_gemv_out_bf16", record("dense"))
     monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_decode_bf16", record("conv"))
     monkeypatch.setattr(qwen_runtime, "qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16", record("gdn"))
@@ -346,18 +354,16 @@ def test_qwen35_decode_state_runs_linear_attention_state_chain(monkeypatch) -> N
     )
 
     assert out is scratch.recurrent_out
-    assert [name for name, _, _ in calls] == ["rotate2", "pack8", "pack8", "dense", "dense", "conv", "gdn"]
+    assert [name for name, _, _ in calls] == ["rotate2", "dual_pack8", "dense", "dense", "conv", "gdn"]
     rotate_args = calls[0][1]
     assert rotate_args[:3] == (0xC000, scratch.qkv_rot.ptr, scratch.z_rot.ptr)
     assert rotate_args[9:] == (1, 4096, 128, 8)
-    assert calls[1][1][:5] == (scratch.qkv_rot.ptr, 0x9700, 0x9800, 0x9900, scratch.qkv.ptr)
-    assert calls[1][1][5:] == (1, 4096, 1024, 128)
-    assert calls[2][1][:5] == (scratch.z_rot.ptr, 0x9A00, 0x9B00, 0x9C00, scratch.z.ptr)
-    assert calls[2][1][5:] == (1, 4096, 512, 128)
-    assert calls[3][1][:6] == (0xC000, 0x9D00, scratch.a.ptr, 1, 4096, 32)
-    assert calls[4][1][:6] == (0xC000, 0x9E00, scratch.b.ptr, 1, 4096, 32)
-    assert calls[5][1] == (scratch.qkv.ptr, 0xC100, 0x9F00, scratch.conv_out.ptr, 8192, 4)
-    assert calls[6][1] == (
+    assert calls[1][1][:9] == (scratch.qkv_rot.ptr, scratch.z_rot.ptr, 0x9710, 0x9800, 0x9900, 0x9A10, 0x9B00, 0x9C00, scratch.qkv_z.ptr)
+    assert calls[1][1][9:] == (1, 4096, 1024, 512, 128)
+    assert calls[2][1][:6] == (0xC000, 0x9D00, scratch.a.ptr, 1, 4096, 32)
+    assert calls[3][1][:6] == (0xC000, 0x9E00, scratch.b.ptr, 1, 4096, 32)
+    assert calls[4][1] == (scratch.qkv.ptr, 0xC100, 0x9F00, scratch.conv_out.ptr, 8192, 4)
+    assert calls[5][1] == (
         scratch.conv_out.ptr,
         scratch.z.ptr,
         scratch.a.ptr,
@@ -414,6 +420,7 @@ def test_qwen35_decode_state_runs_linear_attention_out_proj_chain(monkeypatch) -
 
     monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", lambda *a, **k: order.append("rotate2"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", lambda *a, **k: order.append("pack8"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", lambda *a, **k: order.append("dual_pack8"))
     monkeypatch.setattr(qwen_runtime, "dense_gemv_out_bf16", lambda *a, **k: order.append("dense"))
     monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_decode_bf16", lambda *a, **k: order.append("conv"))
     monkeypatch.setattr(qwen_runtime, "qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16", lambda *a, **k: order.append("gdn"))
@@ -428,7 +435,7 @@ def test_qwen35_decode_state_runs_linear_attention_out_proj_chain(monkeypatch) -
     )
 
     assert out is scratch.out_proj
-    assert order == ["rotate2", "pack8", "pack8", "dense", "dense", "conv", "gdn", "cast", "rotate1", "pack8"]
+    assert order == ["rotate2", "dual_pack8", "dense", "dense", "conv", "gdn", "cast", "rotate1", "pack8"]
     with pytest.raises(ValueError, match="tokens=1"):
         state.run_linear_attention_out_proj_bf16(hidden, conv_state=conv_state, recurrent_state=recurrent_state, tokens=2)
 
@@ -452,6 +459,7 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
     monkeypatch.setattr(qwen_runtime, "paro_rmsnorm_out_bf16", record("input_norm"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", record("rotate2"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
     monkeypatch.setattr(qwen_runtime, "dense_gemv_out_bf16", record("dense"))
     monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_decode_bf16", record("conv"))
     monkeypatch.setattr(qwen_runtime, "qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16", record("gdn"))
@@ -478,8 +486,7 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
     assert [name for name, _, _ in calls] == [
         "input_norm",
         "rotate2",
-        "pack8",
-        "pack8",
+        "dual_pack8",
         "dense",
         "dense",
         "conv",
@@ -498,7 +505,7 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "combine",
     ]
     assert calls[0][1] == (hidden.ptr, 0x9010, linear_scratch.attn_input.ptr, 1, 4096, 1.0e-6)
-    assert calls[11][1] == (
+    assert calls[10][1] == (
         hidden.ptr,
         linear_scratch.out_proj.ptr,
         0x9020,

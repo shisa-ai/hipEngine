@@ -420,7 +420,14 @@ def test_materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer_uses_stat
     layer = materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(index, runtime=runtime)
 
     assert validation.passed
-    assert set(layer.weights.tensors) == set(runtime_linear_attention_moe_c1_tensor_names(layer_id=0))
+    expected_names = set(runtime_linear_attention_moe_c1_tensor_names(layer_id=0))
+    expected_names.update(
+        {
+            "layers.0.linear_attn.in_proj_qkv.qweight_pack8_decode",
+            "layers.0.linear_attn.in_proj_z.qweight_pack8_decode",
+        }
+    )
+    assert set(layer.weights.tensors) == expected_names
     assert layer.config.linear_num_key_heads == 1
     assert layer.config.linear_value_head_dim == 4
     assert layer.tensor("layers.0.linear_attn.conv1d.weight").dtype is DType.FP32
@@ -432,7 +439,7 @@ def test_materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer_uses_stat
     conv = layer.allocation("layers.0.linear_attn.conv1d.weight")
     assert bytes(runtime.buffers[conv.buffer.ptr]) == tensors["model.layers.0.linear_attn.conv1d.weight"].astype(np.float32).tobytes()
     layer.free(runtime=runtime)
-    assert len(runtime.freed) == len(runtime_linear_attention_moe_c1_tensor_names(layer_id=0))
+    assert len(runtime.freed) == len(expected_names)
 
 
 def test_validate_qwen35_paro_moe_c1_layout_reports_missing_and_shapes(tmp_path) -> None:

@@ -840,6 +840,32 @@ def _runtime_tensor_needs_bf16_bits(name: str) -> bool:
     ) and not name.endswith("_w8a16_scale")
 
 
+def _prepare_linear_attention_qkv_z_pack8_runtime_tensors(
+    normalized: dict[str, Any],
+    *,
+    names: tuple[str, ...],
+    reader: _NormalizedTensorReader,
+    layer_id: int,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, object]:
+    """Prepare transposed generic qweights for fused linear-attention QKV/Z decode."""
+
+    import numpy as np
+
+    prefix = f"layers.{layer_id}.linear_attn"
+    required = (f"{prefix}.in_proj_qkv.qweight", f"{prefix}.in_proj_z.qweight")
+    if not all(name in names for name in required):
+        return {}
+    prepared: dict[str, object] = {}
+    for source in required:
+        target = source.removesuffix(".qweight") + ".qweight_pack8_decode"
+        _emit_progress(progress, "prepare_runtime_tensor_start", layer=layer_id, name=target)
+        qweight = np.asarray(_read_normalized_numpy_tensor(normalized, source, reader=reader), dtype=np.int32)
+        prepared[target] = np.ascontiguousarray(qweight.T)
+        _emit_progress(progress, "prepare_runtime_tensor_done", layer=layer_id, name=target, shape=tuple(prepared[target].shape))
+    return prepared
+
+
 def _materialize_runtime_layer(
     index: WeightIndex,
     config: Qwen35ParoConfig,
@@ -907,6 +933,31 @@ def _materialize_runtime_layer(
                 name=name,
                 index=idx,
                 total=len(direct_names),
+            )
+        linear_pack8 = _prepare_linear_attention_qkv_z_pack8_runtime_tensors(
+            normalized,
+            names=names,
+            reader=reader,
+            layer_id=layer_id,
+            progress=progress,
+        )
+        for idx, (name, array) in enumerate(linear_pack8.items(), start=1):
+            _emit_progress(
+                progress,
+                "materialize_prepared_tensor_start",
+                layer=layer_id,
+                name=name,
+                index=idx,
+                total=len(linear_pack8),
+            )
+            allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
+            _emit_progress(
+                progress,
+                "materialize_prepared_tensor_done",
+                layer=layer_id,
+                name=name,
+                index=idx,
+                total=len(linear_pack8),
             )
         prepared = prepare_qwen35_paro_moe_c1_runtime_host_tensors(
             index,

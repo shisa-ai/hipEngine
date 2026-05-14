@@ -55,6 +55,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add actual autoregressive prompt/decode timing harness with persistent per-layer state/KV.
   - [x] Add graph-friendly device token embedding and decode-position state kernels.
   - [x] Add diagnostic one-step HIP graph replay for resident measured decode.
+  - [x] Fuse linear-attention QKV/Z pack8 decode projections using dual-input transposed GEMV.
   - [x] Wire the Qwen3.5/PARO one-token path through `LLM.generate()` and `scripts/smoke.py`.
   - [x] Add Qwen3.5/PARO parent-compatible prepared MoE host/device layouts (router+shared gate, stacked expert pack8 tensors).
   - [x] Add torch-free named runtime workspace allocator for scratch/device tensors.

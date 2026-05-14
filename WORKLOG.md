@@ -3523,3 +3523,38 @@ Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-graph-dia
 
 - Profile graph replay kernel mix. The remaining ~20% decode gap is no longer explained by tokenizer loading or simple Python per-kernel launch overhead.
 - Native batched/compact prefill remains the largest missing implementation for PLAN-MOE2 prefill parity.
+
+---
+
+## 2026-05-14 — Fuse linear-attention QKV/Z pack8 decode projection
+
+### Scope
+
+- Prepared transposed generic pack8 qweights for linear-attention `in_proj_qkv` and `in_proj_z` during runtime layer materialization.
+- Added contiguous `qkv_z` scratch with views for the existing `qkv` and `z` consumers.
+- Switched `project_linear_attention_qkv_z_bf16` from two separate generic pack8 GEMVs to the existing dual-input transposed pack8 GEMV wrapper.
+
+This ports the parent `NANOVLLM_PARO_LINEAR_ATTN_QKV_Z_PACK8_FUSED=1` decode route for the HIPENGINE c=1 path.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py -q
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 2 --decode-tokens 4 --warmup-decode-tokens 1 --token-id 9707 --json /tmp/hipengine-dual-linear-eager-smoke.json
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 2 --decode-tokens 4 --warmup-decode-tokens 1 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-dual-linear-graph-smoke.json
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-qwen35-paro-512-128-linear-fused-graph.json
+```
+
+Results:
+
+- 1-layer eager and graph smokes preserved the prior generated token/logit sequence (`229838`, `"وو"`; graph final logit `6.246890544891357`).
+- 512/128 graph diagnostic improved decode from `92.676 tok/s` to `104.066 tok/s` (`+12.3%`).
+- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; HIPENGINE is now ~`90.0%` of that decode target.
+- Token-by-token c=1 prefill measured `109.4 tok/s`; still not native batched/compact prefill and not comparable to PLAN-MOE2 prefill.
+
+Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-linear-qkv-z-fused-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
+
+### Next
+
+- Remaining decode gap: profile after QKV/Z fusion. Likely buckets are generic W4 pack8 projections, W8A16 lm-head, selected MoE pack8, and attention GQA.
+- Larger missing implementation remains native batched/compact prefill.
