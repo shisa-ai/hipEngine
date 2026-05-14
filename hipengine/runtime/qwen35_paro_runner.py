@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
+    embedding_lookup_batch_bf16_i64,
     embedding_lookup_bf16_i64,
     set_decode_position_i64,
     set_i64_scalar,
@@ -514,8 +515,10 @@ class Qwen35ParoResidentSession:
 
     The session materializes layer weights once, keeps per-layer linear-attention
     recurrent/conv state and per-full-attention KV caches across tokens, and runs
-    actual autoregressive prompt+decode token steps. It is still a c=1 decode path:
-    native batched/compact prefill and graph replay are intentionally not implied.
+    actual autoregressive prompt+decode token steps. Decode is still c=1. A
+    native batched prefill helper is available only for linear-attention-only
+    layer prefixes; full-attention and compact/grouped MoE native prefill remain
+    separate work.
     """
 
     def __init__(
@@ -589,6 +592,61 @@ class Qwen35ParoResidentSession:
             return None
         return self._sample_from_hidden(hidden)
 
+    def prefill_linear_tokens_native(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        sample: bool = True,
+    ) -> Qwen35ParoAutoregressiveStepResult | None:
+        """Run a native batched prefill over linear-attention-only layer prefixes."""
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        tokens = tuple(int(token) for token in token_ids)
+        if not tokens:
+            raise ValueError("token_ids must be non-empty")
+        if len(tokens) > self.max_sequence_length:
+            raise ValueError("token_ids exceed session capacity")
+        for pos, token in enumerate(tokens):
+            self._check_position(pos)
+            if token < 0 or token >= self.vocab_size:
+                raise ValueError(f"token_id {token} outside [0, {self.vocab_size})")
+        unsupported = [
+            (layer_id, self.config.layer_types[layer_id])
+            for layer_id in range(self.layer_limit)
+            if self.config.layer_types[layer_id] != "linear_attention"
+        ]
+        if unsupported:
+            first_layer, first_type = unsupported[0]
+            raise NotImplementedError(
+                "native batched prefill currently supports linear-attention-only layer prefixes; "
+                f"layer {first_layer} is {first_type!r}"
+            )
+        token_arr = np.asarray(tokens, dtype=np.int64)
+        token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
+        copy_host_to_device(token_buf, host_array_ptr(token_arr), runtime=self.runtime)
+        try:
+            embedding_lookup_batch_bf16_i64(
+                self.embedding.tensor.ptr,
+                token_buf.ptr,
+                self.prefill_hidden.ptr,
+                len(tokens),
+                self.config.hidden_size,
+                self.vocab_size,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
+            hidden = self._run_linear_prefill_layers(tokens=len(tokens), stream=0)
+            self.runtime.stream_synchronize(0)
+            last_ptr = hidden.ptr + (len(tokens) - 1) * self.hidden_nbytes
+            self.runtime.memcpy(self.hidden.ptr, last_ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+            self._set_position(len(tokens) - 1)
+            if not sample:
+                return None
+            return self._sample_from_hidden(self.hidden)
+        finally:
+            free(token_buf, runtime=self.runtime)
+
     def capture_decode_graph(self, *, position: int, steps_per_replay: int = 1) -> "Qwen35ParoDecodeGraph":
         """Capture one generated-token decode step for replay.
 
@@ -650,6 +708,36 @@ class Qwen35ParoResidentSession:
                 library=self.libraries["runtime_state"],
                 runtime=self.runtime,
             )
+
+    def _run_linear_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
+        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.BF16, self.device)
+        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.BF16, self.device)
+        for layer_id, state in enumerate(self.states):
+            layer_type = self.config.layer_types[layer_id]
+            if layer_type != "linear_attention":
+                raise NotImplementedError(f"native linear prefill cannot run layer {layer_id} type {layer_type!r}")
+            conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+            linear_scratch = self.linear_scratch[layer_id]
+            if linear_scratch.attn_input.shape[0] < tokens:
+                linear_scratch = state.reserve_linear_attention_scratch(tokens=tokens)
+                self.linear_scratch[layer_id] = linear_scratch
+            moe_scratch = self.moe_scratch[layer_id]
+            if moe_scratch.normed.shape[0] < tokens:
+                moe_scratch = state.reserve_moe_c1_scratch(tokens=tokens)
+                self.moe_scratch[layer_id] = moe_scratch
+            out = state.run_linear_attention_moe_c1_layer_bf16(
+                hidden,
+                conv_state=conv_state,
+                recurrent_state=recurrent_state,
+                linear_scratch=linear_scratch,
+                moe_scratch=moe_scratch,
+                tokens=tokens,
+                library=self.libraries,
+                stream=stream,
+            )
+            self.runtime.memcpy_async(next_hidden.ptr, out.ptr, tokens * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+            hidden, next_hidden = next_hidden, hidden
+        return hidden
 
     def _run_layers(self, *, position: int, num_splits_override: int | None = None, stream: int = 0) -> Tensor:
         hidden = self.hidden
@@ -755,6 +843,7 @@ class Qwen35ParoResidentSession:
         self.allocations.append(self.embedding)
         self.vocab_size = int(embed_bits.shape[0])
         self.hidden_nbytes = int(self.config.hidden_size) * DType.BF16.itemsize
+        self.prefill_hidden_nbytes = self.max_sequence_length * self.hidden_nbytes
         self._emit("load_embedding_done", vocab_size=self.vocab_size, hidden_size=self.config.hidden_size)
 
     def _load_final_norm_and_head(self) -> None:
@@ -797,10 +886,24 @@ class Qwen35ParoResidentSession:
         hidden_buf = malloc(self.hidden_nbytes, runtime=self.runtime)
         next_hidden_buf = malloc(self.hidden_nbytes, runtime=self.runtime)
         norm_out_buf = malloc(self.hidden_nbytes, runtime=self.runtime)
-        self.buffers.extend((hidden_buf, next_hidden_buf, norm_out_buf))
+        prefill_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
+        prefill_next_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
+        self.buffers.extend((hidden_buf, next_hidden_buf, norm_out_buf, prefill_hidden_buf, prefill_next_hidden_buf))
         self.hidden = Tensor.from_handle(hidden_buf.ptr, (1, self.config.hidden_size), DType.BF16, self.device)
         self.next_hidden = Tensor.from_handle(next_hidden_buf.ptr, (1, self.config.hidden_size), DType.BF16, self.device)
         self.norm_out = Tensor.from_handle(norm_out_buf.ptr, (1, self.config.hidden_size), DType.BF16, self.device)
+        self.prefill_hidden = Tensor.from_handle(
+            prefill_hidden_buf.ptr,
+            (self.max_sequence_length, self.config.hidden_size),
+            DType.BF16,
+            self.device,
+        )
+        self.prefill_next_hidden = Tensor.from_handle(
+            prefill_next_hidden_buf.ptr,
+            (self.max_sequence_length, self.config.hidden_size),
+            DType.BF16,
+            self.device,
+        )
 
         self.blocks = (self.max_sequence_length + self.block_size - 1) // self.block_size
         block_table_arr = np.arange(self.blocks, dtype=np.int32)

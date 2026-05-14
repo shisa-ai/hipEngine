@@ -12,6 +12,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("state.hip")
 _OUTPUT_NAME = "runtime_state.so"
 _SYMBOL_EMBEDDING_LOOKUP = "hipengine_embedding_lookup_bf16_i64"
+_SYMBOL_EMBEDDING_LOOKUP_BATCH = "hipengine_embedding_lookup_batch_bf16_i64"
 _SYMBOL_SET_I64 = "hipengine_set_i64_scalar"
 _SYMBOL_SET_POSITION = "hipengine_set_decode_position_i64"
 _SYMBOL_ADVANCE_POSITION = "hipengine_advance_decode_position_i64"
@@ -95,6 +96,51 @@ def embedding_lookup_bf16_i64(
     _check_launch(runtime, err)
 
 
+def embedding_lookup_batch_bf16_i64(
+    embedding_bf16_ptr: int,
+    token_ids_i64_ptr: int,
+    out_bf16_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    vocab_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Copy ``embedding[token_ids[row], :]`` for a batch of token ids."""
+
+    if tokens <= 0:
+        raise ValueError("tokens must be positive")
+    if hidden_size <= 0:
+        raise ValueError("hidden_size must be positive")
+    if vocab_size <= 0:
+        raise ValueError("vocab_size must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_EMBEDDING_LOOKUP_BATCH)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(embedding_bf16_ptr),
+        ctypes.c_void_p(token_ids_i64_ptr),
+        ctypes.c_void_p(out_bf16_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def set_i64_scalar(
     out_i64_ptr: int,
     value: int,
@@ -162,6 +208,11 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "token_embedding", "w4_paro", "bf16_i64"),
         embedding_lookup_bf16_i64,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "token_embedding", "w4_paro", "batch_bf16_i64"),
+        embedding_lookup_batch_bf16_i64,
         replace=replace,
     )
     register(

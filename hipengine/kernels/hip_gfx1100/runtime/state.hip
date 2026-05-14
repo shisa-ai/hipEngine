@@ -24,6 +24,27 @@ __global__ void embedding_lookup_bf16_i64_kernel(
   out[idx] = embedding[token * hidden_size + idx];
 }
 
+__global__ void embedding_lookup_batch_bf16_i64_kernel(
+    const uint16_t* embedding,
+    const int64_t* token_ids,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t vocab_size) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t size = tokens * hidden_size;
+  if (idx >= size) {
+    return;
+  }
+  const int64_t row = idx / hidden_size;
+  const int64_t col = idx - row * hidden_size;
+  const int64_t token = token_ids[row];
+  if (token < 0 || token >= vocab_size) {
+    return;
+  }
+  out[idx] = embedding[token * hidden_size + col];
+}
+
 __global__ void set_i64_scalar_kernel(int64_t* out, int64_t value) {
   if (threadIdx.x == 0 && blockIdx.x == 0) {
     out[0] = value;
@@ -52,6 +73,10 @@ bool valid_embedding_shape(int64_t hidden_size, int64_t vocab_size) {
   return hidden_size > 0 && vocab_size > 0;
 }
 
+bool valid_embedding_batch_shape(int64_t tokens, int64_t hidden_size, int64_t vocab_size) {
+  return tokens > 0 && hidden_size > 0 && vocab_size > 0;
+}
+
 }  // namespace
 
 extern "C" int hipengine_embedding_lookup_bf16_i64(
@@ -75,6 +100,35 @@ extern "C" int hipengine_embedding_lookup_bf16_i64(
       embedding,
       token_id,
       out,
+      hidden_size,
+      vocab_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_embedding_lookup_batch_bf16_i64(
+    const uint16_t* embedding,
+    const int64_t* token_ids,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t vocab_size,
+    hipStream_t stream) {
+  if (!valid_embedding_batch_shape(tokens, hidden_size, vocab_size)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t size = tokens * hidden_size;
+  const int blocks = static_cast<int>((size + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      embedding_lookup_batch_bf16_i64_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      embedding,
+      token_ids,
+      out,
+      tokens,
       hidden_size,
       vocab_size);
   return static_cast<int>(hipGetLastError());

@@ -3777,6 +3777,35 @@ Results:
 
 ---
 
+## 2026-05-14 — Wire resident linear-prefix native prefill diagnostic
+
+### Scope
+
+- Added batched BF16 embedding lookup (`embedding_lookup_batch_bf16_i64`) for prompt-token slabs.
+- Added `Qwen35ParoResidentSession.prefill_linear_tokens_native(...)` and `_run_linear_prefill_layers(...)` for native batched prefill over linear-attention-only layer prefixes.
+- Added `scripts/qwen35_paro_bench.py --native-prefill`, guarded to the current linear-prefix diagnostic path. This path still refuses full-attention layers and is explicitly not the compact/grouped PLAN-MOE2 prefill path.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_runtime_state_plan.py -q
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 4 --decode-tokens 1 --warmup-decode-tokens 0 --token-id 9707 --native-prefill --json /tmp/hipengine-native-prefill-linear1.json
+python3 scripts/qwen35_paro_bench.py --max-layers 3 --prompt-length 16 --decode-tokens 1 --warmup-decode-tokens 0 --token-id 9707 --native-prefill --json /tmp/hipengine-native-prefill-linear3.json
+```
+
+Results:
+
+- 1-layer native linear-prefix prefill smoke completed: `prefill_tok_s=364.18` for 4 tokens (diagnostic tiny shape).
+- 3-layer native linear-prefix prefill smoke completed: `prefill_tok_s=1102.00` for 16 tokens (diagnostic tiny shape).
+- Native linear-prefix output is not bit-equivalent to token-by-token c=1 on the sampled next token; this remains a diagnostic path pending fuller prefill correctness gates/parent parity. Do not promote it to benchmark rollups.
+
+### Next
+
+- Add an explicit correctness fixture comparing native batched linear-prefix prefill to the intended oracle (parent/NumPy staged math), not token-by-token decode where top-k can diverge.
+- Port compact grouped MoE prefill and full-attention prefill before claiming PLAN-MOE2-comparable E2E prefill.
+
+---
+
 ## 2026-05-14 — Document c>1 PARO roadmap in PLAN
 
 ### Scope

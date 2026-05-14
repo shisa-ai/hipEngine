@@ -2,9 +2,10 @@
 """Actual autoregressive Qwen3.5/PARO resident benchmark harness.
 
 This runs real prompt-token prefill and generated-token decode with persistent
-per-layer linear-attention state and full-attention KV cache. Until native
-batched/compact prefill kernels land, prefill is token-by-token c=1 and is
-reported as non-native-prefill (not directly comparable to PLAN-MOE2 prefill).
+per-layer linear-attention state and full-attention KV cache. By default,
+prefill is token-by-token c=1. ``--native-prefill`` enables a diagnostic native
+batched prefill only for linear-attention-only layer prefixes; it is not yet the
+full compact/grouped PLAN-MOE2 prefill path.
 """
 
 from __future__ import annotations
@@ -44,6 +45,11 @@ def main() -> int:
     parser.add_argument("--roctx", action="store_true", help="Emit ROCTX ranges for profiler correlation")
     parser.add_argument("--graph-replay-decode", action="store_true", help="Replay measured decode with a captured HIP graph")
     parser.add_argument("--graph-steps-per-replay", type=int, default=1, help="Decode token steps captured per graph replay")
+    parser.add_argument(
+        "--native-prefill",
+        action="store_true",
+        help="Use native batched prefill when the selected layer prefix is linear-attention-only.",
+    )
     parser.add_argument("--json", type=Path, default=None, help="Optional output JSON path")
     args = parser.parse_args()
 
@@ -80,9 +86,13 @@ def main() -> int:
         prefill_start = time.perf_counter()
         next_result = None
         with roctx.range("hipengine:prefill"):
-            for pos, token in enumerate(prompt_tokens):
-                with roctx.range("hipengine:prefill_step"):
-                    next_result = session.step(token, position=pos, sample=(pos == len(prompt_tokens) - 1))
+            if args.native_prefill:
+                with roctx.range("hipengine:native_prefill_batch"):
+                    next_result = session.prefill_linear_tokens_native(prompt_tokens, sample=True)
+            else:
+                for pos, token in enumerate(prompt_tokens):
+                    with roctx.range("hipengine:prefill_step"):
+                        next_result = session.step(token, position=pos, sample=(pos == len(prompt_tokens) - 1))
         prefill_seconds = time.perf_counter() - prefill_start
         if next_result is None:
             raise RuntimeError("prefill did not produce next-token logits")
@@ -140,7 +150,7 @@ def main() -> int:
         "model": str(model),
         "quant": "w4_paro",
         "backend": "hip_gfx1100",
-        "mode": "actual_autoregressive_c1_resident",
+        "mode": "actual_autoregressive_resident",
         "prompt_source": "repeated_token_id" if args.token_id is not None else "prompt_tokenized_repeat",
         "prompt": args.prompt,
         "prompt_length": len(prompt_tokens),
@@ -148,7 +158,7 @@ def main() -> int:
         "warmup_decode_tokens": args.warmup_decode_tokens,
         "max_layers": args.max_layers or runner.config.num_hidden_layers,
         "tokens_per_step": 1,
-        "native_batched_prefill": False,
+        "native_batched_prefill": bool(args.native_prefill),
         "graph_replay": bool(args.graph_replay_decode),
         "graph_steps_per_replay": args.graph_steps_per_replay if args.graph_replay_decode else 0,
         "prefill_comparable_to_plan_moe2": False,
@@ -161,13 +171,18 @@ def main() -> int:
             "decode_step_seconds": decode_samples,
         },
         "throughput": {
-            "token_by_token_prefill_tok_s": len(prompt_tokens) / prefill_seconds if prefill_seconds > 0 else None,
+            "prefill_tok_s": len(prompt_tokens) / prefill_seconds if prefill_seconds > 0 else None,
+            "token_by_token_prefill_tok_s": (None if args.native_prefill else (len(prompt_tokens) / prefill_seconds if prefill_seconds > 0 else None)),
             "warmed_decode_tok_s": args.decode_tokens / decode_seconds if decode_seconds > 0 and args.decode_tokens else None,
             "warmed_decode_step_median_s": statistics.median(decode_samples) if decode_samples else None,
         },
         "generated_preview": generated[:16],
         "notes": [
-            "Prefill is actual autoregressive token-by-token c=1, not native batched/compact prefill.",
+            (
+                "Prefill uses native batched linear-attention + c1-style batched MoE for a linear-attention-only layer prefix; not compact/grouped WMMA."
+                if args.native_prefill
+                else "Prefill is actual autoregressive token-by-token c=1, not native batched/compact prefill."
+            ),
             (
                 f"Measured decode uses HIP graph replay ({args.graph_steps_per_replay} step(s) per replay) with device token/position state."
                 if args.graph_replay_decode
