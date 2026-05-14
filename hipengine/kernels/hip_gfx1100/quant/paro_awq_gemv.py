@@ -15,6 +15,10 @@ _SYMBOL_PACK8_STRIDED = "hipengine_gemv_awq_pack8_strided_bf16"
 _SYMBOL_PACK8_TRANSPOSED = "hipengine_gemv_awq_pack8_transposed_bf16"
 _SYMBOL_DUAL_PACK8_STRIDED = "hipengine_gemv_awq_dual_pack8_strided_bf16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED = "hipengine_gemv_awq_dual_pack8_transposed_bf16"
+_SYMBOL_PACK8_STRIDED_FP16 = "hipengine_gemv_awq_pack8_strided_fp16"
+_SYMBOL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_transposed_fp16"
+_SYMBOL_DUAL_PACK8_STRIDED_FP16 = "hipengine_gemv_awq_dual_pack8_strided_fp16"
+_SYMBOL_DUAL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_transposed_fp16"
 _SYMBOL_SELECTED_DUAL_ROTATE_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16"
 _SYMBOL_SELECTED_DUAL_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_bf16"
 _SYMBOL_SELECTED_DUAL_TRANSPOSED = "hipengine_gemv_awq_selected_dual_pack8_transposed_bf16"
@@ -203,6 +207,167 @@ def gemv_awq_dual_pack8_transposed_bf16(
 
     _launch_pack8_dual(
         _SYMBOL_DUAL_PACK8_TRANSPOSED,
+        (x_a_ptr, x_b_ptr),
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_pack8_strided_fp16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch generic single-projection pack8 GEMV for FP16 buffers."""
+
+    _launch_pack8_single(
+        _SYMBOL_PACK8_STRIDED_FP16,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_pack8_transposed_fp16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch generic single-projection transposed pack8 GEMV for FP16 buffers."""
+
+    _launch_pack8_single(
+        _SYMBOL_PACK8_TRANSPOSED_FP16,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_dual_pack8_strided_fp16(
+    x_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch generic dual pack8 GEMV with one shared FP16 input."""
+
+    _launch_pack8_dual(
+        _SYMBOL_DUAL_PACK8_STRIDED_FP16,
+        (x_ptr,),
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_dual_pack8_transposed_fp16(
+    x_a_ptr: int,
+    x_b_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch generic dual transposed pack8 GEMV for FP16 buffers."""
+
+    _launch_pack8_dual(
+        _SYMBOL_DUAL_PACK8_TRANSPOSED_FP16,
         (x_a_ptr, x_b_ptr),
         qweight_a_ptr,
         qzeros_a_ptr,
@@ -479,6 +644,26 @@ def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dual_pack8_gemv", "w4_paro", "transposed"),
         gemv_awq_dual_pack8_transposed_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "pack8_gemv", "w4_paro", "strided_fp16"),
+        gemv_awq_pack8_strided_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "pack8_gemv", "w4_paro", "transposed_fp16"),
+        gemv_awq_pack8_transposed_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dual_pack8_gemv", "w4_paro", "strided_fp16"),
+        gemv_awq_dual_pack8_strided_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dual_pack8_gemv", "w4_paro", "transposed_fp16"),
+        gemv_awq_dual_pack8_transposed_fp16,
         replace=replace,
     )
     register(

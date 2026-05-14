@@ -6,6 +6,8 @@
 
 namespace {
 
+using half_t = _Float16;
+
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
     uint32_t u32;
@@ -747,6 +749,87 @@ bool valid_threads(int64_t threads) {
   return threads == 64 || threads == 128;
 }
 
+template <typename scalar_t, bool qweight_transposed>
+int launch_pack8(
+    const scalar_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const scalar_t* scales,
+    scalar_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_packed <= 0 || group_size <= 0 ||
+      (in_features % group_size) != 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gemv_awq_pack8_kernel<scalar_t, qweight_transposed>),
+      dim3(static_cast<unsigned int>(out_packed), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      qweight,
+      qzeros,
+      scales,
+      nullptr,
+      out,
+      in_features,
+      out_packed << 3,
+      out_packed,
+      static_cast<int>(group_size),
+      false);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t, bool qweight_transposed, bool separate_inputs>
+int launch_dual_pack8(
+    const scalar_t* x_a,
+    const scalar_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const scalar_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const scalar_t* scales_b,
+    scalar_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 || group_size <= 0 ||
+      (in_features % group_size) != 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gemv_awq_dual_pack8_kernel<scalar_t, qweight_transposed, separate_inputs>),
+      dim3(static_cast<unsigned int>(out_packed_a + out_packed_b), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x_a,
+      x_b,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      static_cast<int>(group_size));
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 
@@ -905,6 +988,109 @@ extern "C" int hipengine_gemv_awq_dual_pack8_transposed_bf16(
       out_packed_b,
       static_cast<int>(group_size));
   return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gemv_awq_pack8_strided_fp16(
+    const half_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8<half_t, false>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_pack8_transposed_fp16(
+    const half_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8<half_t, true>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_dual_pack8_strided_fp16(
+    const half_t* x,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8<half_t, false, false>(
+      x,
+      nullptr,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      rows,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      group_size,
+      threads,
+      stream);
+}
+
+extern "C" int hipengine_gemv_awq_dual_pack8_transposed_fp16(
+    const half_t* x_a,
+    const half_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8<half_t, true, true>(
+      x_a,
+      x_b,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      rows,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      group_size,
+      threads,
+      stream);
 }
 
 extern "C" int hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16(

@@ -4372,3 +4372,45 @@ Results:
 ### Next
 
 - Continue task #38 with FP16 wrappers for PARO AWQ GEMV/projection paths, router/MoE, W8A16 lowp, linear-attention lowp, and attention gate paths.
+
+---
+
+## 2026-05-15 — Add FP16 generic PARO AWQ GEMV wrappers
+
+### Scope
+
+- Added parent-parity FP16 raw-pointer wrappers for generic non-MoE PARO projection GEMV:
+  - `hipengine_gemv_awq_pack8_strided_fp16` / `gemv_awq_pack8_strided_fp16(...)`
+  - `hipengine_gemv_awq_pack8_transposed_fp16` / `gemv_awq_pack8_transposed_fp16(...)`
+  - `hipengine_gemv_awq_dual_pack8_strided_fp16` / `gemv_awq_dual_pack8_strided_fp16(...)`
+  - `hipengine_gemv_awq_dual_pack8_transposed_fp16` / `gemv_awq_dual_pack8_transposed_fp16(...)`
+- Registered the wrappers under `pack8_gemv`/`dual_pack8_gemv` `strided_fp16` and `transposed_fp16` variants.
+- Extended `scripts/smoke.py --mode paro-pack8-gemv-hip` to validate both the existing BF16 oracle and the new FP16 single/dual generic pack8 paths bit-exactly.
+- Updated `docs/KERNELS.md` and `docs/IMPLEMENTATION.md` to narrow the remaining parent-mixed projection gap to selected-MoE/shared/linear-attention paths.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_paro_awq_gemv_plan.py -q
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-paro-pack8-fp16 -- \
+  python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- Unit plan tests passed: `3 passed`.
+- Smoke passed: BF16 `single_mismatch=0/0`, `dual_mismatch=0/0`, `max_abs=0.0`; FP16 `fp16_single_mismatch=0/0`, `fp16_dual_mismatch=0/0`, `fp16_max_abs=0.0`.
+- `rocprofv3` confirmed FP16 generic pack8 kernels ran on W7900:
+  - `gemv_awq_pack8_kernel<_Float16, false>`: `DurationNs=4721`, `Scratch_Size=0`, `LDS_Block_Size=256`, `Workgroup_Size_X=64`.
+  - `gemv_awq_pack8_kernel<_Float16, true>`: `DurationNs=11680`, `Scratch_Size=0`, `LDS_Block_Size=256`, `Workgroup_Size_X=64`.
+  - `gemv_awq_dual_pack8_kernel<_Float16, false, false>`: `DurationNs=11560`, `Scratch_Size=0`, `LDS_Block_Size=256`, `Workgroup_Size_X=64`.
+  - `gemv_awq_dual_pack8_kernel<_Float16, true, true>`: `DurationNs=4800`, `Scratch_Size=0`, `LDS_Block_Size=256`, `Workgroup_Size_X=64`.
+
+### Next
+
+- Continue task #38 with FP16 wrappers for selected-MoE pack8/fused-rotate paths, router/MoE activations, W8A16 lowp, linear-attention lowp, and attention gate paths.
