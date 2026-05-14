@@ -3917,3 +3917,28 @@ GPU smoke result: `runtime_state batch smoke OK` for mapped embedding rows plus 
 ### Next
 
 - Refactor resident Qwen3.5/PARO runtime to allocate/use batch-shaped slots, then port batched full-attention KV append/decode.
+
+---
+
+## 2026-05-14 — Add resident batch-layout scaffold for Qwen3.5/PARO
+
+### Scope
+
+- Added `Qwen35ParoResidentBatchLayout` and `max_batch_size` plumbing to `Qwen35ParoResidentSession`.
+- Resident hidden/norm/token/position/context buffers are now allocated as batch-slot-shaped storage with slot-0 c=1 tensor aliases for the current runtime path.
+- Linear recurrent/conv state and full-attention KV cache allocations now reserve a leading batch dimension while preserving slot-0 aliases for existing kernels.
+- Added internal helpers for batch token embedding and batched position/context setup using the vector runtime-state kernels.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests && python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_runtime_state_plan.py tests/test_dispatch_batch.py -q
+python3 -m pytest tests/test_llm_generate.py tests/test_qwen35_resident_batch_layout.py -q
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 1 --decode-tokens 0 --warmup-decode-tokens 0 --token-id 9707 --json /tmp/hipengine-batch-layout-smoke.json
+```
+
+Results: unit tests passed; one-layer resident c=1 smoke completed and produced token id `62406` (`"ullo"`).
+
+### Next
+
+- The runtime is now batch-shaped in allocation but still executes slot 0 only. Next steps are c>1 full-attention KV append/decode kernels and a batched layer runner that consumes the batch slots.

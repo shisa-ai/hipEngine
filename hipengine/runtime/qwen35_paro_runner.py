@@ -33,10 +33,14 @@ from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     embedding_lookup_batch_bf16_i64,
+    embedding_lookup_batch_mapped_bf16_i64,
     embedding_lookup_bf16_i64,
     set_decode_position_i64,
+    set_decode_positions_i64,
     set_i64_scalar,
+    set_i64_vector,
 )
+from hipengine.dispatch import ActiveBatch, RequestState
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading import (
     WeightIndex,
@@ -510,6 +514,51 @@ class Qwen35ParoAutoregressiveStepResult:
         return {"token_id": self.token_id, "token_text": self.token_text, "logit": self.logit}
 
 
+@dataclass(frozen=True)
+class Qwen35ParoResidentBatchLayout:
+    """Batch-shaped resident buffer layout for Qwen3.5/PARO sessions."""
+
+    max_batch_size: int
+    hidden_size: int
+    max_sequence_length: int
+    block_size: int
+    blocks: int
+    num_key_value_heads: int
+    head_dim: int
+
+    def __post_init__(self) -> None:
+        if self.max_batch_size <= 0:
+            raise ValueError("max_batch_size must be positive")
+        if self.hidden_size <= 0:
+            raise ValueError("hidden_size must be positive")
+        if self.max_sequence_length <= 0:
+            raise ValueError("max_sequence_length must be positive")
+        if self.block_size <= 0 or self.blocks <= 0:
+            raise ValueError("block_size and blocks must be positive")
+        if self.num_key_value_heads <= 0 or self.head_dim <= 0:
+            raise ValueError("num_key_value_heads and head_dim must be positive")
+
+    @property
+    def hidden_shape(self) -> tuple[int, int]:
+        return (self.max_batch_size, self.hidden_size)
+
+    @property
+    def slot_scalar_shape(self) -> tuple[int, ...]:
+        return (self.max_batch_size,)
+
+    @property
+    def slot0_hidden_shape(self) -> tuple[int, int]:
+        return (1, self.hidden_size)
+
+    @property
+    def full_kv_shape(self) -> tuple[int, int, int, int, int]:
+        return (self.max_batch_size, self.blocks, self.block_size, self.num_key_value_heads, self.head_dim)
+
+    @property
+    def slot0_full_kv_shape(self) -> tuple[int, int, int, int]:
+        return (self.blocks, self.block_size, self.num_key_value_heads, self.head_dim)
+
+
 class Qwen35ParoResidentSession:
     """Resident-state autoregressive Qwen3.5/PARO c=1 inference session.
 
@@ -529,6 +578,7 @@ class Qwen35ParoResidentSession:
         max_layers: int = 0,
         block_size: int = 256,
         chunk_size: int = 256,
+        max_batch_size: int = 1,
         progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         if max_sequence_length <= 0:
@@ -537,6 +587,8 @@ class Qwen35ParoResidentSession:
             raise ValueError("current Qwen3.5 paged attention kernels require block_size=256")
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
+        if max_batch_size <= 0:
+            raise ValueError("max_batch_size must be positive")
         self.runner = runner
         self.model = runner.model
         self.config = runner.config
@@ -545,13 +597,26 @@ class Qwen35ParoResidentSession:
         self.max_sequence_length = int(max_sequence_length)
         self.block_size = int(block_size)
         self.chunk_size = int(chunk_size)
+        self.max_batch_size = int(max_batch_size)
         self.max_splits = (self.max_sequence_length + self.chunk_size - 1) // self.chunk_size
+        self.blocks = (self.max_sequence_length + self.block_size - 1) // self.block_size
+        self.batch_layout = Qwen35ParoResidentBatchLayout(
+            max_batch_size=self.max_batch_size,
+            hidden_size=self.config.hidden_size,
+            max_sequence_length=self.max_sequence_length,
+            block_size=self.block_size,
+            blocks=self.blocks,
+            num_key_value_heads=self.config.num_key_value_heads,
+            head_dim=self.config.head_dim,
+        )
         self.layer_limit = (
             self.config.num_hidden_layers
             if max_layers <= 0
             else min(int(max_layers), self.config.num_hidden_layers)
         )
         self.progress = progress
+        self.active_batch = ActiveBatch(self.max_batch_size)
+        self.active_batch.admit(RequestState.from_tokens(0, (), max_new_tokens=self.max_sequence_length))
         self.buffers: list[DeviceBuffer] = []
         self.allocations: list[DeviceTensorAllocation] = []
         self.states: list[Qwen35ParoDecodeState] = []
@@ -843,6 +908,7 @@ class Qwen35ParoResidentSession:
         self.allocations.append(self.embedding)
         self.vocab_size = int(embed_bits.shape[0])
         self.hidden_nbytes = int(self.config.hidden_size) * DType.BF16.itemsize
+        self.batch_hidden_nbytes = self.max_batch_size * self.hidden_nbytes
         self.prefill_hidden_nbytes = self.max_sequence_length * self.hidden_nbytes
         self._emit("load_embedding_done", vocab_size=self.vocab_size, hidden_size=self.config.hidden_size)
 
@@ -883,15 +949,18 @@ class Qwen35ParoResidentSession:
         self._emit("load_lm_head_done", vocab_size=self.vocab_size, mode="w8a16")
 
     def _allocate_common_buffers(self) -> None:
-        hidden_buf = malloc(self.hidden_nbytes, runtime=self.runtime)
-        next_hidden_buf = malloc(self.hidden_nbytes, runtime=self.runtime)
-        norm_out_buf = malloc(self.hidden_nbytes, runtime=self.runtime)
+        hidden_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
+        next_hidden_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
+        norm_out_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         prefill_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
         prefill_next_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
         self.buffers.extend((hidden_buf, next_hidden_buf, norm_out_buf, prefill_hidden_buf, prefill_next_hidden_buf))
-        self.hidden = Tensor.from_handle(hidden_buf.ptr, (1, self.config.hidden_size), DType.BF16, self.device)
-        self.next_hidden = Tensor.from_handle(next_hidden_buf.ptr, (1, self.config.hidden_size), DType.BF16, self.device)
-        self.norm_out = Tensor.from_handle(norm_out_buf.ptr, (1, self.config.hidden_size), DType.BF16, self.device)
+        self.batch_hidden = Tensor.from_handle(hidden_buf.ptr, self.batch_layout.hidden_shape, DType.BF16, self.device)
+        self.batch_next_hidden = Tensor.from_handle(next_hidden_buf.ptr, self.batch_layout.hidden_shape, DType.BF16, self.device)
+        self.batch_norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.hidden_shape, DType.BF16, self.device)
+        self.hidden = Tensor.from_handle(hidden_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
+        self.next_hidden = Tensor.from_handle(next_hidden_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
+        self.norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
         self.prefill_hidden = Tensor.from_handle(
             prefill_hidden_buf.ptr,
             (self.max_sequence_length, self.config.hidden_size),
@@ -905,18 +974,24 @@ class Qwen35ParoResidentSession:
             self.device,
         )
 
-        self.blocks = (self.max_sequence_length + self.block_size - 1) // self.block_size
         block_table_arr = np.arange(self.blocks, dtype=np.int32)
-        self.position_arr = np.asarray([0], dtype=np.int64)
-        self.context_arr = np.asarray([1], dtype=np.int64)
-        self.token_id_arr = np.asarray([0], dtype=np.int64)
+        self.position_arr = np.zeros(self.batch_layout.slot_scalar_shape, dtype=np.int64)
+        self.context_arr = np.ones(self.batch_layout.slot_scalar_shape, dtype=np.int64)
+        self.token_id_arr = np.zeros(self.batch_layout.slot_scalar_shape, dtype=np.int64)
+        self.active_mask_arr = np.zeros(self.batch_layout.slot_scalar_shape, dtype=np.uint8)
+        self.active_mask_arr[0] = 1
         self.block_table_buf = self._dev(block_table_arr)
         self.position_buf = self._dev(self.position_arr)
         self.context_buf = self._dev(self.context_arr)
         self.token_id_buf = self._dev(self.token_id_arr)
+        self.active_mask_buf = self._dev(self.active_mask_arr)
         self.block_table = Tensor.from_handle(self.block_table_buf.ptr, block_table_arr.shape, DType.INT32, self.device)
-        self.position_tensor = Tensor.from_handle(self.position_buf.ptr, self.position_arr.shape, DType.INT64, self.device)
-        self.context_tensor = Tensor.from_handle(self.context_buf.ptr, self.context_arr.shape, DType.INT64, self.device)
+        self.batch_positions = Tensor.from_handle(self.position_buf.ptr, self.batch_layout.slot_scalar_shape, DType.INT64, self.device)
+        self.batch_contexts = Tensor.from_handle(self.context_buf.ptr, self.batch_layout.slot_scalar_shape, DType.INT64, self.device)
+        self.batch_token_ids = Tensor.from_handle(self.token_id_buf.ptr, self.batch_layout.slot_scalar_shape, DType.INT64, self.device)
+        self.active_mask = Tensor.from_handle(self.active_mask_buf.ptr, self.batch_layout.slot_scalar_shape, DType.BOOL, self.device)
+        self.position_tensor = Tensor.from_handle(self.position_buf.ptr, (1,), DType.INT64, self.device)
+        self.context_tensor = Tensor.from_handle(self.context_buf.ptr, (1,), DType.INT64, self.device)
         self.append_spans = KVLiveSpans.paged_uniform(
             block_table=self.block_table,
             live_counts=self.position_tensor,
@@ -962,9 +1037,13 @@ class Qwen35ParoResidentSession:
             layer_type = self.config.layer_types[layer_id]
             self.moe_scratch[layer_id] = state.reserve_moe_c1_scratch(tokens=1)
             if layer_type == "linear_attention":
-                conv_zero = np.zeros((qkv_width, self.config.linear_conv_kernel_dim), dtype=np.float32)
+                conv_zero = np.zeros(
+                    (self.max_batch_size, qkv_width, self.config.linear_conv_kernel_dim),
+                    dtype=np.float32,
+                )
                 recurrent_zero = np.zeros(
                     (
+                        self.max_batch_size,
                         self.config.linear_num_value_heads,
                         self.config.linear_key_head_dim,
                         self.config.linear_value_head_dim,
@@ -973,20 +1052,31 @@ class Qwen35ParoResidentSession:
                 )
                 conv_buf = self._dev(conv_zero)
                 recurrent_buf = self._dev(recurrent_zero)
-                conv_state = Tensor.from_handle(conv_buf.ptr, conv_zero.shape, DType.FP32, self.device)
-                recurrent_state = Tensor.from_handle(recurrent_buf.ptr, recurrent_zero.shape, DType.FP32, self.device)
+                conv_state = Tensor.from_handle(
+                    conv_buf.ptr,
+                    (qkv_width, self.config.linear_conv_kernel_dim),
+                    DType.FP32,
+                    self.device,
+                )
+                recurrent_state = Tensor.from_handle(
+                    recurrent_buf.ptr,
+                    (
+                        self.config.linear_num_value_heads,
+                        self.config.linear_key_head_dim,
+                        self.config.linear_value_head_dim,
+                    ),
+                    DType.FP32,
+                    self.device,
+                )
                 self.linear_states[layer_id] = (conv_state, recurrent_state, conv_buf, recurrent_buf, conv_zero, recurrent_zero)
                 self.linear_scratch[layer_id] = state.reserve_linear_attention_scratch(tokens=1)
             elif layer_type == "full_attention":
-                key_zero = np.zeros(
-                    (self.blocks, self.block_size, self.config.num_key_value_heads, self.config.head_dim),
-                    dtype=np.uint16,
-                )
+                key_zero = np.zeros(self.batch_layout.full_kv_shape, dtype=np.uint16)
                 value_zero = np.zeros_like(key_zero)
                 key_buf = self._dev(key_zero)
                 value_buf = self._dev(value_zero)
-                key_cache = Tensor.from_handle(key_buf.ptr, key_zero.shape, DType.BF16, self.device)
-                value_cache = Tensor.from_handle(value_buf.ptr, value_zero.shape, DType.BF16, self.device)
+                key_cache = Tensor.from_handle(key_buf.ptr, self.batch_layout.slot0_full_kv_shape, DType.BF16, self.device)
+                value_cache = Tensor.from_handle(value_buf.ptr, self.batch_layout.slot0_full_kv_shape, DType.BF16, self.device)
                 self.full_caches[layer_id] = (key_cache, value_cache, key_buf, value_buf)
                 self.full_scratch[layer_id] = state.reserve_full_attention_scratch(tokens=1, num_splits=self.max_splits)
             else:
@@ -1015,6 +1105,107 @@ class Qwen35ParoResidentSession:
             library=self.libraries["runtime_state"],
             runtime=self.runtime,
         )
+
+    def _set_batch_token_embeddings(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        row_map: list[int] | tuple[int, ...] | None = None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Set batch token ids and gather embeddings into batch-hidden rows."""
+
+        tokens = tuple(int(token) for token in token_ids)
+        if not tokens:
+            raise ValueError("token_ids must be non-empty")
+        if len(tokens) > self.max_batch_size:
+            raise ValueError("token_ids exceed max_batch_size")
+        for token in tokens:
+            if token < 0 or token >= self.vocab_size:
+                raise ValueError(f"token_id {token} outside [0, {self.vocab_size})")
+        token_arr = np.asarray(tokens, dtype=np.int64)
+        token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
+        row_buf = None
+        try:
+            copy_host_to_device(token_buf, host_array_ptr(token_arr), runtime=self.runtime)
+            set_i64_vector(
+                self.token_id_buf.ptr,
+                token_buf.ptr,
+                len(tokens),
+                stream=stream,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
+            rows = len(tokens) if row_map is None else len(row_map)
+            if row_map is not None:
+                row_arr = np.asarray(tuple(int(row) for row in row_map), dtype=np.int32)
+                if row_arr.size == 0:
+                    raise ValueError("row_map must be non-empty")
+                if row_arr.min() < 0 or row_arr.max() >= len(tokens):
+                    raise ValueError("row_map entries must reference token_ids")
+                row_buf = malloc(row_arr.nbytes, runtime=self.runtime)
+                copy_host_to_device(row_buf, host_array_ptr(row_arr), runtime=self.runtime)
+            embedding_lookup_batch_mapped_bf16_i64(
+                self.embedding.tensor.ptr,
+                self.token_id_buf.ptr,
+                self.batch_hidden.ptr,
+                rows,
+                self.config.hidden_size,
+                self.vocab_size,
+                len(tokens),
+                row_map_i32_ptr=None if row_buf is None else row_buf.ptr,
+                stream=stream,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
+            return Tensor.from_handle(self.batch_hidden.ptr, (rows, self.config.hidden_size), DType.BF16, self.device)
+        finally:
+            if row_buf is not None:
+                free(row_buf, runtime=self.runtime)
+            free(token_buf, runtime=self.runtime)
+
+    def _set_batch_positions(
+        self,
+        positions: list[int] | tuple[int, ...],
+        *,
+        active_mask: list[bool] | tuple[bool, ...] | None = None,
+        stream: int = 0,
+    ) -> None:
+        """Set device position/context vectors for active batch slots."""
+
+        pos = tuple(int(position) for position in positions)
+        if not pos:
+            raise ValueError("positions must be non-empty")
+        if len(pos) > self.max_batch_size:
+            raise ValueError("positions exceed max_batch_size")
+        for position in pos:
+            self._check_position(position)
+        pos_arr = np.asarray(pos, dtype=np.int64)
+        pos_buf = malloc(pos_arr.nbytes, runtime=self.runtime)
+        mask_buf = None
+        try:
+            copy_host_to_device(pos_buf, host_array_ptr(pos_arr), runtime=self.runtime)
+            if active_mask is not None:
+                mask = tuple(bool(item) for item in active_mask)
+                if len(mask) != len(pos):
+                    raise ValueError("active_mask must match positions")
+                mask_arr = np.asarray(mask, dtype=np.uint8)
+                mask_buf = malloc(mask_arr.nbytes, runtime=self.runtime)
+                copy_host_to_device(mask_buf, host_array_ptr(mask_arr), runtime=self.runtime)
+            set_decode_positions_i64(
+                self.position_buf.ptr,
+                self.context_buf.ptr,
+                pos_buf.ptr,
+                len(pos),
+                active_mask_u8_ptr=None if mask_buf is None else mask_buf.ptr,
+                stream=stream,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
+        finally:
+            if mask_buf is not None:
+                free(mask_buf, runtime=self.runtime)
+            free(pos_buf, runtime=self.runtime)
 
     def _set_position(self, position: int, *, stream: int = 0) -> None:
         set_decode_position_i64(
