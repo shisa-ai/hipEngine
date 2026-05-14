@@ -310,6 +310,9 @@ def runtime_full_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, .
     )
     names.extend(
         (
+            f"{experts}.gate_up_weight_pairs",
+            f"{experts}.gate_up_weight_theta",
+            f"{experts}.gate_up_weight_channel_scales",
             f"{experts}.down_weight_pairs",
             f"{experts}.down_weight_theta",
             f"{experts}.down_weight_channel_scales",
@@ -348,6 +351,9 @@ def runtime_linear_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str,
             f"{prefix}.A_log",
             f"{prefix}.dt_bias",
             f"{prefix}.norm.weight",
+            f"{experts}.gate_up_weight_pairs",
+            f"{experts}.gate_up_weight_theta",
+            f"{experts}.gate_up_weight_channel_scales",
             f"{experts}.down_weight_pairs",
             f"{experts}.down_weight_theta",
             f"{experts}.down_weight_channel_scales",

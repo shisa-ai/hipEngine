@@ -4973,3 +4973,52 @@ Results:
 ### Next
 
 - Inspect layer 1 linear-attention/MoE internals against parent: hidden after input RMSNorm, QKV/Z/AB projections, Conv/GDN recurrent state after 512 prompt tokens, out-proj, post-attention add-RMSNorm, router logits/top-k, and MoE/shared outputs.
+
+---
+
+## 2026-05-15 — Fix Qwen3.5/PARO c=1 parent fixture parity
+
+### Scope
+
+- Completed Task #36 by fixing the remaining full resident c=1 parent fixture mismatch.
+- Root cause from one-off parent/HIP component probes:
+  - Layer-0 internals matched parent through input RMSNorm, QKV/Z/A/B projections, Conv/GDN, out-proj, post-attention add-RMSNorm, router logits, routing weights, and selected experts.
+  - The first material divergence was the selected/shared MoE output: before the fix, layer-0 `mlp_output` differed by `max_abs=0.00836181640625`, `mean_abs=0.0015244119567796588`, `rmse=0.0019268736941739917`.
+  - Parent rotates the MoE gate/up input via `experts.gate_up_weight_{pairs,theta,channel_scales}` before selected gate/up pack8 GEMV; HIPENGINE was feeding the unrotated post-norm hidden into selected gate/up GEMV.
+- Runtime fix:
+  - Add runtime materialization for `gate_up_weight_pairs`, `gate_up_weight_theta`, and `gate_up_weight_channel_scales` on full-attention and linear-attention MoE paths.
+  - Add `moe.gate_up_input` scratch and call `paro_rotate1_{bf16,fp16}` before selected gate/up pack8 GEMV.
+  - Update decode-state ordering tests to assert the parent gate-up rotation step.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py -q
+
+PYTHONPATH=/home/lhl/hipengine python3 /tmp/hip_layer0_components.py
+python3 - <<'PY'
+# compare /tmp/parent-layer0-components.npz vs /tmp/hip-layer0-components.npz
+PY
+
+python3 scripts/qwen35_e2e_correctness.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-new-tokens 32 --max-layers 40 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json
+```
+
+Results:
+
+- Targeted tests: `48 passed`.
+- Synthetic decode-state smoke `python3 scripts/smoke.py --mode paro-moe-c1-state-hip --hidden-size 8` still passed with `final_mismatch=0` after adding the gate-up rotation input.
+- Post-fix layer-0 component comparison: all stages before MoE output match exactly or within FP32 recurrent noise; final `mlp_output` reduced to `max_abs=1.52587890625e-05`, `mean_abs=2.1117739379405975e-07`, `rmse=1.241574182131444e-06`.
+- Prefix probe after the fix now matches the parent full fixture first token at `max_layers=40`: seed `4403`, first decode `1739`.
+- Full 512/32 parent fixture passed exact generated-token equality twice:
+  - generated ids `[1739, 220, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]`;
+  - seed ids `[4403, 4403]`, `finite_logits=true`, `deterministic=true`, `expected_match=true`, `passed=true`.
+- Artifact: `benchmarks/results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json`.
+- No performance claim retained; timings in the artifact are correctness context only.
+
+### Next
+
+- Continue the parity TaskList with the now-unblocked c>N/native compact prefill items before promoting any throughput claims.

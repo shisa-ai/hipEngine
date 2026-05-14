@@ -138,6 +138,7 @@ class Qwen35ParoLinearAttentionScratch:
 class Qwen35ParoMoeScratch:
     normed: Tensor
     residual: Tensor
+    gate_up_input: Tensor
     router_logits: Tensor
     routing_weights: Tensor
     selected_experts: Tensor
@@ -2350,11 +2351,26 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
+        gate_up_pairs = self.tensor(f"{prefix}.gate_up_weight_pairs")
+        paro_rotate1_fp16(
+            hidden.ptr,
+            scratch.gate_up_input.ptr,
+            gate_up_pairs.ptr,
+            self.tensor(f"{prefix}.gate_up_weight_theta").ptr,
+            self.tensor(f"{prefix}.gate_up_weight_channel_scales").ptr,
+            tokens,
+            self.config.hidden_size,
+            group_size,
+            _rotation_krot(gate_up_pairs),
+            stream=stream,
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
         gate_qweight = self.tensor(f"{prefix}.stacked_gate_qweight_pack8_decode")
         up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
         rows = tokens * self.config.num_experts_per_tok
         gemv_awq_selected_dual_pack8_transposed_fp16(
-            hidden.ptr,
+            scratch.gate_up_input.ptr,
             scratch.selected_experts.ptr,
             gate_qweight.ptr,
             self.tensor(f"{prefix}.stacked_gate_qzeros").ptr,
@@ -2601,6 +2617,21 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
+        gate_up_pairs = self.tensor(f"{prefix}.gate_up_weight_pairs")
+        paro_rotate1_bf16(
+            hidden.ptr,
+            scratch.gate_up_input.ptr,
+            gate_up_pairs.ptr,
+            self.tensor(f"{prefix}.gate_up_weight_theta").ptr,
+            self.tensor(f"{prefix}.gate_up_weight_channel_scales").ptr,
+            tokens,
+            self.config.hidden_size,
+            group_size,
+            _rotation_krot(gate_up_pairs),
+            stream=stream,
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
         gate_qweight = self.tensor(f"{prefix}.stacked_gate_qweight_pack8_decode")
         gate_qzeros = self.tensor(f"{prefix}.stacked_gate_qzeros")
         gate_scales = self.tensor(f"{prefix}.stacked_gate_scales")
@@ -2609,7 +2640,7 @@ class Qwen35ParoDecodeState:
         up_scales = self.tensor(f"{prefix}.stacked_up_scales")
         rows = tokens * self.config.num_experts_per_tok
         gemv_awq_selected_dual_pack8_transposed_bf16(
-            hidden.ptr,
+            scratch.gate_up_input.ptr,
             scratch.selected_experts.ptr,
             gate_qweight.ptr,
             gate_qzeros.ptr,
@@ -2840,6 +2871,7 @@ class Qwen35ParoDecodeState:
         return Qwen35ParoMoeScratch(
             normed=self.workspace.reserve_tensor("moe.normed", (tokens, cfg.hidden_size), lowp),
             residual=self.workspace.reserve_tensor("moe.residual", (tokens, cfg.hidden_size), lowp),
+            gate_up_input=self.workspace.reserve_tensor("moe.gate_up_input", (tokens, cfg.hidden_size), lowp),
             router_logits=self.workspace.reserve_tensor("moe.router_logits", (tokens, cfg.num_experts + 1), DType.FP32),
             routing_weights=self.workspace.reserve_tensor("moe.routing_weights", (tokens, top_k), DType.FP32),
             selected_experts=self.workspace.reserve_tensor("moe.selected_experts", (tokens, top_k), DType.INT64),

@@ -97,10 +97,15 @@ def _prepared_moe_weights() -> DeviceWeightMap:
             ),
             f"{experts}.stacked_down_qzeros": _allocation(f"{experts}.stacked_down_qzeros", 0xB800, (128, 6, 512), "int32"),
             f"{experts}.stacked_down_scales": _allocation(f"{experts}.stacked_down_scales", 0xB900, (128, 6, 512), "fp16"),
+            f"{experts}.gate_up_weight_pairs": _allocation(f"{experts}.gate_up_weight_pairs", 0xB9A0, (32, 128), "int16"),
+            f"{experts}.gate_up_weight_theta": _allocation(f"{experts}.gate_up_weight_theta", 0xB9B0, (32, 64), "fp16"),
+            f"{experts}.gate_up_weight_channel_scales": _allocation(
+                f"{experts}.gate_up_weight_channel_scales", 0xB9C0, (4096,), "fp16"
+            ),
             f"{experts}.down_weight_pairs": _allocation(f"{experts}.down_weight_pairs", 0xBA00, (6, 128), "int16"),
-            f"{experts}.down_weight_theta": _allocation(f"{experts}.down_weight_theta", 0xBB00, (6, 64), "bf16"),
+            f"{experts}.down_weight_theta": _allocation(f"{experts}.down_weight_theta", 0xBB00, (6, 64), "fp16"),
             f"{experts}.down_weight_channel_scales": _allocation(
-                f"{experts}.down_weight_channel_scales", 0xBC00, (768,), "bf16"
+                f"{experts}.down_weight_channel_scales", 0xBC00, (768,), "fp16"
             ),
             f"{prefix}.shared_expert.gate_up_weight_w8a16": _allocation(
                 f"{prefix}.shared_expert.gate_up_weight_w8a16", 0xBD00, (1536, 4096), "int8"
@@ -153,6 +158,7 @@ def test_qwen35_decode_state_reserves_moe_c1_scratch() -> None:
 
     assert scratch.normed.shape == (1, 4096)
     assert scratch.residual.shape == (1, 4096)
+    assert scratch.gate_up_input.shape == (1, 4096)
     assert scratch.router_logits.shape == (1, 129)
     assert scratch.routing_weights.shape == (1, 8)
     assert scratch.selected_experts.shape == (1, 8)
@@ -668,6 +674,7 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "pack8",
         "post_norm",
         "router",
+        "rotate1",
         "gate_up",
         "silu_rotate",
         "down",
@@ -715,6 +722,7 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "pack8",
         "post_norm",
         "router",
+        "rotate1",
         "gate_up",
         "silu_rotate",
         "down",
@@ -796,6 +804,7 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
         "pack8",
         "post_norm",
         "router",
+        "rotate1",
         "gate_up",
         "silu_rotate",
         "down",
@@ -947,8 +956,12 @@ def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
     state = _state(runtime, _prepared_moe_weights())
     scratch = state.reserve_moe_c1_scratch(tokens=1)
     hidden = _tensor(0xCA00, (1, 4096), "bf16")
+    rotate_calls = []
     gate_calls = []
     down_calls = []
+
+    def fake_rotate(*args, **kwargs):
+        rotate_calls.append((args, kwargs))
 
     def fake_gate(*args, **kwargs):
         gate_calls.append((args, kwargs))
@@ -956,6 +969,7 @@ def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
     def fake_down(*args, **kwargs):
         down_calls.append((args, kwargs))
 
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", fake_rotate)
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", fake_gate)
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", fake_down)
 
@@ -964,9 +978,12 @@ def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
 
     assert gate_up is scratch.gate_up
     assert down is scratch.down_out
+    rotate_args, rotate_kwargs = rotate_calls[0]
+    assert rotate_args == (hidden.ptr, scratch.gate_up_input.ptr, 0xB9A0, 0xB9B0, 0xB9C0, 1, 4096, 128, 32)
+    assert rotate_kwargs == {"stream": 0, "library": None, "runtime": runtime}
     gate_args, gate_kwargs = gate_calls[0]
     assert gate_args == (
-        hidden.ptr,
+        scratch.gate_up_input.ptr,
         scratch.selected_experts.ptr,
         0xB100,
         0xB200,
@@ -1094,6 +1111,7 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
     order = []
 
     monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_bf16", lambda *a, **k: order.append("router"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", lambda *a, **k: order.append("gate_up_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", lambda *a, **k: order.append("gate_up"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", lambda *a, **k: order.append("silu_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", lambda *a, **k: order.append("down"))
@@ -1113,7 +1131,7 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
     out = state.run_moe_c1_bf16(hidden, residual, scratch=scratch)
 
     assert out is scratch.moe_out
-    assert order == ["router", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine"]
+    assert order == ["router", "gate_up_rotate", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine"]
 
     batch_scratch = state.reserve_moe_c1_scratch(tokens=2)
     batch_hidden = _tensor(0xD000, (2, 4096), "bf16")
@@ -1121,7 +1139,7 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
     order.clear()
     batch_out = state.run_moe_c1_bf16(batch_hidden, batch_residual, scratch=batch_scratch, tokens=2)
     assert batch_out is batch_scratch.moe_out
-    assert order == ["router", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine_batch"]
+    assert order == ["router", "gate_up_rotate", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine_batch"]
 
 
 def test_qwen35_decode_state_validates_scratch_requests() -> None:
@@ -1146,7 +1164,7 @@ def test_qwen35_decode_state_free_releases_workspace() -> None:
     state.free()
 
     assert runtime.allocations == {}
-    assert len(runtime.freed) == 30
+    assert len(runtime.freed) == 31
 
 
 def test_qwen35_decode_state_reserves_parent_mixed_fp16_scratch() -> None:
@@ -1208,6 +1226,7 @@ def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch)
     order = []
 
     monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_fp16", lambda *a, **k: order.append("router"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", lambda *a, **k: order.append("gate_up_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_fp16", lambda *a, **k: order.append("gate_up"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_fp16", lambda *a, **k: order.append("silu_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_fp16", lambda *a, **k: order.append("down"))
@@ -1227,7 +1246,7 @@ def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch)
     out = state.run_moe_c1_fp16(hidden, residual, scratch=scratch)
 
     assert out is scratch.moe_out
-    assert order == ["router", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine"]
+    assert order == ["router", "gate_up_rotate", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine"]
 
 
 def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch) -> None:
@@ -1297,6 +1316,7 @@ def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch)
         "pack8",
         "post_norm",
         "router",
+        "rotate1",
         "gate_up",
         "silu_rotate",
         "down",

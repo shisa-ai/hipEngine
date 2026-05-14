@@ -3810,6 +3810,9 @@ def paro_moe_c1_state_hip_smoke(
     qweight_gate_t = np.ascontiguousarray(np.swapaxes(qweight_gate, 1, 2))
     qweight_up_t = np.ascontiguousarray(np.swapaxes(qweight_up, 1, 2))
     qweight_down_t = np.ascontiguousarray(np.swapaxes(qweight_down, 1, 2))
+    gate_up_pairs = np.asarray([[0, 4, 1, 5, 2, 6, 3, 7]], dtype=np.int16)
+    gate_up_theta_bits = _float32_to_bf16_bits(np.zeros((1, hidden_size // 2), dtype=np.float32))
+    gate_up_scales_bits = _float32_to_bf16_bits(np.ones((hidden_size,), dtype=np.float32))
     down_pairs = np.asarray([[0, 4, 1, 5, 2, 6, 3, 7]], dtype=np.int16)
     down_theta_bits = _float32_to_bf16_bits(np.zeros((1, hidden_size // 2), dtype=np.float32))
     down_scales_bits = _float32_to_bf16_bits(np.ones((intermediate_size,), dtype=np.float32))
@@ -3944,6 +3947,9 @@ def paro_moe_c1_state_hip_smoke(
                 "layers.0.mlp.experts.stacked_down_qweight_pack8_decode": weight("layers.0.mlp.experts.stacked_down_qweight_pack8_decode", qweight_down_t, "int32"),
                 "layers.0.mlp.experts.stacked_down_qzeros": weight("layers.0.mlp.experts.stacked_down_qzeros", qzeros_down, "int32"),
                 "layers.0.mlp.experts.stacked_down_scales": weight("layers.0.mlp.experts.stacked_down_scales", scales_down_bits, "bf16"),
+                "layers.0.mlp.experts.gate_up_weight_pairs": weight("layers.0.mlp.experts.gate_up_weight_pairs", gate_up_pairs, "int16"),
+                "layers.0.mlp.experts.gate_up_weight_theta": weight("layers.0.mlp.experts.gate_up_weight_theta", gate_up_theta_bits, "bf16"),
+                "layers.0.mlp.experts.gate_up_weight_channel_scales": weight("layers.0.mlp.experts.gate_up_weight_channel_scales", gate_up_scales_bits, "bf16"),
                 "layers.0.mlp.experts.down_weight_pairs": weight("layers.0.mlp.experts.down_weight_pairs", down_pairs, "int16"),
                 "layers.0.mlp.experts.down_weight_theta": weight("layers.0.mlp.experts.down_weight_theta", down_theta_bits, "bf16"),
                 "layers.0.mlp.experts.down_weight_channel_scales": weight("layers.0.mlp.experts.down_weight_channel_scales", down_scales_bits, "bf16"),
