@@ -3866,3 +3866,26 @@ Results: all tests passed.
 ### Next
 
 - Extend `KVLiveSpans`/`KVPolicy` with row/request metadata and transaction hooks, then vectorize runtime state kernels around these batch slots.
+
+---
+
+## 2026-05-14 — Extend KV spans and policy transaction scaffold
+
+### Scope
+
+- Extended `KVLiveSpans` with optional `request_ids`, `row_positions`, and `span_role` metadata while preserving the current c=1 fixed-page bridge.
+- Added `KVPolicy` protocol plus `FixedPagedKVPolicy`, `KVReservation`, and `KVTransaction` host-side scaffolding.
+- The fixed-page policy now exposes c=1 span reuse, c>1 packed-metadata span construction, admission-cap bookkeeping, transaction begin/commit/rollback, and reclaim.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_kvcache_spans.py tests/test_kvcache_policy.py -q
+python3 -m compileall -q hipengine tests && python3 -m pytest tests/test_kvcache_spans.py tests/test_kvcache_policy.py tests/test_qwen35_paged_kv_write_plan.py tests/test_qwen35_paged_attn_decode_plan.py -q
+```
+
+Results: all tests passed.
+
+### Next
+
+- Vectorize runtime token/position state kernels around the batch-slot metadata and keep scalar c=1 helpers as wrappers.

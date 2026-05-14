@@ -26,6 +26,9 @@ def test_kv_live_spans_accepts_uniform_paged_bridge() -> None:
     assert spans.evict_mask is None
     assert spans.storage_dtype.value == "bf16"
     assert spans.spans_mode == "uniform"
+    assert spans.request_ids is None
+    assert spans.row_positions is None
+    assert spans.span_role == "decode"
 
 
 def test_kv_live_spans_validates_metadata_tensors() -> None:
