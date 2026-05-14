@@ -4,12 +4,16 @@ import pytest
 
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
+    advance_decode_positions_i64,
     embedding_lookup_batch_bf16_i64,
+    embedding_lookup_batch_mapped_bf16_i64,
     embedding_lookup_bf16_i64,
     plan_runtime_state_build,
     register_runtime_state_kernels,
     set_decode_position_i64,
+    set_decode_positions_i64,
     set_i64_scalar,
+    set_i64_vector,
 )
 from hipengine.kernels.registry import resolve
 
@@ -26,14 +30,27 @@ def test_runtime_state_registers_graph_friendly_helpers() -> None:
         is embedding_lookup_batch_bf16_i64
     )
     assert (
+        resolve(backend="hip_gfx1100", layer="token_embedding", quant="w4_paro", variant="batch_mapped_bf16_i64")
+        is embedding_lookup_batch_mapped_bf16_i64
+    )
+    assert (
         resolve(backend="hip_gfx1100", layer="decode_position", quant="w4_paro", variant="set_i64")
         is set_decode_position_i64
+    )
+    assert (
+        resolve(backend="hip_gfx1100", layer="decode_position", quant="w4_paro", variant="set_vector_i64")
+        is set_decode_positions_i64
     )
     assert (
         resolve(backend="hip_gfx1100", layer="decode_position", quant="w4_paro", variant="advance_i64")
         is advance_decode_position_i64
     )
+    assert (
+        resolve(backend="hip_gfx1100", layer="decode_position", quant="w4_paro", variant="advance_vector_i64")
+        is advance_decode_positions_i64
+    )
     assert resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="set_i64") is set_i64_scalar
+    assert resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="set_vector_i64") is set_i64_vector
 
 
 def test_runtime_state_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -56,3 +73,13 @@ def test_embedding_lookup_validates_shape_before_gpu_load() -> None:
         embedding_lookup_bf16_i64(0, 0, 0, 8, 0)
     with pytest.raises(ValueError, match="tokens"):
         embedding_lookup_batch_bf16_i64(0, 0, 0, 0, 8, 16)
+    with pytest.raises(ValueError, match="rows"):
+        embedding_lookup_batch_mapped_bf16_i64(0, 0, 0, 0, 8, 16, 1)
+    with pytest.raises(ValueError, match="token_slots"):
+        embedding_lookup_batch_mapped_bf16_i64(0, 0, 0, 1, 8, 16, 0)
+    with pytest.raises(ValueError, match="rows"):
+        set_i64_vector(0, 0, 0)
+    with pytest.raises(ValueError, match="rows"):
+        set_decode_positions_i64(0, 0, 0, 0)
+    with pytest.raises(ValueError, match="rows"):
+        advance_decode_positions_i64(0, 0, 0)

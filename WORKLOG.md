@@ -3889,3 +3889,31 @@ Results: all tests passed.
 ### Next
 
 - Vectorize runtime token/position state kernels around the batch-slot metadata and keep scalar c=1 helpers as wrappers.
+
+---
+
+## 2026-05-14 — Vectorize runtime token and position state kernels
+
+### Scope
+
+- Added batch-slot runtime helpers: mapped batched embedding lookup, int64 vector set, masked batched decode-position set, and masked batched decode-position advance.
+- Registered vector runtime helpers under existing kernel registry axes while preserving scalar c=1 wrappers.
+- Updated kernel catalog/implementation notes for scalar + vector graph-state variants.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/runtime/state.py && python3 -m pytest tests/test_runtime_state_plan.py -q
+python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.runtime import build_runtime_state
+lib = build_runtime_state(load=True)
+print('runtime_state built', getattr(lib, '_name', '<loaded>'))
+PY
+python3 -m compileall -q hipengine tests && python3 -m pytest tests/test_runtime_state_plan.py tests/test_dispatch_batch.py -q
+```
+
+GPU smoke result: `runtime_state batch smoke OK` for mapped embedding rows plus masked vector position/context set+advance.
+
+### Next
+
+- Refactor resident Qwen3.5/PARO runtime to allocate/use batch-shaped slots, then port batched full-attention KV append/decode.

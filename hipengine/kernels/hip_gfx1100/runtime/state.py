@@ -13,9 +13,13 @@ _SOURCE = Path(__file__).with_name("state.hip")
 _OUTPUT_NAME = "runtime_state.so"
 _SYMBOL_EMBEDDING_LOOKUP = "hipengine_embedding_lookup_bf16_i64"
 _SYMBOL_EMBEDDING_LOOKUP_BATCH = "hipengine_embedding_lookup_batch_bf16_i64"
+_SYMBOL_EMBEDDING_LOOKUP_BATCH_MAPPED = "hipengine_embedding_lookup_batch_mapped_bf16_i64"
 _SYMBOL_SET_I64 = "hipengine_set_i64_scalar"
+_SYMBOL_SET_I64_VECTOR = "hipengine_set_i64_vector"
 _SYMBOL_SET_POSITION = "hipengine_set_decode_position_i64"
+_SYMBOL_SET_POSITIONS = "hipengine_set_decode_positions_i64"
 _SYMBOL_ADVANCE_POSITION = "hipengine_advance_decode_position_i64"
+_SYMBOL_ADVANCE_POSITIONS = "hipengine_advance_decode_positions_i64"
 
 
 def plan_runtime_state_build(
@@ -141,6 +145,59 @@ def embedding_lookup_batch_bf16_i64(
     _check_launch(runtime, err)
 
 
+def embedding_lookup_batch_mapped_bf16_i64(
+    embedding_bf16_ptr: int,
+    token_ids_i64_ptr: int,
+    out_bf16_ptr: int,
+    rows: int,
+    hidden_size: int,
+    vocab_size: int,
+    token_slots: int,
+    *,
+    row_map_i32_ptr: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Copy embeddings for output rows, optionally gathering token ids by row map."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden_size <= 0:
+        raise ValueError("hidden_size must be positive")
+    if vocab_size <= 0:
+        raise ValueError("vocab_size must be positive")
+    if token_slots <= 0:
+        raise ValueError("token_slots must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_EMBEDDING_LOOKUP_BATCH_MAPPED)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(embedding_bf16_ptr),
+        ctypes.c_void_p(token_ids_i64_ptr),
+        ctypes.c_void_p(row_map_i32_ptr) if row_map_i32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_bf16_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(token_slots),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def set_i64_scalar(
     out_i64_ptr: int,
     value: int,
@@ -157,6 +214,33 @@ def set_i64_scalar(
     fn.argtypes = [ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
     fn.restype = ctypes.c_int
     err = fn(ctypes.c_void_p(out_i64_ptr), ctypes.c_int64(value), ctypes.c_void_p(stream))
+    _check_launch(runtime, err)
+
+
+def set_i64_vector(
+    out_i64_ptr: int,
+    values_i64_ptr: int,
+    rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Set ``out[row] = values[row]`` for a device int64 vector."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SET_I64_VECTOR)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(out_i64_ptr),
+        ctypes.c_void_p(values_i64_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_void_p(stream),
+    )
     _check_launch(runtime, err)
 
 
@@ -185,6 +269,37 @@ def set_decode_position_i64(
     _check_launch(runtime, err)
 
 
+def set_decode_positions_i64(
+    positions_i64_ptr: int,
+    contexts_i64_ptr: int,
+    values_i64_ptr: int,
+    rows: int,
+    *,
+    active_mask_u8_ptr: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Set batched decode positions/contexts, optionally gated by active mask."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SET_POSITIONS)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(positions_i64_ptr),
+        ctypes.c_void_p(contexts_i64_ptr),
+        ctypes.c_void_p(values_i64_ptr),
+        ctypes.c_void_p(active_mask_u8_ptr) if active_mask_u8_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def advance_decode_position_i64(
     position_i64_ptr: int,
     context_i64_ptr: int,
@@ -204,6 +319,35 @@ def advance_decode_position_i64(
     _check_launch(runtime, err)
 
 
+def advance_decode_positions_i64(
+    positions_i64_ptr: int,
+    contexts_i64_ptr: int,
+    rows: int,
+    *,
+    active_mask_u8_ptr: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Increment batched decode positions/contexts, optionally gated by active mask."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ADVANCE_POSITIONS)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(positions_i64_ptr),
+        ctypes.c_void_p(contexts_i64_ptr),
+        ctypes.c_void_p(active_mask_u8_ptr) if active_mask_u8_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "token_embedding", "w4_paro", "bf16_i64"),
@@ -216,8 +360,18 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "token_embedding", "w4_paro", "batch_mapped_bf16_i64"),
+        embedding_lookup_batch_mapped_bf16_i64,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "decode_position", "w4_paro", "set_i64"),
         set_decode_position_i64,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "decode_position", "w4_paro", "set_vector_i64"),
+        set_decode_positions_i64,
         replace=replace,
     )
     register(
@@ -226,8 +380,18 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "decode_position", "w4_paro", "advance_vector_i64"),
+        advance_decode_positions_i64,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "scalar_state", "w4_paro", "set_i64"),
         set_i64_scalar,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "scalar_state", "w4_paro", "set_vector_i64"),
+        set_i64_vector,
         replace=replace,
     )
 

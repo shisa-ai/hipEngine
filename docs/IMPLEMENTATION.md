@@ -53,7 +53,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add GPU FP16 lm-head + GPU argmax for the one-token Qwen3.5/PARO harness.
   - [x] Add resident all-layer loading and progress-visible materialization for the E2E harness.
   - [x] Add actual autoregressive prompt/decode timing harness with persistent per-layer state/KV.
-  - [x] Add graph-friendly device token embedding and decode-position state kernels.
+  - [x] Add graph-friendly device token embedding and decode-position state kernels (scalar c=1 plus batch-vector variants).
   - [x] Add diagnostic one-step HIP graph replay for resident measured decode.
   - [x] Fuse linear-attention QKV/Z pack8 decode projections using dual-input transposed GEMV.
   - [x] Fuse full-attention Q/K pack8 decode projections using dual-input transposed GEMV.
