@@ -675,20 +675,49 @@ class Qwen35ParoDecodeState:
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
         a_weight = self.tensor(f"{prefix}.in_proj_a.weight")
         b_weight = self.tensor(f"{prefix}.in_proj_b.weight")
-        dense_dual_gemv_out_bf16(
-            hidden.ptr,
-            a_weight.ptr,
-            b_weight.ptr,
-            scratch.ab.ptr,
-            tokens,
-            self.config.hidden_size,
-            self.config.linear_num_value_heads,
-            self.config.linear_num_value_heads,
-            threads=threads,
-            stream=stream,
-            library=_library_for(library, "dense"),
-            runtime=self.runtime,
-        )
+        dense_library = _library_for(library, "dense")
+        if tokens == 1:
+            dense_dual_gemv_out_bf16(
+                hidden.ptr,
+                a_weight.ptr,
+                b_weight.ptr,
+                scratch.ab.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.linear_num_value_heads,
+                self.config.linear_num_value_heads,
+                threads=threads,
+                stream=stream,
+                library=dense_library,
+                runtime=self.runtime,
+            )
+        else:
+            # The dual GEMV writes row-major [a,b] per token.  Native prefill
+            # GDN consumes contiguous [tokens,a] and [tokens,b] streams.
+            dense_gemv_out_bf16(
+                hidden.ptr,
+                a_weight.ptr,
+                scratch.a.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.linear_num_value_heads,
+                threads=threads,
+                stream=stream,
+                library=dense_library,
+                runtime=self.runtime,
+            )
+            dense_gemv_out_bf16(
+                hidden.ptr,
+                b_weight.ptr,
+                scratch.b.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.linear_num_value_heads,
+                threads=threads,
+                stream=stream,
+                library=dense_library,
+                runtime=self.runtime,
+            )
         return scratch.a, scratch.b
 
     def run_linear_attention_conv_gdn_bf16(
@@ -1928,20 +1957,51 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> tuple[Tensor, Tensor]:
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
-        dense_dual_gemv_out_fp16(
-            hidden.ptr,
-            self.tensor(f"{prefix}.in_proj_a.weight").ptr,
-            self.tensor(f"{prefix}.in_proj_b.weight").ptr,
-            scratch.ab.ptr,
-            tokens,
-            self.config.hidden_size,
-            self.config.linear_num_value_heads,
-            self.config.linear_num_value_heads,
-            threads=threads,
-            stream=stream,
-            library=_library_for(library, "dense"),
-            runtime=self.runtime,
-        )
+        a_weight = self.tensor(f"{prefix}.in_proj_a.weight")
+        b_weight = self.tensor(f"{prefix}.in_proj_b.weight")
+        dense_library = _library_for(library, "dense")
+        if tokens == 1:
+            dense_dual_gemv_out_fp16(
+                hidden.ptr,
+                a_weight.ptr,
+                b_weight.ptr,
+                scratch.ab.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.linear_num_value_heads,
+                self.config.linear_num_value_heads,
+                threads=threads,
+                stream=stream,
+                library=dense_library,
+                runtime=self.runtime,
+            )
+        else:
+            # The dual GEMV writes row-major [a,b] per token.  Native prefill
+            # GDN consumes contiguous [tokens,a] and [tokens,b] streams.
+            dense_gemv_out_fp16(
+                hidden.ptr,
+                a_weight.ptr,
+                scratch.a.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.linear_num_value_heads,
+                threads=threads,
+                stream=stream,
+                library=dense_library,
+                runtime=self.runtime,
+            )
+            dense_gemv_out_fp16(
+                hidden.ptr,
+                b_weight.ptr,
+                scratch.b.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.linear_num_value_heads,
+                threads=threads,
+                stream=stream,
+                library=dense_library,
+                runtime=self.runtime,
+            )
         return scratch.a, scratch.b
 
     def run_linear_attention_conv_gdn_fp16(

@@ -124,7 +124,7 @@ def _run_serial_layer0_stages(
                 stages["z"] = _read_tensor(session, scratch.z)
             state.project_linear_attention_ab_fp16(scratch.attn_input, scratch, tokens=1, library=session.libraries)
             if capture:
-                stages["ab"] = _read_tensor(session, scratch.ab)
+                stages["ab"] = np.concatenate((_read_tensor(session, scratch.a), _read_tensor(session, scratch.b)))
             state.run_linear_attention_conv_gdn_fp16(
                 scratch,
                 conv_state=conv_state,
@@ -186,7 +186,7 @@ def _run_native_layer0_stages(
         stages["qkv"] = _read_tensor(session, scratch.qkv, row=last)
         stages["z"] = _read_tensor(session, scratch.z, row=last)
         state.project_linear_attention_ab_fp16(scratch.attn_input, scratch, tokens=tokens, library=session.libraries)
-        stages["ab"] = _read_tensor(session, scratch.ab, row=last)
+        stages["ab"] = np.concatenate((_read_tensor(session, scratch.a, row=last), _read_tensor(session, scratch.b, row=last)))
         state.run_linear_attention_prefill_conv_gdn_fp16(
             scratch,
             conv_state=conv_state,

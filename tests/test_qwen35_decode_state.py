@@ -419,6 +419,7 @@ def test_qwen35_decode_state_runs_linear_attention_prefill_state_chain(monkeypat
     monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_bf16", record("single_pack8"))
     monkeypatch.setattr(qwen_runtime, "dense_dual_gemv_out_bf16", record("dense_dual"))
+    monkeypatch.setattr(qwen_runtime, "dense_gemv_out_bf16", record("dense"))
     monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("cast_qkv"))
     monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_prefill_f32", record("conv_prefill"))
     monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_prefill_prepare_f32_bf16", record("prepare"))
@@ -438,7 +439,8 @@ def test_qwen35_decode_state_runs_linear_attention_prefill_state_chain(monkeypat
         "rotate2",
         "single_pack8",
         "single_pack8",
-        "dense_dual",
+        "dense",
+        "dense",
         "cast_qkv",
         "conv_prefill",
         "prepare",
@@ -449,9 +451,11 @@ def test_qwen35_decode_state_runs_linear_attention_prefill_state_chain(monkeypat
     assert calls[1][1][5:] == (4, 4096, 1024, 128)
     assert calls[2][1][:5] == (scratch.z_rot.ptr, 0x9A10, 0x9B00, 0x9C00, scratch.z.ptr)
     assert calls[2][1][5:] == (4, 4096, 512, 128)
-    assert calls[4][1] == (scratch.qkv.ptr, scratch.qkv_f32.ptr, 4 * 8192)
-    assert calls[5][1] == (scratch.qkv_f32.ptr, conv_state.ptr, 0x9F00, scratch.conv_out.ptr, 4, 8192, 4)
-    assert calls[6][1] == (
+    assert calls[3][1] == (0xC000, 0x9D00, scratch.a.ptr, 4, 4096, 32)
+    assert calls[4][1] == (0xC000, 0x9E00, scratch.b.ptr, 4, 4096, 32)
+    assert calls[5][1] == (scratch.qkv.ptr, scratch.qkv_f32.ptr, 4 * 8192)
+    assert calls[6][1] == (scratch.qkv_f32.ptr, conv_state.ptr, 0x9F00, scratch.conv_out.ptr, 4, 8192, 4)
+    assert calls[7][1] == (
         scratch.conv_out.ptr,
         scratch.a.ptr,
         scratch.b.ptr,
@@ -468,7 +472,7 @@ def test_qwen35_decode_state_runs_linear_attention_prefill_state_chain(monkeypat
         128,
         128,
     )
-    assert calls[7][1] == (
+    assert calls[8][1] == (
         scratch.prefill_query.ptr,
         scratch.prefill_key.ptr,
         scratch.prefill_value.ptr,
@@ -481,7 +485,7 @@ def test_qwen35_decode_state_runs_linear_attention_prefill_state_chain(monkeypat
         128,
         128,
     )
-    assert calls[8][1] == (scratch.recurrent_out.ptr, scratch.z.ptr, 0xA300, scratch.recurrent_bf16.ptr, 1.0e-6, 4, 32, 128)
+    assert calls[9][1] == (scratch.recurrent_out.ptr, scratch.z.ptr, 0xA300, scratch.recurrent_bf16.ptr, 1.0e-6, 4, 32, 128)
 
 
 def test_qwen35_decode_state_projects_linear_attention_prefill_out(monkeypatch) -> None:
@@ -520,6 +524,7 @@ def test_qwen35_decode_state_runs_linear_attention_prefill_out_proj_chain(monkey
     monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", lambda *a, **k: order.append("dual_pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_bf16", lambda *a, **k: order.append("single_pack8"))
     monkeypatch.setattr(qwen_runtime, "dense_dual_gemv_out_bf16", lambda *a, **k: order.append("dense_dual"))
+    monkeypatch.setattr(qwen_runtime, "dense_gemv_out_bf16", lambda *a, **k: order.append("dense"))
     monkeypatch.setattr(qwen_runtime, "bf16_to_f32", lambda *a, **k: order.append("cast_qkv"))
     monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_prefill_f32", lambda *a, **k: order.append("conv_prefill"))
     monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_prefill_prepare_f32_bf16", lambda *a, **k: order.append("prepare"))
@@ -541,7 +546,8 @@ def test_qwen35_decode_state_runs_linear_attention_prefill_out_proj_chain(monkey
         "rotate2",
         "single_pack8",
         "single_pack8",
-        "dense_dual",
+        "dense",
+        "dense",
         "cast_qkv",
         "conv_prefill",
         "prepare",
@@ -722,7 +728,8 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "rotate2",
         "single_pack8",
         "single_pack8",
-        "dense_dual",
+        "dense",
+        "dense",
         "cast_qkv",
         "conv_prefill",
         "prepare",

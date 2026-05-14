@@ -5728,3 +5728,72 @@ Result: pytest exit code `0`.
 - The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
 - This was not a kernel port and did not change kernel bodies, so no source-lineage or rocprof evidence is required.
 - Next Task #15 target: native GDN/recurrent prefill numerical/state parity before extending to compact/full-attention prefill.
+
+---
+
+## 2026-05-15 — Fix native prefill a/b multi-token layout
+
+### Scope
+
+- Continued Task #15 after qkv/z and conv/GDN attention-side parity narrowed the native prefill blocker.
+- Found the same layout class in `in_proj_a`/`in_proj_b`: `dense_dual_gemv_out_*` writes row-major `[a,b]` per token, while native GDN prefill consumes contiguous `[tokens,a]` and `[tokens,b]` streams.
+- For `tokens == 1`, the existing dual dense projection is still used.
+- For `tokens > 1`, `project_linear_attention_ab_{bf16,fp16}` now runs two single dense projections into contiguous `scratch.a` and `scratch.b`.
+- Updated `scripts/qwen35_native_prefill_stage_probe.py` so the `ab` stage compares the logical concatenation of the `a` and `b` tensor views instead of the raw `scratch.ab` storage row.
+- Emitted artifacts:
+  - `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer0-attention-accepted.json`
+  - `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer0-decode-rejected.json`
+
+### Evidence
+
+```bash
+python3 scripts/qwen35_native_prefill_stage_probe.py \
+  --prompt-length 4 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer0-attention-accepted.json
+```
+
+Result: accepted stage parity, no throughput claim.
+
+Key fields:
+
+- `status=accepted`
+- `performance_claim=false`
+- `first_divergent_stage=null`
+- `ab.max_abs=0.0`
+- `conv_out.max_abs=2.9802322387695312e-08`
+- `gated_recurrent.max_abs=3.814697265625e-06`
+- `attention_out.max_abs=1.52587890625e-05`
+
+Full layer0 native-prefix correctness is still rejected after attention parity:
+
+```bash
+python3 scripts/qwen35_native_prefill_correctness.py \
+  --prompt-length 4 \
+  --max-layers 1 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer0-decode-rejected.json
+```
+
+Result: expected exit `1` / `status=rejected_correctness`:
+
+- `seed_match=true` (`serial.seed=627`, `native.seed=627`)
+- `decode_match=false` (`serial.decode=356`, `native.decode=627`)
+- `finite_logits=true`
+- `logit_abs_delta.seed=0.00020170211791992188`
+- `logit_abs_delta.decode=0.2938823699951172`
+
+Interpretation: the layer0 linear-attention native prefill path through out-proj is now within tolerance; the remaining layer0 native-prefix blocker is after attention, in the native batched post-attention/MoE path or hidden handoff used by the following decode step.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0`.
+
+### Notes
+
+- The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
+- This was not a kernel port and did not change kernel bodies, so no source-lineage or rocprof evidence is required.
+- Next Task #15 target: native batched post-attention/MoE output parity for layer0, then layer-prefix >1 native prefill.
