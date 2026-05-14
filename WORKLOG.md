@@ -5797,3 +5797,67 @@ Result: pytest exit code `0`.
 - The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
 - This was not a kernel port and did not change kernel bodies, so no source-lineage or rocprof evidence is required.
 - Next Task #15 target: native batched post-attention/MoE output parity for layer0, then layer-prefix >1 native prefill.
+
+---
+
+## 2026-05-15 — Accept native linear-prefix prefill after decode-scratch restore
+
+### Scope
+
+- Continued Task #15 after layer0 linear-attention through out-proj matched serial c=1.
+- Found the post-prefill decode mismatch source: native prefill enlarged the named per-layer workspace scratch tensors to `tokens=4` and left them installed as the decode scratch.
+- The next c=1 decode step then used dual qkv/z and a/b projection kernels with multi-token scratch views:
+  - `scratch.z` pointed after `tokens * qkv_width`, not after the first row's qkv segment.
+  - `scratch.b` pointed after `tokens * num_value_heads`, not after the first row's `a` segment.
+  - Result before the fix: decode qkv matched, but decode `z`/`ab` read stale offsets and the next token mismatched.
+- Fixed by restoring token-1 decode scratch after native prefill copies the last hidden row back to the resident slot.
+- Removed the stale rejected-correctness requirement for `prefill_linear_tokens_native()` and updated the benchmark harness wording: the helper is accepted for all-linear prefixes but remains not PLAN-MOE2/full-model prefill comparable.
+
+### Evidence
+
+```bash
+python3 scripts/qwen35_native_prefill_correctness.py \
+  --prompt-length 4 \
+  --sweep-layer-prefixes 3 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-scratch-restore-sweep.json
+```
+
+Result: accepted correctness sweep, no throughput claim.
+
+Key fields:
+
+- `status=accepted`
+- `performance_claim=false`
+- `first_mismatching_prefix=null`
+- Prefix 1: `seed_match=true`, `decode_match=true`, `decode logit delta=0.0`
+- Prefix 2: `seed_match=true`, `decode_match=true`, `decode logit delta=0.004206657409667969`
+- Prefix 3: `seed_match=true`, `decode_match=true`, `decode logit delta=0.0049800872802734375`
+
+Smoke for the ungated accepted helper:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --native-prefill \
+  --prompt-length 4 \
+  --decode-tokens 0 \
+  --warmup-decode-tokens 0 \
+  --max-layers 3 \
+  --json /tmp/hipengine-native-prefill-bench-smoke.json
+```
+
+Result: exits `0`, `native_batched_prefill=true`, `allow_rejected_native_prefill=false`, `prefill_comparable_to_plan_moe2=false`. The JSON includes timing fields as a smoke side effect only; no performance claim is made.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0`.
+
+### Notes
+
+- The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
+- This was a Python/runtime scratch lifetime fix, not a kernel body port; no source-lineage or rocprof evidence required.
+- Next Task #15 target: extend native prefill past the all-linear prefix boundary at layer 3 (`full_attention`) and then return to compact/grouped MoE prefill and c>N correctness/performance.

@@ -839,12 +839,13 @@ class Qwen35ParoResidentSession:
         sample: bool = True,
         allow_rejected_correctness: bool = False,
     ) -> Qwen35ParoAutoregressiveStepResult | None:
-        """Run a diagnostic native prefill over linear-attention-only layer prefixes.
+        """Run native prefill over currently supported linear-attention prefixes.
 
-        The current implementation is kept for investigation only: artifact
-        ``benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-prefill-rejected.json``
-        shows that it does not yet match serial c=1 prefill.  Callers must opt in
-        explicitly so this path cannot become an accidental throughput row.
+        The helper is correctness-accepted for the available all-linear prefix
+        coverage (see ``benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-scratch-restore-sweep.json``),
+        but it is still not compact/full-attention prefill for the real 40-layer
+        model.  ``allow_rejected_correctness`` is retained only for compatibility
+        with older diagnostic scripts.
         """
 
         if self.closed:
@@ -865,12 +866,7 @@ class Qwen35ParoResidentSession:
                 f"first unsupported layer {native_prefill_plan.first_unsupported_layer} "
                 f"is {native_prefill_plan.first_unsupported_type!r}"
             )
-        if not allow_rejected_correctness:
-            raise NotImplementedError(
-                "native linear-prefix prefill is currently rejected_correctness vs serial c=1; "
-                "pass allow_rejected_correctness=True only for diagnostic blocker artifacts; "
-                "see benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-prefill-rejected.json"
-            )
+        _ = allow_rejected_correctness
         token_arr = np.asarray(tokens, dtype=np.int64)
         token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(token_buf, host_array_ptr(token_arr), runtime=self.runtime)
@@ -889,6 +885,7 @@ class Qwen35ParoResidentSession:
             self.runtime.stream_synchronize(0)
             last_ptr = hidden.ptr + (len(tokens) - 1) * self.hidden_nbytes
             self.runtime.memcpy(self.hidden.ptr, last_ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+            self._restore_decode_scratch_after_prefill()
             self._set_position(len(tokens) - 1)
             if not sample:
                 return None
@@ -1045,6 +1042,12 @@ class Qwen35ParoResidentSession:
             self.runtime.memcpy_async(next_hidden.ptr, out.ptr, tokens * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
             hidden, next_hidden = next_hidden, hidden
         return hidden
+
+    def _restore_decode_scratch_after_prefill(self) -> None:
+        for layer_id, state in enumerate(self.states):
+            self.moe_scratch[layer_id] = state.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16)
+            if self.config.layer_types[layer_id] == "linear_attention":
+                self.linear_scratch[layer_id] = state.reserve_linear_attention_scratch(tokens=1, activation_dtype=DType.FP16)
 
     def _run_layers(
         self,

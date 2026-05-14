@@ -1,0 +1,185 @@
+{
+  "schema": 1,
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "command": "python3 scripts/qwen35_native_prefill_correctness.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --prompt-length 4 --sweep-layer-prefixes 3 --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-scratch-restore-sweep.json",
+  "performance_claim": false,
+  "prompt_source": "repeated_token_id",
+  "token_id": 9707,
+  "prompt_length": 4,
+  "status": "accepted",
+  "blocked_reason": null,
+  "mode": "qwen35_paro_native_prefill_prefix_sweep_correctness",
+  "sweep_layer_prefixes": 3,
+  "first_mismatching_prefix": null,
+  "cases": [
+    {
+      "status": "accepted",
+      "max_layers": 1,
+      "serial_native_prefill_plan": {
+        "path": "linear_attention_native_full_layer_limit",
+        "layer_limit": 1,
+        "linear_prefix_layers": 1,
+        "full_layer_limit_native": true,
+        "first_unsupported_layer": null,
+        "first_unsupported_type": null,
+        "blockers": []
+      },
+      "native_prefill_plan": {
+        "path": "linear_attention_native_full_layer_limit",
+        "layer_limit": 1,
+        "linear_prefix_layers": 1,
+        "full_layer_limit_native": true,
+        "first_unsupported_layer": null,
+        "first_unsupported_type": null,
+        "blockers": []
+      },
+      "serial": {
+        "seed": {
+          "token_id": 627,
+          "token_text": "ie",
+          "logit": 6.74982213973999
+        },
+        "decode": {
+          "token_id": 356,
+          "token_text": "ue",
+          "logit": 7.162593841552734
+        }
+      },
+      "native": {
+        "seed": {
+          "token_id": 627,
+          "token_text": "ie",
+          "logit": 6.74962043762207
+        },
+        "decode": {
+          "token_id": 356,
+          "token_text": "ue",
+          "logit": 7.162593841552734
+        }
+      },
+      "seed_match": true,
+      "decode_match": true,
+      "finite_logits": true,
+      "logit_abs_delta": {
+        "seed": 0.00020170211791992188,
+        "decode": 0.0
+      },
+      "passed": true
+    },
+    {
+      "status": "accepted",
+      "max_layers": 2,
+      "serial_native_prefill_plan": {
+        "path": "linear_attention_native_full_layer_limit",
+        "layer_limit": 2,
+        "linear_prefix_layers": 2,
+        "full_layer_limit_native": true,
+        "first_unsupported_layer": null,
+        "first_unsupported_type": null,
+        "blockers": []
+      },
+      "native_prefill_plan": {
+        "path": "linear_attention_native_full_layer_limit",
+        "layer_limit": 2,
+        "linear_prefix_layers": 2,
+        "full_layer_limit_native": true,
+        "first_unsupported_layer": null,
+        "first_unsupported_type": null,
+        "blockers": []
+      },
+      "serial": {
+        "seed": {
+          "token_id": 627,
+          "token_text": "ie",
+          "logit": 8.831604957580566
+        },
+        "decode": {
+          "token_id": 84,
+          "token_text": "u",
+          "logit": 9.026910781860352
+        }
+      },
+      "native": {
+        "seed": {
+          "token_id": 627,
+          "token_text": "ie",
+          "logit": 8.827826499938965
+        },
+        "decode": {
+          "token_id": 84,
+          "token_text": "u",
+          "logit": 9.03111743927002
+        }
+      },
+      "seed_match": true,
+      "decode_match": true,
+      "finite_logits": true,
+      "logit_abs_delta": {
+        "seed": 0.0037784576416015625,
+        "decode": 0.004206657409667969
+      },
+      "passed": true
+    },
+    {
+      "status": "accepted",
+      "max_layers": 3,
+      "serial_native_prefill_plan": {
+        "path": "linear_attention_native_full_layer_limit",
+        "layer_limit": 3,
+        "linear_prefix_layers": 3,
+        "full_layer_limit_native": true,
+        "first_unsupported_layer": null,
+        "first_unsupported_type": null,
+        "blockers": []
+      },
+      "native_prefill_plan": {
+        "path": "linear_attention_native_full_layer_limit",
+        "layer_limit": 3,
+        "linear_prefix_layers": 3,
+        "full_layer_limit_native": true,
+        "first_unsupported_layer": null,
+        "first_unsupported_type": null,
+        "blockers": []
+      },
+      "serial": {
+        "seed": {
+          "token_id": 95916,
+          "token_text": "定",
+          "logit": 7.353177547454834
+        },
+        "decode": {
+          "token_id": 158950,
+          "token_text": "ਆ",
+          "logit": 10.385761260986328
+        }
+      },
+      "native": {
+        "seed": {
+          "token_id": 95916,
+          "token_text": "定",
+          "logit": 7.354587554931641
+        },
+        "decode": {
+          "token_id": 158950,
+          "token_text": "ਆ",
+          "logit": 10.380781173706055
+        }
+      },
+      "seed_match": true,
+      "decode_match": true,
+      "finite_logits": true,
+      "logit_abs_delta": {
+        "seed": 0.0014100074768066406,
+        "decode": 0.0049800872802734375
+      },
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "notes": [
+    "Correctness helper only; timings are intentionally omitted and no throughput claim is made.",
+    "Sweep mode validates the native linear-prefix helper and reports the first mismatching layer prefix, if any."
+  ]
+}

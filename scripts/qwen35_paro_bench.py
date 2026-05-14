@@ -3,10 +3,10 @@
 
 This runs real prompt-token prefill and generated-token decode with persistent
 per-layer linear-attention state and full-attention KV cache. By default,
-prefill is token-by-token c=1. ``--native-prefill`` requests a diagnostic native
-batched prefill only for linear-attention-only layer prefixes; because the
-current helper has rejected correctness vs serial c=1, it also requires
-``--allow-rejected-native-prefill`` and is not a throughput path.
+prefill is token-by-token c=1. ``--native-prefill`` requests native batched
+prefill for the currently supported linear-attention-only layer prefixes. It is
+not yet compact/grouped-WMMA full-model prefill, so output rows still label it
+as not comparable to PLAN-MOE2 prefill throughput.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def main() -> int:
     parser.add_argument(
         "--allow-rejected-native-prefill",
         action="store_true",
-        help="Opt into the current rejected_correctness native prefill helper for blocker/profiling diagnostics only.",
+        help="Compatibility flag retained for old rejected-correctness native-prefill diagnostics; no longer required for accepted linear prefixes.",
     )
     parser.add_argument("--json", type=Path, default=None, help="Optional output JSON path")
     args = parser.parse_args()
@@ -80,11 +80,6 @@ def main() -> int:
         raise ValueError("--decode-tokens must be divisible by --graph-steps-per-replay")
     if args.allow_rejected_native_prefill and not args.native_prefill:
         raise ValueError("--allow-rejected-native-prefill requires --native-prefill")
-    if args.native_prefill and not args.allow_rejected_native_prefill:
-        raise ValueError(
-            "--native-prefill is currently rejected_correctness vs serial c=1; "
-            "add --allow-rejected-native-prefill only for diagnostic blocker artifacts"
-        )
 
     model = Path(args.model)
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file is not None else None
@@ -211,7 +206,7 @@ def main() -> int:
         "generated_preview": generated[:16],
         "notes": [
             (
-                "Prefill uses the rejected_correctness native linear-prefix helper under explicit diagnostic opt-in; not compact/grouped WMMA and not a throughput claim."
+                "Prefill uses the accepted native linear-prefix helper; still not compact/grouped-WMMA full-model prefill and not PLAN-MOE2-comparable."
                 if args.native_prefill
                 else "Prefill is actual autoregressive token-by-token c=1, not native batched/compact prefill."
             ),

@@ -74,15 +74,15 @@ def test_qwen35_resident_native_prefill_plan_accepts_all_linear_layer_limit() ->
     assert plan.blockers == ()
 
 
-def test_qwen35_resident_prefill_linear_tokens_native_requires_rejected_correctness_opt_in() -> None:
+def test_qwen35_resident_prefill_linear_tokens_native_rejects_non_linear_prefix() -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.closed = False
     session.max_sequence_length = 8
     session.vocab_size = 100
     session.layer_limit = 2
-    session.config = SimpleNamespace(layer_types=("linear_attention", "linear_attention"))
+    session.config = SimpleNamespace(layer_types=("linear_attention", "full_attention"))
 
-    with pytest.raises(NotImplementedError, match="rejected_correctness"):
+    with pytest.raises(NotImplementedError, match="linear-attention-only"):
         session.prefill_linear_tokens_native([1, 2], sample=True)
 
 
@@ -105,6 +105,81 @@ def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> No
     payload = metadata.to_json_dict()
     assert payload["native_prefill_plan"]["linear_prefix_layers"] == 2
     assert payload["blockers"] == list(metadata.blockers)
+
+
+class _FakePrefillRuntime:
+    def __init__(self) -> None:
+        self.memcpy_async_calls = []
+
+    def memcpy_async(self, *args):
+        self.memcpy_async_calls.append(args)
+
+
+class _FakePrefillState:
+    def __init__(self, device: Device) -> None:
+        self.device = device
+        self.linear_reservations = []
+        self.moe_reservations = []
+        self.run_calls = []
+
+    def reserve_linear_attention_scratch(self, *, tokens: int, activation_dtype):
+        scratch = SimpleNamespace(
+            attn_input=Tensor.from_handle(0x10000 + tokens * 0x100, (tokens, 8), DType.parse(activation_dtype), self.device),
+        )
+        self.linear_reservations.append(scratch)
+        return scratch
+
+    def reserve_moe_c1_scratch(self, *, tokens: int, activation_dtype):
+        scratch = SimpleNamespace(
+            normed=Tensor.from_handle(0x20000 + tokens * 0x100, (tokens, 8), DType.parse(activation_dtype), self.device),
+        )
+        self.moe_reservations.append(scratch)
+        return scratch
+
+    def run_linear_attention_moe_c1_layer_fp16(self, hidden, **kwargs):
+        self.run_calls.append((hidden, kwargs))
+        tokens = kwargs["tokens"]
+        return Tensor.from_handle(0x30000 + tokens * 0x100, (tokens, 8), DType.FP16, self.device)
+
+
+def test_qwen35_resident_linear_prefill_restores_decode_scratch_token1() -> None:
+    device = Device("hip", 0)
+    runtime = _FakePrefillRuntime()
+    state = _FakePrefillState(device)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.runtime = runtime
+    session.config = SimpleNamespace(hidden_size=8, layer_types=("linear_attention",))
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.prefill_hidden = Tensor.from_handle(0x1000, (4, 8), DType.FP16, device)
+    session.prefill_next_hidden = Tensor.from_handle(0x2000, (4, 8), DType.FP16, device)
+    session.states = [state]
+    session.libraries = {}
+    conv = Tensor.from_handle(0x3000, (8, 4), DType.FP32, device)
+    recurrent = Tensor.from_handle(0x4000, (2, 4, 4), DType.FP32, device)
+    session.linear_states = {0: (conv, recurrent, DeviceBuffer(0x3000, 1), DeviceBuffer(0x4000, 1), None, None)}
+    decode_linear = SimpleNamespace(attn_input=Tensor.from_handle(0x5000, (1, 8), DType.FP16, device))
+    decode_moe = SimpleNamespace(normed=Tensor.from_handle(0x6000, (1, 8), DType.FP16, device))
+    session.linear_scratch = {0: decode_linear}
+    session.moe_scratch = {0: decode_moe}
+
+    out = session._run_linear_prefill_layers(tokens=4)
+
+    assert out.shape == (4, 8)
+    assert session.linear_scratch[0] is state.linear_reservations[0]
+    assert session.moe_scratch[0] is state.moe_reservations[0]
+    call_kwargs = state.run_calls[0][1]
+    assert call_kwargs["linear_scratch"] is session.linear_scratch[0]
+    assert call_kwargs["moe_scratch"] is session.moe_scratch[0]
+    assert call_kwargs["tokens"] == 4
+    assert runtime.memcpy_async_calls
+
+    session._restore_decode_scratch_after_prefill()
+
+    assert session.linear_scratch[0] is state.linear_reservations[1]
+    assert session.moe_scratch[0] is state.moe_reservations[1]
+    assert session.linear_scratch[0].attn_input.shape == (1, 8)
+    assert session.moe_scratch[0].normed.shape == (1, 8)
 
 
 def test_qwen35_resident_session_slot_views_offset_batch_state() -> None:

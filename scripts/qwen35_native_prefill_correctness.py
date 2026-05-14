@@ -183,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
             **case,
             "notes": [
                 "Correctness helper only; timings are intentionally omitted and no throughput claim is made.",
-                "The current native linear-prefix helper must match serial c=1 before extending to compact/full-attention prefill.",
+                "The native linear-prefix helper is validated against serial c=1 before extending to compact/full-attention prefill.",
             ],
         }
     else:
@@ -204,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
             "passed": passed,
             "notes": [
                 "Correctness helper only; timings are intentionally omitted and no throughput claim is made.",
-                "Sweep mode narrows the rejected native linear-prefix helper to the first mismatching layer prefix.",
+                "Sweep mode validates the native linear-prefix helper and reports the first mismatching layer prefix, if any.",
             ],
         }
     text = json.dumps(payload, indent=2, ensure_ascii=False)
