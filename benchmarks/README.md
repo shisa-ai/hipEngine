@@ -1,6 +1,6 @@
 # HIPENGINE Benchmark Rollup
 
-Last updated: 2026-05-13
+Last updated: 2026-05-15
 
 Human-readable scoreboard for HIPENGINE performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -31,12 +31,13 @@ where applicable, and post-run quality gates.
 
 ## Current fastest HIPENGINE rows
 
-No HIPENGINE end-to-end inference benchmark has been accepted yet. `smoke_add`
-only proves build/runtime correctness and is not a throughput row.
+No HIPENGINE end-to-end throughput benchmark has been accepted yet. Accepted
+correctness-only gates are recorded under "Smoke / non-throughput rows"; their
+timings are diagnostic context only and are not retained as performance rows.
 
 | Model | Quant | Backend | Workload | Prefill tok/s | Decode tok/s | Peak GiB | Correctness | Artifact | Last updated | Notes |
 | --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |
-| — | — | — | — | — | — | — | — | — | 2026-05-13 | Await first accepted `LLM.generate()` benchmark. |
+| — | — | — | — | — | — | — | — | — | 2026-05-15 | Await first accepted `LLM.generate()` throughput benchmark. |
 
 ## Source-lineage target: Qwen3.5-35B-A3B-PARO
 
@@ -83,6 +84,8 @@ Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 shootout entry and
 
 | Check | Backend | Command | Result | Artifact | Last updated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3.5/PARO c=1 parent fixture equality | `hip_gfx1100` | `python3 scripts/qwen35_e2e_correctness.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-new-tokens 32 --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json` | `passed=true`, `expected_match=true`, generated `[1739, 220, 16, 15, …]` | [`2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json`](results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json) | 2026-05-15 | Correctness fixture only; timings are diagnostic, no throughput claim. |
+| Qwen3.5/PARO c=N generated equality | `hip_gfx1100` | `python3 scripts/qwen35_batch_serial_correctness.py --scheduler ...` for c=2/4/8; exact commands in artifact | c=2/4/8 `finite_logits=true`, `generated_match=true`, `passed=true` | [`2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json`](results/2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json) | 2026-05-15 | Correctness gate only; current c>N bridge is serial, not a native compact/c-aware throughput path. |
 | `smoke_add` HIP runtime/build | `hip_gfx1100` | `python3 scripts/smoke.py --mode smoke-add-hip --n 1024` | `max_abs=0.0` | `~/.cache/hipengine/build/smoke-101db2a5ad5526c3/smoke_add.so` | 2026-05-13 | Correctness/build smoke only; no throughput claim. |
 
 ## Table conventions

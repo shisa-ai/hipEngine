@@ -17,6 +17,12 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-15
+
+- [correctness] HIPENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / c=1 512/32 parent fixture: generated-token equality blocked -> accepted after parent-mixed MoE parity fixes; `benchmarks/results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json`.
+- [correctness] HIPENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / c=2/4/8 generated equality: blocked -> accepted for scheduler-backed serial bridge with finite logits and graph/occupancy metadata; `benchmarks/results/2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json`.
+- [rollup] HIPENGINE Qwen3.5/PARO correctness rows: no retained throughput row -> accepted non-throughput c=1 and c=N correctness gates; `benchmarks/README.md` smoke/non-throughput table.
+
 ## 2026-05-13
 
 - [lineage measured] Qwen3.5-35B-A3B-PARO / w4a16 / 512/128: prefill 2557 -> 2696.4 tok/s (+5.5%), decode 115.7 -> 116.05 tok/s (+0.3%) from local OPTIMAL parent rerun; `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json`.

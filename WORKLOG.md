@@ -5120,3 +5120,30 @@ Results:
 
 - Task #18 is now unblocked to update benchmark rollups/artifact summaries after correctness parity.
 - Task #15 remains the native compact/c-aware performance path; do not promote c>N throughput while the accepted c>N generated-token gate is still serial.
+
+---
+
+## 2026-05-15 — Update benchmark rollups for accepted parity gates
+
+### Scope
+
+- Completed Task #18 for the accepted correctness-parity artifacts.
+- Updated `benchmarks/README.md` `Last updated` to `2026-05-15`.
+- Added non-throughput rows for:
+  - Qwen3.5/PARO c=1 parent fixture equality (`2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json`);
+  - Qwen3.5/PARO c=N generated equality (`2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json`).
+- Updated `benchmarks/CHANGELOG.md` with 2026-05-15 correctness and rollup entries.
+
+### Notes
+
+- No HIPENGINE throughput row was promoted. The c=N accepted gate is explicitly serial (`step_batch_serial`) and remains a correctness gate only.
+- The current-fastest HIPENGINE throughput table still has no accepted row; Task #15 remains the native compact/c-aware path needed before retaining c>N performance claims.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: `69 passed`.
