@@ -4498,3 +4498,52 @@ Results:
 ### Next
 
 - Continue task #38 with FP16 wrappers for linear-attention lowp and gated-attention paths.
+
+---
+
+## 2026-05-15 — Add FP16 linear-attention lowp wrappers
+
+### Scope
+
+- Added parent-mixed FP16 raw-pointer wrappers for Qwen3.5/PARO linear-attention lowp paths:
+  - `qwen35_linear_attn_conv_decode_fp16(...)` / `hipengine_qwen35_linear_attn_conv_decode_fp16`
+  - `qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16(...)` / `hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16`
+  - `qwen35_linear_attn_prefill_prepare_f32_fp16(...)` / `hipengine_qwen35_linear_attn_prefill_prepare_f32_fp16`
+  - `qwen35_gdn_prefill_rmsnorm_gate_fp16(...)` / `hipengine_qwen35_gdn_prefill_rmsnorm_gate_fp16`
+- Registered variants `linear_attn_conv_decode/fp16`, `gdn_recurrent_rmsnorm_gate/fp16_lowp`, `linear_attn_prefill_prepare/f32_fp16`, and `gdn_prefill_rmsnorm_gate/fp16` under `w4_paro`.
+- Extended linear-attention conv/GDN/prefill smokes with FP16 oracles while preserving existing BF16/F32 coverage.
+- Updated `docs/KERNELS.md` and `docs/IMPLEMENTATION.md`; remaining task #38 wrapper gap is gated full-attention output.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_qwen35_linear_attn_conv_plan.py tests/test_qwen35_linear_attn_gdn_plan.py -q
+python3 -m pytest tests/test_qwen35_linear_attn_conv_plan.py tests/test_qwen35_linear_attn_gdn_plan.py tests/test_qwen35_decode_state.py tests/test_generation_qwen35_paro.py -q
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-linear-attn-conv-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-linear-attn-fp16-conv -- \
+  python3 scripts/smoke.py --mode qwen35-linear-attn-conv-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-linear-attn-fp16-gdn -- \
+  python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-linear-attn-fp16-prefill -- \
+  python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- Plan/decode-state tests passed: targeted linear-attn plan tests `6 passed`; extended set `32 passed`.
+- Conv smoke passed: F32/BF16/FP16 `*_out_max_abs=7.45e-09`; all state max abs `0`.
+- GDN decode smoke passed: BF16 and FP16 `out_max_abs=2.98e-08`, `state_max_abs=1.49e-08`.
+- Linear prefill smoke passed: BF16 `gated_mismatch=0`; FP16 `fp16_gated_mismatch=0`; `fp16_prepare_max_abs=5.96e-08`, `fp16_gdn_k2_out_max_abs=1.4e-09`, `fp16_gdn_k2_state_max_abs=1.12e-08`.
+- `rocprofv3` confirmed FP16 kernels ran on W7900:
+  - `qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>`: `DurationNs=5680`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`, `Workgroup_Size_X=256`.
+  - `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>`: `DurationNs=9920`, `VGPR_Count=56`, `Scratch_Size=0`, `LDS_Block_Size=1616`, `Workgroup_Size_X=128`.
+  - `qwen35_linear_attn_prefill_prepare_kernel<_Float16>`: `DurationNs=12960`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=1024`, `Workgroup_Size_X=128`.
+  - `qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel`: `DurationNs=3000`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=512`, `Workgroup_Size_X=128`.
+
+### Next
+
+- Finish task #38 by adding FP16 gated full-attention output wrappers, then move to task #39 parent activation dtype materialization.

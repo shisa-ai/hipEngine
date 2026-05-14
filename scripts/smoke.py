@@ -1985,8 +1985,10 @@ def qwen35_linear_attn_prefill_hip_smoke(
         qwen35_gdn_prefill_recurrent_f32,
         qwen35_gdn_prefill_recurrent_k2_f32,
         qwen35_gdn_prefill_rmsnorm_gate_bf16,
+        qwen35_gdn_prefill_rmsnorm_gate_fp16,
         qwen35_linear_attn_conv_prefill_f32,
         qwen35_linear_attn_prefill_prepare_f32_bf16,
+        qwen35_linear_attn_prefill_prepare_f32_fp16,
     )
 
     runtime = get_hip_runtime()
@@ -2058,6 +2060,11 @@ def qwen35_linear_attn_prefill_hip_smoke(
                     out[token, v_head, value_idx] = np.sum(query[token, v_head] * state_vec, dtype=np.float32)
         return out, new_state
 
+    def lowp_to_float32(values: np.ndarray) -> np.ndarray:
+        if values.dtype == np.uint16:
+            return _bf16_bits_to_float32(values)
+        return values.astype(np.float32)
+
     def linear_prefill_prepare_ref(
         conv_out_src: np.ndarray,
         a_bits: np.ndarray,
@@ -2078,8 +2085,8 @@ def qwen35_linear_attn_prefill_hip_smoke(
         value_out = np.empty((tokens, num_v_heads, head_v_dim), dtype=np.float32)
         beta_out = np.empty((tokens, num_v_heads), dtype=np.float32)
         decay_out = np.empty((tokens, num_v_heads), dtype=np.float32)
-        a_f32 = _bf16_bits_to_float32(a_bits)
-        b_f32 = _bf16_bits_to_float32(b_bits)
+        a_f32 = lowp_to_float32(a_bits)
+        b_f32 = lowp_to_float32(b_bits)
         for token in range(tokens):
             for v_head in range(num_v_heads):
                 k_head = v_head // repeat
@@ -2111,8 +2118,15 @@ def qwen35_linear_attn_prefill_hip_smoke(
                 )
         return query_out, key_out, value_out, beta_out, decay_out
 
-    def rmsnorm_gate_ref(recurrent: np.ndarray, gate_bits: np.ndarray, norm_weight: np.ndarray, eps: float) -> np.ndarray:
-        gate_f32 = _bf16_bits_to_float32(gate_bits).reshape(recurrent.shape)
+    def rmsnorm_gate_ref(
+        recurrent: np.ndarray,
+        gate_bits: np.ndarray,
+        norm_weight: np.ndarray,
+        eps: float,
+        *,
+        output_dtype: str = "bf16",
+    ) -> np.ndarray:
+        gate_f32 = lowp_to_float32(gate_bits).reshape(recurrent.shape)
         out = np.empty_like(recurrent, dtype=np.float32)
         for token in range(recurrent.shape[0]):
             for head in range(recurrent.shape[1]):
@@ -2121,6 +2135,8 @@ def qwen35_linear_attn_prefill_hip_smoke(
                     np.sum(row * row, dtype=np.float32) / np.float32(row.shape[0]) + np.float32(eps)
                 )
                 out[token, head] = row * inv * norm_weight * _silu_np(gate_f32[token, head])
+        if output_dtype == "fp16":
+            return out.astype(np.float16)
         return _float32_to_bf16_bits(out.reshape(-1)).reshape(recurrent.shape)
 
     conv_tokens = 5
@@ -2151,12 +2167,18 @@ def qwen35_linear_attn_prefill_hip_smoke(
         [[((token * 29 + col * 7) % 23 - 11) * 0.01 for col in range(qkv_width)] for token in range(tokens)],
         dtype=np.float32,
     )
-    a_bits = _float32_to_bf16_bits(
-        np.asarray([[((token * 3 + head) % 5 - 2) * 0.125 for head in range(num_v_heads)] for token in range(tokens)], dtype=np.float32)
+    a_values = np.asarray(
+        [[((token * 3 + head) % 5 - 2) * 0.125 for head in range(num_v_heads)] for token in range(tokens)],
+        dtype=np.float32,
     )
-    b_bits = _float32_to_bf16_bits(
-        np.asarray([[((token * 5 + head * 2) % 7 - 3) * 0.1 for head in range(num_v_heads)] for token in range(tokens)], dtype=np.float32)
+    b_values = np.asarray(
+        [[((token * 5 + head * 2) % 7 - 3) * 0.1 for head in range(num_v_heads)] for token in range(tokens)],
+        dtype=np.float32,
     )
+    a_bits = _float32_to_bf16_bits(a_values)
+    b_bits = _float32_to_bf16_bits(b_values)
+    a_fp16 = a_values.astype(np.float16)
+    b_fp16 = b_values.astype(np.float16)
     dt_bias = np.asarray([0.125, -0.25], dtype=np.float32)
     a_log = np.asarray([-1.0, -0.5], dtype=np.float32)
     query, key, value, beta, decay = linear_prefill_prepare_ref(
@@ -2175,6 +2197,22 @@ def qwen35_linear_attn_prefill_hip_smoke(
     value_actual = np.empty_like(value)
     beta_actual = np.empty_like(beta)
     decay_actual = np.empty_like(decay)
+    query_fp16, key_fp16, value_fp16, beta_fp16, decay_fp16 = linear_prefill_prepare_ref(
+        conv_gdn,
+        a_fp16,
+        b_fp16,
+        dt_bias,
+        a_log,
+        num_k_heads=num_k_heads,
+        num_v_heads=num_v_heads,
+        head_k_dim=head_k_dim,
+        head_v_dim=head_v_dim,
+    )
+    query_fp16_actual = np.empty_like(query_fp16)
+    key_fp16_actual = np.empty_like(key_fp16)
+    value_fp16_actual = np.empty_like(value_fp16)
+    beta_fp16_actual = np.empty_like(beta_fp16)
+    decay_fp16_actual = np.empty_like(decay_fp16)
     state = np.asarray(
         [
             [[((head * 23 + k * 5 + d * 3) % 19 - 9) * 0.01 for d in range(head_v_dim)] for k in range(head_k_dim)]
@@ -2182,24 +2220,31 @@ def qwen35_linear_attn_prefill_hip_smoke(
         ],
         dtype=np.float32,
     )
-    gate_bits = _float32_to_bf16_bits(
-        np.asarray(
-            [
-                [[((token * 7 + head * 3 + d) % 9 - 4) * 0.0625 for d in range(head_v_dim)] for head in range(num_v_heads)]
-                for token in range(tokens)
-            ],
-            dtype=np.float32,
-        )
+    gate_values = np.asarray(
+        [
+            [[((token * 7 + head * 3 + d) % 9 - 4) * 0.0625 for d in range(head_v_dim)] for head in range(num_v_heads)]
+            for token in range(tokens)
+        ],
+        dtype=np.float32,
     )
+    gate_bits = _float32_to_bf16_bits(gate_values)
+    gate_fp16 = gate_values.astype(np.float16)
     norm_weight = np.asarray([1.0, 0.5, 0.25, 2.0], dtype=np.float32)
     eps = 1.0e-6
     gdn_out = np.empty((tokens, num_v_heads, head_v_dim), dtype=np.float32)
     gdn_k2_out = np.empty_like(gdn_out)
+    gdn_k2_fp16_out = np.empty_like(gdn_out)
     gated_bits = np.empty((tokens, num_v_heads, head_v_dim), dtype=np.uint16)
+    gated_fp16 = np.empty((tokens, num_v_heads, head_v_dim), dtype=np.float16)
     expected_gdn_out, expected_gdn_state = gdn_prefill_ref(query, key, value, beta, decay, state)
+    expected_gdn_fp16_out, expected_gdn_fp16_state = gdn_prefill_ref(
+        query_fp16, key_fp16, value_fp16, beta_fp16, decay_fp16, state
+    )
     expected_gated_bits = rmsnorm_gate_ref(expected_gdn_out, gate_bits, norm_weight, eps)
+    expected_gated_fp16 = rmsnorm_gate_ref(expected_gdn_fp16_out, gate_fp16, norm_weight, eps, output_dtype="fp16")
     state_regular = state.copy()
     state_k2 = state.copy()
+    state_k2_fp16 = state.copy()
 
     try:
         hidden_dev = dev(hidden)
@@ -2220,6 +2265,8 @@ def qwen35_linear_attn_prefill_hip_smoke(
         conv_gdn_dev = dev(conv_gdn)
         a_dev = dev(a_bits)
         b_dev = dev(b_bits)
+        a_fp16_dev = dev(a_fp16)
+        b_fp16_dev = dev(b_fp16)
         dt_bias_dev = dev(dt_bias)
         a_log_dev = dev(a_log)
         query_dev = out_dev(query_actual)
@@ -2227,13 +2274,22 @@ def qwen35_linear_attn_prefill_hip_smoke(
         value_dev = out_dev(value_actual)
         beta_dev = out_dev(beta_actual)
         decay_dev = out_dev(decay_actual)
+        query_fp16_dev = out_dev(query_fp16_actual)
+        key_fp16_dev = out_dev(key_fp16_actual)
+        value_fp16_dev = out_dev(value_fp16_actual)
+        beta_fp16_dev = out_dev(beta_fp16_actual)
+        decay_fp16_dev = out_dev(decay_fp16_actual)
         state_regular_dev = dev(state_regular)
         state_k2_dev = dev(state_k2)
+        state_k2_fp16_dev = dev(state_k2_fp16)
         gdn_out_dev = out_dev(gdn_out)
         gdn_k2_out_dev = out_dev(gdn_k2_out)
+        gdn_k2_fp16_out_dev = out_dev(gdn_k2_fp16_out)
         gated_bits_dev = out_dev(gated_bits)
+        gated_fp16_dev = out_dev(gated_fp16)
         norm_weight_dev = dev(norm_weight)
         gate_dev = dev(gate_bits)
+        gate_fp16_dev = dev(gate_fp16)
         qwen35_linear_attn_prefill_prepare_f32_bf16(
             conv_gdn_dev.ptr,
             a_dev.ptr,
@@ -2295,6 +2351,52 @@ def qwen35_linear_attn_prefill_hip_smoke(
             library=gdn_library,
             runtime=runtime,
         )
+        qwen35_linear_attn_prefill_prepare_f32_fp16(
+            conv_gdn_dev.ptr,
+            a_fp16_dev.ptr,
+            b_fp16_dev.ptr,
+            dt_bias_dev.ptr,
+            a_log_dev.ptr,
+            query_fp16_dev.ptr,
+            key_fp16_dev.ptr,
+            value_fp16_dev.ptr,
+            beta_fp16_dev.ptr,
+            decay_fp16_dev.ptr,
+            tokens,
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=gdn_library,
+            runtime=runtime,
+        )
+        qwen35_gdn_prefill_recurrent_k2_f32(
+            query_fp16_dev.ptr,
+            key_fp16_dev.ptr,
+            value_fp16_dev.ptr,
+            beta_fp16_dev.ptr,
+            decay_fp16_dev.ptr,
+            state_k2_fp16_dev.ptr,
+            gdn_k2_fp16_out_dev.ptr,
+            tokens,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=gdn_library,
+            runtime=runtime,
+        )
+        qwen35_gdn_prefill_rmsnorm_gate_fp16(
+            gdn_k2_fp16_out_dev.ptr,
+            gate_fp16_dev.ptr,
+            norm_weight_dev.ptr,
+            gated_fp16_dev.ptr,
+            eps,
+            tokens,
+            num_v_heads,
+            head_v_dim,
+            library=gdn_library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(conv_out), conv_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(conv_state), conv_state_dev, runtime=runtime)
@@ -2303,11 +2405,19 @@ def qwen35_linear_attn_prefill_hip_smoke(
         copy_device_to_host(host_array_ptr(value_actual), value_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(beta_actual), beta_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(decay_actual), decay_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(query_fp16_actual), query_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(key_fp16_actual), key_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(value_fp16_actual), value_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(beta_fp16_actual), beta_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(decay_fp16_actual), decay_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gdn_out), gdn_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gdn_k2_out), gdn_k2_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(gdn_k2_fp16_out), gdn_k2_fp16_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gated_bits), gated_bits_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(gated_fp16), gated_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(state_regular), state_regular_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(state_k2), state_k2_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(state_k2_fp16), state_k2_fp16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
@@ -2323,13 +2433,25 @@ def qwen35_linear_attn_prefill_hip_smoke(
     gdn_state_max_abs = float(np.max(np.abs(state_regular - expected_gdn_state)))
     gdn_k2_out_max_abs = float(np.max(np.abs(gdn_k2_out - expected_gdn_out)))
     gdn_k2_state_max_abs = float(np.max(np.abs(state_k2 - expected_gdn_state)))
+    fp16_query_max_abs = float(np.max(np.abs(query_fp16_actual - query_fp16)))
+    fp16_key_max_abs = float(np.max(np.abs(key_fp16_actual - key_fp16)))
+    fp16_value_max_abs = float(np.max(np.abs(value_fp16_actual - value_fp16)))
+    fp16_beta_max_abs = float(np.max(np.abs(beta_fp16_actual - beta_fp16)))
+    fp16_decay_max_abs = float(np.max(np.abs(decay_fp16_actual - decay_fp16)))
+    fp16_gdn_k2_out_max_abs = float(np.max(np.abs(gdn_k2_fp16_out - expected_gdn_fp16_out)))
+    fp16_gdn_k2_state_max_abs = float(np.max(np.abs(state_k2_fp16 - expected_gdn_fp16_state)))
     gated_mismatch = int(np.count_nonzero(gated_bits != expected_gated_bits))
+    fp16_gated_mismatch = int(np.count_nonzero(gated_fp16.view(np.uint16) != expected_gated_fp16.view(np.uint16)))
     print(
         f"conv_out_max_abs={conv_out_max_abs:.3g} conv_state_max_abs={conv_state_max_abs:.3g} "
         f"prepare_max_abs={max(query_max_abs, key_max_abs, value_max_abs, beta_max_abs, decay_max_abs):.3g} "
         f"gdn_out_max_abs={gdn_out_max_abs:.3g} gdn_state_max_abs={gdn_state_max_abs:.3g} "
         f"gdn_k2_out_max_abs={gdn_k2_out_max_abs:.3g} gdn_k2_state_max_abs={gdn_k2_state_max_abs:.3g} "
-        f"gated_mismatch={gated_mismatch}"
+        f"gated_mismatch={gated_mismatch} "
+        f"fp16_prepare_max_abs={max(fp16_query_max_abs, fp16_key_max_abs, fp16_value_max_abs, fp16_beta_max_abs, fp16_decay_max_abs):.3g} "
+        f"fp16_gdn_k2_out_max_abs={fp16_gdn_k2_out_max_abs:.3g} "
+        f"fp16_gdn_k2_state_max_abs={fp16_gdn_k2_state_max_abs:.3g} "
+        f"fp16_gated_mismatch={fp16_gated_mismatch}"
     )
     return 0 if max(
         conv_out_max_abs,
@@ -2343,7 +2465,14 @@ def qwen35_linear_attn_prefill_hip_smoke(
         gdn_state_max_abs,
         gdn_k2_out_max_abs,
         gdn_k2_state_max_abs,
-    ) <= 1.0e-5 and gated_mismatch == 0 else 1
+        fp16_query_max_abs,
+        fp16_key_max_abs,
+        fp16_value_max_abs,
+        fp16_beta_max_abs,
+        fp16_decay_max_abs,
+        fp16_gdn_k2_out_max_abs,
+        fp16_gdn_k2_state_max_abs,
+    ) <= 1.0e-5 and gated_mismatch == 0 and fp16_gated_mismatch == 0 else 1
 
 
 def qwen35_linear_attn_gdn_hip_smoke(
@@ -2364,6 +2493,7 @@ def qwen35_linear_attn_gdn_hip_smoke(
     from hipengine.kernels.hip_gfx1100.linear_attn import (
         build_qwen35_linear_attn_gdn,
         qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
     )
 
     num_k_heads = 1
@@ -2379,6 +2509,9 @@ def qwen35_linear_attn_gdn_hip_smoke(
     )
     a = _float32_to_bf16_bits(np.asarray([-0.25, 0.5], dtype=np.float32))
     b = _float32_to_bf16_bits(np.asarray([0.25, -0.5], dtype=np.float32))
+    gate_fp16 = _bf16_bits_to_float32(gate).astype(np.float16)
+    a_fp16 = _bf16_bits_to_float32(a).astype(np.float16)
+    b_fp16 = _bf16_bits_to_float32(b).astype(np.float16)
     dt_bias = np.asarray([0.125, -0.25], dtype=np.float32)
     a_log = np.asarray([-1.0, -0.5], dtype=np.float32)
     norm_weight = np.asarray([1.0, 0.5, 0.25, 2.0], dtype=np.float32)
@@ -2392,6 +2525,7 @@ def qwen35_linear_attn_gdn_hip_smoke(
         dtype=np.float32,
     ).reshape(num_v_heads, head_k_dim, head_v_dim)
     out = np.empty((num_v_heads, head_v_dim), dtype=np.float32)
+    out_fp16 = np.empty_like(out)
 
     def softplus(x: np.float32) -> np.float32:
         return np.float32(x if x > np.float32(20.0) else np.log1p(np.exp(x, dtype=np.float32), dtype=np.float32))
@@ -2477,11 +2611,16 @@ def qwen35_linear_attn_gdn_hip_smoke(
         gate_dev = dev(gate)
         a_dev = dev(a)
         b_dev = dev(b)
+        gate_fp16_dev = dev(gate_fp16)
+        a_fp16_dev = dev(a_fp16)
+        b_fp16_dev = dev(b_fp16)
         dt_bias_dev = dev(dt_bias)
         a_log_dev = dev(a_log)
         norm_weight_dev = dev(norm_weight)
         recurrent_state_dev = dev(recurrent_state)
+        recurrent_state_fp16_dev = dev(recurrent_state.copy())
         out_dev_buf = out_dev(out)
+        out_fp16_dev = out_dev(out_fp16)
         qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
             conv_out_dev.ptr,
             gate_dev.ptr,
@@ -2500,21 +2639,45 @@ def qwen35_linear_attn_gdn_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16(
+            conv_out_dev.ptr,
+            gate_fp16_dev.ptr,
+            a_fp16_dev.ptr,
+            b_fp16_dev.ptr,
+            dt_bias_dev.ptr,
+            a_log_dev.ptr,
+            norm_weight_dev.ptr,
+            recurrent_state_fp16_dev.ptr,
+            out_fp16_dev.ptr,
+            eps,
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(out), out_dev_buf, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_fp16), out_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(recurrent_state), recurrent_state_dev, runtime=runtime)
+        fp16_state = recurrent_state.copy()
+        copy_device_to_host(host_array_ptr(fp16_state), recurrent_state_fp16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
     out_max_abs = float(np.max(np.abs(out - expected_out)))
     state_max_abs = float(np.max(np.abs(recurrent_state - expected_state)))
+    fp16_out_max_abs = float(np.max(np.abs(out_fp16 - expected_out)))
+    fp16_state_max_abs = float(np.max(np.abs(fp16_state - expected_state)))
     print(
         f"num_k_heads={num_k_heads} num_v_heads={num_v_heads} head_k_dim={head_k_dim} "
-        f"head_v_dim={head_v_dim} out_max_abs={out_max_abs:.3g} state_max_abs={state_max_abs:.3g}"
+        f"head_v_dim={head_v_dim} out_max_abs={out_max_abs:.3g} state_max_abs={state_max_abs:.3g} "
+        f"fp16_out_max_abs={fp16_out_max_abs:.3g} fp16_state_max_abs={fp16_state_max_abs:.3g}"
     )
     print("gdn_out=", out.reshape(-1).tolist())
-    return 0 if max(out_max_abs, state_max_abs) <= 1.0e-6 else 1
+    return 0 if max(out_max_abs, state_max_abs, fp16_out_max_abs, fp16_state_max_abs) <= 1.0e-6 else 1
 
 def qwen35_linear_attn_conv_hip_smoke(
     *,
@@ -2535,12 +2698,14 @@ def qwen35_linear_attn_conv_hip_smoke(
         build_qwen35_linear_attn_conv,
         qwen35_linear_attn_conv_decode_bf16,
         qwen35_linear_attn_conv_decode_f32,
+        qwen35_linear_attn_conv_decode_fp16,
     )
 
     channels = 8
     kernel_size = 4
     hidden_f32 = np.asarray([-0.5, -0.25, 0.25, 0.5, -0.5, -0.25, 0.25, 0.5], dtype=np.float32)
     hidden_bits = _float32_to_bf16_bits(hidden_f32)
+    hidden_fp16 = hidden_f32.astype(np.float16)
     conv_state_base = np.asarray(
         [[0.125 * ((channel + k) % 5 - 2) for k in range(kernel_size)] for channel in range(channels)],
         dtype=np.float32,
@@ -2551,8 +2716,10 @@ def qwen35_linear_attn_conv_hip_smoke(
     )
     state_f32 = conv_state_base.copy()
     state_bf16 = conv_state_base.copy()
+    state_fp16 = conv_state_base.copy()
     out_f32 = np.empty(channels, dtype=np.float32)
     out_bf16 = np.empty(channels, dtype=np.float32)
+    out_fp16 = np.empty(channels, dtype=np.float32)
 
     def conv_ref(hidden: np.ndarray, state: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         new_state = state.copy()
@@ -2571,6 +2738,7 @@ def qwen35_linear_attn_conv_hip_smoke(
 
     expected_f32, expected_state_f32 = conv_ref(hidden_f32, conv_state_base)
     expected_bf16, expected_state_bf16 = conv_ref(_bf16_bits_to_float32(hidden_bits), conv_state_base)
+    expected_fp16, expected_state_fp16 = conv_ref(hidden_fp16.astype(np.float32), conv_state_base)
 
     runtime = get_hip_runtime()
     library = build_qwen35_linear_attn_conv(
@@ -2594,11 +2762,14 @@ def qwen35_linear_attn_conv_hip_smoke(
     try:
         hidden_f32_dev = dev(hidden_f32)
         hidden_bf16_dev = dev(hidden_bits)
+        hidden_fp16_dev = dev(hidden_fp16)
         state_f32_dev = dev(state_f32)
         state_bf16_dev = dev(state_bf16)
+        state_fp16_dev = dev(state_fp16)
         weight_dev = dev(conv_weight)
         out_f32_dev = out_dev(out_f32)
         out_bf16_dev = out_dev(out_bf16)
+        out_fp16_dev = out_dev(out_fp16)
         qwen35_linear_attn_conv_decode_f32(
             hidden_f32_dev.ptr,
             state_f32_dev.ptr,
@@ -2619,11 +2790,23 @@ def qwen35_linear_attn_conv_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        qwen35_linear_attn_conv_decode_fp16(
+            hidden_fp16_dev.ptr,
+            state_fp16_dev.ptr,
+            weight_dev.ptr,
+            out_fp16_dev.ptr,
+            channels,
+            kernel_size,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(out_f32), out_f32_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(out_bf16), out_bf16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_fp16), out_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(state_f32), state_f32_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(state_bf16), state_bf16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(state_fp16), state_fp16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
@@ -2632,13 +2815,23 @@ def qwen35_linear_attn_conv_hip_smoke(
     f32_state_max_abs = float(np.max(np.abs(state_f32 - expected_state_f32)))
     bf16_out_max_abs = float(np.max(np.abs(out_bf16 - expected_bf16)))
     bf16_state_max_abs = float(np.max(np.abs(state_bf16 - expected_state_bf16)))
+    fp16_out_max_abs = float(np.max(np.abs(out_fp16 - expected_fp16)))
+    fp16_state_max_abs = float(np.max(np.abs(state_fp16 - expected_state_fp16)))
     print(
         f"channels={channels} kernel_size={kernel_size} "
         f"f32_out_max_abs={f32_out_max_abs:.3g} f32_state_max_abs={f32_state_max_abs:.3g} "
-        f"bf16_out_max_abs={bf16_out_max_abs:.3g} bf16_state_max_abs={bf16_state_max_abs:.3g}"
+        f"bf16_out_max_abs={bf16_out_max_abs:.3g} bf16_state_max_abs={bf16_state_max_abs:.3g} "
+        f"fp16_out_max_abs={fp16_out_max_abs:.3g} fp16_state_max_abs={fp16_state_max_abs:.3g}"
     )
     print("conv_f32=", out_f32.tolist())
-    return 0 if max(f32_out_max_abs, f32_state_max_abs, bf16_out_max_abs, bf16_state_max_abs) <= 1.0e-6 else 1
+    return 0 if max(
+        f32_out_max_abs,
+        f32_state_max_abs,
+        bf16_out_max_abs,
+        bf16_state_max_abs,
+        fp16_out_max_abs,
+        fp16_state_max_abs,
+    ) <= 1.0e-6 else 1
 
 def qwen35_rotary_hip_smoke(
     *,

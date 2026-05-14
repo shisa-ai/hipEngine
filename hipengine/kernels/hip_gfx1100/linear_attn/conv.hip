@@ -4,6 +4,8 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
+using half_t = _Float16;
+
 namespace {
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
@@ -203,6 +205,34 @@ extern "C" int hipengine_qwen35_linear_attn_conv_decode_bf16(
   const int blocks = static_cast<int>((channels + threads - 1) / threads);
   hipLaunchKernelGGL(
       (qwen35_linear_attn_conv_decode_lowp_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      hidden_states,
+      conv_state,
+      conv_weight,
+      out,
+      channels,
+      kernel_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_conv_decode_fp16(
+    const half_t* hidden_states,
+    float* conv_state,
+    const float* conv_weight,
+    float* out,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  if (!valid_conv_shape(channels, kernel_size)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((channels + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      (qwen35_linear_attn_conv_decode_lowp_kernel<half_t>),
       dim3(static_cast<unsigned int>(blocks)),
       dim3(threads),
       0,

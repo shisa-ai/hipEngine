@@ -76,8 +76,8 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add parent-parity FP16 PARO RMSNorm raw-pointer wrappers (`paro_rmsnorm_out_fp16`, `paro_add_rmsnorm_out_fp16`).
   - [x] Port runtime BF16/F32 cast helpers (`f32_to_bf16`, `bf16_to_f32`) for projection glue.
   - [x] Port Qwen full-attention prelude kernels (`partial_rotary`, `head_rmsnorm+partial_rotary`, position variant).
-  - [x] Port Qwen linear-attention decode/prefill convolution (`qwen35_linear_attn_conv_decode*`, `qwen35_linear_attn_conv_prefill`).
-  - [x] Port Qwen linear-attention recurrent GDN decode/prefill kernels (`qwen35_gdn_recurrent_rmsnorm_gate_lowp`, `qwen35_gdn_prefill_recurrent*`, prefill prepare, RMSNorm+gate).
+  - [x] Port Qwen linear-attention decode/prefill convolution (`qwen35_linear_attn_conv_decode*`, `qwen35_linear_attn_conv_prefill`), including parent-parity FP16 lowp decode wrapper.
+  - [x] Port Qwen linear-attention recurrent GDN decode/prefill kernels (`qwen35_gdn_recurrent_rmsnorm_gate_lowp`, `qwen35_gdn_prefill_recurrent*`, prefill prepare, RMSNorm+gate), including parent-parity FP16 lowp wrappers.
   - [x] Wire Qwen3.5/PARO decode-state batched linear-attention prefill through out-projection.
   - [x] Add batched c1-style MoE support for selected gate/up input mapping and shared-residual combine.
   - [x] Add resident-session native batched prefill diagnostic for linear-attention-only layer prefixes.

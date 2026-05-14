@@ -4,6 +4,8 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
+using half_t = _Float16;
+
 namespace {
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
@@ -378,10 +380,11 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
   recurrent_state[state_offset1] = state_value1;
 }
 
+template <typename scalar_t>
 __global__ void qwen35_linear_attn_prefill_prepare_kernel(
     const float* __restrict__ conv_out,
-    const uint16_t* __restrict__ a,
-    const uint16_t* __restrict__ b,
+    const scalar_t* __restrict__ a,
+    const scalar_t* __restrict__ b,
     const float* __restrict__ dt_bias,
     const float* __restrict__ a_log,
     float* __restrict__ query,
@@ -446,9 +449,9 @@ __global__ void qwen35_linear_attn_prefill_prepare_kernel(
   }
   if (threadIdx.x == 0) {
     const int64_t scalar_idx = token * num_v_heads + v_head;
-    beta[scalar_idx] = sigmoid_f32(bf16_bits_to_float(b[scalar_idx]));
+    beta[scalar_idx] = sigmoid_f32(scalar_to_float_qwen35(b[scalar_idx]));
     decay[scalar_idx] = expf(
-        -expf(a_log[v_head]) * softplus_f32(bf16_bits_to_float(a[scalar_idx]) + dt_bias[v_head]));
+        -expf(a_log[v_head]) * softplus_f32(scalar_to_float_qwen35(a[scalar_idx]) + dt_bias[v_head]));
   }
 }
 
@@ -488,6 +491,42 @@ __global__ void qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(
   }
 }
 
+__global__ void qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel(
+    const float* __restrict__ recurrent,
+    const half_t* __restrict__ gate,
+    const float* __restrict__ norm_weight,
+    half_t* __restrict__ out,
+    float eps,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  extern __shared__ float partial[];
+  const int64_t token = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  if (token >= tokens || v_head >= num_v_heads) {
+    return;
+  }
+  const int64_t base = (token * num_v_heads + v_head) * head_v_dim;
+  float sumsq = 0.0f;
+  for (int64_t idx = threadIdx.x; idx < head_v_dim; idx += blockDim.x) {
+    const float x = recurrent[base + idx];
+    sumsq += x * x;
+  }
+  partial[threadIdx.x] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf((partial[0] / static_cast<float>(head_v_dim)) + eps);
+  for (int64_t idx = threadIdx.x; idx < head_v_dim; idx += blockDim.x) {
+    const float gated = recurrent[base + idx] * inv_rms * norm_weight[idx] * silu_f32(static_cast<float>(gate[base + idx]));
+    out[base + idx] = static_cast<half_t>(gated);
+  }
+}
+
 bool valid_gdn_shape(int64_t num_k_heads, int64_t num_v_heads, int64_t head_k_dim, int64_t head_v_dim) {
   return num_k_heads > 0 && num_v_heads > 0 && (num_v_heads % num_k_heads) == 0 &&
       head_k_dim > 0 && head_v_dim > 0 && head_v_dim <= 128;
@@ -523,6 +562,50 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
   const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
   hipLaunchKernelGGL(
       (qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      recurrent_state,
+      out,
+      eps,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16(
+    const float* conv_out,
+    const half_t* gate,
+    const half_t* a,
+    const half_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    float* recurrent_state,
+    float* out,
+    float eps,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!valid_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<half_t>),
       dim3(static_cast<unsigned int>(num_v_heads)),
       dim3(threads),
       shared_bytes,
@@ -641,7 +724,53 @@ extern "C" int hipengine_qwen35_linear_attn_prefill_prepare_f32_bf16(
   const int threads = 128;
   const size_t shared_bytes = static_cast<size_t>(2 * threads) * sizeof(float);
   hipLaunchKernelGGL(
-      qwen35_linear_attn_prefill_prepare_kernel,
+      (qwen35_linear_attn_prefill_prepare_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      query,
+      key,
+      value,
+      beta,
+      decay,
+      tokens,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_prefill_prepare_f32_fp16(
+    const float* conv_out,
+    const half_t* a,
+    const half_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    float* query,
+    float* key,
+    float* value,
+    float* beta,
+    float* decay,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!valid_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>(2 * threads) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_linear_attn_prefill_prepare_kernel<half_t>),
       dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(num_v_heads)),
       dim3(threads),
       shared_bytes,
@@ -680,6 +809,37 @@ extern "C" int hipengine_qwen35_gdn_prefill_rmsnorm_gate_bf16(
   const int threads = 128;
   hipLaunchKernelGGL(
       qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel,
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      recurrent,
+      gate,
+      norm_weight,
+      out,
+      eps,
+      tokens,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_rmsnorm_gate_fp16(
+    const float* recurrent,
+    const half_t* gate,
+    const float* norm_weight,
+    half_t* out,
+    float eps,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_v_heads <= 0 || head_v_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel,
       dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(num_v_heads)),
       dim3(threads),
       static_cast<size_t>(threads) * sizeof(float),
