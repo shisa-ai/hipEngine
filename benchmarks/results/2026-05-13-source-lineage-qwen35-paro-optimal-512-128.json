@@ -3,7 +3,7 @@
   "status": "accepted",
   "timestamp": "2026-05-13T04:49:36.987924+00:00",
   "run_tag": "source-lineage-qwen35-paro-optimal-512-128",
-  "summary": "Source-lineage parent OPTIMAL Qwen3.5-PARO 512/128 run for HIPENGINE parity target",
+  "summary": "Source-lineage parent OPTIMAL Qwen3.5-PARO 512/128 run for hipENGINE parity target",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100",
@@ -201,7 +201,7 @@
   },
   "decision": {
     "accepted": true,
-    "reason": "Source-lineage parity target captured for HIPENGINE comparison"
+    "reason": "Source-lineage parity target captured for hipENGINE comparison"
   },
-  "notes": "This is not a HIPENGINE measurement; it is the parent source-lineage target row to reproduce."
+  "notes": "This is not a hipENGINE measurement; it is the parent source-lineage target row to reproduce."
 }

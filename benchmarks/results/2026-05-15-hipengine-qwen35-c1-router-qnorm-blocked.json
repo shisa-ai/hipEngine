@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-15T06:55:00-07:00",
   "run_tag": "hipengine-qwen35-c1-router-qnorm-fix",
-  "summary": "HIPENGINE resident c=1 now matches parent router/shared-gate BF16 materialization and parent q/k head-norm offset preparation; prefill seed is restored to 4403, but first decode token still mismatches parent 1739 vs HIP 4096.",
+  "summary": "hipENGINE resident c=1 now matches parent router/shared-gate BF16 materialization and parent q/k head-norm offset preparation; prefill seed is restored to 4403, but first decode token still mismatches parent 1739 vs HIP 4096.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100"

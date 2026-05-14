@@ -1,4 +1,4 @@
-# HIPENGINE Implementation Punchlist
+# hipENGINE Implementation Punchlist
 
 Active implementation checklist. Keep this file lightweight; durable architecture lives in `docs/PLAN.md`, benchmark procedure in `docs/BENCHMARK.md`, and kernel port procedure in `docs/KERNELS.md`.
 
@@ -24,8 +24,8 @@ Active implementation checklist. Keep this file lightweight; durable architectur
 
 Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependency map.
 
-- [x] Map current `~/amd-gpu-tuning/docs/OPTIMAL.md` route against current parent HEAD and HIPENGINE-landed status.
-- [x] Add parent-baseline/HIPENGINE-blocked benchmark artifacts for OPTIMAL 512/128 and 4K/128.
+- [x] Map current `~/amd-gpu-tuning/docs/OPTIMAL.md` route against current parent HEAD and hipENGINE-landed status.
+- [x] Add parent-baseline/hipENGINE-blocked benchmark artifacts for OPTIMAL 512/128 and 4K/128.
 - [x] Port PARO RMSNorm out-kernels (`paro_rmsnorm_out`, `paro_add_rmsnorm_out`).
 - [ ] Port MoE c=1 decode vertical slice (router, selected pack8 GEMV, fused activation/down-rotation, W8A16 shared expert, weighted shared-gate residual combine).
   - [x] Router/shared-gate BF16 hidden/weight raw-pointer path (`qwen35_router_topk_shared_out`).
@@ -89,7 +89,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Port span-shaped Qwen split-K gated FP32 reduce (`qwen35_paged_full_attn_decode_split_k_reduce_gate<float>`).
   - [x] Port span-shaped Qwen split-K gated BF16/FP16 reduce (`qwen35_paged_full_attn_decode_split_k_reduce_gate<hip_bfloat16/_Float16>`) plus dense-context BF16/FP16 gate-mul wrappers.
   - [x] Port Qwen3.5 GQA-specialized split-K context kernels (`qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp`, `*_gqa<8,16,2>`).
-- [ ] Reproduce parent correctness gates and performance rows with HIPENGINE artifacts/rollup updates.
+- [ ] Reproduce parent correctness gates and performance rows with hipENGINE artifacts/rollup updates.
 
 ## Notes
 

@@ -179,7 +179,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "passed": passed,
         "notes": [
             "c=1 resident E2E gate; c>N parity hooks are separate until batched layer runner lands.",
-            "Fixture mode compares HIPENGINE decode-loop outputs against parent nano-vllm-amd outputs after consuming the prefill seed token.",
+            "Fixture mode compares hipENGINE decode-loop outputs against parent nano-vllm-amd outputs after consuming the prefill seed token.",
         ],
     }
 

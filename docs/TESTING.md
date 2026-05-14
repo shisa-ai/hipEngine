@@ -1,6 +1,6 @@
-# HIPENGINE Testing Discipline
+# hipENGINE Testing Discipline
 
-HIPENGINE is math-heavy software. A change that compiles, launches, and gets faster can still be wrong. The default posture is therefore:
+hipENGINE is math-heavy software. A change that compiles, launches, and gets faster can still be wrong. The default posture is therefore:
 
 > **Math changes are guilty until proven correct.**
 
@@ -10,7 +10,7 @@ This doc is the test-authoring playbook. Keep `AGENTS.md` short; put detailed te
 
 The useful shisad lesson is the distinction between structural tests and actual contract tests.
 
-For HIPENGINE:
+For hipENGINE:
 
 - **Structural correctness** is necessary but not sufficient:
   - a registry key resolves;

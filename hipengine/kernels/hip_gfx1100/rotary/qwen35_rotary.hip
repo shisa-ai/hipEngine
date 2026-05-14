@@ -1,5 +1,5 @@
 // Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed.
-// Qwen3.5 partial rotary and fused head-RMSNorm+rotary kernel bodies are preserved; wrappers are HIPENGINE C ABI.
+// Qwen3.5 partial rotary and fused head-RMSNorm+rotary kernel bodies are preserved; wrappers are hipENGINE C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>

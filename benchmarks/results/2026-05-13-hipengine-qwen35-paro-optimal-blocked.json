@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-13T04:49:36.987924+00:00",
   "run_tag": "hipengine-qwen35-paro-optimal-blocked",
-  "summary": "HIPENGINE full OPTIMAL Qwen3.5-PARO inference parity benchmark is blocked before LLM.generate and dependency ports land",
+  "summary": "hipENGINE full OPTIMAL Qwen3.5-PARO inference parity benchmark is blocked before LLM.generate and dependency ports land",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100",
@@ -27,7 +27,7 @@
     "kv_policy": "planned_dense_paged_kvlivespans",
     "warmup_runs": 0,
     "measured_runs": 0,
-    "engine": "HIPENGINE"
+    "engine": "hipENGINE"
   },
   "commands": {
     "benchmark": "python3 - <<'PY'\nfrom hipengine import LLM, SamplingParams\nLLM('/models/.../Qwen3.5-35B-A3B-PARO', quant='w4_paro').generate('...', SamplingParams(max_tokens=128))\nPY",
@@ -58,7 +58,7 @@
   },
   "decision": {
     "accepted": false,
-    "reason": "Blocked: HIPENGINE LLM.generate, w4_paro loader/layout, Qwen3.5 model plugin, MoE/attention/linear/lm_head kernels, and graph replay are not landed yet."
+    "reason": "Blocked: hipENGINE LLM.generate, w4_paro loader/layout, Qwen3.5 model plugin, MoE/attention/linear/lm_head kernels, and graph replay are not landed yet."
   },
   "notes": "Use docs/KERNELS.md Current OPTIMAL MoE port checklist to unblock this benchmark."
 }

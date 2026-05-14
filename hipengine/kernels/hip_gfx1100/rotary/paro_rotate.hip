@@ -1,6 +1,6 @@
 // Ported from nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py @ 59195ed.
 // PARO pairwise rotate2/rotate3 kernel bodies are preserved; rotate1 is the same single-output specialization.
-// Wrappers are HIPENGINE C ABI.
+// Wrappers are hipENGINE C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>

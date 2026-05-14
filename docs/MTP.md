@@ -1,4 +1,4 @@
-# HIPENGINE MTP Native Implementation Plan
+# hipENGINE MTP Native Implementation Plan
 
 > Status: implementation plan. This is the sister document to
 > [`DFLASH.md`](DFLASH.md). MTP should be implemented **after** the shared
@@ -12,7 +12,7 @@ DFlash harness: it can improve accepted-token density, but it cannot beat AR if
 target verification remains a sequence of near-c=1 decode steps plus rollback
 or accepted-prefix re-forward.
 
-The HIPENGINE MTP path should therefore be a thin speculative-draft plugin on
+The hipENGINE MTP path should therefore be a thin speculative-draft plugin on
 top of the same native infrastructure planned in `DFLASH.md`:
 
 - `DraftBatch` candidate metadata;
@@ -28,9 +28,9 @@ separate block-draft model plus draft context KV. MTP uses target-attached MTP
 weights to propose a short chain. The verifier, accept, commit, graph, and
 benchmark contracts should be shared.
 
-## Alignment with existing HIPENGINE design
+## Alignment with existing hipENGINE design
 
-HIPENGINE already has the right abstract contracts:
+hipENGINE already has the right abstract contracts:
 
 | Existing design piece | MTP use |
 | --- | --- |
@@ -103,10 +103,10 @@ Important external facts:
   normalized embedding + normalized target hidden -> `mtp.fc` -> one decoder
   layer -> final norm -> shared lm-head.
 - vLLM warns that using one MTP layer for `num_speculative_tokens > 1` repeats
-  the same predictor and can reduce acceptance. HIPENGINE should measure small
+  the same predictor and can reduce acceptance. hipENGINE should measure small
   depths first rather than assuming deeper is better.
 - llama.cpp-style speculative decode verifies `[last, draft0, ...]` in one
-  target batch and crops/restores to the committed prefix. HIPENGINE should do
+  target batch and crops/restores to the committed prefix. hipENGINE should do
   the same logically, but with transactional scratch/commit instead of a
   measured accepted-prefix re-forward.
 
@@ -186,7 +186,7 @@ MTP can use CPU/reference tests before M0, but retained speed work should wait.
 
 ### Phase M1 — Model metadata and native MTP proposal oracle
 
-Goal: prove HIPENGINE can load and execute the MTP proposal module outside the
+Goal: prove hipENGINE can load and execute the MTP proposal module outside the
 main generation loop.
 
 - Add model-plugin metadata for target-attached MTP tensors.
@@ -299,7 +299,7 @@ layer/family.
 
 ## Promotion gates
 
-A retained HIPENGINE MTP row must satisfy:
+A retained hipENGINE MTP row must satisfy:
 
 | Gate | Requirement |
 | --- | --- |
@@ -329,7 +329,7 @@ not spend iterations on:
 - attention-only tuning when profile says linear/MoE/lm-head dominates;
 - any speed claim that omits same-session AR and exact equality.
 
-## First concrete HIPENGINE tasks after DFlash
+## First concrete hipENGINE tasks after DFlash
 
 1. Confirm `docs/DFLASH.md` D1-D2 verifier/accept pieces are landed and faster
    than serial c=1 on chain B=1/2/4/8.

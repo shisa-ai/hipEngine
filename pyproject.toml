@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-or-later" }
 authors = [
-  { name = "HIPENGINE contributors" }
+  { name = "hipENGINE contributors" }
 ]
 dependencies = [
   "jinja2>=3.1",

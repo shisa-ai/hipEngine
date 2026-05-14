@@ -1,6 +1,6 @@
-# HIPENGINE Benchmark Procedures
+# hipENGINE Benchmark Procedures
 
-Protocols, baselines, and artifact formats for every perf claim HIPENGINE retains. This doc is the companion to the "Evidence Policy" rule in `AGENTS.md` and `docs/PLAN.md`: when the rule says "record the exact command", it means the commands here.
+Protocols, baselines, and artifact formats for every perf claim hipENGINE retains. This doc is the companion to the "Evidence Policy" rule in `AGENTS.md` and `docs/PLAN.md`: when the rule says "record the exact command", it means the commands here.
 
 See `docs/ROOFLINE.md` for the RDNA3 / W7900 hardware model, per-bucket decode analysis, and the "what not to chase" catalog. This doc is the operational layer on top of it.
 
@@ -49,16 +49,16 @@ Maintain it with every retained benchmark:
 
 1. Update the top `Last updated: YYYY-MM-DD` line.
 2. Add or replace the row keyed by `(model, quant, backend, workload, policy)`.
-3. Link the compact JSON artifact in `benchmarks/results/` for HIPENGINE measurements.
+3. Link the compact JSON artifact in `benchmarks/results/` for hipENGINE measurements.
 4. Include correctness/validation, peak memory, source command/artifact, and per-row last-updated date.
 5. Add a dated one-line entry to `benchmarks/CHANGELOG.md` for the rollup change: model / quant / workload, metric `old -> new`, percent delta, reason/change, and artifact/source.
-6. Keep source-lineage targets and external baselines in separate tables from HIPENGINE measurements.
+6. Keep source-lineage targets and external baselines in separate tables from hipENGINE measurements.
 
 Blocked/rejected benchmark attempts may be summarized there only if clearly marked as blocked/rejected; otherwise they live in JSON artifacts and `WORKLOG.md`. Git history for `benchmarks/README.md` and `benchmarks/CHANGELOG.md` is the human-readable performance history; JSON artifacts are the durable evidence.
 
 ## Hardware & Software Context (default)
 
-Unless explicitly stated otherwise, HIPENGINE benchmarks run on:
+Unless explicitly stated otherwise, hipENGINE benchmarks run on:
 
 - GPU: AMD Radeon Pro W7900 (gfx1100, RDNA3, Navi 31)
 - Compute: 96 CUs / 192 SIMD32 / wave32 native
@@ -80,7 +80,7 @@ python3 -c "import torch; print(torch.__version__, torch.version.hip)" 2>/dev/nu
 
 ## Baselines to Beat
 
-These numbers are measured on the shared `/home/lhl/` workspace and recorded in `~/amd-gpu-tuning/WORKLOG.md`. They are the "must beat" bar for HIPENGINE on the same hardware. When HIPENGINE claims a win, the claim is per-column vs the row it beats.
+These numbers are measured on the shared `/home/lhl/` workspace and recorded in `~/amd-gpu-tuning/WORKLOG.md`. They are the "must beat" bar for hipENGINE on the same hardware. When hipENGINE claims a win, the claim is per-column vs the row it beats.
 
 ### Qwen3.6-35B-A3B Q8_K_XL on llama.cpp ROCm (current W7900 target)
 
@@ -151,13 +151,13 @@ Report both aggregate tok/s and per-request tok/s. Do not compare a c=N aggregat
 
 ### OPTIMAL MoE/PARO parity rows
 
-For the Qwen3.5-35B-A3B-PARO exercise, first keep source-lineage parent rows and HIPENGINE attempts as separate artifacts:
+For the Qwen3.5-35B-A3B-PARO exercise, first keep source-lineage parent rows and hipENGINE attempts as separate artifacts:
 
 - Parent/source-lineage rows use `~/amd-gpu-tuning/scripts/bench_paro_native_engine.py` with the 23 base flags from `~/amd-gpu-tuning/docs/OPTIMAL.md` and `--decode-use-step-graph-replay`.
 - Initial parity shapes are `512/128` and `4K/128`; later add `1K/128`, `32K/128`, and `128K/128` after the port path is stable.
-- Parent rows can be `accepted` source-lineage artifacts when finite logits and graph/eager validation pass. They are comparison targets, not HIPENGINE measurements.
-- HIPENGINE rows stay `blocked` until `LLM.generate()`, `w4_paro` loading/layout, Qwen3.5 model plugin, required kernels, and graph replay exist.
-- When HIPENGINE runs, compare against the matching parent artifact and require the same post-run quality gates plus HIPENGINE's KL/top-1 gate.
+- Parent rows can be `accepted` source-lineage artifacts when finite logits and graph/eager validation pass. They are comparison targets, not hipENGINE measurements.
+- hipENGINE rows stay `blocked` until `LLM.generate()`, `w4_paro` loading/layout, Qwen3.5 model plugin, required kernels, and graph replay exist.
+- When hipENGINE runs, compare against the matching parent artifact and require the same post-run quality gates plus hipENGINE's KL/top-1 gate.
 
 Current local parent artifacts:
 
@@ -237,7 +237,7 @@ After every E2E benchmark attempt, extract and record these fields before presen
    - Flag any run above the 24 GiB PARO usability gate separately from W7900-only diagnostic rows.
 4. **Presentation**
    - For multiple configs, use a compact table containing correctness, prefill/decode, wall time, and memory in one view.
-   - Include external baselines (llama.cpp HIP/Vulkan, parent `docs/OPTIMAL.md`, or previous HIPENGINE artifact) when the shape has a known comparable row.
+   - Include external baselines (llama.cpp HIP/Vulkan, parent `docs/OPTIMAL.md`, or previous hipENGINE artifact) when the shape has a known comparable row.
 
 Throughput without these fields is not a retained benchmark number.
 

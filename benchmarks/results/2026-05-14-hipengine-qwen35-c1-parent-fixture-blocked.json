@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-14T17:24:12.465099+00:00",
   "run_tag": "hipengine-qwen35-c1-parent-fixture-512-32",
-  "summary": "HIPENGINE c=1 resident sequential prefill/decode compared with nano-vllm-amd parent 512/32 fixture after dense short-context attention port; still blocked by parent FP16 vs HIPENGINE BF16 activation parity.",
+  "summary": "hipENGINE c=1 resident sequential prefill/decode compared with nano-vllm-amd parent 512/32 fixture after dense short-context attention port; still blocked by parent FP16 vs hipENGINE BF16 activation parity.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100"
@@ -75,8 +75,8 @@
   ],
   "blockers": [
     "512-token prompt parent generated-token parity still misses the first decode token after dense attention (expected 1739, got 4096)",
-    "Parent nano-vllm-amd fixture uses FP16 activations/scales from the checkpoint, while HIPENGINE resident Qwen3.5/PARO currently materializes the runtime path as BF16; exact token equality is blocked on an FP16 activation port or a BF16 parent oracle decision",
-    "HIPENGINE prefill remains sequential c=1 and is not parent bulk/native compact prefill speed-equivalent",
-    "HIPENGINE memory is owned-buffer accounting, not allocator/VRAM peak comparable to parent torch metrics yet"
+    "Parent nano-vllm-amd fixture uses FP16 activations/scales from the checkpoint, while hipENGINE resident Qwen3.5/PARO currently materializes the runtime path as BF16; exact token equality is blocked on an FP16 activation port or a BF16 parent oracle decision",
+    "hipENGINE prefill remains sequential c=1 and is not parent bulk/native compact prefill speed-equivalent",
+    "hipENGINE memory is owned-buffer accounting, not allocator/VRAM peak comparable to parent torch metrics yet"
   ]
 }

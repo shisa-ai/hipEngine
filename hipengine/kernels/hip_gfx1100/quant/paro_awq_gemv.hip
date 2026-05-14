@@ -1,5 +1,5 @@
 // Ported from nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py @ 59195ed.
-// Selected and generic pack8 GEMV kernel bodies are preserved; wrappers are HIPENGINE C ABI.
+// Selected and generic pack8 GEMV kernel bodies are preserved; wrappers are hipENGINE C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>

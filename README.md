@@ -11,4 +11,4 @@ Status: early scaffold. The runtime hot path is intentionally torch-free; `torch
 
 ## License
 
-HIPENGINE source code is licensed under **AGPL-3.0-or-later**. Model weights, checkpoints, and external datasets remain under their own licenses.
+hipENGINE source code is licensed under **AGPL-3.0-or-later**. Model weights, checkpoints, and external datasets remain under their own licenses.

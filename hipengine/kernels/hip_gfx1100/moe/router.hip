@@ -1,5 +1,5 @@
 // Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed.
-// Kernel bodies are preserved from the Qwen3.5 native router family; wrappers are HIPENGINE C ABI.
+// Kernel bodies are preserved from the Qwen3.5 native router family; wrappers are hipENGINE C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>

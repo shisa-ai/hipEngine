@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-15T05:49:00-07:00",
   "run_tag": "hipengine-qwen35-c1-parent-mixed-fp16-iter9",
-  "summary": "HIPENGINE resident c=1 now uses parent-mixed FP16 activations/scratch/wrappers with BF16 KV and q/k head-norm exceptions, but the 512-token parent fixture still fails first-token parity.",
+  "summary": "hipENGINE resident c=1 now uses parent-mixed FP16 activations/scratch/wrappers with BF16 KV and q/k head-norm exceptions, but the 512-token parent fixture still fails first-token parity.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100"
@@ -68,7 +68,7 @@
   "blockers": [
     "Parent fixture first decode token still mismatches after parent-mixed FP16 switch: expected 1739, got 58 with top logit 9.434697151184082.",
     "The HIP prefill sampled seed changed to 220 in this run; next task should bisect the residual parity gap at per-layer logits/hidden states instead of broad BF16-vs-FP16 activation policy.",
-    "HIPENGINE prefill remains sequential c=1 and is not parent bulk/native compact prefill speed-equivalent.",
+    "hipENGINE prefill remains sequential c=1 and is not parent bulk/native compact prefill speed-equivalent.",
     "Observed tok/s are correctness-smoke timings only and are not retained performance claims because correctness failed."
   ]
 }

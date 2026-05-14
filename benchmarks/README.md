@@ -1,8 +1,8 @@
-# HIPENGINE Benchmark Rollup
+# hipENGINE Benchmark Rollup
 
 Last updated: 2026-05-15
 
-Human-readable scoreboard for HIPENGINE performance. Machine-readable benchmark
+Human-readable scoreboard for hipENGINE performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
 current fastest accepted rows, external baselines, and source-lineage targets so
 humans can see what we are testing against without opening every JSON artifact.
@@ -18,7 +18,7 @@ baseline changes:
 2. Add or replace the row for the relevant `(model, quant, backend, workload,
    policy)` tuple.
 3. Link the compact JSON artifact in `benchmarks/results/` when the row is a
-   HIPENGINE measurement.
+   hipENGINE measurement.
 4. Include correctness status, memory, command/source, and the date the row was
    last refreshed.
 5. Add a short reverse-chronological one-liner to `benchmarks/CHANGELOG.md` in the form: model / quant / workload, metric `old -> new`, percent delta, reason/change, and artifact/source.
@@ -29,9 +29,9 @@ A row is not retained unless it satisfies `docs/BENCHMARK.md`: exact command,
 hardware/software context, workload shape, correctness gate, repeated-run stats
 where applicable, and post-run quality gates.
 
-## Current fastest HIPENGINE rows
+## Current fastest hipENGINE rows
 
-No HIPENGINE end-to-end throughput benchmark has been accepted yet. Accepted
+No hipENGINE end-to-end throughput benchmark has been accepted yet. Accepted
 correctness-only gates are recorded under "Smoke / non-throughput rows"; their
 timings are diagnostic context only and are not retained as performance rows.
 
@@ -41,8 +41,8 @@ timings are diagnostic context only and are not retained as performance rows.
 
 ## Source-lineage target: Qwen3.5-35B-A3B-PARO
 
-These rows are **not HIPENGINE measurements**. They are the current parent
-source-lineage target from `~/amd-gpu-tuning/docs/OPTIMAL.md` that HIPENGINE's
+These rows are **not hipENGINE measurements**. They are the current parent
+source-lineage target from `~/amd-gpu-tuning/docs/OPTIMAL.md` that hipENGINE's
 Qwen3.5/PARO port should reproduce or beat. Hardware: W7900/gfx1100. Engine:
 `nano-vllm-amd` PARO native c=1. Path: compact-WMMA prefill plus one-step
 graph-replay decode, all parent-listed quality gates passing.
@@ -57,8 +57,8 @@ graph-replay decode, all parent-listed quality gates passing.
 
 ## External comparison baselines
 
-Rows below are comparison targets, not HIPENGINE results. They stay here so a
-future HIPENGINE result can be interpreted quickly.
+Rows below are comparison targets, not hipENGINE results. They stay here so a
+future hipENGINE result can be interpreted quickly.
 
 ### llama.cpp ROCm / Qwen3.6-35B-A3B Q8_K_XL
 
@@ -96,4 +96,4 @@ Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 shootout entry and
 - `Validation` summarizes correctness quality gates; detailed KL/top-1 or
   fixture results belong in the JSON artifact.
 - For parent/source-lineage rows, use the parent doc path as `Source` and keep
-  them clearly separated from HIPENGINE measurements.
+  them clearly separated from hipENGINE measurements.
