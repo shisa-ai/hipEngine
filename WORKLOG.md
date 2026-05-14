@@ -5405,3 +5405,44 @@ Result: pytest exit code `0`.
 
 - This change preserves correctness/no-claim discipline; it does not fix native prefill yet.
 - The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`; robust active TaskList count over #12/#15 remains `2`.
+
+---
+
+## 2026-05-15 — Close PLAN-MOE2 profile loop on documented blocker
+
+### Scope
+
+- Completed Task #12 by the task's own blocker-exit criterion: continue the benchmark/profile loop until decode approaches PLAN-MOE2 parity **or** a clear blocker is documented with evidence.
+- No throughput row was promoted.
+- Task #15 remains open as the implementation blocker for native compact/c-aware prefill.
+
+### Blocker evidence
+
+- `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-plan-blocked.json`
+  - real Qwen3.5/PARO config: 40 layers, 30 `linear_attention`, 10 `full_attention`;
+  - native-prefill plan is `linear_attention_prefix_only`;
+  - first full-model native-prefill blocker is layer 3 `full_attention` after a 3-layer linear prefix.
+- `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-prefill-rejected.json`
+  - status `rejected_correctness`;
+  - finite logits true but native linear-prefix helper mismatches serial c=1 at `max_layers=3`;
+  - serial seed/decode `95916/158950`, native seed/decode `201383/96022`;
+  - `performance_claim=false`.
+- `c20e2d4 fix: gate qwen35 rejected native prefill`
+  - the rejected helper now requires explicit diagnostic opt-in and normal benchmark use fails fast.
+
+### Interpretation
+
+Further profile/throughput iteration would violate the evidence policy until Task #15 fixes or replaces the native linear-prefix semantics and then extends native compact/full-attention prefill past layer 3.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0`.
+
+### Notes
+
+- The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`; robust active TaskList count over the compacted active file is now `1` (#15 only).
