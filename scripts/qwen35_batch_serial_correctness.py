@@ -18,6 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.generation import ResidentBatchScheduler
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 
 DEFAULT_MODEL = (
@@ -75,6 +76,15 @@ def _run_c1(
     }
 
 
+def _format_pair(seed, decode) -> dict[str, Any]:
+    return {
+        "seed": seed.token_id,
+        "decode": decode.token_id,
+        "seed_logit": seed.logit,
+        "decode_logit": decode.logit,
+    }
+
+
 def _run_batch_serial(
     runner: Qwen35ParoNextTokenRunner,
     prompts: list[list[int]],
@@ -114,16 +124,80 @@ def _run_batch_serial(
         )
         if any(result is None for result in decode_results):
             raise RuntimeError("batch decode did not produce tokens")
-    return [
+    return [_format_pair(seed, decode) for seed, decode in zip(seed_results, decode_results, strict=True) if seed is not None and decode is not None]
+
+
+def _run_batch_serial_scheduler(
+    runner: Qwen35ParoNextTokenRunner,
+    prompts: list[list[int]],
+    *,
+    max_layers: int,
+    compiler_version: str | None,
+    require_cached_build: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Run the serial slot bridge through ResidentBatchScheduler ownership."""
+
+    prompt_lengths = {len(prompt) for prompt in prompts}
+    if len(prompt_lengths) != 1:
+        raise ValueError("current smoke expects equal prompt lengths")
+    prompt_length = prompt_lengths.pop()
+    scheduler = ResidentBatchScheduler(capacity=len(prompts))
+    request_ids = [scheduler.submit(prompt, max_new_tokens=1) for prompt in prompts]
+    admitted = scheduler.admit_pending()
+    if admitted != tuple(request_ids):
+        raise RuntimeError(f"unexpected admitted request ids {admitted!r}")
+    seed_by_request: dict[int, Any] = {}
+    decode_by_request: dict[int, Any] = {}
+    with Qwen35ParoResidentSession(
+        runner,
+        max_sequence_length=prompt_length + 4,
+        max_layers=max_layers,
+        max_batch_size=len(prompts),
+        compiler_version=compiler_version,
+        require_cached_build=require_cached_build,
+    ) as session:
+        while True:
+            work = scheduler.next_prefill_work(chunk_size=1)
+            if work is None:
+                break
+            request_id = work.request_ids[0]
+            token = work.token_rows[0][0]
+            request = scheduler.active_batch.requests[request_id]
+            position = request.next_prompt_index - 1
+            slot = scheduler.active_batch.slot_for(request_id)
+            sample = request.remaining_prefill == 0
+            result = session.step_batch_serial([token], positions=[position], slots=[slot], sample=sample)[0]
+            if sample:
+                if result is None:
+                    raise RuntimeError("prefill did not produce a seed token")
+                seed_by_request[request_id] = result
+        decode_work = scheduler.next_decode_work()
+        if decode_work is None:
+            raise RuntimeError("scheduler did not emit decode work")
+        decode_request_ids = decode_work.request_ids
+        decode_results = session.step_batch_serial(
+            [seed_by_request[request_id].token_id for request_id in decode_request_ids],
+            positions=[scheduler.active_batch.requests[request_id].context_len for request_id in decode_request_ids],
+            slots=[scheduler.active_batch.slot_for(request_id) for request_id in decode_request_ids],
+            sample=True,
+        )
+        completed = scheduler.record_generated(
+            (request_id, result.token_id) for request_id, result in zip(decode_request_ids, decode_results, strict=True) if result is not None
+        )
+        for request_id, result in zip(decode_request_ids, decode_results, strict=True):
+            if result is None:
+                raise RuntimeError("decode did not produce a token")
+            decode_by_request[request_id] = result
+    actual = [_format_pair(seed_by_request[request_id], decode_by_request[request_id]) for request_id in request_ids]
+    completed_payload = [
         {
-            "seed": seed.token_id,
-            "decode": decode.token_id,
-            "seed_logit": seed.logit,
-            "decode_logit": decode.logit,
+            "request_id": done.request_id,
+            "generated_tokens": list(done.generated_tokens),
+            "finished": done.finished,
         }
-        for seed, decode in zip(seed_results, decode_results, strict=True)
-        if seed is not None and decode is not None
+        for done in completed
     ]
+    return actual, completed_payload
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -135,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-layers", type=int, default=2)
     parser.add_argument("--compiler-version-file")
     parser.add_argument("--require-cached", action="store_true")
+    parser.add_argument("--scheduler", action="store_true", help="Drive step_batch_serial from ResidentBatchScheduler work items")
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
     args = parser.parse_args(argv)
 
@@ -153,17 +228,29 @@ def main(argv: list[str] | None = None) -> int:
         )
         for prompt in prompts
     ]
-    actual = _run_batch_serial(
-        runner,
-        prompts,
-        max_layers=args.max_layers,
-        compiler_version=compiler_version,
-        require_cached_build=args.require_cached,
-    )
+    scheduler_completed: list[dict[str, Any]] = []
+    if args.scheduler:
+        actual, scheduler_completed = _run_batch_serial_scheduler(
+            runner,
+            prompts,
+            max_layers=args.max_layers,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached,
+        )
+    else:
+        actual = _run_batch_serial(
+            runner,
+            prompts,
+            max_layers=args.max_layers,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached,
+        )
     command = (
         "python3 scripts/qwen35_batch_serial_correctness.py "
         f"--prompt-length {args.prompt_length} --max-layers {args.max_layers} --batch-size {args.batch_size}"
     )
+    if args.scheduler:
+        command += " --scheduler"
     if args.json is not None:
         command += f" --json {args.json}"
     payload = {
@@ -172,8 +259,9 @@ def main(argv: list[str] | None = None) -> int:
         "model": str(Path(args.model)),
         "quant": "w4_paro",
         "backend": "hip_gfx1100",
-        "mode": "resident_c2_serial_slot_runner_correctness",
+        "mode": "resident_c2_scheduler_serial_slot_runner_correctness" if args.scheduler else "resident_c2_serial_slot_runner_correctness",
         "command": command,
+        "scheduler_completed": scheduler_completed,
         "batch_size": args.batch_size,
         "prompt_lengths": [len(prompt) for prompt in prompts],
         "max_layers": args.max_layers,
@@ -183,6 +271,9 @@ def main(argv: list[str] | None = None) -> int:
         "notes": [
             "Correctness-first serial c>N bridge over batch-shaped resident slot buffers; not a throughput claim.",
             "Compares a shared resident session against independent c=1 resident sessions.",
+            "Scheduler mode consumes ResidentBatchScheduler prefill/decode work items and physical slots."
+            if args.scheduler
+            else "Direct mode drives physical slots without scheduler ownership.",
         ],
     }
     text = json.dumps(payload, indent=2)

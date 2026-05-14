@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "status": "accepted_correctness_smoke",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "mode": "resident_c2_scheduler_serial_slot_runner_correctness",
+  "command": "python3 scripts/qwen35_batch_serial_correctness.py --prompt-length 16 --max-layers 40 --batch-size 2 --scheduler --json benchmarks/results/2026-05-15-hipengine-qwen35-c2-scheduler-serial-runner-accepted.json",
+  "scheduler_completed": [
+    {
+      "request_id": 0,
+      "generated_tokens": [
+        17
+      ],
+      "finished": true
+    },
+    {
+      "request_id": 1,
+      "generated_tokens": [
+        96523
+      ],
+      "finished": true
+    }
+  ],
+  "batch_size": 2,
+  "prompt_lengths": [
+    16,
+    16
+  ],
+  "max_layers": 40,
+  "expected_c1": [
+    {
+      "seed": 220,
+      "decode": 17,
+      "seed_logit": 8.592742919921875,
+      "decode_logit": 9.856070518493652
+    },
+    {
+      "seed": 96191,
+      "decode": 96523,
+      "seed_logit": 7.57336950302124,
+      "decode_logit": 10.722575187683105
+    }
+  ],
+  "batch_serial": [
+    {
+      "seed": 220,
+      "decode": 17,
+      "seed_logit": 8.592742919921875,
+      "decode_logit": 9.856070518493652
+    },
+    {
+      "seed": 96191,
+      "decode": 96523,
+      "seed_logit": 7.57336950302124,
+      "decode_logit": 10.722575187683105
+    }
+  ],
+  "passed": true,
+  "notes": [
+    "Correctness-first serial c>N bridge over batch-shaped resident slot buffers; not a throughput claim.",
+    "Compares a shared resident session against independent c=1 resident sessions.",
+    "Scheduler mode consumes ResidentBatchScheduler prefill/decode work items and physical slots."
+  ]
+}
