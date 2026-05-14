@@ -29,6 +29,11 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
 )
 from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
+from hipengine.kernels.hip_gfx1100.runtime import (
+    embedding_lookup_bf16_i64,
+    set_decode_position_i64,
+    set_i64_scalar,
+)
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading import (
     WeightIndex,
@@ -641,6 +646,7 @@ class Qwen35ParoResidentSession:
         from hipengine.kernels.hip_gfx1100.linear_attn.gdn import build_qwen35_linear_attn_gdn
         from hipengine.kernels.hip_gfx1100.moe.router import build_qwen35_router
         from hipengine.kernels.hip_gfx1100.norm import build_qwen35_rmsnorm
+        from hipengine.kernels.hip_gfx1100.runtime import build_runtime_state
         from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv
         from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
         from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import build_paro_rotate
@@ -660,6 +666,7 @@ class Qwen35ParoResidentSession:
             "qwen_rotary": build_qwen35_rotary(load=True),
             "router": build_qwen35_router(load=True),
             "rotate": build_paro_rotate(load=True),
+            "runtime_state": build_runtime_state(load=True),
             "silu": build_paro_silu(load=True),
             "w8a16": build_w8a16_linear(load=True),
         }
@@ -730,9 +737,11 @@ class Qwen35ParoResidentSession:
         block_table_arr = np.arange(self.blocks, dtype=np.int32)
         self.position_arr = np.asarray([0], dtype=np.int64)
         self.context_arr = np.asarray([1], dtype=np.int64)
+        self.token_id_arr = np.asarray([0], dtype=np.int64)
         self.block_table_buf = self._dev(block_table_arr)
         self.position_buf = self._dev(self.position_arr)
         self.context_buf = self._dev(self.context_arr)
+        self.token_id_buf = self._dev(self.token_id_arr)
         self.block_table = Tensor.from_handle(self.block_table_buf.ptr, block_table_arr.shape, DType.INT32, self.device)
         self.position_tensor = Tensor.from_handle(self.position_buf.ptr, self.position_arr.shape, DType.INT64, self.device)
         self.context_tensor = Tensor.from_handle(self.context_buf.ptr, self.context_arr.shape, DType.INT64, self.device)
@@ -812,19 +821,30 @@ class Qwen35ParoResidentSession:
     def _set_token_embedding(self, token_id: int) -> None:
         if token_id < 0 or token_id >= self.vocab_size:
             raise ValueError(f"token_id {token_id} outside [0, {self.vocab_size})")
-        offset = token_id * self.hidden_nbytes
-        self.runtime.memcpy(
+        set_i64_scalar(
+            self.token_id_buf.ptr,
+            token_id,
+            library=self.libraries["runtime_state"],
+            runtime=self.runtime,
+        )
+        embedding_lookup_bf16_i64(
+            self.embedding.tensor.ptr,
+            self.token_id_buf.ptr,
             self.hidden.ptr,
-            self.embedding.tensor.ptr + offset,
-            self.hidden_nbytes,
-            HipMemcpyKind.DEVICE_TO_DEVICE,
+            self.config.hidden_size,
+            self.vocab_size,
+            library=self.libraries["runtime_state"],
+            runtime=self.runtime,
         )
 
     def _set_position(self, position: int) -> None:
-        self.position_arr[0] = int(position)
-        self.context_arr[0] = int(position) + 1
-        copy_host_to_device(self.position_buf, host_array_ptr(self.position_arr), runtime=self.runtime)
-        copy_host_to_device(self.context_buf, host_array_ptr(self.context_arr), runtime=self.runtime)
+        set_decode_position_i64(
+            self.position_buf.ptr,
+            self.context_buf.ptr,
+            int(position),
+            library=self.libraries["runtime_state"],
+            runtime=self.runtime,
+        )
 
     def _sample_from_hidden(self, hidden: Tensor) -> Qwen35ParoAutoregressiveStepResult:
         paro_rmsnorm_out_bf16(

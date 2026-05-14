@@ -3449,3 +3449,37 @@ python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --w
 - Current PLAN-MOE2 compact-WMMA target is `115.666 tok/s` decode at 512/128; HIPENGINE is now ~`75.9%` of that decode target, but remains blocked for accepted parity because graph replay and E2E correctness gates are not landed.
 
 Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-tokenizer-cache-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
+
+---
+
+## 2026-05-14 — Add graph-friendly device token/position state kernels
+
+### Scope
+
+- Added `hipengine/kernels/hip_gfx1100/runtime/state.{hip,py}` with small raw-pointer kernels for graph-friendly decode state:
+  - BF16 embedding row lookup from a device int64 token id,
+  - device int64 scalar set,
+  - device decode position/context set,
+  - device decode position/context advance.
+- Wired `Qwen35ParoResidentSession` eager path to use device token embedding and device position/context update instead of host-dependent D2D offset copies and H2D position copies. This is a prerequisite for one-step HIP graph replay because the replayed step can now keep token id and position state on device.
+- Added dry-run/registry tests and updated kernel catalog / implementation checklist.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/runtime/state.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py tests/test_runtime_state_plan.py
+python3 -m pytest tests/test_runtime_state_plan.py tests/test_lm_head_plan.py tests/test_llm_generate.py tests/test_qwen35_decode_state.py -q
+python3 - <<'PY'  # runtime_state GPU smoke; see session log for full script
+# embedding token id 2 -> [8,9,10,11], set position 7 then advance -> position 8/context 9
+PY
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 2 --decode-tokens 4 --warmup-decode-tokens 1 --token-id 9707 --json /tmp/hipengine-runtime-state-smoke.json
+```
+
+Results:
+
+- Runtime helper GPU smoke returned `{'embedding': [8, 9, 10, 11], 'position': 8, 'context': 9}`.
+- One-layer Qwen3.5/PARO resident smoke completed with unchanged generated token sequence (`229838`, `"وو"`) and median measured decode step `0.00125s`.
+
+### Next
+
+- Implement a non-default stream + HIP graph replay wrapper using these device-resident state updates.
