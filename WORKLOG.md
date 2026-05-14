@@ -4086,3 +4086,27 @@ Result: passed; repeated c=1 one-layer resident runs both produced token id `624
 ### Next
 
 - Capture parent nano-vllm-amd expected token sequences for all-layer fixtures and extend this gate to generated-token equality vs parent; then add c>N runs once the batched layer runner lands.
+
+---
+
+## 2026-05-14 — Guard resident benchmark builds for profiler runs
+
+### Scope
+
+- Added `compiler_version`/`require_cached_build` plumbing to `Qwen35ParoResidentSession` kernel-library loading.
+- Added `scripts/qwen35_paro_bench.py --compiler-version-file` and `--require-cached-build` so rocprof runs can fail fast instead of spawning `hipcc` inside the profiler.
+
+### Validation
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 1 --decode-tokens 0 --warmup-decode-tokens 0 --token-id 9707 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-resident-cache-guard.json
+python3 -m compileall -q hipengine scripts tests && python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_llm_generate.py -q
+```
+
+Result: cached-build guarded resident smoke passed and produced token id `62406`.
+
+### Next
+
+- Use this guard for any future `rocprofv3` resident benchmark/profile command.

@@ -46,6 +46,17 @@ def main() -> int:
     parser.add_argument("--graph-replay-decode", action="store_true", help="Replay measured decode with a captured HIP graph")
     parser.add_argument("--graph-steps-per-replay", type=int, default=1, help="Decode token steps captured per graph replay")
     parser.add_argument(
+        "--compiler-version-file",
+        type=Path,
+        default=None,
+        help="Read precomputed hipcc --version text so profiled runs do not spawn hipcc.",
+    )
+    parser.add_argument(
+        "--require-cached-build",
+        action="store_true",
+        help="Fail instead of invoking hipcc if any resident HIP library is missing from cache.",
+    )
+    parser.add_argument(
         "--native-prefill",
         action="store_true",
         help="Use native batched prefill when the selected layer prefix is linear-attention-only.",
@@ -63,6 +74,7 @@ def main() -> int:
         raise ValueError("--decode-tokens must be divisible by --graph-steps-per-replay")
 
     model = Path(args.model)
+    compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file is not None else None
     prompt_tokens = _prompt_tokens(model, args.prompt, args.token_id, args.prompt_length)
     max_sequence = len(prompt_tokens) + args.warmup_decode_tokens + args.decode_tokens + 1
 
@@ -76,6 +88,8 @@ def main() -> int:
             runner,
             max_sequence_length=max_sequence,
             max_layers=args.max_layers,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
             progress=progress,
         )
     load_seconds = time.perf_counter() - load_start
@@ -241,6 +255,13 @@ class _RoctxRange:
         tb: TracebackType | None,
     ) -> None:
         self.roctx.pop()
+
+
+def _read_compiler_version(path: Path) -> str:
+    text = path.read_text()
+    if not text.strip():
+        raise ValueError(f"compiler version file {path} is empty")
+    return text
 
 
 def _prompt_tokens(model: Path, prompt: str, token_id: int | None, prompt_length: int) -> list[int]:

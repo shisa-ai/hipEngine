@@ -579,6 +579,8 @@ class Qwen35ParoResidentSession:
         block_size: int = 256,
         chunk_size: int = 256,
         max_batch_size: int = 1,
+        compiler_version: str | None = None,
+        require_cached_build: bool = False,
         progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         if max_sequence_length <= 0:
@@ -598,6 +600,8 @@ class Qwen35ParoResidentSession:
         self.block_size = int(block_size)
         self.chunk_size = int(chunk_size)
         self.max_batch_size = int(max_batch_size)
+        self.compiler_version = compiler_version
+        self.require_cached_build = bool(require_cached_build)
         self.max_splits = (self.max_sequence_length + self.chunk_size - 1) // self.chunk_size
         self.blocks = (self.max_sequence_length + self.block_size - 1) // self.block_size
         self.batch_layout = Qwen35ParoResidentBatchLayout(
@@ -874,23 +878,28 @@ class Qwen35ParoResidentSession:
         from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import build_paro_rotate
         from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import build_qwen35_rotary
 
+        build_kwargs = {
+            "load": True,
+            "compiler_version": self.compiler_version,
+            "require_cached": self.require_cached_build,
+        }
         self.libraries = {
-            "attention": build_qwen35_paged_attn_decode(load=True),
-            "awq": build_paro_awq_gemv(load=True),
-            "cast": build_cast(load=True),
-            "combine": build_paro_combine(load=True),
-            "dense": build_dense_gemv(load=True),
-            "kv": build_qwen35_paged_kv_write(load=True),
-            "linear_conv": build_qwen35_linear_attn_conv(load=True),
-            "linear_gdn": build_qwen35_linear_attn_gdn(load=True),
-            "lm_head": build_lm_head(load=True),
-            "norm": build_qwen35_rmsnorm(load=True),
-            "qwen_rotary": build_qwen35_rotary(load=True),
-            "router": build_qwen35_router(load=True),
-            "rotate": build_paro_rotate(load=True),
-            "runtime_state": build_runtime_state(load=True),
-            "silu": build_paro_silu(load=True),
-            "w8a16": build_w8a16_linear(load=True),
+            "attention": build_qwen35_paged_attn_decode(**build_kwargs),
+            "awq": build_paro_awq_gemv(**build_kwargs),
+            "cast": build_cast(**build_kwargs),
+            "combine": build_paro_combine(**build_kwargs),
+            "dense": build_dense_gemv(**build_kwargs),
+            "kv": build_qwen35_paged_kv_write(**build_kwargs),
+            "linear_conv": build_qwen35_linear_attn_conv(**build_kwargs),
+            "linear_gdn": build_qwen35_linear_attn_gdn(**build_kwargs),
+            "lm_head": build_lm_head(**build_kwargs),
+            "norm": build_qwen35_rmsnorm(**build_kwargs),
+            "qwen_rotary": build_qwen35_rotary(**build_kwargs),
+            "router": build_qwen35_router(**build_kwargs),
+            "rotate": build_paro_rotate(**build_kwargs),
+            "runtime_state": build_runtime_state(**build_kwargs),
+            "silu": build_paro_silu(**build_kwargs),
+            "w8a16": build_w8a16_linear(**build_kwargs),
         }
         self._emit("load_kernel_libraries_done", count=len(self.libraries))
 
