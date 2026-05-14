@@ -5446,3 +5446,65 @@ Result: pytest exit code `0`.
 ### Notes
 
 - The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`; robust active TaskList count over the compacted active file is now `1` (#15 only).
+
+---
+
+## 2026-05-15 — Sweep native linear-prefix prefill mismatch to layer 1
+
+### Scope
+
+- Narrowed Task #15 with a layer-prefix sweep for the rejected native linear-prefix prefill helper.
+- Extended `scripts/qwen35_native_prefill_correctness.py` with `--sweep-layer-prefixes N`.
+- Emitted `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-sweep-rejected.json`.
+- Updated Task #15 description with the first mismatching prefix.
+
+### Artifact
+
+```bash
+python3 scripts/qwen35_native_prefill_correctness.py \
+  --prompt-length 4 --sweep-layer-prefixes 3 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-sweep-rejected.json
+```
+
+Expected exit: `1` for current rejected correctness.
+
+Key fields:
+
+- `status=rejected_correctness`
+- `performance_claim=false`
+- `first_mismatching_prefix=1`
+- `cases[0].max_layers=1`, finite logits true, seed/decode mismatch:
+  - serial seed/decode `627/356`
+  - native seed/decode `308/1076`
+- `cases[1].max_layers=2`, finite logits true, seed/decode mismatch:
+  - serial seed/decode `627/84`
+  - native seed/decode `36475/348`
+- `cases[2].max_layers=3`, finite logits true, seed/decode mismatch:
+  - serial seed/decode `95916/158950`
+  - native seed/decode `201383/96022`
+
+### Interpretation
+
+The immediate native-prefill correctness blocker is in the first linear-attention native prefill layer path itself. It is not solely an interaction across the 3-layer linear prefix or the later layer-3 `full_attention` boundary.
+
+### Validation
+
+```bash
+python3 scripts/qwen35_native_prefill_correctness.py \
+  --prompt-length 4 --max-layers 3 \
+  --json /tmp/hipengine_native_prefix_single_current.json
+```
+
+Result: exits `1` and preserves the previous single-prefix rejected-correctness payload shape.
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0`.
+
+### Notes
+
+- The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`; robust active TaskList count remains `1` (#15 only).
+- No performance claim was made; the new sweep artifact is explicitly rejected correctness evidence.
