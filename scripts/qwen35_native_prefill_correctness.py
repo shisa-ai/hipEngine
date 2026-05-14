@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""Compare Qwen3.5/PARO native linear-prefix prefill against serial c=1.
+
+This is a correctness/blocker helper, not a benchmark.  It runs the same fixed
+prompt through (1) serial token-by-token resident prefill and (2) the diagnostic
+``prefill_linear_tokens_native`` helper, then compares the prefill seed token and
+one decode token.  Mismatches are emitted as ``rejected_correctness`` artifacts.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import sys
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+
+DEFAULT_MODEL = (
+    "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
+    "snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
+)
+
+
+def _prompt_tokens(token_id: int, prompt_length: int) -> list[int]:
+    if prompt_length <= 0:
+        raise ValueError("prompt_length must be positive")
+    return [int(token_id)] * int(prompt_length)
+
+
+def _result_dict(result) -> dict[str, Any]:
+    return {
+        "token_id": int(result.token_id),
+        "token_text": result.token_text,
+        "logit": float(result.logit),
+    }
+
+
+def _run_serial(
+    runner: Qwen35ParoNextTokenRunner,
+    prompt_tokens: list[int],
+    *,
+    max_layers: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    with Qwen35ParoResidentSession(
+        runner,
+        max_sequence_length=len(prompt_tokens) + 2,
+        max_layers=max_layers,
+    ) as session:
+        plan = session.native_prefill_plan().to_json_dict()
+        seed = None
+        for position, token_id in enumerate(prompt_tokens):
+            seed = session.step(token_id, position=position, sample=(position == len(prompt_tokens) - 1))
+        if seed is None:
+            raise RuntimeError("serial prefill did not produce a seed token")
+        decode = session.step(seed.token_id, position=len(prompt_tokens), sample=True)
+        if decode is None:
+            raise RuntimeError("serial decode did not produce a token")
+    return _result_dict(seed), _result_dict(decode), plan
+
+
+def _run_native(
+    runner: Qwen35ParoNextTokenRunner,
+    prompt_tokens: list[int],
+    *,
+    max_layers: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    with Qwen35ParoResidentSession(
+        runner,
+        max_sequence_length=len(prompt_tokens) + 2,
+        max_layers=max_layers,
+    ) as session:
+        plan = session.native_prefill_plan().to_json_dict()
+        seed = session.prefill_linear_tokens_native(prompt_tokens, sample=True)
+        if seed is None:
+            raise RuntimeError("native prefill did not produce a seed token")
+        decode = session.step(seed.token_id, position=len(prompt_tokens), sample=True)
+        if decode is None:
+            raise RuntimeError("native decode did not produce a token")
+    return _result_dict(seed), _result_dict(decode), plan
+
+
+def _finite(*rows: dict[str, Any]) -> bool:
+    return all(math.isfinite(float(row["logit"])) for row in rows)
+
+
+def _command(args: argparse.Namespace) -> str:
+    command = (
+        "python3 scripts/qwen35_native_prefill_correctness.py "
+        f"--model {args.model} --token-id {args.token_id} --prompt-length {args.prompt_length} "
+        f"--max-layers {args.max_layers}"
+    )
+    if args.json is not None:
+        command += f" --json {args.json}"
+    return command
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--token-id", type=int, default=9707)
+    parser.add_argument("--prompt-length", type=int, default=4)
+    parser.add_argument("--max-layers", type=int, default=3)
+    parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
+    args = parser.parse_args(argv)
+
+    if args.max_layers <= 0:
+        raise ValueError("max_layers must select a finite linear-attention prefix for this helper")
+    prompt_tokens = _prompt_tokens(args.token_id, args.prompt_length)
+    runner = Qwen35ParoNextTokenRunner(Path(args.model))
+    serial_seed, serial_decode, serial_plan = _run_serial(runner, prompt_tokens, max_layers=args.max_layers)
+    native_seed, native_decode, native_plan = _run_native(runner, prompt_tokens, max_layers=args.max_layers)
+    seed_match = native_seed["token_id"] == serial_seed["token_id"]
+    decode_match = native_decode["token_id"] == serial_decode["token_id"]
+    finite_logits = _finite(serial_seed, serial_decode, native_seed, native_decode)
+    passed = finite_logits and seed_match and decode_match
+    payload = {
+        "schema": 1,
+        "status": "accepted" if passed else "rejected_correctness",
+        "blocked_reason": None if passed else "native linear-prefix prefill does not match serial c=1 token-by-token prefill",
+        "model": str(Path(args.model)),
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "mode": "qwen35_paro_native_prefill_vs_serial_correctness",
+        "command": _command(args),
+        "performance_claim": False,
+        "prompt_source": "repeated_token_id",
+        "token_id": int(args.token_id),
+        "prompt_length": len(prompt_tokens),
+        "max_layers": int(args.max_layers),
+        "serial_native_prefill_plan": serial_plan,
+        "native_prefill_plan": native_plan,
+        "serial": {"seed": serial_seed, "decode": serial_decode},
+        "native": {"seed": native_seed, "decode": native_decode},
+        "seed_match": seed_match,
+        "decode_match": decode_match,
+        "finite_logits": finite_logits,
+        "logit_abs_delta": {
+            "seed": abs(float(native_seed["logit"]) - float(serial_seed["logit"])),
+            "decode": abs(float(native_decode["logit"]) - float(serial_decode["logit"])),
+        },
+        "passed": passed,
+        "notes": [
+            "Correctness helper only; timings are intentionally omitted and no throughput claim is made.",
+            "The current native linear-prefix helper must match serial c=1 before extending to compact/full-attention prefill.",
+        ],
+    }
+    text = json.dumps(payload, indent=2, ensure_ascii=False)
+    print(text)
+    if args.json is not None:
+        args.json.write_text(text + "\n")
+    return 0 if passed else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

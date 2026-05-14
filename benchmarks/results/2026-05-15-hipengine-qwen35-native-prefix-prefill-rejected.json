@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "status": "rejected_correctness",
+  "blocked_reason": "native linear-prefix prefill does not match serial c=1 token-by-token prefill",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "mode": "qwen35_paro_native_prefill_vs_serial_correctness",
+  "command": "python3 scripts/qwen35_native_prefill_correctness.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --prompt-length 4 --max-layers 3 --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-prefill-rejected.json",
+  "performance_claim": false,
+  "prompt_source": "repeated_token_id",
+  "token_id": 9707,
+  "prompt_length": 4,
+  "max_layers": 3,
+  "serial_native_prefill_plan": {
+    "path": "linear_attention_native_full_layer_limit",
+    "layer_limit": 3,
+    "linear_prefix_layers": 3,
+    "full_layer_limit_native": true,
+    "first_unsupported_layer": null,
+    "first_unsupported_type": null,
+    "blockers": []
+  },
+  "native_prefill_plan": {
+    "path": "linear_attention_native_full_layer_limit",
+    "layer_limit": 3,
+    "linear_prefix_layers": 3,
+    "full_layer_limit_native": true,
+    "first_unsupported_layer": null,
+    "first_unsupported_type": null,
+    "blockers": []
+  },
+  "serial": {
+    "seed": {
+      "token_id": 95916,
+      "token_text": "定",
+      "logit": 7.353177547454834
+    },
+    "decode": {
+      "token_id": 158950,
+      "token_text": "ਆ",
+      "logit": 10.385761260986328
+    }
+  },
+  "native": {
+    "seed": {
+      "token_id": 201383,
+      "token_text": "ارف",
+      "logit": 7.8337883949279785
+    },
+    "decode": {
+      "token_id": 96022,
+      "token_text": "位",
+      "logit": 10.478785514831543
+    }
+  },
+  "seed_match": false,
+  "decode_match": false,
+  "finite_logits": true,
+  "logit_abs_delta": {
+    "seed": 0.48061084747314453,
+    "decode": 0.09302425384521484
+  },
+  "passed": false,
+  "notes": [
+    "Correctness helper only; timings are intentionally omitted and no throughput claim is made.",
+    "The current native linear-prefix helper must match serial c=1 before extending to compact/full-attention prefill."
+  ]
+}

@@ -5302,3 +5302,56 @@ Result: pytest exit code `0`.
 
 - The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found` because it requires completed task IDs no longer present in the compacted active TaskList file. A robust count over the active #12/#15 file prints `2`.
 - No kernel port or throughput claim was made in this iteration.
+
+---
+
+## 2026-05-15 — Reject current native linear-prefix prefill correctness
+
+### Scope
+
+- Narrowed Task #15 again: before extending native prefill beyond layer 3, the existing native linear-prefix helper must first match serial c=1 semantics.
+- Added `scripts/qwen35_native_prefill_correctness.py`, a correctness-only helper comparing:
+  - serial token-by-token resident prefill + one decode token;
+  - `prefill_linear_tokens_native()` + one decode token.
+- The helper returns nonzero on mismatch and emits `rejected_correctness` JSON evidence.
+
+### Artifact
+
+```bash
+python3 scripts/qwen35_native_prefill_correctness.py \
+  --prompt-length 4 --max-layers 3 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-prefill-rejected.json
+```
+
+Expected exit: `1` for the current mismatch.
+
+Result artifact: `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-prefill-rejected.json`.
+
+Key fields:
+
+- `status=rejected_correctness`
+- `performance_claim=false`
+- `native_prefill_plan.full_layer_limit_native=true` for `max_layers=3`
+- `finite_logits=true`
+- `seed_match=false`: serial `95916` vs native `201383`
+- `decode_match=false`: serial `158950` vs native `96022`
+- `logit_abs_delta.seed=0.48061084747314453`
+- `logit_abs_delta.decode=0.09302425384521484`
+
+### Interpretation
+
+The first full-model native-prefill blocker is still layer 3 `full_attention`, but the current native linear-prefix helper is not yet a correctness-preserving substitute for serial c=1 even when restricted to the first 3 linear-attention layers. Fixing/replacing that native prefix path is now the immediate Task #15 blocker before any compact/full-attention extension or throughput claim.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0`.
+
+### Notes
+
+- The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`; robust active TaskList count over #12/#15 remains `2`.
+- No performance claim was made; the new artifact is explicitly rejected correctness evidence.
