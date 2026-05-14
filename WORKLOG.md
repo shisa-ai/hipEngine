@@ -3774,3 +3774,24 @@ Results:
 
 - Wire resident-session layer prefill over linear-attention layers and measure the c1-style batched prefill baseline.
 - Port/implement compact grouped MoE prefill (WMMA path) for the real PLAN-MOE2 throughput target.
+
+---
+
+## 2026-05-14 — Document c>1 PARO roadmap in PLAN
+
+### Scope
+
+- Added `docs/PLAN.md` section `Concurrent Decode / c>1 PARO Roadmap`.
+- Captured the code-review conclusion that HIPENGINE is a better foundation for c>1 than `nano-vllm-amd`, but current Qwen3.5/PARO runtime remains effectively c=1.
+- Documented current blockers: one-token smoke generator, scalar resident-session state, c1-only decode orchestrators, scalar-context GQA attention, and selected-MoE lane mapping.
+- Added expected c=8 behavior and an implementation plan covering batch state, correctness harnesses, scheduler/graph buckets, batched attention, linear-attention state, MoE batch kernels, c-aware quant projection dispatch, and c=N benchmark protocol.
+
+### Validation
+
+- Re-read the inserted `docs/PLAN.md` section.
+- Documentation-only change; no GPU run required.
+
+### Next
+
+- Treat Qwen3.5/PARO benchmark rows as c=1 until a c=N correctness harness and batch-state path land.
+- Start any c=8 work with deterministic batched-vs-independent-c1 correctness fixtures before optimizing kernels.

@@ -439,6 +439,58 @@ Our host is simpler because **the kernels do the heavy lifting**. The scheduler 
 2. Route to the right kernel dispatch path
 3. Manage KV cache pages with a pluggable policy
 
+### Concurrent Decode / c>1 PARO Roadmap
+
+HIPENGINE is a better foundation for c>1 than the current `nano-vllm-amd` native PARO path, but the runnable implementation remains c=1 until the batch-state and c-aware kernels below land. Treat current Qwen3.5/PARO numbers as **single-request decode** unless a benchmark explicitly says otherwise.
+
+#### Current status
+
+| Question | Answer |
+|---|---|
+| Can current HIPENGINE run real c=8 PARO decode? | No. |
+| Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
+| Would just setting `tokens=8` work? | No. |
+| Is HIPENGINE the better place to build c=8+ PARO? | Probably yes. |
+
+Why the design is better positioned:
+
+- The hot path owns raw HIP pointers and `hipGraph` replay directly instead of depending on torch tensors or PyTorch graph wrappers.
+- Many wrappers already expose `tokens`, `rows`, or row-shaped grids, so partial batching can be tested without changing the public API.
+- `KVLiveSpans` and `KVPolicy.batch_spans(...)` are intended to represent per-sequence KV state rather than a single scalar `(block_table, context_len)` pair.
+- The kernel registry can add c-specific variants such as `(layer="selected_pack8_gemv", variant="batch8")` or `(layer="paged_attn_decode", variant="gqa_batch")` without engine-wide backend/quant branches.
+- Decode graph capture is already framed as batch-size buckets `[1, 2, 4, 8, 16, ...]`.
+
+Current blockers that keep Qwen3.5/PARO effectively c=1:
+
+- `hipengine.generation.qwen35_paro.Qwen35ParoOneTokenGenerator` is a smoke path: it requires `max_tokens == 1` and serializes prompts in Python.
+- `Qwen35ParoResidentSession` owns single-request state: `(1, hidden_size)` hidden buffers, scalar token/position/context device buffers, one block table/span object, and one KV cache per full-attention layer.
+- Several decode orchestrators still reject `tokens != 1` or only support c1-style GEMV batching; this is useful for prefill bring-up but not a complete concurrent decode scheduler.
+- The current GQA split-K attention kernels consume one query stream with scalar context length. c>1 needs a batch grid dimension plus per-sequence `live_counts`/page tables.
+- Selected MoE GEMV needs a real mapping from token rows to routed lanes. For c=8 and top-k=8 the natural shape is `x_rows=8`, `rows=64`; kernels must gather hidden rows by `lane // top_k` or run grouped/compact expert kernels rather than assuming one hidden row or one row per lane.
+
+#### Expected c=8 behavior
+
+| Path | Expected aggregate c=8 behavior |
+|---|---|
+| Current HIPENGINE as-is | Unsupported. |
+| Eight serial c=1 sessions sharing weights | About 1× c1 aggregate, worse latency. |
+| Naive `rows=8` where wrappers allow it | Modest gain from larger grids and lower relative launch cost; weights are still mostly reloaded per row. |
+| Proper c=8 batch path | Plausibly 2–4× c1 aggregate for Qwen3.5/PARO decode; not 8×. |
+| c>16 | Prefer GEMM/MMQ/WMMA and grouped MoE designs over extending c1 GEMV. |
+
+The key distinction is that many current "batched" kernels are row-parallel GEMV. They increase grid size, but they do not automatically reuse streamed weights across requests the way a true GEMM/MMQ/WMMA or grouped-MoE kernel can.
+
+#### Implementation plan
+
+1. **Batch-state container.** Add a `ResidentBatchSession` or equivalent with `[C, hidden]` buffers, device token ids, per-request positions/context lengths, per-layer linear-attention recurrent/conv state, and per-request/per-layer full-attention KV spans.
+2. **Correctness harness first.** For fixed prompts and greedy sampling, compare c=2/4/8 batch output against independent c=1 runs. Require finite logits, matching generated ids for deterministic fixtures, and per-layer state/KV bounds checks before any perf claim.
+3. **Scheduler contract.** Add request admission and decode-step batching around `KVPolicy.batch_spans(...)`; bucket graph capture by active batch size and shape (`C`, context bucket, top-k, graph-steps-per-replay).
+4. **Attention batch kernels.** Add batched paged GQA decode and KV append variants with a batch grid dimension and per-sequence span metadata. Uniform paged KV is first; DMS/variable spans reuse the same public ABI later.
+5. **Linear-attention state kernels.** Make conv/GDN recurrent decode consume `[C, ...]` state and update each sequence independently.
+6. **MoE batch kernels.** Replace c1 selected-lane assumptions with token→lane mapping, then add grouped-by-expert and compact/WMMA routes once routed-lane counts justify them. Use routed lanes, not token count alone, for the GEMV-vs-WMMA threshold.
+7. **Quantized projection dispatch.** Use c-aware rules: c=1 stays GEMV; c=2/4/8 uses multi-column/MMQ-style kernels where they beat row-GEMV; c>16 moves toward GEMM/WMMA.
+8. **Benchmark protocol.** Add c=N concurrent rows only after the above correctness harness is green. Report aggregate tok/s, per-request tok/s, p50/p95 latency, memory, active batch occupancy, graph bucket, and generated-token equality vs c1.
+
 ### Hot-Path Dispatch Strategy
 
 At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per token. Naive Python dispatch through PyTorch adds ~50–200 µs/token of pure overhead. HIPENGINE has five compounding levers to move dispatch out of the hot path; we pick the cheapest first and add more only when profiling demands it.
