@@ -1,0 +1,73 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-15T07:20:00-07:00",
+  "run_tag": "hipengine-qwen35-c1-prefix-bisect",
+  "summary": "Prefix top-k bisect localizes the first HIPENGINE vs parent sequential argmax divergence to max_layers=2, i.e. after adding layer 1 on top of the layer-0 linear-attention path.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "commit": "1823b1c+working-tree",
+    "dirty": true
+  },
+  "workload": {
+    "model": "Qwen3.5-35B-A3B-PARO",
+    "quant": "w4_paro",
+    "prompt_tokens": 512,
+    "decode_tokens_run": 1,
+    "concurrency": 1,
+    "prompt_source": "torch_cpu_randint_seed1234",
+    "seed": 1234
+  },
+  "commands": {
+    "hipengine_prefix_probe": "PYTHONPATH=/home/lhl/hipengine python3 /tmp/hipengine_prefix_probe.py",
+    "parent_prefix_probe": "cd /home/lhl/amd-gpu-tuning && <OPTIMAL env flags> PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output python3 /tmp/parent_prefix_probe.py",
+    "guard": "python3 -m compileall -q hipengine tests scripts && python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q"
+  },
+  "prefix_results": {
+    "1": {
+      "parent_prefill_seed": 111,
+      "hip_prefill_seed": 111,
+      "parent_decode_argmax": 75,
+      "hip_decode_argmax": 75,
+      "status": "argmax_match"
+    },
+    "2": {
+      "parent_prefill_seed": 83,
+      "hip_prefill_seed": 4144,
+      "parent_decode_argmax": 60822,
+      "hip_decode_argmax": 69906,
+      "status": "first_argmax_divergence",
+      "parent_prefill_top5": [[83, 8.541163444519043], [6245, 8.30211353302002], [4144, 8.193629264831543], [932, 8.128518104553223], [37685, 7.775232791900635]],
+      "hip_prefill_top5": [[4144, 8.706582069396973], [6245, 8.700551986694336], [83, 8.246453285217285], [932, 7.793816566467285], [37685, 7.784671783447266]]
+    },
+    "3": {
+      "parent_prefill_seed": 315,
+      "hip_prefill_seed": 315,
+      "parent_decode_argmax": 467,
+      "hip_decode_argmax": 441,
+      "status": "prefill_argmax_rematches_decode_differs"
+    },
+    "4": {
+      "parent_prefill_seed": 169941,
+      "hip_prefill_seed": 169941,
+      "parent_decode_argmax": 156206,
+      "hip_decode_argmax": 25046,
+      "status": "prefill_argmax_matches_decode_differs"
+    },
+    "40": {
+      "parent_prefill_seed": 4403,
+      "hip_prefill_seed": 4403,
+      "parent_decode_argmax": 1739,
+      "hip_decode_argmax": 4096,
+      "status": "full_fixture_first_decode_mismatch"
+    }
+  },
+  "blockers": [
+    "Layer-0-only prefix matches parent argmax for prefill and first decode, so the earliest argmax divergence appears when layer 1 is included.",
+    "Layer 1 is a linear_attention layer; next step should compare parent and HIP hidden/logit outputs inside layer 1 linear-attention/MoE, especially accumulated state after 512 sequential prompt tokens.",
+    "No performance claim retained; this is a correctness bisect artifact."
+  ]
+}

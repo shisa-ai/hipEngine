@@ -4937,3 +4937,39 @@ Results:
 ### Next
 
 - Bisect per-layer hidden/logit outputs against parent sequential mode. The broad activation dtype and router materialization bugs are no longer the only blocker; the remaining miss is a close ordering drift where HIP raises `4096`/`220` relative to parent token `1739` after the full 512-token prompt.
+
+---
+
+## 2026-05-15 — Prefix-bisect Qwen3.5/PARO parent fixture mismatch
+
+### Scope
+
+- Continued Task #36 with a prefix top-k bisect against parent sequential mode.
+- Wrote one-off probes outside the repo:
+  - `/tmp/hipengine_prefix_probe.py` runs HIPENGINE resident c=1 on the 512-token fixture for selected `max_layers` prefixes.
+  - `/tmp/parent_prefix_probe.py` runs `nano-vllm-amd` parent sequential prefill/decode under OPTIMAL flags for the same prefixes.
+- Added blocked diagnostic artifact `benchmarks/results/2026-05-15-hipengine-qwen35-prefix-bisect-blocked.json`.
+
+### Validation and probes
+
+```bash
+PYTHONPATH=/home/lhl/hipengine python3 /tmp/hipengine_prefix_probe.py
+cd /home/lhl/amd-gpu-tuning && <OPTIMAL env flags> \
+  PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output \
+  python3 /tmp/parent_prefix_probe.py
+```
+
+Results:
+
+- Prefix `max_layers=1` (layer 0 only) matches parent argmax:
+  - parent prefill seed `111`, decode argmax `75`;
+  - HIP prefill seed `111`, decode argmax `75`.
+- First argmax divergence appears at `max_layers=2` (layers 0-1; layer 1 is linear_attention):
+  - parent prefill top5: `83=8.541163444519043`, `6245=8.30211353302002`, `4144=8.193629264831543`, `932=8.128518104553223`, `37685=7.775232791900635`;
+  - HIP prefill top5: `4144=8.706582069396973`, `6245=8.700551986694336`, `83=8.246453285217285`, `932=7.793816566467285`, `37685=7.784671783447266`;
+  - parent first decode argmax `60822`; HIP first decode argmax `69906`.
+- Later prefixes can re-match prefill argmax but still differ in decode (`max_layers=3`: prefill seed `315` for both, decode parent `467` vs HIP `441`; `max_layers=4`: prefill seed `169941` for both, decode parent `156206` vs HIP `25046`). Full 40-layer fixture remains parent `1739` vs HIP `4096` for first decode.
+
+### Next
+
+- Inspect layer 1 linear-attention/MoE internals against parent: hidden after input RMSNorm, QKV/Z/AB projections, Conv/GDN recurrent state after 512 prompt tokens, out-proj, post-attention add-RMSNorm, router logits/top-k, and MoE/shared outputs.
