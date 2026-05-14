@@ -23,10 +23,12 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
+    argmax_f32,
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16,
 )
 from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16
+from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading import (
     WeightIndex,
@@ -490,6 +492,396 @@ class Qwen35ParoNextTokenRunner:
         )
 
 
+@dataclass(frozen=True)
+class Qwen35ParoAutoregressiveStepResult:
+    token_id: int
+    token_text: str
+    logit: float
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {"token_id": self.token_id, "token_text": self.token_text, "logit": self.logit}
+
+
+class Qwen35ParoResidentSession:
+    """Resident-state autoregressive Qwen3.5/PARO c=1 inference session.
+
+    The session materializes layer weights once, keeps per-layer linear-attention
+    recurrent/conv state and per-full-attention KV caches across tokens, and runs
+    actual autoregressive prompt+decode token steps. It is still a c=1 decode path:
+    native batched/compact prefill and graph replay are intentionally not implied.
+    """
+
+    def __init__(
+        self,
+        runner: Qwen35ParoNextTokenRunner,
+        *,
+        max_sequence_length: int,
+        max_layers: int = 0,
+        block_size: int = 256,
+        chunk_size: int = 256,
+        progress: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
+        if max_sequence_length <= 0:
+            raise ValueError("max_sequence_length must be positive")
+        if block_size != 256:
+            raise ValueError("current Qwen3.5 paged attention kernels require block_size=256")
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        self.runner = runner
+        self.model = runner.model
+        self.config = runner.config
+        self.runtime = runner.runtime
+        self.device = Device("hip", 0)
+        self.max_sequence_length = int(max_sequence_length)
+        self.block_size = int(block_size)
+        self.chunk_size = int(chunk_size)
+        self.max_splits = (self.max_sequence_length + self.chunk_size - 1) // self.chunk_size
+        self.layer_limit = (
+            self.config.num_hidden_layers
+            if max_layers <= 0
+            else min(int(max_layers), self.config.num_hidden_layers)
+        )
+        self.progress = progress
+        self.buffers: list[DeviceBuffer] = []
+        self.allocations: list[DeviceTensorAllocation] = []
+        self.states: list[Qwen35ParoDecodeState] = []
+        self.linear_states: dict[int, tuple[Tensor, Tensor, DeviceBuffer, DeviceBuffer, np.ndarray, np.ndarray]] = {}
+        self.full_caches: dict[int, tuple[Tensor, Tensor, DeviceBuffer, DeviceBuffer]] = {}
+        self.linear_scratch = {}
+        self.full_scratch = {}
+        self.moe_scratch = {}
+        self.closed = False
+        self._build()
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        for state in reversed(self.states):
+            state.free()
+        for allocation in reversed(self.allocations):
+            allocation.free(runtime=self.runtime)
+        for buffer in reversed(self.buffers):
+            free(buffer, runtime=self.runtime)
+
+    def __enter__(self) -> "Qwen35ParoResidentSession":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def step(self, token_id: int, *, position: int, sample: bool = True) -> Qwen35ParoAutoregressiveStepResult | None:
+        if self.closed:
+            raise RuntimeError("session is closed")
+        if position < 0 or position >= self.max_sequence_length:
+            raise ValueError(f"position {position} outside session capacity {self.max_sequence_length}")
+        self._set_token_embedding(int(token_id))
+        self._set_position(position)
+        hidden = self.hidden
+        next_hidden = self.next_hidden
+        for layer_id, state in enumerate(self.states):
+            layer_type = self.config.layer_types[layer_id]
+            if layer_type == "linear_attention":
+                conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+                out = state.run_linear_attention_moe_c1_layer_bf16(
+                    hidden,
+                    conv_state=conv_state,
+                    recurrent_state=recurrent_state,
+                    linear_scratch=self.linear_scratch[layer_id],
+                    moe_scratch=self.moe_scratch[layer_id],
+                    library=self.libraries,
+                )
+            elif layer_type == "full_attention":
+                key_cache, value_cache, _key_buf, _value_buf = self.full_caches[layer_id]
+                num_splits = max(1, (position + 1 + self.chunk_size - 1) // self.chunk_size)
+                out = state.run_full_attention_moe_c1_layer_bf16(
+                    hidden,
+                    key_cache=key_cache,
+                    value_cache=value_cache,
+                    append_spans=self.append_spans,
+                    decode_spans=self.decode_spans,
+                    cos_table=self.cos,
+                    sin_table=self.sin,
+                    position=self.position_tensor,
+                    max_positions=self.max_sequence_length,
+                    attention_scratch=self.full_scratch[layer_id],
+                    moe_scratch=self.moe_scratch[layer_id],
+                    chunk_size=self.chunk_size,
+                    num_splits=num_splits,
+                    library=self.libraries,
+                )
+            else:
+                raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
+            self.runtime.memcpy(next_hidden.ptr, out.ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+            hidden, next_hidden = next_hidden, hidden
+        self.hidden = hidden
+        self.next_hidden = next_hidden
+        if not sample:
+            return None
+        return self._sample_from_hidden(hidden)
+
+    def _build(self) -> None:
+        self._emit("resident_build_start", layers=self.layer_limit, max_sequence_length=self.max_sequence_length)
+        self._load_kernel_libraries()
+        self._load_embedding()
+        self._load_final_norm_and_head()
+        self._allocate_common_buffers()
+        self._materialize_layers()
+        self._emit("resident_build_done", layers=self.layer_limit)
+
+    def _load_kernel_libraries(self) -> None:
+        self._emit("load_kernel_libraries_start")
+        from hipengine.kernels.hip_gfx1100.attention import build_qwen35_paged_attn_decode, build_qwen35_paged_kv_write
+        from hipengine.kernels.hip_gfx1100.convert import build_cast
+        from hipengine.kernels.hip_gfx1100.fused.paro_combine import build_paro_combine
+        from hipengine.kernels.hip_gfx1100.fused.paro_silu import build_paro_silu
+        from hipengine.kernels.hip_gfx1100.linear import build_dense_gemv, build_lm_head
+        from hipengine.kernels.hip_gfx1100.linear_attn.conv import build_qwen35_linear_attn_conv
+        from hipengine.kernels.hip_gfx1100.linear_attn.gdn import build_qwen35_linear_attn_gdn
+        from hipengine.kernels.hip_gfx1100.moe.router import build_qwen35_router
+        from hipengine.kernels.hip_gfx1100.norm import build_qwen35_rmsnorm
+        from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv
+        from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
+        from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import build_paro_rotate
+        from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import build_qwen35_rotary
+
+        self.libraries = {
+            "attention": build_qwen35_paged_attn_decode(load=True),
+            "awq": build_paro_awq_gemv(load=True),
+            "cast": build_cast(load=True),
+            "combine": build_paro_combine(load=True),
+            "dense": build_dense_gemv(load=True),
+            "kv": build_qwen35_paged_kv_write(load=True),
+            "linear_conv": build_qwen35_linear_attn_conv(load=True),
+            "linear_gdn": build_qwen35_linear_attn_gdn(load=True),
+            "lm_head": build_lm_head(load=True),
+            "norm": build_qwen35_rmsnorm(load=True),
+            "qwen_rotary": build_qwen35_rotary(load=True),
+            "router": build_qwen35_router(load=True),
+            "rotate": build_paro_rotate(load=True),
+            "silu": build_paro_silu(load=True),
+            "w8a16": build_w8a16_linear(load=True),
+        }
+        self._emit("load_kernel_libraries_done", count=len(self.libraries))
+
+    def _load_embedding(self) -> None:
+        self._emit("load_embedding_start")
+        embed_bits = float_array_to_bf16_bits(_read_tensor(self.runner.normalized_infos, "language_model.embed_tokens.weight"))
+        if embed_bits.shape[1] != self.config.hidden_size:
+            raise ValueError(f"embedding hidden size {embed_bits.shape[1]} does not match {self.config.hidden_size}")
+        self.embedding = load_host_array_to_device_as_dtype(
+            "language_model.embed_tokens.weight.bf16",
+            embed_bits,
+            DType.BF16,
+            runtime=self.runtime,
+        )
+        self.allocations.append(self.embedding)
+        self.vocab_size = int(embed_bits.shape[0])
+        self.hidden_nbytes = int(self.config.hidden_size) * DType.BF16.itemsize
+        self._emit("load_embedding_done", vocab_size=self.vocab_size, hidden_size=self.config.hidden_size)
+
+    def _load_final_norm_and_head(self) -> None:
+        self._emit("load_final_norm_start")
+        norm_bits = float_array_to_bf16_bits(_read_tensor(self.runner.normalized_infos, "language_model.norm.weight"))
+        self.norm_weight = load_host_array_to_device_as_dtype(
+            "model.norm.weight",
+            norm_bits,
+            DType.BF16,
+            runtime=self.runtime,
+        )
+        self.allocations.append(self.norm_weight)
+        self._emit("load_final_norm_done")
+        self._emit("load_lm_head_start", mode="w8a16")
+        head = _read_tensor(self.runner.normalized_infos, "lm_head.weight")
+        head_vocab, head_hidden = head.shape
+        if int(head_hidden) != self.config.hidden_size:
+            raise ValueError(f"lm_head hidden size {head_hidden} does not match {self.config.hidden_size}")
+        if int(head_vocab) != self.vocab_size:
+            # Some checkpoints can untie embeddings; this one should match, but the
+            # runtime only requires the head's vocabulary for argmax.
+            self.vocab_size = int(head_vocab)
+        head_q, head_scale = _quantize_w8a16_host(head)
+        self.lm_head_weight = load_host_array_to_device_as_dtype(
+            "lm_head.weight_w8a16",
+            head_q,
+            DType.INT8,
+            runtime=self.runtime,
+        )
+        self.lm_head_scale = load_host_array_to_device_as_dtype(
+            "lm_head.weight_w8a16_scale",
+            head_scale,
+            DType.FP32,
+            runtime=self.runtime,
+        )
+        self.allocations.extend((self.lm_head_weight, self.lm_head_scale))
+        self._emit("load_lm_head_done", vocab_size=self.vocab_size, mode="w8a16")
+
+    def _allocate_common_buffers(self) -> None:
+        hidden_buf = malloc(self.hidden_nbytes, runtime=self.runtime)
+        next_hidden_buf = malloc(self.hidden_nbytes, runtime=self.runtime)
+        norm_out_buf = malloc(self.hidden_nbytes, runtime=self.runtime)
+        self.buffers.extend((hidden_buf, next_hidden_buf, norm_out_buf))
+        self.hidden = Tensor.from_handle(hidden_buf.ptr, (1, self.config.hidden_size), DType.BF16, self.device)
+        self.next_hidden = Tensor.from_handle(next_hidden_buf.ptr, (1, self.config.hidden_size), DType.BF16, self.device)
+        self.norm_out = Tensor.from_handle(norm_out_buf.ptr, (1, self.config.hidden_size), DType.BF16, self.device)
+
+        self.blocks = (self.max_sequence_length + self.block_size - 1) // self.block_size
+        block_table_arr = np.arange(self.blocks, dtype=np.int32)
+        self.position_arr = np.asarray([0], dtype=np.int64)
+        self.context_arr = np.asarray([1], dtype=np.int64)
+        self.block_table_buf = self._dev(block_table_arr)
+        self.position_buf = self._dev(self.position_arr)
+        self.context_buf = self._dev(self.context_arr)
+        self.block_table = Tensor.from_handle(self.block_table_buf.ptr, block_table_arr.shape, DType.INT32, self.device)
+        self.position_tensor = Tensor.from_handle(self.position_buf.ptr, self.position_arr.shape, DType.INT64, self.device)
+        self.context_tensor = Tensor.from_handle(self.context_buf.ptr, self.context_arr.shape, DType.INT64, self.device)
+        self.append_spans = KVLiveSpans.paged_uniform(
+            block_table=self.block_table,
+            live_counts=self.position_tensor,
+            max_live_count=self.max_sequence_length - 1,
+            storage_dtype=DType.BF16,
+        )
+        self.decode_spans = KVLiveSpans.paged_uniform(
+            block_table=self.block_table,
+            live_counts=self.context_tensor,
+            max_live_count=self.max_sequence_length,
+            storage_dtype=DType.BF16,
+        )
+
+        cos_arr, sin_arr = _rope_tables(
+            max_positions=self.max_sequence_length,
+            rotary_dim=self.config.rotary_dim or self.config.head_dim,
+            base=self.config.rope_theta,
+        )
+        cos_buf = self._dev(cos_arr)
+        sin_buf = self._dev(sin_arr)
+        self.cos = Tensor.from_handle(cos_buf.ptr, cos_arr.shape, DType.FP32, self.device)
+        self.sin = Tensor.from_handle(sin_buf.ptr, sin_arr.shape, DType.FP32, self.device)
+
+        threads = 256
+        self.lm_head_stage1_blocks = lm_head_argmax_stage1_blocks(self.vocab_size, threads=threads)
+        self.lm_head_threads = threads
+        self.lm_logits = malloc(self.vocab_size * DType.FP32.itemsize, runtime=self.runtime)
+        self.lm_block_values = malloc(self.lm_head_stage1_blocks * DType.FP32.itemsize, runtime=self.runtime)
+        self.lm_block_indices = malloc(self.lm_head_stage1_blocks * DType.INT64.itemsize, runtime=self.runtime)
+        self.lm_out_index = malloc(DType.INT64.itemsize, runtime=self.runtime)
+        self.lm_out_value = malloc(DType.FP32.itemsize, runtime=self.runtime)
+        self.buffers.extend((self.lm_logits, self.lm_block_values, self.lm_block_indices, self.lm_out_index, self.lm_out_value))
+
+    def _materialize_layers(self) -> None:
+        self.states = self.runner._materialize_resident_states(self.layer_limit, emit=self._emit)
+        qkv_width = (
+            2 * self.config.linear_num_key_heads * self.config.linear_key_head_dim
+            + self.config.linear_num_value_heads * self.config.linear_value_head_dim
+        )
+        for layer_id, state in enumerate(self.states):
+            layer_type = self.config.layer_types[layer_id]
+            self.moe_scratch[layer_id] = state.reserve_moe_c1_scratch(tokens=1)
+            if layer_type == "linear_attention":
+                conv_zero = np.zeros((qkv_width, self.config.linear_conv_kernel_dim), dtype=np.float32)
+                recurrent_zero = np.zeros(
+                    (
+                        self.config.linear_num_value_heads,
+                        self.config.linear_key_head_dim,
+                        self.config.linear_value_head_dim,
+                    ),
+                    dtype=np.float32,
+                )
+                conv_buf = self._dev(conv_zero)
+                recurrent_buf = self._dev(recurrent_zero)
+                conv_state = Tensor.from_handle(conv_buf.ptr, conv_zero.shape, DType.FP32, self.device)
+                recurrent_state = Tensor.from_handle(recurrent_buf.ptr, recurrent_zero.shape, DType.FP32, self.device)
+                self.linear_states[layer_id] = (conv_state, recurrent_state, conv_buf, recurrent_buf, conv_zero, recurrent_zero)
+                self.linear_scratch[layer_id] = state.reserve_linear_attention_scratch(tokens=1)
+            elif layer_type == "full_attention":
+                key_zero = np.zeros(
+                    (self.blocks, self.block_size, self.config.num_key_value_heads, self.config.head_dim),
+                    dtype=np.uint16,
+                )
+                value_zero = np.zeros_like(key_zero)
+                key_buf = self._dev(key_zero)
+                value_buf = self._dev(value_zero)
+                key_cache = Tensor.from_handle(key_buf.ptr, key_zero.shape, DType.BF16, self.device)
+                value_cache = Tensor.from_handle(value_buf.ptr, value_zero.shape, DType.BF16, self.device)
+                self.full_caches[layer_id] = (key_cache, value_cache, key_buf, value_buf)
+                self.full_scratch[layer_id] = state.reserve_full_attention_scratch(tokens=1, num_splits=self.max_splits)
+            else:
+                raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
+
+    def _set_token_embedding(self, token_id: int) -> None:
+        if token_id < 0 or token_id >= self.vocab_size:
+            raise ValueError(f"token_id {token_id} outside [0, {self.vocab_size})")
+        offset = token_id * self.hidden_nbytes
+        self.runtime.memcpy(
+            self.hidden.ptr,
+            self.embedding.tensor.ptr + offset,
+            self.hidden_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+        )
+
+    def _set_position(self, position: int) -> None:
+        self.position_arr[0] = int(position)
+        self.context_arr[0] = int(position) + 1
+        copy_host_to_device(self.position_buf, host_array_ptr(self.position_arr), runtime=self.runtime)
+        copy_host_to_device(self.context_buf, host_array_ptr(self.context_arr), runtime=self.runtime)
+
+    def _sample_from_hidden(self, hidden: Tensor) -> Qwen35ParoAutoregressiveStepResult:
+        paro_rmsnorm_out_bf16(
+            hidden.ptr,
+            self.norm_weight.tensor.ptr,
+            self.norm_out.ptr,
+            1,
+            self.config.hidden_size,
+            self.config.rms_norm_eps,
+            library=self.libraries["norm"],
+            runtime=self.runtime,
+        )
+        w8a16_linear_bf16_f32_out(
+            self.norm_out.ptr,
+            self.lm_head_weight.tensor.ptr,
+            self.lm_head_scale.tensor.ptr,
+            self.lm_logits.ptr,
+            1,
+            self.config.hidden_size,
+            self.vocab_size,
+            threads=self.lm_head_threads,
+            library=self.libraries["w8a16"],
+            runtime=self.runtime,
+        )
+        argmax_f32(
+            self.lm_logits.ptr,
+            self.lm_block_values.ptr,
+            self.lm_block_indices.ptr,
+            self.lm_out_index.ptr,
+            self.lm_out_value.ptr,
+            self.vocab_size,
+            threads=self.lm_head_threads,
+            library=self.libraries["lm_head"],
+            runtime=self.runtime,
+        )
+        self.runtime.device_synchronize()
+        index_host = np.empty((1,), dtype=np.int64)
+        value_host = np.empty((1,), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(index_host), self.lm_out_index, runtime=self.runtime)
+        copy_device_to_host(host_array_ptr(value_host), self.lm_out_value, runtime=self.runtime)
+        token_id = int(index_host[0])
+        return Qwen35ParoAutoregressiveStepResult(
+            token_id=token_id,
+            token_text=_decode_token(self.model, token_id),
+            logit=float(value_host[0]),
+        )
+
+    def _dev(self, array: np.ndarray) -> DeviceBuffer:
+        buf = malloc(array.nbytes, runtime=self.runtime)
+        self.buffers.append(buf)
+        copy_host_to_device(buf, host_array_ptr(array), runtime=self.runtime)
+        return buf
+
+    def _emit(self, event: str, **fields: Any) -> None:
+        if self.progress is not None:
+            self.progress({"event": event, **fields})
+
+
 def _progress_forwarder(emit: Callable[..., None]) -> Callable[[dict[str, Any]], None]:
     def forward(payload: dict[str, Any]) -> None:
         event = str(payload.get("event", "loader"))
@@ -555,6 +947,14 @@ def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[n
 
 def _bf16_bits_to_float32(bits: np.ndarray) -> np.ndarray:
     return (np.asarray(bits, dtype=np.uint16).astype(np.uint32) << 16).view(np.float32)
+
+
+def _quantize_w8a16_host(weight: object) -> tuple[np.ndarray, np.ndarray]:
+    weight_f32 = np.asarray(weight, dtype=np.float32)
+    scale = np.maximum(np.max(np.abs(weight_f32), axis=1), 1.0e-8).astype(np.float32) / np.float32(127.0)
+    quantized = np.rint(weight_f32 / scale[:, None])
+    quantized = np.clip(quantized, -127, 127).astype(np.int8)
+    return np.ascontiguousarray(quantized), np.ascontiguousarray(scale)
 
 
 def _lm_head_argmax(

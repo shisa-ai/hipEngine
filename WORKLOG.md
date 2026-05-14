@@ -3345,3 +3345,44 @@ Results on W7900 / real checkpoint `/models/huggingface/hub/models--z-lab--Qwen3
 - This is still one-token decode bring-up, not full multi-token generation/prefill.
 - Host load/prep remains the dominant wall-time because expert stack prep is still Python/NumPy-side; progress now makes that visible.
 - Next performance path: persistent process-level layer state reuse across tokens, real KV/recurrent state advancement, GPU sampling, then graph/captured replay.
+
+---
+
+## 2026-05-14 — Add actual autoregressive Qwen3.5/PARO timing harness
+
+### Scope
+
+- Added `Qwen35ParoResidentSession` for actual multi-token autoregressive inference with:
+  - resident all-layer weights,
+  - per-linear-layer conv/recurrent state retained across tokens,
+  - per-full-attention-layer BF16 paged KV cache retained across tokens,
+  - device embedding table, final norm, W8A16 lm-head, and GPU argmax.
+- Added `scripts/qwen35_paro_bench.py` to time resident load, actual token-by-token prompt prefill, warmup decode, and measured decode.
+- Changed resident sampling to preload HIP libraries and pass them through wrapper calls, avoiding per-kernel `hipcc --version` / `ctypes.CDLL` overhead.
+- Added exported GPU `argmax_f32` so W8A16 lm-head logits can reuse the existing two-stage GPU argmax.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/__init__.py scripts/qwen35_paro_bench.py
+python3 -m pytest tests/test_lm_head_plan.py tests/test_llm_generate.py tests/test_qwen35_decode_state.py -q
+python3 -m compileall -q hipengine scripts tests
+python3 -m pytest -q
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 2 --decode-tokens 2 --warmup-decode-tokens 1 --token-id 9707
+python3 scripts/qwen35_paro_bench.py --prompt-length 1 --decode-tokens 1 --warmup-decode-tokens 0 --token-id 9707 --json /tmp/hipengine-qwen35-bench-smoke2.json
+```
+
+Results on W7900 / real checkpoint:
+
+- Full pytest suite passed.
+- One-layer actual prompt/decode smoke completed with persistent state and W8A16 GPU lm-head:
+  - load `14.25s`, token-by-token prefill `6.44 tok/s` for 2 prompt tokens, warmed decode `3.42 tok/s` for 2 measured tokens.
+- All-layer actual prompt/decode smoke completed with persistent state and W8A16 GPU lm-head:
+  - shape `prompt_length=1`, `decode_tokens=1`, load `35.08s`, token-by-token prefill `3.04 tok/s`, decode `3.20 tok/s`.
+  - Generated preview starts with token `76323` (`"arra"`), matching the earlier all-layer one-token E2E path.
+
+### Interpretation / Next
+
+- This is now actual autoregressive inference, but prefill is still token-by-token c=1, not native batched/compact prefill; do not compare it to PLAN-MOE2 prefill tok/s.
+- Warmed decode is a real c=1 resident decode measurement, but still lacks graph replay and is far below PLAN-MOE2 decode (~3.2 tok/s vs ~131 tok/s at 512/128 target class).
+- Immediate next bottleneck work: capture a kernel/runtime trace for one measured decode step to separate Python/ctypes launch overhead from GPU kernel time, then add graph/library replay or lower-overhead dispatch before running large 512/128 measurements.

@@ -144,6 +144,50 @@ bool valid_threads(int64_t threads) {
 
 }  // namespace
 
+extern "C" int hipengine_argmax_f32(
+    const float* logits,
+    float* block_values,
+    int64_t* block_indices,
+    int64_t* out_index,
+    float* out_value,
+    int64_t vocab_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (vocab_size <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int t = static_cast<unsigned int>(threads);
+  const int64_t stage1_blocks = (vocab_size + threads * 4 - 1) / (threads * 4);
+  const size_t argmax_smem = static_cast<size_t>(threads) * (sizeof(float) + sizeof(int64_t));
+  hipLaunchKernelGGL(
+      argmax_stage1_kernel,
+      dim3(static_cast<unsigned int>(stage1_blocks)),
+      dim3(t),
+      argmax_smem,
+      stream,
+      logits,
+      block_values,
+      block_indices,
+      vocab_size);
+  hipError_t err = hipGetLastError();
+  if (err != hipSuccess) {
+    return static_cast<int>(err);
+  }
+
+  hipLaunchKernelGGL(
+      argmax_stage2_kernel,
+      dim3(1),
+      dim3(t),
+      argmax_smem,
+      stream,
+      block_values,
+      block_indices,
+      stage1_blocks,
+      out_index,
+      out_value);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_lm_head_fp16_argmax_bf16(
     const uint16_t* hidden_bf16,
     const uint16_t* weight_fp16,

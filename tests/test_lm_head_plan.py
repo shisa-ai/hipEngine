@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
+    argmax_f32,
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16,
     plan_lm_head_build,
@@ -23,6 +24,7 @@ def test_lm_head_registers_w4_paro_variant() -> None:
         )
         is lm_head_fp16_argmax_bf16
     )
+    assert resolve(backend="hip_gfx1100", layer="argmax", quant="w4_paro", variant="f32") is argmax_f32
 
 
 def test_lm_head_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -45,6 +47,8 @@ def test_lm_head_wrapper_validates_before_gpu_load() -> None:
         lm_head_fp16_argmax_bf16(0, 0, 0, 0, 0, 0, 0, 8, 0)
     with pytest.raises(ValueError, match="threads"):
         lm_head_fp16_argmax_bf16(0, 0, 0, 0, 0, 0, 0, 8, 16, threads=64)
+    with pytest.raises(ValueError, match="vocab_size"):
+        argmax_f32(0, 0, 0, 0, 0, 0)
 
 
 def test_lm_head_stage1_block_count() -> None:
