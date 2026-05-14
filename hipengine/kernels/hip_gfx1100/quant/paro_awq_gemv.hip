@@ -367,7 +367,8 @@ __launch_bounds__(128, 4) __global__ void gemv_awq_selected_dual_pack8_strided_k
   const int64_t out_col = global_pack << 3;
   const int64_t local_out_col = local_pack << 3;
   const int64_t groups = in_features / group_size;
-  const int64_t x_row = (x_rows == 1) ? 0 : row;
+  const int64_t lanes_per_x_row = static_cast<int64_t>(gridDim.y) / x_rows;
+  const int64_t x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
   const int64_t x_base = x_row * in_features;
   const int32_t* __restrict__ qweight_base = use_b ? qweight_b : qweight_a;
   const int32_t* __restrict__ qzeros_base = use_b ? qzeros_b : qzeros_a;
@@ -613,7 +614,8 @@ __global__ void gemv_awq_selected_dual_pack8_strided_rotate_out_kernel(
   const int64_t out_col = global_pack << 3;
   const int64_t local_out_col = local_pack << 3;
   const int64_t groups = in_features / group_size;
-  const int64_t x_row = (x_rows == 1) ? 0 : row;
+  const int64_t lanes_per_x_row = static_cast<int64_t>(gridDim.y) / x_rows;
+  const int64_t x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
   const int64_t x_base = x_row * in_features;
   const int32_t* __restrict__ qweight_base = use_b ? qweight_b : qweight_a;
   const int32_t* __restrict__ qzeros_base = use_b ? qzeros_b : qzeros_a;
@@ -927,7 +929,7 @@ extern "C" int hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16(
     int64_t krot,
     int64_t threads,
     hipStream_t stream) {
-  if (x_rows <= 0 || rows <= 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 ||
+  if (x_rows <= 0 || rows <= 0 || (rows % x_rows) != 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 ||
       num_experts <= 0 || group_size <= 0 || krot < 0 || (in_features % group_size) != 0 ||
       (group_size % 8) != 0 || !valid_threads(threads)) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -979,7 +981,7 @@ extern "C" int hipengine_gemv_awq_selected_dual_pack8_strided_bf16(
     int64_t group_size,
     int64_t threads,
     hipStream_t stream) {
-  if (x_rows <= 0 || rows <= 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 ||
+  if (x_rows <= 0 || rows <= 0 || (rows % x_rows) != 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 ||
       num_experts <= 0 || group_size <= 0 || (in_features % group_size) != 0 || !valid_threads(threads)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -1026,7 +1028,7 @@ extern "C" int hipengine_gemv_awq_selected_dual_pack8_transposed_bf16(
     int64_t group_size,
     int64_t threads,
     hipStream_t stream) {
-  if (x_rows <= 0 || rows <= 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 ||
+  if (x_rows <= 0 || rows <= 0 || (rows % x_rows) != 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 ||
       num_experts <= 0 || group_size <= 0 || (in_features % group_size) != 0 || !valid_threads(threads)) {
     return static_cast<int>(hipErrorInvalidValue);
   }

@@ -135,7 +135,7 @@ def test_paro_awq_gemv_wrappers_validate_before_gpu_load() -> None:
         )
     with pytest.raises(ValueError, match="x_rows must be positive"):
         gemv_awq_selected_dual_pack8_strided_bf16(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 16, 1, 1, 2, 8)
-    with pytest.raises(ValueError, match="x_rows must be 1 or match rows"):
+    with pytest.raises(ValueError, match="rows must be divisible by x_rows"):
         gemv_awq_selected_dual_pack8_strided_bf16(0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 16, 1, 1, 2, 8)
     with pytest.raises(ValueError, match="in_features must be divisible"):
         gemv_awq_selected_dual_pack8_transposed_bf16(0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 18, 1, 1, 2, 8)

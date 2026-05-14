@@ -3740,3 +3740,37 @@ Smoke result:
 
 - Add grouped/compact MoE prefill kernels/state path; this is the dominant remaining prefill gap.
 - Then wire resident-session native prefill and switch the benchmark from `native_batched_prefill=false` to a comparable native prefill row only after full-layer correctness gates are green.
+
+---
+
+## 2026-05-14 — Add batched c1-style MoE prefill support
+
+### Scope
+
+- Extended selected-dual PARO pack8 GEMV lane mapping so `rows = x_rows * lanes_per_token` reads the correct source token row for batched gate/up. This preserves c=1 decode behavior while allowing token-major selected lanes.
+- Added `weighted_sum_shared_gate_combine_residual_batch_out_kernel` and wrapper/registry variant `weighted_sum+shared_gate+residual/*/batch_out` for batched selected weighted sum + shared gate + residual.
+- Let `Qwen35ParoDecodeState.run_moe_c1_bf16(...)` run with `tokens > 1` using existing selected/down/shared kernels plus the new batched combine.
+- Let `run_linear_attention_moe_c1_layer_bf16(...)` dispatch to the native linear-attention prefill path for `tokens > 1`, then the batched c1-style MoE path.
+
+This is still a c1/GEMV-style batched prefill path, not the parent compact-WMMA/grouped MoE prefill. It is intended to unblock real multi-token layer orchestration before the compact MoE port.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_paro_combine_plan.py tests/test_paro_awq_gemv_plan.py -q
+python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16
+python3 scripts/smoke.py --mode paro-moe-c1-state-hip --hidden-size 8
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-combine-prof --output-file combine --output-format csv -- \
+  python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- Combine smoke: `weighted_mismatch=0`, `fused_mismatch=0`, `batch_fused_mismatch=0`, `shared_mismatch=0`, `shared_residual_mismatch=0`.
+- MoE c1 state smoke remained bit-exact (`final_mismatch=0`, `final_max_abs=0.0`).
+- `rocprofv3` confirmed `weighted_sum_shared_gate_combine_residual_batch_out_kernel` launched.
+
+### Next
+
+- Wire resident-session layer prefill over linear-attention layers and measure the c1-style batched prefill baseline.
+- Port/implement compact grouped MoE prefill (WMMA path) for the real PLAN-MOE2 throughput target.

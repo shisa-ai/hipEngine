@@ -3867,6 +3867,7 @@ def paro_combine_hip_smoke(
         shared_gate_combine_out_bf16,
         shared_gate_combine_residual_out_bf16,
         weighted_sum_out_bf16_f32w,
+        weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
         weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
     )
 
@@ -3914,6 +3915,34 @@ def paro_combine_hip_smoke(
         residual_bf32 + expected_weighted + gate * shared_bf32
     )
 
+    batch_tokens = 2
+    batch_rows_per_token = rows
+    batch_values = np.vstack([values + np.float32(0.0625 * token) for token in range(batch_tokens)]).astype(np.float32)
+    batch_weights = np.tile(weights, batch_tokens).astype(np.float32)
+    batch_shared = np.vstack([shared[0] + np.float32(0.125 * token) for token in range(batch_tokens)]).astype(np.float32)
+    batch_residual = np.vstack([residual[0] - np.float32(0.0625 * token) for token in range(batch_tokens)]).astype(np.float32)
+    batch_gate_stride = 3
+    batch_gate_logits = np.asarray([[0.25 * token, -0.125, 0.5 - 0.25 * token] for token in range(batch_tokens)], dtype=np.float32)
+    batch_values_bits = _float32_to_bf16_bits(batch_values)
+    batch_shared_bits = _float32_to_bf16_bits(batch_shared)
+    batch_residual_bits = _float32_to_bf16_bits(batch_residual)
+    batch_weighted_shared_residual_bits = np.empty((batch_tokens, features), dtype=np.uint16)
+    batch_values_bf32 = _bf16_bits_to_float32(batch_values_bits).reshape(batch_tokens, batch_rows_per_token, features)
+    batch_shared_bf32 = _bf16_bits_to_float32(batch_shared_bits)
+    batch_residual_bf32 = _bf16_bits_to_float32(batch_residual_bits)
+    expected_batch = np.empty((batch_tokens, features), dtype=np.float32)
+    for token in range(batch_tokens):
+        selected_acc = np.sum(
+            batch_values_bf32[token] * batch_weights[token * rows : (token + 1) * rows].reshape(rows, 1),
+            axis=0,
+            dtype=np.float32,
+        ).reshape(1, features)
+        selected_bits = _float32_to_bf16_bits(selected_acc)
+        selected = _bf16_bits_to_float32(selected_bits)[0]
+        gate_t = np.float32(1.0) / (np.float32(1.0) + np.exp(-batch_gate_logits[token, 2], dtype=np.float32))
+        expected_batch[token] = batch_residual_bf32[token] + selected + gate_t * batch_shared_bf32[token]
+    expected_batch_bits = _float32_to_bf16_bits(expected_batch)
+
     runtime = get_hip_runtime()
     library = build_paro_combine(
         load=True,
@@ -3940,8 +3969,14 @@ def paro_combine_hip_smoke(
         shared_dev = dev(shared_bits)
         residual_dev = dev(residual_bits)
         gate_logits_dev = dev(gate_logits)
+        batch_values_dev = dev(batch_values_bits)
+        batch_weights_dev = dev(batch_weights)
+        batch_shared_dev = dev(batch_shared_bits)
+        batch_residual_dev = dev(batch_residual_bits)
+        batch_gate_logits_dev = dev(batch_gate_logits)
         weighted_dev = out_dev(weighted_bits)
         weighted_shared_residual_dev = out_dev(weighted_shared_residual_bits)
+        batch_weighted_shared_residual_dev = out_dev(batch_weighted_shared_residual_bits)
         shared_combine_dev = out_dev(shared_combine_bits)
         shared_residual_dev = out_dev(shared_residual_bits)
         weighted_sum_out_bf16_f32w(
@@ -3963,6 +3998,21 @@ def paro_combine_hip_smoke(
             weighted_shared_residual_dev.ptr,
             rows,
             features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
+            batch_values_dev.ptr,
+            batch_weights_dev.ptr,
+            batch_shared_dev.ptr,
+            batch_gate_logits_dev.ptr + 2 * batch_gate_logits.itemsize,
+            batch_residual_dev.ptr,
+            batch_weighted_shared_residual_dev.ptr,
+            batch_tokens,
+            batch_rows_per_token,
+            features,
+            batch_gate_stride,
             threads=threads,
             library=library,
             runtime=runtime,
@@ -3995,6 +4045,11 @@ def paro_combine_hip_smoke(
             weighted_shared_residual_dev,
             runtime=runtime,
         )
+        copy_device_to_host(
+            host_array_ptr(batch_weighted_shared_residual_bits),
+            batch_weighted_shared_residual_dev,
+            runtime=runtime,
+        )
         copy_device_to_host(host_array_ptr(shared_combine_bits), shared_combine_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(shared_residual_bits), shared_residual_dev, runtime=runtime)
     finally:
@@ -4004,6 +4059,9 @@ def paro_combine_hip_smoke(
     weighted_mismatch = int(np.count_nonzero(weighted_bits != expected_weighted_bits))
     fused_mismatch = int(
         np.count_nonzero(weighted_shared_residual_bits != expected_weighted_shared_residual_bits)
+    )
+    batch_fused_mismatch = int(
+        np.count_nonzero(batch_weighted_shared_residual_bits != expected_batch_bits)
     )
     shared_mismatch = int(np.count_nonzero(shared_combine_bits != expected_shared_combine_bits))
     shared_residual_mismatch = int(
@@ -4017,6 +4075,14 @@ def paro_combine_hip_smoke(
             np.abs(
                 _bf16_bits_to_float32(weighted_shared_residual_bits)
                 - _bf16_bits_to_float32(expected_weighted_shared_residual_bits)
+            )
+        )
+    )
+    batch_fused_max_abs = float(
+        np.max(
+            np.abs(
+                _bf16_bits_to_float32(batch_weighted_shared_residual_bits)
+                - _bf16_bits_to_float32(expected_batch_bits)
             )
         )
     )
@@ -4040,6 +4106,7 @@ def paro_combine_hip_smoke(
         f"rows={rows} hidden_size={hidden_size} "
         f"weighted_mismatch={weighted_mismatch} weighted_max_abs={weighted_max_abs} "
         f"fused_mismatch={fused_mismatch} fused_max_abs={fused_max_abs} "
+        f"batch_fused_mismatch={batch_fused_mismatch} batch_fused_max_abs={batch_fused_max_abs} "
         f"shared_mismatch={shared_mismatch} shared_max_abs={shared_max_abs} "
         f"shared_residual_mismatch={shared_residual_mismatch} "
         f"shared_residual_max_abs={shared_residual_max_abs}"
@@ -4049,6 +4116,7 @@ def paro_combine_hip_smoke(
     return 0 if (
         weighted_mismatch == 0
         and fused_mismatch == 0
+        and batch_fused_mismatch == 0
         and shared_mismatch == 0
         and shared_residual_mismatch == 0
     ) else 1

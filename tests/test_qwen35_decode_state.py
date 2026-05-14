@@ -630,6 +630,11 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
     monkeypatch.setattr(qwen_runtime, "dense_dual_gemv_out_bf16", record("dense_dual"))
     monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_decode_bf16", record("conv"))
     monkeypatch.setattr(qwen_runtime, "qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16", record("gdn"))
+    monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("cast_qkv"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_prefill_f32", record("conv_prefill"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_prefill_prepare_f32_bf16", record("prepare"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_gdn_prefill_recurrent_k2_f32", record("gdn_k2"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_gdn_prefill_rmsnorm_gate_bf16", record("rms_gate"))
     monkeypatch.setattr(qwen_runtime, "f32_to_bf16", record("cast"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", record("rotate1"))
     monkeypatch.setattr(qwen_runtime, "paro_add_rmsnorm_out_bf16", record("post_norm"))
@@ -640,6 +645,7 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
     monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", record("w8a16"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", record("shared_silu"))
     monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_out_bf16_f32w", record("combine"))
+    monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w", record("combine_batch"))
 
     out = state.run_linear_attention_moe_c1_layer_bf16(
         hidden,
@@ -681,8 +687,42 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         4096,
         1.0e-6,
     )
-    with pytest.raises(ValueError, match="tokens=1"):
-        state.run_linear_attention_moe_c1_layer_bf16(hidden, conv_state=conv_state, recurrent_state=recurrent_state, tokens=2)
+
+    calls.clear()
+    batch_hidden = _tensor(0xD000, (4, 4096), "bf16")
+    batch_linear = state.reserve_linear_attention_scratch(tokens=4)
+    batch_moe = state.reserve_moe_c1_scratch(tokens=4)
+    batch_out = state.run_linear_attention_moe_c1_layer_bf16(
+        batch_hidden,
+        conv_state=conv_state,
+        recurrent_state=recurrent_state,
+        linear_scratch=batch_linear,
+        moe_scratch=batch_moe,
+        tokens=4,
+    )
+    assert batch_out is batch_moe.moe_out
+    assert [name for name, _, _ in calls] == [
+        "input_norm",
+        "rotate2",
+        "dual_pack8",
+        "dense_dual",
+        "cast_qkv",
+        "conv_prefill",
+        "prepare",
+        "gdn_k2",
+        "rms_gate",
+        "rotate1",
+        "pack8",
+        "post_norm",
+        "router",
+        "gate_up",
+        "silu_rotate",
+        "down",
+        "w8a16",
+        "shared_silu",
+        "w8a16",
+        "combine_batch",
+    ]
 
 
 def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) -> None:
@@ -994,6 +1034,7 @@ def test_qwen35_decode_state_combines_moe_shared_residual(monkeypatch) -> None:
         calls.append((args, kwargs))
 
     monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_out_bf16_f32w", fake_combine)
+    monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w", fake_combine)
 
     out = state.combine_moe_c1_shared_residual_bf16(scratch, shared=shared, residual=residual)
 
@@ -1010,8 +1051,31 @@ def test_qwen35_decode_state_combines_moe_shared_residual(monkeypatch) -> None:
         4096,
     )
     assert kwargs == {"threads": 256, "stream": 0, "library": None, "runtime": runtime}
-    with pytest.raises(ValueError, match="tokens=1"):
-        state.combine_moe_c1_shared_residual_bf16(scratch, shared=shared, residual=residual, tokens=2)
+
+    batch_scratch = state.reserve_moe_c1_scratch(tokens=2)
+    batch_shared = _tensor(0xCD00, (2, 4096), "bf16")
+    batch_residual = _tensor(0xCE00, (2, 4096), "bf16")
+    batch_out = state.combine_moe_c1_shared_residual_bf16(
+        batch_scratch,
+        shared=batch_shared,
+        residual=batch_residual,
+        tokens=2,
+    )
+    assert batch_out is batch_scratch.moe_out
+    batch_args, batch_kwargs = calls[1]
+    assert batch_args == (
+        batch_scratch.down_out.ptr,
+        batch_scratch.routing_weights.ptr,
+        batch_shared.ptr,
+        batch_scratch.router_logits.ptr + 128 * 4,
+        batch_residual.ptr,
+        batch_scratch.moe_out.ptr,
+        2,
+        8,
+        4096,
+        129,
+    )
+    assert batch_kwargs == {"threads": 256, "stream": 0, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> None:
@@ -1033,13 +1097,24 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
         "weighted_sum_shared_gate_combine_residual_out_bf16_f32w",
         lambda *a, **k: order.append("combine"),
     )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w",
+        lambda *a, **k: order.append("combine_batch"),
+    )
 
     out = state.run_moe_c1_bf16(hidden, residual, scratch=scratch)
 
     assert out is scratch.moe_out
     assert order == ["router", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine"]
-    with pytest.raises(ValueError, match="tokens=1"):
-        state.run_moe_c1_bf16(hidden, residual, tokens=2)
+
+    batch_scratch = state.reserve_moe_c1_scratch(tokens=2)
+    batch_hidden = _tensor(0xD000, (2, 4096), "bf16")
+    batch_residual = _tensor(0xD100, (2, 4096), "bf16")
+    order.clear()
+    batch_out = state.run_moe_c1_bf16(batch_hidden, batch_residual, scratch=batch_scratch, tokens=2)
+    assert batch_out is batch_scratch.moe_out
+    assert order == ["router", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine_batch"]
 
 
 def test_qwen35_decode_state_validates_scratch_requests() -> None:

@@ -12,7 +12,10 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_write_paged_kv_mixed_value_bf16_spans,
 )
 from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16
-from hipengine.kernels.hip_gfx1100.fused.paro_combine import weighted_sum_shared_gate_combine_residual_out_bf16_f32w
+from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
+    weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
+)
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_dual_out_bf16, silu_mul_dual_rotate_out_bf16
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_dual_gemv_out_bf16, dense_gemv_out_bf16
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
@@ -980,21 +983,31 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> Tensor:
-        if tokens != 1:
-            raise ValueError("linear-attention+MoE c=1 layer orchestrator currently requires tokens=1")
         linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens)
         moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens)
         self.input_rmsnorm_bf16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
-        attn_out = self.run_linear_attention_out_proj_bf16(
-            linear_scratch.attn_input,
-            conv_state=conv_state,
-            recurrent_state=recurrent_state,
-            scratch=linear_scratch,
-            tokens=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
-        )
+        if tokens == 1:
+            attn_out = self.run_linear_attention_out_proj_bf16(
+                linear_scratch.attn_input,
+                conv_state=conv_state,
+                recurrent_state=recurrent_state,
+                scratch=linear_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        else:
+            attn_out = self.run_linear_attention_prefill_out_proj_bf16(
+                linear_scratch.attn_input,
+                conv_state=conv_state,
+                recurrent_state=recurrent_state,
+                scratch=linear_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         mlp_input, residual = self.post_attention_add_rmsnorm_bf16(
             hidden,
             attn_out,
@@ -1379,24 +1392,40 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> Tensor:
-        if tokens != 1:
-            raise ValueError("combined MoE c=1 residual helper currently requires tokens=1")
         target = out or scratch.moe_out
         shared_gate_logits_ptr = scratch.router_logits.ptr + self.config.num_experts * DType.FP32.itemsize
-        weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
-            scratch.down_out.ptr,
-            scratch.routing_weights.ptr,
-            shared.ptr,
-            shared_gate_logits_ptr,
-            residual.ptr,
-            target.ptr,
-            self.config.num_experts_per_tok,
-            self.config.hidden_size,
-            threads=threads,
-            stream=stream,
-            library=_library_for(library, "combine"),
-            runtime=self.runtime,
-        )
+        if tokens == 1:
+            weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
+                scratch.down_out.ptr,
+                scratch.routing_weights.ptr,
+                shared.ptr,
+                shared_gate_logits_ptr,
+                residual.ptr,
+                target.ptr,
+                self.config.num_experts_per_tok,
+                self.config.hidden_size,
+                threads=threads,
+                stream=stream,
+                library=_library_for(library, "combine"),
+                runtime=self.runtime,
+            )
+        else:
+            weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
+                scratch.down_out.ptr,
+                scratch.routing_weights.ptr,
+                shared.ptr,
+                shared_gate_logits_ptr,
+                residual.ptr,
+                target.ptr,
+                tokens,
+                self.config.num_experts_per_tok,
+                self.config.hidden_size,
+                self.config.num_experts + 1,
+                threads=threads,
+                stream=stream,
+                library=_library_for(library, "combine"),
+                runtime=self.runtime,
+            )
         return target
 
     def run_moe_c1_bf16(
@@ -1410,8 +1439,6 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> Tensor:
-        if tokens != 1:
-            raise ValueError("MoE c=1 orchestrator currently requires tokens=1")
         scratch = scratch or self.reserve_moe_c1_scratch(tokens=tokens)
         self.route_moe_topk_shared_bf16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         self.selected_moe_gate_up_pack8_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)

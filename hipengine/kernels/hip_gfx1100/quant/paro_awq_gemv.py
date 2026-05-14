@@ -930,8 +930,8 @@ def _check_selected_dual_shape(
 ) -> None:
     _check_positive(x_rows, "x_rows")
     _check_positive(rows, "rows")
-    if x_rows not in (1, rows):
-        raise ValueError("x_rows must be 1 or match rows")
+    if rows % x_rows != 0:
+        raise ValueError("rows must be divisible by x_rows")
     _check_common_quant_shape(in_features, num_experts, group_size, threads)
     _check_positive(out_packed_a, "out_packed_a")
     _check_positive(out_packed_b, "out_packed_b")

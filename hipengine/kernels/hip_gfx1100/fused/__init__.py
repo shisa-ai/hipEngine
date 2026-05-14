@@ -7,6 +7,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     shared_gate_combine_out_bf16,
     shared_gate_combine_residual_out_bf16,
     weighted_sum_out_bf16_f32w,
+    weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
@@ -31,5 +32,6 @@ __all__ = [
     "silu_mul_dual_rotate_out_bf16",
     "silu_mul_pair_rotate_out_bf16",
     "weighted_sum_out_bf16_f32w",
+    "weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w",
     "weighted_sum_shared_gate_combine_residual_out_bf16_f32w",
 ]

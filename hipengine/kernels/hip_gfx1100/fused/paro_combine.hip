@@ -86,6 +86,34 @@ __global__ void weighted_sum_shared_gate_combine_residual_out_kernel(
   out[col] = float_to_scalar<scalar_t>(value);
 }
 
+template <typename scalar_t, typename weight_t>
+__global__ void weighted_sum_shared_gate_combine_residual_batch_out_kernel(
+    const scalar_t* __restrict__ values,
+    const weight_t* __restrict__ weights,
+    const scalar_t* __restrict__ shared,
+    const float* __restrict__ gate_logits,
+    const scalar_t* __restrict__ residual,
+    scalar_t* __restrict__ out,
+    int64_t tokens,
+    int64_t rows_per_token,
+    int64_t features,
+    int64_t gate_stride) {
+  const int64_t col = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t token = blockIdx.y;
+  if (col >= features || token >= tokens) return;
+  const int64_t lane_base = token * rows_per_token;
+  float acc = 0.0f;
+  for (int64_t row = 0; row < rows_per_token; ++row) {
+    const int64_t lane = lane_base + row;
+    acc = fmaf(scalar_to_float(values[lane * features + col]), scalar_to_float(weights[lane]), acc);
+  }
+  const scalar_t selected = float_to_scalar<scalar_t>(acc);
+  const float gate = 1.0f / (1.0f + expf(-gate_logits[token * gate_stride]));
+  const int64_t offset = token * features + col;
+  const float value = scalar_to_float(residual[offset]) + scalar_to_float(selected) + gate * scalar_to_float(shared[offset]);
+  out[offset] = float_to_scalar<scalar_t>(value);
+}
+
 template <typename scalar_t>
 __global__ void shared_gate_combine_out_kernel(
     const scalar_t* __restrict__ expert,
@@ -181,6 +209,41 @@ extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_out_bf16_f32w
       out,
       rows,
       features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
+    const uint16_t* values,
+    const float* weights,
+    const uint16_t* shared,
+    const float* gate_logits,
+    const uint16_t* residual,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t rows_per_token,
+    int64_t features,
+    int64_t gate_stride,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || rows_per_token <= 0 || features <= 0 || gate_stride <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (weighted_sum_shared_gate_combine_residual_batch_out_kernel<uint16_t, float>),
+      dim3(feature_grid(features, threads).x, static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      values,
+      weights,
+      shared,
+      gate_logits,
+      residual,
+      out,
+      tokens,
+      rows_per_token,
+      features,
+      gate_stride);
   return static_cast<int>(hipGetLastError());
 }
 

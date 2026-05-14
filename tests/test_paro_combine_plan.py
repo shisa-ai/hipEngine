@@ -8,6 +8,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     shared_gate_combine_out_bf16,
     shared_gate_combine_residual_out_bf16,
     weighted_sum_out_bf16_f32w,
+    weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
@@ -33,6 +34,15 @@ def test_paro_combine_registers_bf16_and_w4_paro_variants() -> None:
                 variant="out",
             )
             is weighted_sum_shared_gate_combine_residual_out_bf16_f32w
+        )
+        assert (
+            resolve(
+                backend="hip_gfx1100",
+                layer="weighted_sum+shared_gate+residual",
+                quant=quant,
+                variant="batch_out",
+            )
+            is weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w
         )
         assert (
             resolve(
@@ -78,5 +88,7 @@ def test_paro_combine_wrappers_validate_before_gpu_load() -> None:
         weighted_sum_shared_gate_combine_residual_out_bf16_f32w(0, 0, 0, 0, 0, 0, 2, 0)
     with pytest.raises(ValueError, match="threads must be one of"):
         shared_gate_combine_out_bf16(0, 0, 0, 0, 8, threads=32)
+    with pytest.raises(ValueError, match="gate_stride must be positive"):
+        weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(0, 0, 0, 0, 0, 0, 2, 8, 16, 0)
     with pytest.raises(ValueError, match="features must be positive"):
         shared_gate_combine_residual_out_bf16(0, 0, 0, 0, 0, 0)
