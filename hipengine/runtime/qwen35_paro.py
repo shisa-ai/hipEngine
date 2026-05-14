@@ -63,6 +63,8 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_dual_pack8_transposed_fp16,
     gemv_awq_pack8_strided_bf16,
     gemv_awq_pack8_strided_fp16,
+    gemv_awq_pack8_transposed_bf16,
+    gemv_awq_pack8_transposed_fp16,
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_dual_pack8_transposed_fp16,
     gemv_awq_selected_pack8_transposed_bf16,
@@ -603,25 +605,61 @@ class Qwen35ParoDecodeState:
         z = f"{prefix}.in_proj_z"
         qkv_qweight = self.tensor(f"{qkv}.qweight_pack8_decode")
         z_qweight = self.tensor(f"{z}.qweight_pack8_decode")
-        gemv_awq_dual_pack8_transposed_bf16(
-            scratch.qkv_rot.ptr,
-            scratch.z_rot.ptr,
-            qkv_qweight.ptr,
-            self.tensor(f"{qkv}.qzeros").ptr,
-            self.tensor(f"{qkv}.scales").ptr,
-            z_qweight.ptr,
-            self.tensor(f"{z}.qzeros").ptr,
-            self.tensor(f"{z}.scales").ptr,
-            scratch.qkv_z.ptr,
-            tokens,
-            scratch.qkv_rot.shape[-1],
-            _out_packed_from_generic_transposed_qweight(qkv_qweight),
-            _out_packed_from_generic_transposed_qweight(z_qweight),
-            group_size,
-            stream=stream,
-            library=_library_for(library, "awq"),
-            runtime=self.runtime,
-        )
+        qkv_out_packed = _out_packed_from_generic_transposed_qweight(qkv_qweight)
+        z_out_packed = _out_packed_from_generic_transposed_qweight(z_qweight)
+        if tokens == 1:
+            gemv_awq_dual_pack8_transposed_bf16(
+                scratch.qkv_rot.ptr,
+                scratch.z_rot.ptr,
+                qkv_qweight.ptr,
+                self.tensor(f"{qkv}.qzeros").ptr,
+                self.tensor(f"{qkv}.scales").ptr,
+                z_qweight.ptr,
+                self.tensor(f"{z}.qzeros").ptr,
+                self.tensor(f"{z}.scales").ptr,
+                scratch.qkv_z.ptr,
+                tokens,
+                scratch.qkv_rot.shape[-1],
+                qkv_out_packed,
+                z_out_packed,
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            # The dual GEMV writes row-major [qkv,z] per token.  Native
+            # prefill conv/GDN consumes contiguous [tokens,qkv] and [tokens,z]
+            # streams, so split multi-token prefill into two projections.
+            awq_library = _library_for(library, "awq")
+            gemv_awq_pack8_transposed_bf16(
+                scratch.qkv_rot.ptr,
+                qkv_qweight.ptr,
+                self.tensor(f"{qkv}.qzeros").ptr,
+                self.tensor(f"{qkv}.scales").ptr,
+                scratch.qkv.ptr,
+                tokens,
+                scratch.qkv_rot.shape[-1],
+                qkv_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+            gemv_awq_pack8_transposed_bf16(
+                scratch.z_rot.ptr,
+                z_qweight.ptr,
+                self.tensor(f"{z}.qzeros").ptr,
+                self.tensor(f"{z}.scales").ptr,
+                scratch.z.ptr,
+                tokens,
+                scratch.z_rot.shape[-1],
+                z_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         return scratch.qkv, scratch.z
 
     def project_linear_attention_ab_bf16(
@@ -1822,25 +1860,61 @@ class Qwen35ParoDecodeState:
         z = f"{prefix}.in_proj_z"
         qkv_qweight = self.tensor(f"{qkv}.qweight_pack8_decode")
         z_qweight = self.tensor(f"{z}.qweight_pack8_decode")
-        gemv_awq_dual_pack8_transposed_fp16(
-            scratch.qkv_rot.ptr,
-            scratch.z_rot.ptr,
-            qkv_qweight.ptr,
-            self.tensor(f"{qkv}.qzeros").ptr,
-            self.tensor(f"{qkv}.scales").ptr,
-            z_qweight.ptr,
-            self.tensor(f"{z}.qzeros").ptr,
-            self.tensor(f"{z}.scales").ptr,
-            scratch.qkv_z.ptr,
-            tokens,
-            scratch.qkv_rot.shape[-1],
-            _out_packed_from_generic_transposed_qweight(qkv_qweight),
-            _out_packed_from_generic_transposed_qweight(z_qweight),
-            group_size,
-            stream=stream,
-            library=_library_for(library, "awq"),
-            runtime=self.runtime,
-        )
+        qkv_out_packed = _out_packed_from_generic_transposed_qweight(qkv_qweight)
+        z_out_packed = _out_packed_from_generic_transposed_qweight(z_qweight)
+        if tokens == 1:
+            gemv_awq_dual_pack8_transposed_fp16(
+                scratch.qkv_rot.ptr,
+                scratch.z_rot.ptr,
+                qkv_qweight.ptr,
+                self.tensor(f"{qkv}.qzeros").ptr,
+                self.tensor(f"{qkv}.scales").ptr,
+                z_qweight.ptr,
+                self.tensor(f"{z}.qzeros").ptr,
+                self.tensor(f"{z}.scales").ptr,
+                scratch.qkv_z.ptr,
+                tokens,
+                scratch.qkv_rot.shape[-1],
+                qkv_out_packed,
+                z_out_packed,
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            # The dual GEMV writes row-major [qkv,z] per token.  Native
+            # prefill conv/GDN consumes contiguous [tokens,qkv] and [tokens,z]
+            # streams, so split multi-token prefill into two projections.
+            awq_library = _library_for(library, "awq")
+            gemv_awq_pack8_transposed_fp16(
+                scratch.qkv_rot.ptr,
+                qkv_qweight.ptr,
+                self.tensor(f"{qkv}.qzeros").ptr,
+                self.tensor(f"{qkv}.scales").ptr,
+                scratch.qkv.ptr,
+                tokens,
+                scratch.qkv_rot.shape[-1],
+                qkv_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+            gemv_awq_pack8_transposed_fp16(
+                scratch.z_rot.ptr,
+                z_qweight.ptr,
+                self.tensor(f"{z}.qzeros").ptr,
+                self.tensor(f"{z}.scales").ptr,
+                scratch.z.ptr,
+                tokens,
+                scratch.z_rot.shape[-1],
+                z_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         return scratch.qkv, scratch.z
 
     def project_linear_attention_ab_fp16(

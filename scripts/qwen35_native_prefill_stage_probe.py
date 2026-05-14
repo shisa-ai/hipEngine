@@ -40,7 +40,7 @@ STAGE_ORDER = (
     "z",
     "ab",
     "conv_out",
-    "recurrent_out",
+    "gated_recurrent",
     "attention_out",
 )
 
@@ -133,10 +133,10 @@ def _run_serial_layer0_stages(
             )
             if capture:
                 stages["conv_out"] = _read_tensor(session, scratch.conv_out)
-                stages["recurrent_out"] = _read_tensor(session, scratch.recurrent_out)
             attn_out = state.project_linear_attention_out_fp16(scratch, tokens=1, library=session.libraries)
             session.runtime.device_synchronize()
             if capture:
+                stages["gated_recurrent"] = _read_tensor(session, scratch.recurrent_bf16)
                 stages["attention_out"] = _read_tensor(session, attn_out)
         if not stages:
             raise RuntimeError("serial stage probe produced no final row")
@@ -195,7 +195,7 @@ def _run_native_layer0_stages(
             library=session.libraries,
         )
         stages["conv_out"] = _read_tensor(session, scratch.conv_out, row=last)
-        stages["recurrent_out"] = _read_tensor(session, scratch.recurrent_out, row=last)
+        stages["gated_recurrent"] = _read_tensor(session, scratch.recurrent_bf16, row=last)
         attn_out = state.project_linear_attention_prefill_out_fp16(scratch, tokens=tokens, library=session.libraries)
         session.runtime.device_synchronize()
         stages["attention_out"] = _read_tensor(session, attn_out, row=last)
@@ -269,7 +269,7 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "schema": 1,
         "status": "accepted" if passed else "rejected_correctness",
-        "blocked_reason": None if passed else "native prefill diverges from serial c=1 inside layer 0 linear-attention stages",
+        "blocked_reason": None if passed else "native prefill diverges from serial c=1 inside layer 0 linear-attention stages after conv layout parity",
         "model": str(Path(args.model)),
         "quant": "w4_paro",
         "backend": "hip_gfx1100",
@@ -288,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
         "passed": passed,
         "notes": [
             "Correctness diagnostic only; timings are intentionally omitted and no throughput claim is made.",
-            "This bisects the native-prefix mismatch within layer0 linear attention before MoE.",
+            "This bisects the native-prefix mismatch within layer0 linear attention before MoE, comparing the lowp gated recurrent tensor that feeds out_proj.",
         ],
     }
     text = json.dumps(payload, indent=2, ensure_ascii=False)

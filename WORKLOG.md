@@ -5659,3 +5659,72 @@ Additional checks:
 
 - No performance claim was made.
 - No kernel port or plugin dispatch change was made, so no source-lineage or rocprof evidence is required for this branding-only iteration.
+
+---
+
+## 2026-05-15 — Fix native prefill qkv/z multi-token layout
+
+### Scope
+
+- Continued Task #15 after the layer0 stage bisect isolated the first native-prefix divergence at `conv_out`.
+- Root cause found in the host runtime, not the conv kernel body: `gemv_awq_dual_pack8_transposed_*` writes row-major `[qkv,z]` per token, while native prefill conv/GDN consumes contiguous `[tokens,qkv]` and `[tokens,z]` streams.
+- For `tokens == 1`, the existing dual projection is still used.
+- For `tokens > 1`, `project_linear_attention_qkv_z_{bf16,fp16}` now runs two single transposed pack8 projections into the contiguous `scratch.qkv` and `scratch.z` regions.
+- Updated the stage probe to compare the lowp gated recurrent tensor that actually feeds out_proj (`gated_recurrent`) instead of comparing serial gated output with native raw recurrent state.
+- Emitted new artifact:
+  - `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer0-gated-recurrent-rejected.json`
+
+### Evidence
+
+```bash
+python3 scripts/qwen35_native_prefill_stage_probe.py \
+  --prompt-length 4 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer0-gated-recurrent-rejected.json
+```
+
+Expected exit: `1` for current rejected correctness.
+
+Key fields:
+
+- `status=rejected_correctness`
+- `performance_claim=false`
+- `first_divergent_stage=gated_recurrent`
+- Stages matching exactly or near-exactly after the layout fix:
+  - `input_norm.max_abs=0.0`
+  - `qkv_rot.max_abs=0.0`
+  - `z_rot.max_abs=0.0`
+  - `qkv.max_abs=0.0`
+  - `z.max_abs=0.0`
+  - `ab.max_abs=0.0`
+  - `conv_out.max_abs=2.9802322387695312e-08`
+- Remaining layer0 pre-MoE blocker:
+  - `gated_recurrent.max_abs=0.05126953125`
+  - `gated_recurrent.rms_abs=0.00196707713575249`
+  - `gated_recurrent.cosine=0.9983887672424316`
+  - downstream `attention_out.max_abs=0.03759765625`
+
+Additional check:
+
+```bash
+python3 scripts/qwen35_native_prefill_correctness.py \
+  --prompt-length 4 \
+  --max-layers 1 \
+  --json /tmp/hipengine-native-prefill-correctness-layer1-iter28.json
+```
+
+Result: still rejected correctness after the conv layout fix (`serial.seed=627`, `native.seed=128440`; finite logits true). No throughput claim was made.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0`.
+
+### Notes
+
+- The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
+- This was not a kernel port and did not change kernel bodies, so no source-lineage or rocprof evidence is required.
+- Next Task #15 target: native GDN/recurrent prefill numerical/state parity before extending to compact/full-attention prefill.
