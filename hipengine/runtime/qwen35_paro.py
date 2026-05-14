@@ -15,8 +15,16 @@ from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import weighted_sum_shared_gate_combine_residual_out_bf16_f32w
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_dual_out_bf16, silu_mul_dual_rotate_out_bf16
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_dual_gemv_out_bf16, dense_gemv_out_bf16
-from hipengine.kernels.hip_gfx1100.linear_attn.conv import qwen35_linear_attn_conv_decode_bf16
-from hipengine.kernels.hip_gfx1100.linear_attn.gdn import qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
+from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
+    qwen35_linear_attn_conv_decode_bf16,
+    qwen35_linear_attn_conv_prefill_f32,
+)
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_prefill_recurrent_k2_f32,
+    qwen35_gdn_prefill_rmsnorm_gate_bf16,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+    qwen35_linear_attn_prefill_prepare_f32_bf16,
+)
 from hipengine.kernels.hip_gfx1100.norm import paro_add_rmsnorm_out_bf16, paro_rmsnorm_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_lowp_out
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16
@@ -65,10 +73,16 @@ class Qwen35ParoLinearAttentionScratch:
     qkv_z: Tensor
     qkv: Tensor
     z: Tensor
+    qkv_f32: Tensor
     ab: Tensor
     a: Tensor
     b: Tensor
     conv_out: Tensor
+    prefill_query: Tensor
+    prefill_key: Tensor
+    prefill_value: Tensor
+    prefill_beta: Tensor
+    prefill_decay: Tensor
     recurrent_out: Tensor
     recurrent_bf16: Tensor
     out_rot: Tensor
@@ -417,10 +431,28 @@ class Qwen35ParoDecodeState:
             qkv_z=qkv_z,
             qkv=qkv,
             z=z,
+            qkv_f32=self.workspace.reserve_tensor("linear_attn.qkv_f32", (tokens, qkv_width), DType.FP32),
             ab=ab,
             a=a,
             b=b,
             conv_out=self.workspace.reserve_tensor("linear_attn.conv_out", (tokens, qkv_width), DType.FP32),
+            prefill_query=self.workspace.reserve_tensor(
+                "linear_attn.prefill_query",
+                (tokens, cfg.linear_num_value_heads, cfg.linear_key_head_dim),
+                DType.FP32,
+            ),
+            prefill_key=self.workspace.reserve_tensor(
+                "linear_attn.prefill_key",
+                (tokens, cfg.linear_num_value_heads, cfg.linear_key_head_dim),
+                DType.FP32,
+            ),
+            prefill_value=self.workspace.reserve_tensor(
+                "linear_attn.prefill_value",
+                (tokens, cfg.linear_num_value_heads, cfg.linear_value_head_dim),
+                DType.FP32,
+            ),
+            prefill_beta=self.workspace.reserve_tensor("linear_attn.prefill_beta", (tokens, cfg.linear_num_value_heads), DType.FP32),
+            prefill_decay=self.workspace.reserve_tensor("linear_attn.prefill_decay", (tokens, cfg.linear_num_value_heads), DType.FP32),
             recurrent_out=self.workspace.reserve_tensor("linear_attn.recurrent_out", (tokens, z_width), DType.FP32),
             recurrent_bf16=self.workspace.reserve_tensor("linear_attn.recurrent_bf16", (tokens, z_width), DType.BF16),
             out_rot=self.workspace.reserve_tensor("linear_attn.out_rot", (tokens, z_width), DType.BF16),
@@ -475,8 +507,6 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor]:
-        if tokens != 1:
-            raise ValueError("linear-attention fused qkv/z projection currently requires tokens=1")
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
         qkv = f"{prefix}.in_proj_qkv"
         z = f"{prefix}.in_proj_z"
@@ -579,6 +609,144 @@ class Qwen35ParoDecodeState:
         )
         return scratch.recurrent_out
 
+    def run_linear_attention_prefill_conv_gdn_bf16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        tokens: int,
+        eps: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run native batched linear-attention prefill conv + recurrent GDN."""
+
+        cfg = self.config
+        if tokens < cfg.linear_conv_kernel_dim:
+            raise ValueError("native linear-attention prefill requires tokens >= linear_conv_kernel_dim")
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        qkv_width = _linear_qkv_width(cfg)
+        z_width = _linear_value_width(cfg)
+        conv_weight = self.tensor(f"{prefix}.conv1d.weight")
+        dt_bias = self.tensor(f"{prefix}.dt_bias")
+        a_log = self.tensor(f"{prefix}.A_log")
+        norm_weight = self.tensor(f"{prefix}.norm.weight")
+        bf16_to_f32(
+            scratch.qkv.ptr,
+            scratch.qkv_f32.ptr,
+            tokens * qkv_width,
+            stream=stream,
+            library=_library_for(library, "cast"),
+            runtime=self.runtime,
+        )
+        qwen35_linear_attn_conv_prefill_f32(
+            scratch.qkv_f32.ptr,
+            conv_state.ptr,
+            conv_weight.ptr,
+            scratch.conv_out.ptr,
+            tokens,
+            qkv_width,
+            cfg.linear_conv_kernel_dim,
+            stream=stream,
+            library=_library_for(library, "linear_conv"),
+            runtime=self.runtime,
+        )
+        qwen35_linear_attn_prefill_prepare_f32_bf16(
+            scratch.conv_out.ptr,
+            scratch.a.ptr,
+            scratch.b.ptr,
+            dt_bias.ptr,
+            a_log.ptr,
+            scratch.prefill_query.ptr,
+            scratch.prefill_key.ptr,
+            scratch.prefill_value.ptr,
+            scratch.prefill_beta.ptr,
+            scratch.prefill_decay.ptr,
+            tokens,
+            cfg.linear_num_key_heads,
+            cfg.linear_num_value_heads,
+            cfg.linear_key_head_dim,
+            cfg.linear_value_head_dim,
+            stream=stream,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        qwen35_gdn_prefill_recurrent_k2_f32(
+            scratch.prefill_query.ptr,
+            scratch.prefill_key.ptr,
+            scratch.prefill_value.ptr,
+            scratch.prefill_beta.ptr,
+            scratch.prefill_decay.ptr,
+            recurrent_state.ptr,
+            scratch.recurrent_out.ptr,
+            tokens,
+            cfg.linear_num_value_heads,
+            cfg.linear_key_head_dim,
+            cfg.linear_value_head_dim,
+            stream=stream,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        qwen35_gdn_prefill_rmsnorm_gate_bf16(
+            scratch.recurrent_out.ptr,
+            scratch.z.ptr,
+            norm_weight.ptr,
+            scratch.recurrent_bf16.ptr,
+            cfg.rms_norm_eps if eps is None else eps,
+            tokens,
+            cfg.linear_num_value_heads,
+            cfg.linear_value_head_dim,
+            stream=stream,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        if scratch.recurrent_bf16.shape[-1] != z_width:
+            raise ValueError("linear-attention recurrent scratch width mismatch")
+        return scratch.recurrent_bf16
+
+    def project_linear_attention_prefill_out_bf16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Rotate and project native prefill linear-attention BF16 hidden outputs."""
+
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn.out_proj"
+        width = scratch.recurrent_bf16.shape[-1]
+        pairs = self.tensor(f"{prefix}.pairs")
+        theta = self.tensor(f"{prefix}.theta")
+        scales = self.tensor(f"{prefix}.channel_scales")
+        paro_rotate1_bf16(
+            scratch.recurrent_bf16.ptr,
+            scratch.out_rot.ptr,
+            pairs.ptr,
+            theta.ptr,
+            scales.ptr,
+            tokens,
+            width,
+            group_size,
+            _rotation_krot(pairs),
+            stream=stream,
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+        self.project_pack8_bf16(
+            scratch.out_rot,
+            scratch.out_proj,
+            weight_prefix=prefix,
+            rows=tokens,
+            in_features=width,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        return scratch.out_proj
+
     def project_linear_attention_out_bf16(
         self,
         scratch: Qwen35ParoLinearAttentionScratch,
@@ -655,6 +823,66 @@ class Qwen35ParoDecodeState:
             stream=stream,
         )
         return self.project_linear_attention_out_bf16(
+            scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+
+    def run_linear_attention_prefill_state_bf16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run native batched linear-attention prefill state path through RMSNorm+gate."""
+
+        scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens)
+        self.rotate_linear_attention_inputs_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        self.project_linear_attention_qkv_z_bf16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        self.project_linear_attention_ab_bf16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        return self.run_linear_attention_prefill_conv_gdn_bf16(
+            scratch,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+
+    def run_linear_attention_prefill_out_proj_bf16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run native batched linear-attention prefill through out_proj."""
+
+        scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens)
+        self.run_linear_attention_prefill_state_bf16(
+            hidden,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            scratch=scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        return self.project_linear_attention_prefill_out_bf16(
             scratch,
             tokens=tokens,
             group_size=group_size,

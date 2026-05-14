@@ -15,6 +15,17 @@ __device__ inline float bf16_bits_to_float(uint16_t value) {
   return out.f32;
 }
 
+__device__ inline uint16_t float_to_bf16_bits(float value) {
+  union {
+    float f32;
+    uint32_t u32;
+  } in;
+  in.f32 = value;
+  const uint32_t lsb = (in.u32 >> 16) & 1U;
+  in.u32 += 0x7FFFU + lsb;
+  return static_cast<uint16_t>(in.u32 >> 16);
+}
+
 __device__ inline float silu_f32(float value) {
   return value / (1.0f + expf(-value));
 }
@@ -367,9 +378,124 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
   recurrent_state[state_offset1] = state_value1;
 }
 
+__global__ void qwen35_linear_attn_prefill_prepare_kernel(
+    const float* __restrict__ conv_out,
+    const uint16_t* __restrict__ a,
+    const uint16_t* __restrict__ b,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a_log,
+    float* __restrict__ query,
+    float* __restrict__ key,
+    float* __restrict__ value,
+    float* __restrict__ beta,
+    float* __restrict__ decay,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  extern __shared__ float partial[];
+  float* q_partial = partial;
+  float* k_partial = q_partial + blockDim.x;
+
+  const int64_t token = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  if (token >= tokens || v_head >= num_v_heads) {
+    return;
+  }
+  const int64_t repeat = num_v_heads / num_k_heads;
+  const int64_t k_head = v_head / repeat;
+  const int64_t key_dim = num_k_heads * head_k_dim;
+  const int64_t value_dim = num_v_heads * head_v_dim;
+  const int64_t qkv_width = 2 * key_dim + value_dim;
+  const int64_t conv_base = token * qkv_width;
+  const int64_t q_base = conv_base + k_head * head_k_dim;
+  const int64_t k_base = conv_base + key_dim + k_head * head_k_dim;
+
+  float q_sum = 0.0f;
+  float k_sum = 0.0f;
+  for (int64_t idx = threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
+    const float q_value = conv_out[q_base + idx];
+    const float k_value = conv_out[k_base + idx];
+    q_sum += q_value * q_value;
+    k_sum += k_value * k_value;
+  }
+  q_partial[threadIdx.x] = q_sum;
+  k_partial[threadIdx.x] = k_sum;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      q_partial[threadIdx.x] += q_partial[threadIdx.x + stride];
+      k_partial[threadIdx.x] += k_partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+
+  const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
+  const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+  const int64_t head_base = (token * num_v_heads + v_head) * head_k_dim;
+  for (int64_t idx = threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
+    query[head_base + idx] = conv_out[q_base + idx] * q_scale;
+    key[head_base + idx] = conv_out[k_base + idx] * k_scale;
+  }
+  const int64_t value_base = (token * num_v_heads + v_head) * head_v_dim;
+  const int64_t conv_value_base = conv_base + 2 * key_dim + v_head * head_v_dim;
+  for (int64_t idx = threadIdx.x; idx < head_v_dim; idx += blockDim.x) {
+    value[value_base + idx] = conv_out[conv_value_base + idx];
+  }
+  if (threadIdx.x == 0) {
+    const int64_t scalar_idx = token * num_v_heads + v_head;
+    beta[scalar_idx] = sigmoid_f32(bf16_bits_to_float(b[scalar_idx]));
+    decay[scalar_idx] = expf(
+        -expf(a_log[v_head]) * softplus_f32(bf16_bits_to_float(a[scalar_idx]) + dt_bias[v_head]));
+  }
+}
+
+__global__ void qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(
+    const float* __restrict__ recurrent,
+    const uint16_t* __restrict__ gate,
+    const float* __restrict__ norm_weight,
+    uint16_t* __restrict__ out,
+    float eps,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  extern __shared__ float partial[];
+  const int64_t token = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  if (token >= tokens || v_head >= num_v_heads) {
+    return;
+  }
+  const int64_t base = (token * num_v_heads + v_head) * head_v_dim;
+  float sumsq = 0.0f;
+  for (int64_t idx = threadIdx.x; idx < head_v_dim; idx += blockDim.x) {
+    const float x = recurrent[base + idx];
+    sumsq += x * x;
+  }
+  partial[threadIdx.x] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf((partial[0] / static_cast<float>(head_v_dim)) + eps);
+  for (int64_t idx = threadIdx.x; idx < head_v_dim; idx += blockDim.x) {
+    const float gated = recurrent[base + idx] * inv_rms * norm_weight[idx] * silu_f32(bf16_bits_to_float(gate[base + idx]));
+    out[base + idx] = float_to_bf16_bits(gated);
+  }
+}
+
 bool valid_gdn_shape(int64_t num_k_heads, int64_t num_v_heads, int64_t head_k_dim, int64_t head_v_dim) {
   return num_k_heads > 0 && num_v_heads > 0 && (num_v_heads % num_k_heads) == 0 &&
       head_k_dim > 0 && head_v_dim > 0 && head_v_dim <= 128;
+}
+
+bool valid_prefill_shape(int64_t tokens, int64_t num_k_heads, int64_t num_v_heads, int64_t head_k_dim, int64_t head_v_dim) {
+  return tokens > 0 && num_k_heads > 0 && num_v_heads > 0 && (num_v_heads % num_k_heads) == 0 &&
+      head_k_dim > 0 && head_v_dim > 0;
 }
 
 }  // namespace
@@ -488,6 +614,83 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_k2_f32(
       tokens,
       num_v_heads,
       head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_prefill_prepare_f32_bf16(
+    const float* conv_out,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    float* query,
+    float* key,
+    float* value,
+    float* beta,
+    float* decay,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!valid_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>(2 * threads) * sizeof(float);
+  hipLaunchKernelGGL(
+      qwen35_linear_attn_prefill_prepare_kernel,
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      query,
+      key,
+      value,
+      beta,
+      decay,
+      tokens,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_rmsnorm_gate_bf16(
+    const float* recurrent,
+    const uint16_t* gate,
+    const float* norm_weight,
+    uint16_t* out,
+    float eps,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_v_heads <= 0 || head_v_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel,
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      recurrent,
+      gate,
+      norm_weight,
+      out,
+      eps,
+      tokens,
+      num_v_heads,
       head_v_dim);
   return static_cast<int>(hipGetLastError());
 }

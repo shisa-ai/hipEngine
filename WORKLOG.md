@@ -3707,3 +3707,36 @@ Profiler confirmed expected kernels launched:
 
 - Wire a native batched linear-attention prefill state path in `Qwen35ParoDecodeState`: Q/K L2 normalization, beta/decay, GDN RMSNorm+gate, output projection, and state update.
 - Then move to the dominant missing piece: grouped/compact MoE prefill.
+
+---
+
+## 2026-05-14 — Wire batched linear-attention prefill state path
+
+### Scope
+
+- Added GPU prefill prepare and finish kernels around the parent recurrent prefill body:
+  - `qwen35_linear_attn_prefill_prepare_f32_bf16`: Q/K L2 normalization, Q scale, KV-head repeat, value split, BF16 A/B → beta/decay.
+  - `qwen35_gdn_prefill_rmsnorm_gate_bf16`: per-value-head RMSNorm + SiLU gate → BF16 hidden output.
+- Extended `Qwen35ParoLinearAttentionScratch` with native prefill scratch (`qkv_f32`, normalized Q/K/V, beta, decay).
+- Added `Qwen35ParoDecodeState.run_linear_attention_prefill_state_bf16(...)` and `run_linear_attention_prefill_out_proj_bf16(...)` for a batched linear-attention prefill slice through PARO out-projection.
+- This still does not make full E2E prefill native: the MoE block is still c=1/token-oriented, and the resident runner still needs a full native prefill orchestration path.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_linear_attn_gdn_plan.py -q
+python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip
+```
+
+Smoke result:
+
+- `conv_out_max_abs=1.49e-08`, `conv_state_max_abs=0`
+- `prepare_max_abs=5.96e-08`
+- `gdn_out_max_abs=9.31e-10`, `gdn_state_max_abs=1.12e-08`
+- `gdn_k2_out_max_abs=9.31e-10`, `gdn_k2_state_max_abs=1.12e-08`
+- `gated_mismatch=0`
+
+### Next
+
+- Add grouped/compact MoE prefill kernels/state path; this is the dominant remaining prefill gap.
+- Then wire resident-session native prefill and switch the benchmark from `native_batched_prefill=false` to a comparable native prefill row only after full-layer correctness gates are green.

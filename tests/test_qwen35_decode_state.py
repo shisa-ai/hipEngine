@@ -323,10 +323,16 @@ def test_qwen35_decode_state_reserves_linear_attention_scratch() -> None:
     assert scratch.qkv_z.shape == (1, 12288)
     assert scratch.qkv.shape == (1, 8192)
     assert scratch.z.shape == (1, 4096)
+    assert scratch.qkv_f32.shape == (1, 8192)
     assert scratch.ab.shape == (1, 64)
     assert scratch.a.shape == (1, 32)
     assert scratch.b.shape == (1, 32)
     assert scratch.conv_out.dtype is DType.FP32
+    assert scratch.prefill_query.shape == (1, 32, 128)
+    assert scratch.prefill_key.shape == (1, 32, 128)
+    assert scratch.prefill_value.shape == (1, 32, 128)
+    assert scratch.prefill_beta.shape == (1, 32)
+    assert scratch.prefill_decay.shape == (1, 32)
     assert scratch.recurrent_out.shape == (1, 4096)
     assert scratch.recurrent_bf16.shape == (1, 4096)
     assert scratch.out_rot.shape == (1, 4096)
@@ -387,6 +393,157 @@ def test_qwen35_decode_state_runs_linear_attention_state_chain(monkeypatch) -> N
         128,
         128,
     )
+
+
+def test_qwen35_decode_state_runs_linear_attention_prefill_state_chain(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    hidden = _tensor(0xC000, (4, 4096), "bf16")
+    conv_state = _tensor(0xC100, (8192, 4), "fp32")
+    recurrent_state = _tensor(0xC200, (32, 128, 128), "fp32")
+    scratch = state.reserve_linear_attention_scratch(tokens=4)
+    calls = []
+
+    def record(name):
+        def fake(*args, **kwargs):
+            calls.append((name, args, kwargs))
+        return fake
+
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", record("rotate2"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
+    monkeypatch.setattr(qwen_runtime, "dense_dual_gemv_out_bf16", record("dense_dual"))
+    monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("cast_qkv"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_prefill_f32", record("conv_prefill"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_prefill_prepare_f32_bf16", record("prepare"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_gdn_prefill_recurrent_k2_f32", record("gdn_k2"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_gdn_prefill_rmsnorm_gate_bf16", record("rms_gate"))
+
+    out = state.run_linear_attention_prefill_state_bf16(
+        hidden,
+        conv_state=conv_state,
+        recurrent_state=recurrent_state,
+        scratch=scratch,
+        tokens=4,
+    )
+
+    assert out is scratch.recurrent_bf16
+    assert [name for name, _, _ in calls] == [
+        "rotate2",
+        "dual_pack8",
+        "dense_dual",
+        "cast_qkv",
+        "conv_prefill",
+        "prepare",
+        "gdn_k2",
+        "rms_gate",
+    ]
+    assert calls[3][1] == (scratch.qkv.ptr, scratch.qkv_f32.ptr, 4 * 8192)
+    assert calls[4][1] == (scratch.qkv_f32.ptr, conv_state.ptr, 0x9F00, scratch.conv_out.ptr, 4, 8192, 4)
+    assert calls[5][1] == (
+        scratch.conv_out.ptr,
+        scratch.a.ptr,
+        scratch.b.ptr,
+        0xA100,
+        0xA200,
+        scratch.prefill_query.ptr,
+        scratch.prefill_key.ptr,
+        scratch.prefill_value.ptr,
+        scratch.prefill_beta.ptr,
+        scratch.prefill_decay.ptr,
+        4,
+        16,
+        32,
+        128,
+        128,
+    )
+    assert calls[6][1] == (
+        scratch.prefill_query.ptr,
+        scratch.prefill_key.ptr,
+        scratch.prefill_value.ptr,
+        scratch.prefill_beta.ptr,
+        scratch.prefill_decay.ptr,
+        recurrent_state.ptr,
+        scratch.recurrent_out.ptr,
+        4,
+        32,
+        128,
+        128,
+    )
+    assert calls[7][1] == (scratch.recurrent_out.ptr, scratch.z.ptr, 0xA300, scratch.recurrent_bf16.ptr, 1.0e-6, 4, 32, 128)
+
+
+def test_qwen35_decode_state_projects_linear_attention_prefill_out(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    scratch = state.reserve_linear_attention_scratch(tokens=4)
+    calls = []
+
+    def record(name):
+        def fake(*args, **kwargs):
+            calls.append((name, args, kwargs))
+        return fake
+
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", record("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
+
+    out = state.project_linear_attention_prefill_out_bf16(scratch, tokens=4)
+
+    assert out is scratch.out_proj
+    assert [name for name, _, _ in calls] == ["rotate1", "pack8"]
+    assert calls[0][1] == (scratch.recurrent_bf16.ptr, scratch.out_rot.ptr, 0x9650, 0x9660, 0x9670, 4, 4096, 128, 8)
+    assert calls[1][1][:5] == (scratch.out_rot.ptr, 0x9C10, 0x9C20, 0x9C30, scratch.out_proj.ptr)
+    assert calls[1][1][5:] == (4, 4096, 512, 128)
+
+
+def test_qwen35_decode_state_runs_linear_attention_prefill_out_proj_chain(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    hidden = _tensor(0xC000, (4, 4096), "bf16")
+    conv_state = _tensor(0xC100, (8192, 4), "fp32")
+    recurrent_state = _tensor(0xC200, (32, 128, 128), "fp32")
+    scratch = state.reserve_linear_attention_scratch(tokens=4)
+    order = []
+
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", lambda *a, **k: order.append("rotate2"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", lambda *a, **k: order.append("dual_pack8"))
+    monkeypatch.setattr(qwen_runtime, "dense_dual_gemv_out_bf16", lambda *a, **k: order.append("dense_dual"))
+    monkeypatch.setattr(qwen_runtime, "bf16_to_f32", lambda *a, **k: order.append("cast_qkv"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_conv_prefill_f32", lambda *a, **k: order.append("conv_prefill"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_prefill_prepare_f32_bf16", lambda *a, **k: order.append("prepare"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_gdn_prefill_recurrent_k2_f32", lambda *a, **k: order.append("gdn_k2"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_gdn_prefill_rmsnorm_gate_bf16", lambda *a, **k: order.append("rms_gate"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", lambda *a, **k: order.append("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", lambda *a, **k: order.append("pack8"))
+
+    out = state.run_linear_attention_prefill_out_proj_bf16(
+        hidden,
+        conv_state=conv_state,
+        recurrent_state=recurrent_state,
+        scratch=scratch,
+        tokens=4,
+    )
+
+    assert out is scratch.out_proj
+    assert order == [
+        "rotate2",
+        "dual_pack8",
+        "dense_dual",
+        "cast_qkv",
+        "conv_prefill",
+        "prepare",
+        "gdn_k2",
+        "rms_gate",
+        "rotate1",
+        "pack8",
+    ]
+    with pytest.raises(ValueError, match="tokens >= linear_conv_kernel_dim"):
+        state.run_linear_attention_prefill_out_proj_bf16(
+            hidden,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            scratch=scratch,
+            tokens=2,
+        )
 
 
 def test_qwen35_decode_state_projects_linear_attention_out(monkeypatch) -> None:

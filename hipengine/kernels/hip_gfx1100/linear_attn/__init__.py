@@ -13,7 +13,9 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     plan_qwen35_linear_attn_gdn_build,
     qwen35_gdn_prefill_recurrent_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
+    qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+    qwen35_linear_attn_prefill_prepare_f32_bf16,
     register_qwen35_linear_attn_gdn_kernels,
 )
 
@@ -24,7 +26,9 @@ __all__ = [
     "plan_qwen35_linear_attn_gdn_build",
     "qwen35_gdn_prefill_recurrent_f32",
     "qwen35_gdn_prefill_recurrent_k2_f32",
+    "qwen35_gdn_prefill_rmsnorm_gate_bf16",
     "qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16",
+    "qwen35_linear_attn_prefill_prepare_f32_bf16",
     "qwen35_linear_attn_conv_decode_bf16",
     "qwen35_linear_attn_conv_decode_f32",
     "qwen35_linear_attn_conv_prefill_f32",
