@@ -22,6 +22,89 @@
       "finished": true
     }
   ],
+  "scheduler_metadata": {
+    "request_ids": [
+      0,
+      1
+    ],
+    "admitted": [
+      0,
+      1
+    ],
+    "slot_to_request_after_admit": [
+      0,
+      1
+    ],
+    "active_count_after_admit": 2,
+    "prefill_work_items": 32,
+    "prefill_request_order": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "decode_shape_key": {
+      "mode": "decode",
+      "active_c": 2,
+      "context_bucket": 256,
+      "active_mask": [
+        true,
+        true
+      ],
+      "top_k": 8,
+      "experts_per_token": 8,
+      "replay_steps": 1,
+      "draft_depth": 0,
+      "tree_shape": []
+    },
+    "graph_bucket_stats": {
+      "entries": 1,
+      "hits": 1,
+      "misses": 1
+    },
+    "slot_to_request_at_decode": [
+      0,
+      1
+    ],
+    "active_count_at_decode": 2,
+    "decode_request_ids": [
+      0,
+      1
+    ],
+    "active_count_after_completion": 0,
+    "slot_to_request_after_completion": [
+      null,
+      null
+    ]
+  },
   "batch_size": 2,
   "prompt_lengths": [
     16,
@@ -56,6 +139,8 @@
       "decode_logit": 10.722575187683105
     }
   ],
+  "generated_match": true,
+  "finite_logits": true,
   "passed": true,
   "notes": [
     "Correctness-first serial c>N bridge over batch-shaped resident slot buffers; not a throughput claim.",

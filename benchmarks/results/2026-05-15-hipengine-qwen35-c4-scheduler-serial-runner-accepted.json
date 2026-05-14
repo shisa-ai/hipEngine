@@ -1,0 +1,204 @@
+{
+  "schema": 1,
+  "status": "accepted_correctness_smoke",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "mode": "resident_c4_scheduler_serial_slot_runner_correctness",
+  "command": "python3 scripts/qwen35_batch_serial_correctness.py --prompt-length 8 --max-layers 40 --batch-size 4 --scheduler --json benchmarks/results/2026-05-15-hipengine-qwen35-c4-scheduler-serial-runner-accepted.json",
+  "scheduler_completed": [
+    {
+      "request_id": 0,
+      "generated_tokens": [
+        96342
+      ],
+      "finished": true
+    },
+    {
+      "request_id": 1,
+      "generated_tokens": [
+        220
+      ],
+      "finished": true
+    },
+    {
+      "request_id": 2,
+      "generated_tokens": [
+        321
+      ],
+      "finished": true
+    },
+    {
+      "request_id": 3,
+      "generated_tokens": [
+        3709
+      ],
+      "finished": true
+    }
+  ],
+  "scheduler_metadata": {
+    "request_ids": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "admitted": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "slot_to_request_after_admit": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "active_count_after_admit": 4,
+    "prefill_work_items": 32,
+    "prefill_request_order": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "decode_shape_key": {
+      "mode": "decode",
+      "active_c": 4,
+      "context_bucket": 256,
+      "active_mask": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "top_k": 8,
+      "experts_per_token": 8,
+      "replay_steps": 1,
+      "draft_depth": 0,
+      "tree_shape": []
+    },
+    "graph_bucket_stats": {
+      "entries": 1,
+      "hits": 1,
+      "misses": 1
+    },
+    "slot_to_request_at_decode": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "active_count_at_decode": 4,
+    "decode_request_ids": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "active_count_after_completion": 0,
+    "slot_to_request_after_completion": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "batch_size": 4,
+  "prompt_lengths": [
+    8,
+    8,
+    8,
+    8
+  ],
+  "max_layers": 40,
+  "expected_c1": [
+    {
+      "seed": 3709,
+      "decode": 96342,
+      "seed_logit": 9.055789947509766,
+      "decode_logit": 8.539745330810547
+    },
+    {
+      "seed": 72,
+      "decode": 220,
+      "seed_logit": 8.959014892578125,
+      "decode_logit": 9.62960147857666
+    },
+    {
+      "seed": 11,
+      "decode": 321,
+      "seed_logit": 10.514084815979004,
+      "decode_logit": 12.065213203430176
+    },
+    {
+      "seed": 96554,
+      "decode": 3709,
+      "seed_logit": 9.451822280883789,
+      "decode_logit": 9.777992248535156
+    }
+  ],
+  "batch_serial": [
+    {
+      "seed": 3709,
+      "decode": 96342,
+      "seed_logit": 9.055789947509766,
+      "decode_logit": 8.539745330810547
+    },
+    {
+      "seed": 72,
+      "decode": 220,
+      "seed_logit": 8.959014892578125,
+      "decode_logit": 9.62960147857666
+    },
+    {
+      "seed": 11,
+      "decode": 321,
+      "seed_logit": 10.514084815979004,
+      "decode_logit": 12.065213203430176
+    },
+    {
+      "seed": 96554,
+      "decode": 3709,
+      "seed_logit": 9.451822280883789,
+      "decode_logit": 9.777992248535156
+    }
+  ],
+  "generated_match": true,
+  "finite_logits": true,
+  "passed": true,
+  "notes": [
+    "Correctness-first serial c>N bridge over batch-shaped resident slot buffers; not a throughput claim.",
+    "Compares a shared resident session against independent c=1 resident sessions.",
+    "Scheduler mode consumes ResidentBatchScheduler prefill/decode work items and physical slots."
+  ]
+}

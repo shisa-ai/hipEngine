@@ -5071,3 +5071,52 @@ Results:
 
 - Extend the c>N correctness gate (Task #35) with finite-logit checks, graph/occupancy metadata, and c=4/c=8 shapes before rollup promotion.
 - Replace serial row execution with native c-aware layer kernels under Task #15 only after scheduler correctness stays green.
+
+---
+
+## 2026-05-15 — Accept c>N generated-token equality gate
+
+### Scope
+
+- Completed Task #35 by extending `scripts/qwen35_batch_serial_correctness.py` from a c=2 smoke into a scheduler-backed c>N generated-token equality gate.
+- The gate remains explicitly correctness-only: `step_batch_serial(...)` runs rows serially over batch-shaped resident slots, so no throughput claim is retained and native compact/c-aware kernels remain Task #15.
+
+### Implementation notes
+
+- Generalized the script to arbitrary positive `--batch-size` and scheduler-driven mode.
+- Added finite-logit checks (`finite_logits`) and separate `generated_match`/`passed` fields.
+- Added scheduler metadata to artifacts:
+  - admitted request ids, slot maps, active counts;
+  - prefill work-item count/order;
+  - decode `BatchShapeKey` including active mask/top-k/experts/replay metadata;
+  - `GraphBucketCache` stats;
+  - completed request generated tokens and final occupancy.
+- Added aggregate gate artifact `benchmarks/results/2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json`, superseding the prior blocked `2026-05-14-hipengine-qwen35-cn-correctness-blocked.json` for generated-token equality only.
+
+### Validation
+
+```bash
+python3 scripts/qwen35_batch_serial_correctness.py \
+  --prompt-length 16 --max-layers 40 --batch-size 2 --scheduler \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-c2-scheduler-serial-runner-accepted.json
+python3 scripts/qwen35_batch_serial_correctness.py \
+  --prompt-length 8 --max-layers 40 --batch-size 4 --scheduler \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-c4-scheduler-serial-runner-accepted.json
+python3 scripts/qwen35_batch_serial_correctness.py \
+  --prompt-length 8 --max-layers 40 --batch-size 8 --scheduler \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-runner-accepted.json
+```
+
+Results:
+
+- c=2/4/8 all passed with `finite_logits=true`, `generated_match=true`, `passed=true`.
+- c=2 full-model prompt-16 generated ids: request 0 `[17]`, request 1 `[96523]`; both matched independent c=1 sessions exactly.
+- c=4 full-model prompt-8 generated ids: `[96342]`, `[220]`, `[321]`, `[3709]`; all matched independent c=1 sessions exactly.
+- c=8 full-model prompt-8 generated ids: `[96342]`, `[220]`, `[321]`, `[3709]`, `[198]`, `[13]`, `[16]`, `[248068]`; all matched independent c=1 sessions exactly.
+- Decode shape metadata recorded active_c `2`, `4`, and `8` with `active_mask` all true, `top_k=8`, `experts_per_token=8`, `replay_steps=1`; graph bucket stats were `entries=1`, `hits=1`, `misses=1` for each shape.
+- Standard guard remained green: `69 passed`.
+
+### Next
+
+- Task #18 is now unblocked to update benchmark rollups/artifact summaries after correctness parity.
+- Task #15 remains the native compact/c-aware performance path; do not promote c>N throughput while the accepted c>N generated-token gate is still serial.

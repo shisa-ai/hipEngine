@@ -1,0 +1,236 @@
+{
+  "schema": 1,
+  "status": "accepted_correctness_gate",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "mode": "resident_cN_scheduler_serial_generated_equality",
+  "supersedes_blocked_artifact": "benchmarks/results/2026-05-14-hipengine-qwen35-cn-correctness-blocked.json",
+  "specdec_enabled": false,
+  "native_caware_kernels": false,
+  "serial_bridge": true,
+  "performance_claim": false,
+  "shapes": [
+    {
+      "batch_size": 2,
+      "prompt_lengths": [
+        16,
+        16
+      ],
+      "max_layers": 40,
+      "generated_match": true,
+      "finite_logits": true,
+      "passed": true,
+      "decode_shape_key": {
+        "mode": "decode",
+        "active_c": 2,
+        "context_bucket": 256,
+        "active_mask": [
+          true,
+          true
+        ],
+        "top_k": 8,
+        "experts_per_token": 8,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": []
+      },
+      "graph_bucket_stats": {
+        "entries": 1,
+        "hits": 1,
+        "misses": 1
+      },
+      "scheduler_completed": [
+        {
+          "request_id": 0,
+          "generated_tokens": [
+            17
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 1,
+          "generated_tokens": [
+            96523
+          ],
+          "finished": true
+        }
+      ],
+      "artifact": "benchmarks/results/2026-05-15-hipengine-qwen35-c2-scheduler-serial-runner-accepted.json",
+      "command": "python3 scripts/qwen35_batch_serial_correctness.py --prompt-length 16 --max-layers 40 --batch-size 2 --scheduler --json benchmarks/results/2026-05-15-hipengine-qwen35-c2-scheduler-serial-runner-accepted.json"
+    },
+    {
+      "batch_size": 4,
+      "prompt_lengths": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "max_layers": 40,
+      "generated_match": true,
+      "finite_logits": true,
+      "passed": true,
+      "decode_shape_key": {
+        "mode": "decode",
+        "active_c": 4,
+        "context_bucket": 256,
+        "active_mask": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "top_k": 8,
+        "experts_per_token": 8,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": []
+      },
+      "graph_bucket_stats": {
+        "entries": 1,
+        "hits": 1,
+        "misses": 1
+      },
+      "scheduler_completed": [
+        {
+          "request_id": 0,
+          "generated_tokens": [
+            96342
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 1,
+          "generated_tokens": [
+            220
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 2,
+          "generated_tokens": [
+            321
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 3,
+          "generated_tokens": [
+            3709
+          ],
+          "finished": true
+        }
+      ],
+      "artifact": "benchmarks/results/2026-05-15-hipengine-qwen35-c4-scheduler-serial-runner-accepted.json",
+      "command": "python3 scripts/qwen35_batch_serial_correctness.py --prompt-length 8 --max-layers 40 --batch-size 4 --scheduler --json benchmarks/results/2026-05-15-hipengine-qwen35-c4-scheduler-serial-runner-accepted.json"
+    },
+    {
+      "batch_size": 8,
+      "prompt_lengths": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "max_layers": 40,
+      "generated_match": true,
+      "finite_logits": true,
+      "passed": true,
+      "decode_shape_key": {
+        "mode": "decode",
+        "active_c": 8,
+        "context_bucket": 256,
+        "active_mask": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "top_k": 8,
+        "experts_per_token": 8,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": []
+      },
+      "graph_bucket_stats": {
+        "entries": 1,
+        "hits": 1,
+        "misses": 1
+      },
+      "scheduler_completed": [
+        {
+          "request_id": 0,
+          "generated_tokens": [
+            96342
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 1,
+          "generated_tokens": [
+            220
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 2,
+          "generated_tokens": [
+            321
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 3,
+          "generated_tokens": [
+            3709
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 4,
+          "generated_tokens": [
+            198
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 5,
+          "generated_tokens": [
+            13
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 6,
+          "generated_tokens": [
+            16
+          ],
+          "finished": true
+        },
+        {
+          "request_id": 7,
+          "generated_tokens": [
+            248068
+          ],
+          "finished": true
+        }
+      ],
+      "artifact": "benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-runner-accepted.json",
+      "command": "python3 scripts/qwen35_batch_serial_correctness.py --prompt-length 8 --max-layers 40 --batch-size 8 --scheduler --json benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-runner-accepted.json"
+    }
+  ],
+  "passed": true,
+  "notes": [
+    "Generated-token equality gate for c=2/4/8 against independent c=1 sessions is accepted for the scheduler-backed serial bridge.",
+    "This does not promote a throughput row: row execution is still serial and native compact/c-aware kernels remain Task #15."
+  ]
+}

@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Correctness smoke for the Qwen3.5/PARO serial c>N resident slot bridge.
 
-This is not a benchmark.  It compares a shared ``max_batch_size=2`` resident
-session using ``step_batch_serial`` against independent c=1 resident sessions
-for deterministic prompt slices.
+This is not a benchmark.  It compares a shared resident session using
+``step_batch_serial`` against independent c=1 resident sessions for
+deterministic prompt slices.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,24 @@ def _format_pair(seed, decode) -> dict[str, Any]:
     }
 
 
+def _all_logits_finite(rows: list[dict[str, Any]]) -> bool:
+    return all(math.isfinite(float(row["seed_logit"])) and math.isfinite(float(row["decode_logit"])) for row in rows)
+
+
+def _shape_key_payload(key) -> dict[str, Any]:
+    return {
+        "mode": key.mode.value,
+        "active_c": key.active_c,
+        "context_bucket": key.context_bucket,
+        "active_mask": list(key.active_mask),
+        "top_k": key.top_k,
+        "experts_per_token": key.experts_per_token,
+        "replay_steps": key.replay_steps,
+        "draft_depth": key.draft_depth,
+        "tree_shape": list(key.tree_shape),
+    }
+
+
 def _run_batch_serial(
     runner: Qwen35ParoNextTokenRunner,
     prompts: list[list[int]],
@@ -134,7 +153,7 @@ def _run_batch_serial_scheduler(
     max_layers: int,
     compiler_version: str | None,
     require_cached_build: bool,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """Run the serial slot bridge through ResidentBatchScheduler ownership."""
 
     prompt_lengths = {len(prompt) for prompt in prompts}
@@ -146,6 +165,14 @@ def _run_batch_serial_scheduler(
     admitted = scheduler.admit_pending()
     if admitted != tuple(request_ids):
         raise RuntimeError(f"unexpected admitted request ids {admitted!r}")
+    metadata: dict[str, Any] = {
+        "request_ids": list(request_ids),
+        "admitted": list(admitted),
+        "slot_to_request_after_admit": list(scheduler.active_batch.slot_to_request),
+        "active_count_after_admit": scheduler.active_count,
+        "prefill_work_items": 0,
+        "prefill_request_order": [],
+    }
     seed_by_request: dict[int, Any] = {}
     decode_by_request: dict[int, Any] = {}
     with Qwen35ParoResidentSession(
@@ -160,7 +187,9 @@ def _run_batch_serial_scheduler(
             work = scheduler.next_prefill_work(chunk_size=1)
             if work is None:
                 break
+            metadata["prefill_work_items"] += 1
             request_id = work.request_ids[0]
+            metadata["prefill_request_order"].append(request_id)
             token = work.token_rows[0][0]
             request = scheduler.active_batch.requests[request_id]
             position = request.next_prompt_index - 1
@@ -174,7 +203,16 @@ def _run_batch_serial_scheduler(
         decode_work = scheduler.next_decode_work()
         if decode_work is None:
             raise RuntimeError("scheduler did not emit decode work")
+        shape_key = scheduler.shape_key(mode="decode", top_k=8, experts_per_token=8, replay_steps=1)
+        scheduler.graph_buckets.get_or_create(shape_key, lambda bucket: _shape_key_payload(bucket))
+        scheduler.graph_buckets.get(shape_key)
+        stats = scheduler.graph_buckets.stats
+        metadata["decode_shape_key"] = _shape_key_payload(shape_key)
+        metadata["graph_bucket_stats"] = {"entries": stats.entries, "hits": stats.hits, "misses": stats.misses}
+        metadata["slot_to_request_at_decode"] = list(scheduler.active_batch.slot_to_request)
+        metadata["active_count_at_decode"] = scheduler.active_count
         decode_request_ids = decode_work.request_ids
+        metadata["decode_request_ids"] = list(decode_request_ids)
         decode_results = session.step_batch_serial(
             [seed_by_request[request_id].token_id for request_id in decode_request_ids],
             positions=[scheduler.active_batch.requests[request_id].context_len for request_id in decode_request_ids],
@@ -197,7 +235,9 @@ def _run_batch_serial_scheduler(
         }
         for done in completed
     ]
-    return actual, completed_payload
+    metadata["active_count_after_completion"] = scheduler.active_count
+    metadata["slot_to_request_after_completion"] = list(scheduler.active_batch.slot_to_request)
+    return actual, completed_payload, metadata
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -213,8 +253,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
     args = parser.parse_args(argv)
 
-    if args.batch_size != 2:
-        raise ValueError("this smoke currently supports --batch-size 2")
+    if args.batch_size <= 0:
+        raise ValueError("batch_size must be positive")
     prompts = _load_prompt_slices(Path(args.fixture), prompt_length=args.prompt_length, batch_size=args.batch_size)
     compiler_version = _compiler_version(args.compiler_version_file)
     runner = Qwen35ParoNextTokenRunner(Path(args.model))
@@ -229,8 +269,9 @@ def main(argv: list[str] | None = None) -> int:
         for prompt in prompts
     ]
     scheduler_completed: list[dict[str, Any]] = []
+    scheduler_metadata: dict[str, Any] = {}
     if args.scheduler:
-        actual, scheduler_completed = _run_batch_serial_scheduler(
+        actual, scheduler_completed, scheduler_metadata = _run_batch_serial_scheduler(
             runner,
             prompts,
             max_layers=args.max_layers,
@@ -253,21 +294,26 @@ def main(argv: list[str] | None = None) -> int:
         command += " --scheduler"
     if args.json is not None:
         command += f" --json {args.json}"
+    generated_match = actual == expected
+    finite_logits = _all_logits_finite(expected) and _all_logits_finite(actual)
     payload = {
         "schema": 1,
         "status": "accepted_correctness_smoke",
         "model": str(Path(args.model)),
         "quant": "w4_paro",
         "backend": "hip_gfx1100",
-        "mode": "resident_c2_scheduler_serial_slot_runner_correctness" if args.scheduler else "resident_c2_serial_slot_runner_correctness",
+        "mode": f"resident_c{args.batch_size}_scheduler_serial_slot_runner_correctness" if args.scheduler else f"resident_c{args.batch_size}_serial_slot_runner_correctness",
         "command": command,
         "scheduler_completed": scheduler_completed,
+        "scheduler_metadata": scheduler_metadata,
         "batch_size": args.batch_size,
         "prompt_lengths": [len(prompt) for prompt in prompts],
         "max_layers": args.max_layers,
         "expected_c1": expected,
         "batch_serial": actual,
-        "passed": actual == expected,
+        "generated_match": generated_match,
+        "finite_logits": finite_logits,
+        "passed": generated_match and finite_logits,
         "notes": [
             "Correctness-first serial c>N bridge over batch-shaped resident slot buffers; not a throughput claim.",
             "Compares a shared resident session against independent c=1 resident sessions.",
