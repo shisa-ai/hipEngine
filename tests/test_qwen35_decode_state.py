@@ -752,6 +752,7 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
     monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("bf16_to_f32"))
     monkeypatch.setattr(qwen_runtime, "qwen35_head_rmsnorm_partial_rotary_position_f32_bf16", record("head_rotary"))
     monkeypatch.setattr(qwen_runtime, "qwen35_write_paged_kv_mixed_value_bf16_spans", record("kv"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_decode_context_bf16", record("dense_attention_context"))
     monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_context_bf16_spans", record("attention_context"))
     monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_bf16", record("attention_gate"))
     monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans", record("attention"))
@@ -789,7 +790,7 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
         "bf16_to_f32",
         "head_rotary",
         "kv",
-        "attention_context",
+        "dense_attention_context",
         "attention_gate",
         "rotate1",
         "pack8",
@@ -808,7 +809,8 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
     assert calls[4][1] == (attn.q_proj.ptr, attn.query_raw.ptr, attn.gate.ptr, 1, 16, 256)
     assert calls[5][1] == (attn.key_bf16.ptr, attn.key_raw.ptr, 512)
     assert calls[6][1][:9] == (attn.query_raw.ptr, attn.key_raw.ptr, 0x8120, 0x8130, 0xD200, 0xD300, 0xD400, attn.query.ptr, attn.key.ptr)
-    assert calls[8][1][:4] == (attn.query.ptr, key_cache.ptr, value_cache.ptr, attn.attn_out.ptr)
+    assert calls[8][1][:5] == (attn.query.ptr, key_cache.ptr, value_cache.ptr, attn.attn_out.ptr, 0xD100)
+    assert calls[8][1][5:10] == (1, 16, 2, 256, 256 ** -0.5)
     assert calls[9][1][:4] == (attn.attn_out.ptr, attn.gate.ptr, attn.gated_attn.ptr, 4096)
     assert calls[10][1][:5] == (attn.gated_attn.ptr, attn.o_rot.ptr, 0x8500, 0x8510, 0x8520)
     assert calls[12][1][:5] == (hidden.ptr, attn.o_proj.ptr, 0x8110, moe.normed.ptr, moe.residual.ptr)

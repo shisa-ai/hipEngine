@@ -3,6 +3,7 @@
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     build_qwen35_paged_attn_decode,
     plan_qwen35_paged_attn_decode_build,
+    qwen35_full_attn_decode_context_bf16,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
@@ -28,6 +29,7 @@ __all__ = [
     "build_qwen35_paged_kv_write",
     "plan_qwen35_paged_attn_decode_build",
     "plan_qwen35_paged_kv_write_build",
+    "qwen35_full_attn_decode_context_bf16",
     "qwen35_full_attn_gate_mul_bf16",
     "qwen35_paged_full_attn_decode_context_bf16_batch_spans",
     "qwen35_paged_full_attn_decode_context_bf16_spans",

@@ -42,6 +42,109 @@ __device__ inline float scalar_to_float_qwen35(scalar_t value) {
   return static_cast<float>(value);
 }
 
+__device__ __forceinline__ void qwen35_full_attn_decode_impl(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    int64_t context_len,
+    int64_t score_capacity,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    float* shared) {
+  if (context_len <= 0 || context_len > score_capacity) {
+    return;
+  }
+  float* scores = shared;
+  float* partial = scores + score_capacity;
+  const int64_t q_head = blockIdx.x;
+  if (q_head >= num_q_heads) {
+    return;
+  }
+  const int64_t kv_group = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / kv_group;
+  const int64_t q_offset = q_head * head_dim;
+
+  float local_max = -3.4028234663852886e38f;
+  for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
+    float acc = 0.0f;
+    const int64_t k_offset = (token * num_kv_heads + kv_head) * head_dim;
+    for (int64_t dim = 0; dim < head_dim; ++dim) {
+      acc += query[q_offset + dim] * bf16_bits_to_float(key_cache[k_offset + dim]);
+    }
+    const float score = acc * scale;
+    scores[token] = score;
+    local_max = fmaxf(local_max, score);
+  }
+  partial[threadIdx.x] = local_max;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] = fmaxf(partial[threadIdx.x], partial[threadIdx.x + stride]);
+    }
+    __syncthreads();
+  }
+  const float max_score = partial[0];
+
+  float local_sum = 0.0f;
+  for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
+    local_sum += expf(scores[token] - max_score);
+  }
+  partial[threadIdx.x] = local_sum;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_denom = 1.0f / fmaxf(partial[0], 1.0e-20f);
+
+  for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
+    scores[token] = expf(scores[token] - max_score) * inv_denom;
+  }
+  __syncthreads();
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    float acc = 0.0f;
+    for (int64_t token = 0; token < context_len; ++token) {
+      const int64_t v_offset = (token * num_kv_heads + kv_head) * head_dim + dim;
+      acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+    }
+    out[q_offset + dim] = acc;
+  }
+}
+
+__global__ void qwen35_full_attn_decode_context_tensor_kernel(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int64_t* context_len_ptr,
+    int64_t max_context_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale) {
+  extern __shared__ float shared[];
+  qwen35_full_attn_decode_impl(
+      query,
+      key_cache,
+      value_cache,
+      out,
+      context_len_ptr[0],
+      max_context_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale,
+      shared);
+}
+
 // Packed dot product for paged attention key cache.
 // Loads 8 bf16 values at a time via 128-bit vector loads (v_load_dwordx4).
 // Requires head_dim divisible by 8 and k_offset aligned to 16 bytes.
@@ -977,6 +1080,15 @@ __global__ void qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel(
 }
 
 
+bool valid_dense_attn_shape(
+    int64_t max_context_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  return max_context_len > 0 && num_q_heads > 0 && num_kv_heads > 0 &&
+      (num_q_heads % num_kv_heads) == 0 && head_dim > 0 && head_dim <= 256;
+}
+
 bool valid_paged_attn_shape(
     int64_t max_context_len,
     int64_t block_size,
@@ -1013,6 +1125,42 @@ extern "C" int hipengine_qwen35_full_attn_gate_mul_bf16(
       gate,
       out,
       total);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_full_attn_decode_context_bf16(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int64_t* context_len,
+    int64_t max_context_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (!valid_dense_attn_shape(max_context_len, num_q_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const size_t shared_bytes = static_cast<size_t>(max_context_len + threads) * sizeof(float);
+  hipLaunchKernelGGL(
+      qwen35_full_attn_decode_context_tensor_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      context_len,
+      max_context_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
   return static_cast<int>(hipGetLastError());
 }
 

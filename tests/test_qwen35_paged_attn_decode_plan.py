@@ -6,6 +6,7 @@ from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
     plan_qwen35_paged_attn_decode_build,
+    qwen35_full_attn_decode_context_bf16,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
@@ -49,6 +50,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
             variant="bf16",
         )
         is qwen35_full_attn_gate_mul_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="full_attn_decode",
+            quant="w4_paro",
+            variant="bf16_context",
+        )
+        is qwen35_full_attn_decode_context_bf16
     )
     assert (
         resolve(
@@ -144,6 +154,10 @@ def test_qwen35_paged_attn_decode_build_plan_is_dry_run_safe(tmp_path) -> None:
 def test_qwen35_paged_attn_decode_wrapper_validates_before_gpu_load() -> None:
     with pytest.raises(ValueError, match="total must be positive"):
         qwen35_full_attn_gate_mul_bf16(0, 0, 0, 0)
+    with pytest.raises(ValueError, match="max_context_len must be positive"):
+        qwen35_full_attn_decode_context_bf16(0, 0, 0, 0, 0, 0, 2, 1, 4, 1.0)
+    with pytest.raises(ValueError, match="num_q_heads must be divisible"):
+        qwen35_full_attn_decode_context_bf16(0, 0, 0, 0, 0, 2, 3, 2, 4, 1.0)
     with pytest.raises(ValueError, match="block_size=256"):
         qwen35_paged_full_attn_decode_context_bf16_spans(0, 0, 0, 0, _spans(), 2, 4, 2, 1, 4, 1.0)
     with pytest.raises(ValueError, match="int64 live_counts"):

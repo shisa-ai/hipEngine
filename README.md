@@ -1,6 +1,6 @@
-# HIPENGINE
+# hipENGINE
 
-HIPENGINE is a ROCm-native local LLM inference engine for AMD RDNA3 / W7900-class GPUs.
+hipENGINE is a ROCm-native local LLM inference engine for AMD RDNA3 / W7900-class GPUs.
 
 - Architecture and roadmap: [`docs/PLAN.md`](docs/PLAN.md)
 - Benchmark procedures and baselines: [`docs/BENCHMARK.md`](docs/BENCHMARK.md)

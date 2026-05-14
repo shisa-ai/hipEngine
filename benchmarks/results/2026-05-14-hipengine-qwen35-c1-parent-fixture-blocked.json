@@ -1,15 +1,15 @@
 {
   "schema": 2,
   "status": "blocked",
-  "timestamp": "2026-05-14T16:05:46.731698+00:00",
+  "timestamp": "2026-05-14T17:24:12.465099+00:00",
   "run_tag": "hipengine-qwen35-c1-parent-fixture-512-32",
-  "summary": "HIPENGINE c=1 resident sequential prefill/decode compared with nano-vllm-amd parent 512/32 fixture after RMSNorm/q-gate fixes.",
+  "summary": "HIPENGINE c=1 resident sequential prefill/decode compared with nano-vllm-amd parent 512/32 fixture after dense short-context attention port; still blocked by parent FP16 vs HIPENGINE BF16 activation parity.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100"
   },
   "software": {
-    "commit": "8370046",
+    "commit": "46cc8c8+working-tree",
     "dirty": true
   },
   "workload": {
@@ -43,9 +43,9 @@
       15
     ],
     "actual_prefix": [
+      4096,
       220,
       16,
-      15,
       15,
       15,
       15,
@@ -56,8 +56,8 @@
     "deterministic": true
   },
   "measurements": {
-    "hipengine_prefill_tok_s": 113.64660978692294,
-    "hipengine_decode_tok_s": 96.24391169344064,
+    "hipengine_prefill_tok_s": 118.00144786599505,
+    "hipengine_decode_tok_s": 102.69517612068391,
     "parent_prefill_tok_s": 2682.660298904437,
     "parent_decode_tok_s": 116.25779530736419
   },
@@ -70,10 +70,12 @@
   "fixes_validated": [
     "normal Qwen RMSNorm checkpoint offsets now add 1.0 for input/post/final norms",
     "full-attention q_proj query/gate split now follows per-head [query, gate] layout",
-    "small-context full attention uses context decode plus BF16 gate kernel before split-K fallback"
+    "small-context full attention uses context decode plus BF16 gate kernel before split-K fallback",
+    "dense short-context full-attention decode now uses the parent context-tensor kernel for max_live_count < 1024"
   ],
   "blockers": [
-    "512-token prompt parent generated-token parity still misses the first decode token (expected 1739, got 220)",
+    "512-token prompt parent generated-token parity still misses the first decode token after dense attention (expected 1739, got 4096)",
+    "Parent nano-vllm-amd fixture uses FP16 activations/scales from the checkpoint, while HIPENGINE resident Qwen3.5/PARO currently materializes the runtime path as BF16; exact token equality is blocked on an FP16 activation port or a BF16 parent oracle decision",
     "HIPENGINE prefill remains sequential c=1 and is not parent bulk/native compact prefill speed-equivalent",
     "HIPENGINE memory is owned-buffer accounting, not allocator/VRAM peak comparable to parent torch metrics yet"
   ]

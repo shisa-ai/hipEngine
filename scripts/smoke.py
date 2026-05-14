@@ -43,6 +43,7 @@ def main() -> int:
             "qwen35-linear-attn-gdn-hip",
             "qwen35-linear-attn-prefill-hip",
             "qwen35-paged-kv-write-hip",
+            "qwen35-full-attn-decode-hip",
             "qwen35-paged-attn-decode-hip",
             "qwen35-paged-attn-split-k-hip",
             "qwen35-paged-attn-gate-hip",
@@ -155,6 +156,11 @@ def main() -> int:
         )
     if args.mode == "qwen35-paged-kv-write-hip":
         return qwen35_paged_kv_write_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-full-attn-decode-hip":
+        return qwen35_full_attn_decode_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -1491,6 +1497,114 @@ def qwen35_paged_attn_split_k_hip_smoke(
     )
     print("split_attn_out=", out.reshape(-1).tolist())
     return 0 if max_abs <= 1.0e-6 and finite_partials else 1
+
+def qwen35_full_attn_decode_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention import (
+        build_qwen35_paged_attn_decode,
+        qwen35_full_attn_decode_context_bf16,
+    )
+
+    context_len = 3
+    max_context_len = 4
+    num_q_heads = 2
+    num_kv_heads = 1
+    head_dim = 4
+    scale = 0.5
+    live_counts = np.asarray([context_len], dtype=np.int64)
+    query = np.asarray(
+        [[0.25, -0.5, 0.75, -1.0], [1.25, -1.5, 1.75, -2.0]], dtype=np.float32
+    )
+    key_tokens = np.asarray(
+        [[[0.5, -0.25, 1.0, -0.75]], [[-1.0, 0.5, -0.5, 0.25]], [[0.75, 0.25, -1.25, 1.5]]],
+        dtype=np.float32,
+    )
+    value_tokens = np.asarray(
+        [[[0.125, -0.375, 0.625, -0.875]], [[-1.125, 1.375, -1.625, 1.875]], [[0.5, -0.25, 0.75, -1.0]]],
+        dtype=np.float32,
+    )
+    key_cache = np.zeros((max_context_len, num_kv_heads, head_dim), dtype=np.uint16)
+    value_cache = np.zeros_like(key_cache)
+    key_cache[:context_len] = _float32_to_bf16_bits(key_tokens)
+    value_cache[:context_len] = _float32_to_bf16_bits(value_tokens)
+    out = np.empty((num_q_heads, head_dim), dtype=np.float32)
+
+    key_ref = _bf16_bits_to_float32(key_cache[:context_len, 0])
+    value_ref = _bf16_bits_to_float32(value_cache[:context_len, 0])
+    expected = np.empty_like(out)
+    for q_head in range(num_q_heads):
+        scores = np.asarray([np.dot(query[q_head], key_ref[token]) * scale for token in range(context_len)], dtype=np.float32)
+        scores = scores - np.max(scores)
+        probs = np.exp(scores, dtype=np.float32)
+        probs = probs / np.sum(probs, dtype=np.float32)
+        expected[q_head] = probs @ value_ref
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_paged_attn_decode(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        live_counts_dev = dev(live_counts)
+        query_dev = dev(query)
+        key_cache_dev = dev(key_cache)
+        value_cache_dev = dev(value_cache)
+        out_dev_buf = out_dev(out)
+        qwen35_full_attn_decode_context_bf16(
+            query_dev.ptr,
+            key_cache_dev.ptr,
+            value_cache_dev.ptr,
+            out_dev_buf.ptr,
+            live_counts_dev.ptr,
+            max_context_len,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            scale,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out), out_dev_buf, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    max_abs = float(np.max(np.abs(out - expected)))
+    print(
+        f"context_len={context_len} max_context_len={max_context_len} num_q_heads={num_q_heads} "
+        f"num_kv_heads={num_kv_heads} head_dim={head_dim} max_abs={max_abs:.3g}"
+    )
+    print("full_attn_out=", out.reshape(-1).tolist())
+    return 0 if max_abs <= 1.0e-6 else 1
+
 
 def qwen35_paged_attn_decode_hip_smoke(
     *,

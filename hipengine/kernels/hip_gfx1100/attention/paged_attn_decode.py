@@ -14,6 +14,7 @@ from hipengine.kvcache import KVLiveSpans
 _SOURCE = Path(__file__).with_name("paged_attn_decode.hip")
 _OUTPUT_NAME = "qwen35_paged_attn_decode.so"
 _SYMBOL_GATE_MUL_BF16 = "hipengine_qwen35_full_attn_gate_mul_bf16"
+_SYMBOL_DENSE_CONTEXT = "hipengine_qwen35_full_attn_decode_context_bf16"
 _SYMBOL_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_context_bf16_spans"
 _SYMBOL_CONTEXT_BATCH = "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans"
 _SYMBOL_SPLIT_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
@@ -85,6 +86,58 @@ def qwen35_full_attn_gate_mul_bf16(
         ctypes.c_void_p(gate_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_int64(total),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_full_attn_decode_context_bf16(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    context_len_ptr: int,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Decode dense BF16 full attention using a device context-length scalar."""
+
+    _check_dense_decode_shape(max_context_len, num_q_heads, num_kv_heads, head_dim)
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DENSE_CONTEXT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(context_len_ptr),
+        ctypes.c_int64(max_context_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
@@ -606,6 +659,11 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "full_attn_decode", "w4_paro", "bf16_context"),
+        qwen35_full_attn_decode_context_bf16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_context_spans"),
         qwen35_paged_full_attn_decode_context_bf16_spans,
         replace=replace,
@@ -645,6 +703,22 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
         replace=replace,
     )
+
+
+def _check_dense_decode_shape(
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> None:
+    _check_positive(max_context_len, "max_context_len")
+    _check_positive(num_q_heads, "num_q_heads")
+    _check_positive(num_kv_heads, "num_kv_heads")
+    if num_q_heads % num_kv_heads != 0:
+        raise ValueError("num_q_heads must be divisible by num_kv_heads")
+    _check_positive(head_dim, "head_dim")
+    if head_dim > 256:
+        raise ValueError("head_dim must be <= 256")
 
 
 def _check_decode_shape(

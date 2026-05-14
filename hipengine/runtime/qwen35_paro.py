@@ -8,6 +8,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
+    qwen35_full_attn_decode_context_bf16,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
@@ -1067,22 +1068,39 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         gate_tensor = scratch.gate if gate is None else gate
-        qwen35_paged_full_attn_decode_context_bf16_spans(
-            scratch.query.ptr,
-            key_cache.ptr,
-            value_cache.ptr,
-            scratch.attn_out.ptr,
-            spans,
-            spans.max_live_count,
-            block_size,
-            self.config.num_attention_heads,
-            self.config.num_key_value_heads,
-            self.config.head_dim,
-            (self.config.head_dim ** -0.5) if scale is None else scale,
-            stream=stream,
-            library=_library_for(library, "attention"),
-            runtime=self.runtime,
-        )
+        if spans.max_live_count < 1024:
+            qwen35_full_attn_decode_context_bf16(
+                scratch.query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                scratch.attn_out.ptr,
+                spans.live_counts.ptr,
+                spans.max_live_count,
+                self.config.num_attention_heads,
+                self.config.num_key_value_heads,
+                self.config.head_dim,
+                (self.config.head_dim ** -0.5) if scale is None else scale,
+                stream=stream,
+                library=_library_for(library, "attention"),
+                runtime=self.runtime,
+            )
+        else:
+            qwen35_paged_full_attn_decode_context_bf16_spans(
+                scratch.query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                scratch.attn_out.ptr,
+                spans,
+                spans.max_live_count,
+                block_size,
+                self.config.num_attention_heads,
+                self.config.num_key_value_heads,
+                self.config.head_dim,
+                (self.config.head_dim ** -0.5) if scale is None else scale,
+                stream=stream,
+                library=_library_for(library, "attention"),
+                runtime=self.runtime,
+            )
         qwen35_full_attn_gate_mul_bf16(
             scratch.attn_out.ptr,
             gate_tensor.ptr,

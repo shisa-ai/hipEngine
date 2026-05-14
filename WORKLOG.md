@@ -4215,3 +4215,42 @@ Results:
 - Fix the remaining full c=1 parent fixture mismatch at the first decode token after a 512-token prompt; likely state/cache parity after sequential prefill vs parent needs deeper full-attention/linear-state comparison.
 - Then wire native/bulk full prefill so prefill throughput and memory behavior can be compared to parent OPTIMAL rows.
 - Only after c=1 fixture parity is green should generated-token c=2/c=4/c=8 be promoted beyond primitive correctness.
+
+---
+
+## 2026-05-14 — Add dense short-context full-attention decode and isolate c=1 parity blocker
+
+### Scope
+
+- Ported the parent `qwen35_full_attn_decode_context_tensor_kernel` into the gfx1100 attention build and registered a raw-pointer `full_attn_decode/w4_paro/bf16_context` wrapper.
+- Routed Qwen3.5/PARO resident full-attention layers to the dense short-context decode path when `max_live_count < 1024`, matching the parent small-context branch before paged attention.
+- Added `scripts/smoke.py --mode qwen35-full-attn-decode-hip` and cataloged the kernel in `docs/KERNELS.md`.
+- Re-ran the 512/32 parent fixture gate. The first decode token is still blocked: dense short-context attention changes HIPENGINE from `220,...` to `4096,220,16,...`, while the parent expects `1739,220,16,...`.
+- Root-cause probe: the parent PARO native fixture runs FP16 activations/scales from the checkpoint (`embed`, RMSNorm, PARO scales/theta, LM head are `torch.float16`), while HIPENGINE's current Qwen3.5/PARO resident path materializes those runtime tensors as BF16. Layer-0 prompt probes show BF16-vs-FP16 activation drift starts at input RMSNorm/rotation and is enough to flip close top logits after full decode (`parent top first-decode: 1739=6.4487, 220=6.3479, 4096=6.3336`; HIP BF16 dense path: 4096=6.7064, 220=6.5895, 1739=5.9954`).
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py \
+  tests/test_qwen35_decode_state.py::test_qwen35_decode_state_runs_full_attention_moe_layer_chain -q
+python3 scripts/smoke.py --mode qwen35-full-attn-decode-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-full-attn -- \
+  python3 scripts/smoke.py --mode qwen35-full-attn-decode-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_e2e_correctness.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 0 --repeat 1 \
+  --json /tmp/hipengine-qwen35-parent-fixture-dense-context.json
+```
+
+Results:
+
+- Dense full-attention smoke passed: `max_abs=1.19e-07` vs NumPy BF16 softmax oracle.
+- `rocprofv3` confirmed `qwen35_full_attn_decode_context_tensor_kernel` ran: `DurationNs=9440`, `VGPR_Count=32`, `Scratch_Size=0`, `LDS_Block_Size=1040`, `Workgroup_Size_X=256`.
+- Targeted tests passed: 4 passed.
+- Full 512/32 parent fixture remains blocked by FP16-vs-BF16 activation parity: parent expected `[1739, 220, 16, ...]`; HIPENGINE BF16 dense path produced `[4096, 220, 16, ...]` with matching prefill seed `4403`.
+
+### Next
+
+- Decide whether Qwen3.5/PARO parent parity should port FP16 activation variants for the resident path or recapture/define a BF16 parent oracle. Exact generated-token equality against the current parent fixture is not a pure scheduler/cache bug; it crosses the activation dtype boundary.
