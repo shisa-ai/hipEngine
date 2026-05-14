@@ -5918,3 +5918,64 @@ Result: pytest exit code `0` (`75 passed`).
 - The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
 - This iteration added a diagnostic/planning helper only; no kernel body was ported, so no source-lineage or rocprof evidence is required.
 - Next Task #15 target: add a layer-3 full-attention prefill row diagnostic and then wire either batched full-attention prefill or a clearly-labelled serial c=1 fallback before compact/grouped MoE work.
+
+---
+
+## 2026-05-15 — Probe serial layer-3 full-attention bridge after native prefix
+
+### Scope
+
+- Continued Task #15 after the full-attention boundary artifact identified layer 3 as the first unsupported native prefill layer.
+- Added `scripts/qwen35_native_prefill_fullattn_stage_probe.py`.
+  - Serial side: runs layers 0..2 token-by-token, then captures layer-3 full-attention stages for the last prompt token.
+  - Native-prefix side: runs accepted batched native linear-prefix prefill for layers 0..2, then feeds each prefix row through serial c=1 layer-3 full attention and captures the last row.
+- Added `tests/test_qwen35_native_prefill_fullattn_stage_probe.py` for the pure diff payload helper.
+- Emitted `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer3-fullattn-stage-accepted.json`.
+
+### Evidence
+
+```bash
+python3 scripts/qwen35_native_prefill_fullattn_stage_probe.py \
+  --prompt-length 4 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer3-fullattn-stage-accepted.json
+```
+
+Result: accepted diagnostic stage probe, no throughput claim.
+
+Key fields:
+
+- `status=accepted`
+- `performance_claim=false`
+- `linear_prefix_layers=3`
+- `full_attention_layer=3`
+- `atol=0.02`
+- `first_divergent_stage=null`
+- `prefix_hidden.max_abs=0.000244140625`
+- largest intermediate observed: `v_rot.max_abs=0.015625`, `v_rot.rms_abs=0.0014288396602966233`, `v_rot.cosine=0.9999997615814209`
+- `query.max_abs=0.006503105163574219`
+- `attn_out.max_abs=0.004729747772216797`
+- final `moe_out.max_abs=0.000244140625`, `moe_out.rms_abs=3.427448151303778e-05`, `moe_out.cosine=0.9999997615814209`
+
+Interpretation: a labelled serial c=1 layer-3 full-attention bridge can consume accepted native linear-prefix rows for the repeated-token prompt without meaningful drift. This does not solve true batched full-attention prefill, but it provides a correctness-safe fallback path to wire before native KV row-position/causal-attention kernels.
+
+### Validation
+
+```bash
+python3 -m compileall -q scripts/qwen35_native_prefill_fullattn_stage_probe.py tests/test_qwen35_native_prefill_fullattn_stage_probe.py && \
+  python3 -m pytest tests/test_qwen35_native_prefill_fullattn_stage_probe.py -q
+```
+
+Result: `1 passed`.
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`75 passed`).
+
+### Notes
+
+- The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
+- This iteration added a diagnostic helper only; no kernel body was ported, so no source-lineage or rocprof evidence is required.
+- Next Task #15 target: wire a clearly-labelled native-linear-prefix + serial full-attention fallback path, then replace the fallback with true batched full-attention prefill/KV row-position/causal attention work.
