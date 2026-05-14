@@ -1,0 +1,73 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-15T06:55:00-07:00",
+  "run_tag": "hipengine-qwen35-c1-router-qnorm-fix",
+  "summary": "HIPENGINE resident c=1 now matches parent router/shared-gate BF16 materialization and parent q/k head-norm offset preparation; prefill seed is restored to 4403, but first decode token still mismatches parent 1739 vs HIP 4096.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "commit": "ad97005+working-tree",
+    "dirty": true
+  },
+  "workload": {
+    "model": "Qwen3.5-35B-A3B-PARO",
+    "quant": "w4_paro",
+    "prompt_tokens": 512,
+    "decode_tokens_run": 1,
+    "fixture_decode_tokens": 32,
+    "concurrency": 1,
+    "prompt_source": "torch_cpu_randint_seed1234",
+    "seed": 1234
+  },
+  "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+  "commands": {
+    "parent_topk_probe": "cd /home/lhl/amd-gpu-tuning && <OPTIMAL env flags> PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output python3 /tmp/hipengine_parent_paro_topk_probe.py",
+    "hipengine_e2e": "python3 scripts/qwen35_e2e_correctness.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-new-tokens 1 --max-layers 0 --repeat 1 --json /tmp/hipengine-qwen35-router-qnorm-fix-e2e.json",
+    "hipengine_topk_probe": "python3 - <<'PY' ... writes /tmp/hipengine-qwen35-router-bf16-fix-topk.json ... PY",
+    "targeted_tests": "python3 -m compileall -q hipengine tests scripts && python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_qwen35_decode_state.py -q"
+  },
+  "correctness": {
+    "passed": false,
+    "finite_logits": true,
+    "deterministic": true,
+    "expected_match": false,
+    "parent_bulk_seed": 4403,
+    "parent_sequential_seed": 4403,
+    "hip_seed_token_ids": [4403],
+    "first_mismatch_index": 0,
+    "expected_prefix": [1739],
+    "actual_prefix": [4096],
+    "actual_first_top_logit": 6.751620769500732
+  },
+  "topk_evidence": {
+    "parent_sequential_prefill_top": [[4403, 7.284560203552246], [220, 6.628664970397949], [8789, 6.617884159088135], [12666, 6.541057586669922], [148449, 6.384479522705078]],
+    "parent_sequential_first_decode_top": [[1739, 6.448723793029785], [220, 6.3479084968566895], [4096, 6.333559036254883], [68, 5.902808666229248], [4403, 5.789081573486328]],
+    "hip_prefill_top": [[4403, 7.953364849090576], [220, 6.896111488342285], [148449, 6.8656816482543945], [3652, 6.734444618225098], [1739, 6.646887302398682]],
+    "hip_first_decode_top": [[4096, 6.730076789855957], [220, 6.6274542808532715], [1739, 6.0844526290893555], [4403, 5.759863376617432], [198, 5.303776741027832]]
+  },
+  "measurements_observed_not_claimed": {
+    "hipengine_prefill_tok_s": 120.95628069918452,
+    "hipengine_decode_tok_s": 102.89006858687428,
+    "parent_prefill_tok_s": 2682.660298904437,
+    "parent_decode_tok_s": 116.25779530736419
+  },
+  "memory": {
+    "hipengine_owned_device_bytes": 1625192589,
+    "hipengine_owned_device_gib": 1.5135785462334752,
+    "parent_allocated_after_load_bytes": 19644673536,
+    "parent_peak_allocated_bytes": 20183255040
+  },
+  "fixes_validated": [
+    "runtime-prepared router_shared_gate.weight now materializes as BF16 bits, matching parent native router_shared_weight",
+    "full-attention q_norm/k_norm now materialize parent fused-kernel BF16 offsets as (checkpoint+1 -> FP16 -> BF16 -> -1), instead of checkpoint-direct BF16",
+    "HIP prefill seed returned to 4403 after the router BF16 fix"
+  ],
+  "blockers": [
+    "First decode token remains wrong after router/qk-norm materialization fixes: parent sequential and bulk first decode argmax 1739; HIP argmax 4096.",
+    "Forced parent seed 4403 before the router fix produced HIP token 329, proving the previous seed-220 state was invalid; after the router fix, the remaining blocker is a close top-logit ordering/state drift, not the broad router dtype bug.",
+    "Next evidence should bisect per-layer hidden/logit outputs against parent sequential mode to find where HIP raises 4096 and 220 relative to 1739."
+  ]
+}

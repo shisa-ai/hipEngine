@@ -35,6 +35,7 @@ from hipengine.loading import (
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
+from hipengine.loading.qwen35_paro import _qwen_head_norm_offset_bf16_bits
 
 
 class FakeRuntime:
@@ -351,14 +352,12 @@ def test_prepare_qwen35_paro_moe_c1_runtime_host_tensors_uses_parent_mixed_dtype
     prepared = prepare_qwen35_paro_moe_c1_runtime_host_tensors(index)
 
     router = prepared["layers.0.mlp.router_shared_gate.weight"]
-    assert router.dtype == np.float16
-    np.testing.assert_array_equal(
-        router,
-        np.concatenate(
-            (tensors["model.layers.0.mlp.gate.weight"], tensors["model.layers.0.mlp.shared_expert_gate.weight"]),
-            axis=0,
-        ).astype(np.float16),
+    expected_router = np.concatenate(
+        (tensors["model.layers.0.mlp.gate.weight"], tensors["model.layers.0.mlp.shared_expert_gate.weight"]),
+        axis=0,
     )
+    assert router.dtype == np.uint16
+    np.testing.assert_array_equal(router, float_array_to_bf16_bits(expected_router))
     scales = prepared["layers.0.mlp.experts.stacked_gate_scales"]
     assert scales.dtype == np.float16
     assert prepared["layers.0.mlp.experts.stacked_gate_qweight_pack8_decode"].dtype == np.int32
@@ -370,8 +369,8 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_parent
     tensors = {**_valid_attention_tensors(), **_valid_tensors()}
     tensors["model.layers.0.self_attn.q_proj.scales"] = np.full((1, 8), 1.0, dtype=np.float16)
     tensors["model.layers.0.self_attn.q_proj.theta"] = np.full((1, 2), 0.5, dtype=np.float16)
-    tensors["model.layers.0.self_attn.q_norm.weight"] = np.full((2,), 1.25, dtype=np.float16)
-    tensors["model.layers.0.self_attn.k_norm.weight"] = np.full((2,), 0.75, dtype=np.float16)
+    tensors["model.layers.0.self_attn.q_norm.weight"] = np.asarray([0.01, 0.10], dtype=np.float16)
+    tensors["model.layers.0.self_attn.k_norm.weight"] = np.asarray([0.02, 0.03], dtype=np.float16)
     tensors["model.layers.0.mlp.gate.weight"] = np.ones((2, 4), dtype=np.float16)
     tensors["model.layers.0.mlp.shared_expert_gate.weight"] = np.full((1, 4), 2.0, dtype=np.float16)
     tensors["model.layers.0.mlp.experts.down_weight_theta"] = np.full((1, 2), -1.0, dtype=np.float16)
@@ -394,7 +393,7 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_parent
     assert layer.tensor("layers.0.self_attn.q_proj.scales").dtype is DType.FP16
     assert layer.tensor("layers.0.self_attn.q_proj.theta").dtype is DType.FP16
     assert layer.tensor("layers.0.self_attn.q_proj.qweight").dtype is DType.INT32
-    assert layer.tensor("layers.0.mlp.router_shared_gate.weight").dtype is DType.FP16
+    assert layer.tensor("layers.0.mlp.router_shared_gate.weight").dtype is DType.BF16
     assert layer.tensor("layers.0.mlp.experts.stacked_gate_scales").dtype is DType.FP16
     assert layer.tensor("layers.0.mlp.experts.down_weight_theta").dtype is DType.FP16
     q_scales = layer.allocation("layers.0.self_attn.q_proj.scales")
@@ -402,7 +401,7 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_parent
         "model.layers.0.self_attn.q_proj.scales"
     ].astype(np.float16).tobytes()
     q_norm = layer.allocation("layers.0.self_attn.q_norm.weight")
-    assert bytes(runtime.buffers[q_norm.buffer.ptr]) == float_array_to_bf16_bits(
+    assert bytes(runtime.buffers[q_norm.buffer.ptr]) == _qwen_head_norm_offset_bf16_bits(
         tensors["model.layers.0.self_attn.q_norm.weight"]
     ).tobytes()
     input_norm = layer.allocation("layers.0.input_layernorm.weight")
@@ -446,6 +445,7 @@ def test_materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer_uses_stat
     assert layer.tensor("layers.0.linear_attn.norm.weight").dtype is DType.FP32
     assert layer.tensor("layers.0.linear_attn.in_proj_a.weight").dtype is DType.FP16
     assert layer.tensor("layers.0.linear_attn.in_proj_qkv.scales").dtype is DType.FP16
+    assert layer.tensor("layers.0.mlp.router_shared_gate.weight").dtype is DType.BF16
     conv = layer.allocation("layers.0.linear_attn.conv1d.weight")
     assert bytes(runtime.buffers[conv.buffer.ptr]) == tensors["model.layers.0.linear_attn.conv1d.weight"].astype(np.float32).tobytes()
     layer.free(runtime=runtime)

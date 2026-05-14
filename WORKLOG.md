@@ -4881,3 +4881,59 @@ Results:
 - Start Task #41: promote/narrow the parent fixture by bisecting the remaining c=1 parity gap at per-layer hidden/logit checkpoints. The broad BF16-vs-FP16 activation policy is no longer the only blocker; next evidence should identify the first layer or projection where HIPENGINE diverges from parent.
 - Hot-path torch audit for touched runtime/generation paths:
   `rg -n "^\\s*import torch|^\\s*from torch" hipengine/runtime hipengine/generation hipengine/llm.py hipengine/loading/qwen35_paro.py || true` → no executable torch imports.
+
+---
+
+## 2026-05-15 — Narrow Qwen3.5/PARO c=1 fixture after parent-mixed switch
+
+### Scope
+
+- Started Task #36 after closing the activation-parity umbrella and reproduced the post-FP16-switch blocker.
+- Parent-source audit found two materialization mismatches against `nano-vllm-amd`:
+  - native router/shared-gate concatenates `router.weight` and `shared_expert_gate.weight` then casts the combined matrix to BF16 before `qwen35_router_logits_kernel`;
+  - fused q/k head RMSNorm+RoPE receives BF16 *offset* weights computed as `(checkpoint + 1 -> FP16 -> BF16 -> -1)`, not checkpoint-direct BF16.
+- Updated HIPENGINE runtime materialization accordingly and refreshed layout tests.
+- Added blocked artifact `benchmarks/results/2026-05-15-hipengine-qwen35-c1-router-qnorm-blocked.json` with parent and HIP top-k evidence.
+
+### Validation and probes
+
+```bash
+# HIP forced-seed probe before the router fix.
+python3 - <<'PY'
+# one-off resident-session top-k probe; writes /tmp/hipengine-qwen35-parent-fp16-forced-seed-probe.json
+PY
+
+# Parent top-k probe using OPTIMAL flags and nano-vllm-amd parent.
+cd /home/lhl/amd-gpu-tuning && <OPTIMAL env flags> \
+  PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output \
+  python3 /tmp/hipengine_parent_paro_topk_probe.py
+
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_qwen35_decode_state.py -q
+
+python3 scripts/qwen35_e2e_correctness.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-new-tokens 1 --max-layers 0 --repeat 1 \
+  --json /tmp/hipengine-qwen35-router-qnorm-fix-e2e.json
+
+python3 - <<'PY'
+# one-off resident-session top-k probe after router BF16 fix; writes /tmp/hipengine-qwen35-router-bf16-fix-topk.json
+PY
+```
+
+Results:
+
+- Before the router fix, forcing the previously observed parent prefill seed `4403` into HIP after the 512-token prompt did **not** recover parent output: HIP produced token `329` with top logit `8.800190925598145`; this proved the seed-`220` run had an invalid post-prefill state, not just a final sampler/lm-head issue.
+- Parent probe with OPTIMAL flags:
+  - bulk prefill seed `4403`; first decode argmax `1739`.
+  - sequential prefill seed `4403`; first decode top logits: `1739=6.448723793029785`, `220=6.3479084968566895`, `4096=6.333559036254883`, `68=5.902808666229248`, `4403=5.789081573486328`.
+- Targeted materialization/decode-state tests passed: 48 tests.
+- After router BF16 + q/k head-norm offset fixes, HIP fixture still fails exact generated-token equality, but the blocker is narrower and back to the close first-token ordering:
+  - `seed_token_ids=[4403]` (restored from the bad `220` seed);
+  - first decode token `4096`, top logit `6.751620769500732`, parent expected `1739`.
+  - HIP top logits after the router fix: prefill `4403=7.953364849090576`, `220=6.896111488342285`, `1739=6.646887302398682`; first decode `4096=6.730076789855957`, `220=6.6274542808532715`, `1739=6.0844526290893555`.
+- No performance claim retained; all timings in the JSON artifact are correctness-smoke context only.
+
+### Next
+
+- Bisect per-layer hidden/logit outputs against parent sequential mode. The broad activation dtype and router materialization bugs are no longer the only blocker; the remaining miss is a close ordering drift where HIP raises `4096`/`220` relative to parent token `1739` after the full 512-token prompt.

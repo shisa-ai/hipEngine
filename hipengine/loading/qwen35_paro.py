@@ -836,8 +836,8 @@ def _runtime_tensor_needs_qwen_norm_offset(name: str) -> bool:
         return False
     # Qwen3.5 stores normal RMSNorm scales as offsets and applies
     # ``norm(x) * (1 + weight)``.  Full-attention q/k head RMSNorm is the
-    # exception in this runtime: the fused head-rmsnorm+rotary kernel itself
-    # adds 1.0, so q_norm/k_norm stay as checkpoint-direct BF16 values.
+    # exception in this runtime: parent first forms direct FP16 scales, then
+    # passes BF16 offset weights to the fused head-rmsnorm+rotary kernel.
     return (
         name.endswith(".input_layernorm.weight")
         or name.endswith(".post_attention_layernorm.weight")
@@ -845,11 +845,38 @@ def _runtime_tensor_needs_qwen_norm_offset(name: str) -> bool:
     )
 
 
-def _runtime_tensor_needs_bf16_bits(name: str) -> bool:
-    # Parent fused full-attention head RMSNorm consumes checkpoint-direct q/k
-    # offsets in BF16 and adds 1.0 inside the kernel.  Dense KV cache storage is
-    # also BF16 but is allocated by runtime state, not checkpoint materialization.
+def _runtime_tensor_needs_qwen_head_norm_offset_bits(name: str) -> bool:
     return name.endswith(".self_attn.q_norm.weight") or name.endswith(".self_attn.k_norm.weight")
+
+
+def _runtime_tensor_needs_bf16_bits(name: str) -> bool:
+    # Parent fused full-attention head RMSNorm receives q/k *offset* weights in
+    # BF16, while the native router concatenates router/shared-gate weights and
+    # casts that combined matrix to BF16 before calling the HIP top-k kernel.
+    # Dense KV cache storage is BF16 too but is allocated by runtime state, not
+    # checkpoint materialization.
+    return _runtime_tensor_needs_qwen_head_norm_offset_bits(name) or name.endswith(".router_shared_gate.weight")
+
+
+def _bf16_bits_to_float32(bits: object):
+    import numpy as np
+
+    return (np.asarray(bits, dtype=np.uint16).astype(np.uint32) << np.uint32(16)).view(np.float32)
+
+
+def _qwen_head_norm_offset_bf16_bits(array: object):
+    """Match parent q/k head-RMSNorm offset preparation for fused rotary.
+
+    Parent `load_paro_rmsnorm_module` first turns checkpoint offsets into direct
+    scales in FP16 via `(weight + 1)`.  The fused head RMSNorm+RoPE path then
+    passes `(scale.to(bfloat16) - 1)` to a kernel that adds 1.0 internally.
+    """
+
+    import numpy as np
+
+    scale_fp16 = np.ascontiguousarray(np.asarray(array, dtype=np.float32) + np.float32(1.0), dtype=np.float16)
+    scale_bf32 = _bf16_bits_to_float32(float_array_to_bf16_bits(scale_fp16))
+    return float_array_to_bf16_bits(scale_bf32 - np.float32(1.0))
 
 
 def _runtime_tensor_needs_fp16(name: str) -> bool:
@@ -961,6 +988,15 @@ def _materialize_runtime_layer(
                     name,
                     array,
                     DType.FP16,
+                    device=device,
+                    runtime=runtime,
+                )
+            elif _runtime_tensor_needs_qwen_head_norm_offset_bits(name):
+                array = _qwen_head_norm_offset_bf16_bits(_read_normalized_numpy_tensor(normalized, name, reader=reader))
+                allocations[name] = load_host_array_to_device_as_dtype(
+                    name,
+                    array,
+                    DType.BF16,
                     device=device,
                     runtime=runtime,
                 )
