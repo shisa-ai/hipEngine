@@ -7,6 +7,8 @@
 
 namespace {
 
+using half_t = _Float16;
+
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
     uint32_t u32;
@@ -233,6 +235,34 @@ extern "C" int hipengine_w8a16_linear_bf16_lowp_out(
       weight,
       weight_scale,
       reinterpret_cast<hip_bfloat16*>(out),
+      hidden_size,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_w8a16_linear_fp16_lowp_out(
+    const half_t* hidden_states,
+    const int8_t* weight,
+    const float* weight_scale,
+    half_t* out,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || hidden_size <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (w8a16_linear_lowp_out_kernel<half_t>),
+      dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      hidden_states,
+      weight,
+      weight_scale,
+      out,
       hidden_size,
       out_features);
   return static_cast<int>(hipGetLastError());

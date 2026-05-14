@@ -3931,6 +3931,7 @@ def w8a16_linear_hip_smoke(
         w8a16_linear_bf16_f32_out,
         w8a16_linear_bf16_lowp_out,
         w8a16_linear_f32_f32_out,
+        w8a16_linear_fp16_lowp_out,
     )
 
     if rows < 1:
@@ -3945,6 +3946,7 @@ def w8a16_linear_hip_smoke(
     )
     x_bits = _float32_to_bf16_bits(x_f32)
     x_bf32 = _bf16_bits_to_float32(x_bits)
+    x_fp16 = x_f32.astype(np.float16)
     weight = np.empty((out_features, hidden_size), dtype=np.int8)
     for out_row in range(out_features):
         weight[out_row] = np.asarray(
@@ -3955,12 +3957,17 @@ def w8a16_linear_hip_smoke(
     )[:out_features]
     bf16_f32_out = np.empty((rows, out_features), dtype=np.float32)
     bf16_lowp_bits = np.empty((rows, out_features), dtype=np.uint16)
+    fp16_lowp = np.empty((rows, out_features), dtype=np.float16)
     f32_f32_out = np.empty((rows, out_features), dtype=np.float32)
 
     expected_bf16_f32 = (x_bf32.astype(np.float32) @ weight.astype(np.float32).T).astype(
         np.float32
     ) * weight_scale.reshape(1, out_features)
     expected_lowp_bits = _float32_to_bf16_bits(expected_bf16_f32)
+    expected_fp16_lowp = (
+        (x_fp16.astype(np.float32) @ weight.astype(np.float32).T).astype(np.float32)
+        * weight_scale.reshape(1, out_features)
+    ).astype(np.float16)
     expected_f32_f32 = (x_f32.astype(np.float32) @ weight.astype(np.float32).T).astype(
         np.float32
     ) * weight_scale.reshape(1, out_features)
@@ -3986,11 +3993,13 @@ def w8a16_linear_hip_smoke(
 
     try:
         x_bits_dev = dev(x_bits)
+        x_fp16_dev = dev(x_fp16)
         x_f32_dev = dev(x_f32)
         weight_dev = dev(weight)
         weight_scale_dev = dev(weight_scale)
         bf16_f32_dev = out_dev(bf16_f32_out)
         bf16_lowp_dev = out_dev(bf16_lowp_bits)
+        fp16_lowp_dev = out_dev(fp16_lowp)
         f32_f32_dev = out_dev(f32_f32_out)
         w8a16_linear_bf16_f32_out(
             x_bits_dev.ptr,
@@ -4016,6 +4025,18 @@ def w8a16_linear_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        w8a16_linear_fp16_lowp_out(
+            x_fp16_dev.ptr,
+            weight_dev.ptr,
+            weight_scale_dev.ptr,
+            fp16_lowp_dev.ptr,
+            rows,
+            hidden_size,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
         w8a16_linear_f32_f32_out(
             x_f32_dev.ptr,
             weight_dev.ptr,
@@ -4031,6 +4052,7 @@ def w8a16_linear_hip_smoke(
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(bf16_f32_out), bf16_f32_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(bf16_lowp_bits), bf16_lowp_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(fp16_lowp), fp16_lowp_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(f32_f32_out), f32_f32_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
@@ -4039,20 +4061,33 @@ def w8a16_linear_hip_smoke(
     bf16_f32_max_abs = float(np.max(np.abs(bf16_f32_out - expected_bf16_f32)))
     f32_f32_max_abs = float(np.max(np.abs(f32_f32_out - expected_f32_f32)))
     lowp_mismatch = int(np.count_nonzero(bf16_lowp_bits != expected_lowp_bits))
+    fp16_lowp_mismatch = int(
+        np.count_nonzero(fp16_lowp.view(np.uint16) != expected_fp16_lowp.view(np.uint16))
+    )
     lowp_max_abs = float(
         np.max(
             np.abs(_bf16_bits_to_float32(bf16_lowp_bits) - _bf16_bits_to_float32(expected_lowp_bits))
         )
     )
+    fp16_lowp_max_abs = float(
+        np.max(np.abs(fp16_lowp.astype(np.float32) - expected_fp16_lowp.astype(np.float32)))
+    )
     print(
         f"rows={rows} hidden_size={hidden_size} out_features={out_features} "
         f"bf16_f32_max_abs={bf16_f32_max_abs} "
         f"f32_f32_max_abs={f32_f32_max_abs} "
-        f"lowp_mismatch={lowp_mismatch} lowp_max_abs={lowp_max_abs}"
+        f"lowp_mismatch={lowp_mismatch} lowp_max_abs={lowp_max_abs} "
+        f"fp16_lowp_mismatch={fp16_lowp_mismatch} fp16_lowp_max_abs={fp16_lowp_max_abs}"
     )
     print("bf16_f32_row0=", bf16_f32_out[0, : min(8, out_features)].tolist())
     print("lowp_row0=", _bf16_bits_to_float32(bf16_lowp_bits)[0, : min(8, out_features)].tolist())
-    return 0 if bf16_f32_max_abs <= 1e-5 and f32_f32_max_abs <= 1e-5 and lowp_mismatch == 0 else 1
+    print("fp16_lowp_row0=", fp16_lowp[0, : min(8, out_features)].astype(np.float32).tolist())
+    return 0 if (
+        bf16_f32_max_abs <= 1e-5
+        and f32_f32_max_abs <= 1e-5
+        and lowp_mismatch == 0
+        and fp16_lowp_mismatch == 0
+    ) else 1
 
 
 def paro_combine_hip_smoke(

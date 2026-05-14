@@ -13,6 +13,7 @@ _SOURCE = Path(__file__).with_name("w8a16_linear.hip")
 _OUTPUT_NAME = "w8a16_linear.so"
 _SYMBOL_BF16_F32 = "hipengine_w8a16_linear_bf16_f32_out"
 _SYMBOL_BF16_LOWP = "hipengine_w8a16_linear_bf16_lowp_out"
+_SYMBOL_FP16_LOWP = "hipengine_w8a16_linear_fp16_lowp_out"
 _SYMBOL_F32_F32 = "hipengine_w8a16_linear_f32_f32_out"
 _ALLOWED_THREADS = {64, 128, 256, 512}
 
@@ -119,6 +120,38 @@ def w8a16_linear_bf16_lowp_out(
     )
 
 
+def w8a16_linear_fp16_lowp_out(
+    hidden_ptr: int,
+    weight_ptr: int,
+    weight_scale_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    out_features: int,
+    *,
+    threads: int = 64,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16-input, INT8-weight linear with FP16 output."""
+
+    _launch(
+        _SYMBOL_FP16_LOWP,
+        hidden_ptr,
+        weight_ptr,
+        weight_scale_ptr,
+        out_ptr,
+        tokens,
+        hidden_size,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def w8a16_linear_f32_f32_out(
     hidden_ptr: int,
     weight_ptr: int,
@@ -161,6 +194,11 @@ def register_w8a16_linear_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey("hip_gfx1100", "w8a16_linear", quant, "bf16_lowp_out"),
             w8a16_linear_bf16_lowp_out,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "w8a16_linear", quant, "fp16_lowp_out"),
+            w8a16_linear_fp16_lowp_out,
             replace=replace,
         )
         register(

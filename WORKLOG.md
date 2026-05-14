@@ -4464,3 +4464,37 @@ Results:
 ### Next
 
 - Continue task #38 with FP16 wrappers for W8A16 lowp/shared-expert, linear-attention lowp, router/shared-gate, and gated-attention paths.
+
+---
+
+## 2026-05-15 — Add FP16 W8A16 lowp wrapper
+
+### Scope
+
+- Added `hipengine_w8a16_linear_fp16_lowp_out` / `w8a16_linear_fp16_lowp_out(...)` for parent-mixed FP16 shared-expert/lowp W8A16 paths.
+- Registered `w8a16_linear` variant `fp16_lowp_out` for both `w8a16` and `w4_paro` quant keys.
+- Extended `scripts/smoke.py --mode w8a16-linear-hip` with a bit-exact FP16 lowp-output oracle.
+- Updated `docs/KERNELS.md` and `docs/IMPLEMENTATION.md`; remaining parent-mixed FP16 wrapper gaps are linear-attention and gated-attention paths.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_w8a16_linear_plan.py -q
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-w8a16-fp16 -- \
+  python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- Unit plan tests passed: `3 passed`.
+- Smoke passed: BF16/F32 `bf16_f32_max_abs=0.0`, F32/F32 `f32_f32_max_abs=4.76837158203125e-07`, BF16 lowp `lowp_mismatch=0`, FP16 lowp `fp16_lowp_mismatch=0`, `fp16_lowp_max_abs=0.0`.
+- `rocprofv3` confirmed `w8a16_linear_lowp_out_kernel<_Float16>` ran on W7900: `DurationNs=6440`, `Scratch_Size=0`, `LDS_Block_Size=256`, `Workgroup_Size_X=64`.
+
+### Next
+
+- Continue task #38 with FP16 wrappers for linear-attention lowp and gated-attention paths.
