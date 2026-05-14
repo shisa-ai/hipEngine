@@ -29,6 +29,23 @@ def test_qwen35_resident_batch_layout_is_batch_shaped_with_slot0_aliases() -> No
     assert layout.slot0_full_kv_shape == (4, 256, 2, 256)
 
 
+def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.layer_limit = 3
+    session.config = SimpleNamespace(layer_types=("linear_attention", "linear_attention", "full_attention"))
+
+    metadata = session.batch_execution_metadata(scheduler_owned=True)
+
+    assert metadata.path == "scheduler_serial_slot_bridge"
+    assert metadata.scheduler_owned
+    assert metadata.row_execution == "serial_c1_layer_path"
+    assert not metadata.native_compact_prefill
+    assert not metadata.native_caware_decode
+    assert not metadata.throughput_claim_eligible
+    assert any("layer 2" in blocker and "full_attention" in blocker for blocker in metadata.blockers)
+    assert metadata.to_json_dict()["blockers"] == list(metadata.blockers)
+
+
 def test_qwen35_resident_session_slot_views_offset_batch_state() -> None:
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)

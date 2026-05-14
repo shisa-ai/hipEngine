@@ -5147,3 +5147,56 @@ python3 -m compileall -q hipengine tests scripts && \
 ```
 
 Result: `69 passed`.
+
+---
+
+## 2026-05-15 — Label Qwen3.5/PARO c>N serial fallback as non-benchmarkable
+
+### Scope
+
+- Narrowed Task #15 by adding executable metadata for the current resident c>N path.
+- Added `Qwen35ParoResidentBatchExecution` and `Qwen35ParoResidentSession.batch_execution_metadata()`.
+- `step_batch_serial(...)` remains the correctness bridge over batch-shaped slots, but artifacts now explicitly report:
+  - `row_execution=serial_c1_layer_path`
+  - `native_compact_prefill=false`
+  - `native_caware_decode=false`
+  - `throughput_claim_eligible=false`
+  - blockers for native compact/grouped MoE c>N prefill and c-aware full-attention graph replay.
+- Extended `scripts/qwen35_batch_serial_correctness.py` payloads with `batch_execution` and `benchmark_eligible` so future c>N generated-equality artifacts cannot be mistaken for retained throughput rows.
+
+### User question
+
+- Clarified that `w4a16` is the broad 4-bit-weight/16-bit-activation quantization class, while `w4_paro` is HIPENGINE's concrete PARO AWQ packed-layout/plugin variant under that umbrella.
+- User also requested a FastAPI/OpenAI-compatible server. I proposed an optional `hipengine[server]` non-streaming first pass and asked whether SSE streaming should be included in v1 before changing scope.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q
+```
+
+Result: `10 passed`.
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: `70 passed`.
+
+```bash
+python3 - <<'PY'
+from types import SimpleNamespace
+from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
+session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+session.layer_limit = 3
+session.config = SimpleNamespace(layer_types=("linear_attention", "linear_attention", "full_attention"))
+print(session.batch_execution_metadata(scheduler_owned=True).to_json_dict())
+PY
+```
+
+Result includes `throughput_claim_eligible: False`, `native_compact_prefill: False`, `native_caware_decode: False`, and a full-attention layer blocker.
+
+### Notes
+
+- The loop's original TaskList verify command is now stale because completed parity tasks have been compacted out of the active TaskList file; the active TaskList contains only open #12 and #15, and a robust count over that file prints `2`.

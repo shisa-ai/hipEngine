@@ -562,6 +562,30 @@ class Qwen35ParoResidentBatchLayout:
         return (self.blocks, self.block_size, self.num_key_value_heads, self.head_dim)
 
 
+@dataclass(frozen=True)
+class Qwen35ParoResidentBatchExecution:
+    """Serializable status for the current resident c>N execution path."""
+
+    path: str
+    scheduler_owned: bool
+    row_execution: str
+    native_compact_prefill: bool
+    native_caware_decode: bool
+    throughput_claim_eligible: bool
+    blockers: tuple[str, ...]
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "scheduler_owned": self.scheduler_owned,
+            "row_execution": self.row_execution,
+            "native_compact_prefill": self.native_compact_prefill,
+            "native_caware_decode": self.native_caware_decode,
+            "throughput_claim_eligible": self.throughput_claim_eligible,
+            "blockers": list(self.blockers),
+        }
+
+
 class Qwen35ParoResidentSession:
     """Resident-state autoregressive Qwen3.5/PARO c=1 inference session.
 
@@ -676,7 +700,9 @@ class Qwen35ParoResidentSession:
 
         This is a correctness-first c>N bridge: it consumes batch-shaped hidden,
         linear-state, and KV-cache rows but executes active rows serially until
-        native c-aware layer kernels replace the fallback.
+        native c-aware layer kernels replace the fallback. Use
+        :meth:`batch_execution_metadata` to label artifacts from this path so the
+        serial bridge cannot be mistaken for native compact c>N throughput.
         """
 
         if self.closed:
@@ -706,6 +732,35 @@ class Qwen35ParoResidentSession:
             return tuple(results)
         finally:
             self.hidden, self.next_hidden = saved_hidden, saved_next_hidden
+
+    def batch_execution_metadata(self, *, scheduler_owned: bool = False) -> Qwen35ParoResidentBatchExecution:
+        """Describe whether the resident c>N path is native or a serial fallback."""
+
+        unsupported = [
+            (layer_id, self.config.layer_types[layer_id])
+            for layer_id in range(self.layer_limit)
+            if self.config.layer_types[layer_id] != "linear_attention"
+        ]
+        blockers = [
+            "step_batch_serial executes active physical slots serially through the c=1 layer path",
+            "native compact/grouped MoE c>N prefill is not wired",
+            "native c-aware full-attention decode graph replay is not wired",
+        ]
+        if unsupported:
+            first_layer, first_type = unsupported[0]
+            blockers.append(
+                "native linear-prefix prefill stops before "
+                f"layer {first_layer} ({first_type!r}); full-model prefill still uses the serial bridge"
+            )
+        return Qwen35ParoResidentBatchExecution(
+            path="scheduler_serial_slot_bridge" if scheduler_owned else "serial_slot_bridge",
+            scheduler_owned=bool(scheduler_owned),
+            row_execution="serial_c1_layer_path",
+            native_compact_prefill=False,
+            native_caware_decode=False,
+            throughput_claim_eligible=False,
+            blockers=tuple(blockers),
+        )
 
     def prefill_linear_tokens_native(
         self,

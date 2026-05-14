@@ -111,12 +111,13 @@ def _run_batch_serial(
     max_layers: int,
     compiler_version: str | None,
     require_cached_build: bool,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     prompt_lengths = {len(prompt) for prompt in prompts}
     if len(prompt_lengths) != 1:
         raise ValueError("current smoke expects equal prompt lengths")
     prompt_length = prompt_lengths.pop()
     slots = list(range(len(prompts)))
+    batch_execution: dict[str, Any] = {}
     with Qwen35ParoResidentSession(
         runner,
         max_sequence_length=prompt_length + 4,
@@ -125,6 +126,7 @@ def _run_batch_serial(
         compiler_version=compiler_version,
         require_cached_build=require_cached_build,
     ) as session:
+        batch_execution = session.batch_execution_metadata(scheduler_owned=False).to_json_dict()
         seed_results = None
         for pos in range(prompt_length):
             seed_results = session.step_batch_serial(
@@ -143,7 +145,8 @@ def _run_batch_serial(
         )
         if any(result is None for result in decode_results):
             raise RuntimeError("batch decode did not produce tokens")
-    return [_format_pair(seed, decode) for seed, decode in zip(seed_results, decode_results, strict=True) if seed is not None and decode is not None]
+    actual = [_format_pair(seed, decode) for seed, decode in zip(seed_results, decode_results, strict=True) if seed is not None and decode is not None]
+    return actual, batch_execution
 
 
 def _run_batch_serial_scheduler(
@@ -153,7 +156,7 @@ def _run_batch_serial_scheduler(
     max_layers: int,
     compiler_version: str | None,
     require_cached_build: bool,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     """Run the serial slot bridge through ResidentBatchScheduler ownership."""
 
     prompt_lengths = {len(prompt) for prompt in prompts}
@@ -175,6 +178,7 @@ def _run_batch_serial_scheduler(
     }
     seed_by_request: dict[int, Any] = {}
     decode_by_request: dict[int, Any] = {}
+    batch_execution: dict[str, Any] = {}
     with Qwen35ParoResidentSession(
         runner,
         max_sequence_length=prompt_length + 4,
@@ -183,6 +187,7 @@ def _run_batch_serial_scheduler(
         compiler_version=compiler_version,
         require_cached_build=require_cached_build,
     ) as session:
+        batch_execution = session.batch_execution_metadata(scheduler_owned=True).to_json_dict()
         while True:
             work = scheduler.next_prefill_work(chunk_size=1)
             if work is None:
@@ -237,7 +242,7 @@ def _run_batch_serial_scheduler(
     ]
     metadata["active_count_after_completion"] = scheduler.active_count
     metadata["slot_to_request_after_completion"] = list(scheduler.active_batch.slot_to_request)
-    return actual, completed_payload, metadata
+    return actual, completed_payload, metadata, batch_execution
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -271,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     scheduler_completed: list[dict[str, Any]] = []
     scheduler_metadata: dict[str, Any] = {}
     if args.scheduler:
-        actual, scheduler_completed, scheduler_metadata = _run_batch_serial_scheduler(
+        actual, scheduler_completed, scheduler_metadata, batch_execution = _run_batch_serial_scheduler(
             runner,
             prompts,
             max_layers=args.max_layers,
@@ -279,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
             require_cached_build=args.require_cached,
         )
     else:
-        actual = _run_batch_serial(
+        actual, batch_execution = _run_batch_serial(
             runner,
             prompts,
             max_layers=args.max_layers,
@@ -306,6 +311,8 @@ def main(argv: list[str] | None = None) -> int:
         "command": command,
         "scheduler_completed": scheduler_completed,
         "scheduler_metadata": scheduler_metadata,
+        "batch_execution": batch_execution,
+        "benchmark_eligible": bool(batch_execution.get("throughput_claim_eligible")),
         "batch_size": args.batch_size,
         "prompt_lengths": [len(prompt) for prompt in prompts],
         "max_layers": args.max_layers,
@@ -316,6 +323,7 @@ def main(argv: list[str] | None = None) -> int:
         "passed": generated_match and finite_logits,
         "notes": [
             "Correctness-first serial c>N bridge over batch-shaped resident slot buffers; not a throughput claim.",
+            "batch_execution.throughput_claim_eligible=false until native compact/c-aware kernels replace step_batch_serial.",
             "Compares a shared resident session against independent c=1 resident sessions.",
             "Scheduler mode consumes ResidentBatchScheduler prefill/decode work items and physical slots."
             if args.scheduler
