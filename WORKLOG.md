@@ -3942,3 +3942,33 @@ Results: unit tests passed; one-layer resident c=1 smoke completed and produced 
 ### Next
 
 - The runtime is now batch-shaped in allocation but still executes slot 0 only. Next steps are c>1 full-attention KV append/decode kernels and a batched layer runner that consumes the batch slots.
+
+---
+
+## 2026-05-14 — Add c>1 paged KV append and context attention kernels
+
+### Scope
+
+- Added row-major c>1 paged KV append kernel/wrapper `qwen35_write_paged_kv_mixed_value_bf16_batch_spans(...)` using `KVLiveSpans` row metadata.
+- Added row-major c>1 paged context attention kernel/wrapper `qwen35_paged_full_attn_decode_context_bf16_batch_spans(...)` for correctness bring-up over uneven context lengths.
+- Registered both variants in the kernel registry and documented them in the kernel catalog/implementation checklist.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/attention/paged_kv_write.py hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py
+python3 -m pytest tests/test_qwen35_paged_kv_write_plan.py tests/test_qwen35_paged_attn_decode_plan.py -q
+python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention import build_qwen35_paged_kv_write, build_qwen35_paged_attn_decode
+kv = build_qwen35_paged_kv_write(load=True)
+attn = build_qwen35_paged_attn_decode(load=True)
+print('built', getattr(kv, '_name', '<kv>'), getattr(attn, '_name', '<attn>'))
+PY
+python3 -m compileall -q hipengine tests && python3 -m pytest tests/test_qwen35_paged_kv_write_plan.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_kvcache_policy.py -q
+```
+
+GPU smoke result: `batched paged kv+attn smoke OK 4.76837158203125e-07` vs NumPy softmax oracle for c=2 with uneven context lengths.
+
+### Next
+
+- Wire the c>1 attention variants into a batched layer runner and add deterministic c>N-vs-independent-c1 correctness fixtures.

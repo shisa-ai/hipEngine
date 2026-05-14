@@ -7,6 +7,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
     plan_qwen35_paged_kv_write_build,
     qwen35_write_paged_kv_f32_spans,
+    qwen35_write_paged_kv_mixed_value_bf16_batch_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
     register_qwen35_paged_kv_write_kernels,
 )
@@ -48,6 +49,15 @@ def test_qwen35_paged_kv_write_registers_span_variants() -> None:
             backend="hip_gfx1100",
             layer="paged_kv_write",
             quant="w4_paro",
+            variant="mixed_bf16_batch_spans",
+        )
+        is qwen35_write_paged_kv_mixed_value_bf16_batch_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_kv_write",
+            quant="w4_paro",
             variant="f32_spans",
         )
         is qwen35_write_paged_kv_f32_spans
@@ -82,3 +92,22 @@ def test_qwen35_paged_kv_write_wrapper_validates_before_gpu_load() -> None:
         qwen35_write_paged_kv_f32_spans(0, 0, 0, 0, _spans(storage_dtype="fp16"), 4, 1, 8)
     with pytest.raises(ValueError, match="max_live_count"):
         qwen35_write_paged_kv_f32_spans(0, 0, 0, 0, _spans(max_live=8), 4, 1, 8)
+    with pytest.raises(ValueError, match="rows"):
+        qwen35_write_paged_kv_mixed_value_bf16_batch_spans(0, 0, 0, 0, _spans(), 0, 4, 1, 8)
+    with pytest.raises(ValueError, match="live_counts"):
+        qwen35_write_paged_kv_mixed_value_bf16_batch_spans(
+            0,
+            0,
+            0,
+            0,
+            KVLiveSpans.paged_uniform(
+                block_table=_tensor(0x1000, (4,), "int32"),
+                live_counts=_tensor(0x2000, (1,), "int64"),
+                max_live_count=1,
+                storage_dtype="bf16",
+            ),
+            2,
+            4,
+            1,
+            8,
+        )

@@ -140,9 +140,48 @@ __global__ void qwen35_write_paged_kv_mixed_value_position_tensor_kernel(
   value_cache[cache_offset] = float_to_bf16_bits(scalar_to_float_qwen35(value[idx]));
 }
 
+template <typename value_t>
+__global__ void qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel(
+    const float* key,
+    const value_t* value,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    const int32_t* block_table,
+    const int64_t* position_ptr,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t position = position_ptr[row];
+  if (position < 0 || (position / block_size) >= block_table_len) {
+    return;
+  }
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t size = num_kv_heads * head_dim;
+  if (idx >= size) {
+    return;
+  }
+  const int64_t logical_block = position / block_size;
+  const int64_t block_offset = position - logical_block * block_size;
+  const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+  const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
+  const int64_t row_value_offset = row * num_kv_heads * head_dim + idx;
+  key_cache[token_offset + idx] = float_to_bf16_bits(key[row_value_offset]);
+  value_cache[token_offset + idx] = float_to_bf16_bits(scalar_to_float_qwen35(value[row_value_offset]));
+}
+
 
 bool valid_kv_shape(int64_t block_size, int64_t block_table_len, int64_t num_kv_heads, int64_t head_dim) {
   return block_size > 0 && block_table_len > 0 && num_kv_heads > 0 && head_dim > 0;
+}
+
+bool valid_kv_batch_shape(int64_t rows, int64_t block_size, int64_t block_table_len, int64_t num_kv_heads, int64_t head_dim) {
+  return rows > 0 && valid_kv_shape(block_size, block_table_len, num_kv_heads, head_dim);
 }
 
 }  // namespace
@@ -177,6 +216,45 @@ extern "C" int hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans(
       value_cache,
       base_offsets,
       live_counts,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_mixed_value_bf16_batch_spans(
+    const float* key,
+    const uint16_t* value,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  if (!valid_kv_batch_shape(rows, block_size, block_table_len, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t size = num_kv_heads * head_dim;
+  const int blocks = static_cast<int>((size + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      (qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(blocks), static_cast<unsigned int>(rows)),
+      dim3(threads),
+      0,
+      stream,
+      key,
+      value,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      rows,
       block_size,
       block_table_len,
       num_kv_heads,

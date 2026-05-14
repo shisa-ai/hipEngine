@@ -6,6 +6,7 @@ from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
     plan_qwen35_paged_attn_decode_build,
+    qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
@@ -47,6 +48,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
             variant="bf16_context_spans",
         )
         is qwen35_paged_full_attn_decode_context_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="w4_paro",
+            variant="bf16_context_batch_spans",
+        )
+        is qwen35_paged_full_attn_decode_context_bf16_batch_spans
     )
     assert (
         resolve(
@@ -134,6 +144,30 @@ def test_qwen35_paged_attn_decode_wrapper_validates_before_gpu_load() -> None:
         )
     with pytest.raises(ValueError, match="num_q_heads must be divisible"):
         qwen35_paged_full_attn_decode_context_bf16_spans(0, 0, 0, 0, _spans(), 2, 256, 3, 2, 4, 1.0)
+    with pytest.raises(ValueError, match="rows"):
+        qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+            0, 0, 0, 0, _spans(), 0, 2, 256, 2, 1, 4, 1.0
+        )
+    with pytest.raises(ValueError, match="live_counts"):
+        qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+            0,
+            0,
+            0,
+            0,
+            KVLiveSpans.paged_uniform(
+                block_table=_tensor(0x1000, (2,), "int32"),
+                live_counts=_tensor(0x2000, (1,), "int64"),
+                max_live_count=2,
+                storage_dtype="bf16",
+            ),
+            2,
+            2,
+            256,
+            2,
+            1,
+            4,
+            1.0,
+        )
     with pytest.raises(ValueError, match="head_dim divisible by 8"):
         qwen35_paged_full_attn_decode_split_k_bf16_spans(
             0, 0, 0, 0, 0, 0, 0, _spans(), 2, 2, 256, 2, 1, 4, 1.0

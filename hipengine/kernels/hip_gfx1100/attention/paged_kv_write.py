@@ -14,6 +14,7 @@ from hipengine.kvcache import KVLiveSpans
 _SOURCE = Path(__file__).with_name("paged_kv_write.hip")
 _OUTPUT_NAME = "qwen35_paged_kv_write.so"
 _SYMBOL_MIXED_BF16 = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans"
+_SYMBOL_MIXED_BF16_BATCH = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_batch_spans"
 _SYMBOL_F32 = "hipengine_qwen35_write_paged_kv_f32_spans"
 
 
@@ -92,6 +93,40 @@ def qwen35_write_paged_kv_mixed_value_bf16_spans(
     )
 
 
+def qwen35_write_paged_kv_mixed_value_bf16_batch_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append batched FP32 K + BF16 V to row-major paged BF16 KV cache."""
+
+    _launch_write_batch(
+        _SYMBOL_MIXED_BF16_BATCH,
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_write_paged_kv_f32_spans(
     key_ptr: int,
     value_ptr: int,
@@ -128,6 +163,11 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_kv_write", "w4_paro", "mixed_bf16_spans"),
         qwen35_write_paged_kv_mixed_value_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "w4_paro", "mixed_bf16_batch_spans"),
+        qwen35_write_paged_kv_mixed_value_bf16_batch_spans,
         replace=replace,
     )
     register(
@@ -186,6 +226,58 @@ def _launch_write(
     _check_launch(runtime, err)
 
 
+def _launch_write_batch(
+    symbol: str,
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    block_table_len = _check_write_batch_shape(spans, rows, block_size, num_kv_heads, head_dim)
+    library = library or build_qwen35_paged_kv_write(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def _check_write_shape(
     spans: KVLiveSpans,
     block_size: int,
@@ -204,6 +296,26 @@ def _check_write_shape(
     _check_positive(head_dim, "head_dim")
     if spans.max_live_count >= block_size * _block_table_len(spans):
         raise ValueError("max_live_count must fit within the paged span block table")
+
+
+def _check_write_batch_shape(
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> int:
+    _check_write_shape(spans, block_size, num_kv_heads, head_dim)
+    _check_positive(rows, "rows")
+    if spans.live_counts.numel < rows:
+        raise ValueError("live_counts must have at least rows entries")
+    if spans.base_offsets.numel % rows != 0:
+        raise ValueError("base_offsets must contain an equal block table per row")
+    block_table_len = spans.base_offsets.numel // rows
+    _check_positive(block_table_len, "block_table_len_per_row")
+    if spans.max_live_count >= block_size * block_table_len:
+        raise ValueError("max_live_count must fit within each row block table")
+    return block_table_len
 
 
 def _block_table_len(spans: KVLiveSpans) -> int:

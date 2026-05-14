@@ -81,7 +81,9 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Add batched c1-style MoE support for selected gate/up input mapping and shared-residual combine.
   - [x] Add resident-session native batched prefill diagnostic for linear-attention-only layer prefixes.
   - [x] Add `KVLiveSpans` scaffold and span-shaped Qwen paged-KV append bridge (`qwen35_write_paged_kv*_position_tensor`).
+  - [x] Add c>1 row-major Qwen paged-KV append bridge (`qwen35_write_paged_kv_mixed_value_bf16_batch_spans`).
   - [x] Port span-shaped Qwen paged full-attention context-tensor decode (`qwen35_paged_full_attn_decode_context_tensor`).
+  - [x] Add c>1 row-major Qwen paged full-attention context decode (`qwen35_paged_full_attn_decode_context_bf16_batch_spans`).
   - [x] Port span-shaped Qwen split-K paged full-attention decode/reduce (`qwen35_paged_full_attn_decode_split_k_ctx_tensor`, `*_reduce`).
   - [x] Port span-shaped Qwen split-K gated FP32 reduce (`qwen35_paged_full_attn_decode_split_k_reduce_gate<float>`).
   - [x] Port span-shaped Qwen split-K gated BF16 reduce (`qwen35_paged_full_attn_decode_split_k_reduce_gate<hip_bfloat16>`).

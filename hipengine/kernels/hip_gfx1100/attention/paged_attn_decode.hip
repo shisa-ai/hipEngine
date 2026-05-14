@@ -190,6 +190,137 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_kernel(
 }
 
 
+__global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    const int32_t* block_table,
+    const int64_t* context_len_ptr,
+    float* out,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale) {
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t context_len = context_len_ptr[row];
+  if (context_len <= 0 || context_len > max_context_len) {
+    return;
+  }
+  extern __shared__ float shared[];
+  float* scores = shared;
+  float* warp_buf = scores + context_len;
+  const int num_warps = blockDim.x / warpSize;
+  float* q_shared = warp_buf + num_warps;
+  const int64_t q_head = blockIdx.x;
+  if (q_head >= num_q_heads) {
+    return;
+  }
+  const int64_t kv_group = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / kv_group;
+  const int64_t q_offset = (row * num_q_heads + q_head) * head_dim;
+  const int lane_id = threadIdx.x % warpSize;
+  const int warp_id = threadIdx.x / warpSize;
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    q_shared[dim] = query[q_offset + dim];
+  }
+  __syncthreads();
+
+  float local_max = -3.4028234663852886e38f;
+  for (int64_t token = warp_id; token < context_len; token += num_warps) {
+    const int64_t logical_block = token / block_size;
+    const int64_t block_offset = token - logical_block * block_size;
+    const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+    const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
+    const int64_t k_offset = token_offset + kv_head * head_dim;
+    float acc = 0.0f;
+    for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
+      acc += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset + dim + 0]);
+      acc += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset + dim + 1]);
+      acc += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset + dim + 2]);
+      acc += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset + dim + 3]);
+    }
+    for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+      acc += __shfl_down(acc, offset);
+    }
+    if (lane_id == 0) {
+      const float score = acc * scale;
+      scores[token] = score;
+      local_max = fmaxf(local_max, score);
+    }
+  }
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+    float other = __shfl_down(local_max, offset);
+    local_max = fmaxf(local_max, other);
+  }
+  if (lane_id == 0) {
+    warp_buf[warp_id] = local_max;
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float max_score = warp_buf[0];
+    for (int i = 1; i < num_warps; ++i) {
+      max_score = fmaxf(max_score, warp_buf[i]);
+    }
+    warp_buf[0] = max_score;
+  }
+  __syncthreads();
+  const float max_score = warp_buf[0];
+
+  float local_sum = 0.0f;
+  for (int64_t token = warp_id; token < context_len; token += num_warps) {
+    if (lane_id == 0) {
+      const float val = expf(scores[token] - max_score);
+      scores[token] = val;
+      local_sum += val;
+    }
+  }
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+    local_sum += __shfl_down(local_sum, offset);
+  }
+  if (lane_id == 0) {
+    warp_buf[warp_id] = local_sum;
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float total_sum = warp_buf[0];
+    for (int i = 1; i < num_warps; ++i) {
+      total_sum += warp_buf[i];
+    }
+    warp_buf[0] = 1.0f / fmaxf(total_sum, 1.0e-20f);
+  }
+  __syncthreads();
+  const float inv_denom = warp_buf[0];
+
+  for (int64_t token = warp_id; token < context_len; token += num_warps) {
+    if (lane_id == 0) {
+      scores[token] *= inv_denom;
+    }
+  }
+  __syncthreads();
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    float acc = 0.0f;
+    for (int64_t token = 0; token < context_len; ++token) {
+      const int64_t logical_block = token / block_size;
+      const int64_t block_offset = token - logical_block * block_size;
+      const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+      const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
+      const int64_t v_offset = token_offset + kv_head * head_dim + dim;
+      acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+    }
+    out[q_offset + dim] = acc;
+  }
+}
+
+
 __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(
     const float* __restrict__ query,         // [1, num_q_heads, head_dim]
     const uint16_t* __restrict__ key_cache,
@@ -1115,6 +1246,50 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_spans(
       out,
       max_context_len,
       block_size,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || !valid_paged_attn_shape(max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const size_t shared_bytes = static_cast<size_t>(max_context_len + 8 + head_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      qwen35_paged_full_attn_decode_context_tensor_batch_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      out,
+      rows,
+      max_context_len,
+      block_size,
+      block_table_len,
       num_q_heads,
       num_kv_heads,
       head_dim,
