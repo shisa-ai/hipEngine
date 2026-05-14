@@ -1,6 +1,13 @@
 """Generation registries and built-in torch-free generation paths."""
 
-from hipengine.generation.batch_scheduler import BatchGenerateRequest, CompletedRequest, GeneratedToken, ResidentBatchScheduler
+from hipengine.generation.batch_scheduler import (
+    BatchGenerateRequest,
+    CompletedRequest,
+    GeneratedToken,
+    GraphBucketCache,
+    GraphBucketStats,
+    ResidentBatchScheduler,
+)
 from hipengine.generation.registry import (
     DuplicateGeneratorError,
     GenerationKey,
@@ -37,6 +44,8 @@ __all__ = [
     "DuplicateGeneratorError",
     "GeneratedToken",
     "GenerationKey",
+    "GraphBucketCache",
+    "GraphBucketStats",
     "GenerationRequest",
     "MissingGeneratorError",
     "ResidentBatchScheduler",

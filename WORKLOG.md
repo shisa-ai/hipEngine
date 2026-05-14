@@ -4020,3 +4020,25 @@ Results: all tests passed.
 ### Next
 
 - Wire a Qwen3.5/PARO batch generator shell around `ResidentBatchScheduler`, then replace primitive-only correctness with generated-token c>N-vs-c1 checks.
+
+---
+
+## 2026-05-14 — Add graph shape-bucket cache to batch scheduler
+
+### Scope
+
+- Added `GraphBucketCache`/`GraphBucketStats` keyed by `BatchShapeKey` for decode/prefill/verify graph capture buckets.
+- `ResidentBatchScheduler` now owns a graph-bucket cache alongside active request slots.
+- Extended scheduler tests for cache hits/misses, clear semantics, and shape-key integration.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests && python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_llm_generate.py -q
+```
+
+Results: all tests passed.
+
+### Next
+
+- Build the Qwen3.5/PARO batched layer runner/generator shell on top of the scheduler and graph buckets.

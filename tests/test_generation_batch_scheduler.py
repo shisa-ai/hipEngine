@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from hipengine.dispatch import WorkKind
-from hipengine.generation import GeneratedToken, ResidentBatchScheduler
+from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler
 
 
 def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:
@@ -46,7 +46,7 @@ def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:
     assert scheduler.active_batch.slot_to_request == (2, 0)
 
 
-def test_resident_batch_scheduler_shape_key_and_completion() -> None:
+def test_resident_batch_scheduler_shape_key_graph_bucket_and_completion() -> None:
     scheduler = ResidentBatchScheduler(capacity=4, context_bucket_size=4)
     r0 = scheduler.submit([1], max_new_tokens=1)
     r1 = scheduler.submit([2, 3, 4, 5], max_new_tokens=2)
@@ -63,6 +63,14 @@ def test_resident_batch_scheduler_shape_key_and_completion() -> None:
     assert key.experts_per_token == 8
     assert key.replay_steps == 2
 
+    graph = scheduler.graph_buckets.get_or_create(key, lambda bucket: {"bucket": bucket})
+    assert graph == {"bucket": key}
+    assert scheduler.graph_buckets.stats.entries == 1
+    assert scheduler.graph_buckets.stats.hits == 0
+    assert scheduler.graph_buckets.stats.misses == 1
+    assert scheduler.graph_buckets.get(key) is graph
+    assert scheduler.graph_buckets.stats.hits == 1
+
     done = scheduler.record_generated([GeneratedToken(r0, 99)])
     assert [item.request_id for item in done] == [r0]
     assert scheduler.completed[r0].generated_tokens == (99,)
@@ -71,6 +79,23 @@ def test_resident_batch_scheduler_shape_key_and_completion() -> None:
     scheduler.record_generated([(r1, 100), (r1, 101)])
     assert scheduler.completed[r1].generated_tokens == (100, 101)
     assert scheduler.active_count == 0
+
+
+def test_graph_bucket_cache_clear_resets_entries_and_counters() -> None:
+    cache = GraphBucketCache()
+    scheduler = ResidentBatchScheduler(capacity=1, context_bucket_size=4)
+    scheduler.submit([1], max_new_tokens=1)
+    scheduler.admit_pending()
+    scheduler.next_prefill_work(chunk_size=1)
+    key = scheduler.shape_key(mode="decode")
+
+    assert cache.get(key) is None
+    cache.put(key, object())
+    assert cache.stats.entries == 1
+    cache.clear()
+    assert cache.stats.entries == 0
+    assert cache.stats.hits == 0
+    assert cache.stats.misses == 0
 
 
 def test_resident_batch_scheduler_rejects_duplicate_ids_and_invalid_chunks() -> None:

@@ -41,6 +41,49 @@ class CompletedRequest:
     finished: bool
 
 
+@dataclass(frozen=True, slots=True)
+class GraphBucketStats:
+    entries: int
+    hits: int
+    misses: int
+
+
+class GraphBucketCache:
+    """Tiny graph bucket cache keyed by full batch/specdecode shape."""
+
+    def __init__(self) -> None:
+        self._cache: dict[BatchShapeKey, object] = {}
+        self._hits = 0
+        self._misses = 0
+
+    @property
+    def stats(self) -> GraphBucketStats:
+        return GraphBucketStats(entries=len(self._cache), hits=self._hits, misses=self._misses)
+
+    def get(self, key: BatchShapeKey) -> object | None:
+        if key in self._cache:
+            self._hits += 1
+            return self._cache[key]
+        self._misses += 1
+        return None
+
+    def put(self, key: BatchShapeKey, graph: object) -> None:
+        self._cache[key] = graph
+
+    def get_or_create(self, key: BatchShapeKey, factory) -> object:
+        cached = self.get(key)
+        if cached is not None:
+            return cached
+        graph = factory(key)
+        self.put(key, graph)
+        return graph
+
+    def clear(self) -> None:
+        self._cache.clear()
+        self._hits = 0
+        self._misses = 0
+
+
 class ResidentBatchScheduler:
     """Continuous-batching scheduler shell for resident decode runners."""
 
@@ -52,6 +95,7 @@ class ResidentBatchScheduler:
         self.capacity = int(capacity)
         self.context_bucket_size = int(context_bucket_size)
         self.active_batch = ActiveBatch(self.capacity)
+        self.graph_buckets = GraphBucketCache()
         self._pending: deque[RequestState] = deque()
         self._completed: dict[int, CompletedRequest] = {}
         self._next_request_id = 0
@@ -168,4 +212,11 @@ def _coerce_generated_token(item: GeneratedToken | tuple[int, int] | tuple[int, 
     return GeneratedToken(int(request_id), int(token_id), bool(finished))
 
 
-__all__ = ["BatchGenerateRequest", "CompletedRequest", "GeneratedToken", "ResidentBatchScheduler"]
+__all__ = [
+    "BatchGenerateRequest",
+    "CompletedRequest",
+    "GeneratedToken",
+    "GraphBucketCache",
+    "GraphBucketStats",
+    "ResidentBatchScheduler",
+]
