@@ -588,7 +588,7 @@ class Qwen35ParoResidentSession:
             return None
         return self._sample_from_hidden(hidden)
 
-    def capture_decode_graph(self, *, position: int) -> "Qwen35ParoDecodeGraph":
+    def capture_decode_graph(self, *, position: int, steps_per_replay: int = 1) -> "Qwen35ParoDecodeGraph":
         """Capture one generated-token decode step for replay.
 
         The captured step consumes the current device argmax token (`lm_out_index`),
@@ -599,14 +599,23 @@ class Qwen35ParoResidentSession:
 
         if self.closed:
             raise RuntimeError("session is closed")
+        if steps_per_replay <= 0:
+            raise ValueError("steps_per_replay must be positive")
         self._check_position(position)
-        num_splits = max(1, (position + 1 + self.chunk_size - 1) // self.chunk_size)
+        self._check_position(position + steps_per_replay - 1)
+        num_splits = max(1, (position + steps_per_replay + self.chunk_size - 1) // self.chunk_size)
         stream = self.runtime.stream_create()
         self._set_position(position, stream=stream)
         self.runtime.stream_synchronize(stream)
         self.runtime.stream_begin_capture(stream)
         try:
-            self._step_from_device_token(position=position, num_splits=num_splits, advance_position=True, stream=stream)
+            for offset in range(steps_per_replay):
+                self._step_from_device_token(
+                    position=position + offset,
+                    num_splits=num_splits,
+                    advance_position=True,
+                    stream=stream,
+                )
             graph = self.runtime.stream_end_capture(stream)
         except Exception:
             # If capture fails, try to end capture so the stream is not left in capture mode.
@@ -624,6 +633,7 @@ class Qwen35ParoResidentSession:
             stream=stream,
             position=position,
             num_splits=num_splits,
+            steps_per_replay=steps_per_replay,
         )
 
     def _step_from_device_token(self, *, position: int, num_splits: int, advance_position: bool, stream: int) -> None:
@@ -988,6 +998,7 @@ class Qwen35ParoDecodeGraph:
     stream: int
     position: int
     num_splits: int
+    steps_per_replay: int = 1
     closed: bool = False
 
     def replay(self, steps: int) -> None:
@@ -995,7 +1006,12 @@ class Qwen35ParoDecodeGraph:
             raise RuntimeError("decode graph is closed")
         if steps < 0:
             raise ValueError("steps must be non-negative")
-        for _ in range(steps):
+        if self.steps_per_replay <= 0:
+            raise ValueError("steps_per_replay must be positive")
+        if steps % self.steps_per_replay != 0:
+            raise ValueError("steps must be divisible by steps_per_replay")
+        launches = steps // self.steps_per_replay
+        for _ in range(launches):
             self.session.runtime.graph_launch(self.graph_exec, self.stream)
         self.session.runtime.stream_synchronize(self.stream)
 

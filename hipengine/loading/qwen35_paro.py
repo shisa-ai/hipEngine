@@ -866,6 +866,32 @@ def _prepare_linear_attention_qkv_z_pack8_runtime_tensors(
     return prepared
 
 
+def _prepare_full_attention_qk_pack8_runtime_tensors(
+    normalized: dict[str, Any],
+    *,
+    names: tuple[str, ...],
+    reader: _NormalizedTensorReader,
+    layer_id: int,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, object]:
+    """Prepare transposed generic qweights for fused full-attention Q/K decode."""
+
+    import numpy as np
+
+    prefix = f"layers.{layer_id}.self_attn"
+    required = (f"{prefix}.q_proj.qweight", f"{prefix}.k_proj.qweight")
+    if not all(name in names for name in required):
+        return {}
+    prepared: dict[str, object] = {}
+    for source in required:
+        target = source.removesuffix(".qweight") + ".qweight_pack8_decode"
+        _emit_progress(progress, "prepare_runtime_tensor_start", layer=layer_id, name=target)
+        qweight = np.asarray(_read_normalized_numpy_tensor(normalized, source, reader=reader), dtype=np.int32)
+        prepared[target] = np.ascontiguousarray(qweight.T)
+        _emit_progress(progress, "prepare_runtime_tensor_done", layer=layer_id, name=target, shape=tuple(prepared[target].shape))
+    return prepared
+
+
 def _materialize_runtime_layer(
     index: WeightIndex,
     config: Qwen35ParoConfig,
@@ -940,6 +966,15 @@ def _materialize_runtime_layer(
             reader=reader,
             layer_id=layer_id,
             progress=progress,
+        )
+        linear_pack8.update(
+            _prepare_full_attention_qk_pack8_runtime_tensors(
+                normalized,
+                names=names,
+                reader=reader,
+                layer_id=layer_id,
+                progress=progress,
+            )
         )
         for idx, (name, array) in enumerate(linear_pack8.items(), start=1):
             _emit_progress(

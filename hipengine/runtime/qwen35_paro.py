@@ -39,6 +39,7 @@ class Qwen35ParoAttentionScratch:
     q_rot: Tensor
     k_rot: Tensor
     v_rot: Tensor
+    q_proj_key: Tensor
     q_proj: Tensor
     key_bf16: Tensor
     query_raw: Tensor
@@ -132,13 +133,22 @@ class Qwen35ParoDecodeState:
         gated = DType.parse(gated_dtype)
         if gated not in {DType.BF16, DType.FP16, DType.FP32}:
             raise ValueError("gated_dtype must be bf16, fp16, or fp32")
+        q_proj_key = self.workspace.reserve_tensor("attn.q_proj_key", (tokens, 2 * q_width + kv_width), DType.BF16)
+        q_proj = Tensor.from_handle(q_proj_key.ptr, (tokens, 2 * q_width), DType.BF16, q_proj_key.device)
+        key_bf16 = Tensor.from_handle(
+            q_proj_key.ptr + tokens * 2 * q_width * DType.BF16.itemsize,
+            (tokens, kv_width),
+            DType.BF16,
+            q_proj_key.device,
+        )
         return Qwen35ParoAttentionScratch(
             attn_input=self.workspace.reserve_tensor("attn.input", (tokens, cfg.hidden_size), DType.BF16),
             q_rot=self.workspace.reserve_tensor("attn.q_rot", (tokens, cfg.hidden_size), DType.BF16),
             k_rot=self.workspace.reserve_tensor("attn.k_rot", (tokens, cfg.hidden_size), DType.BF16),
             v_rot=self.workspace.reserve_tensor("attn.v_rot", (tokens, cfg.hidden_size), DType.BF16),
-            q_proj=self.workspace.reserve_tensor("attn.q_proj", (tokens, 2 * q_width), DType.BF16),
-            key_bf16=self.workspace.reserve_tensor("attn.key_bf16", (tokens, kv_width), DType.BF16),
+            q_proj_key=q_proj_key,
+            q_proj=q_proj,
+            key_bf16=key_bf16,
             query_raw=self.workspace.reserve_tensor("attn.query_raw", (tokens, cfg.num_attention_heads, cfg.head_dim), DType.FP32),
             key_raw=self.workspace.reserve_tensor("attn.key_raw", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
             query=self.workspace.reserve_tensor("attn.query", (tokens, cfg.num_attention_heads, cfg.head_dim), DType.FP32),
@@ -244,24 +254,31 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor]:
+        if tokens != 1:
+            raise ValueError("full-attention fused q/k projection currently requires tokens=1")
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
-        self.project_pack8_bf16(
-            scratch.q_rot,
-            scratch.q_proj,
-            weight_prefix=f"{prefix}.q_proj",
-            rows=tokens,
-            group_size=group_size,
-            library=library,
+        q = f"{prefix}.q_proj"
+        k = f"{prefix}.k_proj"
+        q_qweight = self.tensor(f"{q}.qweight_pack8_decode")
+        k_qweight = self.tensor(f"{k}.qweight_pack8_decode")
+        gemv_awq_dual_pack8_transposed_bf16(
+            scratch.q_rot.ptr,
+            scratch.k_rot.ptr,
+            q_qweight.ptr,
+            self.tensor(f"{q}.qzeros").ptr,
+            self.tensor(f"{q}.scales").ptr,
+            k_qweight.ptr,
+            self.tensor(f"{k}.qzeros").ptr,
+            self.tensor(f"{k}.scales").ptr,
+            scratch.q_proj_key.ptr,
+            tokens,
+            scratch.q_rot.shape[-1],
+            _out_packed_from_generic_transposed_qweight(q_qweight),
+            _out_packed_from_generic_transposed_qweight(k_qweight),
+            group_size,
             stream=stream,
-        )
-        self.project_pack8_bf16(
-            scratch.k_rot,
-            scratch.key_bf16,
-            weight_prefix=f"{prefix}.k_proj",
-            rows=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
+            library=_library_for(library, "awq"),
+            runtime=self.runtime,
         )
         self.project_pack8_bf16(
             scratch.v_rot,

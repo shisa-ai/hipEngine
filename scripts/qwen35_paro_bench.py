@@ -42,7 +42,8 @@ def main() -> int:
     parser.add_argument("--max-layers", type=int, default=0, help="Debug limit; 0 means all layers")
     parser.add_argument("--progress", action="store_true")
     parser.add_argument("--roctx", action="store_true", help="Emit ROCTX ranges for profiler correlation")
-    parser.add_argument("--graph-replay-decode", action="store_true", help="Replay measured decode with a captured one-step HIP graph")
+    parser.add_argument("--graph-replay-decode", action="store_true", help="Replay measured decode with a captured HIP graph")
+    parser.add_argument("--graph-steps-per-replay", type=int, default=1, help="Decode token steps captured per graph replay")
     parser.add_argument("--json", type=Path, default=None, help="Optional output JSON path")
     args = parser.parse_args()
 
@@ -50,6 +51,10 @@ def main() -> int:
         raise ValueError("--prompt-length must be positive")
     if args.decode_tokens < 0 or args.warmup_decode_tokens < 0:
         raise ValueError("decode token counts must be non-negative")
+    if args.graph_steps_per_replay <= 0:
+        raise ValueError("--graph-steps-per-replay must be positive")
+    if args.graph_replay_decode and args.decode_tokens and (args.decode_tokens % args.graph_steps_per_replay) != 0:
+        raise ValueError("--decode-tokens must be divisible by --graph-steps-per-replay")
 
     model = Path(args.model)
     prompt_tokens = _prompt_tokens(model, args.prompt, args.token_id, args.prompt_length)
@@ -97,7 +102,10 @@ def main() -> int:
         decode_start_pos = len(prompt_tokens) + args.warmup_decode_tokens
         if args.graph_replay_decode and args.decode_tokens:
             with roctx.range("hipengine:capture_decode_graph"):
-                graph = session.capture_decode_graph(position=decode_start_pos)
+                graph = session.capture_decode_graph(
+                    position=decode_start_pos,
+                    steps_per_replay=args.graph_steps_per_replay,
+                )
             try:
                 decode_start = time.perf_counter()
                 with roctx.range("hipengine:measured_decode_graph"):
@@ -142,6 +150,7 @@ def main() -> int:
         "tokens_per_step": 1,
         "native_batched_prefill": False,
         "graph_replay": bool(args.graph_replay_decode),
+        "graph_steps_per_replay": args.graph_steps_per_replay if args.graph_replay_decode else 0,
         "prefill_comparable_to_plan_moe2": False,
         "decode_comparable_to_plan_moe2": "graph_replay_diagnostic" if args.graph_replay_decode else "partial_no_graph_replay",
         "timings": {
@@ -160,7 +169,7 @@ def main() -> int:
         "notes": [
             "Prefill is actual autoregressive token-by-token c=1, not native batched/compact prefill.",
             (
-                "Measured decode uses one-step HIP graph replay with device token/position state."
+                f"Measured decode uses HIP graph replay ({args.graph_steps_per_replay} step(s) per replay) with device token/position state."
                 if args.graph_replay_decode
                 else "Decode uses persistent per-layer state/KV and GPU lm-head/argmax, but no graph replay yet."
             ),

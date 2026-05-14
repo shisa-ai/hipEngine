@@ -384,7 +384,14 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_bf16_k
     layer = materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(index, runtime=runtime)
 
     names = set(layer.weights.tensors)
-    assert names == set(runtime_full_attention_moe_c1_tensor_names(layer_id=0))
+    expected_names = set(runtime_full_attention_moe_c1_tensor_names(layer_id=0))
+    expected_names.update(
+        {
+            "layers.0.self_attn.q_proj.qweight_pack8_decode",
+            "layers.0.self_attn.k_proj.qweight_pack8_decode",
+        }
+    )
+    assert names == expected_names
     assert "layers.0.mlp.experts.0.gate_proj.qweight" not in names
     assert layer.tensor("layers.0.self_attn.q_proj.scales").dtype is DType.BF16
     assert layer.tensor("layers.0.self_attn.q_proj.theta").dtype is DType.BF16
@@ -401,7 +408,7 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_bf16_k
         tensors["model.layers.0.self_attn.q_norm.weight"].astype(np.float32) - np.float32(1.0)
     ).tobytes()
     layer.free(runtime=runtime)
-    assert len(runtime.freed) == len(runtime_full_attention_moe_c1_tensor_names(layer_id=0))
+    assert len(runtime.freed) == len(expected_names)
 
 
 def test_materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer_uses_state_dtypes(tmp_path) -> None:

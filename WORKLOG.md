@@ -3558,3 +3558,39 @@ Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-linear-qk
 
 - Remaining decode gap: profile after QKV/Z fusion. Likely buckets are generic W4 pack8 projections, W8A16 lm-head, selected MoE pack8, and attention GQA.
 - Larger missing implementation remains native batched/compact prefill.
+
+---
+
+## 2026-05-14 — Fuse full-attention Q/K pack8 decode projection
+
+### Scope
+
+- Prepared transposed generic pack8 qweights for full-attention `q_proj` and `k_proj` runtime layers.
+- Added contiguous `q_proj_key` scratch with existing `q_proj`/`key_bf16` views.
+- Switched full-attention Q/K projection to the dual-input transposed pack8 GEMV, keeping V and O projections on the existing generic pack8 path.
+- Added an optional benchmark `--graph-steps-per-replay` knob. A 4-step replay smoke matched eager, but it did not materially improve 512/128, so retained benchmark command remains one-step replay.
+
+This ports the parent `NANOVLLM_PARO_FULL_ATTN_QK_PACK8_FUSED=1` decode route for HIPENGINE c=1 full-attention layers.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py -q
+python3 scripts/qwen35_paro_bench.py --max-layers 4 --prompt-length 4 --decode-tokens 4 --warmup-decode-tokens 1 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-full-qk-fused-smoke.json
+python3 scripts/qwen35_paro_bench.py --max-layers 4 --prompt-length 4 --decode-tokens 4 --warmup-decode-tokens 1 --token-id 9707 --json /tmp/hipengine-full-qk-fused-eager-smoke.json
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-qwen35-paro-512-128-full-qk-linear-fused-graph.json
+```
+
+Results:
+
+- 4-layer graph final token/logit matched eager after Q/K fusion (`135534`, `"为重"`, final logit `7.168249607086182`).
+- 512/128 graph diagnostic improved decode from `104.066 tok/s` to `108.503 tok/s` (`+4.3%`).
+- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; HIPENGINE is now ~`93.8%` of that decode target.
+- Token-by-token c=1 prefill measured `114.39 tok/s`; still not native batched/compact prefill.
+
+Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-linear-qkv-z-full-qk-fused-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
+
+### Next
+
+- Remaining 512/128 decode gap is ~6.2%. Profile buckets after both projection fusions are W8A16 lm-head, selected MoE pack8, full-attention GQA, and remaining generic pack8.
+- Native batched/compact prefill remains unimplemented.
