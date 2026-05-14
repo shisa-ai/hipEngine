@@ -18,6 +18,17 @@ __device__ inline float bf16_bits_to_float(uint16_t value) {
   return out.f32;
 }
 
+__device__ inline uint16_t float_to_bf16_bits(float value) {
+  union {
+    float f32;
+    uint32_t u32;
+  } in;
+  in.f32 = value;
+  const uint32_t lsb = (in.u32 >> 16) & 1U;
+  in.u32 += 0x7FFFU + lsb;
+  return static_cast<uint16_t>(in.u32 >> 16);
+}
+
 __device__ inline float sigmoid_f32(float value) {
   return 1.0f / (1.0f + expf(-value));
 }
@@ -189,6 +200,19 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_kernel(
   }
 }
 
+
+__global__ void qwen35_full_attn_gate_mul_bf16_kernel(
+    const float* attn,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t total) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const float gated = attn[idx] * sigmoid_f32(bf16_bits_to_float(gate[idx]));
+    out[idx] = float_to_bf16_bits(gated);
+  }
+}
 
 __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
     const float* query,
@@ -967,6 +991,30 @@ bool valid_paged_attn_shape(
 
 }  // namespace
 
+
+extern "C" int hipengine_qwen35_full_attn_gate_mul_bf16(
+    const float* attn,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t total,
+    hipStream_t stream) {
+  if (total <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      qwen35_full_attn_gate_mul_bf16_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      attn,
+      gate,
+      out,
+      total);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans(
     const float* query,

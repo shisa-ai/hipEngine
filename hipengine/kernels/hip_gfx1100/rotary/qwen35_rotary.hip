@@ -50,6 +50,27 @@ __global__ void qwen35_partial_rotary_kernel(
   }
 }
 
+__global__ void qwen35_split_qgate_bf16_kernel(
+    const uint16_t* q_proj,
+    float* query_out,
+    uint16_t* gate_out,
+    int64_t tokens,
+    int64_t num_q_heads,
+    int64_t head_dim) {
+  const int64_t total = tokens * num_q_heads * head_dim;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t dim = idx % head_dim;
+    const int64_t head = (idx / head_dim) % num_q_heads;
+    const int64_t token = idx / (num_q_heads * head_dim);
+    const int64_t src_base = (token * num_q_heads + head) * (2 * head_dim);
+    const uint16_t q = q_proj[src_base + dim];
+    query_out[idx] = bf16_bits_to_float(q);
+    gate_out[idx] = q_proj[src_base + head_dim + dim];
+  }
+}
+
 __global__ void qwen35_head_rmsnorm_partial_rotary_kernel(
     const float* query,
     const float* key,
@@ -171,6 +192,35 @@ bool valid_common_shape(int64_t num_q_heads, int64_t num_kv_heads, int64_t head_
 }
 
 }  // namespace
+
+extern "C" int hipengine_qwen35_split_qgate_bf16(
+    const uint16_t* q_proj,
+    float* query_out,
+    uint16_t* gate_out,
+    int64_t tokens,
+    int64_t num_q_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_q_heads <= 0 || head_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t total = tokens * num_q_heads * head_dim;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      qwen35_split_qgate_bf16_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      q_proj,
+      query_out,
+      gate_out,
+      tokens,
+      num_q_heads,
+      head_dim);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_qwen35_partial_rotary_f32(
     const float* query,

@@ -4154,3 +4154,64 @@ Results: JSON artifact is valid; tests passed.
 ### Next
 
 - Do not retain c=N throughput rows until generated-token equality vs independent c=1 sessions is implemented and green.
+
+---
+
+## 2026-05-14 — Capture parent c=1 fixture and fix first parity bugs
+
+### Scope
+
+- Captured a nano-vllm-amd parent Qwen3.5/PARO c=1 fixture for the OPTIMAL-style 512-token prompt / 32 decode-token shape using the parent synthetic torch CPU seed (`seed=1234`).
+- Added `fixtures/qwen35_paro/parent_512_32_seed1234.json` with prompt IDs, expected parent decode tokens, parent prefill/decode throughput, and parent memory metrics.
+- Extended `scripts/qwen35_e2e_correctness.py` to consume parent fixtures, distinguish public generate semantics from parent decode-loop semantics, and report timings plus owned device bytes.
+- Fixed two parent-parity bugs found by the fixture:
+  - Qwen normal RMSNorm weights now apply the checkpoint offset (`1.0 + weight`) for input/post/final norms; fused q/k head RMSNorm keeps checkpoint-direct offsets because the head kernel adds `1.0` internally.
+  - Full-attention q_proj output is split as parent layout `[head0 query, head0 gate, head1 query, head1 gate, ...]` instead of assuming all queries followed by all gates.
+- Added a small-context full-attention context+gate path so 512-token decode uses context attention plus a BF16 gate kernel before falling back to split-K for larger contexts.
+- Recorded blocked parity artifact `benchmarks/results/2026-05-14-hipengine-qwen35-c1-parent-fixture-blocked.json`.
+
+### Validation
+
+```bash
+# Parent fixture capture
+cd /home/lhl/amd-gpu-tuning && <OPTIMAL env> \
+  PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output \
+  python3 scripts/bench_paro_native_engine.py --prompt-len 512 --decode-len 32 \
+  --decode-use-step-graph-replay --output /tmp/hipengine-parent-fixture-512-32.json --json
+
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest \
+  tests/test_qwen35_paro_layout.py \
+  tests/test_qwen35_decode_state.py \
+  tests/test_qwen35_paged_attn_decode_plan.py \
+  tests/test_qwen35_rotary_plan.py \
+  tests/test_generation_qwen35_paro.py \
+  tests/test_llm_generate.py -q
+
+python3 scripts/qwen35_e2e_correctness.py \
+  --max-layers 1 --prompt-length 1 --max-new-tokens 1 --repeat 1 \
+  --expected-token-ids 627 \
+  --json /tmp/hipengine-e2e-smoke-post-fixes.json
+
+python3 scripts/qwen35_e2e_correctness.py \
+  --fixture /tmp/parent_layer1_1_1_fixture.json --max-layers 1 --repeat 1 \
+  --json /tmp/hipengine-layer1-parent-fixture-post-fixes.json
+
+python3 scripts/qwen35_e2e_correctness.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 0 --repeat 1 \
+  --json /tmp/hipengine-qwen35-parent-fixture-512-32-context-gate.json
+```
+
+Results:
+
+- Unit tests passed: 48 passed.
+- Layer-1 parent fixture passed: parent expected token `84`, HIPENGINE produced `84`; parent prefill seed `6332` matched.
+- Full 512/32 parent fixture still blocked: parent prefill seed `4403` matched, but generated-token parity missed at index 0 (`expected 1739`, HIPENGINE `220`), then the remaining prefix matched (`220,16,15,...`).
+- Current HIPENGINE fixture timing remains sequential-prefill limited: ~113.65 tok/s prefill and ~96.24 tok/s decode vs parent fixture ~2682.66 tok/s prefill and ~116.26 tok/s decode.
+- HIPENGINE memory report is currently owned device buffers (~1.51 GiB), not parent-comparable allocator/VRAM peak (~18.8 GiB), so memory parity still needs a proper process/VRAM measurement path.
+
+### Next
+
+- Fix the remaining full c=1 parent fixture mismatch at the first decode token after a 512-token prompt; likely state/cache parity after sequential prefill vs parent needs deeper full-attention/linear-state comparison.
+- Then wire native/bulk full prefill so prefill throughput and memory behavior can be compared to parent OPTIMAL rows.
+- Only after c=1 fixture parity is green should generated-token c=2/c=4/c=8 be promoted beyond primitive correctness.

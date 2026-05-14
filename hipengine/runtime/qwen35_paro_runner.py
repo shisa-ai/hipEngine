@@ -287,9 +287,8 @@ class Qwen35ParoNextTokenRunner:
                 emit("layer_done", layer=layer_id, type=layer_type)
 
             emit("final_norm_start")
-            norm_bits = float_array_to_bf16_bits(
-                _read_tensor(self.normalized_infos, "language_model.norm.weight")
-            )
+            norm_weight_host = np.asarray(_read_tensor(self.normalized_infos, "language_model.norm.weight"), dtype=np.float32)
+            norm_bits = float_array_to_bf16_bits(norm_weight_host + np.float32(1.0))
             norm_weight = load_host_array_to_device_as_dtype(
                 "model.norm.weight",
                 norm_bits,
@@ -923,7 +922,8 @@ class Qwen35ParoResidentSession:
 
     def _load_final_norm_and_head(self) -> None:
         self._emit("load_final_norm_start")
-        norm_bits = float_array_to_bf16_bits(_read_tensor(self.runner.normalized_infos, "language_model.norm.weight"))
+        norm_weight_host = np.asarray(_read_tensor(self.runner.normalized_infos, "language_model.norm.weight"), dtype=np.float32)
+        norm_bits = float_array_to_bf16_bits(norm_weight_host + np.float32(1.0))
         self.norm_weight = load_host_array_to_device_as_dtype(
             "model.norm.weight",
             norm_bits,

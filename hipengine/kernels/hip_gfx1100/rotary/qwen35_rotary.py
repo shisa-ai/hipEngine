@@ -11,6 +11,7 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("qwen35_rotary.hip")
 _OUTPUT_NAME = "qwen35_rotary.so"
+_SYMBOL_SPLIT_QGATE = "hipengine_qwen35_split_qgate_bf16"
 _SYMBOL_PARTIAL = "hipengine_qwen35_partial_rotary_f32"
 _SYMBOL_HEAD_RMS = "hipengine_qwen35_head_rmsnorm_partial_rotary_f32_bf16"
 _SYMBOL_HEAD_RMS_POSITION = "hipengine_qwen35_head_rmsnorm_partial_rotary_position_f32_bf16"
@@ -52,6 +53,48 @@ def build_qwen35_rotary(
         load=load,
         require_cached=require_cached,
     )
+
+
+def qwen35_split_qgate_bf16(
+    q_proj_ptr: int,
+    query_out_ptr: int,
+    gate_out_ptr: int,
+    tokens: int,
+    num_q_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Split interleaved Qwen full-attention q_proj rows into query/gate buffers."""
+
+    _check_positive(tokens, "tokens")
+    _check_positive(num_q_heads, "num_q_heads")
+    _check_positive(head_dim, "head_dim")
+    library = library or build_qwen35_rotary(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SPLIT_QGATE)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(q_proj_ptr),
+        ctypes.c_void_p(query_out_ptr),
+        ctypes.c_void_p(gate_out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def qwen35_partial_rotary_f32(
@@ -197,6 +240,11 @@ def qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
 
 
 def register_qwen35_rotary_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey("hip_gfx1100", "split_qgate", "w4_paro", "qwen35_bf16"),
+        qwen35_split_qgate_bf16,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "partial_rotary", "w4_paro", "qwen35_f32"),
         qwen35_partial_rotary_f32,

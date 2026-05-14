@@ -13,6 +13,7 @@ from hipengine.kvcache import KVLiveSpans
 
 _SOURCE = Path(__file__).with_name("paged_attn_decode.hip")
 _OUTPUT_NAME = "qwen35_paged_attn_decode.so"
+_SYMBOL_GATE_MUL_BF16 = "hipengine_qwen35_full_attn_gate_mul_bf16"
 _SYMBOL_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_context_bf16_spans"
 _SYMBOL_CONTEXT_BATCH = "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans"
 _SYMBOL_SPLIT_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
@@ -59,6 +60,34 @@ def build_qwen35_paged_attn_decode(
         load=load,
         require_cached=require_cached,
     )
+
+
+def qwen35_full_attn_gate_mul_bf16(
+    attn_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    total: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply BF16 sigmoid gate to a contiguous FP32 full-attention output."""
+
+    _check_positive(total, "total")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GATE_MUL_BF16)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(attn_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(total),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def qwen35_paged_full_attn_decode_context_bf16_spans(
@@ -571,6 +600,11 @@ def qwen35_paged_full_attn_decode_split_k_bf16_spans(
     )
 
 def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey("hip_gfx1100", "full_attn_gate_mul", "w4_paro", "bf16"),
+        qwen35_full_attn_gate_mul_bf16,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_context_spans"),
         qwen35_paged_full_attn_decode_context_bf16_spans,

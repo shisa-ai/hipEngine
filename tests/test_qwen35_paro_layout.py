@@ -405,7 +405,11 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_bf16_k
     ).tobytes()
     q_norm = layer.allocation("layers.0.self_attn.q_norm.weight")
     assert bytes(runtime.buffers[q_norm.buffer.ptr]) == float_array_to_bf16_bits(
-        tensors["model.layers.0.self_attn.q_norm.weight"].astype(np.float32) - np.float32(1.0)
+        tensors["model.layers.0.self_attn.q_norm.weight"]
+    ).tobytes()
+    input_norm = layer.allocation("layers.0.input_layernorm.weight")
+    assert bytes(runtime.buffers[input_norm.buffer.ptr]) == float_array_to_bf16_bits(
+        tensors["model.layers.0.input_layernorm.weight"].astype(np.float32) + np.float32(1.0)
     ).tobytes()
     layer.free(runtime=runtime)
     assert len(runtime.freed) == len(expected_names)

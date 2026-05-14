@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Qwen3.5/PARO resident E2E correctness gate.
 
-This is a correctness smoke, not a benchmark.  It runs real resident c=1
+This is a correctness smoke, not a benchmark. It runs real resident c=1
 prefill/decode, checks finite logits, verifies deterministic repeated runs, and
-optionally checks an expected generated-token list captured from a known-good
-reference.
+optionally checks expected generated-token IDs captured from the parent
+nano-vllm-amd implementation.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import argparse
 import json
 import math
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -32,25 +33,50 @@ def _run_once(
     runner: Qwen35ParoNextTokenRunner,
     prompt_tokens: list[int],
     *,
-    max_new_tokens: int,
+    decode_tokens: int,
     max_layers: int,
-) -> list[dict[str, Any]]:
-    max_sequence = len(prompt_tokens) + max_new_tokens + 1
-    out = []
+    include_prefill_seed: bool,
+) -> dict[str, Any]:
+    """Run one resident c=1 prompt+decode pass.
+
+    ``include_prefill_seed=True`` matches public ``LLM.generate`` semantics: the
+    argmax from prompt prefill is the first generated token. Parent benchmark
+    fixtures use ``False`` because ``bench_paro_native_engine.py`` measures the
+    decode loop after consuming that seed token.
+    """
+
+    max_sequence = len(prompt_tokens) + decode_tokens + 2
+    out: list[dict[str, Any]] = []
     with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence, max_layers=max_layers) as session:
+        owned_device_bytes = _owned_device_bytes(session)
         next_result = None
+        prefill_start = time.perf_counter()
         for pos, token_id in enumerate(prompt_tokens):
             next_result = session.step(token_id, position=pos, sample=(pos == len(prompt_tokens) - 1))
+        prefill_seconds = time.perf_counter() - prefill_start
         if next_result is None:
             raise RuntimeError("prefill did not produce a sampled token")
-        out.append(next_result.to_json_dict())
+        seed = next_result.to_json_dict()
         current = next_result
-        for offset in range(1, max_new_tokens):
-            current = session.step(current.token_id, position=len(prompt_tokens) + offset - 1)
+        if include_prefill_seed:
+            out.append(seed)
+            decode_iterations = max(0, decode_tokens - 1)
+        else:
+            decode_iterations = decode_tokens
+        decode_start = time.perf_counter()
+        for offset in range(decode_iterations):
+            current = session.step(current.token_id, position=len(prompt_tokens) + offset)
             if current is None:
                 raise RuntimeError("decode did not produce a sampled token")
             out.append(current.to_json_dict())
-    return out
+        decode_seconds = time.perf_counter() - decode_start
+    return {
+        "seed": seed,
+        "generated": out,
+        "prefill_seconds": prefill_seconds,
+        "decode_seconds": decode_seconds,
+        "owned_device_bytes": owned_device_bytes,
+    }
 
 
 def _prompt_tokens(token_id: int, prompt_length: int) -> list[int]:
@@ -59,36 +85,93 @@ def _prompt_tokens(token_id: int, prompt_length: int) -> list[int]:
     return [int(token_id)] * int(prompt_length)
 
 
+def _load_fixture(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    fixture = json.loads(path.read_text())
+    if "prompt_ids" not in fixture or "expected_generated_token_ids" not in fixture:
+        raise ValueError("fixture must contain prompt_ids and expected_generated_token_ids")
+    return fixture
+
+
+def _expected_tokens(expected_arg: str, fixture: dict[str, Any] | None) -> tuple[int, ...]:
+    if expected_arg:
+        return tuple(int(item) for item in expected_arg.split(",") if item.strip())
+    if fixture is not None:
+        return tuple(int(item) for item in fixture["expected_generated_token_ids"])
+    return ()
+
+
+def _owned_device_bytes(session: Qwen35ParoResidentSession) -> int:
+    allocation_bytes = sum(int(allocation.buffer.nbytes) for allocation in session.allocations)
+    buffer_bytes = sum(int(buffer.nbytes) for buffer in session.buffers)
+    state_bytes = sum(
+        int(state.workspace.allocation(name).buffer.nbytes)
+        for state in session.states
+        for name in state.workspace.names
+    )
+    return allocation_bytes + buffer_bytes + state_bytes
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    prompt_tokens = _prompt_tokens(args.token_id, args.prompt_length)
+    fixture = _load_fixture(args.fixture)
+    include_prefill_seed = fixture is None
+    prompt_tokens = list(fixture["prompt_ids"]) if fixture is not None else _prompt_tokens(args.token_id, args.prompt_length)
+    decode_tokens = int(fixture["decode_len"]) if fixture is not None and args.max_new_tokens is None else int(args.max_new_tokens or 1)
+    expected = _expected_tokens(args.expected_token_ids, fixture)
     runner = Qwen35ParoNextTokenRunner(args.model)
     runs = [
-        _run_once(runner, prompt_tokens, max_new_tokens=args.max_new_tokens, max_layers=args.max_layers)
+        _run_once(
+            runner,
+            prompt_tokens,
+            decode_tokens=decode_tokens,
+            max_layers=args.max_layers,
+            include_prefill_seed=include_prefill_seed,
+        )
         for _ in range(args.repeat)
     ]
-    token_ids = [[int(item["token_id"]) for item in run] for run in runs]
-    logits = [[float(item["logit"]) for item in run] for run in runs]
+    generated_runs = [run["generated"] for run in runs]
+    token_ids = [[int(item["token_id"]) for item in generated] for generated in generated_runs]
+    logits = [[float(item["logit"]) for item in generated] for generated in generated_runs]
+    seed_token_ids = [int(run["seed"]["token_id"]) for run in runs]
     finite_logits = all(math.isfinite(logit) for run in logits for logit in run)
-    deterministic = all(ids == token_ids[0] for ids in token_ids)
-    expected = tuple(int(item) for item in args.expected_token_ids.split(",") if item.strip()) if args.expected_token_ids else ()
+    deterministic = all(ids == token_ids[0] for ids in token_ids) and all(seed == seed_token_ids[0] for seed in seed_token_ids)
     expected_match = True if not expected else tuple(token_ids[0]) == expected
     passed = finite_logits and deterministic and expected_match
+    prefill_seconds = [float(run["prefill_seconds"]) for run in runs]
+    decode_seconds = [float(run["decode_seconds"]) for run in runs]
+    owned_device_bytes = [int(run["owned_device_bytes"]) for run in runs]
+    parent_metrics = fixture.get("parent_metrics") if fixture is not None else None
     return {
-        "schema": 1,
+        "schema": 2,
         "model": str(args.model),
         "quant": "w4_paro",
         "backend": "hip_gfx1100",
         "mode": "resident_c1_e2e_correctness",
         "batch_size": 1,
         "specdec_enabled": False,
-        "prompt_source": "repeated_token_id",
-        "token_id": int(args.token_id),
-        "prompt_length": int(args.prompt_length),
-        "max_new_tokens": int(args.max_new_tokens),
+        "prompt_source": "parent_fixture" if fixture is not None else "repeated_token_id",
+        "fixture": None if fixture is None else args.fixture.as_posix(),
+        "token_id": int(args.token_id) if fixture is None else None,
+        "prompt_length": len(prompt_tokens),
+        "max_new_tokens": decode_tokens,
+        "include_prefill_seed_in_generated": include_prefill_seed,
         "max_layers": int(args.max_layers),
         "repeat": int(args.repeat),
+        "seed_token_ids": seed_token_ids,
         "token_ids": token_ids,
         "logits": logits,
+        "timings": {
+            "prefill_seconds": prefill_seconds,
+            "decode_seconds": decode_seconds,
+            "prefill_tok_s": [len(prompt_tokens) / item if item > 0 else None for item in prefill_seconds],
+            "decode_tok_s": [decode_tokens / item if item > 0 else None for item in decode_seconds],
+        },
+        "memory": {
+            "owned_device_bytes": owned_device_bytes,
+            "owned_device_gib": [item / (1024**3) for item in owned_device_bytes],
+            "parent_metrics": parent_metrics,
+        },
         "finite_logits": finite_logits,
         "deterministic": deterministic,
         "expected_token_ids": list(expected),
@@ -96,7 +179,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "passed": passed,
         "notes": [
             "c=1 resident E2E gate; c>N parity hooks are separate until batched layer runner lands.",
-            "Use --expected-token-ids with parent nano-vllm-amd output when available.",
+            "Fixture mode compares HIPENGINE decode-loop outputs against parent nano-vllm-amd outputs after consuming the prefill seed token.",
         ],
     }
 
@@ -106,13 +189,14 @@ def main() -> None:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--token-id", type=int, default=9707)
     parser.add_argument("--prompt-length", type=int, default=1)
-    parser.add_argument("--max-new-tokens", type=int, default=1)
+    parser.add_argument("--max-new-tokens", type=int, default=None)
     parser.add_argument("--max-layers", type=int, default=1, help="0 means all layers")
     parser.add_argument("--repeat", type=int, default=2)
     parser.add_argument("--expected-token-ids", default="", help="Comma-separated expected generated token ids")
+    parser.add_argument("--fixture", type=Path, help="Parent fixture JSON containing prompt_ids and expected_generated_token_ids")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
-    if args.max_new_tokens <= 0:
+    if args.max_new_tokens is not None and args.max_new_tokens <= 0:
         raise ValueError("max_new_tokens must be positive")
     if args.repeat <= 0:
         raise ValueError("repeat must be positive")

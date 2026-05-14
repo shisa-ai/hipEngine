@@ -748,9 +748,12 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
     monkeypatch.setattr(qwen_runtime, "paro_rotate3_bf16", record("rotate3"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_split_qgate_bf16", record("split_qgate"))
     monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("bf16_to_f32"))
     monkeypatch.setattr(qwen_runtime, "qwen35_head_rmsnorm_partial_rotary_position_f32_bf16", record("head_rotary"))
     monkeypatch.setattr(qwen_runtime, "qwen35_write_paged_kv_mixed_value_bf16_spans", record("kv"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_context_bf16_spans", record("attention_context"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_bf16", record("attention_gate"))
     monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans", record("attention"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", record("rotate1"))
     monkeypatch.setattr(qwen_runtime, "paro_add_rmsnorm_out_bf16", record("post_norm"))
@@ -782,11 +785,12 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
         "rotate3",
         "dual_pack8",
         "pack8",
-        "bf16_to_f32",
+        "split_qgate",
         "bf16_to_f32",
         "head_rotary",
         "kv",
-        "attention",
+        "attention_context",
+        "attention_gate",
         "rotate1",
         "pack8",
         "post_norm",
@@ -801,12 +805,13 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
     ]
     assert calls[1][1][:4] == (attn.attn_input.ptr, attn.q_rot.ptr, attn.k_rot.ptr, attn.v_rot.ptr)
     assert calls[2][1][:9] == (attn.q_rot.ptr, attn.k_rot.ptr, 0x8238, 0x8240, 0x8250, 0x8338, 0x8340, 0x8350, attn.q_proj_key.ptr)
-    assert calls[4][1] == (attn.q_proj.ptr, attn.query_raw.ptr, 4096)
+    assert calls[4][1] == (attn.q_proj.ptr, attn.query_raw.ptr, attn.gate.ptr, 1, 16, 256)
     assert calls[5][1] == (attn.key_bf16.ptr, attn.key_raw.ptr, 512)
     assert calls[6][1][:9] == (attn.query_raw.ptr, attn.key_raw.ptr, 0x8120, 0x8130, 0xD200, 0xD300, 0xD400, attn.query.ptr, attn.key.ptr)
-    assert calls[8][1][3] == attn.q_proj.ptr + 4096 * DType.BF16.itemsize
-    assert calls[9][1][:5] == (attn.gated_attn.ptr, attn.o_rot.ptr, 0x8500, 0x8510, 0x8520)
-    assert calls[11][1][:5] == (hidden.ptr, attn.o_proj.ptr, 0x8110, moe.normed.ptr, moe.residual.ptr)
+    assert calls[8][1][:4] == (attn.query.ptr, key_cache.ptr, value_cache.ptr, attn.attn_out.ptr)
+    assert calls[9][1][:4] == (attn.attn_out.ptr, attn.gate.ptr, attn.gated_attn.ptr, 4096)
+    assert calls[10][1][:5] == (attn.gated_attn.ptr, attn.o_rot.ptr, 0x8500, 0x8510, 0x8520)
+    assert calls[12][1][:5] == (hidden.ptr, attn.o_proj.ptr, 0x8110, moe.normed.ptr, moe.residual.ptr)
     with pytest.raises(ValueError, match="tokens=1"):
         state.run_full_attention_moe_c1_layer_bf16(
             hidden,

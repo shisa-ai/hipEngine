@@ -8,6 +8,8 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
+    qwen35_full_attn_gate_mul_bf16,
+    qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
 )
@@ -38,7 +40,10 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_selected_pack8_transposed_bf16,
 )
 from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import paro_rotate1_bf16, paro_rotate2_bf16, paro_rotate3_bf16
-from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_head_rmsnorm_partial_rotary_position_f32_bf16
+from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
+    qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
+    qwen35_split_qgate_bf16,
+)
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights, normalize_qwen35_weight_name
 from hipengine.runtime.workspace import RuntimeWorkspace
@@ -326,12 +331,15 @@ class Qwen35ParoDecodeState:
         cfg = self.config
         q_width = cfg.num_attention_heads * cfg.head_dim
         kv_width = cfg.num_key_value_heads * cfg.head_dim
-        bf16_to_f32(
+        qwen35_split_qgate_bf16(
             scratch.q_proj.ptr,
             scratch.query_raw.ptr,
-            q_width,
+            scratch.gate.ptr,
+            tokens,
+            cfg.num_attention_heads,
+            cfg.head_dim,
             stream=stream,
-            library=_library_for(library, "cast"),
+            library=_library_for(library, "qwen_rotary"),
             runtime=self.runtime,
         )
         bf16_to_f32(
@@ -363,13 +371,7 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "qwen_rotary"),
             runtime=self.runtime,
         )
-        gate = Tensor.from_handle(
-            scratch.q_proj.ptr + q_width * DType.BF16.itemsize,
-            (tokens, cfg.num_attention_heads, cfg.head_dim),
-            DType.BF16,
-            scratch.q_proj.device,
-        )
-        return scratch.query, scratch.key, scratch.value, gate
+        return scratch.query, scratch.key, scratch.value, scratch.gate
 
     def project_full_attention_o_bf16(
         self,
@@ -1051,6 +1053,47 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
 
+    def decode_full_attention_context_gate_bf16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        gate: Tensor | None = None,
+        block_size: int = 256,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        gate_tensor = scratch.gate if gate is None else gate
+        qwen35_paged_full_attn_decode_context_bf16_spans(
+            scratch.query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            scratch.attn_out.ptr,
+            spans,
+            spans.max_live_count,
+            block_size,
+            self.config.num_attention_heads,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            (self.config.head_dim ** -0.5) if scale is None else scale,
+            stream=stream,
+            library=_library_for(library, "attention"),
+            runtime=self.runtime,
+        )
+        qwen35_full_attn_gate_mul_bf16(
+            scratch.attn_out.ptr,
+            gate_tensor.ptr,
+            scratch.gated_attn.ptr,
+            self.config.num_attention_heads * self.config.head_dim,
+            stream=stream,
+            library=_library_for(library, "attention"),
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
+
     def decode_full_attention_gqa_gate_bf16(
         self,
         scratch: Qwen35ParoAttentionScratch,
@@ -1153,18 +1196,30 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        gated = self.decode_full_attention_gqa_gate_bf16(
-            attention_scratch,
-            key_cache=key_cache,
-            value_cache=value_cache,
-            spans=decode_spans,
-            chunk_size=chunk_size,
-            num_splits=num_splits,
-            gate=gate,
-            block_size=block_size,
-            library=library,
-            stream=stream,
-        )
+        if decode_spans.max_live_count <= 4096:
+            gated = self.decode_full_attention_context_gate_bf16(
+                attention_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=decode_spans,
+                gate=gate,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
+        else:
+            gated = self.decode_full_attention_gqa_gate_bf16(
+                attention_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=decode_spans,
+                chunk_size=chunk_size,
+                num_splits=num_splits,
+                gate=gate,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
         attn_out = self.project_full_attention_o_bf16(
             gated,
             attention_scratch,

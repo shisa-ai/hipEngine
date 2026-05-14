@@ -1,0 +1,80 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-14T16:05:46.731698+00:00",
+  "run_tag": "hipengine-qwen35-c1-parent-fixture-512-32",
+  "summary": "HIPENGINE c=1 resident sequential prefill/decode compared with nano-vllm-amd parent 512/32 fixture after RMSNorm/q-gate fixes.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "commit": "8370046",
+    "dirty": true
+  },
+  "workload": {
+    "model": "Qwen3.5-35B-A3B-PARO",
+    "quant": "w4_paro",
+    "prompt_tokens": 512,
+    "decode_tokens": 32,
+    "concurrency": 1,
+    "prompt_source": "torch_cpu_randint_seed1234",
+    "seed": 1234
+  },
+  "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+  "commands": {
+    "parent": "cd /home/lhl/amd-gpu-tuning && <OPTIMAL env> PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output python3 scripts/bench_paro_native_engine.py --prompt-len 512 --decode-len 32 --decode-use-step-graph-replay --output /tmp/hipengine-parent-fixture-512-32.json --json",
+    "hipengine": "python3 scripts/qwen35_e2e_correctness.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 0 --repeat 1 --json /tmp/hipengine-qwen35-parent-fixture-512-32-context-gate.json"
+  },
+  "correctness": {
+    "passed": false,
+    "seed_token_match": true,
+    "hip_seed_token": 4403,
+    "parent_prefill_seed_token": 4403,
+    "first_mismatch_index": 0,
+    "expected_prefix": [
+      1739,
+      220,
+      16,
+      15,
+      15,
+      15,
+      15,
+      15
+    ],
+    "actual_prefix": [
+      220,
+      16,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15
+    ],
+    "finite_logits": true,
+    "deterministic": true
+  },
+  "measurements": {
+    "hipengine_prefill_tok_s": 113.64660978692294,
+    "hipengine_decode_tok_s": 96.24391169344064,
+    "parent_prefill_tok_s": 2682.660298904437,
+    "parent_decode_tok_s": 116.25779530736419
+  },
+  "memory": {
+    "hipengine_owned_device_bytes": 1625458317,
+    "hipengine_owned_device_gib": 1.5138260247185826,
+    "parent_allocated_after_load_bytes": 19644673536,
+    "parent_peak_allocated_bytes": 20183255040
+  },
+  "fixes_validated": [
+    "normal Qwen RMSNorm checkpoint offsets now add 1.0 for input/post/final norms",
+    "full-attention q_proj query/gate split now follows per-head [query, gate] layout",
+    "small-context full attention uses context decode plus BF16 gate kernel before split-K fallback"
+  ],
+  "blockers": [
+    "512-token prompt parent generated-token parity still misses the first decode token (expected 1739, got 220)",
+    "HIPENGINE prefill remains sequential c=1 and is not parent bulk/native compact prefill speed-equivalent",
+    "HIPENGINE memory is owned-buffer accounting, not allocator/VRAM peak comparable to parent torch metrics yet"
+  ]
+}
