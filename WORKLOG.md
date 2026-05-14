@@ -4064,3 +4064,25 @@ Results: all tests passed.
 ### Next
 
 - Add real-checkpoint E2E correctness gates against the parent nano-vllm-amd path for c=1 generated-token sequences, then extend to c>N once the batched layer runner is wired.
+
+---
+
+## 2026-05-14 — Add resident Qwen3.5/PARO E2E correctness gate
+
+### Scope
+
+- Added `scripts/qwen35_e2e_correctness.py` for real resident c=1 prefill/decode correctness checks.
+- Gate records generated ids/logits, finite-logit status, repeated-run determinism, SpecDec-disabled metadata, and optional expected token ids for parent/reference comparisons.
+
+### Validation
+
+```bash
+python3 -m py_compile scripts/qwen35_e2e_correctness.py
+python3 scripts/qwen35_e2e_correctness.py --max-layers 1 --prompt-length 1 --max-new-tokens 1 --repeat 2 --expected-token-ids 62406 --json /tmp/hipengine-qwen35-e2e-c1.json
+```
+
+Result: passed; repeated c=1 one-layer resident runs both produced token id `62406` with finite logit `6.588076591491699`.
+
+### Next
+
+- Capture parent nano-vllm-amd expected token sequences for all-layer fixtures and extend this gate to generated-token equality vs parent; then add c>N runs once the batched layer runner lands.
