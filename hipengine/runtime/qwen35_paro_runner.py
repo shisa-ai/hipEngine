@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import os
 
 import numpy as np
 from safetensors import safe_open
@@ -836,7 +837,9 @@ class Qwen35ParoResidentSession:
         self.cos = Tensor.from_handle(cos_buf.ptr, cos_arr.shape, DType.FP32, self.device)
         self.sin = Tensor.from_handle(sin_buf.ptr, sin_arr.shape, DType.FP32, self.device)
 
-        threads = 256
+        threads = int(os.environ.get("HIPENGINE_QWEN35_LM_HEAD_THREADS", "128"))
+        if threads not in {128, 256, 512}:
+            raise ValueError("HIPENGINE_QWEN35_LM_HEAD_THREADS must be one of 128, 256, 512")
         self.lm_head_stage1_blocks = lm_head_argmax_stage1_blocks(self.vocab_size, threads=threads)
         self.lm_head_threads = threads
         self.lm_logits = malloc(self.vocab_size * DType.FP32.itemsize, runtime=self.runtime)

@@ -3594,3 +3594,29 @@ Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-linear-qk
 
 - Remaining 512/128 decode gap is ~6.2%. Profile buckets after both projection fusions are W8A16 lm-head, selected MoE pack8, full-attention GQA, and remaining generic pack8.
 - Native batched/compact prefill remains unimplemented.
+
+---
+
+## 2026-05-14 — Tune Qwen3.5/PARO graph decode lm-head threads
+
+### Scope
+
+- Made resident-session lm-head thread count configurable through `HIPENGINE_QWEN35_LM_HEAD_THREADS`.
+- Changed default from 256 to 128 threads for W8A16 lm-head + argmax staging, matching the faster W7900 diagnostic setting.
+
+### Validation
+
+```bash
+HIPENGINE_QWEN35_LM_HEAD_THREADS=128 python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-qwen35-paro-512-128-lmhead128.json
+HIPENGINE_QWEN35_LM_HEAD_THREADS=512 python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-qwen35-paro-512-128-lmhead512.json
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-qwen35-paro-512-128-lmhead128-default.json
+```
+
+Results:
+
+- 128 threads: `110.03 tok/s` with explicit env; `109.99 tok/s` as default.
+- 256-thread prior after Q/K fusion: `108.50 tok/s`.
+- 512 threads regressed to `98.95 tok/s`.
+- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; HIPENGINE is now ~`95.1%` of that decode target.
+
+Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-lmhead128-qk-qkvz-fused-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
