@@ -4,6 +4,8 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
+using half_t = _Float16;
+
 namespace {
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
@@ -209,6 +211,30 @@ extern "C" int hipengine_silu_mul_dual_out_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_silu_mul_dual_out_fp16(
+    const half_t* gate_up,
+    half_t* out,
+    int64_t rows,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * features;
+  hipLaunchKernelGGL(
+      (silu_mul_dual_out_kernel<half_t>),
+      dim3(static_cast<unsigned int>((total + threads - 1) / threads)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      gate_up,
+      out,
+      rows,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_silu_mul_dual_rotate_out_bf16(
     const uint16_t* gate_up,
     const int16_t* pairs,
@@ -226,6 +252,39 @@ extern "C" int hipengine_silu_mul_dual_rotate_out_bf16(
   }
   hipLaunchKernelGGL(
       (silu_mul_dual_rotate_out_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(rows), static_cast<unsigned int>(features / group_size)),
+      dim3(static_cast<unsigned int>(group_size / 2)),
+      static_cast<size_t>(group_size) * sizeof(float),
+      stream,
+      gate_up,
+      pairs,
+      theta,
+      scales,
+      out,
+      rows,
+      features,
+      static_cast<int>(group_size),
+      static_cast<int>(krot));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_silu_mul_dual_rotate_out_fp16(
+    const half_t* gate_up,
+    const int16_t* pairs,
+    const half_t* theta,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t features,
+    int64_t group_size,
+    int64_t krot,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0 || group_size <= 0 || krot <= 0 ||
+      (group_size % 2) != 0 || (features % group_size) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (silu_mul_dual_rotate_out_kernel<half_t>),
       dim3(static_cast<unsigned int>(rows), static_cast<unsigned int>(features / group_size)),
       dim3(static_cast<unsigned int>(group_size / 2)),
       static_cast<size_t>(group_size) * sizeof(float),
@@ -260,6 +319,41 @@ extern "C" int hipengine_silu_mul_pair_rotate_out_bf16(
   }
   hipLaunchKernelGGL(
       (silu_mul_pair_rotate_out_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(rows), static_cast<unsigned int>(features / group_size)),
+      dim3(static_cast<unsigned int>(group_size / 2)),
+      static_cast<size_t>(group_size) * sizeof(float),
+      stream,
+      gate,
+      up,
+      pairs,
+      theta,
+      scales,
+      out,
+      rows,
+      features,
+      static_cast<int>(group_size),
+      static_cast<int>(krot));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_silu_mul_pair_rotate_out_fp16(
+    const half_t* gate,
+    const half_t* up,
+    const int16_t* pairs,
+    const half_t* theta,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t features,
+    int64_t group_size,
+    int64_t krot,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0 || group_size <= 0 || krot <= 0 ||
+      (group_size % 2) != 0 || (features % group_size) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (silu_mul_pair_rotate_out_kernel<half_t>),
       dim3(static_cast<unsigned int>(rows), static_cast<unsigned int>(features / group_size)),
       dim3(static_cast<unsigned int>(group_size / 2)),
       static_cast<size_t>(group_size) * sizeof(float),

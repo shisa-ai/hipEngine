@@ -4655,3 +4655,40 @@ Results:
 ### Next
 
 - Continue task #38 with FP16 SiLU/down-rotation wrappers and FP16 weighted/shared-gate combine wrappers.
+
+---
+
+## 2026-05-15 — Add FP16 PARO SiLU/down-rotation wrappers
+
+### Scope
+
+- Added FP16 raw-pointer wrappers for selected-expert activation/down-rotation:
+  - `silu_mul_dual_out_fp16(...)`
+  - `silu_mul_dual_rotate_out_fp16(...)`
+  - `silu_mul_pair_rotate_out_fp16(...)`
+- Registered `out_fp16` variants for `silu_mul_dual`, `silu_mul_dual_rotate`, and `silu_mul_pair_rotate` under `bf16`/`w4_paro`, plus native `fp16/out` keys.
+- Extended `paro-silu-hip` with bit-exact FP16 dual SiLU and dual/pair rotate oracles.
+- Updated `docs/KERNELS.md` to mark activation/down-rotation FP16 wrappers landed.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_paro_silu_plan.py -q
+python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-silu-fp16 -- \
+  python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- `tests/test_paro_silu_plan.py`: `3 passed`.
+- PARO SiLU smoke: BF16 `dual_mismatch=0`, `dual_rotate_mismatch=0`, `pair_rotate_mismatch=0`; FP16 `dual_fp16_mismatch=0`, `dual_rotate_fp16_mismatch=0`, `pair_rotate_fp16_mismatch=0`.
+- `rocprofv3` confirmed FP16 SiLU kernels ran on W7900:
+  - `silu_mul_dual_out_kernel<_Float16>`: `DurationNs=1680`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`.
+  - `silu_mul_dual_rotate_out_kernel<_Float16>`: `DurationNs=11960`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=64`.
+  - `silu_mul_pair_rotate_out_kernel<_Float16>`: `DurationNs=8480`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=64`.
+
+### Next
+
+- Finish task #38's broad wrapper audit with FP16 weighted/shared-gate combine wrappers; then re-evaluate whether task #38 can close or needs runtime materialization from task #39 first.

@@ -6,8 +6,11 @@ from hipengine.kernels.hip_gfx1100.fused import (
     plan_paro_silu_build,
     register_paro_silu_kernels,
     silu_mul_dual_out_bf16,
+    silu_mul_dual_out_fp16,
     silu_mul_dual_rotate_out_bf16,
+    silu_mul_dual_rotate_out_fp16,
     silu_mul_pair_rotate_out_bf16,
+    silu_mul_pair_rotate_out_fp16,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
 
@@ -16,13 +19,17 @@ def setup_function() -> None:
     clear_registry_for_tests()
 
 
-def test_paro_silu_registers_bf16_and_w4_paro_variants() -> None:
+def test_paro_silu_registers_bf16_fp16_and_w4_paro_variants() -> None:
     register_paro_silu_kernels()
 
     for quant in ("bf16", "w4_paro"):
         assert (
             resolve(backend="hip_gfx1100", layer="silu_mul_dual", quant=quant, variant="out")
             is silu_mul_dual_out_bf16
+        )
+        assert (
+            resolve(backend="hip_gfx1100", layer="silu_mul_dual", quant=quant, variant="out_fp16")
+            is silu_mul_dual_out_fp16
         )
         assert (
             resolve(
@@ -36,12 +43,31 @@ def test_paro_silu_registers_bf16_and_w4_paro_variants() -> None:
         assert (
             resolve(
                 backend="hip_gfx1100",
+                layer="silu_mul_dual_rotate",
+                quant=quant,
+                variant="out_fp16",
+            )
+            is silu_mul_dual_rotate_out_fp16
+        )
+        assert (
+            resolve(
+                backend="hip_gfx1100",
                 layer="silu_mul_pair_rotate",
                 quant=quant,
                 variant="out",
             )
             is silu_mul_pair_rotate_out_bf16
         )
+        assert (
+            resolve(
+                backend="hip_gfx1100",
+                layer="silu_mul_pair_rotate",
+                quant=quant,
+                variant="out_fp16",
+            )
+            is silu_mul_pair_rotate_out_fp16
+        )
+    assert resolve(backend="hip_gfx1100", layer="silu_mul_dual", quant="fp16", variant="out") is silu_mul_dual_out_fp16
 
 
 def test_paro_silu_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -66,9 +92,13 @@ def test_paro_silu_wrappers_validate_before_gpu_load() -> None:
         silu_mul_dual_out_bf16(0, 0, 0, 8)
     with pytest.raises(ValueError, match="threads must be one of"):
         silu_mul_dual_out_bf16(0, 0, 1, 8, threads=32)
+    with pytest.raises(ValueError, match="rows must be positive"):
+        silu_mul_dual_out_fp16(0, 0, 0, 8)
     with pytest.raises(ValueError, match="group_size must be even"):
         silu_mul_dual_rotate_out_bf16(0, 0, 0, 0, 0, 1, 8, 3, 1)
     with pytest.raises(ValueError, match="features must be divisible"):
         silu_mul_dual_rotate_out_bf16(0, 0, 0, 0, 0, 1, 10, 8, 1)
     with pytest.raises(ValueError, match="krot must be positive"):
         silu_mul_pair_rotate_out_bf16(0, 0, 0, 0, 0, 0, 1, 8, 8, 0)
+    with pytest.raises(ValueError, match="krot must be positive"):
+        silu_mul_pair_rotate_out_fp16(0, 0, 0, 0, 0, 0, 1, 8, 8, 0)

@@ -15,8 +15,11 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
     plan_paro_silu_build,
     register_paro_silu_kernels,
     silu_mul_dual_out_bf16,
+    silu_mul_dual_out_fp16,
     silu_mul_dual_rotate_out_bf16,
+    silu_mul_dual_rotate_out_fp16,
     silu_mul_pair_rotate_out_bf16,
+    silu_mul_pair_rotate_out_fp16,
 )
 
 __all__ = [
@@ -29,8 +32,11 @@ __all__ = [
     "shared_gate_combine_out_bf16",
     "shared_gate_combine_residual_out_bf16",
     "silu_mul_dual_out_bf16",
+    "silu_mul_dual_out_fp16",
     "silu_mul_dual_rotate_out_bf16",
+    "silu_mul_dual_rotate_out_fp16",
     "silu_mul_pair_rotate_out_bf16",
+    "silu_mul_pair_rotate_out_fp16",
     "weighted_sum_out_bf16_f32w",
     "weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w",
     "weighted_sum_shared_gate_combine_residual_out_bf16_f32w",

@@ -12,8 +12,11 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("paro_silu.hip")
 _OUTPUT_NAME = "paro_silu.so"
 _SYMBOL_DUAL_OUT = "hipengine_silu_mul_dual_out_bf16"
+_SYMBOL_DUAL_OUT_FP16 = "hipengine_silu_mul_dual_out_fp16"
 _SYMBOL_DUAL_ROTATE_OUT = "hipengine_silu_mul_dual_rotate_out_bf16"
+_SYMBOL_DUAL_ROTATE_OUT_FP16 = "hipengine_silu_mul_dual_rotate_out_fp16"
 _SYMBOL_PAIR_ROTATE_OUT = "hipengine_silu_mul_pair_rotate_out_bf16"
+_SYMBOL_PAIR_ROTATE_OUT_FP16 = "hipengine_silu_mul_pair_rotate_out_fp16"
 _ALLOWED_THREADS = {64, 128, 256}
 
 
@@ -93,6 +96,44 @@ def silu_mul_dual_out_bf16(
     _check_launch(runtime, err)
 
 
+def silu_mul_dual_out_fp16(
+    gate_up_ptr: int,
+    out_ptr: int,
+    rows: int,
+    features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16 SiLU(gate) * up over packed ``[rows, 2 * features]`` input."""
+
+    _check_activation_shape(rows, features)
+    _check_threads(threads)
+    library = library or build_paro_silu(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DUAL_OUT_FP16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(gate_up_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def silu_mul_dual_rotate_out_bf16(
     gate_up_ptr: int,
     pairs_ptr: int,
@@ -112,6 +153,40 @@ def silu_mul_dual_rotate_out_bf16(
 
     _launch_rotate(
         _SYMBOL_DUAL_ROTATE_OUT,
+        (gate_up_ptr,),
+        pairs_ptr,
+        theta_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        features,
+        group_size,
+        krot,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def silu_mul_dual_rotate_out_fp16(
+    gate_up_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    features: int,
+    group_size: int,
+    krot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16 packed gate/up SiLU, channel scale, and pairwise down rotation."""
+
+    _launch_rotate(
+        _SYMBOL_DUAL_ROTATE_OUT_FP16,
         (gate_up_ptr,),
         pairs_ptr,
         theta_ptr,
@@ -162,6 +237,41 @@ def silu_mul_pair_rotate_out_bf16(
     )
 
 
+def silu_mul_pair_rotate_out_fp16(
+    gate_ptr: int,
+    up_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    features: int,
+    group_size: int,
+    krot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16 separate gate/up SiLU, channel scale, and pairwise down rotation."""
+
+    _launch_rotate(
+        _SYMBOL_PAIR_ROTATE_OUT_FP16,
+        (gate_ptr, up_ptr),
+        pairs_ptr,
+        theta_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        features,
+        group_size,
+        krot,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_paro_silu_kernels(*, replace: bool = True) -> None:
     for quant in ("bf16", "w4_paro"):
         register(
@@ -170,8 +280,18 @@ def register_paro_silu_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
         register(
+            KernelKey("hip_gfx1100", "silu_mul_dual", quant, "out_fp16"),
+            silu_mul_dual_out_fp16,
+            replace=replace,
+        )
+        register(
             KernelKey("hip_gfx1100", "silu_mul_dual_rotate", quant, "out"),
             silu_mul_dual_rotate_out_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "silu_mul_dual_rotate", quant, "out_fp16"),
+            silu_mul_dual_rotate_out_fp16,
             replace=replace,
         )
         register(
@@ -179,6 +299,26 @@ def register_paro_silu_kernels(*, replace: bool = True) -> None:
             silu_mul_pair_rotate_out_bf16,
             replace=replace,
         )
+        register(
+            KernelKey("hip_gfx1100", "silu_mul_pair_rotate", quant, "out_fp16"),
+            silu_mul_pair_rotate_out_fp16,
+            replace=replace,
+        )
+    register(
+        KernelKey("hip_gfx1100", "silu_mul_dual", "fp16", "out"),
+        silu_mul_dual_out_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "silu_mul_dual_rotate", "fp16", "out"),
+        silu_mul_dual_rotate_out_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "silu_mul_pair_rotate", "fp16", "out"),
+        silu_mul_pair_rotate_out_fp16,
+        replace=replace,
+    )
 
 
 def _launch_rotate(

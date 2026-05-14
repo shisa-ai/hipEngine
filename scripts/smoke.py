@@ -4761,8 +4761,11 @@ def paro_silu_hip_smoke(
     from hipengine.kernels.hip_gfx1100.fused import (
         build_paro_silu,
         silu_mul_dual_out_bf16,
+        silu_mul_dual_out_fp16,
         silu_mul_dual_rotate_out_bf16,
+        silu_mul_dual_rotate_out_fp16,
         silu_mul_pair_rotate_out_bf16,
+        silu_mul_pair_rotate_out_fp16,
     )
 
     if rows < 1:
@@ -4789,9 +4792,17 @@ def paro_silu_hip_smoke(
     gate_up_bits = _float32_to_bf16_bits(gate_up)
     scales_bits = _float32_to_bf16_bits(scales)
     theta_bits = _float32_to_bf16_bits(theta)
+    gate_fp16 = gate.astype(np.float16)
+    up_fp16 = up.astype(np.float16)
+    gate_up_fp16 = gate_up.astype(np.float16)
+    scales_fp16 = scales.astype(np.float16)
+    theta_fp16 = theta.astype(np.float16)
     dual_out_bits = np.empty((rows, features), dtype=np.uint16)
     dual_rotate_bits = np.empty_like(dual_out_bits)
     pair_rotate_bits = np.empty_like(dual_out_bits)
+    dual_out_fp16 = np.empty((rows, features), dtype=np.float16)
+    dual_rotate_fp16 = np.empty_like(dual_out_fp16)
+    pair_rotate_fp16 = np.empty_like(dual_out_fp16)
 
     gate_bf32 = _bf16_bits_to_float32(gate_bits)
     up_bf32 = _bf16_bits_to_float32(up_bits)
@@ -4800,6 +4811,13 @@ def paro_silu_hip_smoke(
     expected_dual_bits = _float32_to_bf16_bits(act)
     rounded_act = _bf16_bits_to_float32(expected_dual_bits)
     expected_rotate_bits = _float32_to_bf16_bits(rounded_act * scales_bf32.reshape(1, features))
+    gate_fp32 = gate_fp16.astype(np.float32)
+    up_fp32 = up_fp16.astype(np.float32)
+    scales_fp32 = scales_fp16.astype(np.float32)
+    expected_dual_fp16 = (gate_fp32 * (1.0 / (1.0 + np.exp(-gate_fp32, dtype=np.float32))) * up_fp32).astype(
+        np.float16
+    )
+    expected_rotate_fp16 = (expected_dual_fp16.astype(np.float32) * scales_fp32.reshape(1, features)).astype(np.float16)
 
     runtime = get_hip_runtime()
     library = build_paro_silu(
@@ -4824,12 +4842,20 @@ def paro_silu_hip_smoke(
         gate_up_dev = dev(gate_up_bits)
         gate_dev = dev(gate_bits)
         up_dev = dev(up_bits)
+        gate_up_fp16_dev = dev(gate_up_fp16)
+        gate_fp16_dev = dev(gate_fp16)
+        up_fp16_dev = dev(up_fp16)
         pairs_dev = dev(pairs)
         theta_dev = dev(theta_bits)
+        theta_fp16_dev = dev(theta_fp16)
         scales_dev = dev(scales_bits)
+        scales_fp16_dev = dev(scales_fp16)
         dual_out_dev = out_dev(dual_out_bits)
         dual_rotate_dev = out_dev(dual_rotate_bits)
         pair_rotate_dev = out_dev(pair_rotate_bits)
+        dual_out_fp16_dev = out_dev(dual_out_fp16)
+        dual_rotate_fp16_dev = out_dev(dual_rotate_fp16)
+        pair_rotate_fp16_dev = out_dev(pair_rotate_fp16)
         silu_mul_dual_out_bf16(
             gate_up_dev.ptr,
             dual_out_dev.ptr,
@@ -4866,10 +4892,49 @@ def paro_silu_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        silu_mul_dual_out_fp16(
+            gate_up_fp16_dev.ptr,
+            dual_out_fp16_dev.ptr,
+            rows,
+            features,
+            threads=256,
+            library=library,
+            runtime=runtime,
+        )
+        silu_mul_dual_rotate_out_fp16(
+            gate_up_fp16_dev.ptr,
+            pairs_dev.ptr,
+            theta_fp16_dev.ptr,
+            scales_fp16_dev.ptr,
+            dual_rotate_fp16_dev.ptr,
+            rows,
+            features,
+            group_size,
+            krot,
+            library=library,
+            runtime=runtime,
+        )
+        silu_mul_pair_rotate_out_fp16(
+            gate_fp16_dev.ptr,
+            up_fp16_dev.ptr,
+            pairs_dev.ptr,
+            theta_fp16_dev.ptr,
+            scales_fp16_dev.ptr,
+            pair_rotate_fp16_dev.ptr,
+            rows,
+            features,
+            group_size,
+            krot,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(dual_out_bits), dual_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(dual_rotate_bits), dual_rotate_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(pair_rotate_bits), pair_rotate_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(dual_out_fp16), dual_out_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(dual_rotate_fp16), dual_rotate_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(pair_rotate_fp16), pair_rotate_fp16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
@@ -4885,11 +4950,21 @@ def paro_silu_hip_smoke(
     dual_mismatch = int(np.count_nonzero(dual_out_bits != expected_dual_bits))
     dual_rotate_mismatch = int(np.count_nonzero(dual_rotate_bits != expected_rotate_bits))
     pair_rotate_mismatch = int(np.count_nonzero(pair_rotate_bits != expected_rotate_bits))
+    dual_fp16_mismatch = int(np.count_nonzero(dual_out_fp16.view(np.uint16) != expected_dual_fp16.view(np.uint16)))
+    dual_rotate_fp16_mismatch = int(
+        np.count_nonzero(dual_rotate_fp16.view(np.uint16) != expected_rotate_fp16.view(np.uint16))
+    )
+    pair_rotate_fp16_mismatch = int(
+        np.count_nonzero(pair_rotate_fp16.view(np.uint16) != expected_rotate_fp16.view(np.uint16))
+    )
     print(
         f"rows={rows} hidden_size={hidden_size} "
         f"dual_max_abs={dual_max_abs} dual_mismatch={dual_mismatch} "
         f"dual_rotate_max_abs={dual_rotate_max_abs} dual_rotate_mismatch={dual_rotate_mismatch} "
-        f"pair_rotate_max_abs={pair_rotate_max_abs} pair_rotate_mismatch={pair_rotate_mismatch}"
+        f"pair_rotate_max_abs={pair_rotate_max_abs} pair_rotate_mismatch={pair_rotate_mismatch} "
+        f"dual_fp16_mismatch={dual_fp16_mismatch} "
+        f"dual_rotate_fp16_mismatch={dual_rotate_fp16_mismatch} "
+        f"pair_rotate_fp16_mismatch={pair_rotate_fp16_mismatch}"
     )
     print("dual0=", dual_out[0, : min(8, features)].tolist())
     print("rotate0=", dual_rotate[0, : min(8, features)].tolist())
@@ -4897,6 +4972,9 @@ def paro_silu_hip_smoke(
         dual_max_abs <= 2e-2
         and dual_rotate_max_abs <= 2e-2
         and pair_rotate_max_abs <= 2e-2
+        and dual_fp16_mismatch == 0
+        and dual_rotate_fp16_mismatch == 0
+        and pair_rotate_fp16_mismatch == 0
     ) else 1
 
 
