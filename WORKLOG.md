@@ -5508,3 +5508,54 @@ Result: pytest exit code `0`.
 
 - The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`; robust active TaskList count remains `1` (#15 only).
 - No performance claim was made; the new sweep artifact is explicitly rejected correctness evidence.
+
+---
+
+## 2026-05-15 — Isolate native prefix mismatch before MoE
+
+### Scope
+
+- Narrowed Task #15 beyond the layer-prefix sweep.
+- Added `scripts/qwen35_native_prefill_stage_probe.py`, a correctness-only diagnostic that compares serial c=1 vs native prefill at the first layer's linear-attention out-projection for the final prompt token.
+- Emitted `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer0-attn-rejected.json`.
+- Updated Task #15 description with the stage-level evidence.
+
+### Artifact
+
+```bash
+python3 scripts/qwen35_native_prefill_stage_probe.py \
+  --prompt-length 4 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-layer0-attn-rejected.json
+```
+
+Expected exit: `1` for current rejected correctness.
+
+Key fields:
+
+- `status=rejected_correctness`
+- `performance_claim=false`
+- `stage=layer0_linear_attention_out_proj_last_token`
+- `diff.max_abs=0.30224609375`
+- `diff.mean_abs=0.028543028980493546`
+- `diff.rms_abs=0.03798133288876307`
+- `diff.cosine=0.5423815250396729`
+- `diff.serial_norm=0.9725803136825562`
+- `diff.native_norm=2.0397138595581055`
+
+### Interpretation
+
+The native linear-prefix mismatch is already present before MoE and before later layer-prefix interactions: the first layer's native linear-attention out-projection for the last prompt token diverges significantly from the serial c=1 out-projection. The next implementation attempt should focus on the native linear-attention prefill conv/GDN/out-proj semantics, not compact MoE first.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0`.
+
+### Notes
+
+- The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`; robust active TaskList count remains `1` (#15 only).
+- No performance claim was made; the new stage probe artifact is explicitly rejected correctness evidence.
