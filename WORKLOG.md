@@ -3998,3 +3998,25 @@ Results:
 ### Next
 
 - Extend the harness upward to c=8 after the batched layer runner exists, and then compare generated token ids against independent resident c=1 sessions.
+
+---
+
+## 2026-05-14 — Add resident batch scheduler shell
+
+### Scope
+
+- Added torch-free `ResidentBatchScheduler` for request admission, pending queue management, active-slot compaction, prefill/decode work item emission, generated-token routing, completion, and reclaim.
+- Exported scheduler types from `hipengine.generation` for future batch-friendly generator integration.
+- Scheduler work items use stable request ids and row metadata from the dispatch batch scaffold.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests && python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_dispatch_batch.py tests/test_llm_generate.py -q
+```
+
+Results: all tests passed.
+
+### Next
+
+- Wire a Qwen3.5/PARO batch generator shell around `ResidentBatchScheduler`, then replace primitive-only correctness with generated-token c>N-vs-c1 checks.

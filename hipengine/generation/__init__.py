@@ -1,5 +1,6 @@
 """Generation registries and built-in torch-free generation paths."""
 
+from hipengine.generation.batch_scheduler import BatchGenerateRequest, CompletedRequest, GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.registry import (
     DuplicateGeneratorError,
     GenerationKey,
@@ -31,10 +32,14 @@ def register_builtin_generators() -> None:
 
 
 __all__ = [
+    "BatchGenerateRequest",
+    "CompletedRequest",
     "DuplicateGeneratorError",
+    "GeneratedToken",
     "GenerationKey",
     "GenerationRequest",
     "MissingGeneratorError",
+    "ResidentBatchScheduler",
     "TextGenerator",
     "clear_generation_registry_for_tests",
     "register_builtin_generators",
