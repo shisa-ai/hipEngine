@@ -4785,3 +4785,48 @@ Results:
 ### Next
 
 - Re-run the task #38 audit/guard; if no FP16 wrapper gaps remain, mark task #38 complete and continue to task #39 parent activation dtype materialization.
+
+---
+
+## 2026-05-15 — Materialize Qwen3.5/PARO parent mixed dtypes
+
+### Scope
+
+- Started task #39 and changed runtime materialization dtype policy to match the parent mixed contract:
+  - normal RMSNorm weights are materialized as FP16 after applying the Qwen `+1.0` offset;
+  - full-attention `q_norm`/`k_norm` checkpoint-direct weights remain BF16 for the fused head RMSNorm/rotary path;
+  - PARO projection scales/theta/channel scales, router/shared-gate weights, stacked expert scales, and down-rotation theta/channel scales materialize as FP16;
+  - linear-attention recurrence/conv/norm state tensors remain FP32; W8A16 scales remain FP32; qweights/qzeros/pairs keep integer dtypes.
+- Updated Qwen3.5/PARO layout tests to assert FP16/BF16/FP32 materialized tensor dtypes and copied byte sizes.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py -q
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Results:
+
+- Qwen3.5/PARO layout + materialize tests: `21 passed`.
+- Loop guard suite: `64 passed`.
+
+### Next
+
+- Audit runtime dispatch to ensure the new FP16 materialized tensors select the FP16 wrappers from task #38, then mark task #39 complete if no BF16-only path remains.
+
+### Dispatch audit addendum
+
+- Runtime source audit after materialization showed `hipengine/runtime/qwen35_paro.py` still routes resident decode workspaces through the existing BF16 wrapper methods (`*_bf16`), including router, dense GEMV, PARO SiLU/rotate, and weighted shared/residual combine. This is expected to remain task #40 scope; task #39 is limited to checkpoint/host/device materialization dtype policy and tests.
+- Hot-path torch audit for touched/runtime paths:
+  `rg -n "^\\s*import torch|^\\s*from torch" hipengine/runtime hipengine/generation hipengine/llm.py hipengine/loading/qwen35_paro.py || true`
+  - Result: no executable torch imports.
+
+### Next
+
+- Mark task #39 complete after guard passes; start task #40 by switching resident Qwen3.5/PARO session workspaces/dispatch to the FP16 wrappers from task #38 while preserving BF16 KV/full-attention q/k norm exceptions.
+
+### Loop record
+
+- After the guard passed, marked Task #39 completed. Active loop measurement recorded `open_or_partial_items=9` with guard `64 passed` and prompt verifier pass; no perf artifact was produced.

@@ -652,7 +652,14 @@ def prepare_qwen35_paro_moe_c1_runtime_host_tensors(
     for name in runtime_prepared_moe_c1_tensor_names(layer_id=layer_id):
         array = prepared[name]
         _emit_progress(progress, "prepare_runtime_tensor_start", layer=layer_id, name=name)
-        runtime_prepared[name] = float_array_to_bf16_bits(array) if _runtime_tensor_needs_bf16_bits(name) else array
+        if _runtime_tensor_needs_bf16_bits(name):
+            runtime_prepared[name] = float_array_to_bf16_bits(array)
+        elif _runtime_tensor_needs_fp16(name):
+            import numpy as np
+
+            runtime_prepared[name] = np.ascontiguousarray(array, dtype=np.float16)
+        else:
+            runtime_prepared[name] = array
         _emit_progress(progress, "prepare_runtime_tensor_done", layer=layer_id, name=name)
     _emit_progress(progress, "prepare_moe_done", layer=layer_id)
     return runtime_prepared
@@ -839,6 +846,13 @@ def _runtime_tensor_needs_qwen_norm_offset(name: str) -> bool:
 
 
 def _runtime_tensor_needs_bf16_bits(name: str) -> bool:
+    # Parent fused full-attention head RMSNorm consumes checkpoint-direct q/k
+    # offsets in BF16 and adds 1.0 inside the kernel.  Dense KV cache storage is
+    # also BF16 but is allocated by runtime state, not checkpoint materialization.
+    return name.endswith(".self_attn.q_norm.weight") or name.endswith(".self_attn.k_norm.weight")
+
+
+def _runtime_tensor_needs_fp16(name: str) -> bool:
     return (
         name.endswith(".weight")
         or name.endswith(".scales")
@@ -942,11 +956,11 @@ def _materialize_runtime_layer(
                 import numpy as np
 
                 direct = np.asarray(_read_normalized_numpy_tensor(normalized, name, reader=reader), dtype=np.float32)
-                array = float_array_to_bf16_bits(np.ascontiguousarray(direct + np.float32(1.0)))
+                array = np.ascontiguousarray(direct + np.float32(1.0), dtype=np.float16)
                 allocations[name] = load_host_array_to_device_as_dtype(
                     name,
                     array,
-                    DType.BF16,
+                    DType.FP16,
                     device=device,
                     runtime=runtime,
                 )
@@ -956,6 +970,17 @@ def _materialize_runtime_layer(
                     name,
                     array,
                     DType.BF16,
+                    device=device,
+                    runtime=runtime,
+                )
+            elif _runtime_tensor_needs_fp16(name):
+                import numpy as np
+
+                array = np.ascontiguousarray(_read_normalized_numpy_tensor(normalized, name, reader=reader), dtype=np.float16)
+                allocations[name] = load_host_array_to_device_as_dtype(
+                    name,
+                    array,
+                    DType.FP16,
                     device=device,
                     runtime=runtime,
                 )
@@ -1025,6 +1050,14 @@ def _materialize_runtime_layer(
                     name,
                     array,
                     DType.BF16,
+                    device=device,
+                    runtime=runtime,
+                )
+            elif _runtime_tensor_needs_fp16(name):
+                allocations[name] = load_host_array_to_device_as_dtype(
+                    name,
+                    array,
+                    DType.FP16,
                     device=device,
                     runtime=runtime,
                 )
