@@ -4746,3 +4746,42 @@ Notes:
 - Use `docs/DFLASH.md` as the launch checklist when starting HIPENGINE DFlash:
   first source-lineage refresh for corrected tree Conv/GDN and pack8 small-row
   defaults, then a native topk=1 chain verifier before DDTree policy work.
+
+---
+
+## 2026-05-15 — Add FP16 PARO combine wrappers
+
+### Scope
+
+- Added FP16 raw-pointer wrappers for the weighted/shared-gate combine family while keeping FP32 routing weights/gate logits:
+  - `weighted_sum_out_fp16_f32w(...)`
+  - `weighted_sum_shared_gate_combine_residual_out_fp16_f32w(...)`
+  - `weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w(...)`
+  - `shared_gate_combine_out_fp16(...)`
+  - `shared_gate_combine_residual_out_fp16(...)`
+- Registered `out_fp16`/`batch_out_fp16` variants under `bf16`/`w4_paro` and native `fp16` combine keys.
+- Extended `paro-combine-hip` with bit-exact FP16 weighted/shared/residual and batched fused oracles.
+- Updated `docs/KERNELS.md` to mark weighted/shared-gate combine FP16 wrappers landed.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_paro_combine_plan.py -q
+python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-combine-fp16 -- \
+  python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- `tests/test_paro_combine_plan.py`: `3 passed`.
+- PARO combine smoke: BF16 mismatches all `0`; FP16 `weighted_fp16_mismatch=0`, `fused_fp16_mismatch=0`, `batch_fused_fp16_mismatch=0`, `shared_fp16_mismatch=0`, `shared_residual_fp16_mismatch=0`.
+- `rocprofv3` confirmed FP16 combine kernels ran on W7900 with `Scratch_Size=0`, including:
+  - `weighted_sum_out_kernel<_Float16,float>`: `DurationNs=1880`, `VGPR_Count=8`.
+  - `weighted_sum_shared_gate_combine_residual_batch_out_kernel<_Float16,float>`: `DurationNs=2320`, `VGPR_Count=16`.
+  - `shared_gate_combine_residual_out_kernel<_Float16>`: `DurationNs=11920`, `VGPR_Count=16`.
+
+### Next
+
+- Re-run the task #38 audit/guard; if no FP16 wrapper gaps remain, mark task #38 complete and continue to task #39 parent activation dtype materialization.

@@ -4,6 +4,8 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
+using half_t = _Float16;
+
 namespace {
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
@@ -181,6 +183,31 @@ extern "C" int hipengine_weighted_sum_out_bf16_f32w(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_weighted_sum_out_fp16_f32w(
+    const half_t* values,
+    const float* weights,
+    half_t* out,
+    int64_t rows,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (weighted_sum_out_kernel<half_t, float>),
+      feature_grid(features, threads),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      values,
+      weights,
+      out,
+      rows,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
     const uint16_t* values,
     const float* weights,
@@ -197,6 +224,37 @@ extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_out_bf16_f32w
   }
   hipLaunchKernelGGL(
       (weighted_sum_shared_gate_combine_residual_out_kernel<uint16_t, float>),
+      feature_grid(features, threads),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      values,
+      weights,
+      shared,
+      gate_logits,
+      residual,
+      out,
+      rows,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_out_fp16_f32w(
+    const half_t* values,
+    const float* weights,
+    const half_t* shared,
+    const float* gate_logits,
+    const half_t* residual,
+    half_t* out,
+    int64_t rows,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (weighted_sum_shared_gate_combine_residual_out_kernel<half_t, float>),
       feature_grid(features, threads),
       dim3(static_cast<unsigned int>(threads)),
       0,
@@ -247,6 +305,41 @@ extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_batch_out_bf1
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w(
+    const half_t* values,
+    const float* weights,
+    const half_t* shared,
+    const float* gate_logits,
+    const half_t* residual,
+    half_t* out,
+    int64_t tokens,
+    int64_t rows_per_token,
+    int64_t features,
+    int64_t gate_stride,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || rows_per_token <= 0 || features <= 0 || gate_stride <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (weighted_sum_shared_gate_combine_residual_batch_out_kernel<half_t, float>),
+      dim3(feature_grid(features, threads).x, static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      values,
+      weights,
+      shared,
+      gate_logits,
+      residual,
+      out,
+      tokens,
+      rows_per_token,
+      features,
+      gate_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_shared_gate_combine_out_bf16(
     const uint16_t* expert,
     const uint16_t* shared,
@@ -260,6 +353,31 @@ extern "C" int hipengine_shared_gate_combine_out_bf16(
   }
   hipLaunchKernelGGL(
       (shared_gate_combine_out_kernel<uint16_t>),
+      feature_grid(features, threads),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      expert,
+      shared,
+      gate_logits,
+      out,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_shared_gate_combine_out_fp16(
+    const half_t* expert,
+    const half_t* shared,
+    const float* gate_logits,
+    half_t* out,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (shared_gate_combine_out_kernel<half_t>),
       feature_grid(features, threads),
       dim3(static_cast<unsigned int>(threads)),
       0,
@@ -286,6 +404,33 @@ extern "C" int hipengine_shared_gate_combine_residual_out_bf16(
   }
   hipLaunchKernelGGL(
       (shared_gate_combine_residual_out_kernel<uint16_t>),
+      feature_grid(features, threads),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      expert,
+      shared,
+      gate_logits,
+      residual,
+      out,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_shared_gate_combine_residual_out_fp16(
+    const half_t* expert,
+    const half_t* shared,
+    const float* gate_logits,
+    const half_t* residual,
+    half_t* out,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (shared_gate_combine_residual_out_kernel<half_t>),
       feature_grid(features, threads),
       dim3(static_cast<unsigned int>(threads)),
       0,
