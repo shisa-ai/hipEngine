@@ -3620,3 +3620,33 @@ Results:
 - Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; HIPENGINE is now ~`95.1%` of that decode target.
 
 Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-lmhead128-qk-qkvz-fused-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
+
+---
+
+## 2026-05-14 — Fuse linear-attention A/B dense decode projection
+
+### Scope
+
+- Added `dense_dual_gemv_out_bf16` raw-pointer kernel/wrapper for two small BF16 dense GEMVs with shared input and contiguous output.
+- Added contiguous linear-attention `ab` scratch with existing `a`/`b` views.
+- Switched `project_linear_attention_ab_bf16` from two dense GEMV launches to the dual dense GEMV.
+
+This ports the parent `NANOVLLM_PARO_LINEAR_ATTN_AB_FUSED=1` decode route for HIPENGINE c=1 linear-attention layers.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine scripts tests
+python3 -m pytest -q
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 2 --decode-tokens 4 --warmup-decode-tokens 1 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-ab-fused-smoke.json
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-qwen35-paro-512-128-ab-fused.json
+```
+
+Results:
+
+- 1-layer graph smoke preserved final token/logit (`229838`, `"وو"`, `6.246890544891357`).
+- 512/128 graph diagnostic improved decode from `109.99 tok/s` to `111.104 tok/s` (`+1.0%`).
+- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; HIPENGINE is now ~`96.1%` of that decode target.
+- Token-by-token c=1 prefill measured `115.81 tok/s`; still not native batched/compact prefill.
+
+Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-ab-fused-lmhead128-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).

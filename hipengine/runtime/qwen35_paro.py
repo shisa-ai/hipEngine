@@ -14,7 +14,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
 from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import weighted_sum_shared_gate_combine_residual_out_bf16_f32w
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_dual_out_bf16, silu_mul_dual_rotate_out_bf16
-from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
+from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_dual_gemv_out_bf16, dense_gemv_out_bf16
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import qwen35_linear_attn_conv_decode_bf16
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
 from hipengine.kernels.hip_gfx1100.norm import paro_add_rmsnorm_out_bf16, paro_rmsnorm_out_bf16
@@ -65,6 +65,7 @@ class Qwen35ParoLinearAttentionScratch:
     qkv_z: Tensor
     qkv: Tensor
     z: Tensor
+    ab: Tensor
     a: Tensor
     b: Tensor
     conv_out: Tensor
@@ -401,6 +402,14 @@ class Qwen35ParoDecodeState:
         qkv_z = self.workspace.reserve_tensor("linear_attn.qkv_z", (tokens, qkv_width + z_width), DType.BF16)
         qkv = Tensor.from_handle(qkv_z.ptr, (tokens, qkv_width), DType.BF16, qkv_z.device)
         z = Tensor.from_handle(qkv_z.ptr + tokens * qkv_width * DType.BF16.itemsize, (tokens, z_width), DType.BF16, qkv_z.device)
+        ab = self.workspace.reserve_tensor("linear_attn.ab", (tokens, 2 * cfg.linear_num_value_heads), DType.BF16)
+        a = Tensor.from_handle(ab.ptr, (tokens, cfg.linear_num_value_heads), DType.BF16, ab.device)
+        b = Tensor.from_handle(
+            ab.ptr + tokens * cfg.linear_num_value_heads * DType.BF16.itemsize,
+            (tokens, cfg.linear_num_value_heads),
+            DType.BF16,
+            ab.device,
+        )
         return Qwen35ParoLinearAttentionScratch(
             attn_input=self.workspace.reserve_tensor("linear_attn.attn_input", (tokens, cfg.hidden_size), DType.BF16),
             qkv_rot=self.workspace.reserve_tensor("linear_attn.qkv_rot", (tokens, cfg.hidden_size), DType.BF16),
@@ -408,8 +417,9 @@ class Qwen35ParoDecodeState:
             qkv_z=qkv_z,
             qkv=qkv,
             z=z,
-            a=self.workspace.reserve_tensor("linear_attn.a", (tokens, cfg.linear_num_value_heads), DType.BF16),
-            b=self.workspace.reserve_tensor("linear_attn.b", (tokens, cfg.linear_num_value_heads), DType.BF16),
+            ab=ab,
+            a=a,
+            b=b,
             conv_out=self.workspace.reserve_tensor("linear_attn.conv_out", (tokens, qkv_width), DType.FP32),
             recurrent_out=self.workspace.reserve_tensor("linear_attn.recurrent_out", (tokens, z_width), DType.FP32),
             recurrent_bf16=self.workspace.reserve_tensor("linear_attn.recurrent_bf16", (tokens, z_width), DType.BF16),
@@ -506,24 +516,14 @@ class Qwen35ParoDecodeState:
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
         a_weight = self.tensor(f"{prefix}.in_proj_a.weight")
         b_weight = self.tensor(f"{prefix}.in_proj_b.weight")
-        dense_gemv_out_bf16(
+        dense_dual_gemv_out_bf16(
             hidden.ptr,
             a_weight.ptr,
-            scratch.a.ptr,
+            b_weight.ptr,
+            scratch.ab.ptr,
             tokens,
             self.config.hidden_size,
             self.config.linear_num_value_heads,
-            threads=threads,
-            stream=stream,
-            library=_library_for(library, "dense"),
-            runtime=self.runtime,
-        )
-        dense_gemv_out_bf16(
-            hidden.ptr,
-            b_weight.ptr,
-            scratch.b.ptr,
-            tokens,
-            self.config.hidden_size,
             self.config.linear_num_value_heads,
             threads=threads,
             stream=stream,

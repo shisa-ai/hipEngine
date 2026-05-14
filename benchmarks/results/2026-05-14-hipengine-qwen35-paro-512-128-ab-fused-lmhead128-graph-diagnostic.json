@@ -1,0 +1,73 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-14T19:25:41+09:00",
+  "run_tag": "qwen35-paro-512-128-ab-fused-lmhead128-graph-diagnostic",
+  "summary": "HIPENGINE Qwen3.5/PARO graph decode after linear-attention AB dense fusion plus previous projection/lm-head tuning; native batched prefill and accepted correctness gates still missing.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "commit": "f1a7038bc44c263455f19cc2c8873a2cc220fdcd",
+    "dirty": true
+  },
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "workload": {
+    "prompt_tokens": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "concurrency": 1,
+    "mode": "actual_autoregressive_c1_resident",
+    "native_batched_prefill": false,
+    "graph_replay": true,
+    "lm_head_threads": 128
+  },
+  "command": "python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --json /tmp/hipengine-qwen35-paro-512-128-ab-fused.json",
+  "correctness": {
+    "status": "partial_smoke",
+    "evidence": "1-layer graph smoke preserved final token/logit after AB dense fusion; full KL/top-1 gate not yet landed."
+  },
+  "baseline": {
+    "source": "/home/lhl/amd-gpu-tuning/PLAN-MOE2.md",
+    "current_compact_wmma_2026_05_13": {
+      "shape": "512/128",
+      "prefill_tok_s": 2557.397,
+      "decode_tok_s": 115.666
+    }
+  },
+  "measurements": {
+    "load_seconds": 29.568519495194778,
+    "prefill_seconds": 4.421172010013834,
+    "decode_seconds": 1.1520717679522932,
+    "token_by_token_prefill_tok_s": 115.8063967745055,
+    "graph_decode_tok_s": 111.10418947901901,
+    "decode_step_average_s": 0.00900056068712729
+  },
+  "comparison": {
+    "previous_lmhead128_decode_tok_s": 109.99050349895039,
+    "decode_delta_pct_vs_previous": 1.0125292135600095,
+    "decode_vs_current_compact_wmma_ratio": 0.9605604886398684,
+    "prefill_comparable": false,
+    "decode_comparable": "graph_replay_diagnostic"
+  },
+  "blockers": [
+    "native batched/compact prefill kernels not wired",
+    "full KL/top-1 correctness gate not yet landed",
+    "diagnostic harness path not integrated into LLM.generate full multi-token API"
+  ],
+  "generated_preview": [
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.634312152862549
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.678398132324219
+    }
+  ]
+}
