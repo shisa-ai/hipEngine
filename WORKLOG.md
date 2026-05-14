@@ -3972,3 +3972,29 @@ GPU smoke result: `batched paged kv+attn smoke OK 4.76837158203125e-07` vs NumPy
 ### Next
 
 - Wire the c>1 attention variants into a batched layer runner and add deterministic c>N-vs-independent-c1 correctness fixtures.
+
+---
+
+## 2026-05-14 — Add deterministic c>N vs c1 primitive correctness harness
+
+### Scope
+
+- Added `scripts/qwen35_batch_correctness.py` to compare c>N batched paged-KV append/context-attention against independent c=1 launches and a NumPy softmax oracle.
+- The harness covers uneven per-row context lengths and reports append mismatches plus attention max-abs errors.
+
+### Validation
+
+```bash
+python3 -m py_compile scripts/qwen35_batch_correctness.py
+python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-qwen35-batch-c2.json
+python3 scripts/qwen35_batch_correctness.py --rows 4 --json /tmp/hipengine-qwen35-batch-c4.json
+```
+
+Results:
+
+- c=2: `append_key_mismatch=0`, `append_value_mismatch=0`, `attn_batch_vs_c1_max_abs=0.0`, `attn_batch_vs_numpy_max_abs=2.235e-08`, passed.
+- c=4: `append_key_mismatch=0`, `append_value_mismatch=0`, `attn_batch_vs_c1_max_abs=0.0`, `attn_batch_vs_numpy_max_abs=2.980e-08`, passed.
+
+### Next
+
+- Extend the harness upward to c=8 after the batched layer runner exists, and then compare generated token ids against independent resident c=1 sessions.
