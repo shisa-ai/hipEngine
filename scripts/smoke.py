@@ -3936,7 +3936,12 @@ def dense_gemv_hip_smoke(
         host_array_ptr,
         malloc,
     )
-    from hipengine.kernels.hip_gfx1100.linear import build_dense_gemv, dense_gemv_out_bf16
+    from hipengine.kernels.hip_gfx1100.linear import (
+        build_dense_gemv,
+        dense_dual_gemv_out_fp16,
+        dense_gemv_out_bf16,
+        dense_gemv_out_fp16,
+    )
 
     if rows < 1:
         raise ValueError("--rows must be >= 1")
@@ -3956,10 +3961,15 @@ def dense_gemv_hip_smoke(
         )
     x_bits = _float32_to_bf16_bits(x_f32)
     weight_bits = _float32_to_bf16_bits(weight_f32)
+    x_fp16 = x_f32.astype(np.float16)
+    weight_fp16 = weight_f32.astype(np.float16)
     out_bits = np.empty((rows, out_features), dtype=np.uint16)
+    out_fp16 = np.empty((rows, out_features), dtype=np.float16)
+    dual_fp16 = np.empty_like(out_fp16)
     expected_bits = _float32_to_bf16_bits(
         _bf16_bits_to_float32(x_bits) @ _bf16_bits_to_float32(weight_bits).T
     )
+    expected_fp16 = (x_fp16.astype(np.float32) @ weight_fp16.astype(np.float32).T).astype(np.float16)
 
     runtime = get_hip_runtime()
     library = build_dense_gemv(
@@ -3983,7 +3993,11 @@ def dense_gemv_hip_smoke(
     try:
         x_dev = dev(x_bits)
         weight_dev = dev(weight_bits)
+        x_fp16_dev = dev(x_fp16)
+        weight_fp16_dev = dev(weight_fp16)
         out_dev_buf = out_dev(out_bits)
+        out_fp16_dev = out_dev(out_fp16)
+        dual_fp16_dev = out_dev(dual_fp16)
         dense_gemv_out_bf16(
             x_dev.ptr,
             weight_dev.ptr,
@@ -3995,22 +4009,53 @@ def dense_gemv_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        dense_gemv_out_fp16(
+            x_fp16_dev.ptr,
+            weight_fp16_dev.ptr,
+            out_fp16_dev.ptr,
+            rows,
+            hidden_size,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        dense_dual_gemv_out_fp16(
+            x_fp16_dev.ptr,
+            weight_fp16_dev.ptr,
+            weight_fp16_dev.ptr + 3 * hidden_size * weight_fp16.itemsize,
+            dual_fp16_dev.ptr,
+            rows,
+            hidden_size,
+            3,
+            out_features - 3,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(out_bits), out_dev_buf, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_fp16), out_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(dual_fp16), dual_fp16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
     mismatch = int(np.count_nonzero(out_bits != expected_bits))
+    fp16_mismatch = int(np.count_nonzero(out_fp16.view(np.uint16) != expected_fp16.view(np.uint16)))
+    dual_fp16_mismatch = int(np.count_nonzero(dual_fp16.view(np.uint16) != expected_fp16.view(np.uint16)))
     max_abs = float(
         np.max(np.abs(_bf16_bits_to_float32(out_bits) - _bf16_bits_to_float32(expected_bits)))
     )
+    fp16_max_abs = float(np.max(np.abs(out_fp16.astype(np.float32) - expected_fp16.astype(np.float32))))
     print(
         f"rows={rows} hidden_size={hidden_size} out_features={out_features} "
-        f"mismatch={mismatch} max_abs={max_abs}"
+        f"mismatch={mismatch} max_abs={max_abs} "
+        f"fp16_mismatch={fp16_mismatch} fp16_max_abs={fp16_max_abs} "
+        f"dual_fp16_mismatch={dual_fp16_mismatch}"
     )
     print("dense_gemv_row0=", _bf16_bits_to_float32(out_bits)[0, : min(8, out_features)].tolist())
-    return 0 if mismatch == 0 else 1
+    return 0 if mismatch == 0 and fp16_mismatch == 0 and dual_fp16_mismatch == 0 else 1
 
 def w8a16_shared_expert_hip_smoke(
     rows: int,

@@ -3,7 +3,9 @@
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     build_dense_gemv,
     dense_dual_gemv_out_bf16,
+    dense_dual_gemv_out_fp16,
     dense_gemv_out_bf16,
+    dense_gemv_out_fp16,
     plan_dense_gemv_build,
     register_dense_gemv_kernels,
 )
@@ -19,7 +21,9 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
 __all__ = [
     "build_dense_gemv",
     "dense_dual_gemv_out_bf16",
+    "dense_dual_gemv_out_fp16",
     "dense_gemv_out_bf16",
+    "dense_gemv_out_fp16",
     "plan_dense_gemv_build",
     "register_dense_gemv_kernels",
     "argmax_f32",

@@ -4,6 +4,8 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
+using half_t = _Float16;
+
 namespace {
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
@@ -27,7 +29,9 @@ __device__ inline uint16_t float_to_bf16_bits(float value) {
 }
 
 template <typename scalar_t>
-__device__ inline float scalar_to_float(scalar_t value);
+__device__ inline float scalar_to_float(scalar_t value) {
+  return static_cast<float>(value);
+}
 
 template <>
 __device__ inline float scalar_to_float<uint16_t>(uint16_t value) {
@@ -35,7 +39,9 @@ __device__ inline float scalar_to_float<uint16_t>(uint16_t value) {
 }
 
 template <typename scalar_t>
-__device__ inline scalar_t float_to_scalar(float value);
+__device__ inline scalar_t float_to_scalar(float value) {
+  return static_cast<scalar_t>(value);
+}
 
 template <>
 __device__ inline uint16_t float_to_scalar<uint16_t>(float value) {
@@ -177,6 +183,33 @@ extern "C" int hipengine_dense_gemv_out_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_dense_gemv_out_fp16(
+    const half_t* x,
+    const half_t* weight,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_gemv_out_kernel<half_t>),
+      dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_dense_dual_gemv_out_bf16(
     const uint16_t* x,
     const uint16_t* weight_a,
@@ -193,6 +226,37 @@ extern "C" int hipengine_dense_dual_gemv_out_bf16(
   }
   hipLaunchKernelGGL(
       (dense_dual_gemv_out_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(out_features_a + out_features_b), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight_a,
+      weight_b,
+      out,
+      rows,
+      in_features,
+      out_features_a,
+      out_features_b);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_dual_gemv_out_fp16(
+    const half_t* x,
+    const half_t* weight_a,
+    const half_t* weight_b,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features_a <= 0 || out_features_b <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_dual_gemv_out_kernel<half_t>),
       dim3(static_cast<unsigned int>(out_features_a + out_features_b), static_cast<unsigned int>(rows)),
       dim3(static_cast<unsigned int>(threads)),
       0,

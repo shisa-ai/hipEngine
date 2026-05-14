@@ -4589,3 +4589,36 @@ Results:
 ### Next
 
 - Continue task #38 by auditing remaining broad FP16 wrapper items from the TaskList (dense/dual GEMV, router hidden, SiLU/down-rotation, weighted combine/residual) before task #39 materialization.
+
+---
+
+## 2026-05-15 — Add FP16 dense GEMV wrappers
+
+### Scope
+
+- Audited task #38 after gated full-attention coverage: broad remaining FP16 wrapper items are dense/dual GEMV, router hidden, SiLU/down-rotation, and weighted/shared-gate combine/residual.
+- Added `dense_gemv_out_fp16(...)` and `dense_dual_gemv_out_fp16(...)` C/Python wrappers around the existing parent dense GEMV templates using `_Float16` activations/weights/outputs.
+- Registered FP16 dense GEMV variants under `bf16`/`w4_paro` variant `out_fp16` and native `fp16/out` registry keys.
+- Extended `dense-gemv-hip` smoke with bit-exact FP16 single and dual GEMV oracles.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_dense_gemv_plan.py -q
+python3 scripts/smoke.py --mode dense-gemv-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-dense-fp16 -- \
+  python3 scripts/smoke.py --mode dense-gemv-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- `tests/test_dense_gemv_plan.py`: `3 passed`.
+- Dense GEMV smoke: BF16 `mismatch=0`, `max_abs=0.0`; FP16 single `fp16_mismatch=0`, `fp16_max_abs=0.0`; FP16 dual `dual_fp16_mismatch=0`.
+- `rocprofv3` confirmed FP16 dense kernels ran on W7900:
+  - `dense_gemv_out_kernel<_Float16>`: `DurationNs=3440`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=1024`, `Workgroup_Size_X=256`.
+  - `dense_dual_gemv_out_kernel<_Float16>`: `DurationNs=4040`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=1024`, `Workgroup_Size_X=256`.
+
+### Next
+
+- Continue task #38 with router hidden FP16, SiLU/down-rotation FP16, and weighted/shared-gate combine FP16 wrappers as required by the parent-mixed materialization plan.
