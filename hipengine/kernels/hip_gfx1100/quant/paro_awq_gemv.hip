@@ -830,6 +830,150 @@ int launch_dual_pack8(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename scalar_t, bool qweight_transposed>
+int launch_selected_dual_rotate(
+    const scalar_t* x,
+    const int64_t* selected,
+    const int16_t* pairs,
+    const scalar_t* theta,
+    const scalar_t* channel_scales,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const scalar_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const scalar_t* scales_b,
+    scalar_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t krot,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x_rows <= 0 || rows <= 0 || (rows % x_rows) != 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 ||
+      num_experts <= 0 || group_size <= 0 || krot < 0 || (in_features % group_size) != 0 ||
+      (group_size % 8) != 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gemv_awq_selected_dual_pack8_strided_rotate_out_kernel<scalar_t, qweight_transposed>),
+      dim3(static_cast<unsigned int>(out_packed_a + out_packed_b), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<unsigned int>(in_features * sizeof(float)),
+      stream,
+      x,
+      selected,
+      pairs,
+      theta,
+      channel_scales,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      x_rows,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      num_experts,
+      static_cast<int>(group_size),
+      static_cast<int>(krot));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t, bool qweight_transposed>
+int launch_selected_dual_pack8(
+    const scalar_t* x,
+    const int64_t* selected,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const scalar_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const scalar_t* scales_b,
+    scalar_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x_rows <= 0 || rows <= 0 || (rows % x_rows) != 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 ||
+      num_experts <= 0 || group_size <= 0 || (in_features % group_size) != 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gemv_awq_selected_dual_pack8_strided_kernel<scalar_t, qweight_transposed>),
+      dim3(static_cast<unsigned int>(out_packed_a + out_packed_b), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      selected,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      x_rows,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      num_experts,
+      static_cast<int>(group_size));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t, bool qweight_transposed>
+int launch_selected_pack8(
+    const scalar_t* x,
+    const int64_t* selected,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const scalar_t* scales,
+    scalar_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_packed <= 0 || num_experts <= 0 || group_size <= 0 ||
+      (in_features % group_size) != 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gemv_awq_selected_pack8_kernel<scalar_t, qweight_transposed>),
+      dim3(static_cast<unsigned int>(out_packed), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      selected,
+      qweight,
+      qzeros,
+      scales,
+      out,
+      in_features,
+      out_packed << 3,
+      out_packed,
+      num_experts,
+      static_cast<int>(group_size));
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 
@@ -1091,6 +1235,170 @@ extern "C" int hipengine_gemv_awq_dual_pack8_transposed_fp16(
       group_size,
       threads,
       stream);
+}
+
+extern "C" int hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_fp16(
+    const half_t* x,
+    const int64_t* selected,
+    const int16_t* pairs,
+    const half_t* theta,
+    const half_t* channel_scales,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t krot,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_selected_dual_rotate<half_t, false>(
+      x,
+      selected,
+      pairs,
+      theta,
+      channel_scales,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      x_rows,
+      rows,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      num_experts,
+      group_size,
+      krot,
+      threads,
+      stream);
+}
+
+extern "C" int hipengine_gemv_awq_selected_dual_pack8_strided_fp16(
+    const half_t* x,
+    const int64_t* selected,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_selected_dual_pack8<half_t, false>(
+      x,
+      selected,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      x_rows,
+      rows,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      num_experts,
+      group_size,
+      threads,
+      stream);
+}
+
+extern "C" int hipengine_gemv_awq_selected_dual_pack8_transposed_fp16(
+    const half_t* x,
+    const int64_t* selected,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_selected_dual_pack8<half_t, true>(
+      x,
+      selected,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      x_rows,
+      rows,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      num_experts,
+      group_size,
+      threads,
+      stream);
+}
+
+extern "C" int hipengine_gemv_awq_selected_pack8_strided_fp16(
+    const half_t* x,
+    const int64_t* selected,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_selected_pack8<half_t, false>(
+      x, selected, qweight, qzeros, scales, out, rows, in_features, out_packed, num_experts, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_selected_pack8_transposed_fp16(
+    const half_t* x,
+    const int64_t* selected,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_selected_pack8<half_t, true>(
+      x, selected, qweight, qzeros, scales, out, rows, in_features, out_packed, num_experts, group_size, threads, stream);
 }
 
 extern "C" int hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16(

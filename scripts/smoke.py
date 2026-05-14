@@ -5205,6 +5205,7 @@ def paro_selected_gemv_rotate_hip_smoke(
     from hipengine.kernels.hip_gfx1100.quant import (
         build_paro_awq_gemv,
         gemv_awq_selected_dual_pack8_strided_rotate_out_bf16,
+        gemv_awq_selected_dual_pack8_strided_rotate_out_fp16,
     )
 
     if rows < 1:
@@ -5272,6 +5273,37 @@ def paro_selected_gemv_rotate_hip_smoke(
     )
     expected_bits = np.concatenate([expected_a, expected_b], axis=1)
 
+    x_fp16 = x_f32.astype(np.float16)
+    channel_scales_fp16 = channel_scales_f32.astype(np.float16)
+    theta_fp16 = theta.astype(np.float16)
+    scales_a_fp16 = _bf16_bits_to_float32(scales_a_bits).astype(np.float16)
+    scales_b_fp16 = _bf16_bits_to_float32(scales_b_bits).astype(np.float16)
+    rotated_fp16 = (
+        x_fp16.astype(np.float32) * channel_scales_fp16.astype(np.float32).reshape(1, hidden_size)
+    ).astype(np.float16)
+    expected_a_fp16 = _selected_pack8_reference_lowp(
+        rotated_fp16,
+        selected,
+        qweight_a,
+        qzeros_a,
+        scales_a_fp16,
+        group_size,
+        qweight_transposed=False,
+        out_dtype=np.float16,
+    )
+    expected_b_fp16 = _selected_pack8_reference_lowp(
+        rotated_fp16,
+        selected,
+        qweight_b,
+        qzeros_b,
+        scales_b_fp16,
+        group_size,
+        qweight_transposed=False,
+        out_dtype=np.float16,
+    )
+    expected_fp16 = np.concatenate([expected_a_fp16, expected_b_fp16], axis=1)
+    out_fp16 = np.empty_like(expected_fp16)
+
     runtime = get_hip_runtime()
     library = build_paro_awq_gemv(
         load=True,
@@ -5304,6 +5336,12 @@ def paro_selected_gemv_rotate_hip_smoke(
         qzeros_b_dev = dev(qzeros_b)
         scales_b_dev = dev(scales_b_bits)
         out_dev_buf = out_dev(out_bits)
+        x_fp16_dev = dev(x_fp16)
+        theta_fp16_dev = dev(theta_fp16)
+        channel_scales_fp16_dev = dev(channel_scales_fp16)
+        scales_a_fp16_dev = dev(scales_a_fp16)
+        scales_b_fp16_dev = dev(scales_b_fp16)
+        out_fp16_dev = out_dev(out_fp16)
         gemv_awq_selected_dual_pack8_strided_rotate_out_bf16(
             x_dev.ptr,
             selected_dev.ptr,
@@ -5329,20 +5367,50 @@ def paro_selected_gemv_rotate_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        gemv_awq_selected_dual_pack8_strided_rotate_out_fp16(
+            x_fp16_dev.ptr,
+            selected_dev.ptr,
+            pairs_dev.ptr,
+            theta_fp16_dev.ptr,
+            channel_scales_fp16_dev.ptr,
+            qweight_a_dev.ptr,
+            qzeros_a_dev.ptr,
+            scales_a_fp16_dev.ptr,
+            qweight_b_dev.ptr,
+            qzeros_b_dev.ptr,
+            scales_b_fp16_dev.ptr,
+            out_fp16_dev.ptr,
+            rows,
+            rows,
+            hidden_size,
+            out_packed_a,
+            out_packed_b,
+            num_experts,
+            group_size,
+            krot,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(out_bits), out_dev_buf, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_fp16), out_fp16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
     mismatch = int(np.count_nonzero(out_bits != expected_bits))
+    fp16_mismatch = int(np.count_nonzero(out_fp16.view(np.uint16) != expected_fp16.view(np.uint16)))
     max_abs = float(np.max(np.abs(_bf16_bits_to_float32(out_bits) - _bf16_bits_to_float32(expected_bits))))
+    fp16_max_abs = float(np.max(np.abs(out_fp16.astype(np.float32) - expected_fp16.astype(np.float32))))
     print(
         f"rows={rows} hidden_size={hidden_size} threads={threads} krot={krot} "
-        f"mismatch={mismatch} max_abs={max_abs}"
+        f"mismatch={mismatch} max_abs={max_abs} "
+        f"fp16_mismatch={fp16_mismatch} fp16_max_abs={fp16_max_abs}"
     )
     print("rotate_selected0=", _bf16_bits_to_float32(out_bits)[0].tolist())
-    return 0 if mismatch == 0 else 1
+    print("rotate_selected_fp16=", out_fp16[0].astype(np.float32).tolist())
+    return 0 if mismatch == 0 and fp16_mismatch == 0 else 1
 
 def paro_selected_gemv_hip_smoke(
     rows: int,
@@ -5364,9 +5432,13 @@ def paro_selected_gemv_hip_smoke(
     from hipengine.kernels.hip_gfx1100.quant import (
         build_paro_awq_gemv,
         gemv_awq_selected_dual_pack8_strided_bf16,
+        gemv_awq_selected_dual_pack8_strided_fp16,
         gemv_awq_selected_dual_pack8_transposed_bf16,
+        gemv_awq_selected_dual_pack8_transposed_fp16,
         gemv_awq_selected_pack8_strided_bf16,
+        gemv_awq_selected_pack8_strided_fp16,
         gemv_awq_selected_pack8_transposed_bf16,
+        gemv_awq_selected_pack8_transposed_fp16,
     )
 
     if rows < 1:
@@ -5436,6 +5508,47 @@ def paro_selected_gemv_hip_smoke(
         qweight_transposed=False,
     )
 
+    x_dual_fp16 = x_dual_f32.astype(np.float16)
+    x_single_fp16 = x_single_f32.astype(np.float16)
+    scales_a_fp16 = _bf16_bits_to_float32(scales_a_bits).astype(np.float16)
+    scales_b_fp16 = _bf16_bits_to_float32(scales_b_bits).astype(np.float16)
+    scales_single_fp16 = _bf16_bits_to_float32(scales_single_bits).astype(np.float16)
+    expected_dual_a_fp16 = _selected_pack8_reference_lowp(
+        x_dual_fp16,
+        selected,
+        qweight_a,
+        qzeros_a,
+        scales_a_fp16,
+        group_size,
+        qweight_transposed=False,
+        out_dtype=np.float16,
+    )
+    expected_dual_b_fp16 = _selected_pack8_reference_lowp(
+        x_dual_fp16,
+        selected,
+        qweight_b,
+        qzeros_b,
+        scales_b_fp16,
+        group_size,
+        qweight_transposed=False,
+        out_dtype=np.float16,
+    )
+    expected_dual_fp16 = np.concatenate([expected_dual_a_fp16, expected_dual_b_fp16], axis=1)
+    expected_single_fp16 = _selected_pack8_reference_lowp(
+        x_single_fp16,
+        selected,
+        qweight_single,
+        qzeros_single,
+        scales_single_fp16,
+        group_size,
+        qweight_transposed=False,
+        out_dtype=np.float16,
+    )
+    dual_strided_fp16 = np.empty_like(expected_dual_fp16)
+    dual_transposed_fp16 = np.empty_like(expected_dual_fp16)
+    single_strided_fp16 = np.empty_like(expected_single_fp16)
+    single_transposed_fp16 = np.empty_like(expected_single_fp16)
+
     runtime = get_hip_runtime()
     library = build_paro_awq_gemv(
         load=True,
@@ -5475,6 +5588,15 @@ def paro_selected_gemv_hip_smoke(
         dual_transposed_dev = out_dev(dual_transposed_bits)
         single_strided_dev = out_dev(single_strided_bits)
         single_transposed_dev = out_dev(single_transposed_bits)
+        x_dual_fp16_dev = dev(x_dual_fp16)
+        x_single_fp16_dev = dev(x_single_fp16)
+        scales_a_fp16_dev = dev(scales_a_fp16)
+        scales_b_fp16_dev = dev(scales_b_fp16)
+        scales_single_fp16_dev = dev(scales_single_fp16)
+        dual_strided_fp16_dev = out_dev(dual_strided_fp16)
+        dual_transposed_fp16_dev = out_dev(dual_transposed_fp16)
+        single_strided_fp16_dev = out_dev(single_strided_fp16)
+        single_transposed_fp16_dev = out_dev(single_transposed_fp16)
 
         gemv_awq_selected_dual_pack8_strided_bf16(
             x_dual_dev.ptr,
@@ -5550,11 +5672,89 @@ def paro_selected_gemv_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        gemv_awq_selected_dual_pack8_strided_fp16(
+            x_dual_fp16_dev.ptr,
+            selected_dev.ptr,
+            qweight_a_dev.ptr,
+            qzeros_a_dev.ptr,
+            scales_a_fp16_dev.ptr,
+            qweight_b_dev.ptr,
+            qzeros_b_dev.ptr,
+            scales_b_fp16_dev.ptr,
+            dual_strided_fp16_dev.ptr,
+            1,
+            rows,
+            hidden_size,
+            out_packed_a,
+            out_packed_b,
+            num_experts,
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gemv_awq_selected_dual_pack8_transposed_fp16(
+            x_dual_fp16_dev.ptr,
+            selected_dev.ptr,
+            qweight_a_t_dev.ptr,
+            qzeros_a_dev.ptr,
+            scales_a_fp16_dev.ptr,
+            qweight_b_t_dev.ptr,
+            qzeros_b_dev.ptr,
+            scales_b_fp16_dev.ptr,
+            dual_transposed_fp16_dev.ptr,
+            1,
+            rows,
+            hidden_size,
+            out_packed_a,
+            out_packed_b,
+            num_experts,
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gemv_awq_selected_pack8_strided_fp16(
+            x_single_fp16_dev.ptr,
+            selected_dev.ptr,
+            qweight_single_dev.ptr,
+            qzeros_single_dev.ptr,
+            scales_single_fp16_dev.ptr,
+            single_strided_fp16_dev.ptr,
+            rows,
+            hidden_size,
+            out_packed,
+            num_experts,
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gemv_awq_selected_pack8_transposed_fp16(
+            x_single_fp16_dev.ptr,
+            selected_dev.ptr,
+            qweight_single_t_dev.ptr,
+            qzeros_single_dev.ptr,
+            scales_single_fp16_dev.ptr,
+            single_transposed_fp16_dev.ptr,
+            rows,
+            hidden_size,
+            out_packed,
+            num_experts,
+            group_size,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(dual_strided_bits), dual_strided_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(dual_transposed_bits), dual_transposed_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(single_strided_bits), single_strided_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(single_transposed_bits), single_transposed_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(dual_strided_fp16), dual_strided_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(dual_transposed_fp16), dual_transposed_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(single_strided_fp16), single_strided_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(single_transposed_fp16), single_transposed_fp16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
@@ -5575,19 +5775,51 @@ def paro_selected_gemv_hip_smoke(
             np.max(np.abs(_bf16_bits_to_float32(single_transposed_bits) - _bf16_bits_to_float32(expected_single_bits))),
         )
     )
+    dual_strided_fp16_mismatch = int(
+        np.count_nonzero(dual_strided_fp16.view(np.uint16) != expected_dual_fp16.view(np.uint16))
+    )
+    dual_transposed_fp16_mismatch = int(
+        np.count_nonzero(dual_transposed_fp16.view(np.uint16) != expected_dual_fp16.view(np.uint16))
+    )
+    single_strided_fp16_mismatch = int(
+        np.count_nonzero(single_strided_fp16.view(np.uint16) != expected_single_fp16.view(np.uint16))
+    )
+    single_transposed_fp16_mismatch = int(
+        np.count_nonzero(single_transposed_fp16.view(np.uint16) != expected_single_fp16.view(np.uint16))
+    )
+    fp16_dual_max_abs = float(
+        max(
+            np.max(np.abs(dual_strided_fp16.astype(np.float32) - expected_dual_fp16.astype(np.float32))),
+            np.max(np.abs(dual_transposed_fp16.astype(np.float32) - expected_dual_fp16.astype(np.float32))),
+        )
+    )
+    fp16_single_max_abs = float(
+        max(
+            np.max(np.abs(single_strided_fp16.astype(np.float32) - expected_single_fp16.astype(np.float32))),
+            np.max(np.abs(single_transposed_fp16.astype(np.float32) - expected_single_fp16.astype(np.float32))),
+        )
+    )
     print(
         f"rows={rows} hidden_size={hidden_size} threads={threads} "
         f"dual_mismatch={dual_strided_mismatch}/{dual_transposed_mismatch} "
         f"single_mismatch={single_strided_mismatch}/{single_transposed_mismatch} "
-        f"dual_max_abs={dual_max_abs} single_max_abs={single_max_abs}"
+        f"dual_max_abs={dual_max_abs} single_max_abs={single_max_abs} "
+        f"fp16_dual_mismatch={dual_strided_fp16_mismatch}/{dual_transposed_fp16_mismatch} "
+        f"fp16_single_mismatch={single_strided_fp16_mismatch}/{single_transposed_fp16_mismatch} "
+        f"fp16_dual_max_abs={fp16_dual_max_abs} fp16_single_max_abs={fp16_single_max_abs}"
     )
     print("dual0=", _bf16_bits_to_float32(dual_strided_bits)[0].tolist())
     print("single0=", _bf16_bits_to_float32(single_strided_bits)[0].tolist())
+    print("selected_dual_fp16=", dual_strided_fp16[0].astype(np.float32).tolist())
     return 0 if (
         dual_strided_mismatch == 0
         and dual_transposed_mismatch == 0
         and single_strided_mismatch == 0
         and single_transposed_mismatch == 0
+        and dual_strided_fp16_mismatch == 0
+        and dual_transposed_fp16_mismatch == 0
+        and single_strided_fp16_mismatch == 0
+        and single_transposed_fp16_mismatch == 0
     ) else 1
 
 
@@ -5669,6 +5901,55 @@ def _selected_pack8_reference(
                     acc[lane] = np.float32(acc[lane] + np.float32(xv * np.float32(q - z) * scale))
             out[row, out_pack * 8 : out_pack * 8 + 8] = acc
     return _float32_to_bf16_bits(out)
+
+
+def _selected_pack8_reference_lowp(
+    x_values: object,
+    selected: object,
+    qweight: object,
+    qzeros: object,
+    scales_values: object,
+    group_size: int,
+    *,
+    qweight_transposed: bool,
+    out_dtype: object,
+):
+    import numpy as np
+
+    x = np.asarray(x_values).astype(np.float32)
+    selected_arr = np.asarray(selected, dtype=np.int64)
+    qweight_arr = np.asarray(qweight, dtype=np.int32)
+    qzeros_arr = np.asarray(qzeros, dtype=np.int32)
+    scales = np.asarray(scales_values).astype(np.float32)
+    rows = selected_arr.shape[0]
+    num_experts = qweight_arr.shape[0]
+    out_packed = qweight_arr.shape[1] if qweight_transposed else qweight_arr.shape[2]
+    in_features = qweight_arr.shape[2] if qweight_transposed else qweight_arr.shape[1]
+    out = np.empty((rows, out_packed * 8), dtype=np.float32)
+    for row in range(rows):
+        expert = int(selected_arr[row])
+        if expert < 0 or expert >= num_experts:
+            out[row].fill(0.0)
+            continue
+        x_row = 0 if x.shape[0] == 1 else row
+        for out_pack in range(out_packed):
+            acc = np.zeros(8, dtype=np.float32)
+            for in_col in range(in_features):
+                group = in_col // group_size
+                packed_w = int(
+                    qweight_arr[expert, out_pack, in_col]
+                    if qweight_transposed
+                    else qweight_arr[expert, in_col, out_pack]
+                )
+                packed_z = int(qzeros_arr[expert, group, out_pack])
+                xv = np.float32(x[x_row, in_col])
+                for lane in range(8):
+                    q = (packed_w >> _awq_shift_for_pack_lane(lane)) & 0xF
+                    z = (packed_z >> _awq_shift_for_pack_lane(lane)) & 0xF
+                    scale = np.float32(scales[expert, group, out_pack * 8 + lane])
+                    acc[lane] = np.float32(acc[lane] + np.float32(xv * np.float32(q - z) * scale))
+            out[row, out_pack * 8 : out_pack * 8 + 8] = acc
+    return out.astype(out_dtype)
 
 
 def _pack8_reference_lowp(

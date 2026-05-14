@@ -4414,3 +4414,53 @@ Results:
 ### Next
 
 - Continue task #38 with FP16 wrappers for selected-MoE pack8/fused-rotate paths, router/MoE activations, W8A16 lowp, linear-attention lowp, and attention gate paths.
+
+---
+
+## 2026-05-15 — Add FP16 selected PARO AWQ GEMV wrappers
+
+### Scope
+
+- Added parent-parity FP16 raw-pointer wrappers for selected-MoE PARO pack8 GEMV and fused rotate→selected dual GEMV:
+  - `gemv_awq_selected_dual_pack8_strided_rotate_out_fp16(...)`
+  - `gemv_awq_selected_dual_pack8_strided_fp16(...)`
+  - `gemv_awq_selected_dual_pack8_transposed_fp16(...)`
+  - `gemv_awq_selected_pack8_strided_fp16(...)`
+  - `gemv_awq_selected_pack8_transposed_fp16(...)`
+- Registered the wrappers under `strided_fp16` / `transposed_fp16` variants for selected dual/single and fused rotate selected-dual.
+- Extended `scripts/smoke.py --mode paro-selected-gemv-hip` and `--mode paro-selected-gemv-rotate-hip` with bit-exact FP16 oracles.
+- Updated `docs/KERNELS.md` and `docs/IMPLEMENTATION.md`; remaining parent-mixed FP16 wrapper gaps are now linear-attention/shared/gated-attention paths.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_paro_awq_gemv_plan.py -q
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode paro-selected-gemv-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode paro-selected-gemv-rotate-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-paro-selected-fp16 -- \
+  python3 scripts/smoke.py --mode paro-selected-gemv-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-paro-selected-rotate-fp16 -- \
+  python3 scripts/smoke.py --mode paro-selected-gemv-rotate-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- Unit plan tests passed: `3 passed`.
+- Selected GEMV smoke passed: BF16 `dual_mismatch=0/0`, `single_mismatch=0/0`; FP16 `fp16_dual_mismatch=0/0`, `fp16_single_mismatch=0/0`.
+- Fused rotate-selected smoke passed: BF16 `mismatch=0`, FP16 `fp16_mismatch=0`, `fp16_max_abs=0.0`.
+- `rocprofv3` confirmed FP16 selected kernels ran on W7900:
+  - `gemv_awq_selected_dual_pack8_strided_kernel<_Float16,false>`: `DurationNs=17240`, `Scratch_Size=0`, `LDS_Block_Size=256`, `Workgroup_Size_X=64`.
+  - `gemv_awq_selected_dual_pack8_strided_kernel<_Float16,true>`: `DurationNs=14720`, `Scratch_Size=0`, `LDS_Block_Size=256`, `Workgroup_Size_X=64`.
+  - `gemv_awq_selected_pack8_kernel<_Float16,false>`: `DurationNs=13680`, `Scratch_Size=0`, `LDS_Block_Size=256`, `Workgroup_Size_X=64`.
+  - `gemv_awq_selected_pack8_kernel<_Float16,true>`: `DurationNs=12840`, `Scratch_Size=0`, `LDS_Block_Size=256`, `Workgroup_Size_X=64`.
+  - `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel<_Float16,false>`: `DurationNs=21523`, `Scratch_Size=0`, `LDS_Block_Size=320`, `Workgroup_Size_X=64`.
+
+### Next
+
+- Continue task #38 with FP16 wrappers for W8A16 lowp/shared-expert, linear-attention lowp, router/shared-gate, and gated-attention paths.
