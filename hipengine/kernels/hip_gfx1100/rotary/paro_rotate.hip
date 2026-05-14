@@ -7,6 +7,8 @@
 
 namespace {
 
+using half_t = _Float16;
+
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
     uint32_t u32;
@@ -334,6 +336,126 @@ extern "C" int hipengine_paro_rotate3_bf16(
   }
   hipLaunchKernelGGL(
       (paro_rotate3_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(hidden / group_size), 3U),
+      dim3(static_cast<unsigned int>(group_size / 2)),
+      static_cast<unsigned int>(group_size * sizeof(float)),
+      stream,
+      x,
+      out0,
+      out1,
+      out2,
+      pairs0,
+      pairs1,
+      pairs2,
+      theta0,
+      theta1,
+      theta2,
+      scales0,
+      scales1,
+      scales2,
+      tokens,
+      hidden,
+      static_cast<int>(group_size),
+      static_cast<int>(krot));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_paro_rotate1_fp16(
+    const half_t* x,
+    half_t* out,
+    const int16_t* pairs,
+    const half_t* theta,
+    const half_t* scales,
+    int64_t tokens,
+    int64_t hidden,
+    int64_t group_size,
+    int64_t krot,
+    hipStream_t stream) {
+  if (!valid_rotate_shape(tokens, hidden, group_size, krot)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (paro_rotate1_kernel<half_t>),
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(hidden / group_size)),
+      dim3(static_cast<unsigned int>(group_size / 2)),
+      static_cast<unsigned int>(group_size * sizeof(float)),
+      stream,
+      x,
+      out,
+      pairs,
+      theta,
+      scales,
+      tokens,
+      hidden,
+      static_cast<int>(group_size),
+      static_cast<int>(krot));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_paro_rotate2_fp16(
+    const half_t* x,
+    half_t* out0,
+    half_t* out1,
+    const int16_t* pairs0,
+    const int16_t* pairs1,
+    const half_t* theta0,
+    const half_t* theta1,
+    const half_t* scales0,
+    const half_t* scales1,
+    int64_t tokens,
+    int64_t hidden,
+    int64_t group_size,
+    int64_t krot,
+    hipStream_t stream) {
+  if (!valid_rotate_shape(tokens, hidden, group_size, krot)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (paro_rotate2_kernel<half_t>),
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(hidden / group_size), 2U),
+      dim3(static_cast<unsigned int>(group_size / 2)),
+      static_cast<unsigned int>(group_size * sizeof(float)),
+      stream,
+      x,
+      out0,
+      out1,
+      pairs0,
+      pairs1,
+      theta0,
+      theta1,
+      scales0,
+      scales1,
+      tokens,
+      hidden,
+      static_cast<int>(group_size),
+      static_cast<int>(krot));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_paro_rotate3_fp16(
+    const half_t* x,
+    half_t* out0,
+    half_t* out1,
+    half_t* out2,
+    const int16_t* pairs0,
+    const int16_t* pairs1,
+    const int16_t* pairs2,
+    const half_t* theta0,
+    const half_t* theta1,
+    const half_t* theta2,
+    const half_t* scales0,
+    const half_t* scales1,
+    const half_t* scales2,
+    int64_t tokens,
+    int64_t hidden,
+    int64_t group_size,
+    int64_t krot,
+    hipStream_t stream) {
+  if (!valid_rotate_shape(tokens, hidden, group_size, krot)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (paro_rotate3_kernel<half_t>),
       dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(hidden / group_size), 3U),
       dim3(static_cast<unsigned int>(group_size / 2)),
       static_cast<unsigned int>(group_size * sizeof(float)),

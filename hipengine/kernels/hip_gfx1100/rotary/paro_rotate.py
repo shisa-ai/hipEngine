@@ -14,6 +14,9 @@ _OUTPUT_NAME = "paro_rotate.so"
 _SYMBOL_ROTATE1 = "hipengine_paro_rotate1_bf16"
 _SYMBOL_ROTATE2 = "hipengine_paro_rotate2_bf16"
 _SYMBOL_ROTATE3 = "hipengine_paro_rotate3_bf16"
+_SYMBOL_ROTATE1_FP16 = "hipengine_paro_rotate1_fp16"
+_SYMBOL_ROTATE2_FP16 = "hipengine_paro_rotate2_fp16"
+_SYMBOL_ROTATE3_FP16 = "hipengine_paro_rotate3_fp16"
 
 
 def plan_paro_rotate_build(
@@ -237,6 +240,189 @@ def paro_rotate3_bf16(
     _check_launch(runtime, err)
 
 
+def paro_rotate1_fp16(
+    x_ptr: int,
+    out_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    scales_ptr: int,
+    tokens: int,
+    hidden: int,
+    group_size: int,
+    krot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch parent PARO single-output pairwise rotation kernel for FP16 buffers."""
+
+    _check_rotate_shape(tokens, hidden, group_size, krot)
+    library = library or build_paro_rotate(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ROTATE1_FP16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(pairs_ptr),
+        ctypes.c_void_p(theta_ptr),
+        ctypes.c_void_p(scales_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(krot),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def paro_rotate2_fp16(
+    x_ptr: int,
+    out0_ptr: int,
+    out1_ptr: int,
+    pairs0_ptr: int,
+    pairs1_ptr: int,
+    theta0_ptr: int,
+    theta1_ptr: int,
+    scales0_ptr: int,
+    scales1_ptr: int,
+    tokens: int,
+    hidden: int,
+    group_size: int,
+    krot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch parent PARO two-output pairwise rotation kernel for FP16 buffers."""
+
+    _check_rotate_shape(tokens, hidden, group_size, krot)
+    library = library or build_paro_rotate(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ROTATE2_FP16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(out0_ptr),
+        ctypes.c_void_p(out1_ptr),
+        ctypes.c_void_p(pairs0_ptr),
+        ctypes.c_void_p(pairs1_ptr),
+        ctypes.c_void_p(theta0_ptr),
+        ctypes.c_void_p(theta1_ptr),
+        ctypes.c_void_p(scales0_ptr),
+        ctypes.c_void_p(scales1_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(krot),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def paro_rotate3_fp16(
+    x_ptr: int,
+    out0_ptr: int,
+    out1_ptr: int,
+    out2_ptr: int,
+    pairs0_ptr: int,
+    pairs1_ptr: int,
+    pairs2_ptr: int,
+    theta0_ptr: int,
+    theta1_ptr: int,
+    theta2_ptr: int,
+    scales0_ptr: int,
+    scales1_ptr: int,
+    scales2_ptr: int,
+    tokens: int,
+    hidden: int,
+    group_size: int,
+    krot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch parent PARO three-output pairwise rotation kernel for FP16 buffers."""
+
+    _check_rotate_shape(tokens, hidden, group_size, krot)
+    library = library or build_paro_rotate(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ROTATE3_FP16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(out0_ptr),
+        ctypes.c_void_p(out1_ptr),
+        ctypes.c_void_p(out2_ptr),
+        ctypes.c_void_p(pairs0_ptr),
+        ctypes.c_void_p(pairs1_ptr),
+        ctypes.c_void_p(pairs2_ptr),
+        ctypes.c_void_p(theta0_ptr),
+        ctypes.c_void_p(theta1_ptr),
+        ctypes.c_void_p(theta2_ptr),
+        ctypes.c_void_p(scales0_ptr),
+        ctypes.c_void_p(scales1_ptr),
+        ctypes.c_void_p(scales2_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(krot),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_paro_rotate_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paro_rotate1", "w4_paro", "bf16"),
@@ -251,6 +437,21 @@ def register_paro_rotate_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paro_rotate3", "w4_paro", "bf16"),
         paro_rotate3_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paro_rotate1", "w4_paro", "fp16"),
+        paro_rotate1_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paro_rotate2", "w4_paro", "fp16"),
+        paro_rotate2_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paro_rotate3", "w4_paro", "fp16"),
+        paro_rotate3_fp16,
         replace=replace,
     )
 

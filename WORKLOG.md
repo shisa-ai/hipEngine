@@ -4332,3 +4332,43 @@ Results:
 ### Next
 
 - Continue task #38 by adding FP16 variants for PARO rotate/projection, router/MoE, W8A16 lowp, linear-attention lowp, and attention gate paths before switching resident materialization/session dtype.
+
+---
+
+## 2026-05-15 — Add parent-parity FP16 PARO rotate wrappers
+
+### Scope
+
+- Added raw-pointer FP16 ABI wrappers for `paro_rotate1`, `paro_rotate2`, and `paro_rotate3`:
+  - `hipengine_paro_rotate1_fp16` / `paro_rotate1_fp16(...)`
+  - `hipengine_paro_rotate2_fp16` / `paro_rotate2_fp16(...)`
+  - `hipengine_paro_rotate3_fp16` / `paro_rotate3_fp16(...)`
+- Registered the wrappers under `KernelKey("hip_gfx1100", "paro_rotate{1,2,3}", "w4_paro", "fp16")`.
+- Extended `scripts/smoke.py --mode paro-rotate-hip` to keep the existing BF16 rotate2/3 oracle and add bit-exact FP16 rotate1/2/3 checks.
+- Updated `docs/KERNELS.md` and `docs/IMPLEMENTATION.md` to record FP16 PARO rotate coverage for parent activation parity.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_paro_rotate_plan.py -q
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode paro-rotate-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-paro-rotate-fp16 -- \
+  python3 scripts/smoke.py --mode paro-rotate-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- Unit plan tests passed: `3 passed`.
+- Smoke passed: BF16 rotate2/3 `mismatches=[0, 0, 0, 0, 0]`, `max_abs=0.0`; FP16 rotate1/2/3 `fp16_mismatches=[0, 0, 0, 0, 0, 0]`, `fp16_max_abs=0.0`.
+- `rocprofv3` confirmed FP16 rotate kernels ran on W7900:
+  - `paro_rotate1_kernel<_Float16>`: `DurationNs=11680`, `Scratch_Size=0`, `LDS_Block_Size=32`, `Workgroup_Size_X=4`.
+  - `paro_rotate2_kernel<_Float16>`: `DurationNs=2680`, `Scratch_Size=0`, `LDS_Block_Size=32`, `Workgroup_Size_X=4`.
+  - `paro_rotate3_kernel<_Float16>`: `DurationNs=2560`, `Scratch_Size=0`, `LDS_Block_Size=32`, `Workgroup_Size_X=4`.
+
+### Next
+
+- Continue task #38 with FP16 wrappers for PARO AWQ GEMV/projection paths, router/MoE, W8A16 lowp, linear-attention lowp, and attention gate paths.

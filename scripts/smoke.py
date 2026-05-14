@@ -4771,8 +4771,11 @@ def paro_rotate_hip_smoke(
     )
     from hipengine.kernels.hip_gfx1100.rotary import (
         build_paro_rotate,
+        paro_rotate1_fp16,
         paro_rotate2_bf16,
+        paro_rotate2_fp16,
         paro_rotate3_bf16,
+        paro_rotate3_fp16,
     )
 
     if rows < 1:
@@ -4804,6 +4807,21 @@ def paro_rotate_hip_smoke(
     ]
     scale_bits = [_float32_to_bf16_bits(values) for values in scale_sets]
     expected = [_float32_to_bf16_bits(x_f32 * values.reshape(1, hidden_size)) for values in scale_sets]
+    x_fp16 = x_f32.astype(np.float16)
+    theta_fp16 = np.zeros((krot, hidden_size // 2), dtype=np.float16)
+    scale_fp16 = [values.astype(np.float16) for values in scale_sets]
+    expected_fp16 = [
+        (x_fp16.astype(np.float32) * values.astype(np.float32).reshape(1, hidden_size)).astype(
+            np.float16
+        )
+        for values in scale_fp16
+    ]
+    rotate1_fp16 = np.empty_like(x_fp16)
+    rotate2_fp16_out0 = np.empty_like(x_fp16)
+    rotate2_fp16_out1 = np.empty_like(x_fp16)
+    rotate3_fp16_out0 = np.empty_like(x_fp16)
+    rotate3_fp16_out1 = np.empty_like(x_fp16)
+    rotate3_fp16_out2 = np.empty_like(x_fp16)
     rotate2_out0 = np.empty_like(x_bits)
     rotate2_out1 = np.empty_like(x_bits)
     rotate3_out0 = np.empty_like(x_bits)
@@ -4839,6 +4857,15 @@ def paro_rotate_hip_smoke(
         r3o0_dev = out_dev(rotate3_out0)
         r3o1_dev = out_dev(rotate3_out1)
         r3o2_dev = out_dev(rotate3_out2)
+        x_fp16_dev = dev(x_fp16)
+        theta_fp16_dev = dev(theta_fp16)
+        scale_fp16_dev = [dev(values) for values in scale_fp16]
+        r1_fp16_dev = out_dev(rotate1_fp16)
+        r2_fp16_o0_dev = out_dev(rotate2_fp16_out0)
+        r2_fp16_o1_dev = out_dev(rotate2_fp16_out1)
+        r3_fp16_o0_dev = out_dev(rotate3_fp16_out0)
+        r3_fp16_o1_dev = out_dev(rotate3_fp16_out1)
+        r3_fp16_o2_dev = out_dev(rotate3_fp16_out2)
         paro_rotate2_bf16(
             x_dev.ptr,
             r2o0_dev.ptr,
@@ -4877,12 +4904,69 @@ def paro_rotate_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        paro_rotate1_fp16(
+            x_fp16_dev.ptr,
+            r1_fp16_dev.ptr,
+            pairs_dev.ptr,
+            theta_fp16_dev.ptr,
+            scale_fp16_dev[0].ptr,
+            rows,
+            hidden_size,
+            group_size,
+            krot,
+            library=library,
+            runtime=runtime,
+        )
+        paro_rotate2_fp16(
+            x_fp16_dev.ptr,
+            r2_fp16_o0_dev.ptr,
+            r2_fp16_o1_dev.ptr,
+            pairs_dev.ptr,
+            pairs_dev.ptr,
+            theta_fp16_dev.ptr,
+            theta_fp16_dev.ptr,
+            scale_fp16_dev[0].ptr,
+            scale_fp16_dev[1].ptr,
+            rows,
+            hidden_size,
+            group_size,
+            krot,
+            library=library,
+            runtime=runtime,
+        )
+        paro_rotate3_fp16(
+            x_fp16_dev.ptr,
+            r3_fp16_o0_dev.ptr,
+            r3_fp16_o1_dev.ptr,
+            r3_fp16_o2_dev.ptr,
+            pairs_dev.ptr,
+            pairs_dev.ptr,
+            pairs_dev.ptr,
+            theta_fp16_dev.ptr,
+            theta_fp16_dev.ptr,
+            theta_fp16_dev.ptr,
+            scale_fp16_dev[0].ptr,
+            scale_fp16_dev[1].ptr,
+            scale_fp16_dev[2].ptr,
+            rows,
+            hidden_size,
+            group_size,
+            krot,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(rotate2_out0), r2o0_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(rotate2_out1), r2o1_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(rotate3_out0), r3o0_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(rotate3_out1), r3o1_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(rotate3_out2), r3o2_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotate1_fp16), r1_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotate2_fp16_out0), r2_fp16_o0_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotate2_fp16_out1), r2_fp16_o1_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotate3_fp16_out0), r3_fp16_o0_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotate3_fp16_out1), r3_fp16_o1_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotate3_fp16_out2), r3_fp16_o2_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
@@ -4896,13 +4980,41 @@ def paro_rotate_hip_smoke(
             for out, exp in zip(outputs, expect, strict=True)
         )
     )
+    fp16_outputs = [
+        rotate1_fp16,
+        rotate2_fp16_out0,
+        rotate2_fp16_out1,
+        rotate3_fp16_out0,
+        rotate3_fp16_out1,
+        rotate3_fp16_out2,
+    ]
+    fp16_expect = [
+        expected_fp16[0],
+        expected_fp16[0],
+        expected_fp16[1],
+        expected_fp16[0],
+        expected_fp16[1],
+        expected_fp16[2],
+    ]
+    fp16_mismatches = [
+        int(np.count_nonzero(out.view(np.uint16) != exp.view(np.uint16)))
+        for out, exp in zip(fp16_outputs, fp16_expect, strict=True)
+    ]
+    fp16_max_abs = float(
+        max(
+            np.max(np.abs(out.astype(np.float32) - exp.astype(np.float32)))
+            for out, exp in zip(fp16_outputs, fp16_expect, strict=True)
+        )
+    )
     print(
         f"rows={rows} hidden_size={hidden_size} group_size={group_size} krot={krot} "
-        f"mismatches={mismatches} max_abs={max_abs}"
+        f"mismatches={mismatches} max_abs={max_abs} "
+        f"fp16_mismatches={fp16_mismatches} fp16_max_abs={fp16_max_abs}"
     )
     print("rotate2_0=", _bf16_bits_to_float32(rotate2_out0)[0].tolist())
     print("rotate3_2=", _bf16_bits_to_float32(rotate3_out2)[0].tolist())
-    return 0 if max(mismatches) == 0 else 1
+    print("rotate1_fp16=", rotate1_fp16[0].astype(np.float32).tolist())
+    return 0 if max(mismatches) == 0 and max(fp16_mismatches) == 0 else 1
 
 def paro_selected_gemv_rotate_hip_smoke(
     rows: int,
