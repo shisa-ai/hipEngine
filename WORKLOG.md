@@ -4042,3 +4042,25 @@ Results: all tests passed.
 ### Next
 
 - Build the Qwen3.5/PARO batched layer runner/generator shell on top of the scheduler and graph buckets.
+
+---
+
+## 2026-05-14 — Wire multi-token resident Qwen3.5/PARO generation
+
+### Scope
+
+- Updated the Qwen3.5/PARO registered generator to allow `max_tokens > 1` for greedy decoding.
+- `LLM.generate()` now routes Qwen3.5/PARO prompts through real resident token-by-token prefill followed by multi-token autoregressive decode, still serial across prompts.
+- Added unit coverage for prompt prefill sequencing, generated-token feedback positions, zero-token requests, and EOS stop handling.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests && python3 -m pytest tests/test_generation_qwen35_paro.py tests/test_llm_generate.py -q
+```
+
+Results: all tests passed.
+
+### Next
+
+- Add real-checkpoint E2E correctness gates against the parent nano-vllm-amd path for c=1 generated-token sequences, then extend to c>N once the batched layer runner is wired.
