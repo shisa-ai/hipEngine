@@ -569,7 +569,9 @@ def paro_rmsnorm_hip_smoke(
     from hipengine.kernels.hip_gfx1100.norm import (
         build_qwen35_rmsnorm,
         paro_add_rmsnorm_out_bf16,
+        paro_add_rmsnorm_out_fp16,
         paro_rmsnorm_out_bf16,
+        paro_rmsnorm_out_fp16,
     )
 
     if rows < 1:
@@ -671,17 +673,111 @@ def paro_rmsnorm_hip_smoke(
     norm_bit_mismatch = int(np.count_nonzero(norm_out_bits != expected_norm_bits))
     add_norm_bit_mismatch = int(np.count_nonzero(add_norm_out_bits != expected_add_norm_bits))
     residual_bit_mismatch = int(np.count_nonzero(residual_out_bits != residual_bits))
+
+    x_fp16 = x_f32.astype(np.float16)
+    add_fp16 = add_f32.astype(np.float16)
+    weight_fp16 = weight_f32.astype(np.float16)
+    norm_out_fp16 = np.empty_like(x_fp16)
+    add_norm_out_fp16 = np.empty_like(x_fp16)
+    residual_out_fp16 = np.empty_like(x_fp16)
+    x_fp32 = x_fp16.astype(np.float32)
+    add_fp32 = add_fp16.astype(np.float32)
+    weight_fp32 = weight_fp16.astype(np.float32)
+    fp16_inv_rms = np.reciprocal(
+        np.sqrt(np.mean(x_fp32 * x_fp32, axis=-1, keepdims=True) + 1e-6)
+    )
+    expected_norm_fp16 = (x_fp32 * fp16_inv_rms * weight_fp32).astype(np.float16)
+    expected_residual_fp16 = (x_fp32 + add_fp32).astype(np.float16)
+    expected_residual_fp32 = expected_residual_fp16.astype(np.float32)
+    fp16_add_inv_rms = np.reciprocal(
+        np.sqrt(
+            np.mean(
+                expected_residual_fp32 * expected_residual_fp32,
+                axis=-1,
+                keepdims=True,
+            )
+            + 1e-6
+        )
+    )
+    expected_add_norm_fp16 = (
+        expected_residual_fp32 * fp16_add_inv_rms * weight_fp32
+    ).astype(np.float16)
+
+    fp16_buffers = []
+    try:
+        for array in (
+            x_fp16,
+            add_fp16,
+            weight_fp16,
+            norm_out_fp16,
+            add_norm_out_fp16,
+            residual_out_fp16,
+        ):
+            buffer = malloc(array.nbytes, runtime=runtime)
+            fp16_buffers.append(buffer)
+        copy_host_to_device(fp16_buffers[0], host_array_ptr(x_fp16), runtime=runtime)
+        copy_host_to_device(fp16_buffers[1], host_array_ptr(add_fp16), runtime=runtime)
+        copy_host_to_device(fp16_buffers[2], host_array_ptr(weight_fp16), runtime=runtime)
+        paro_rmsnorm_out_fp16(
+            fp16_buffers[0].ptr,
+            fp16_buffers[2].ptr,
+            fp16_buffers[3].ptr,
+            rows,
+            hidden_size,
+            1e-6,
+            library=library,
+            runtime=runtime,
+        )
+        paro_add_rmsnorm_out_fp16(
+            fp16_buffers[0].ptr,
+            fp16_buffers[1].ptr,
+            fp16_buffers[2].ptr,
+            fp16_buffers[4].ptr,
+            fp16_buffers[5].ptr,
+            rows,
+            hidden_size,
+            1e-6,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(norm_out_fp16), fp16_buffers[3], runtime=runtime)
+        copy_device_to_host(host_array_ptr(add_norm_out_fp16), fp16_buffers[4], runtime=runtime)
+        copy_device_to_host(host_array_ptr(residual_out_fp16), fp16_buffers[5], runtime=runtime)
+    finally:
+        for buffer in reversed(fp16_buffers):
+            free(buffer, runtime=runtime)
+
+    norm_fp16_mismatch = int(
+        np.count_nonzero(norm_out_fp16.view(np.uint16) != expected_norm_fp16.view(np.uint16))
+    )
+    add_norm_fp16_mismatch = int(
+        np.count_nonzero(
+            add_norm_out_fp16.view(np.uint16) != expected_add_norm_fp16.view(np.uint16)
+        )
+    )
+    residual_fp16_mismatch = int(
+        np.count_nonzero(
+            residual_out_fp16.view(np.uint16) != expected_residual_fp16.view(np.uint16)
+        )
+    )
     print(
         f"rows={rows} hidden_size={hidden_size} "
         f"norm_max_abs={norm_max_abs} norm_bit_mismatch={norm_bit_mismatch} "
         f"add_norm_max_abs={add_norm_max_abs} add_norm_bit_mismatch={add_norm_bit_mismatch} "
-        f"residual_max_abs={residual_max_abs} residual_bit_mismatch={residual_bit_mismatch}"
+        f"residual_max_abs={residual_max_abs} residual_bit_mismatch={residual_bit_mismatch} "
+        f"fp16_norm_mismatch={norm_fp16_mismatch} "
+        f"fp16_add_norm_mismatch={add_norm_fp16_mismatch} "
+        f"fp16_residual_mismatch={residual_fp16_mismatch}"
     )
     print("first_row=", norm_out[0, : min(5, hidden_size)].tolist())
     return 0 if (
         norm_bit_mismatch == 0
         and add_norm_bit_mismatch == 0
         and residual_bit_mismatch == 0
+        and norm_fp16_mismatch == 0
+        and add_norm_fp16_mismatch == 0
+        and residual_fp16_mismatch == 0
     ) else 1
 
 

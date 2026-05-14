@@ -8,6 +8,8 @@
 
 namespace {
 
+using half_t = _Float16;
+
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
     uint32_t u32;
@@ -29,7 +31,9 @@ __device__ inline uint16_t float_to_bf16_bits(float value) {
 }
 
 template <typename scalar_t>
-__device__ inline scalar_t float_to_scalar(float value);
+__device__ inline scalar_t float_to_scalar(float value) {
+  return static_cast<scalar_t>(value);
+}
 
 template <>
 __device__ inline uint16_t float_to_scalar<uint16_t>(float value) {
@@ -37,7 +41,9 @@ __device__ inline uint16_t float_to_scalar<uint16_t>(float value) {
 }
 
 template <typename scalar_t>
-__device__ inline float scalar_to_float(scalar_t value);
+__device__ inline float scalar_to_float(scalar_t value) {
+  return static_cast<float>(value);
+}
 
 template <>
 __device__ inline float scalar_to_float<uint16_t>(uint16_t value) {
@@ -525,6 +531,62 @@ extern "C" int hipengine_paro_add_rmsnorm_out_bf16(
   }
   hipLaunchKernelGGL(
       paro_add_rmsnorm_out_kernel<uint16_t>,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(kRmsNormThreads),
+      0,
+      stream,
+      x,
+      add,
+      weight,
+      norm_out,
+      residual_out,
+      eps,
+      rows,
+      hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_paro_rmsnorm_out_fp16(
+    const half_t* x,
+    const half_t* weight,
+    half_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      paro_rmsnorm_out_kernel<half_t>,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(kRmsNormThreads),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      eps,
+      rows,
+      hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_paro_add_rmsnorm_out_fp16(
+    const half_t* x,
+    const half_t* add,
+    const half_t* weight,
+    half_t* norm_out,
+    half_t* residual_out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      paro_add_rmsnorm_out_kernel<half_t>,
       dim3(static_cast<unsigned int>(rows)),
       dim3(kRmsNormThreads),
       0,

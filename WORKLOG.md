@@ -4288,3 +4288,47 @@ Results: 44 targeted build-plan/kernel-plan tests passed.
 ### Coordination note
 
 - Left unrelated in-progress FP16 RMSNorm changes in `hipengine/kernels/hip_gfx1100/norm/{__init__.py,rmsnorm.hip,rmsnorm.py}` unstaged for their owner.
+
+---
+
+## 2026-05-15 — Start parent-mixed activation parity with FP16 PARO RMSNorm wrappers
+
+### Decision
+
+- For Qwen3.5/PARO c=1 parent fixture parity, target the parent nano-vllm-amd mixed activation ABI rather than recapturing a BF16-only oracle.
+- Parent-compatible contract to implement: FP16 for checkpoint PARO/residual-stream tensors and lowp projection/MoE intermediates; BF16 for full-attention KV cache and q/k head RMSNorm offset weights consumed by the parent fused head-norm+rotary kernel; FP32 for recurrence, conv state, attention scores, and logits.
+- Decomposed the implementation into tasks #38-#41: FP16 wrappers, materialization, resident-session switch, then fixture promotion.
+
+### Scope
+
+- Added raw-pointer FP16 variants for PARO RMSNorm out-kernels:
+  - `hipengine_paro_rmsnorm_out_fp16` / `paro_rmsnorm_out_fp16(...)`
+  - `hipengine_paro_add_rmsnorm_out_fp16` / `paro_add_rmsnorm_out_fp16(...)`
+- Registered both under `KernelKey("hip_gfx1100", {"rmsnorm","add_rmsnorm"}, "w4_paro", "paro_out_fp16")`.
+- Extended `scripts/smoke.py --mode paro-rmsnorm-hip` to validate both existing BF16 and new FP16 PARO RMSNorm/add-RMSNorm bit-exactness.
+- Updated `docs/KERNELS.md` and `docs/IMPLEMENTATION.md` to record the parent-parity FP16 RMSNorm coverage and the remaining FP16 wrapper gap.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+python3 -m pytest tests/test_qwen35_rmsnorm_plan.py -q
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-paro-rmsnorm-fp16 -- \
+  python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Results:
+
+- Unit plan tests passed: `3 passed`.
+- Smoke passed: BF16 `norm_bit_mismatch=0`, `add_norm_bit_mismatch=0`, `residual_bit_mismatch=0`; FP16 `fp16_norm_mismatch=0`, `fp16_add_norm_mismatch=0`, `fp16_residual_mismatch=0`.
+- `rocprofv3` confirmed FP16 kernels ran on W7900:
+  - `paro_rmsnorm_out_kernel<_Float16>`: `DurationNs=5800`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=1024`, `Workgroup_Size_X=256`.
+  - `paro_add_rmsnorm_out_kernel<_Float16>`: `DurationNs=5320`, `VGPR_Count=32`, `Scratch_Size=0`, `LDS_Block_Size=1024`, `Workgroup_Size_X=256`.
+
+### Next
+
+- Continue task #38 by adding FP16 variants for PARO rotate/projection, router/MoE, W8A16 lowp, linear-attention lowp, and attention gate paths before switching resident materialization/session dtype.
