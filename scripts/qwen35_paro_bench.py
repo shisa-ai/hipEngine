@@ -3,9 +3,10 @@
 
 This runs real prompt-token prefill and generated-token decode with persistent
 per-layer linear-attention state and full-attention KV cache. By default,
-prefill is token-by-token c=1. ``--native-prefill`` enables a diagnostic native
-batched prefill only for linear-attention-only layer prefixes; it is not yet the
-full compact/grouped PLAN-MOE2 prefill path.
+prefill is token-by-token c=1. ``--native-prefill`` requests a diagnostic native
+batched prefill only for linear-attention-only layer prefixes; because the
+current helper has rejected correctness vs serial c=1, it also requires
+``--allow-rejected-native-prefill`` and is not a throughput path.
 """
 
 from __future__ import annotations
@@ -59,7 +60,12 @@ def main() -> int:
     parser.add_argument(
         "--native-prefill",
         action="store_true",
-        help="Use native batched prefill when the selected layer prefix is linear-attention-only.",
+        help="Request diagnostic native batched prefill for a linear-attention-only layer prefix.",
+    )
+    parser.add_argument(
+        "--allow-rejected-native-prefill",
+        action="store_true",
+        help="Opt into the current rejected_correctness native prefill helper for blocker/profiling diagnostics only.",
     )
     parser.add_argument("--json", type=Path, default=None, help="Optional output JSON path")
     args = parser.parse_args()
@@ -72,6 +78,13 @@ def main() -> int:
         raise ValueError("--graph-steps-per-replay must be positive")
     if args.graph_replay_decode and args.decode_tokens and (args.decode_tokens % args.graph_steps_per_replay) != 0:
         raise ValueError("--decode-tokens must be divisible by --graph-steps-per-replay")
+    if args.allow_rejected_native_prefill and not args.native_prefill:
+        raise ValueError("--allow-rejected-native-prefill requires --native-prefill")
+    if args.native_prefill and not args.allow_rejected_native_prefill:
+        raise ValueError(
+            "--native-prefill is currently rejected_correctness vs serial c=1; "
+            "add --allow-rejected-native-prefill only for diagnostic blocker artifacts"
+        )
 
     model = Path(args.model)
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file is not None else None
@@ -102,7 +115,11 @@ def main() -> int:
         with roctx.range("hipengine:prefill"):
             if args.native_prefill:
                 with roctx.range("hipengine:native_prefill_batch"):
-                    next_result = session.prefill_linear_tokens_native(prompt_tokens, sample=True)
+                    next_result = session.prefill_linear_tokens_native(
+                        prompt_tokens,
+                        sample=True,
+                        allow_rejected_correctness=args.allow_rejected_native_prefill,
+                    )
             else:
                 for pos, token in enumerate(prompt_tokens):
                     with roctx.range("hipengine:prefill_step"):
@@ -173,6 +190,7 @@ def main() -> int:
         "max_layers": args.max_layers or runner.config.num_hidden_layers,
         "tokens_per_step": 1,
         "native_batched_prefill": bool(args.native_prefill),
+        "allow_rejected_native_prefill": bool(args.allow_rejected_native_prefill),
         "graph_replay": bool(args.graph_replay_decode),
         "graph_steps_per_replay": args.graph_steps_per_replay if args.graph_replay_decode else 0,
         "prefill_comparable_to_plan_moe2": False,
@@ -193,7 +211,7 @@ def main() -> int:
         "generated_preview": generated[:16],
         "notes": [
             (
-                "Prefill uses native batched linear-attention + c1-style batched MoE for a linear-attention-only layer prefix; not compact/grouped WMMA."
+                "Prefill uses the rejected_correctness native linear-prefix helper under explicit diagnostic opt-in; not compact/grouped WMMA and not a throughput claim."
                 if args.native_prefill
                 else "Prefill is actual autoregressive token-by-token c=1, not native batched/compact prefill."
             ),

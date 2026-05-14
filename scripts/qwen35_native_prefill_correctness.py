@@ -77,7 +77,11 @@ def _run_native(
         max_layers=max_layers,
     ) as session:
         plan = session.native_prefill_plan().to_json_dict()
-        seed = session.prefill_linear_tokens_native(prompt_tokens, sample=True)
+        seed = session.prefill_linear_tokens_native(
+            prompt_tokens,
+            sample=True,
+            allow_rejected_correctness=True,
+        )
         if seed is None:
             raise RuntimeError("native prefill did not produce a seed token")
         decode = session.step(seed.token_id, position=len(prompt_tokens), sample=True)

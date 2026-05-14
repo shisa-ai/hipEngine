@@ -5355,3 +5355,53 @@ Result: pytest exit code `0`.
 
 - The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`; robust active TaskList count over #12/#15 remains `2`.
 - No performance claim was made; the new artifact is explicitly rejected correctness evidence.
+
+---
+
+## 2026-05-15 — Gate rejected native linear-prefix prefill behind diagnostic opt-in
+
+### Scope
+
+- Follow-up to the rejected correctness artifact for the current native linear-prefix prefill helper.
+- Updated `Qwen35ParoResidentSession.prefill_linear_tokens_native()` to require `allow_rejected_correctness=True` before it can run the known-mismatching diagnostic path.
+- Updated `scripts/qwen35_paro_bench.py` so `--native-prefill` now requires explicit `--allow-rejected-native-prefill`; otherwise it fails before building the resident session.
+- Updated `scripts/qwen35_native_prefill_correctness.py` to pass the explicit opt-in because its purpose is to reproduce the rejected-correctness blocker artifact.
+- Added unit coverage that the runtime helper refuses the rejected path by default before GPU allocation/work.
+- Updated Task #15 description with the opt-in/gating status.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q
+```
+
+Result: `14 passed`.
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --prompt-length 4 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --max-layers 3 --native-prefill --json /tmp/should_not_write.json
+```
+
+Expected result: exits `1` with `--native-prefill is currently rejected_correctness vs serial c=1; add --allow-rejected-native-prefill only for diagnostic blocker artifacts`.
+
+```bash
+python3 scripts/qwen35_native_prefill_correctness.py \
+  --prompt-length 4 --max-layers 3 \
+  --json /tmp/hipengine_native_prefix_rejected_current.json
+```
+
+Expected result: exits `1` and still reproduces the known rejected-correctness mismatch through the explicit diagnostic opt-in:
+serial seed/decode `95916/158950`, native seed/decode `201383/96022`, finite logits true.
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0`.
+
+### Notes
+
+- This change preserves correctness/no-claim discipline; it does not fix native prefill yet.
+- The original pi-multiloop verify command remains stale and exits `active HIPENGINE parity TaskList not found`; robust active TaskList count over #12/#15 remains `2`.

@@ -837,8 +837,15 @@ class Qwen35ParoResidentSession:
         token_ids: list[int] | tuple[int, ...],
         *,
         sample: bool = True,
+        allow_rejected_correctness: bool = False,
     ) -> Qwen35ParoAutoregressiveStepResult | None:
-        """Run a native batched prefill over linear-attention-only layer prefixes."""
+        """Run a diagnostic native prefill over linear-attention-only layer prefixes.
+
+        The current implementation is kept for investigation only: artifact
+        ``benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-prefill-rejected.json``
+        shows that it does not yet match serial c=1 prefill.  Callers must opt in
+        explicitly so this path cannot become an accidental throughput row.
+        """
 
         if self.closed:
             raise RuntimeError("session is closed")
@@ -857,6 +864,12 @@ class Qwen35ParoResidentSession:
                 "native batched prefill currently supports linear-attention-only layer limits; "
                 f"first unsupported layer {native_prefill_plan.first_unsupported_layer} "
                 f"is {native_prefill_plan.first_unsupported_type!r}"
+            )
+        if not allow_rejected_correctness:
+            raise NotImplementedError(
+                "native linear-prefix prefill is currently rejected_correctness vs serial c=1; "
+                "pass allow_rejected_correctness=True only for diagnostic blocker artifacts; "
+                "see benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-prefill-rejected.json"
             )
         token_arr = np.asarray(tokens, dtype=np.int64)
         token_buf = malloc(token_arr.nbytes, runtime=self.runtime)

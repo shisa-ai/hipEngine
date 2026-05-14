@@ -74,6 +74,18 @@ def test_qwen35_resident_native_prefill_plan_accepts_all_linear_layer_limit() ->
     assert plan.blockers == ()
 
 
+def test_qwen35_resident_prefill_linear_tokens_native_requires_rejected_correctness_opt_in() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.max_sequence_length = 8
+    session.vocab_size = 100
+    session.layer_limit = 2
+    session.config = SimpleNamespace(layer_types=("linear_attention", "linear_attention"))
+
+    with pytest.raises(NotImplementedError, match="rejected_correctness"):
+        session.prefill_linear_tokens_native([1, 2], sample=True)
+
+
 def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.layer_limit = 3
