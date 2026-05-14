@@ -1,0 +1,111 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-14T17:56:53+09:00",
+  "run_tag": "qwen35-paro-512-128-actual-c1-tokenizer-cache-diagnostic",
+  "summary": "HIPENGINE Qwen3.5/PARO actual autoregressive c=1 diagnostic after caching tokenizer decode in resident session; graph replay/native prefill still missing.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "commit": "aa6e604470377a1a288aa4dccbb1ea4b8a854be0",
+    "dirty": true
+  },
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "workload": {
+    "prompt_tokens": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "concurrency": 1,
+    "mode": "actual_autoregressive_c1_resident",
+    "native_batched_prefill": false,
+    "graph_replay": false
+  },
+  "command": "python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --json /tmp/hipengine-qwen35-paro-512-128-tokenizer-cache.json",
+  "correctness": {
+    "status": "not_run",
+    "reason": "diagnostic path; no KL/top-1 E2E gate yet"
+  },
+  "baseline": {
+    "source": "/home/lhl/amd-gpu-tuning/PLAN-MOE2.md",
+    "current_compact_wmma_2026_05_13": {
+      "shape": "512/128",
+      "prefill_tok_s": 2557.397,
+      "decode_tok_s": 115.666
+    },
+    "post_wmma_revert_2026_05_12": {
+      "shape": "512/128",
+      "prefill_tok_s": 1300.337,
+      "decode_tok_s": 131.128
+    }
+  },
+  "measurements": {
+    "load_seconds": 34.36953913909383,
+    "prefill_seconds": 5.276611021021381,
+    "decode_seconds": 1.4575074592139572,
+    "warmup_decode_seconds": 0.045650034211575985,
+    "token_by_token_prefill_tok_s": 97.03197714598515,
+    "warmed_decode_tok_s": 87.82116289753412,
+    "decode_step_median_s": 0.011383663048036397
+  },
+  "comparison": {
+    "decode_vs_current_compact_wmma_ratio": 0.7592651504982806,
+    "decode_vs_post_wmma_revert_ratio": 0.6697361577812072,
+    "prefill_comparable": false,
+    "decode_comparable": "partial_no_graph_replay"
+  },
+  "profiling_summary": {
+    "finding": "cProfile showed resident sampling spent ~0.277s/token reopening tokenizer.json before this change; caching tokenizer removed that host bottleneck.",
+    "rocprof_smoke": "/tmp/hipengine-roctx-prof-smoke one-layer profile showed GPU kernels were millisecond-scale while wall step was ~0.30s before tokenizer cache."
+  },
+  "blockers": [
+    "native batched/compact prefill kernels not wired; current prefill is token-by-token c=1",
+    "one-step graph replay/lower-overhead dispatch not implemented in HIPENGINE",
+    "correctness gate artifact not yet run for benchmark prompt"
+  ],
+  "generated_preview": [
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.634312152862549
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.714889049530029
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.725833892822266
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.719336986541748
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.712558269500732
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.762296676635742
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.739894866943359
+    },
+    {
+      "token_id": 62843,
+      "token_text": "estring",
+      "logit": 6.741613388061523
+    }
+  ]
+}

@@ -550,6 +550,7 @@ class Qwen35ParoResidentSession:
         self.linear_scratch = {}
         self.full_scratch = {}
         self.moe_scratch = {}
+        self.tokenizer = _load_tokenizer(self.model)
         self.closed = False
         self._build()
 
@@ -867,7 +868,7 @@ class Qwen35ParoResidentSession:
         token_id = int(index_host[0])
         return Qwen35ParoAutoregressiveStepResult(
             token_id=token_id,
-            token_text=_decode_token(self.model, token_id),
+            token_text=_decode_token_cached(self.tokenizer, token_id),
             logit=float(value_host[0]),
         )
 
@@ -919,14 +920,26 @@ def _select_token(model: Path, prompt: str, token_id: int | None) -> tuple[int, 
     return int(ids[-1]), [int(x) for x in ids]
 
 
-def _decode_token(model: Path, token_id: int) -> str:
+def _load_tokenizer(model: Path) -> Any | None:
     try:
         from tokenizers import Tokenizer
 
-        tokenizer = Tokenizer.from_file(str(model / "tokenizer.json"))
+        return Tokenizer.from_file(str(model / "tokenizer.json"))
+    except Exception:
+        return None
+
+
+def _decode_token_cached(tokenizer: Any | None, token_id: int) -> str:
+    try:
+        if tokenizer is None:
+            return ""
         return tokenizer.decode([int(token_id)])
     except Exception:
         return ""
+
+
+def _decode_token(model: Path, token_id: int) -> str:
+    return _decode_token_cached(_load_tokenizer(model), token_id)
 
 
 def _copy_zero(runtime: HipRuntime, buffer: DeviceBuffer, zeros: np.ndarray) -> None:

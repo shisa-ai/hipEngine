@@ -3418,3 +3418,34 @@ Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-c1-diagno
 
 - Profile one measured decode step with prebuilt/cached libraries to split GPU kernel time from Python/ctypes launch overhead.
 - Then attack dispatch/graph replay before treating larger warmed decode numbers as meaningful acceptance candidates.
+
+---
+
+## 2026-05-14 — Tokenizer cache removes false decode bottleneck
+
+### Finding
+
+Profiling showed the post-sampling host path was reopening `tokenizer.json` for every generated token. In the 1-layer cProfile smoke, `Qwen35ParoResidentSession.step()` took ~0.308s/token and `_decode_token()` accounted for ~0.277s/token. The one-layer rocprof smoke showed the actual GPU kernel work was millisecond-scale, so this was not a kernel or graph-replay issue.
+
+### Change
+
+- Cache the tokenizer once in `Qwen35ParoResidentSession` and decode generated-token text through the cached tokenizer.
+- Add optional `--roctx` ranges to `scripts/qwen35_paro_bench.py` for future profiler correlation.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py
+python3 -m pytest tests/test_lm_head_plan.py tests/test_llm_generate.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 2 --decode-tokens 4 --warmup-decode-tokens 1 --token-id 9707 --json /tmp/hipengine-tokenizer-cache-smoke.json
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --json /tmp/hipengine-qwen35-paro-512-128-tokenizer-cache.json
+```
+
+### Diagnostic result
+
+- 512/128 actual c=1 resident run improved warmed decode from `3.146 tok/s` to `87.821 tok/s`.
+- Median decode step improved from `0.3161s` to `0.01138s`.
+- Token-by-token prefill stayed in the same class: `97.03 tok/s`; still not native batched/compact prefill.
+- Current PLAN-MOE2 compact-WMMA target is `115.666 tok/s` decode at 512/128; HIPENGINE is now ~`75.9%` of that decode target, but remains blocked for accepted parity because graph replay and E2E correctness gates are not landed.
+
+Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-tokenizer-cache-diagnostic.json` (`status=blocked`, diagnostic/non-retained).

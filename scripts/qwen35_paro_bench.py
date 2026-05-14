@@ -10,11 +10,13 @@ reported as non-native-prefill (not directly comparable to PLAN-MOE2 prefill).
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import statistics
 import sys
 import time
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +41,7 @@ def main() -> int:
     parser.add_argument("--warmup-decode-tokens", type=int, default=1)
     parser.add_argument("--max-layers", type=int, default=0, help="Debug limit; 0 means all layers")
     parser.add_argument("--progress", action="store_true")
+    parser.add_argument("--roctx", action="store_true", help="Emit ROCTX ranges for profiler correlation")
     parser.add_argument("--json", type=Path, default=None, help="Optional output JSON path")
     args = parser.parse_args()
 
@@ -52,15 +55,17 @@ def main() -> int:
     max_sequence = len(prompt_tokens) + args.warmup_decode_tokens + args.decode_tokens + 1
 
     progress = _emit_progress if args.progress else None
+    roctx = _Roctx(enabled=args.roctx)
     runner = Qwen35ParoNextTokenRunner(model)
 
     load_start = time.perf_counter()
-    session = Qwen35ParoResidentSession(
-        runner,
-        max_sequence_length=max_sequence,
-        max_layers=args.max_layers,
-        progress=progress,
-    )
+    with roctx.range("hipengine:resident_build"):
+        session = Qwen35ParoResidentSession(
+            runner,
+            max_sequence_length=max_sequence,
+            max_layers=args.max_layers,
+            progress=progress,
+        )
     load_seconds = time.perf_counter() - load_start
 
     generated: list[dict[str, Any]] = []
@@ -68,8 +73,10 @@ def main() -> int:
     try:
         prefill_start = time.perf_counter()
         next_result = None
-        for pos, token in enumerate(prompt_tokens):
-            next_result = session.step(token, position=pos, sample=(pos == len(prompt_tokens) - 1))
+        with roctx.range("hipengine:prefill"):
+            for pos, token in enumerate(prompt_tokens):
+                with roctx.range("hipengine:prefill_step"):
+                    next_result = session.step(token, position=pos, sample=(pos == len(prompt_tokens) - 1))
         prefill_seconds = time.perf_counter() - prefill_start
         if next_result is None:
             raise RuntimeError("prefill did not produce next-token logits")
@@ -77,24 +84,28 @@ def main() -> int:
         generated.append(next_result.to_json_dict())
 
         warmup_start = time.perf_counter()
-        for offset in range(args.warmup_decode_tokens):
-            result = session.step(next_token, position=len(prompt_tokens) + offset, sample=True)
-            if result is None:
-                raise RuntimeError("decode warmup did not produce a token")
-            next_token = result.token_id
+        with roctx.range("hipengine:warmup_decode"):
+            for offset in range(args.warmup_decode_tokens):
+                with roctx.range("hipengine:warmup_decode_step"):
+                    result = session.step(next_token, position=len(prompt_tokens) + offset, sample=True)
+                if result is None:
+                    raise RuntimeError("decode warmup did not produce a token")
+                next_token = result.token_id
         warmup_seconds = time.perf_counter() - warmup_start
 
         decode_start_pos = len(prompt_tokens) + args.warmup_decode_tokens
         decode_start = time.perf_counter()
-        for offset in range(args.decode_tokens):
-            step_start = time.perf_counter()
-            result = session.step(next_token, position=decode_start_pos + offset, sample=True)
-            step_seconds = time.perf_counter() - step_start
-            if result is None:
-                raise RuntimeError("decode step did not produce a token")
-            decode_samples.append(step_seconds)
-            next_token = result.token_id
-            generated.append(result.to_json_dict())
+        with roctx.range("hipengine:measured_decode"):
+            for offset in range(args.decode_tokens):
+                step_start = time.perf_counter()
+                with roctx.range("hipengine:measured_decode_step"):
+                    result = session.step(next_token, position=decode_start_pos + offset, sample=True)
+                step_seconds = time.perf_counter() - step_start
+                if result is None:
+                    raise RuntimeError("decode step did not produce a token")
+                decode_samples.append(step_seconds)
+                next_token = result.token_id
+                generated.append(result.to_json_dict())
         decode_seconds = time.perf_counter() - decode_start
     finally:
         session.close()
@@ -140,6 +151,51 @@ def main() -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(text + "\n")
     return 0
+
+
+class _Roctx:
+    def __init__(self, *, enabled: bool) -> None:
+        self.enabled = bool(enabled)
+        self._lib = None
+        if not self.enabled:
+            return
+        try:
+            self._lib = ctypes.CDLL("libroctx64.so")
+            self._lib.roctxRangePushA.argtypes = [ctypes.c_char_p]
+            self._lib.roctxRangePushA.restype = ctypes.c_int
+            self._lib.roctxRangePop.argtypes = []
+            self._lib.roctxRangePop.restype = ctypes.c_int
+        except OSError as exc:
+            print(f"warning: --roctx requested but libroctx64.so could not be loaded: {exc}", file=sys.stderr)
+            self._lib = None
+
+    def range(self, name: str) -> "_RoctxRange":
+        return _RoctxRange(self, name)
+
+    def push(self, name: str) -> None:
+        if self._lib is not None:
+            self._lib.roctxRangePushA(name.encode("utf-8"))
+
+    def pop(self) -> None:
+        if self._lib is not None:
+            self._lib.roctxRangePop()
+
+
+class _RoctxRange:
+    def __init__(self, roctx: _Roctx, name: str) -> None:
+        self.roctx = roctx
+        self.name = name
+
+    def __enter__(self) -> None:
+        self.roctx.push(self.name)
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.roctx.pop()
 
 
 def _prompt_tokens(model: Path, prompt: str, token_id: int | None, prompt_length: int) -> list[int]:
