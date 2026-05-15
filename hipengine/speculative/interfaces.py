@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Sequence, runtime_checkable
 
+from hipengine.core.dtype import DType
+from hipengine.core.tensor import Tensor
 from hipengine.dispatch.batch import WorkItem, WorkKind
 
 
@@ -311,6 +313,104 @@ class TargetVerifyBatch:
 
 
 @dataclass(frozen=True, slots=True)
+class TargetVerifyBuffers:
+    """Device-buffer ABI descriptor for one target verification replay."""
+
+    request_ids: tuple[int, ...]
+    rows: int
+    candidate_rows: int
+    token_ids: Tensor
+    positions: Tensor
+    parent_rows: Tensor
+    draft_depths: Tensor
+    row_to_request: Tensor
+    active_mask: Tensor
+    target_top1: Tensor
+    accepted_counts: Tensor
+    commit_rows: Tensor
+    commit_tokens: Tensor
+    commit_positions: Tensor
+    mode: str = "verify_chain"
+
+    def __post_init__(self) -> None:
+        if not self.request_ids:
+            raise ValueError("TargetVerifyBuffers must contain at least one request")
+        if self.rows <= 0:
+            raise ValueError("rows must be positive")
+        if self.candidate_rows <= 0 or self.candidate_rows > self.rows:
+            raise ValueError("candidate_rows must be positive and no larger than rows")
+        row_tensors = (
+            self.token_ids,
+            self.positions,
+            self.parent_rows,
+            self.draft_depths,
+            self.row_to_request,
+            self.active_mask,
+            self.target_top1,
+        )
+        summary_tensors = (self.accepted_counts, self.commit_rows, self.commit_tokens, self.commit_positions)
+        for tensor in row_tensors:
+            if tensor.shape != (self.rows,):
+                raise ValueError("row tensors must have shape (rows,)")
+        for tensor in summary_tensors:
+            if tensor.shape != (len(self.request_ids),):
+                raise ValueError("summary tensors must have shape (request_count,)")
+        for tensor in (*row_tensors, *summary_tensors):
+            if tensor.device != self.token_ids.device:
+                raise ValueError("target verify buffers must live on one device")
+        for tensor in (self.token_ids, self.positions, self.parent_rows, self.draft_depths, self.row_to_request, self.target_top1, *summary_tensors):
+            if tensor.dtype not in {DType.INT32, DType.INT64}:
+                raise ValueError("target verify integer buffers must be int32 or int64")
+        if self.active_mask.dtype != DType.BOOL:
+            raise ValueError("active_mask buffer must be bool")
+        if self.mode not in {"verify_chain", "verify_tree"}:
+            raise ValueError("mode must be verify_chain or verify_tree")
+
+    @classmethod
+    def for_batch(
+        cls,
+        batch: TargetVerifyBatch,
+        *,
+        token_ids: Tensor,
+        positions: Tensor,
+        parent_rows: Tensor,
+        draft_depths: Tensor,
+        row_to_request: Tensor,
+        active_mask: Tensor,
+        target_top1: Tensor,
+        accepted_counts: Tensor,
+        commit_rows: Tensor,
+        commit_tokens: Tensor,
+        commit_positions: Tensor,
+    ) -> "TargetVerifyBuffers":
+        return cls(
+            request_ids=batch.request_ids,
+            rows=batch.rows,
+            candidate_rows=batch.candidate_count,
+            token_ids=token_ids,
+            positions=positions,
+            parent_rows=parent_rows,
+            draft_depths=draft_depths,
+            row_to_request=row_to_request,
+            active_mask=active_mask,
+            target_top1=target_top1,
+            accepted_counts=accepted_counts,
+            commit_rows=commit_rows,
+            commit_tokens=commit_tokens,
+            commit_positions=commit_positions,
+            mode=batch.mode,
+        )
+
+    @property
+    def request_count(self) -> int:
+        return len(self.request_ids)
+
+    @property
+    def device(self):
+        return self.token_ids.device
+
+
+@dataclass(frozen=True, slots=True)
 class AcceptResult:
     """Verifier accept/reject result per live request."""
 
@@ -538,5 +638,6 @@ __all__ = [
     "TargetCommitPlan",
     "TargetCommitSelection",
     "TargetVerifyBatch",
+    "TargetVerifyBuffers",
     "Verifier",
 ]

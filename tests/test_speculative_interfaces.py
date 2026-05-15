@@ -9,7 +9,7 @@ from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import ActiveBatch, RequestState
 from hipengine.kvcache import FixedPagedKVPolicy
-from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetVerifyBatch
+from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetVerifyBatch, TargetVerifyBuffers
 from scripts.qwen35_dflash_ddtree_blocker import build_payload
 
 
@@ -138,6 +138,72 @@ def test_target_verify_batch_projects_candidate_rows_to_work_item() -> None:
     assert work.token_rows == ((10,), (11,), (20,))
     assert work.draft_depth == 2
     assert work.tree_parents == (0, 1, 0)
+
+
+def test_target_verify_buffers_validate_device_abi() -> None:
+    draft = DraftBatch(
+        request_ids=(1, 2),
+        candidate_tokens=(10, 11, 20),
+        parent_positions=(5, 6, 3),
+        draft_depths=(1, 2, 1),
+        row_to_request=(1, 1, 2),
+        mode="verify_tree",
+        tree_parents=(-1, 0, -1),
+    )
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
+
+    buffers = TargetVerifyBuffers.for_batch(
+        target,
+        token_ids=_tensor(0x3000, (5,), "int32"),
+        positions=_tensor(0x3100, (5,), "int32"),
+        parent_rows=_tensor(0x3200, (5,), "int32"),
+        draft_depths=_tensor(0x3300, (5,), "int32"),
+        row_to_request=_tensor(0x3400, (5,), "int32"),
+        active_mask=_tensor(0x3500, (5,), "bool"),
+        target_top1=_tensor(0x3600, (5,), "int32"),
+        accepted_counts=_tensor(0x3700, (2,), "int32"),
+        commit_rows=_tensor(0x3800, (2,), "int32"),
+        commit_tokens=_tensor(0x3900, (2,), "int32"),
+        commit_positions=_tensor(0x3A00, (2,), "int32"),
+    )
+
+    assert buffers.rows == 5
+    assert buffers.candidate_rows == 3
+    assert buffers.request_ids == (1, 2)
+    assert buffers.request_count == 2
+    assert str(buffers.device) == "hip:0"
+    assert buffers.mode == "verify_tree"
+
+    with pytest.raises(ValueError, match="row tensors"):
+        TargetVerifyBuffers.for_batch(
+            target,
+            token_ids=_tensor(0x3000, (4,), "int32"),
+            positions=_tensor(0x3100, (5,), "int32"),
+            parent_rows=_tensor(0x3200, (5,), "int32"),
+            draft_depths=_tensor(0x3300, (5,), "int32"),
+            row_to_request=_tensor(0x3400, (5,), "int32"),
+            active_mask=_tensor(0x3500, (5,), "bool"),
+            target_top1=_tensor(0x3600, (5,), "int32"),
+            accepted_counts=_tensor(0x3700, (2,), "int32"),
+            commit_rows=_tensor(0x3800, (2,), "int32"),
+            commit_tokens=_tensor(0x3900, (2,), "int32"),
+            commit_positions=_tensor(0x3A00, (2,), "int32"),
+        )
+    with pytest.raises(ValueError, match="active_mask"):
+        TargetVerifyBuffers.for_batch(
+            target,
+            token_ids=_tensor(0x3000, (5,), "int32"),
+            positions=_tensor(0x3100, (5,), "int32"),
+            parent_rows=_tensor(0x3200, (5,), "int32"),
+            draft_depths=_tensor(0x3300, (5,), "int32"),
+            row_to_request=_tensor(0x3400, (5,), "int32"),
+            active_mask=_tensor(0x3500, (5,), "int32"),
+            target_top1=_tensor(0x3600, (5,), "int32"),
+            accepted_counts=_tensor(0x3700, (2,), "int32"),
+            commit_rows=_tensor(0x3800, (2,), "int32"),
+            commit_tokens=_tensor(0x3900, (2,), "int32"),
+            commit_positions=_tensor(0x3A00, (2,), "int32"),
+        )
 
 
 def test_target_verify_batch_selects_commit_rows_from_accept_counts() -> None:
@@ -429,6 +495,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["target_verify_batch"] == "TargetVerifyBatch"
     assert payload["implementation_status"]["interfaces_present"]["target_accept_summary"] == "TargetAcceptSummary"
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan"] == "TargetCommitPlan"
+    assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers"] == "TargetVerifyBuffers"
     assert payload["implementation_status"]["kv_transaction_target_verify"]["target_verify_rows"] == 5
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
@@ -436,6 +503,8 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["accepted_tokens"] == [[10, 11], [20]]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["accepted_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["candidate_counts"] == [2, 1]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["device_buffers"]["rows"] == 5
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["device_buffers"]["summary_rows"] == 2
     assert payload["implementation_status"]["kv_transaction_target_verify"]["shape_key"]["tree_shape"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["work_item"]["tree_parents"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["transaction_draft_rows"] == 3

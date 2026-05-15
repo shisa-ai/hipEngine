@@ -31,9 +31,10 @@ reuses this verifier/commit infrastructure after DFlash lands.
 
 ## Current hipENGINE status (2026-05-15)
 
-The API scaffolding exists (`DraftBatch`, `TargetVerifyBatch`, `AcceptResult`,
-`TargetAcceptSummary`, `TargetCommitPlan`, `DraftModel`, `Verifier`,
-`KVTransaction`, and verify-shaped graph keys), but
+The API scaffolding exists (`DraftBatch`, `TargetVerifyBatch`,
+`TargetVerifyBuffers`, `AcceptResult`, `TargetAcceptSummary`,
+`TargetCommitPlan`, `DraftModel`, `Verifier`, `KVTransaction`, and
+verify-shaped graph keys), but
 Qwen3.5/PARO DFlash/DDTree is currently **blocked**, not implemented as a
 throughput path.
 The exact blocker artifact is
@@ -53,9 +54,10 @@ It records:
   journal), tracks per-request candidate counts, rejects accepted counts larger
   than the verified candidate budget, validates accepted target paths, can
   select the per-request target row whose state would be committed, binds the
-  summary to a transaction-scoped commit plan, projects candidate rows into
-  scheduler `WorkItem` metadata, and derives verify graph shape keys from the
-  target row topology, but no device-side state/KV commit is wired yet;
+  summary to a transaction-scoped commit plan, validates target-verifier device
+  buffer shapes/dtypes, projects candidate rows into scheduler `WorkItem`
+  metadata, and derives verify graph shape keys from the target row topology,
+  but no device-side state/KV commit is wired yet;
 - no speculative throughput claim is allowed until Task #15 lands a native
   compact/c-aware target verifier with selectable per-row state and GPU accept
   summaries.

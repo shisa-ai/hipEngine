@@ -8,6 +8,7 @@ from hipengine.speculative.interfaces import (
     TargetCommitPlan,
     TargetCommitSelection,
     TargetVerifyBatch,
+    TargetVerifyBuffers,
     Verifier,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "TargetCommitPlan",
     "TargetCommitSelection",
     "TargetVerifyBatch",
+    "TargetVerifyBuffers",
     "Verifier",
 ]
