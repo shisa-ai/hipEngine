@@ -8671,3 +8671,110 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Active TaskList count remains `1` (#15). This iteration narrows scheduler target-top1 commit planning only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Qwen3.5-0.8B-PARO hipENGINE feasibility check blocked
+
+### Request
+
+From `~/amd-gpu-tuning`: check whether `z-lab/Qwen3.5-0.8B-PARO` can be run
+through `~/hipengine` for a 512/128 comparison. User clarified that only 512/128
+is needed because prefill will be slow.
+
+### Environment
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -8
+rocm-smi --showmeminfo vram --showuse --showtemp
+hipcc --version | head -20
+```
+
+Observed: HIP runtime loads, W7900/gfx1100 visible, idle VRAM 27,930,624 B,
+`hipcc` reports `HIP version: 7.2.53211-d40244d`.
+
+### Model inspection
+
+```bash
+mamba run -n therock --no-capture-output python3 - <<'PY'
+from hipengine.loading.safetensors import load_weight_index
+from hipengine.loading.qwen35_paro import qwen35_paro_config_from_hf
+p='/models/huggingface/hub/models--z-lab--Qwen3.5-0.8B-PARO/snapshots/da941f4fd3fa72763c398db6cb14b2bef1ee961f'
+idx=load_weight_index(p)
+cfg=qwen35_paro_config_from_hf(idx.config)
+normalized=[]
+for name in idx.tensors:
+    n=name
+    for pref in ('model.language_model.','language_model.','model.'):
+        if n.startswith(pref):
+            n=n[len(pref):]
+            break
+    normalized.append(n)
+print('architecture', cfg.architecture)
+print('layers', cfg.num_hidden_layers)
+print('hidden', cfg.hidden_size)
+print('num_experts', cfg.num_experts)
+print('num_experts_per_tok', cfg.num_experts_per_tok)
+print('tie_word_embeddings', idx.config.get('tie_word_embeddings'), idx.config.get('text_config', {}).get('tie_word_embeddings'))
+print('has_lm_head', 'lm_head.weight' in set(normalized))
+print('has_dense_gate_proj', 'layers.0.mlp.gate_proj.qweight' in set(normalized))
+print('has_moe_expert0', 'layers.0.mlp.experts.0.gate_proj.qweight' in set(normalized))
+PY
+```
+
+Result: `Qwen3_5ForConditionalGeneration`, 24 layers, hidden 1024,
+`num_experts=0`, `num_experts_per_tok=0`, tied embeddings true, no explicit
+`lm_head.weight`, dense MLP tensors present, MoE expert tensors absent.
+
+### Feasibility smoke
+
+Attempted the smallest safe resident smoke before launching the requested
+512/128 row:
+
+```bash
+MODEL=/models/huggingface/hub/models--z-lab--Qwen3.5-0.8B-PARO/snapshots/da941f4fd3fa72763c398db6cb14b2bef1ee961f
+mamba run -n therock --no-capture-output python3 scripts/qwen35_paro_bench.py \
+  --model "$MODEL" --prompt-length 1 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --max-layers 1 --progress --json /tmp/hipengine_qwen35_0p8b_smoke.json
+```
+
+Result: blocked during resident build, before prefill/decode:
+
+```text
+resident_build_start layers=1 max_sequence_length=3
+load_kernel_libraries_start
+load_kernel_libraries_done
+load_embedding_start
+load_embedding_done
+load_final_norm_start
+load_final_norm_done
+load_lm_head_start
+KeyError: 'lm_head.weight'
+```
+
+Artifact: `benchmarks/results/2026-05-15-hipengine-qwen35-0p8b-paro-512-128-blocked.json`.
+
+### Interpretation
+
+hipENGINE cannot currently run `z-lab/Qwen3.5-0.8B-PARO` for the requested
+512/128 comparison. The first observed blocker is the tied-embedding checkpoint
+layout: the resident runner requires `lm_head.weight`, while this model has no
+explicit lm head and relies on `embed_tokens.weight`.
+
+Static inspection shows a second blocker immediately behind that: the current
+Qwen3.5/PARO resident layer path is MoE-specific (`materialize_qwen35_paro_*_moe_c1_runtime_layer`,
+`run_*_moe_c1_layer_*`) and expects `mlp.experts.*` plus router/shared-expert
+weights. The 0.8B checkpoint is dense (`num_experts=0`) with `mlp.gate_proj`,
+`mlp.up_proj`, and `mlp.down_proj` PARO tensors.
+
+For future comparison, the parent native PARO baseline from
+`~/amd-gpu-tuning/artifacts/qwen35_0p8b_paro_20260515_120459/` is:
+
+| Engine | Shape | Prefill tok/s | Decode tok/s | Peak GiB | Correctness |
+| --- | --- | ---: | ---: | ---: | --- |
+| `nano-vllm-amd` native PARO | 512/128 | 11363.34 | 251.78 | 1.171 | finite logits + graph/eager match |
+
+Needed before rerunning in hipENGINE: tied lm-head fallback plus dense PARO MLP
+materialization/runtime support, then rerun the 512/128 command with the normal
+post-run correctness/perf/memory gates.

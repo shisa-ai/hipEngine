@@ -1,0 +1,84 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-15T14:09:24+09:00",
+  "run_tag": "qwen35-0p8b-paro-512-128-feasibility",
+  "summary": "hipENGINE cannot currently run z-lab/Qwen3.5-0.8B-PARO; resident Qwen3.5/PARO path expects an explicit lm_head.weight and MoE MLP tensors.",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "pre_run_vram_used_bytes": 27930624,
+    "vram_total_bytes": 48301604864
+  },
+  "software": {
+    "hipcc_version_first_line": "HIP version: 7.2.53211-d40244d",
+    "python": "3.12.9",
+    "hipengine_commit": "dc5d411",
+    "hipengine_dirty_at_attempt": false,
+    "hipengine_dirty_note": "clean before this artifact/worklog; smoke failed before any repo edits"
+  },
+  "workload": {
+    "requested_shape": "512/128",
+    "attempted_smoke_shape": "prompt_length=1/decode_tokens=1/max_layers=1",
+    "model": "z-lab/Qwen3.5-0.8B-PARO",
+    "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-0.8B-PARO/snapshots/da941f4fd3fa72763c398db6cb14b2bef1ee961f",
+    "quant": "w4_paro",
+    "concurrency": 1
+  },
+  "model_inspection": {
+    "architecture": "Qwen3_5ForConditionalGeneration",
+    "layers": 24,
+    "hidden_size": 1024,
+    "num_experts": 0,
+    "num_experts_per_tok": 0,
+    "tie_word_embeddings": true,
+    "has_lm_head_weight": false,
+    "has_dense_gate_proj": true,
+    "has_moe_expert0_gate_proj": false
+  },
+  "commands": {
+    "environment": [
+      "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\"",
+      "rocminfo | grep -E 'Name:|gfx' | head -8",
+      "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "hipcc --version"
+    ],
+    "model_inspection": "mamba run -n therock --no-capture-output python3 - <<PY ... qwen35_paro_config_from_hf/load_weight_index ... PY",
+    "feasibility_smoke": "mamba run -n therock --no-capture-output python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-0.8B-PARO/snapshots/da941f4fd3fa72763c398db6cb14b2bef1ee961f --prompt-length 1 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 1 --progress --json /tmp/hipengine_qwen35_0p8b_smoke.json",
+    "requested_benchmark_not_run": "512/128 not launched because the one-layer smoke fails during resident build."
+  },
+  "correctness": {
+    "passed": false,
+    "status": "blocked_before_prefill",
+    "finite_prefill_logits": null,
+    "graph_validation": null
+  },
+  "measurements": {
+    "prefill_tok_s": null,
+    "decode_tok_s": null,
+    "wall_seconds": null
+  },
+  "memory": {
+    "allocator_reserved_peak_bytes": null,
+    "notes": "Smoke failed during resident build after loading embedding and final norm, before prefill/decode."
+  },
+  "blocker": {
+    "primary": "KeyError: 'lm_head.weight' in Qwen35ParoResidentSession._load_final_norm_and_head",
+    "stderr_excerpt": "Traceback (most recent call last):\n    head = _read_tensor(self.runner.normalized_infos, \"lm_head.weight\")\nKeyError: 'lm_head.weight'",
+    "additional_static_blocker": "The current resident layer materializers/orchestrators are MoE-specific (materialize_qwen35_paro_*_moe_c1_runtime_layer, run_*_moe_c1_layer); this 0.8B checkpoint is dense (num_experts=0) with layers.0.mlp.gate_proj.*, not mlp.experts.*.",
+    "needed_to_run": [
+      "tied-embedding lm_head fallback for hipENGINE resident/non-resident Qwen3.5/PARO runners",
+      "dense Qwen3.5/PARO MLP materialization and runtime layer path",
+      "then rerun 512/128 and add correctness/throughput gates"
+    ]
+  },
+  "baseline_for_future_comparison": {
+    "engine": "nano-vllm-amd native PARO",
+    "source": "~/amd-gpu-tuning artifact artifacts/qwen35_0p8b_paro_20260515_120459/paro_qwen35_0p8b_512_128.json",
+    "shape": "512/128",
+    "prefill_tok_s": 11363.34,
+    "decode_tok_s": 251.78,
+    "peak_allocated_gib": 1.171
+  },
+  "acceptance_decision": "blocked; no hipENGINE performance comparison available for this model/shape yet"
+}
