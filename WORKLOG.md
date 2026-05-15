@@ -9622,3 +9622,41 @@ did not eliminate the flake.
 Current loop status: blocked for further performance keeps until native prefill
 fixture determinism is fixed or the gate is made repeat-deterministic. 4K/128
 also remains blocked by prefill scratch OOM.
+
+## 2026-05-15 — Native prefill determinism: 64-thread prefill attention
+
+Fixed the native fixture flakiness blocker before resuming `prefill-perf`. The
+root cause was localized to the full-attention prefill softmax kernel, not MoE,
+linear-attention state, KV append, or session close ordering:
+
+- native-vs-serial bisection showed the first pass/fail hidden divergence at
+  layer 3, the first full-attention layer;
+- layer-3 probes showed identical hidden input, Q/K/V/gate tensors, and appended
+  BF16 KV cache between pass/fail runs;
+- repeated launches of `prefill_full_attention_gqa_gate_fp16` on identical
+  inputs in the same session produced different `gated_attn` outputs with the
+  old 256-thread wrapper (repeat max abs roughly `0.05-0.39` depending run);
+- switching the prefill wrappers to a 64-thread block (`threads=64`) made the
+  repeated attention probe deterministic, and the shared-LDS size is now
+  `max_context_len + threads` so short varlen/compact rows no longer
+  under-allocate the per-thread reduction scratch.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_paro.py scripts/qwen35_native_prefill_fixture_gate.py
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+for i in $(seq 1 5); do python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/fixture-final-det-$i.json; done
+for c in 2 4 8; do python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size $c --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/packed-det-c$c.json; done
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/prefill-det-final-512.json
+```
+
+Result: smoke gates pass; fixture gate passed 5/5 repeats with native generated
+IDs `[1739, 220, 16, 15, 15, 15, 15, 15, ...]`, max KL `0.00553-0.00570`, and
+100% top-1 agreement; compact prompt8 gates still pass for c=2/4/8. The 512/128
+prefill check after the determinism fix measured `479.755 tok/s`
+(`prefill_seconds=1.06721`, decode `101.108 tok/s`), essentially flat vs the
+post-preload `482.057 tok/s` baseline. The active loop remains paused until the
+human asks to resume; next perf work can proceed with a repeat-stable native
+prefill gate while 4K/128 scratch OOM remains a separate blocker.

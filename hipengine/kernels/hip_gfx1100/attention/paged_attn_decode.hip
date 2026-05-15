@@ -1671,8 +1671,12 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
       (num_q_heads % num_kv_heads) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int threads = 256;
-  const size_t shared = static_cast<size_t>(max_context_len * 2) * sizeof(float);
+  // Keep the prefill softmax block at 64 threads. The earlier 256-thread
+  // launch was repeat-nondeterministic on gfx1100 for identical inputs. Shared
+  // scratch must reserve max_context_len score slots plus one reduction slot
+  // per thread.
+  const int threads = 64;
+  const size_t shared = static_cast<size_t>(max_context_len + threads) * sizeof(float);
   hipLaunchKernelGGL(
       qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel,
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
@@ -1728,8 +1732,10 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spa
       (num_q_heads % num_kv_heads) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int threads = 256;
-  const size_t shared = static_cast<size_t>(max_context_len * 2) * sizeof(float);
+  // Match the single-request 64-thread determinism policy and fix short varlen
+  // rows where max_context_len * 2 under-allocated per-thread reduction scratch.
+  const int threads = 64;
+  const size_t shared = static_cast<size_t>(max_context_len + threads) * sizeof(float);
   hipLaunchKernelGGL(
       qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel,
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
