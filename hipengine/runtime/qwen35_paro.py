@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime
+from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_full_attn_decode_context_bf16,
@@ -21,6 +21,10 @@ from hipengine.kernels.hip_gfx1100.attention import (
 )
 from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16, f32_to_fp16, fp16_to_f32
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    shared_gate_combine_residual_batch_out_bf16,
+    shared_gate_combine_residual_batch_out_fp16,
+    weighted_lanes_sum_out_bf16_f32w,
+    weighted_lanes_sum_out_fp16_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
@@ -59,6 +63,12 @@ from hipengine.kernels.hip_gfx1100.norm import (
     paro_rmsnorm_out_fp16,
 )
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_lowp_out, w8a16_linear_fp16_lowp_out
+from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+    qwen35_moe_group_count,
+    qwen35_moe_group_prefix,
+    qwen35_moe_group_scatter_gather_lowp,
+    qwen35_moe_wmma_tile_map,
+)
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16, qwen35_router_topk_shared_out_fp16
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_dual_pack8_transposed_bf16,
@@ -150,6 +160,37 @@ class Qwen35ParoMoeScratch:
     gate_up: Tensor
     down_input: Tensor
     down_out: Tensor
+    shared_up: Tensor
+    shared_intermediate: Tensor
+    shared_out: Tensor
+    moe_out: Tensor
+
+
+@dataclass(frozen=True)
+class Qwen35ParoGroupedMoeScratch:
+    normed: Tensor
+    residual: Tensor
+    router_logits: Tensor
+    routing_weights: Tensor
+    selected_experts: Tensor
+    counts: Tensor
+    padded_counts: Tensor
+    expert_start: Tensor
+    total_padded: Tensor
+    scatter_offsets: Tensor
+    sorted_lanes: Tensor
+    sorted_experts: Tensor
+    sorted_weights: Tensor
+    lane_to_row: Tensor
+    wmma_expert_start: Tensor
+    tile_expert: Tensor
+    wmma_total: Tensor
+    packed_hidden: Tensor
+    packed_gate_up_input: Tensor
+    gate_up: Tensor
+    down_input: Tensor
+    down_out: Tensor
+    selected_out: Tensor
     shared_up: Tensor
     shared_intermediate: Tensor
     shared_out: Tensor
@@ -1187,14 +1228,17 @@ class Qwen35ParoDecodeState:
         conv_state: Tensor,
         recurrent_state: Tensor,
         linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
-        moe_scratch: Qwen35ParoMoeScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | None = None,
         tokens: int = 1,
         group_size: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
         linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens)
-        moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens)
+        if tokens == 1:
+            moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens)
+        elif not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+            moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens)
         self.input_rmsnorm_bf16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
         if tokens == 1:
             attn_out = self.run_linear_attention_out_proj_bf16(
@@ -1226,7 +1270,17 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        return self.run_moe_c1_bf16(
+        if tokens == 1:
+            return self.run_moe_c1_bf16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return self.run_moe_grouped_compact_bf16(
             mlp_input,
             residual,
             scratch=moe_scratch,
@@ -2566,14 +2620,17 @@ class Qwen35ParoDecodeState:
         conv_state: Tensor,
         recurrent_state: Tensor,
         linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
-        moe_scratch: Qwen35ParoMoeScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | None = None,
         tokens: int = 1,
         group_size: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
         linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        if tokens == 1:
+            moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+            moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         self.input_rmsnorm_fp16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
         if tokens == 1:
             attn_out = self.run_linear_attention_out_proj_fp16(
@@ -2605,7 +2662,17 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        return self.run_moe_c1_fp16(
+        if tokens == 1:
+            return self.run_moe_c1_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return self.run_moe_grouped_compact_fp16(
             mlp_input,
             residual,
             scratch=moe_scratch,
@@ -2854,6 +2921,198 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         return target
+
+    def _prepare_grouped_moe_prefill_metadata(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoGroupedMoeScratch,
+        *,
+        tokens: int,
+        library=None,
+        stream: int = 0,
+    ) -> int:
+        cfg = self.config
+        top_k = cfg.num_experts_per_tok
+        total_lanes = tokens * top_k
+        runtime = self.runtime or get_hip_runtime()
+        self._memset_tensor(scratch.counts, stream=stream, runtime=runtime)
+        qwen35_moe_group_count(
+            scratch.selected_experts.ptr,
+            scratch.counts.ptr,
+            total_lanes,
+            cfg.num_experts,
+            stream=stream,
+            library=_library_for(library, "group_scatter"),
+            runtime=runtime,
+        )
+        qwen35_moe_group_prefix(
+            scratch.counts.ptr,
+            scratch.padded_counts.ptr,
+            scratch.expert_start.ptr,
+            scratch.total_padded.ptr,
+            cfg.num_experts,
+            1,
+            stream=stream,
+            library=_library_for(library, "group_scatter"),
+            runtime=runtime,
+        )
+        qwen35_moe_wmma_tile_map(
+            scratch.expert_start.ptr,
+            scratch.wmma_expert_start.ptr,
+            scratch.tile_expert.ptr,
+            scratch.wmma_total.ptr,
+            cfg.num_experts,
+            stream=stream,
+            library=_library_for(library, "group_scatter"),
+            runtime=runtime,
+        )
+        self._memset_tensor(scratch.scatter_offsets, stream=stream, runtime=runtime)
+        qwen35_moe_group_scatter_gather_lowp(
+            hidden.ptr,
+            scratch.selected_experts.ptr,
+            scratch.routing_weights.ptr,
+            scratch.expert_start.ptr,
+            scratch.scatter_offsets.ptr,
+            scratch.sorted_lanes.ptr,
+            scratch.sorted_experts.ptr,
+            scratch.sorted_weights.ptr,
+            scratch.packed_hidden.ptr,
+            total_lanes,
+            cfg.num_experts,
+            top_k,
+            cfg.hidden_size,
+            stream=stream,
+            library=_library_for(library, "group_scatter"),
+            runtime=runtime,
+        )
+        return total_lanes
+
+    def run_moe_grouped_compact_fp16(
+        self,
+        hidden: Tensor,
+        residual: Tensor,
+        *,
+        scratch: Qwen35ParoGroupedMoeScratch | None = None,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        scratch = scratch or self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        cfg = self.config
+        top_k = cfg.num_experts_per_tok
+        self.route_moe_topk_shared_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        total_lanes = self._prepare_grouped_moe_prefill_metadata(
+            hidden,
+            scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
+        gate_up_pairs = self.tensor(f"{prefix}.gate_up_weight_pairs")
+        paro_rotate1_fp16(
+            scratch.packed_hidden.ptr,
+            scratch.packed_gate_up_input.ptr,
+            gate_up_pairs.ptr,
+            self.tensor(f"{prefix}.gate_up_weight_theta").ptr,
+            self.tensor(f"{prefix}.gate_up_weight_channel_scales").ptr,
+            total_lanes,
+            cfg.hidden_size,
+            group_size,
+            _rotation_krot(gate_up_pairs),
+            stream=stream,
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+        gate_qweight = self.tensor(f"{prefix}.stacked_gate_qweight_pack8_decode")
+        gate_qzeros = self.tensor(f"{prefix}.stacked_gate_qzeros")
+        gate_scales = self.tensor(f"{prefix}.stacked_gate_scales")
+        up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
+        up_qzeros = self.tensor(f"{prefix}.stacked_up_qzeros")
+        up_scales = self.tensor(f"{prefix}.stacked_up_scales")
+        gemv_awq_selected_dual_pack8_transposed_fp16(
+            scratch.packed_gate_up_input.ptr,
+            scratch.sorted_experts.ptr,
+            gate_qweight.ptr,
+            gate_qzeros.ptr,
+            gate_scales.ptr,
+            up_qweight.ptr,
+            up_qzeros.ptr,
+            up_scales.ptr,
+            scratch.gate_up.ptr,
+            total_lanes,
+            total_lanes,
+            cfg.hidden_size,
+            _out_packed_from_transposed_qweight(gate_qweight),
+            _out_packed_from_transposed_qweight(up_qweight),
+            cfg.num_experts,
+            group_size,
+            stream=stream,
+            library=_library_for(library, "awq"),
+            runtime=self.runtime,
+        )
+        pairs = self.tensor(f"{prefix}.down_weight_pairs")
+        silu_mul_dual_rotate_out_fp16(
+            scratch.gate_up.ptr,
+            pairs.ptr,
+            self.tensor(f"{prefix}.down_weight_theta").ptr,
+            self.tensor(f"{prefix}.down_weight_channel_scales").ptr,
+            scratch.down_input.ptr,
+            total_lanes,
+            cfg.moe_intermediate_size,
+            group_size,
+            _rotation_krot(pairs),
+            stream=stream,
+            library=_library_for(library, "silu"),
+            runtime=self.runtime,
+        )
+        down_qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
+        gemv_awq_selected_pack8_transposed_fp16(
+            scratch.down_input.ptr,
+            scratch.sorted_experts.ptr,
+            down_qweight.ptr,
+            self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+            self.tensor(f"{prefix}.stacked_down_scales").ptr,
+            scratch.down_out.ptr,
+            total_lanes,
+            cfg.moe_intermediate_size,
+            _out_packed_from_transposed_qweight(down_qweight),
+            cfg.num_experts,
+            group_size,
+            stream=stream,
+            library=_library_for(library, "awq"),
+            runtime=self.runtime,
+        )
+        weighted_lanes_sum_out_fp16_f32w(
+            scratch.down_out.ptr,
+            scratch.sorted_weights.ptr,
+            scratch.sorted_lanes.ptr,
+            scratch.lane_to_row.ptr,
+            scratch.selected_out.ptr,
+            tokens,
+            top_k,
+            cfg.hidden_size,
+            stream=stream,
+            library=_library_for(library, "combine"),
+            runtime=self.runtime,
+        )
+        shared = self.shared_expert_w8a16_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        shared_gate_logits_ptr = scratch.router_logits.ptr + cfg.num_experts * DType.FP32.itemsize
+        shared_gate_combine_residual_batch_out_fp16(
+            scratch.selected_out.ptr,
+            shared.ptr,
+            shared_gate_logits_ptr,
+            residual.ptr,
+            scratch.moe_out.ptr,
+            tokens,
+            cfg.hidden_size,
+            cfg.num_experts + 1,
+            stream=stream,
+            library=_library_for(library, "combine"),
+            runtime=self.runtime,
+        )
+        return scratch.moe_out
 
     def run_moe_c1_fp16(
         self,
@@ -3133,6 +3392,133 @@ class Qwen35ParoDecodeState:
             )
         return target
 
+    def run_moe_grouped_compact_bf16(
+        self,
+        hidden: Tensor,
+        residual: Tensor,
+        *,
+        scratch: Qwen35ParoGroupedMoeScratch | None = None,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        scratch = scratch or self.reserve_moe_grouped_prefill_scratch(tokens=tokens)
+        cfg = self.config
+        top_k = cfg.num_experts_per_tok
+        self.route_moe_topk_shared_bf16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        total_lanes = self._prepare_grouped_moe_prefill_metadata(
+            hidden,
+            scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp.experts"
+        gate_up_pairs = self.tensor(f"{prefix}.gate_up_weight_pairs")
+        paro_rotate1_bf16(
+            scratch.packed_hidden.ptr,
+            scratch.packed_gate_up_input.ptr,
+            gate_up_pairs.ptr,
+            self.tensor(f"{prefix}.gate_up_weight_theta").ptr,
+            self.tensor(f"{prefix}.gate_up_weight_channel_scales").ptr,
+            total_lanes,
+            cfg.hidden_size,
+            group_size,
+            _rotation_krot(gate_up_pairs),
+            stream=stream,
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+        gate_qweight = self.tensor(f"{prefix}.stacked_gate_qweight_pack8_decode")
+        gate_qzeros = self.tensor(f"{prefix}.stacked_gate_qzeros")
+        gate_scales = self.tensor(f"{prefix}.stacked_gate_scales")
+        up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
+        up_qzeros = self.tensor(f"{prefix}.stacked_up_qzeros")
+        up_scales = self.tensor(f"{prefix}.stacked_up_scales")
+        gemv_awq_selected_dual_pack8_transposed_bf16(
+            scratch.packed_gate_up_input.ptr,
+            scratch.sorted_experts.ptr,
+            gate_qweight.ptr,
+            gate_qzeros.ptr,
+            gate_scales.ptr,
+            up_qweight.ptr,
+            up_qzeros.ptr,
+            up_scales.ptr,
+            scratch.gate_up.ptr,
+            total_lanes,
+            total_lanes,
+            cfg.hidden_size,
+            _out_packed_from_transposed_qweight(gate_qweight),
+            _out_packed_from_transposed_qweight(up_qweight),
+            cfg.num_experts,
+            group_size,
+            stream=stream,
+            library=_library_for(library, "awq"),
+            runtime=self.runtime,
+        )
+        pairs = self.tensor(f"{prefix}.down_weight_pairs")
+        silu_mul_dual_rotate_out_bf16(
+            scratch.gate_up.ptr,
+            pairs.ptr,
+            self.tensor(f"{prefix}.down_weight_theta").ptr,
+            self.tensor(f"{prefix}.down_weight_channel_scales").ptr,
+            scratch.down_input.ptr,
+            total_lanes,
+            cfg.moe_intermediate_size,
+            group_size,
+            _rotation_krot(pairs),
+            stream=stream,
+            library=_library_for(library, "silu"),
+            runtime=self.runtime,
+        )
+        down_qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
+        gemv_awq_selected_pack8_transposed_bf16(
+            scratch.down_input.ptr,
+            scratch.sorted_experts.ptr,
+            down_qweight.ptr,
+            self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
+            self.tensor(f"{prefix}.stacked_down_scales").ptr,
+            scratch.down_out.ptr,
+            total_lanes,
+            cfg.moe_intermediate_size,
+            _out_packed_from_transposed_qweight(down_qweight),
+            cfg.num_experts,
+            group_size,
+            stream=stream,
+            library=_library_for(library, "awq"),
+            runtime=self.runtime,
+        )
+        weighted_lanes_sum_out_bf16_f32w(
+            scratch.down_out.ptr,
+            scratch.sorted_weights.ptr,
+            scratch.sorted_lanes.ptr,
+            scratch.lane_to_row.ptr,
+            scratch.selected_out.ptr,
+            tokens,
+            top_k,
+            cfg.hidden_size,
+            stream=stream,
+            library=_library_for(library, "combine"),
+            runtime=self.runtime,
+        )
+        shared = self.shared_expert_w8a16_bf16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        shared_gate_logits_ptr = scratch.router_logits.ptr + cfg.num_experts * DType.FP32.itemsize
+        shared_gate_combine_residual_batch_out_bf16(
+            scratch.selected_out.ptr,
+            shared.ptr,
+            shared_gate_logits_ptr,
+            residual.ptr,
+            scratch.moe_out.ptr,
+            tokens,
+            cfg.hidden_size,
+            cfg.num_experts + 1,
+            stream=stream,
+            library=_library_for(library, "combine"),
+            runtime=self.runtime,
+        )
+        return scratch.moe_out
+
     def run_moe_c1_bf16(
         self,
         hidden: Tensor,
@@ -3157,6 +3543,69 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             library=library,
             stream=stream,
+        )
+
+    def reserve_moe_grouped_prefill_scratch(
+        self,
+        *,
+        tokens: int,
+        activation_dtype: str | DType = DType.BF16,
+    ) -> Qwen35ParoGroupedMoeScratch:
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        lowp = DType.parse(activation_dtype)
+        if lowp not in {DType.BF16, DType.FP16}:
+            raise ValueError("activation_dtype must be bf16 or fp16")
+        cfg = self.config
+        top_k = cfg.num_experts_per_tok
+        if top_k <= 0:
+            raise ValueError("config.num_experts_per_tok must be positive")
+        total_lanes = tokens * top_k
+        max_wmma_tiles = (total_lanes + 15 * cfg.num_experts + 15) // 16
+        return Qwen35ParoGroupedMoeScratch(
+            normed=self.workspace.reserve_tensor("moe.grouped.normed", (tokens, cfg.hidden_size), lowp),
+            residual=self.workspace.reserve_tensor("moe.grouped.residual", (tokens, cfg.hidden_size), lowp),
+            router_logits=self.workspace.reserve_tensor("moe.grouped.router_logits", (tokens, cfg.num_experts + 1), DType.FP32),
+            routing_weights=self.workspace.reserve_tensor("moe.grouped.routing_weights", (tokens, top_k), DType.FP32),
+            selected_experts=self.workspace.reserve_tensor("moe.grouped.selected_experts", (tokens, top_k), DType.INT64),
+            counts=self.workspace.reserve_tensor("moe.grouped.counts", (cfg.num_experts,), DType.INT32),
+            padded_counts=self.workspace.reserve_tensor("moe.grouped.padded_counts", (cfg.num_experts,), DType.INT32),
+            expert_start=self.workspace.reserve_tensor("moe.grouped.expert_start", (cfg.num_experts + 1,), DType.INT64),
+            total_padded=self.workspace.reserve_tensor("moe.grouped.total_padded", (1,), DType.INT64),
+            scatter_offsets=self.workspace.reserve_tensor("moe.grouped.scatter_offsets", (cfg.num_experts,), DType.INT32),
+            sorted_lanes=self.workspace.reserve_tensor("moe.grouped.sorted_lanes", (total_lanes,), DType.INT64),
+            sorted_experts=self.workspace.reserve_tensor("moe.grouped.sorted_experts", (total_lanes,), DType.INT64),
+            sorted_weights=self.workspace.reserve_tensor("moe.grouped.sorted_weights", (total_lanes,), DType.FP32),
+            lane_to_row=self.workspace.reserve_tensor("moe.grouped.lane_to_row", (total_lanes,), DType.INT64),
+            wmma_expert_start=self.workspace.reserve_tensor("moe.grouped.wmma_expert_start", (cfg.num_experts + 1,), DType.INT64),
+            tile_expert=self.workspace.reserve_tensor("moe.grouped.tile_expert", (max_wmma_tiles,), DType.INT64),
+            wmma_total=self.workspace.reserve_tensor("moe.grouped.wmma_total", (1,), DType.INT64),
+            packed_hidden=self.workspace.reserve_tensor("moe.grouped.packed_hidden", (total_lanes, cfg.hidden_size), lowp),
+            packed_gate_up_input=self.workspace.reserve_tensor(
+                "moe.grouped.packed_gate_up_input",
+                (total_lanes, cfg.hidden_size),
+                lowp,
+            ),
+            gate_up=self.workspace.reserve_tensor(
+                "moe.grouped.gate_up",
+                (total_lanes, 2 * cfg.moe_intermediate_size),
+                lowp,
+            ),
+            down_input=self.workspace.reserve_tensor("moe.grouped.down_input", (total_lanes, cfg.moe_intermediate_size), lowp),
+            down_out=self.workspace.reserve_tensor("moe.grouped.down_out", (total_lanes, cfg.hidden_size), lowp),
+            selected_out=self.workspace.reserve_tensor("moe.grouped.selected_out", (tokens, cfg.hidden_size), lowp),
+            shared_up=self.workspace.reserve_tensor(
+                "moe.grouped.shared_up",
+                (tokens, 2 * cfg.shared_expert_intermediate_size),
+                lowp,
+            ),
+            shared_intermediate=self.workspace.reserve_tensor(
+                "moe.grouped.shared_intermediate",
+                (tokens, cfg.shared_expert_intermediate_size),
+                lowp,
+            ),
+            shared_out=self.workspace.reserve_tensor("moe.grouped.shared_out", (tokens, cfg.hidden_size), lowp),
+            moe_out=self.workspace.reserve_tensor("moe.grouped.out", (tokens, cfg.hidden_size), lowp),
         )
 
     def reserve_moe_c1_scratch(
@@ -3201,6 +3650,13 @@ class Qwen35ParoDecodeState:
             shared_out=self.workspace.reserve_tensor("moe.shared_out", (tokens, cfg.hidden_size), lowp),
             moe_out=self.workspace.reserve_tensor("moe.out", (tokens, cfg.hidden_size), lowp),
         )
+
+    def _memset_tensor(self, tensor: Tensor, *, stream: int, runtime) -> None:
+        nbytes = tensor.numel * tensor.dtype.itemsize
+        if stream:
+            runtime.memset_async(tensor.ptr, 0, nbytes, stream)
+        else:
+            runtime.memset(tensor.ptr, 0, nbytes)
 
     def free(self) -> None:
         self.workspace.free()

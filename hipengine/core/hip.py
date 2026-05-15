@@ -78,6 +78,23 @@ class HipRuntime:
             )
         )
 
+    def memset(self, dst: int, value: int, nbytes: int) -> None:
+        if nbytes < 0:
+            raise ValueError("nbytes must be non-negative")
+        self.check(self.library.hipMemset(ctypes.c_void_p(dst), ctypes.c_int(value), ctypes.c_size_t(nbytes)))
+
+    def memset_async(self, dst: int, value: int, nbytes: int, stream: int) -> None:
+        if nbytes < 0:
+            raise ValueError("nbytes must be non-negative")
+        self.check(
+            self.library.hipMemsetAsync(
+                ctypes.c_void_p(dst),
+                ctypes.c_int(value),
+                ctypes.c_size_t(nbytes),
+                ctypes.c_void_p(stream),
+            )
+        )
+
     def stream_create(self, *, nonblocking: bool = True) -> int:
         stream = ctypes.c_void_p()
         flags = 0x01 if nonblocking else 0x00
@@ -155,6 +172,10 @@ class HipRuntime:
             ctypes.c_void_p,
         ]
         self.library.hipMemcpyAsync.restype = ctypes.c_int
+        self.library.hipMemset.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t]
+        self.library.hipMemset.restype = ctypes.c_int
+        self.library.hipMemsetAsync.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t, ctypes.c_void_p]
+        self.library.hipMemsetAsync.restype = ctypes.c_int
         self.library.hipStreamCreateWithFlags.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_uint]
         self.library.hipStreamCreateWithFlags.restype = ctypes.c_int
         self.library.hipStreamDestroy.argtypes = [ctypes.c_void_p]

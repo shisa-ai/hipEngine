@@ -4,6 +4,7 @@ from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_paro import (
     Qwen35ParoAttentionScratch,
     Qwen35ParoDecodeState,
+    Qwen35ParoGroupedMoeScratch,
     Qwen35ParoLinearAttentionScratch,
     Qwen35ParoMoeScratch,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "PrefillConfig",
     "Qwen35ParoAttentionScratch",
     "Qwen35ParoDecodeState",
+    "Qwen35ParoGroupedMoeScratch",
     "Qwen35ParoLinearAttentionScratch",
     "Qwen35ParoMoeScratch",
     "Qwen35ParoAutoregressiveStepResult",

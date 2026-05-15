@@ -9172,3 +9172,59 @@ Result: `/tmp/hipengine-moe-group-prof/moe_group_kernel_trace.csv` contains the
 new kernels with computed durations: group_count `6640 ns`, group_prefix
 `11601 ns`, group_scatter_gather `11241 ns`, gather_packed_hidden `5360 ns`,
 wmma_tile_map `2561 ns`.
+
+## 2026-05-15 — Grouped MoE prefill fallback route wiring
+
+Continued task #13 by wiring a native grouped-MoE prefill fallback over packed
+sorted lanes. This is a correctness/route milestone, not a retained throughput
+claim: compact WMMA gate/up and down kernels remain the current-OPTIMAL gap.
+
+Changes:
+- added HIP runtime `memset` / `memset_async` helpers for device-side grouped
+  metadata zeroing;
+- extended PARO combine kernels with BF16/FP16 `weighted_lanes_sum_out` and
+  batched `shared_gate_combine_residual` wrappers;
+- registered `moe_prefill/w4_paro/qwen35_grouped_compact` as the promoted
+  grouped route and `moe_prefill/w4_paro/qwen35_selected_c1_rows` as an
+  oracle/fallback key;
+- added `Qwen35ParoGroupedMoeScratch` plus
+  `run_moe_grouped_compact_{bf16,fp16}` using router top-k → group
+  count/prefix/tile-map/scatter-gather → sorted-lane selected GEMV fallback →
+  fused activation/down rotation → weighted-lane accumulation → shared expert →
+  batched shared-gate residual combine;
+- changed multi-token linear-attention+MoE layer orchestration to use grouped
+  compact prefill instead of the c1 selected-row path;
+- extended combine and route tests/smokes and updated the prefill/kernel docs.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_paro_combine_plan.py tests/test_qwen35_moe_group_scatter_plan.py tests/test_qwen35_decode_state.py -q
+python3 -m py_compile hipengine/core/hip.py hipengine/kernels/hip_gfx1100/fused/paro_combine.py hipengine/kernels/hip_gfx1100/fused/__init__.py hipengine/kernels/hip_gfx1100/moe/prefill.py hipengine/kernels/hip_gfx1100/moe/__init__.py hipengine/runtime/qwen35_paro.py hipengine/runtime/__init__.py scripts/smoke.py tests/test_paro_combine_plan.py tests/test_qwen35_moe_group_scatter_plan.py tests/test_qwen35_decode_state.py
+python3 scripts/smoke.py --mode paro-combine-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-moe-group-scatter-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+```
+
+Result: targeted tests passed (`37 passed`); py_compile succeeded;
+`paro-combine-hip` reported zero mismatches for weighted lanes and batched
+shared residual combine in BF16/FP16; grouped metadata smoke still passes.
+
+Profiler evidence:
+
+```bash
+rm -rf /tmp/hipengine-moe-combine-prof
+rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-moe-combine-prof --output-file moe_combine -- \
+  python3 scripts/smoke.py --mode paro-combine-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Result: `/tmp/hipengine-moe-combine-prof/moe_combine_kernel_trace.csv`
+contains `weighted_lanes_inverse_kernel`, `weighted_lanes_sum_out_kernel` for
+BF16/FP16, and `shared_gate_combine_residual_batch_out_kernel` for BF16/FP16.
+Representative durations: BF16 weighted-lanes sum `2080 ns`, FP16 weighted-lanes
+sum `2000 ns`, BF16 shared batch `2200 ns`, FP16 shared batch `2120 ns`.
+
+Remaining task #13 gaps: compact WMMA expert kernels
+(`gemm_awq_selected_dual_pack8_wmma_compact_kernel` and
+`gemm_awq_selected_pack8_wmma_compact_kernel`) are not ported yet, so grouped
+MoE prefill has no retained performance artifact.

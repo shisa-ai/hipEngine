@@ -4943,8 +4943,12 @@ def paro_combine_hip_smoke(
         build_paro_combine,
         shared_gate_combine_out_bf16,
         shared_gate_combine_out_fp16,
+        shared_gate_combine_residual_batch_out_bf16,
+        shared_gate_combine_residual_batch_out_fp16,
         shared_gate_combine_residual_out_bf16,
         shared_gate_combine_residual_out_fp16,
+        weighted_lanes_sum_out_bf16_f32w,
+        weighted_lanes_sum_out_fp16_f32w,
         weighted_sum_out_bf16_f32w,
         weighted_sum_out_fp16_f32w,
         weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
@@ -5032,6 +5036,20 @@ def paro_combine_hip_smoke(
     batch_residual_fp16 = batch_residual.astype(np.float16)
     batch_weighted_shared_residual_bits = np.empty((batch_tokens, features), dtype=np.uint16)
     batch_weighted_shared_residual_fp16 = np.empty((batch_tokens, features), dtype=np.float16)
+
+    lane_tokens = 2
+    lane_top_k = 2
+    lane_rows = lane_tokens * lane_top_k
+    sorted_lanes = np.asarray([2, 0, 3, 1], dtype=np.int64)
+    lane_to_row = np.full((lane_rows,), -1, dtype=np.int64)
+    sorted_weights = np.asarray([0.75, 0.25, -0.5, 1.0], dtype=np.float32)
+    lane_values = np.vstack([values[(row % rows)] + np.float32(0.03125 * row) for row in range(lane_rows)]).astype(np.float32)
+    lane_values_bits = _float32_to_bf16_bits(lane_values)
+    lane_values_fp16 = lane_values.astype(np.float16)
+    weighted_lanes_bits = np.empty((lane_tokens, features), dtype=np.uint16)
+    weighted_lanes_fp16 = np.empty((lane_tokens, features), dtype=np.float16)
+    shared_batch_bits = np.empty((lane_tokens, features), dtype=np.uint16)
+    shared_batch_fp16 = np.empty((lane_tokens, features), dtype=np.float16)
     batch_values_bf32 = _bf16_bits_to_float32(batch_values_bits).reshape(batch_tokens, batch_rows_per_token, features)
     batch_shared_bf32 = _bf16_bits_to_float32(batch_shared_bits)
     batch_residual_bf32 = _bf16_bits_to_float32(batch_residual_bits)
@@ -5061,6 +5079,46 @@ def paro_combine_hip_smoke(
         gate_t = np.float32(1.0) / (np.float32(1.0) + np.exp(-batch_gate_logits[token, 2], dtype=np.float32))
         expected_batch_fp16[token] = batch_residual_fp32[token] + selected + gate_t * batch_shared_fp32[token]
     expected_batch_fp16 = expected_batch_fp16.astype(np.float16)
+
+    inverse = np.empty((lane_rows,), dtype=np.int64)
+    inverse[sorted_lanes] = np.arange(lane_rows, dtype=np.int64)
+    lane_values_bf32 = _bf16_bits_to_float32(lane_values_bits)
+    expected_lanes = np.empty((lane_tokens, features), dtype=np.float32)
+    for token in range(lane_tokens):
+        acc = np.zeros((features,), dtype=np.float32)
+        for k in range(lane_top_k):
+            row = inverse[token * lane_top_k + k]
+            acc += lane_values_bf32[row] * sorted_weights[row]
+        expected_lanes[token] = acc
+    expected_lanes_bits = _float32_to_bf16_bits(expected_lanes)
+    expected_lanes_fp16 = np.empty((lane_tokens, features), dtype=np.float32)
+    lane_values_fp32 = lane_values_fp16.astype(np.float32)
+    for token in range(lane_tokens):
+        acc = np.zeros((features,), dtype=np.float32)
+        for k in range(lane_top_k):
+            row = inverse[token * lane_top_k + k]
+            acc += lane_values_fp32[row] * sorted_weights[row]
+        expected_lanes_fp16[token] = acc
+    expected_lanes_fp16 = expected_lanes_fp16.astype(np.float16)
+    lane_gate_stride = batch_gate_stride
+    expected_shared_batch_bits = _float32_to_bf16_bits(
+        batch_residual_bf32[:lane_tokens]
+        + _bf16_bits_to_float32(expected_lanes_bits)
+        + np.asarray([
+            1.0 / (1.0 + np.exp(-batch_gate_logits[token, 2], dtype=np.float32))
+            for token in range(lane_tokens)
+        ], dtype=np.float32).reshape(lane_tokens, 1)
+        * batch_shared_bf32[:lane_tokens]
+    )
+    expected_shared_batch_fp16 = (
+        batch_residual_fp32[:lane_tokens]
+        + expected_lanes_fp16.astype(np.float32)
+        + np.asarray([
+            1.0 / (1.0 + np.exp(-batch_gate_logits[token, 2], dtype=np.float32))
+            for token in range(lane_tokens)
+        ], dtype=np.float32).reshape(lane_tokens, 1)
+        * batch_shared_fp32[:lane_tokens]
+    ).astype(np.float16)
 
     runtime = get_hip_runtime()
     library = build_paro_combine(
@@ -5100,12 +5158,22 @@ def paro_combine_hip_smoke(
         batch_residual_dev = dev(batch_residual_bits)
         batch_residual_fp16_dev = dev(batch_residual_fp16)
         batch_gate_logits_dev = dev(batch_gate_logits)
+        sorted_lanes_dev = dev(sorted_lanes)
+        sorted_weights_dev = dev(sorted_weights)
+        lane_values_dev = dev(lane_values_bits)
+        lane_values_fp16_dev = dev(lane_values_fp16)
+        lane_to_row_dev = out_dev(lane_to_row)
+        lane_to_row_fp16_dev = out_dev(lane_to_row.copy())
         weighted_dev = out_dev(weighted_bits)
         weighted_fp16_dev = out_dev(weighted_fp16)
         weighted_shared_residual_dev = out_dev(weighted_shared_residual_bits)
         weighted_shared_residual_fp16_dev = out_dev(weighted_shared_residual_fp16)
         batch_weighted_shared_residual_dev = out_dev(batch_weighted_shared_residual_bits)
         batch_weighted_shared_residual_fp16_dev = out_dev(batch_weighted_shared_residual_fp16)
+        weighted_lanes_dev = out_dev(weighted_lanes_bits)
+        weighted_lanes_fp16_dev = out_dev(weighted_lanes_fp16)
+        shared_batch_dev = out_dev(shared_batch_bits)
+        shared_batch_fp16_dev = out_dev(shared_batch_fp16)
         shared_combine_dev = out_dev(shared_combine_bits)
         shared_combine_fp16_dev = out_dev(shared_combine_fp16)
         shared_residual_dev = out_dev(shared_residual_bits)
@@ -5228,6 +5296,58 @@ def paro_combine_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        weighted_lanes_sum_out_bf16_f32w(
+            lane_values_dev.ptr,
+            sorted_weights_dev.ptr,
+            sorted_lanes_dev.ptr,
+            lane_to_row_dev.ptr,
+            weighted_lanes_dev.ptr,
+            lane_tokens,
+            lane_top_k,
+            features,
+            threads=128,
+            library=library,
+            runtime=runtime,
+        )
+        weighted_lanes_sum_out_fp16_f32w(
+            lane_values_fp16_dev.ptr,
+            sorted_weights_dev.ptr,
+            sorted_lanes_dev.ptr,
+            lane_to_row_fp16_dev.ptr,
+            weighted_lanes_fp16_dev.ptr,
+            lane_tokens,
+            lane_top_k,
+            features,
+            threads=128,
+            library=library,
+            runtime=runtime,
+        )
+        shared_gate_combine_residual_batch_out_bf16(
+            weighted_lanes_dev.ptr,
+            batch_shared_dev.ptr,
+            batch_gate_logits_dev.ptr + 2 * batch_gate_logits.itemsize,
+            batch_residual_dev.ptr,
+            shared_batch_dev.ptr,
+            lane_tokens,
+            features,
+            lane_gate_stride,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        shared_gate_combine_residual_batch_out_fp16(
+            weighted_lanes_fp16_dev.ptr,
+            batch_shared_fp16_dev.ptr,
+            batch_gate_logits_dev.ptr + 2 * batch_gate_logits.itemsize,
+            batch_residual_fp16_dev.ptr,
+            shared_batch_fp16_dev.ptr,
+            lane_tokens,
+            features,
+            lane_gate_stride,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(weighted_bits), weighted_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(weighted_fp16), weighted_fp16_dev, runtime=runtime)
@@ -5255,6 +5375,10 @@ def paro_combine_hip_smoke(
         copy_device_to_host(host_array_ptr(shared_combine_fp16), shared_combine_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(shared_residual_bits), shared_residual_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(shared_residual_fp16), shared_residual_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(weighted_lanes_bits), weighted_lanes_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(weighted_lanes_fp16), weighted_lanes_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(shared_batch_bits), shared_batch_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(shared_batch_fp16), shared_batch_fp16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
@@ -5284,6 +5408,14 @@ def paro_combine_hip_smoke(
     )
     shared_residual_fp16_mismatch = int(
         np.count_nonzero(shared_residual_fp16.view(np.uint16) != expected_shared_residual_fp16.view(np.uint16))
+    )
+    weighted_lanes_mismatch = int(np.count_nonzero(weighted_lanes_bits != expected_lanes_bits))
+    weighted_lanes_fp16_mismatch = int(
+        np.count_nonzero(weighted_lanes_fp16.view(np.uint16) != expected_lanes_fp16.view(np.uint16))
+    )
+    shared_batch_mismatch = int(np.count_nonzero(shared_batch_bits != expected_shared_batch_bits))
+    shared_batch_fp16_mismatch = int(
+        np.count_nonzero(shared_batch_fp16.view(np.uint16) != expected_shared_batch_fp16.view(np.uint16))
     )
     weighted_max_abs = float(
         np.max(np.abs(_bf16_bits_to_float32(weighted_bits) - _bf16_bits_to_float32(expected_weighted_bits)))
@@ -5320,6 +5452,12 @@ def paro_combine_hip_smoke(
             )
         )
     )
+    weighted_lanes_max_abs = float(
+        np.max(np.abs(_bf16_bits_to_float32(weighted_lanes_bits) - _bf16_bits_to_float32(expected_lanes_bits)))
+    )
+    shared_batch_max_abs = float(
+        np.max(np.abs(_bf16_bits_to_float32(shared_batch_bits) - _bf16_bits_to_float32(expected_shared_batch_bits)))
+    )
     print(
         f"rows={rows} hidden_size={hidden_size} "
         f"weighted_mismatch={weighted_mismatch} weighted_max_abs={weighted_max_abs} "
@@ -5328,11 +5466,17 @@ def paro_combine_hip_smoke(
         f"shared_mismatch={shared_mismatch} shared_max_abs={shared_max_abs} "
         f"shared_residual_mismatch={shared_residual_mismatch} "
         f"shared_residual_max_abs={shared_residual_max_abs} "
+        f"weighted_lanes_mismatch={weighted_lanes_mismatch} "
+        f"weighted_lanes_max_abs={weighted_lanes_max_abs} "
+        f"shared_batch_mismatch={shared_batch_mismatch} "
+        f"shared_batch_max_abs={shared_batch_max_abs} "
         f"weighted_fp16_mismatch={weighted_fp16_mismatch} "
         f"fused_fp16_mismatch={fused_fp16_mismatch} "
         f"batch_fused_fp16_mismatch={batch_fused_fp16_mismatch} "
         f"shared_fp16_mismatch={shared_fp16_mismatch} "
-        f"shared_residual_fp16_mismatch={shared_residual_fp16_mismatch}"
+        f"shared_residual_fp16_mismatch={shared_residual_fp16_mismatch} "
+        f"weighted_lanes_fp16_mismatch={weighted_lanes_fp16_mismatch} "
+        f"shared_batch_fp16_mismatch={shared_batch_fp16_mismatch}"
     )
     print("weighted=", _bf16_bits_to_float32(weighted_bits)[0, : min(8, features)].tolist())
     print("fused=", _bf16_bits_to_float32(weighted_shared_residual_bits)[0, : min(8, features)].tolist())
@@ -5342,11 +5486,15 @@ def paro_combine_hip_smoke(
         and batch_fused_mismatch == 0
         and shared_mismatch == 0
         and shared_residual_mismatch == 0
+        and weighted_lanes_mismatch == 0
+        and shared_batch_mismatch == 0
         and weighted_fp16_mismatch == 0
         and fused_fp16_mismatch == 0
         and batch_fused_fp16_mismatch == 0
         and shared_fp16_mismatch == 0
         and shared_residual_fp16_mismatch == 0
+        and weighted_lanes_fp16_mismatch == 0
+        and shared_batch_fp16_mismatch == 0
     ) else 1
 
 

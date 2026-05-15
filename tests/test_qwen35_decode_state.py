@@ -32,6 +32,14 @@ class FakeRuntime:
         self.freed.append(ptr)
         self.allocations.pop(ptr, None)
 
+    def memset(self, dst: int, value: int, nbytes: int) -> None:
+        assert dst in self.allocations
+        assert value == 0
+        assert nbytes <= self.allocations[dst]
+
+    def memset_async(self, dst: int, value: int, nbytes: int, stream: int) -> None:
+        self.memset(dst, value, nbytes)
+
 
 def _config() -> Qwen35ParoConfig:
     return Qwen35ParoConfig(
@@ -820,6 +828,12 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", record("shared_silu"))
     monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_out_bf16_f32w", record("combine"))
     monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w", record("combine_batch"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_moe_group_count", record("group_count"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_moe_group_prefix", record("group_prefix"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_moe_wmma_tile_map", record("tile_map"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_moe_group_scatter_gather_lowp", record("scatter_gather"))
+    monkeypatch.setattr(qwen_runtime, "weighted_lanes_sum_out_bf16_f32w", record("weighted_lanes"))
+    monkeypatch.setattr(qwen_runtime, "shared_gate_combine_residual_batch_out_bf16", record("shared_batch"))
 
     out = state.run_linear_attention_moe_c1_layer_bf16(
         hidden,
@@ -866,7 +880,7 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
     calls.clear()
     batch_hidden = _tensor(0xD000, (4, 4096), "bf16")
     batch_linear = state.reserve_linear_attention_scratch(tokens=4)
-    batch_moe = state.reserve_moe_c1_scratch(tokens=4)
+    batch_moe = state.reserve_moe_grouped_prefill_scratch(tokens=4)
     batch_out = state.run_linear_attention_moe_c1_layer_bf16(
         batch_hidden,
         conv_state=conv_state,
@@ -892,14 +906,19 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "pack8",
         "post_norm",
         "router",
+        "group_count",
+        "group_prefix",
+        "tile_map",
+        "scatter_gather",
         "rotate1",
         "gate_up",
         "silu_rotate",
         "down",
+        "weighted_lanes",
         "w8a16",
         "shared_silu",
         "w8a16",
-        "combine_batch",
+        "shared_batch",
     ]
 
 

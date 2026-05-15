@@ -313,11 +313,17 @@ Required ports/wiring:
 
 - Confirm router wrappers cover `[T, hidden]` and keep native router top-k.
 - `moe/group_scatter.hip` count, prefix, scatter/scatter_gather, gather packed
-  hidden, and WMMA tile-map metadata kernels are landed; remaining group-scatter
-  work is c1 group metadata variants, build lane-to-sorted, and combine.
+  hidden, and WMMA tile-map metadata kernels are landed; the current grouped
+  prefill wire-up builds `lane_to_row` in the weighted-lane combine kernel.
+- The grouped GEMV fallback is wired over packed/sorted lanes and registered as
+  `moe_prefill/w4_paro/qwen35_grouped_compact`; compact WMMA expert kernels are
+  still required before making a retained throughput claim.
+- The selected-row c1 path is registered only as
+  `moe_prefill/w4_paro/qwen35_selected_c1_rows` oracle/fallback coverage; native
+  multi-token prefill layer orchestration routes to grouped compact instead.
 - Port the Qwen3.5/PARO-used subset of `quant/w8a16_moe.hip` shared/bulk
-  variants; do not port all 17 variants unless the parent call graph requires
-  them.
+  variants if/when the parent call graph requires variants beyond the existing
+  W8A16 shared expert wrappers; do not port all 17 variants speculatively.
 - Port `moe/w8a8_grouped.hip` only if the W4 PARO parent retained path actually
   uses it.
 - Port `wmma/wmma_i8_gemm.hip` for long-prompt grouped GEMM once the pack8

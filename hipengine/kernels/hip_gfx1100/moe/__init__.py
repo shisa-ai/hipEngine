@@ -11,6 +11,11 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_wmma_tile_map,
     register_qwen35_moe_group_scatter_kernels,
 )
+from hipengine.kernels.hip_gfx1100.moe.prefill import (
+    qwen35_moe_prefill_grouped_compact,
+    qwen35_moe_prefill_selected_c1_rows,
+    register_qwen35_moe_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.moe.router import (
     build_qwen35_router,
     plan_qwen35_router_build,
@@ -33,11 +38,14 @@ __all__ = [
     "qwen35_moe_group_scatter",
     "qwen35_moe_group_scatter_gather_lowp",
     "qwen35_moe_wmma_tile_map",
+    "qwen35_moe_prefill_grouped_compact",
+    "qwen35_moe_prefill_selected_c1_rows",
     "qwen35_router_logits_bf16",
     "qwen35_router_logits_fp16",
     "qwen35_router_select",
     "qwen35_router_topk_shared_out_bf16",
     "qwen35_router_topk_shared_out_fp16",
     "register_qwen35_moe_group_scatter_kernels",
+    "register_qwen35_moe_prefill_kernels",
     "register_qwen35_router_kernels",
 ]

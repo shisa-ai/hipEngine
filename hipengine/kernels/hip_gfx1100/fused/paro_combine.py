@@ -11,6 +11,8 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("paro_combine.hip")
 _OUTPUT_NAME = "paro_combine.so"
+_SYMBOL_WEIGHTED_LANES = "hipengine_weighted_lanes_sum_out_bf16_f32w"
+_SYMBOL_WEIGHTED_LANES_FP16 = "hipengine_weighted_lanes_sum_out_fp16_f32w"
 _SYMBOL_WEIGHTED_SUM = "hipengine_weighted_sum_out_bf16_f32w"
 _SYMBOL_WEIGHTED_SUM_FP16 = "hipengine_weighted_sum_out_fp16_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL = "hipengine_weighted_sum_shared_gate_combine_residual_out_bf16_f32w"
@@ -21,6 +23,8 @@ _SYMBOL_SHARED_COMBINE = "hipengine_shared_gate_combine_out_bf16"
 _SYMBOL_SHARED_COMBINE_FP16 = "hipengine_shared_gate_combine_out_fp16"
 _SYMBOL_SHARED_RESIDUAL = "hipengine_shared_gate_combine_residual_out_bf16"
 _SYMBOL_SHARED_RESIDUAL_FP16 = "hipengine_shared_gate_combine_residual_out_fp16"
+_SYMBOL_SHARED_RESIDUAL_BATCH = "hipengine_shared_gate_combine_residual_batch_out_bf16"
+_SYMBOL_SHARED_RESIDUAL_BATCH_FP16 = "hipengine_shared_gate_combine_residual_batch_out_fp16"
 _ALLOWED_THREADS = {64, 128, 256}
 
 
@@ -59,6 +63,74 @@ def build_paro_combine(
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
+    )
+
+
+def weighted_lanes_sum_out_bf16_f32w(
+    values_ptr: int,
+    weights_ptr: int,
+    sorted_lanes_ptr: int,
+    lane_to_row_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    top_k: int,
+    features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch grouped-MoE sorted lane weighted sum into BF16 token-major rows."""
+
+    _launch_weighted_lanes(
+        _SYMBOL_WEIGHTED_LANES,
+        values_ptr,
+        weights_ptr,
+        sorted_lanes_ptr,
+        lane_to_row_ptr,
+        out_ptr,
+        tokens,
+        top_k,
+        features,
+        threads,
+        stream,
+        library,
+        runtime,
+    )
+
+
+def weighted_lanes_sum_out_fp16_f32w(
+    values_ptr: int,
+    weights_ptr: int,
+    sorted_lanes_ptr: int,
+    lane_to_row_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    top_k: int,
+    features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch grouped-MoE sorted lane weighted sum into FP16 token-major rows."""
+
+    _launch_weighted_lanes(
+        _SYMBOL_WEIGHTED_LANES_FP16,
+        values_ptr,
+        weights_ptr,
+        sorted_lanes_ptr,
+        lane_to_row_ptr,
+        out_ptr,
+        tokens,
+        top_k,
+        features,
+        threads,
+        stream,
+        library,
+        runtime,
     )
 
 
@@ -435,6 +507,68 @@ def shared_gate_combine_residual_out_bf16(
     )
 
 
+def shared_gate_combine_residual_batch_out_bf16(
+    expert_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    features: int,
+    gate_stride: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch batched residual + expert + sigmoid(shared-gate) * shared combine."""
+
+    _launch_shared_batch(
+        _SYMBOL_SHARED_RESIDUAL_BATCH,
+        (expert_ptr, shared_ptr, gate_logits_ptr, residual_ptr),
+        out_ptr,
+        tokens,
+        features,
+        gate_stride,
+        threads,
+        stream,
+        library,
+        runtime,
+    )
+
+
+def shared_gate_combine_residual_batch_out_fp16(
+    expert_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    features: int,
+    gate_stride: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch batched FP16 residual + expert + sigmoid(shared-gate) * shared combine."""
+
+    _launch_shared_batch(
+        _SYMBOL_SHARED_RESIDUAL_BATCH_FP16,
+        (expert_ptr, shared_ptr, gate_logits_ptr, residual_ptr),
+        out_ptr,
+        tokens,
+        features,
+        gate_stride,
+        threads,
+        stream,
+        library,
+        runtime,
+    )
+
+
 def shared_gate_combine_residual_out_fp16(
     expert_ptr: int,
     shared_ptr: int,
@@ -464,6 +598,16 @@ def shared_gate_combine_residual_out_fp16(
 
 def register_paro_combine_kernels(*, replace: bool = True) -> None:
     for quant in ("bf16", "w4_paro"):
+        register(
+            KernelKey("hip_gfx1100", "weighted_lanes_sum", quant, "out"),
+            weighted_lanes_sum_out_bf16_f32w,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "weighted_lanes_sum", quant, "out_fp16"),
+            weighted_lanes_sum_out_fp16_f32w,
+            replace=replace,
+        )
         register(
             KernelKey("hip_gfx1100", "weighted_sum", quant, "out"),
             weighted_sum_out_bf16_f32w,
@@ -514,6 +658,16 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
             shared_gate_combine_residual_out_fp16,
             replace=replace,
         )
+        register(
+            KernelKey("hip_gfx1100", "shared_gate_combine+residual", quant, "batch_out"),
+            shared_gate_combine_residual_batch_out_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "shared_gate_combine+residual", quant, "batch_out_fp16"),
+            shared_gate_combine_residual_batch_out_fp16,
+            replace=replace,
+        )
     register(
         KernelKey("hip_gfx1100", "weighted_sum", "fp16", "out"),
         weighted_sum_out_fp16_f32w,
@@ -541,6 +695,55 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
     )
 
 
+def _launch_weighted_lanes(
+    symbol: str,
+    values_ptr: int,
+    weights_ptr: int,
+    sorted_lanes_ptr: int,
+    lane_to_row_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    top_k: int,
+    features: int,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(tokens, "tokens")
+    _check_positive(top_k, "top_k")
+    _check_vector_shape(features, threads)
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(values_ptr),
+        ctypes.c_void_p(weights_ptr),
+        ctypes.c_void_p(sorted_lanes_ptr),
+        ctypes.c_void_p(lane_to_row_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(top_k),
+        ctypes.c_int64(features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def _launch_shared(
     symbol: str,
     input_ptrs: tuple[int, ...],
@@ -566,6 +769,45 @@ def _launch_shared(
         *(ctypes.c_void_p(ptr) for ptr in input_ptrs),
         ctypes.c_void_p(out_ptr),
         ctypes.c_int64(features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_shared_batch(
+    symbol: str,
+    input_ptrs: tuple[int, ...],
+    out_ptr: int,
+    tokens: int,
+    features: int,
+    gate_stride: int,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(tokens, "tokens")
+    _check_vector_shape(features, threads)
+    _check_positive(gate_stride, "gate_stride")
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [*(ctypes.c_void_p for _ in input_ptrs)] + [
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        *(ctypes.c_void_p(ptr) for ptr in input_ptrs),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(features),
+        ctypes.c_int64(gate_stride),
         ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )

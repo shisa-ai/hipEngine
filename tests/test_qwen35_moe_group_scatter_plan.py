@@ -9,8 +9,11 @@ from hipengine.kernels.hip_gfx1100.moe import (
     qwen35_moe_group_prefix,
     qwen35_moe_group_scatter,
     qwen35_moe_group_scatter_gather_lowp,
+    qwen35_moe_prefill_grouped_compact,
+    qwen35_moe_prefill_selected_c1_rows,
     qwen35_moe_wmma_tile_map,
     register_qwen35_moe_group_scatter_kernels,
+    register_qwen35_moe_prefill_kernels,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
 
@@ -21,6 +24,7 @@ def setup_function() -> None:
 
 def test_qwen35_moe_group_scatter_registers_prefill_metadata_variants() -> None:
     register_qwen35_moe_group_scatter_kernels()
+    register_qwen35_moe_prefill_kernels()
 
     assert resolve(backend="hip_gfx1100", layer="moe_group_count", quant="w4_paro", variant="qwen35") is qwen35_moe_group_count
     assert resolve(backend="hip_gfx1100", layer="moe_group_prefix", quant="w4_paro", variant="qwen35") is qwen35_moe_group_prefix
@@ -33,6 +37,14 @@ def test_qwen35_moe_group_scatter_registers_prefill_metadata_variants() -> None:
     assert (
         resolve(backend="hip_gfx1100", layer="moe_gather_packed_hidden", quant="w4_paro", variant="qwen35_lowp")
         is qwen35_moe_gather_packed_hidden_lowp
+    )
+    assert (
+        resolve(backend="hip_gfx1100", layer="moe_prefill", quant="w4_paro", variant="qwen35_grouped_compact")
+        is qwen35_moe_prefill_grouped_compact
+    )
+    assert (
+        resolve(backend="hip_gfx1100", layer="moe_prefill", quant="w4_paro", variant="qwen35_selected_c1_rows")
+        is qwen35_moe_prefill_selected_c1_rows
     )
 
 
