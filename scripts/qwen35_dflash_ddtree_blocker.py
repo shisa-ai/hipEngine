@@ -72,6 +72,7 @@ def _interface_status() -> dict[str, Any]:
         "kv_policy": FixedPagedKVPolicy.__name__,
         "kv_transaction": KVTransaction.__name__,
         "scheduler_speculative_verify_work": hasattr(ResidentBatchScheduler, "next_speculative_verify_work"),
+        "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
         "verify_graph_shape_key": {
             "mode": shape_key.mode.value,
             "active_c": shape_key.active_c,

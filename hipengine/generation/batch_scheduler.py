@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
-from hipengine.speculative import DraftBatch, TargetVerifyBatch
+from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetVerifyBatch
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,20 +203,27 @@ class ResidentBatchScheduler:
         completed: list[CompletedRequest] = []
         for item in tokens:
             token = _coerce_generated_token(item)
-            request = self.active_batch.requests[token.request_id]
-            updated = request.append_generated(token.token_id, finished=token.finished)
-            self.active_batch.update_request(updated)
-            if updated.finished:
-                self.active_batch.finish(updated.request_id)
-                reclaimed = self.active_batch.reclaim(updated.request_id)
-                done = CompletedRequest(
-                    request_id=reclaimed.request_id,
-                    prompt_tokens=reclaimed.prompt_tokens,
-                    generated_tokens=reclaimed.generated_tokens,
-                    finished=reclaimed.finished,
-                )
-                self._completed[done.request_id] = done
+            done = self._append_generated_token(token)
+            if done is not None:
                 completed.append(done)
+        return tuple(completed)
+
+    def record_speculative_accept(self, summary: TargetAcceptSummary) -> tuple[CompletedRequest, ...]:
+        """Record accepted speculative tokens from a target verifier summary."""
+
+        for request_id, tokens in zip(summary.request_ids, summary.accepted_tokens, strict=True):
+            if request_id not in self.active_batch.requests:
+                raise KeyError(request_id)
+            request = self.active_batch.requests[request_id]
+            if len(tokens) > request.remaining_decode:
+                raise ValueError("accepted speculative tokens exceed remaining decode budget")
+        completed: list[CompletedRequest] = []
+        for request_id, tokens in zip(summary.request_ids, summary.accepted_tokens, strict=True):
+            for token_id in tokens:
+                done = self._append_generated_token(GeneratedToken(request_id, token_id))
+                if done is not None:
+                    completed.append(done)
+                    break
         return tuple(completed)
 
     def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
@@ -232,6 +239,23 @@ class ResidentBatchScheduler:
         rid = self._next_request_id
         self._next_request_id += 1
         return rid
+
+    def _append_generated_token(self, token: GeneratedToken) -> CompletedRequest | None:
+        request = self.active_batch.requests[token.request_id]
+        updated = request.append_generated(token.token_id, finished=token.finished)
+        self.active_batch.update_request(updated)
+        if not updated.finished:
+            return None
+        self.active_batch.finish(updated.request_id)
+        reclaimed = self.active_batch.reclaim(updated.request_id)
+        done = CompletedRequest(
+            request_id=reclaimed.request_id,
+            prompt_tokens=reclaimed.prompt_tokens,
+            generated_tokens=reclaimed.generated_tokens,
+            finished=reclaimed.finished,
+        )
+        self._completed[done.request_id] = done
+        return done
 
 
 def _coerce_generated_token(item: GeneratedToken | tuple[int, int] | tuple[int, int, bool]) -> GeneratedToken:

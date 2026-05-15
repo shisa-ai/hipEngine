@@ -6,7 +6,7 @@ import pytest
 
 from hipengine.dispatch import WorkKind
 from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler, SpeculativeVerifyWork
-from hipengine.speculative import DraftBatch
+from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
@@ -53,7 +53,7 @@ def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:
 def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
     r0 = scheduler.submit([10, 11], max_new_tokens=3)
-    r1 = scheduler.submit([20], max_new_tokens=2)
+    r1 = scheduler.submit([20], max_new_tokens=1)
     scheduler.admit_pending()
     scheduler.next_prefill_work(chunk_size=8)
     scheduler.next_prefill_work(chunk_size=8)
@@ -82,6 +82,43 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert work.work_item.row_to_request == (r0, r0, r1)
     assert work.work_item.token_rows == ((101,), (102,), (201,))
     assert work.work_item.tree_parents == (0, 1, 0)
+
+    summary = TargetAcceptSummary.from_accept_result(
+        work.target_batch,
+        AcceptResult(
+            request_ids=(r0, r1),
+            accepted_counts=(2, 1),
+            accepted_tokens=((101, 102), (201,)),
+        ),
+    )
+    completed = scheduler.record_speculative_accept(summary)
+
+    assert [item.request_id for item in completed] == [r1]
+    assert scheduler.active_batch.requests[r0].generated_tokens == (101, 102)
+    assert scheduler.completed[r1].generated_tokens == (201,)
+    assert scheduler.active_batch.slot_to_request == (r0, None)
+
+
+def test_resident_batch_scheduler_rejects_speculative_accept_over_budget() -> None:
+    scheduler = ResidentBatchScheduler(capacity=1)
+    r0 = scheduler.submit([10], max_new_tokens=1)
+    scheduler.admit_pending()
+    scheduler.next_prefill_work(chunk_size=8)
+    draft = DraftBatch(
+        request_ids=(r0,),
+        candidate_tokens=(101, 102),
+        parent_positions=(0, 1),
+        draft_depths=(1, 2),
+        row_to_request=(r0, r0),
+    )
+    work = scheduler.next_speculative_verify_work(draft, root_tokens=(10,), root_positions=(0,))
+    summary = TargetAcceptSummary.from_accept_result(
+        work.target_batch,
+        AcceptResult(request_ids=(r0,), accepted_counts=(2,), accepted_tokens=((101, 102),)),
+    )
+
+    with pytest.raises(ValueError, match="remaining decode"):
+        scheduler.record_speculative_accept(summary)
 
 
 def test_resident_batch_scheduler_rejects_speculative_verify_before_prefill() -> None:

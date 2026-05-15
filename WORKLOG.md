@@ -7047,3 +7047,49 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`80 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows scheduler metadata only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Scheduler speculative accept accounting
+
+### Scope
+
+- Added `ResidentBatchScheduler.record_speculative_accept(...)`.
+- The scheduler now validates `TargetAcceptSummary.accepted_tokens` against each active request's remaining decode budget, then records accepted speculative tokens through the same completion/reclaim path as normal generation.
+- Updated the DFlash blocker helper/artifact and Task #15 with scheduler accept-accounting evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `21 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.scheduler_speculative_verify_work=true`
+- `implementation_status.interfaces_present.scheduler_speculative_accept=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: scheduler-owned speculative verifier metadata can now be emitted and accepted-token summaries can be accounted against request budgets. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows scheduler accept accounting only; no performance claim or kernel change was made.
