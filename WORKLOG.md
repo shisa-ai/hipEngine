@@ -6057,3 +6057,71 @@ Result: pytest exit code `0` (`75 passed`).
 - The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
 - This is not a performance win and is not PLAN-MOE2-comparable; it is a correctness-safe bridge until full-attention prefill/KV row-position/causal-attention kernels are wired.
 - No kernel bodies were changed, so source-lineage and rocprof evidence are not required for this iteration.
+
+---
+
+## 2026-05-15 — Task #43 c=1/2/4/8 scheduler-serial benchmark attempts
+
+### Scope
+
+- Added `scripts/qwen35_batch_serial_bench.py`, a schema-2 diagnostic benchmark harness for the current Qwen3.5/PARO resident scheduler serial c>N bridge.
+- The harness records exact benchmark command, W7900/gfx1100 hardware/software context, scheduler metadata, `batch_execution` path/blockers, seed/generated tokens, finite-logit correctness smoke, timing samples, and a blocked/non-retained decision.
+- Added unit coverage for prompt slicing and sample-stat helpers in `tests/test_generation_batch_scheduler.py`.
+- Completed Task #43 with c=1/c=2/c=4/c=8 artifacts. These are diagnostic blocked benchmark attempts, not retained throughput rows.
+
+### Commands and artifacts
+
+All runs used full `max_layers=40` but a reduced diagnostic workload (`prompt_length=8`, `decode_tokens=1`, no warmup), so they do not satisfy the retained c=N 512/128 benchmark protocol.
+
+```bash
+python3 scripts/qwen35_batch_serial_bench.py --batch-size 1 --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-c1-scheduler-serial-bench-blocked.json
+python3 scripts/qwen35_batch_serial_bench.py --batch-size 2 --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-c2-scheduler-serial-bench-blocked.json
+python3 scripts/qwen35_batch_serial_bench.py --batch-size 4 --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-c4-scheduler-serial-bench-blocked.json
+python3 scripts/qwen35_batch_serial_bench.py --batch-size 8 --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json
+```
+
+### Results
+
+All artifacts:
+
+- `status=blocked`
+- `performance_claim=false`
+- `decision.accepted=false`
+- `correctness.finite_logits=true`
+- `workload.max_layers=40`
+- `execution.batch_execution.path="scheduler_serial_slot_bridge"`
+- `execution.batch_execution.row_execution="serial_c1_layer_path"`
+- `execution.batch_execution.throughput_claim_eligible=false`
+- blocked reason includes current serial bridge plus reduced diagnostic workload shape.
+
+Diagnostic timing snapshot (not retained as performance claims):
+
+| c | Prefill tok/s | Aggregate decode tok/s | Per-request decode tok/s |
+| ---: | ---: | ---: | ---: |
+| 1 | 90.464313 | 106.765109 | 106.765109 |
+| 2 | 103.566729 | 107.149491 | 53.574746 |
+| 4 | 111.225881 | 108.433765 | 27.108441 |
+| 8 | 115.080077 | 108.904474 | 13.613059 |
+
+Interpretation: aggregate decode stays ~107–109 tok/s as c increases because the path executes rows serially; per-request throughput falls roughly as expected for a serial bridge. This is useful blocker evidence for Task #15, not a c>N throughput win.
+
+### Validation
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_serial_bench.py tests/test_generation_batch_scheduler.py && \
+  python3 -m pytest tests/test_generation_batch_scheduler.py -q
+```
+
+Result: `5 passed`.
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+### Notes
+
+- Original pi-multiloop verify selector remains stale and exits with `active HIPENGINE parity TaskList not found`; robust active TaskList count is now `3` (#15, #44, #45) after completing #43.
+- Task #45 is now unblocked: summarize these c=1/2/4/8 results as blocked/diagnostic rows in `benchmarks/README.md`/`CHANGELOG.md`, not in current-fastest accepted rows.

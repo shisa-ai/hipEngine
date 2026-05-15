@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from hipengine.dispatch import WorkKind
 from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler
+from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
 def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:
@@ -106,3 +109,27 @@ def test_resident_batch_scheduler_rejects_duplicate_ids_and_invalid_chunks() -> 
     scheduler.admit_pending()
     with pytest.raises(ValueError, match="chunk_size"):
         scheduler.next_prefill_work(chunk_size=0)
+
+
+def test_qwen35_batch_serial_bench_helpers_summarize_and_slice(tmp_path) -> None:
+    fixture = tmp_path / "fixture.json"
+    fixture.write_text(json.dumps({"prompt_ids": list(range(12))}))
+
+    assert _load_prompt_slices(fixture, prompt_length=3, batch_size=4) == [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [9, 10, 11],
+    ]
+    with pytest.raises(ValueError, match="need at least"):
+        _load_prompt_slices(fixture, prompt_length=4, batch_size=4)
+
+    empty = _summarize_samples([])
+    assert empty["median"] is None
+    stats = _summarize_samples([3.0, 1.0, 2.0, 10.0])
+    assert stats["samples"] == [3.0, 1.0, 2.0, 10.0]
+    assert stats["median"] == 2.5
+    assert stats["p95"] == 10.0
+    assert stats["min"] == 1.0
+    assert stats["max"] == 10.0
+    assert stats["stdev"] > 0.0

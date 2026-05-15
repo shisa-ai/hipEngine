@@ -1,0 +1,276 @@
+{
+  "schema": 2,
+  "status": "blocked",
+  "timestamp": "2026-05-15T00:12:05.300442+00:00",
+  "run_tag": "qwen35-paro-c2-scheduler-serial-bridge",
+  "summary": "Qwen3.5/PARO scheduler serial c>N bridge diagnostic benchmark",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "default_hardware": true,
+    "rocminfo": {
+      "command": "bash -lc 'rocminfo | grep -E '\"'\"'Name:|gfx'\"'\"' | head -4'",
+      "returncode": 0,
+      "output": "Name:                    AMD EPYC 9274F 24-Core Processor   \n  Marketing Name:          AMD EPYC 9274F 24-Core Processor   \n  Vendor Name:             CPU                                \n  Name:                    gfx1100"
+    },
+    "rocm_smi": {
+      "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "returncode": 0,
+      "output": "WARNING: AMD GPU device(s) is/are in a low-power state. Check power control/runtime_status\n\n\n\n============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 39.0\nGPU[0]\t\t: Temperature (Sensor junction) (C): 49.0\nGPU[0]\t\t: Temperature (Sensor memory) (C): 52.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 0\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 48301604864\nGPU[0]\t\t: VRAM Total Used Memory (B): 270553088\n==========================================================================================\n================================== End of ROCm SMI Log ==================================="
+    }
+  },
+  "software": {
+    "python": "3.12.9",
+    "hipcc_version": "HIP version: 7.2.53211-d40244d\nAMD clang version 22.0.0git (/startdir/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "8939048",
+    "hipengine_dirty": true,
+    "torch_rocm": {
+      "command": "python3 -c 'import torch; print(torch.__version__, torch.version.hip)'",
+      "returncode": 0,
+      "output": "2.11.0+rocm7.13.0a20260423 7.13.26162"
+    }
+  },
+  "workload": {
+    "shape": "c=2 prompt=8 decode=1",
+    "model": "Qwen3.5-35B-A3B-PARO",
+    "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+    "quant": "w4_paro",
+    "prompt_tokens_per_request": 8,
+    "prompt_tokens_aggregate": 16,
+    "gen_tokens_per_request": 1,
+    "gen_tokens_aggregate": 2,
+    "warmup_decode_tokens": 0,
+    "concurrency": 2,
+    "prompt_lengths": [
+      8,
+      8
+    ],
+    "max_layers": 40,
+    "kv_policy": "dense_paged",
+    "scheduler_path": "scheduler_serial_slot_bridge",
+    "native_compact_prefill": false,
+    "native_caware_decode": false
+  },
+  "commands": {
+    "environment": [
+      "rocminfo | grep -E 'Name:|gfx' | head -4",
+      "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "hipcc --version"
+    ],
+    "correctness_reference": "benchmarks/results/2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json",
+    "benchmark": "python3 scripts/qwen35_batch_serial_bench.py --batch-size 2 --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-c2-scheduler-serial-bench-blocked.json",
+    "profiler": null
+  },
+  "correctness": {
+    "passed": true,
+    "oracle": "generated-token finite-logit smoke plus prior scheduler generated-equality artifact",
+    "finite_logits": true,
+    "generated_equality_artifact": "benchmarks/results/2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json",
+    "kl_mean": null,
+    "top1_agreement": null
+  },
+  "execution": {
+    "batch_execution": {
+      "path": "scheduler_serial_slot_bridge",
+      "scheduler_owned": true,
+      "row_execution": "serial_c1_layer_path",
+      "native_prefill_plan": {
+        "path": "linear_attention_prefix_only",
+        "layer_limit": 40,
+        "linear_prefix_layers": 3,
+        "full_layer_limit_native": false,
+        "first_unsupported_layer": 3,
+        "first_unsupported_type": "full_attention",
+        "blockers": [
+          "native prefill currently covers only linear-attention layer prefixes",
+          "native compact/grouped MoE and full-attention prefill are not wired",
+          "first unsupported layer 3 is 'full_attention'"
+        ]
+      },
+      "native_compact_prefill": false,
+      "native_caware_decode": false,
+      "throughput_claim_eligible": false,
+      "blockers": [
+        "step_batch_serial executes active physical slots serially through the c=1 layer path",
+        "native compact/grouped MoE c>N prefill is not wired",
+        "native c-aware full-attention decode graph replay is not wired",
+        "native prefill currently covers only linear-attention layer prefixes",
+        "native compact/grouped MoE and full-attention prefill are not wired",
+        "first unsupported layer 3 is 'full_attention'"
+      ]
+    },
+    "scheduler_metadata": {
+      "request_ids": [
+        0,
+        1
+      ],
+      "admitted": [
+        0,
+        1
+      ],
+      "slot_to_request_after_admit": [
+        0,
+        1
+      ],
+      "active_count_after_admit": 2,
+      "prefill_work_items": 16,
+      "prefill_request_order": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "slot_to_request_at_decode": [
+        0,
+        1
+      ],
+      "active_count_at_decode": 2,
+      "decode_shape_key": {
+        "mode": "decode",
+        "active_c": 2,
+        "context_bucket": 256,
+        "active_mask": [
+          true,
+          true
+        ],
+        "top_k": 8,
+        "experts_per_token": 8,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": []
+      },
+      "graph_bucket_stats": {
+        "entries": 1,
+        "hits": 1,
+        "misses": 1
+      },
+      "active_count_after_completion": 0,
+      "slot_to_request_after_completion": [
+        null,
+        null
+      ]
+    },
+    "completed": [
+      {
+        "request_id": 0,
+        "prompt_tokens": [
+          133935,
+          158931,
+          13606,
+          102965,
+          243916,
+          36724,
+          158872,
+          128505
+        ],
+        "generated_tokens": [
+          96342
+        ],
+        "finished": true
+      },
+      {
+        "request_id": 1,
+        "prompt_tokens": [
+          133775,
+          57009,
+          195863,
+          107241,
+          187034,
+          149022,
+          64683,
+          34462
+        ],
+        "generated_tokens": [
+          220
+        ],
+        "finished": true
+      }
+    ],
+    "seed_tokens": {
+      "0": {
+        "token_id": 3709,
+        "token_text": "，",
+        "logit": 9.055789947509766
+      },
+      "1": {
+        "token_id": 72,
+        "token_text": "i",
+        "logit": 8.959014892578125
+      }
+    },
+    "generated_tokens": {
+      "0": [
+        {
+          "token_id": 96342,
+          "token_text": "但",
+          "logit": 8.539745330810547
+        }
+      ],
+      "1": [
+        {
+          "token_id": 220,
+          "token_text": " ",
+          "logit": 9.62960147857666
+        }
+      ]
+    }
+  },
+  "measurements": {
+    "load_seconds": 27.038591387914494,
+    "prefill_seconds": 0.15448976890183985,
+    "warmup_decode_seconds": 1.9900035113096237e-06,
+    "decode_seconds": 0.0186655109282583,
+    "prefill_tok_s": 103.56672881144722,
+    "decode_tok_s_aggregate": 107.14949125620439,
+    "decode_tok_s_per_request": 53.57474562810219,
+    "decode_step_seconds": {
+      "samples": [
+        0.018664880888536572
+      ],
+      "median": 0.018664880888536572,
+      "p95": 0.018664880888536572,
+      "min": 0.018664880888536572,
+      "max": 0.018664880888536572,
+      "stdev": 0.0
+    },
+    "warmup_step_seconds": {
+      "samples": [],
+      "median": null,
+      "p95": null,
+      "min": null,
+      "max": null,
+      "stdev": null
+    }
+  },
+  "memory": {
+    "max_batch_size": 2,
+    "max_sequence_length": 10,
+    "kv_policy": "dense_paged",
+    "allocator_reserved_peak_bytes": null
+  },
+  "profiler": {
+    "status": "not_captured",
+    "notes": "No kernel port or retained performance claim in this diagnostic iteration."
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "batch_execution.throughput_claim_eligible=false: current c>N path is scheduler_serial_slot_bridge; workload is a reduced diagnostic shape, not the docs/BENCHMARK.md c=N 512/128 protocol"
+  },
+  "notes": [
+    "Diagnostic benchmark only; timings are recorded to characterize the current bridge but are not retained as throughput claims unless decision.accepted=true.",
+    "The c>N path uses step_batch_serial over batch-shaped state/KV slots and is blocked on native compact prefill plus c-aware decode kernels."
+  ]
+}
