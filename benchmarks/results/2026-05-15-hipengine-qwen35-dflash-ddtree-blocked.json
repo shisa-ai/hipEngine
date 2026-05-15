@@ -45,6 +45,7 @@
       "scheduler_speculative_verify_plan": true,
       "scheduler_speculative_buffer_plan": true,
       "scheduler_speculative_commit_plan": true,
+      "scheduler_speculative_commit_from_top1": true,
       "scheduler_speculative_state_commit_plan": true,
       "scheduler_speculative_kv_commit": true,
       "scheduler_speculative_kv_rollback": true,
@@ -321,6 +322,7 @@
           2
         ],
         "summary_transaction_id": 1,
+        "from_top1": true,
         "accepted_counts": [
           2,
           1

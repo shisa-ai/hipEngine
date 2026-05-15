@@ -62,7 +62,7 @@ It records:
   verify graph shape keys, cache graph/replay objects under those keys, begin
   speculative KV transactions, bundle scheduler-owned verify plans, bind those
   plans to same-transaction, same-candidate-budget/topology resident target-verifier device buffers, derive scheduler-owned
-  commit plans from verifier accept summaries, bind those commit plans to
+  commit plans from verifier accept summaries or target-top1 oracle outputs, bind those commit plans to
   same-transaction, same-device, row-covering state/KV commit device buffers, commit or roll back
   speculative KV transaction metadata, finalize accepted-token recording after KV commit, and record
   accepted speculative token summaries plus target next tokens against request budgets, while host KV

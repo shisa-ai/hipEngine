@@ -437,6 +437,7 @@ def _interface_status() -> dict[str, Any]:
         "scheduler_speculative_verify_plan": hasattr(ResidentBatchScheduler, "plan_speculative_verify"),
         "scheduler_speculative_buffer_plan": hasattr(ResidentBatchScheduler, "bind_speculative_verify_buffers"),
         "scheduler_speculative_commit_plan": hasattr(ResidentBatchScheduler, "plan_speculative_commit"),
+        "scheduler_speculative_commit_from_top1": hasattr(ResidentBatchScheduler, "plan_speculative_commit_from_top1"),
         "scheduler_speculative_state_commit_plan": hasattr(ResidentBatchScheduler, "bind_speculative_commit_buffers"),
         "scheduler_speculative_kv_commit": hasattr(ResidentBatchScheduler, "commit_speculative_kv_transaction"),
         "scheduler_speculative_kv_rollback": hasattr(ResidentBatchScheduler, "rollback_speculative_kv_transaction"),
@@ -695,8 +696,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         transaction_id=scheduler_plan.transaction.transaction_id,
     )
     scheduler_buffer_plan = scheduler.bind_speculative_verify_buffers(scheduler_plan, scheduler_buffers)
-    scheduler_summary = replace(summary, transaction_id=scheduler_plan.transaction.transaction_id)
-    scheduler_commit_plan = scheduler.plan_speculative_commit(scheduler_buffer_plan, scheduler_summary)
+    scheduler_commit_plan = scheduler.plan_speculative_commit_from_top1(scheduler_buffer_plan, target_top1)
     scheduler_state_buffers = TargetStateCommitBuffers.for_plan(
         scheduler_commit_plan.commit_plan,
         accepted_counts=state_buffers.accepted_counts,
@@ -827,6 +827,7 @@ def _kv_transaction_status() -> dict[str, Any]:
             "transaction_id": scheduler_commit_plan.commit_plan.transaction_id,
             "request_ids": list(scheduler_commit_plan.commit_plan.request_ids),
             "summary_transaction_id": scheduler_commit_plan.summary.transaction_id,
+            "from_top1": True,
             "accepted_counts": list(scheduler_commit_plan.commit_plan.accepted_counts),
             "commit_rows": list(scheduler_commit_plan.commit_plan.commit_rows),
             "commit_positions": list(scheduler_commit_plan.commit_plan.commit_positions),

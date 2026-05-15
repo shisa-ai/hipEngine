@@ -407,6 +407,28 @@ class ResidentBatchScheduler:
         commit = TargetCommitPlan.from_summary(summary, verify_plan.plan.transaction)
         return SpeculativeCommitPlan(verify_plan=verify_plan, summary=summary, commit_plan=commit)
 
+    def plan_speculative_commit_from_top1(
+        self,
+        verify_plan: SpeculativeVerifyBufferPlan,
+        target_top1: Sequence[int],
+        *,
+        remaining_decode: Sequence[int] | None = None,
+    ) -> SpeculativeCommitPlan:
+        """Build a scheduler commit plan from target top-1 row outputs."""
+
+        target = verify_plan.plan.target_batch
+        if remaining_decode is None:
+            budgets = tuple(self.active_batch.requests[request_id].remaining_decode for request_id in target.request_ids)
+        else:
+            budgets = tuple(int(count) for count in remaining_decode)
+        result = target.accept_from_top1(
+            target_top1,
+            transaction_id=verify_plan.plan.transaction.transaction_id,
+            remaining_decode=budgets,
+        )
+        summary = TargetAcceptSummary.from_accept_result(target, result)
+        return self.plan_speculative_commit(verify_plan, summary)
+
     def bind_speculative_commit_buffers(
         self,
         plan: SpeculativeCommitPlan,
