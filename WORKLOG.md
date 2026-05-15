@@ -9864,3 +9864,31 @@ Results: fixture passed (`max_kl=0.00584`, top-1 `1.0`,
 `316.729 tok/s`, but 512/128 samples `508.483`, `507.023`, `507.921` tok/s
 (median `507.921`) regressed below retained `516.236`. Decision: revert to the
 32/64 shape split from iter 7; half-wave short blocks are too small.
+
+## 2026-05-15 — Prefill multiloop iter 9: strided pack8 prefill projections rejected
+
+Tried switching multi-token FP16 prefill projections from transposed
+`qweight_pack8_decode` to original strided `.qweight` for full-attention Q/K and
+linear-attention QKV/Z, following the parent optimal note that transposed pack8
+is disabled on W7900. In hipENGINE this regressed badly, so the change is
+rejected.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter9-512-run1.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter9-512-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter9-512-run3.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: fixture correctness stayed clean (`max_kl=0.00487`, top-1 `1.0`,
+`native_owned_device_bytes=1625645909`) but native fixture prefill doubled to
+`~2.03s`. 512/128 samples were `251.369`, `254.548`, `254.051`, `253.555` tok/s
+(median `253.803`), far below retained `516.236`; 4K/128 also regressed to
+`192.753 tok/s`, below the 95% guard floor (`302.135 tok/s`). Decision: revert;
+hipENGINE's transposed projection kernels remain faster for this path despite
+the parent engine's different optimal flag stack.
