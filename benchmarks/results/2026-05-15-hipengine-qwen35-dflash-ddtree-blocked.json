@@ -31,6 +31,7 @@
       "scheduler_speculative_commit_plan": true,
       "scheduler_speculative_state_commit_plan": true,
       "scheduler_speculative_kv_commit": true,
+      "scheduler_speculative_kv_rollback": true,
       "verify_graph_shape_key": {
         "mode": "verify_tree",
         "active_c": 1,
@@ -256,6 +257,15 @@
         ],
         "committed": true,
         "rolled_back": false
+      },
+      "scheduler_kv_rollback": {
+        "transaction_id": 2,
+        "request_ids": [
+          1,
+          2
+        ],
+        "committed": false,
+        "rolled_back": true
       }
     },
     "resident_api": {

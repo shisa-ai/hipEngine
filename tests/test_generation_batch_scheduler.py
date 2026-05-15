@@ -157,6 +157,20 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert plan.shape_key == key
     assert plan.graph is graph
     assert scheduler.graph_buckets.stats.hits == 2
+    rollback_plan = scheduler.plan_speculative_verify(
+        policy,
+        work,
+        lambda bucket: {"unexpected_rollback": bucket},
+        top_k=8,
+        experts_per_token=8,
+        replay_steps=2,
+    )
+    rolled_txn = scheduler.rollback_speculative_kv_transaction(policy, rollback_plan)
+    assert rolled_txn.transaction_id == rollback_plan.transaction.transaction_id
+    assert rolled_txn.request_ids == (r0, r1)
+    assert rolled_txn.rolled_back
+    assert not rolled_txn.committed
+    assert scheduler.graph_buckets.stats.hits == 3
     buffers = TargetVerifyBuffers.for_batch(
         work.target_batch,
         token_ids=_tensor(0x3000, (work.target_batch.rows,), "int32"),

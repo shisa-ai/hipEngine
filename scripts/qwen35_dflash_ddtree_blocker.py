@@ -81,6 +81,7 @@ def _interface_status() -> dict[str, Any]:
         "scheduler_speculative_commit_plan": hasattr(ResidentBatchScheduler, "plan_speculative_commit"),
         "scheduler_speculative_state_commit_plan": hasattr(ResidentBatchScheduler, "bind_speculative_commit_buffers"),
         "scheduler_speculative_kv_commit": hasattr(ResidentBatchScheduler, "commit_speculative_kv_transaction"),
+        "scheduler_speculative_kv_rollback": hasattr(ResidentBatchScheduler, "rollback_speculative_kv_transaction"),
         "verify_graph_shape_key": {
             "mode": shape_key.mode.value,
             "active_c": shape_key.active_c,
@@ -173,6 +174,15 @@ def _kv_transaction_status() -> dict[str, Any]:
         experts_per_token=8,
         replay_steps=1,
     )
+    scheduler_rollback_plan = scheduler.plan_speculative_verify(
+        policy,
+        scheduler_work,
+        lambda bucket: {"mode": bucket.mode.value, "draft_depth": bucket.draft_depth},
+        top_k=8,
+        experts_per_token=8,
+        replay_steps=1,
+    )
+    scheduler_rolled_txn = scheduler.rollback_speculative_kv_transaction(policy, scheduler_rollback_plan)
     scheduler_buffer_plan = scheduler.bind_speculative_verify_buffers(scheduler_plan, buffers)
     scheduler_commit_plan = scheduler.plan_speculative_commit(scheduler_buffer_plan, summary)
     scheduler_state_plan = scheduler.bind_speculative_commit_buffers(scheduler_commit_plan, state_buffers)
@@ -280,6 +290,12 @@ def _kv_transaction_status() -> dict[str, Any]:
             "accepted_counts": list(scheduler_committed_txn.accepted_counts or ()),
             "committed": scheduler_committed_txn.committed,
             "rolled_back": scheduler_committed_txn.rolled_back,
+        },
+        "scheduler_kv_rollback": {
+            "transaction_id": scheduler_rolled_txn.transaction_id,
+            "request_ids": list(scheduler_rolled_txn.request_ids),
+            "committed": scheduler_rolled_txn.committed,
+            "rolled_back": scheduler_rolled_txn.rolled_back,
         },
     }
 

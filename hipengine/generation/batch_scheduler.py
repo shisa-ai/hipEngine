@@ -415,6 +415,16 @@ class ResidentBatchScheduler:
             raise ValueError("speculative commit plan request_ids must match KV transaction")
         return kv_policy.commit(transaction, commit.kv_accept_counts)
 
+    def rollback_speculative_kv_transaction(self, kv_policy, plan: SpeculativeVerifyPlan) -> KVTransaction:
+        """Rollback a scheduler-owned speculative KV transaction."""
+
+        transaction = plan.transaction
+        if transaction.request_ids != plan.target_batch.request_ids:
+            raise ValueError("speculative transaction request_ids must match target batch")
+        if transaction.draft_rows != plan.target_batch.candidate_count:
+            raise ValueError("speculative transaction rows must match target candidate rows")
+        return kv_policy.rollback(transaction)
+
     def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
         return self.active_batch.shape_key(
             mode=mode,
