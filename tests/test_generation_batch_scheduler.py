@@ -223,16 +223,30 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert state_plan.commit_plan is commit
     assert state_plan.buffers is state_buffers
     assert state_plan.buffers.device == buffer_plan.buffers.device
+    assert state_plan.buffers.linear_state_src is not None
+    assert state_plan.buffers.linear_state_src.shape[0] == work.target_batch.rows
+    assert state_plan.buffers.kv_rows_dst is not None
+    assert state_plan.buffers.kv_rows_dst.shape[0] == sum(summary.accepted_counts)
     assert state_plan.buffers.has_linear_state
     assert state_plan.buffers.has_kv_rows
+    short_kv_dst_buffers = TargetStateCommitBuffers.for_plan(
+        commit.commit_plan,
+        accepted_counts=_tensor(0x4200, (len(work.target_batch.request_ids),), "int32"),
+        commit_rows=_tensor(0x4300, (len(work.target_batch.request_ids),), "int32"),
+        commit_positions=_tensor(0x4400, (len(work.target_batch.request_ids),), "int32"),
+        kv_rows_src=_tensor(0x4500, (work.target_batch.rows, 2, 4), "bf16"),
+        kv_rows_dst=_tensor(0x4600, (len(work.target_batch.request_ids), 2, 4), "bf16"),
+    )
+    with pytest.raises(ValueError, match="accepted token rows"):
+        scheduler.bind_speculative_commit_buffers(commit, short_kv_dst_buffers)
     other_device = Device("hip", 1)
     other_state_buffers = TargetStateCommitBuffers.for_plan(
         commit.commit_plan,
-        accepted_counts=Tensor.from_handle(0x4200, (len(work.target_batch.request_ids),), "int32", other_device),
-        commit_rows=Tensor.from_handle(0x4300, (len(work.target_batch.request_ids),), "int32", other_device),
-        commit_positions=Tensor.from_handle(0x4400, (len(work.target_batch.request_ids),), "int32", other_device),
-        linear_state_src=Tensor.from_handle(0x4500, (work.target_batch.rows, 4), "bf16", other_device),
-        linear_state_dst=Tensor.from_handle(0x4600, (len(work.target_batch.request_ids), 4), "bf16", other_device),
+        accepted_counts=Tensor.from_handle(0x4700, (len(work.target_batch.request_ids),), "int32", other_device),
+        commit_rows=Tensor.from_handle(0x4800, (len(work.target_batch.request_ids),), "int32", other_device),
+        commit_positions=Tensor.from_handle(0x4900, (len(work.target_batch.request_ids),), "int32", other_device),
+        linear_state_src=Tensor.from_handle(0x4A00, (work.target_batch.rows, 4), "bf16", other_device),
+        linear_state_dst=Tensor.from_handle(0x4B00, (len(work.target_batch.request_ids), 4), "bf16", other_device),
     )
     with pytest.raises(ValueError, match="target verify device"):
         scheduler.bind_speculative_commit_buffers(commit, other_state_buffers)

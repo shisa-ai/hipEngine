@@ -245,8 +245,16 @@
         "device": "hip:0",
         "verify_device": "hip:0",
         "device_matches_verify": true,
+        "target_rows": 5,
+        "accepted_rows": 3,
         "has_linear_state": true,
+        "linear_src_rows": 5,
+        "linear_src_covers_target": true,
         "has_kv_rows": true,
+        "kv_src_rows": 5,
+        "kv_src_covers_target": true,
+        "kv_dst_rows": 3,
+        "kv_dst_covers_accepts": true,
         "transaction_id": 1
       },
       "scheduler_kv_commit": {

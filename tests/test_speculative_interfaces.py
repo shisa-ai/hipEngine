@@ -611,8 +611,16 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert state_plan["device"] == "hip:0"
     assert state_plan["verify_device"] == "hip:0"
     assert state_plan["device_matches_verify"]
+    assert state_plan["target_rows"] == 5
+    assert state_plan["accepted_rows"] == 3
     assert state_plan["has_linear_state"]
+    assert state_plan["linear_src_rows"] == 5
+    assert state_plan["linear_src_covers_target"]
     assert state_plan["has_kv_rows"]
+    assert state_plan["kv_src_rows"] == 5
+    assert state_plan["kv_src_covers_target"]
+    assert state_plan["kv_dst_rows"] == 3
+    assert state_plan["kv_dst_covers_accepts"]
     assert state_plan["transaction_id"] == plan["transaction_id"]
     kv_commit = payload["implementation_status"]["kv_transaction_target_verify"]["scheduler_kv_commit"]
     assert kv_commit["transaction_id"] == plan["transaction_id"]

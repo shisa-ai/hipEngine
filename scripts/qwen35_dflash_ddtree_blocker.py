@@ -285,8 +285,25 @@ def _kv_transaction_status() -> dict[str, Any]:
             "device": str(scheduler_state_plan.buffers.device),
             "verify_device": str(scheduler_state_plan.commit_plan.verify_plan.buffers.device),
             "device_matches_verify": scheduler_state_plan.buffers.device == scheduler_state_plan.commit_plan.verify_plan.buffers.device,
+            "target_rows": scheduler_state_plan.commit_plan.verify_plan.plan.target_batch.rows,
+            "accepted_rows": sum(scheduler_state_plan.commit_plan.commit_plan.accepted_counts),
             "has_linear_state": scheduler_state_plan.buffers.has_linear_state,
+            "linear_src_rows": scheduler_state_plan.buffers.linear_state_src.shape[0] if scheduler_state_plan.buffers.linear_state_src else 0,
+            "linear_src_covers_target": bool(
+                scheduler_state_plan.buffers.linear_state_src
+                and scheduler_state_plan.buffers.linear_state_src.shape[0] >= scheduler_state_plan.commit_plan.verify_plan.plan.target_batch.rows
+            ),
             "has_kv_rows": scheduler_state_plan.buffers.has_kv_rows,
+            "kv_src_rows": scheduler_state_plan.buffers.kv_rows_src.shape[0] if scheduler_state_plan.buffers.kv_rows_src else 0,
+            "kv_src_covers_target": bool(
+                scheduler_state_plan.buffers.kv_rows_src
+                and scheduler_state_plan.buffers.kv_rows_src.shape[0] >= scheduler_state_plan.commit_plan.verify_plan.plan.target_batch.rows
+            ),
+            "kv_dst_rows": scheduler_state_plan.buffers.kv_rows_dst.shape[0] if scheduler_state_plan.buffers.kv_rows_dst else 0,
+            "kv_dst_covers_accepts": bool(
+                scheduler_state_plan.buffers.kv_rows_dst
+                and scheduler_state_plan.buffers.kv_rows_dst.shape[0] >= sum(scheduler_state_plan.commit_plan.commit_plan.accepted_counts)
+            ),
             "transaction_id": scheduler_state_plan.commit_plan.commit_plan.transaction_id,
         },
         "scheduler_kv_commit": {
