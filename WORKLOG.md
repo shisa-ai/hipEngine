@@ -10273,3 +10273,38 @@ the retained guard at `333.398 tok/s`, but 512/128 samples `562.284`, `560.307`,
 `557.130`, `560.647` tok/s (median `560.477`) regressed below retained
 `565.213`. Decision: revert; the AWQ decode-profile build remains faster for
 this resident prefill path despite the nominal phase-profile mismatch.
+
+## 2026-05-15 — Prefill multiloop iter 24: linear-attn prefill-profile libraries rejected
+
+Continued the build-profile pivot, but moved away from the AWQ projection family
+that regressed in iter 23. Parent profiling notes call out GDN recurrent prefill
+as a real 512-prefill bucket, and docs/KERNELS.md classifies linear-attention
+conv/GDN as prefill-phase kernels. Tried adding prefill-profile
+`linear_conv`/`linear_gdn` library overrides for native prefill layer execution
+while keeping decode on the retained decode-profile libraries.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.linear_attn.conv import build_qwen35_linear_attn_conv
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import build_qwen35_linear_attn_gdn
+build_qwen35_linear_attn_conv(profile='prefill', load=False, require_cached=False)
+build_qwen35_linear_attn_gdn(profile='prefill', load=False, require_cached=False)
+PY
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter24-512-run{1,2,3}.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: targeted tests passed (`56 passed`), the linear-attention prefill smoke
+passed (`fp16_gdn_k2_out_max_abs=1.4e-09`, `fp16_gated_mismatch=0`), and fixture
+passed (`max_kl=0.01743`, top-1 `1.0`, `native_owned_device_bytes=1625645909`).
+4K was runnable and above the retained guard at `333.168 tok/s`, but 512/128
+samples `558.703`, `559.778`, `557.489`, `559.987` tok/s (median `559.240`)
+regressed below retained `565.213`. Decision: revert; the decode-profile linear
+conv/GDN builds remain faster for the resident native prefill path.
