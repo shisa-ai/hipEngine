@@ -16,6 +16,7 @@ _SYMBOL_SPLIT_QGATE_FP16 = "hipengine_qwen35_split_qgate_fp16"
 _SYMBOL_PARTIAL = "hipengine_qwen35_partial_rotary_f32"
 _SYMBOL_HEAD_RMS = "hipengine_qwen35_head_rmsnorm_partial_rotary_f32_bf16"
 _SYMBOL_HEAD_RMS_POSITION = "hipengine_qwen35_head_rmsnorm_partial_rotary_position_f32_bf16"
+_SYMBOL_HEAD_RMS_POSITIONS = "hipengine_qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16"
 
 
 def plan_qwen35_rotary_build(
@@ -243,7 +244,7 @@ def qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch fused head RMSNorm + table-indexed partial rotary."""
+    """Launch fused head RMSNorm + table-indexed partial rotary for one position."""
 
     _launch_head_rmsnorm_partial_rotary(
         _SYMBOL_HEAD_RMS_POSITION,
@@ -257,6 +258,54 @@ def qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
         query_out_ptr,
         key_out_ptr,
         eps,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        rotary_dim,
+        max_positions,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16(
+    query_ptr: int,
+    key_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    cos_table_ptr: int,
+    sin_table_ptr: int,
+    positions_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    eps: float,
+    tokens: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch fused head RMSNorm + per-token table-indexed partial rotary."""
+
+    _launch_head_rmsnorm_partial_rotary_positions(
+        _SYMBOL_HEAD_RMS_POSITIONS,
+        query_ptr,
+        key_ptr,
+        q_weight_ptr,
+        k_weight_ptr,
+        cos_table_ptr,
+        sin_table_ptr,
+        positions_ptr,
+        query_out_ptr,
+        key_out_ptr,
+        eps,
+        tokens,
         num_q_heads,
         num_kv_heads,
         head_dim,
@@ -297,6 +346,16 @@ def register_qwen35_rotary_kernels(*, replace: bool = True) -> None:
             "qwen35_position_f32_bf16",
         ),
         qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "head_rmsnorm+partial_rotary",
+            "w4_paro",
+            "qwen35_positions_f32_bf16",
+        ),
+        qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16,
         replace=replace,
     )
 
@@ -442,6 +501,78 @@ def _launch_head_rmsnorm_partial_rotary(
         )
     fn.restype = ctypes.c_int
     err = fn(*args)
+    _check_launch(runtime, err)
+
+
+def _launch_head_rmsnorm_partial_rotary_positions(
+    symbol: str,
+    query_ptr: int,
+    key_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    positions_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    eps: float,
+    tokens: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(tokens, "tokens")
+    _check_common_shape(num_q_heads, num_kv_heads, head_dim, rotary_dim)
+    if max_positions <= 0:
+        raise ValueError("max_positions must be positive")
+    library = library or build_qwen35_rotary(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(q_weight_ptr),
+        ctypes.c_void_p(k_weight_ptr),
+        ctypes.c_void_p(cos_ptr),
+        ctypes.c_void_p(sin_ptr),
+        ctypes.c_void_p(positions_ptr),
+        ctypes.c_void_p(query_out_ptr),
+        ctypes.c_void_p(key_out_ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(rotary_dim),
+        ctypes.c_int64(max_positions),
+        ctypes.c_void_p(stream),
+    )
     _check_launch(runtime, err)
 
 

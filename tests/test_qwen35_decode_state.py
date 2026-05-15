@@ -150,6 +150,80 @@ def test_qwen35_decode_state_reserves_full_attention_split_k_scratch() -> None:
     assert scratch.o_proj.shape == (1, 4096)
 
 
+def test_qwen35_decode_state_projects_full_attention_qkv_fp16_tokens_split_layout(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights())
+    scratch = state.reserve_full_attention_scratch(tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
+    calls = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_dual_pack8_transposed_fp16",
+        lambda *args, **kwargs: calls.append(("dual", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_pack8_transposed_fp16",
+        lambda *args, **kwargs: calls.append(("single_transposed", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_pack8_strided_fp16",
+        lambda *args, **kwargs: calls.append(("single_strided", args, kwargs)),
+    )
+
+    q_proj, key, value = state.project_full_attention_qkv_fp16(scratch, tokens=2)
+
+    assert q_proj is scratch.q_proj
+    assert key is scratch.key_bf16
+    assert value is scratch.value
+    assert [kind for kind, _args, _kwargs in calls] == ["single_transposed", "single_transposed", "single_strided"]
+    assert calls[0][1][4] == scratch.q_proj.ptr
+    assert calls[1][1][4] == scratch.key_bf16.ptr
+    assert calls[2][1][4] == scratch.value.ptr
+
+
+def test_qwen35_decode_state_prepare_full_attention_qkv_fp16_tokens_uses_vector_positions(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights())
+    scratch = state.reserve_full_attention_scratch(tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
+    cos_table = _tensor(0xD200, (4, 256), "fp32")
+    sin_table = _tensor(0xD300, (4, 256), "fp32")
+    positions = _tensor(0xD400, (2,), "int64")
+    calls = []
+
+    monkeypatch.setattr(qwen_runtime, "qwen35_split_qgate_fp16", lambda *args, **kwargs: calls.append(("split", args, kwargs)))
+    monkeypatch.setattr(qwen_runtime, "fp16_to_f32", lambda *args, **kwargs: calls.append(("cast", args, kwargs)))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_head_rmsnorm_partial_rotary_position_f32_bf16",
+        lambda *args, **kwargs: calls.append(("scalar_rotary", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16",
+        lambda *args, **kwargs: calls.append(("vector_rotary", args, kwargs)),
+    )
+
+    query, key, value, gate = state.prepare_full_attention_qkv_fp16(
+        scratch,
+        cos_table=cos_table,
+        sin_table=sin_table,
+        position=positions,
+        max_positions=4,
+        tokens=2,
+    )
+
+    assert query is scratch.query
+    assert key is scratch.key
+    assert value is scratch.value
+    assert gate is scratch.gate
+    assert [kind for kind, _args, _kwargs in calls] == ["split", "cast", "vector_rotary"]
+    assert calls[1][1][2] == 2 * state.config.num_key_value_heads * state.config.head_dim
+    assert calls[2][1][6] == positions.ptr
+    assert calls[2][1][10] == 2
+
+
 def test_qwen35_decode_state_reserves_moe_c1_scratch() -> None:
     runtime = FakeRuntime()
     state = _state(runtime)

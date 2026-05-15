@@ -2956,6 +2956,7 @@ def qwen35_rotary_hip_smoke(
         build_qwen35_rotary,
         qwen35_head_rmsnorm_partial_rotary_f32_bf16,
         qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
+        qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16,
         qwen35_partial_rotary_f32,
         qwen35_split_qgate_fp16,
     )
@@ -2976,6 +2977,7 @@ def qwen35_rotary_hip_smoke(
     cos_table = np.vstack([np.zeros(rotary_dim, dtype=np.float32), cos]).astype(np.float32)
     sin_table = np.vstack([np.ones(rotary_dim, dtype=np.float32), sin]).astype(np.float32)
     position = np.asarray([1], dtype=np.int64)
+    vector_positions = np.asarray([1, 0], dtype=np.int64)
     q_weight = _float32_to_bf16_bits(
         np.asarray([0.0, 0.125, -0.125, 0.25, 0.0, -0.25, 0.125, -0.125], dtype=np.float32)
     )
@@ -2988,6 +2990,10 @@ def qwen35_rotary_hip_smoke(
     head_key = np.empty_like(key)
     position_query = np.empty_like(query)
     position_key = np.empty_like(key)
+    vector_query = np.stack((query, query * np.float32(1.5)), axis=0).astype(np.float32)
+    vector_key = np.stack((key, -key), axis=0).astype(np.float32)
+    vector_position_query = np.empty_like(vector_query)
+    vector_position_key = np.empty_like(vector_key)
     q_proj_fp16 = np.arange(num_q_heads * 2 * head_dim, dtype=np.float32).reshape(1, num_q_heads, 2 * head_dim)
     q_proj_fp16 = (q_proj_fp16 * np.float32(0.125) - np.float32(1.0)).astype(np.float16)
     split_query = np.empty((1, num_q_heads, head_dim), dtype=np.float32)
@@ -3006,10 +3012,28 @@ def qwen35_rotary_hip_smoke(
             out[head] = row * inv * (np.float32(1.0) + weight[0])
         return out
 
+    def rotary_ref(normed: np.ndarray, pos: int) -> np.ndarray:
+        out = normed.copy()
+        half = rotary_dim // 2
+        for head in range(normed.shape[0]):
+            for dim in range(rotary_dim):
+                pair_dim = dim + half if dim < half else dim - half
+                rotated = -normed[head, pair_dim] if dim < half else normed[head, pair_dim]
+                out[head, dim] = normed[head, dim] * cos_table[pos, dim] + rotated * sin_table[pos, dim]
+        return out
+
     expected_partial_query = query.copy()
     expected_partial_key = key.copy()
     expected_head_query = head_ref(query, q_weight)
     expected_head_key = head_ref(key, k_weight)
+    expected_vector_position_query = np.stack(
+        [rotary_ref(head_ref(vector_query[token], q_weight), int(vector_positions[token])) for token in range(2)],
+        axis=0,
+    )
+    expected_vector_position_key = np.stack(
+        [rotary_ref(head_ref(vector_key[token], k_weight), int(vector_positions[token])) for token in range(2)],
+        axis=0,
+    )
 
     runtime = get_hip_runtime()
     library = build_qwen35_rotary(
@@ -3038,6 +3062,9 @@ def qwen35_rotary_hip_smoke(
         cos_table_dev = dev(cos_table)
         sin_table_dev = dev(sin_table)
         position_dev = dev(position)
+        vector_positions_dev = dev(vector_positions)
+        vector_query_dev = dev(vector_query)
+        vector_key_dev = dev(vector_key)
         q_weight_dev = dev(q_weight)
         k_weight_dev = dev(k_weight)
         partial_query_dev = out_dev(partial_query)
@@ -3046,6 +3073,8 @@ def qwen35_rotary_hip_smoke(
         head_key_dev = out_dev(head_key)
         position_query_dev = out_dev(position_query)
         position_key_dev = out_dev(position_key)
+        vector_position_query_dev = out_dev(vector_position_query)
+        vector_position_key_dev = out_dev(vector_position_key)
         q_proj_fp16_dev = dev(q_proj_fp16)
         split_query_dev = out_dev(split_query)
         split_gate_dev = out_dev(split_gate)
@@ -3109,6 +3138,26 @@ def qwen35_rotary_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16(
+            vector_query_dev.ptr,
+            vector_key_dev.ptr,
+            q_weight_dev.ptr,
+            k_weight_dev.ptr,
+            cos_table_dev.ptr,
+            sin_table_dev.ptr,
+            vector_positions_dev.ptr,
+            vector_position_query_dev.ptr,
+            vector_position_key_dev.ptr,
+            eps,
+            vector_query.shape[0],
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            rotary_dim,
+            cos_table.shape[0],
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(partial_query), partial_query_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(partial_key), partial_key_dev, runtime=runtime)
@@ -3116,6 +3165,8 @@ def qwen35_rotary_hip_smoke(
         copy_device_to_host(host_array_ptr(head_key), head_key_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(position_query), position_query_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(position_key), position_key_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(vector_position_query), vector_position_query_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(vector_position_key), vector_position_key_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(split_query), split_query_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(split_gate), split_gate_dev, runtime=runtime)
     finally:
@@ -3134,12 +3185,19 @@ def qwen35_rotary_hip_smoke(
             np.max(np.abs(position_key - expected_head_key)),
         )
     )
+    vector_position_max_abs = float(
+        max(
+            np.max(np.abs(vector_position_query - expected_vector_position_query)),
+            np.max(np.abs(vector_position_key - expected_vector_position_key)),
+        )
+    )
     split_query_max_abs = float(np.max(np.abs(split_query - expected_split_query)))
     split_gate_mismatch = int(np.count_nonzero(split_gate.view(np.uint16) != expected_split_gate.view(np.uint16)))
     print(
         f"num_q_heads={num_q_heads} num_kv_heads={num_kv_heads} head_dim={head_dim} "
         f"rotary_dim={rotary_dim} partial_max_abs={partial_max_abs:.3g} "
         f"head_max_abs={head_max_abs:.3g} position_max_abs={position_max_abs:.3g} "
+        f"vector_position_max_abs={vector_position_max_abs:.3g} "
         f"split_fp16_query_max_abs={split_query_max_abs:.3g} split_fp16_gate_mismatch={split_gate_mismatch}"
     )
     print("head_query0=", head_query[0].tolist())
@@ -3147,6 +3205,7 @@ def qwen35_rotary_hip_smoke(
         partial_max_abs == 0.0
         and head_max_abs <= 1.0e-6
         and position_max_abs <= 1.0e-6
+        and vector_position_max_abs <= 1.0e-6
         and split_query_max_abs == 0.0
         and split_gate_mismatch == 0
     ) else 1

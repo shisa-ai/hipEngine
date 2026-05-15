@@ -80,6 +80,7 @@ from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import (
 )
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
     qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
+    qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16,
     qwen35_split_qgate_bf16,
     qwen35_split_qgate_fp16,
 )
@@ -357,32 +358,63 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        if tokens != 1:
-            raise ValueError("full-attention fused q/k projection currently requires tokens=1")
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
         q = f"{prefix}.q_proj"
         k = f"{prefix}.k_proj"
         q_qweight = self.tensor(f"{q}.qweight_pack8_decode")
         k_qweight = self.tensor(f"{k}.qweight_pack8_decode")
-        gemv_awq_dual_pack8_transposed_bf16(
-            scratch.q_rot.ptr,
-            scratch.k_rot.ptr,
-            q_qweight.ptr,
-            self.tensor(f"{q}.qzeros").ptr,
-            self.tensor(f"{q}.scales").ptr,
-            k_qweight.ptr,
-            self.tensor(f"{k}.qzeros").ptr,
-            self.tensor(f"{k}.scales").ptr,
-            scratch.q_proj_key.ptr,
-            tokens,
-            scratch.q_rot.shape[-1],
-            _out_packed_from_generic_transposed_qweight(q_qweight),
-            _out_packed_from_generic_transposed_qweight(k_qweight),
-            group_size,
-            stream=stream,
-            library=_library_for(library, "awq"),
-            runtime=self.runtime,
-        )
+        q_out_packed = _out_packed_from_generic_transposed_qweight(q_qweight)
+        k_out_packed = _out_packed_from_generic_transposed_qweight(k_qweight)
+        awq_library = _library_for(library, "awq")
+        if tokens == 1:
+            gemv_awq_dual_pack8_transposed_bf16(
+                scratch.q_rot.ptr,
+                scratch.k_rot.ptr,
+                q_qweight.ptr,
+                self.tensor(f"{q}.qzeros").ptr,
+                self.tensor(f"{q}.scales").ptr,
+                k_qweight.ptr,
+                self.tensor(f"{k}.qzeros").ptr,
+                self.tensor(f"{k}.scales").ptr,
+                scratch.q_proj_key.ptr,
+                tokens,
+                scratch.q_rot.shape[-1],
+                q_out_packed,
+                k_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+        else:
+            gemv_awq_pack8_transposed_bf16(
+                scratch.q_rot.ptr,
+                q_qweight.ptr,
+                self.tensor(f"{q}.qzeros").ptr,
+                self.tensor(f"{q}.scales").ptr,
+                scratch.q_proj.ptr,
+                tokens,
+                scratch.q_rot.shape[-1],
+                q_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+            gemv_awq_pack8_transposed_bf16(
+                scratch.k_rot.ptr,
+                k_qweight.ptr,
+                self.tensor(f"{k}.qzeros").ptr,
+                self.tensor(f"{k}.scales").ptr,
+                scratch.key_bf16.ptr,
+                tokens,
+                scratch.k_rot.shape[-1],
+                k_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         self.project_pack8_bf16(
             scratch.v_rot,
             scratch.value,
@@ -406,10 +438,7 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        if tokens != 1:
-            raise ValueError("full-attention qkv prepare currently requires tokens=1")
         cfg = self.config
-        q_width = cfg.num_attention_heads * cfg.head_dim
         kv_width = cfg.num_key_value_heads * cfg.head_dim
         qwen35_split_qgate_bf16(
             scratch.q_proj.ptr,
@@ -425,32 +454,56 @@ class Qwen35ParoDecodeState:
         bf16_to_f32(
             scratch.key_bf16.ptr,
             scratch.key_raw.ptr,
-            kv_width,
+            tokens * kv_width,
             stream=stream,
             library=_library_for(library, "cast"),
             runtime=self.runtime,
         )
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
-        qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
-            scratch.query_raw.ptr,
-            scratch.key_raw.ptr,
-            self.tensor(f"{prefix}.q_norm.weight").ptr,
-            self.tensor(f"{prefix}.k_norm.weight").ptr,
-            cos_table.ptr,
-            sin_table.ptr,
-            position.ptr,
-            scratch.query.ptr,
-            scratch.key.ptr,
-            self.config.rms_norm_eps,
-            cfg.num_attention_heads,
-            cfg.num_key_value_heads,
-            cfg.head_dim,
-            cfg.rotary_dim or cfg.head_dim,
-            max_positions,
-            stream=stream,
-            library=_library_for(library, "qwen_rotary"),
-            runtime=self.runtime,
-        )
+        qwen_rotary_library = _library_for(library, "qwen_rotary")
+        if tokens == 1:
+            qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
+                scratch.query_raw.ptr,
+                scratch.key_raw.ptr,
+                self.tensor(f"{prefix}.q_norm.weight").ptr,
+                self.tensor(f"{prefix}.k_norm.weight").ptr,
+                cos_table.ptr,
+                sin_table.ptr,
+                position.ptr,
+                scratch.query.ptr,
+                scratch.key.ptr,
+                self.config.rms_norm_eps,
+                cfg.num_attention_heads,
+                cfg.num_key_value_heads,
+                cfg.head_dim,
+                cfg.rotary_dim or cfg.head_dim,
+                max_positions,
+                stream=stream,
+                library=qwen_rotary_library,
+                runtime=self.runtime,
+            )
+        else:
+            qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16(
+                scratch.query_raw.ptr,
+                scratch.key_raw.ptr,
+                self.tensor(f"{prefix}.q_norm.weight").ptr,
+                self.tensor(f"{prefix}.k_norm.weight").ptr,
+                cos_table.ptr,
+                sin_table.ptr,
+                position.ptr,
+                scratch.query.ptr,
+                scratch.key.ptr,
+                self.config.rms_norm_eps,
+                tokens,
+                cfg.num_attention_heads,
+                cfg.num_key_value_heads,
+                cfg.head_dim,
+                cfg.rotary_dim or cfg.head_dim,
+                max_positions,
+                stream=stream,
+                library=qwen_rotary_library,
+                runtime=self.runtime,
+            )
         return scratch.query, scratch.key, scratch.value, scratch.gate
 
     def project_full_attention_o_bf16(
@@ -1466,32 +1519,63 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        if tokens != 1:
-            raise ValueError("full-attention fused q/k projection currently requires tokens=1")
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
         q = f"{prefix}.q_proj"
         k = f"{prefix}.k_proj"
         q_qweight = self.tensor(f"{q}.qweight_pack8_decode")
         k_qweight = self.tensor(f"{k}.qweight_pack8_decode")
-        gemv_awq_dual_pack8_transposed_fp16(
-            scratch.q_rot.ptr,
-            scratch.k_rot.ptr,
-            q_qweight.ptr,
-            self.tensor(f"{q}.qzeros").ptr,
-            self.tensor(f"{q}.scales").ptr,
-            k_qweight.ptr,
-            self.tensor(f"{k}.qzeros").ptr,
-            self.tensor(f"{k}.scales").ptr,
-            scratch.q_proj_key.ptr,
-            tokens,
-            scratch.q_rot.shape[-1],
-            _out_packed_from_generic_transposed_qweight(q_qweight),
-            _out_packed_from_generic_transposed_qweight(k_qweight),
-            group_size,
-            stream=stream,
-            library=_library_for(library, "awq"),
-            runtime=self.runtime,
-        )
+        q_out_packed = _out_packed_from_generic_transposed_qweight(q_qweight)
+        k_out_packed = _out_packed_from_generic_transposed_qweight(k_qweight)
+        awq_library = _library_for(library, "awq")
+        if tokens == 1:
+            gemv_awq_dual_pack8_transposed_fp16(
+                scratch.q_rot.ptr,
+                scratch.k_rot.ptr,
+                q_qweight.ptr,
+                self.tensor(f"{q}.qzeros").ptr,
+                self.tensor(f"{q}.scales").ptr,
+                k_qweight.ptr,
+                self.tensor(f"{k}.qzeros").ptr,
+                self.tensor(f"{k}.scales").ptr,
+                scratch.q_proj_key.ptr,
+                tokens,
+                scratch.q_rot.shape[-1],
+                q_out_packed,
+                k_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+        else:
+            gemv_awq_pack8_transposed_fp16(
+                scratch.q_rot.ptr,
+                q_qweight.ptr,
+                self.tensor(f"{q}.qzeros").ptr,
+                self.tensor(f"{q}.scales").ptr,
+                scratch.q_proj.ptr,
+                tokens,
+                scratch.q_rot.shape[-1],
+                q_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+            gemv_awq_pack8_transposed_fp16(
+                scratch.k_rot.ptr,
+                k_qweight.ptr,
+                self.tensor(f"{k}.qzeros").ptr,
+                self.tensor(f"{k}.scales").ptr,
+                scratch.key_bf16.ptr,
+                tokens,
+                scratch.k_rot.shape[-1],
+                k_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         self.project_pack8_fp16(
             scratch.v_rot,
             scratch.value,
@@ -1515,8 +1599,6 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        if tokens != 1:
-            raise ValueError("full-attention qkv prepare currently requires tokens=1")
         cfg = self.config
         kv_width = cfg.num_key_value_heads * cfg.head_dim
         qwen35_split_qgate_fp16(
@@ -1533,32 +1615,56 @@ class Qwen35ParoDecodeState:
         fp16_to_f32(
             scratch.key_bf16.ptr,
             scratch.key_raw.ptr,
-            kv_width,
+            tokens * kv_width,
             stream=stream,
             library=_library_for(library, "cast"),
             runtime=self.runtime,
         )
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
-        qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
-            scratch.query_raw.ptr,
-            scratch.key_raw.ptr,
-            self.tensor(f"{prefix}.q_norm.weight").ptr,
-            self.tensor(f"{prefix}.k_norm.weight").ptr,
-            cos_table.ptr,
-            sin_table.ptr,
-            position.ptr,
-            scratch.query.ptr,
-            scratch.key.ptr,
-            self.config.rms_norm_eps,
-            cfg.num_attention_heads,
-            cfg.num_key_value_heads,
-            cfg.head_dim,
-            cfg.rotary_dim or cfg.head_dim,
-            max_positions,
-            stream=stream,
-            library=_library_for(library, "qwen_rotary"),
-            runtime=self.runtime,
-        )
+        qwen_rotary_library = _library_for(library, "qwen_rotary")
+        if tokens == 1:
+            qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
+                scratch.query_raw.ptr,
+                scratch.key_raw.ptr,
+                self.tensor(f"{prefix}.q_norm.weight").ptr,
+                self.tensor(f"{prefix}.k_norm.weight").ptr,
+                cos_table.ptr,
+                sin_table.ptr,
+                position.ptr,
+                scratch.query.ptr,
+                scratch.key.ptr,
+                self.config.rms_norm_eps,
+                cfg.num_attention_heads,
+                cfg.num_key_value_heads,
+                cfg.head_dim,
+                cfg.rotary_dim or cfg.head_dim,
+                max_positions,
+                stream=stream,
+                library=qwen_rotary_library,
+                runtime=self.runtime,
+            )
+        else:
+            qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16(
+                scratch.query_raw.ptr,
+                scratch.key_raw.ptr,
+                self.tensor(f"{prefix}.q_norm.weight").ptr,
+                self.tensor(f"{prefix}.k_norm.weight").ptr,
+                cos_table.ptr,
+                sin_table.ptr,
+                position.ptr,
+                scratch.query.ptr,
+                scratch.key.ptr,
+                self.config.rms_norm_eps,
+                tokens,
+                cfg.num_attention_heads,
+                cfg.num_key_value_heads,
+                cfg.head_dim,
+                cfg.rotary_dim or cfg.head_dim,
+                max_positions,
+                stream=stream,
+                library=qwen_rotary_library,
+                runtime=self.runtime,
+            )
         return scratch.query, scratch.key, scratch.value, scratch.gate
 
     def append_full_attention_kv_fp16(

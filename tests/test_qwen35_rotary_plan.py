@@ -6,6 +6,7 @@ from hipengine.kernels.hip_gfx1100.rotary import (
     plan_qwen35_rotary_build,
     qwen35_head_rmsnorm_partial_rotary_f32_bf16,
     qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
+    qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16,
     qwen35_partial_rotary_f32,
     qwen35_split_qgate_bf16,
     qwen35_split_qgate_fp16,
@@ -51,6 +52,15 @@ def test_qwen35_rotary_registers_full_attention_prelude_variants() -> None:
         )
         is qwen35_head_rmsnorm_partial_rotary_position_f32_bf16
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="head_rmsnorm+partial_rotary",
+            quant="w4_paro",
+            variant="qwen35_positions_f32_bf16",
+        )
+        is qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16
+    )
 
 
 def test_qwen35_rotary_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -88,4 +98,8 @@ def test_qwen35_rotary_wrappers_validate_before_gpu_load() -> None:
     with pytest.raises(ValueError, match="max_positions must be positive"):
         qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
             0, 0, 0, 0, 0, 0, 0, 0, 0, 1.0e-6, 1, 1, 8, 4, 0
+        )
+    with pytest.raises(ValueError, match="tokens must be positive"):
+        qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16(
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 1.0e-6, 0, 1, 1, 8, 4, 2
         )

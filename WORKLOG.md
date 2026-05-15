@@ -8966,3 +8966,49 @@ python3 -m py_compile hipengine/kernels/cpu_reference/ops.py hipengine/kernels/c
 
 Result: CPU-reference tests passed (`7 passed`); registry bundle passed
 (`11 passed`); py_compile succeeded.
+
+## 2026-05-15 — Batched full-attention prelude bring-up
+
+Landed the first native full-attention prefill component: bulk Q/K/V prelude
+plumbing and vector-position Q/K head RMSNorm + RoPE. This is a native prelude
+piece only; no retained prefill perf claim yet because the causal prefill
+attention kernel and grouped MoE are still missing.
+
+Lineage/drift check before kernel work:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: parent kernel lineage reports expected DRIFT in `qwen35_expert.hip`,
+`smoke.hip`, and `paroquant_kernels.py` (latest parent HEAD `5d8f496`); no code
+was copied from those drifted new kernels for this hipENGINE-local vector RoPE
+variant.
+
+Changes:
+- added `qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16`, a grid
+  `(num_q_heads + num_kv_heads, tokens)` vector-position variant that reads
+  `positions[token]` instead of scalar `position_ptr[0]`;
+- kept scalar-position wrapper for decode/oracle paths and registered the vector
+  variant under `qwen35_positions_f32_bf16`;
+- updated FP16/BF16 full-attention Q/K projection helpers to split multi-token
+  Q and K projections into separate contiguous `[T, ...]` buffers instead of
+  using the c=1 dual-output layout;
+- updated FP16/BF16 QKV prepare helpers to cast `tokens * kv_width` K elements
+  and call the vector-position RoPE wrapper for `tokens > 1`;
+- extended the rotary smoke to validate mixed vector positions (`positions=[1,0]`)
+  and updated `docs/KERNELS.md` / `docs/PREFILL.md` inventory status.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_rotary_plan.py tests/test_qwen35_decode_state.py -q
+python3 -m py_compile hipengine/kernels/hip_gfx1100/rotary/qwen35_rotary.py hipengine/runtime/qwen35_paro.py scripts/smoke.py tests/test_qwen35_rotary_plan.py tests/test_qwen35_decode_state.py
+python3 scripts/smoke.py --mode qwen35-rotary-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/check_fixtures.py
+python3 -m pytest tests/test_qwen35_rotary_plan.py tests/test_qwen35_decode_state.py tests/test_cpu_reference.py -q
+```
+
+Result: targeted pytest passed (`32 passed`); rotary HIP smoke passed with
+`vector_position_max_abs=2.38e-07`; fixture checks passed; combined pytest
+passed (`39 passed`).

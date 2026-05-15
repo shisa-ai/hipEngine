@@ -146,6 +146,46 @@ __global__ void qwen35_head_rmsnorm_partial_rotary_kernel(
   }
 }
 
+__device__ __forceinline__ void qwen35_head_rmsnorm_partial_rotary_row_impl(
+    const float* src,
+    const uint16_t* weight,
+    const float* cos,
+    const float* sin,
+    float* dst,
+    float eps,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    float* partial) {
+  float sumsq = 0.0f;
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    const float value = src[dim];
+    sumsq += value * value;
+  }
+  partial[threadIdx.x] = sumsq;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+
+  const float inv_rms = rsqrtf((partial[0] / static_cast<float>(head_dim)) + eps);
+  const int64_t half_rotary = rotary_dim / 2;
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    const float value = src[dim] * inv_rms * (1.0f + bf16_bits_to_float(weight[dim]));
+    float out_value = value;
+    if (dim < rotary_dim) {
+      const int64_t pair_dim = dim < half_rotary ? dim + half_rotary : dim - half_rotary;
+      const float paired = src[pair_dim] * inv_rms * (1.0f + bf16_bits_to_float(weight[pair_dim]));
+      const float rotated = dim < half_rotary ? -paired : paired;
+      out_value = value * cos[dim] + rotated * sin[dim];
+    }
+    dst[dim] = out_value;
+  }
+}
+
 __global__ void qwen35_head_rmsnorm_partial_rotary_position_kernel(
     const float* query,
     const float* key,
@@ -172,39 +212,62 @@ __global__ void qwen35_head_rmsnorm_partial_rotary_position_kernel(
   const int64_t head = blockIdx.x;
   const bool is_query = head < num_q_heads;
   const int64_t local_head = is_query ? head : head - num_q_heads;
-  const float* src = is_query ? query : key;
-  const uint16_t* weight = is_query ? q_weight : k_weight;
-  float* dst = is_query ? query_out : key_out;
   const int64_t offset = local_head * head_dim;
-  float sumsq = 0.0f;
-  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
-    const float value = src[offset + dim];
-    sumsq += value * value;
-  }
-  partial[threadIdx.x] = sumsq;
-  __syncthreads();
+  qwen35_head_rmsnorm_partial_rotary_row_impl(
+      (is_query ? query : key) + offset,
+      is_query ? q_weight : k_weight,
+      cos,
+      sin,
+      (is_query ? query_out : key_out) + offset,
+      eps,
+      head_dim,
+      rotary_dim,
+      partial);
+}
 
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (threadIdx.x < stride) {
-      partial[threadIdx.x] += partial[threadIdx.x + stride];
-    }
-    __syncthreads();
+__global__ void qwen35_head_rmsnorm_partial_rotary_positions_kernel(
+    const float* query,
+    const float* key,
+    const uint16_t* q_weight,
+    const uint16_t* k_weight,
+    const float* cos_table,
+    const float* sin_table,
+    const int64_t* positions,
+    float* query_out,
+    float* key_out,
+    float eps,
+    int64_t tokens,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions) {
+  const int64_t token = blockIdx.y;
+  if (token >= tokens) {
+    return;
   }
-
-  const float inv_rms = rsqrtf((partial[0] / static_cast<float>(head_dim)) + eps);
-  const int64_t half_rotary = rotary_dim / 2;
-  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
-    const float value = src[offset + dim] * inv_rms * (1.0f + bf16_bits_to_float(weight[dim]));
-    float out_value = value;
-    if (dim < rotary_dim) {
-      const int64_t pair_dim = dim < half_rotary ? dim + half_rotary : dim - half_rotary;
-      const float paired =
-          src[offset + pair_dim] * inv_rms * (1.0f + bf16_bits_to_float(weight[pair_dim]));
-      const float rotated = dim < half_rotary ? -paired : paired;
-      out_value = value * cos[dim] + rotated * sin[dim];
-    }
-    dst[offset + dim] = out_value;
+  const int64_t position = positions[token];
+  if (position < 0 || position >= max_positions) {
+    return;
   }
+  const float* cos = cos_table + position * rotary_dim;
+  const float* sin = sin_table + position * rotary_dim;
+  extern __shared__ float partial[];
+  const int64_t head = blockIdx.x;
+  const bool is_query = head < num_q_heads;
+  const int64_t local_head = is_query ? head : head - num_q_heads;
+  const int64_t heads = is_query ? num_q_heads : num_kv_heads;
+  const int64_t offset = (token * heads + local_head) * head_dim;
+  qwen35_head_rmsnorm_partial_rotary_row_impl(
+      (is_query ? query : key) + offset,
+      is_query ? q_weight : k_weight,
+      cos,
+      sin,
+      (is_query ? query_out : key_out) + offset,
+      eps,
+      head_dim,
+      rotary_dim,
+      partial);
 }
 
 
@@ -388,6 +451,53 @@ extern "C" int hipengine_qwen35_head_rmsnorm_partial_rotary_position_f32_bf16(
       query_out,
       key_out,
       eps,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      rotary_dim,
+      max_positions);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16(
+    const float* query,
+    const float* key,
+    const uint16_t* q_weight,
+    const uint16_t* k_weight,
+    const float* cos_table,
+    const float* sin_table,
+    const int64_t* positions,
+    float* query_out,
+    float* key_out,
+    float eps,
+    int64_t tokens,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    hipStream_t stream) {
+  if (tokens <= 0 || !valid_common_shape(num_q_heads, num_kv_heads, head_dim, rotary_dim) || max_positions <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  hipLaunchKernelGGL(
+      qwen35_head_rmsnorm_partial_rotary_positions_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads + num_kv_heads), static_cast<unsigned int>(tokens)),
+      dim3(threads),
+      threads * sizeof(float),
+      stream,
+      query,
+      key,
+      q_weight,
+      k_weight,
+      cos_table,
+      sin_table,
+      positions,
+      query_out,
+      key_out,
+      eps,
+      tokens,
       num_q_heads,
       num_kv_heads,
       head_dim,
