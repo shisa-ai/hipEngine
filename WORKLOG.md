@@ -9118,3 +9118,57 @@ The system has ROCm 6.2 (`libamdhip64.so.6`). Kernels load fine with:
 - Main gap: no dense MLP execution path registered; MoE runner hardcodes expert dispatch
 - Supporting it requires a dense model plugin + dense MLP kernel chain, but the attention
   and PARO dequant kernels are shared.
+
+## 2026-05-15 — Grouped MoE prefill metadata kernels
+
+Started task #13 by landing the grouped/compact MoE metadata and packed-hidden
+gather layer from the parent route. This is not yet the retained grouped MoE
+prefill route: compact WMMA/GEMM expert math, weighted-lane accumulation,
+remaining c1 metadata helpers, and runtime orchestration are still open.
+
+Source lineage:
+- parent source: `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip`
+- source commit observed before port: `nano-vllm-amd@5d8f496`
+- port subset: `qwen35_moe_group_count_kernel`,
+  `qwen35_moe_group_prefix_kernel`, `qwen35_moe_group_scatter_kernel`,
+  `qwen35_moe_group_scatter_gather_kernel`,
+  `qwen35_moe_gather_packed_hidden_kernel`, and
+  `qwen35_moe_wmma_tile_map_kernel`.
+
+Changes:
+- added `hipengine/kernels/hip_gfx1100/moe/group_scatter.{hip,py}`;
+- registered grouped metadata/gather keys:
+  `moe_group_count`, `moe_group_prefix`, `moe_group_scatter`,
+  `moe_group_scatter_gather`, `moe_gather_packed_hidden`, and
+  `moe_wmma_tile_map`;
+- added `qwen35-moe-group-scatter-hip` smoke covering count/prefix,
+  scatter+gather, separate gather, and compact WMMA tile-map metadata;
+- updated `docs/KERNELS.md` and `docs/PREFILL.md` status to show this subset as
+  landed while keeping retained MoE prefill blocked on expert kernels.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_moe_group_scatter_plan.py -q
+python3 -m pytest tests/test_qwen35_moe_group_scatter_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/smoke.py --mode qwen35-moe-group-scatter-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 -m py_compile hipengine/kernels/hip_gfx1100/moe/group_scatter.py hipengine/kernels/hip_gfx1100/moe/__init__.py scripts/smoke.py tests/test_qwen35_moe_group_scatter_plan.py
+```
+
+Result: plan tests passed (`3 passed`); combined targeted tests passed
+(`34 passed`); HIP smoke reported `prefix_match=True`, `lane_match=True`,
+`expert_match=True`, `weight_match=True`, `packed_match=True`, `tile_match=True`.
+
+Profiler evidence:
+
+```bash
+rm -rf /tmp/hipengine-moe-group-prof
+rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-moe-group-prof --output-file moe_group -- \
+  python3 scripts/smoke.py --mode qwen35-moe-group-scatter-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Result: `/tmp/hipengine-moe-group-prof/moe_group_kernel_trace.csv` contains the
+new kernels with computed durations: group_count `6640 ns`, group_prefix
+`11601 ns`, group_scatter_gather `11241 ns`, gather_packed_hidden `5360 ns`,
+wmma_tile_map `2561 ns`.

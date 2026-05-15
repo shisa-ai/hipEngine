@@ -312,9 +312,9 @@ retained prefill path must use grouped/compact MoE over prompt rows.
 Required ports/wiring:
 
 - Confirm router wrappers cover `[T, hidden]` and keep native router top-k.
-- Port the needed subset of `moe/group_scatter.hip`: count, prefix,
-  scatter/scatter_gather, c1 group metadata variants, gather packed hidden,
-  build lane-to-sorted, combine.
+- `moe/group_scatter.hip` count, prefix, scatter/scatter_gather, gather packed
+  hidden, and WMMA tile-map metadata kernels are landed; remaining group-scatter
+  work is c1 group metadata variants, build lane-to-sorted, and combine.
 - Port the Qwen3.5/PARO-used subset of `quant/w8a16_moe.hip` shared/bulk
   variants; do not port all 17 variants unless the parent call graph requires
   them.

@@ -38,6 +38,7 @@ def main() -> int:
             "qwen35-rmsnorm-hip",
             "paro-rmsnorm-hip",
             "qwen35-router-hip",
+            "qwen35-moe-group-scatter-hip",
             "qwen35-rotary-hip",
             "qwen35-linear-attn-conv-hip",
             "qwen35-linear-attn-gdn-hip",
@@ -132,6 +133,11 @@ def main() -> int:
         return qwen35_router_hip_smoke(
             args.rows,
             args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-moe-group-scatter-hip":
+        return qwen35_moe_group_scatter_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -3345,6 +3351,199 @@ def qwen35_rotary_hip_smoke(
         and split_query_max_abs == 0.0
         and split_gate_mismatch == 0
     ) else 1
+
+def qwen35_moe_group_scatter_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.moe import (
+        build_qwen35_moe_group_scatter,
+        qwen35_moe_gather_packed_hidden_lowp,
+        qwen35_moe_group_count,
+        qwen35_moe_group_prefix,
+        qwen35_moe_group_scatter_gather_lowp,
+        qwen35_moe_wmma_tile_map,
+    )
+
+    tokens = 3
+    top_k = 2
+    num_experts = 4
+    hidden_size = 5
+    selected = np.asarray([[2, 1], [2, 3], [1, 2]], dtype=np.int64)
+    routing = np.asarray([[0.6, 0.4], [0.7, 0.3], [0.2, 0.8]], dtype=np.float32)
+    hidden_fp16 = (np.arange(tokens * hidden_size, dtype=np.float32).reshape(tokens, hidden_size) / 10.0).astype(np.float16)
+    hidden_bits = hidden_fp16.view(np.uint16)
+    total_lanes = tokens * top_k
+    counts = np.zeros((num_experts,), dtype=np.int32)
+    padded_counts = np.zeros_like(counts)
+    expert_start = np.zeros((num_experts + 1,), dtype=np.int64)
+    total_padded = np.zeros((1,), dtype=np.int64)
+    scatter_offsets = np.zeros_like(counts)
+    sorted_lanes = np.full((total_lanes,), -1, dtype=np.int64)
+    sorted_experts = np.full((total_lanes,), -1, dtype=np.int64)
+    sorted_weights = np.zeros((total_lanes,), dtype=np.float32)
+    packed_hidden = np.zeros((total_lanes, hidden_size), dtype=np.uint16)
+    gathered_hidden = np.zeros_like(packed_hidden)
+    wmma_expert_start = np.zeros((num_experts + 1,), dtype=np.int64)
+    tile_expert = np.full((num_experts,), -1, dtype=np.int64)
+    wmma_total = np.zeros((1,), dtype=np.int64)
+
+    selected_flat = selected.reshape(-1)
+    routing_flat = routing.reshape(-1)
+    expected_counts = np.bincount(selected_flat, minlength=num_experts).astype(np.int32)
+    expected_start = np.concatenate(([0], np.cumsum(expected_counts, dtype=np.int64)))
+    expected_wmma_start = np.asarray([0, 0, 16, 32, 48], dtype=np.int64)
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_moe_group_scatter(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    try:
+        selected_dev = dev(selected)
+        routing_dev = dev(routing)
+        hidden_dev = dev(hidden_bits)
+        counts_dev = out_dev(counts)
+        padded_counts_dev = out_dev(padded_counts)
+        expert_start_dev = out_dev(expert_start)
+        total_padded_dev = out_dev(total_padded)
+        scatter_offsets_dev = out_dev(scatter_offsets)
+        sorted_lanes_dev = out_dev(sorted_lanes)
+        sorted_experts_dev = out_dev(sorted_experts)
+        sorted_weights_dev = out_dev(sorted_weights)
+        packed_hidden_dev = out_dev(packed_hidden)
+        gathered_hidden_dev = out_dev(gathered_hidden)
+        wmma_expert_start_dev = out_dev(wmma_expert_start)
+        tile_expert_dev = out_dev(tile_expert)
+        wmma_total_dev = out_dev(wmma_total)
+
+        qwen35_moe_group_count(
+            selected_dev.ptr,
+            counts_dev.ptr,
+            total_lanes,
+            num_experts,
+            library=library,
+            runtime=runtime,
+        )
+        qwen35_moe_group_prefix(
+            counts_dev.ptr,
+            padded_counts_dev.ptr,
+            expert_start_dev.ptr,
+            total_padded_dev.ptr,
+            num_experts,
+            1,
+            library=library,
+            runtime=runtime,
+        )
+        qwen35_moe_group_scatter_gather_lowp(
+            hidden_dev.ptr,
+            selected_dev.ptr,
+            routing_dev.ptr,
+            expert_start_dev.ptr,
+            scatter_offsets_dev.ptr,
+            sorted_lanes_dev.ptr,
+            sorted_experts_dev.ptr,
+            sorted_weights_dev.ptr,
+            packed_hidden_dev.ptr,
+            total_lanes,
+            num_experts,
+            top_k,
+            hidden_size,
+            library=library,
+            runtime=runtime,
+        )
+        qwen35_moe_gather_packed_hidden_lowp(
+            hidden_dev.ptr,
+            sorted_lanes_dev.ptr,
+            gathered_hidden_dev.ptr,
+            total_lanes * hidden_size,
+            tokens,
+            top_k,
+            hidden_size,
+            library=library,
+            runtime=runtime,
+        )
+        qwen35_moe_wmma_tile_map(
+            expert_start_dev.ptr,
+            wmma_expert_start_dev.ptr,
+            tile_expert_dev.ptr,
+            wmma_total_dev.ptr,
+            num_experts,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+
+        for host, buffer in [
+            (counts, counts_dev),
+            (padded_counts, padded_counts_dev),
+            (expert_start, expert_start_dev),
+            (total_padded, total_padded_dev),
+            (sorted_lanes, sorted_lanes_dev),
+            (sorted_experts, sorted_experts_dev),
+            (sorted_weights, sorted_weights_dev),
+            (packed_hidden, packed_hidden_dev),
+            (gathered_hidden, gathered_hidden_dev),
+            (wmma_expert_start, wmma_expert_start_dev),
+            (tile_expert, tile_expert_dev),
+            (wmma_total, wmma_total_dev),
+        ]:
+            copy_device_to_host(host_array_ptr(host), buffer, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    valid_lanes = sorted_lanes >= 0
+    lane_match = bool(np.array_equal(np.sort(sorted_lanes[valid_lanes]), np.arange(total_lanes, dtype=np.int64)))
+    expert_match = bool(np.array_equal(sorted_experts[valid_lanes], selected_flat[sorted_lanes[valid_lanes]]))
+    weight_match = bool(np.allclose(sorted_weights[valid_lanes], routing_flat[sorted_lanes[valid_lanes]], atol=0, rtol=0))
+    packed_match = True
+    for row, lane in enumerate(sorted_lanes):
+        expected = hidden_bits[lane // top_k] if lane >= 0 else np.zeros((hidden_size,), dtype=np.uint16)
+        packed_match = packed_match and bool(np.array_equal(packed_hidden[row], expected))
+        packed_match = packed_match and bool(np.array_equal(gathered_hidden[row], expected))
+    prefix_match = bool(np.array_equal(counts, expected_counts) and np.array_equal(padded_counts, expected_counts))
+    prefix_match = prefix_match and bool(np.array_equal(expert_start, expected_start) and int(total_padded[0]) == total_lanes)
+    tile_count = int(wmma_total[0] // 16)
+    tile_match = bool(
+        np.array_equal(wmma_expert_start, expected_wmma_start)
+        and int(wmma_total[0]) == 48
+        and np.array_equal(np.sort(tile_expert[:tile_count]), np.asarray([1, 2, 3], dtype=np.int64))
+    )
+    print(
+        f"tokens={tokens} top_k={top_k} num_experts={num_experts} hidden_size={hidden_size} "
+        f"prefix_match={prefix_match} lane_match={lane_match} expert_match={expert_match} "
+        f"weight_match={weight_match} packed_match={packed_match} tile_match={tile_match}"
+    )
+    print("expert_start=", expert_start.tolist(), "sorted_lanes=", sorted_lanes.tolist())
+    return 0 if (prefix_match and lane_match and expert_match and weight_match and packed_match and tile_match) else 1
+
 
 def qwen35_router_hip_smoke(
     rows: int,

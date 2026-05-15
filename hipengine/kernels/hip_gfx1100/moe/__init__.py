@@ -1,5 +1,16 @@
 """gfx1100 MoE/router kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+    build_qwen35_moe_group_scatter,
+    plan_qwen35_moe_group_scatter_build,
+    qwen35_moe_gather_packed_hidden_lowp,
+    qwen35_moe_group_count,
+    qwen35_moe_group_prefix,
+    qwen35_moe_group_scatter,
+    qwen35_moe_group_scatter_gather_lowp,
+    qwen35_moe_wmma_tile_map,
+    register_qwen35_moe_group_scatter_kernels,
+)
 from hipengine.kernels.hip_gfx1100.moe.router import (
     build_qwen35_router,
     plan_qwen35_router_build,
@@ -12,12 +23,21 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 )
 
 __all__ = [
+    "build_qwen35_moe_group_scatter",
     "build_qwen35_router",
+    "plan_qwen35_moe_group_scatter_build",
     "plan_qwen35_router_build",
+    "qwen35_moe_gather_packed_hidden_lowp",
+    "qwen35_moe_group_count",
+    "qwen35_moe_group_prefix",
+    "qwen35_moe_group_scatter",
+    "qwen35_moe_group_scatter_gather_lowp",
+    "qwen35_moe_wmma_tile_map",
     "qwen35_router_logits_bf16",
     "qwen35_router_logits_fp16",
     "qwen35_router_select",
     "qwen35_router_topk_shared_out_bf16",
     "qwen35_router_topk_shared_out_fp16",
+    "register_qwen35_moe_group_scatter_kernels",
     "register_qwen35_router_kernels",
 ]
