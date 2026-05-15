@@ -8938,3 +8938,31 @@ python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/__init__.py
 
 Result: ROCm visible (`gfx1100`, W7900); targeted pytest passed `21 passed`;
 py_compile succeeded.
+
+## 2026-05-15 — CPU reference full-attention prefill oracle
+
+Added the first retained correctness oracle required by `docs/PREFILL.md` for
+native full-attention prefill bring-up.
+
+Changes:
+- added torch-free NumPy `full_attn_prefill(...)` in
+  `hipengine/kernels/cpu_reference/ops.py`;
+- oracle models append-then-attend causal GQA over dense or paged key/value
+  cache arrays, supports BF16-bit `uint16` cache inputs, per-row positions and
+  context counts, and applies the decode-compatible sigmoid gate before the
+  FP16/default output cast;
+- registered the oracle under generic `fp16` and exact
+  `(cpu_reference, full_attn_prefill, w4_paro, qwen35_causal_gqa_gate_fp16)`
+  keys;
+- added a tiny causal-GQA fixture and direct paged/BF16-bit test coverage.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_cpu_reference.py -q
+python3 -m pytest tests/test_cpu_reference.py tests/test_kernel_registry.py -q
+python3 -m py_compile hipengine/kernels/cpu_reference/ops.py hipengine/kernels/cpu_reference/__init__.py tests/test_cpu_reference.py
+```
+
+Result: CPU-reference tests passed (`7 passed`); registry bundle passed
+(`11 passed`); py_compile succeeded.

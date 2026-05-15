@@ -15,6 +15,7 @@ from hipengine.kernels.cpu_reference.fixtures import (
 from hipengine.kernels.cpu_reference.ops import (
     attention_decode,
     embed,
+    full_attn_prefill,
     linear,
     lm_head,
     o_proj,
@@ -32,6 +33,7 @@ __all__ = [
     "Tolerances",
     "attention_decode",
     "embed",
+    "full_attn_prefill",
     "linear",
     "lm_head",
     "load_fixture",
