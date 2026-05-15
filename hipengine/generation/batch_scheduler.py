@@ -400,6 +400,8 @@ class ResidentBatchScheduler:
             raise ValueError("state commit buffers request_ids must match speculative commit plan")
         if buffers.mode != commit.mode:
             raise ValueError("state commit buffers mode must match speculative commit plan")
+        if buffers.device != plan.verify_plan.buffers.device:
+            raise ValueError("state commit buffers must live on target verify device")
         if not buffers.has_linear_state and not buffers.has_kv_rows:
             raise ValueError("state commit buffers must include linear state or KV rows")
         return SpeculativeStateCommitPlan(commit_plan=plan, buffers=buffers)

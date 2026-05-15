@@ -608,6 +608,9 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert state_plan["request_ids"] == [1, 2]
     assert state_plan["request_rows"] == 2
     assert state_plan["mode"] == "verify_tree"
+    assert state_plan["device"] == "hip:0"
+    assert state_plan["verify_device"] == "hip:0"
+    assert state_plan["device_matches_verify"]
     assert state_plan["has_linear_state"]
     assert state_plan["has_kv_rows"]
     assert state_plan["transaction_id"] == plan["transaction_id"]

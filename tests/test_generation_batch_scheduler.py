@@ -222,8 +222,20 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert isinstance(state_plan, SpeculativeStateCommitPlan)
     assert state_plan.commit_plan is commit
     assert state_plan.buffers is state_buffers
+    assert state_plan.buffers.device == buffer_plan.buffers.device
     assert state_plan.buffers.has_linear_state
     assert state_plan.buffers.has_kv_rows
+    other_device = Device("hip", 1)
+    other_state_buffers = TargetStateCommitBuffers.for_plan(
+        commit.commit_plan,
+        accepted_counts=Tensor.from_handle(0x4200, (len(work.target_batch.request_ids),), "int32", other_device),
+        commit_rows=Tensor.from_handle(0x4300, (len(work.target_batch.request_ids),), "int32", other_device),
+        commit_positions=Tensor.from_handle(0x4400, (len(work.target_batch.request_ids),), "int32", other_device),
+        linear_state_src=Tensor.from_handle(0x4500, (work.target_batch.rows, 4), "bf16", other_device),
+        linear_state_dst=Tensor.from_handle(0x4600, (len(work.target_batch.request_ids), 4), "bf16", other_device),
+    )
+    with pytest.raises(ValueError, match="target verify device"):
+        scheduler.bind_speculative_commit_buffers(commit, other_state_buffers)
     committed_txn = scheduler.commit_speculative_kv_transaction(policy, state_plan)
     assert committed_txn.transaction_id == plan.transaction.transaction_id
     assert committed_txn.request_ids == (r0, r1)

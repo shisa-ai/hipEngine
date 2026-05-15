@@ -242,6 +242,9 @@
         ],
         "request_rows": 2,
         "mode": "verify_tree",
+        "device": "hip:0",
+        "verify_device": "hip:0",
+        "device_matches_verify": true,
         "has_linear_state": true,
         "has_kv_rows": true,
         "transaction_id": 1
