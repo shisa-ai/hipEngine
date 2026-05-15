@@ -61,7 +61,7 @@ from hipengine.loading.materialize import (
     load_tensor_info_to_device,
 )
 from hipengine.runtime.prefill import PrefillConfig
-from hipengine.runtime.qwen35_paro import Qwen35ParoDecodeState
+from hipengine.runtime.qwen35_paro import Qwen35ParoDecodeState, Qwen35ParoGroupedMoeScratch
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
@@ -656,26 +656,26 @@ def qwen35_paro_native_prefill_plan(
     linear_prefix_layers = 0
     first_unsupported_layer: int | None = None
     first_unsupported_type: str | None = None
+    supported_native_types = {"linear_attention", "full_attention"}
     for layer_id in range(limit):
         layer_type = str(layer_types[layer_id])
-        if layer_type == "linear_attention" and first_unsupported_layer is None:
+        if layer_type == "linear_attention" and first_unsupported_layer is None and linear_prefix_layers == layer_id:
             linear_prefix_layers += 1
-            continue
-        first_unsupported_layer = layer_id
-        first_unsupported_type = layer_type
-        break
-    full_layer_limit_native = linear_prefix_layers == limit
+        if layer_type not in supported_native_types:
+            first_unsupported_layer = layer_id
+            first_unsupported_type = layer_type
+            break
+    full_layer_limit_native = first_unsupported_layer is None
     blockers: tuple[str, ...]
     if full_layer_limit_native:
         blockers = ()
-        path = "linear_attention_native_full_layer_limit"
+        path = "single_request_native_full"
     else:
         blockers = (
-            "native prefill currently covers only linear-attention layer prefixes",
-            "native compact/grouped MoE and full-attention prefill are not wired",
+            "native prefill supports linear_attention and full_attention layers only",
             f"first unsupported layer {first_unsupported_layer} is {first_unsupported_type!r}",
         )
-        path = "linear_attention_prefix_only" if linear_prefix_layers else "serial_only"
+        path = "unsupported_layer_type"
     return Qwen35ParoNativePrefillPlan(
         path=path,
         layer_limit=limit,
@@ -693,9 +693,9 @@ class Qwen35ParoResidentSession:
     The session materializes layer weights once, keeps per-layer linear-attention
     recurrent/conv state and per-full-attention KV caches across tokens, and runs
     actual autoregressive prompt+decode token steps. Decode is still c=1. A
-    native batched prefill helper is available only for linear-attention-only
-    layer prefixes; full-attention and compact/grouped MoE native prefill remain
-    separate work.
+    native single-request prefill helper covers linear-attention and
+    full-attention layers with grouped/compact MoE; c>N compact prompt slabs
+    remain separate work.
     """
 
     def __init__(
@@ -1011,21 +1011,24 @@ class Qwen35ParoResidentSession:
         sample: bool = True,
         require_full_native: bool | None = None,
     ) -> Qwen35ParoAutoregressiveStepResult | None:
-        """Run full-native prefill, or an explicit bring-up oracle path.
+        """Run single-request native prefill, or an explicit oracle path.
 
-        The retained prefill path requires native full-attention prefill and
-        grouped/compact MoE. Until those kernels are wired, callers must pass
-        ``require_full_native=False`` to use the legacy oracle helper for
-        bring-up and reproduction only.
+        The retained path is native across the selected layer limit: batched
+        linear-attention prefill, batched full-attention append-then-attend, and
+        grouped/compact MoE. Passing ``require_full_native=False`` remains an
+        explicitly-labelled compatibility path for older linear-prefix oracle
+        artifacts only.
         """
 
         tokens = self._validate_prefill_tokens(token_ids, require_min_prompt=True)
-        if self._resolve_require_full_native(require_full_native):
-            raise NotImplementedError(
-                "full native Qwen3.5/PARO prefill is not wired yet: "
-                "native causal full-attention prefill and grouped MoE prefill are required"
-            )
-        return self._prefill_linear_tokens_native_legacy(tokens, sample=sample, allow_rejected_correctness=False)
+        if not self._resolve_require_full_native(require_full_native):
+            self.last_prefill_execution = {
+                "path": "legacy_native_linear_prefix_serial_suffix_oracle",
+                "tokens": len(tokens),
+                "full_native": False,
+            }
+            return self._prefill_linear_tokens_native_legacy(tokens, sample=sample, allow_rejected_correctness=False)
+        return self._prefill_tokens_native_full(tokens, sample=sample)
 
     def prefill_linear_tokens_native(
         self,
@@ -1046,6 +1049,63 @@ class Qwen35ParoResidentSession:
             sample=sample,
             allow_rejected_correctness=allow_rejected_correctness,
         )
+
+    def _prefill_tokens_native_full(
+        self,
+        token_ids: Sequence[int],
+        *,
+        sample: bool = True,
+    ) -> Qwen35ParoAutoregressiveStepResult | None:
+        """Run the retained full-layer single-request native prefill path."""
+
+        tokens = self._validate_prefill_tokens(token_ids, require_min_prompt=True)
+        native_prefill_plan = self.native_prefill_plan()
+        if not native_prefill_plan.full_layer_limit_native:
+            raise NotImplementedError(
+                "native Qwen3.5/PARO prefill cannot cover this layer limit: "
+                + "; ".join(native_prefill_plan.blockers)
+            )
+        token_arr = np.asarray(tokens, dtype=np.int64)
+        if hasattr(self, "prefill_token_id_buf") and self.prefill_token_id_buf.nbytes >= token_arr.nbytes:
+            token_buf = self.prefill_token_id_buf
+            owns_token_buf = False
+        else:
+            token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
+            owns_token_buf = True
+        copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
+        try:
+            self._prepare_prefill_context_counts(len(tokens), stream=0)
+            embedding_lookup_batch_fp16_i64(
+                self.embedding.tensor.ptr,
+                token_buf.ptr,
+                self.prefill_hidden.ptr,
+                len(tokens),
+                self.config.hidden_size,
+                self.vocab_size,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
+            hidden = self._run_native_prefill_layers(tokens=len(tokens), stream=0)
+            self.runtime.stream_synchronize(0)
+            last_ptr = hidden.ptr
+            if len(hidden.shape) > 1 and int(hidden.shape[0]) == len(tokens):
+                last_ptr += (len(tokens) - 1) * self.hidden_nbytes
+            self.runtime.memcpy(self.hidden.ptr, last_ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+            self._restore_decode_scratch_after_prefill()
+            self._set_position(len(tokens) - 1)
+            self.last_prefill_execution = {
+                "path": native_prefill_plan.path,
+                "tokens": len(tokens),
+                "full_native": True,
+                "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
+                "layer_limit": native_prefill_plan.layer_limit,
+            }
+            if not sample:
+                return None
+            return self._sample_from_hidden(self.hidden)
+        finally:
+            if owns_token_buf:
+                free(token_buf, runtime=self.runtime)
 
     def _prefill_linear_tokens_native_legacy(
         self,
@@ -1097,6 +1157,13 @@ class Qwen35ParoResidentSession:
             self.runtime.memcpy(self.hidden.ptr, last_ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
             self._restore_decode_scratch_after_prefill()
             self._set_position(len(tokens) - 1)
+            self.last_prefill_execution = {
+                "path": "legacy_native_linear_prefix_serial_suffix_oracle",
+                "tokens": len(tokens),
+                "full_native": False,
+                "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
+                "layer_limit": native_prefill_plan.layer_limit,
+            }
             if not sample:
                 return None
             return self._sample_from_hidden(self.hidden)
@@ -1253,6 +1320,111 @@ class Qwen35ParoResidentSession:
         if slot < 0 or slot >= self.max_batch_size:
             raise ValueError(f"slot {slot} outside batch capacity {self.max_batch_size}")
 
+    def _prefill_rows_tensor(self, tensor: Tensor, rows: int) -> Tensor:
+        return Tensor.from_handle(tensor.ptr, (rows,), tensor.dtype, tensor.device)
+
+    def _prefill_block_table_rows(self, rows: int) -> Tensor:
+        return Tensor.from_handle(self.prefill_block_table_buf.ptr, (rows, self.blocks), DType.INT32, self.device)
+
+    def _prepare_prefill_context_counts(self, rows: int, *, stream: int = 0) -> None:
+        counts = np.full((rows,), int(rows), dtype=np.int64)
+        copy_host_to_device(
+            self.prefill_context_count_buf,
+            host_array_ptr(counts),
+            counts.nbytes,
+            runtime=self.runtime,
+        )
+
+    def _prefill_full_attention_spans(self, rows: int) -> tuple[KVLiveSpans, KVLiveSpans]:
+        block_table = self._prefill_block_table_rows(rows)
+        positions = self._prefill_rows_tensor(self.prefill_positions, rows)
+        context_counts = Tensor.from_handle(self.prefill_context_count_buf.ptr, (rows,), DType.INT64, self.device)
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table,
+            live_counts=positions,
+            max_live_count=rows - 1,
+            storage_dtype=DType.BF16,
+            row_positions=positions,
+            span_role="prefill",
+        )
+        prefill_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table,
+            live_counts=context_counts,
+            max_live_count=rows,
+            storage_dtype=DType.BF16,
+            row_positions=positions,
+            span_role="prefill",
+        )
+        return append_spans, prefill_spans
+
+    def _ensure_grouped_moe_prefill_scratch(self, layer_id: int, *, tokens: int) -> Qwen35ParoGroupedMoeScratch:
+        state = self.states[layer_id]
+        scratch = self.moe_scratch.get(layer_id)
+        if isinstance(scratch, Qwen35ParoGroupedMoeScratch) and scratch.normed.shape[0] >= tokens:
+            return scratch
+        scratch = state.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        self.moe_scratch[layer_id] = scratch
+        return scratch
+
+    def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
+        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
+        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
+        append_spans, prefill_spans = self._prefill_full_attention_spans(tokens)
+        positions = self._prefill_rows_tensor(self.prefill_positions, tokens)
+        for layer_id, state in enumerate(self.states):
+            layer_type = self.config.layer_types[layer_id]
+            if layer_type == "linear_attention":
+                conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+                linear_scratch = self.linear_scratch[layer_id]
+                if linear_scratch.attn_input.shape[0] < tokens:
+                    linear_scratch = state.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
+                    self.linear_scratch[layer_id] = linear_scratch
+                moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=tokens)
+                out = state.run_linear_attention_moe_c1_layer_fp16(
+                    hidden,
+                    conv_state=conv_state,
+                    recurrent_state=recurrent_state,
+                    linear_scratch=linear_scratch,
+                    moe_scratch=moe_scratch,
+                    tokens=tokens,
+                    library=self.libraries,
+                    stream=stream,
+                )
+            elif layer_type == "full_attention":
+                key_cache, value_cache = self._slot_full_cache(layer_id, 0)
+                attention_scratch = self.full_scratch[layer_id]
+                if attention_scratch.attn_input.shape[0] < tokens:
+                    attention_scratch = state.reserve_full_attention_scratch(
+                        tokens=tokens,
+                        num_splits=1,
+                        activation_dtype=DType.FP16,
+                        gated_dtype=DType.FP16,
+                    )
+                    self.full_scratch[layer_id] = attention_scratch
+                moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=tokens)
+                out = state.run_full_attention_moe_prefill_layer_fp16(
+                    hidden,
+                    key_cache=key_cache,
+                    value_cache=value_cache,
+                    append_spans=append_spans,
+                    prefill_spans=prefill_spans,
+                    cos_table=self.cos,
+                    sin_table=self.sin,
+                    positions=positions,
+                    max_positions=self.max_sequence_length,
+                    attention_scratch=attention_scratch,
+                    moe_scratch=moe_scratch,
+                    tokens=tokens,
+                    block_size=self.block_size,
+                    library=self.libraries,
+                    stream=stream,
+                )
+            else:
+                raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
+            self.runtime.memcpy_async(next_hidden.ptr, out.ptr, tokens * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+            hidden, next_hidden = next_hidden, hidden
+        return hidden
+
     def _run_linear_prefill_layers(self, *, tokens: int, layer_limit: int | None = None, stream: int = 0) -> Tensor:
         hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
@@ -1269,10 +1441,13 @@ class Qwen35ParoResidentSession:
             if linear_scratch.attn_input.shape[0] < tokens:
                 linear_scratch = state.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
                 self.linear_scratch[layer_id] = linear_scratch
-            moe_scratch = self.moe_scratch[layer_id]
-            if moe_scratch.normed.shape[0] < tokens:
-                moe_scratch = state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
-                self.moe_scratch[layer_id] = moe_scratch
+            if tokens > 1:
+                moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=tokens)
+            else:
+                moe_scratch = self.moe_scratch[layer_id]
+                if moe_scratch.normed.shape[0] < tokens:
+                    moe_scratch = state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+                    self.moe_scratch[layer_id] = moe_scratch
             out = state.run_linear_attention_moe_c1_layer_fp16(
                 hidden,
                 conv_state=conv_state,
@@ -1365,6 +1540,13 @@ class Qwen35ParoResidentSession:
             self.moe_scratch[layer_id] = state.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16)
             if self.config.layer_types[layer_id] == "linear_attention":
                 self.linear_scratch[layer_id] = state.reserve_linear_attention_scratch(tokens=1, activation_dtype=DType.FP16)
+            elif self.config.layer_types[layer_id] == "full_attention":
+                self.full_scratch[layer_id] = state.reserve_full_attention_scratch(
+                    tokens=1,
+                    num_splits=self.max_splits,
+                    activation_dtype=DType.FP16,
+                    gated_dtype=DType.FP16,
+                )
 
     def _run_layers(
         self,
@@ -1560,12 +1742,16 @@ class Qwen35ParoResidentSession:
         )
 
         block_table_arr = np.arange(self.blocks, dtype=np.int32)
+        prefill_block_table_arr = np.tile(block_table_arr, (self.max_sequence_length, 1))
+        prefill_context_count_arr = np.zeros((self.max_sequence_length,), dtype=np.int64)
         self.position_arr = np.zeros(self.batch_layout.slot_scalar_shape, dtype=np.int64)
         self.context_arr = np.ones(self.batch_layout.slot_scalar_shape, dtype=np.int64)
         self.token_id_arr = np.zeros(self.batch_layout.slot_scalar_shape, dtype=np.int64)
         self.active_mask_arr = np.zeros(self.batch_layout.slot_scalar_shape, dtype=np.uint8)
         self.active_mask_arr[0] = 1
         self.block_table_buf = self._dev(block_table_arr)
+        self.prefill_block_table_buf = self._dev(prefill_block_table_arr)
+        self.prefill_context_count_buf = self._dev(prefill_context_count_arr)
         self.position_buf = self._dev(self.position_arr)
         self.context_buf = self._dev(self.context_arr)
         self.token_id_buf = self._dev(self.token_id_arr)

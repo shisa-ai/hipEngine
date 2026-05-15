@@ -1,0 +1,698 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "blocked_reason": null,
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "mode": "qwen35_paro_native_prefill_fixture_gate",
+  "command": "python3 scripts/qwen35_native_prefill_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json",
+  "performance_claim": false,
+  "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+  "prompt_length": 512,
+  "decode_tokens": 32,
+  "max_layers": 40,
+  "thresholds": {
+    "kl_max": 0.05,
+    "top1_agreement_min": 0.9
+  },
+  "serial": {
+    "prefill_mode": "serial",
+    "seed": {
+      "token_id": 4403,
+      "token_text": "ы",
+      "logit": 7.279476165771484
+    },
+    "generated": [
+      {
+        "token_id": 1739,
+        "token_text": "и",
+        "logit": 6.4706339836120605
+      },
+      {
+        "token_id": 220,
+        "token_text": " ",
+        "logit": 6.482233047485352
+      },
+      {
+        "token_id": 16,
+        "token_text": "1",
+        "logit": 8.29595947265625
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 10.1834077835083
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.315574645996094
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 10.2240629196167
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 9.74311637878418
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 10.473058700561523
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.334802627563477
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.201168060302734
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.758073806762695
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.96290397644043
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.684446334838867
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 12.495797157287598
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 12.68730640411377
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 12.962449073791504
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.656839370727539
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.743289947509766
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.64189338684082
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 14.230681419372559
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.820984840393066
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.58894157409668
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.857043266296387
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.844683647155762
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.85771656036377
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 15.037125587463379
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 14.724481582641602
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 15.714522361755371
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 15.451411247253418
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 15.320954322814941
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 15.125093460083008
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 16.02403450012207
+      }
+    ],
+    "prefill_seconds": 4.368498803116381,
+    "decode_seconds": 0.3271753299050033,
+    "owned_device_bytes": 1625645909,
+    "prefill_execution_detail": null
+  },
+  "native": {
+    "prefill_mode": "native",
+    "seed": {
+      "token_id": 4403,
+      "token_text": "ы",
+      "logit": 7.220882892608643
+    },
+    "generated": [
+      {
+        "token_id": 1739,
+        "token_text": "и",
+        "logit": 6.502975940704346
+      },
+      {
+        "token_id": 220,
+        "token_text": " ",
+        "logit": 6.49170446395874
+      },
+      {
+        "token_id": 16,
+        "token_text": "1",
+        "logit": 8.229351997375488
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 9.705568313598633
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.222858428955078
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 10.297130584716797
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 9.893875122070312
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 10.549942970275879
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.40185546875
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.202198028564453
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.942264556884766
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 12.075703620910645
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 11.527129173278809
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 12.585633277893066
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 12.758688926696777
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 12.838815689086914
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.748830795288086
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.722417831420898
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.686546325683594
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 14.699932098388672
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.846403121948242
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.645903587341309
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.94687271118164
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.945905685424805
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 13.852222442626953
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 14.942110061645508
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 14.600285530090332
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 15.430750846862793
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 15.317641258239746
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 15.41377067565918
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 15.141681671142578
+      },
+      {
+        "token_id": 15,
+        "token_text": "0",
+        "logit": 16.198318481445312
+      }
+    ],
+    "prefill_seconds": 11.19840783206746,
+    "decode_seconds": 0.32937247795052826,
+    "owned_device_bytes": 1625645909,
+    "prefill_execution_detail": {
+      "path": "single_request_native_full",
+      "tokens": 512,
+      "full_native": true,
+      "linear_prefix_layers": 3,
+      "layer_limit": 40
+    }
+  },
+  "serial_generated_token_ids": [
+    1739,
+    220,
+    16,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15
+  ],
+  "native_generated_token_ids": [
+    1739,
+    220,
+    16,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15
+  ],
+  "expected_generated_token_ids": [
+    1739,
+    220,
+    16,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15
+  ],
+  "seed_match": true,
+  "generated_match": true,
+  "expected_match": true,
+  "finite_logits": true,
+  "logit_gate": {
+    "positions": 33,
+    "kl": [
+      0.004151175900436667,
+      0.011100021157958101,
+      0.0005294402389169954,
+      0.001963063855554102,
+      0.016753961542286394,
+      0.0025622009843876453,
+      0.001463161129120251,
+      0.0028095408396240887,
+      0.0014805264609697062,
+      0.00164896786842636,
+      0.01102630209210434,
+      0.004438430685736799,
+      0.0019373421177543545,
+      0.010209191092409338,
+      0.0010611088561422587,
+      0.001034699257755363,
+      0.0011244886900395883,
+      0.0009945398498061604,
+      0.0006370354044197946,
+      0.0012267447810326597,
+      0.011862093046865675,
+      0.00037832440795518887,
+      0.0005804204324260233,
+      0.0005637018762843005,
+      0.001119990883796065,
+      0.0003560196025546339,
+      0.000402441152785579,
+      0.00039565708718752895,
+      0.001651585148626927,
+      0.00022309426793015635,
+      0.0004262501773267648,
+      0.00018085682155141188,
+      0.0007730108003936106
+    ],
+    "max_kl": 0.016753961542286394,
+    "mean_kl": 0.0029413754094110554,
+    "serial_top1": [
+      4403,
+      1739,
+      220,
+      16,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15
+    ],
+    "native_top1": [
+      4403,
+      1739,
+      220,
+      16,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15
+    ],
+    "top1_matches": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "top1_agreement": 1.0,
+    "max_abs_argmax_logit_delta": 0.47783946990966797
+  },
+  "kl_pass": true,
+  "top1_pass": true,
+  "passed": true,
+  "parent_metrics": {
+    "prefill_tok_s": 2682.660298904437,
+    "decode_tok_s": 116.25779530736419,
+    "prefill_seconds": 0.19085532380267978,
+    "decode_seconds": 0.275250359904021,
+    "peak_allocated_bytes": 20183255040,
+    "peak_reserved_bytes": 20224933888,
+    "allocated_after_load_bytes": 19644673536,
+    "reserved_after_load_bytes": 19667091456
+  },
+  "notes": [
+    "Correctness gate only; timings are diagnostic and no throughput row is retained here.",
+    "KL/top-1 compare native prefill against the validated serial resident path over full lm-head logits.",
+    "Expected generated IDs come from the parent fixture after consuming the prefill seed token."
+  ],
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "gfx": "gfx1100",
+    "cpu": "AMD EPYC 9274F 24-Core Processor"
+  },
+  "quality_gate": {
+    "kl_threshold": 0.05,
+    "max_kl": 0.016753961542286394,
+    "top1_threshold": 0.9,
+    "top1_agreement": 1.0,
+    "generated_match_serial": true,
+    "generated_match_parent_fixture": true,
+    "finite_logits": true,
+    "passed": true
+  },
+  "benchmark_diagnostic": {
+    "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --prompt-length 512 --decode-tokens 32 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen35-native-prefill-bench-512-32.json",
+    "prompt_source": "repeated_token_id",
+    "prompt_length": 512,
+    "decode_tokens": 32,
+    "native_prefill_execution": "single_request_native_full",
+    "prefill_seconds": 10.903746998868883,
+    "decode_seconds": 0.31493937596678734,
+    "prefill_tok_s": 46.95633529034681,
+    "decode_tok_s": 101.60685656332359,
+    "diagnostic_only": true
+  },
+  "comparisons": {
+    "serial_resident_fixture_prefill_tok_s": 117.24093393850877,
+    "native_fixture_gate_prefill_tok_s": 45.72078528287303,
+    "native_repeated_token_bench_prefill_tok_s": 46.95633529034681,
+    "parent_fixture_prefill_tok_s": 2682.660298904437,
+    "parent_fixture_decode_tok_s": 116.25779530736419,
+    "performance_claim": false,
+    "performance_note": "Correctness accepted; native single-request prefill is slower than the retained serial c=1 fixture and far below parent, so no current-fastest throughput row is promoted."
+  },
+  "kernel_trace_evidence": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-prefill-smoke-prof --output-file prefill_smoke -- python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "trace": "/tmp/hipengine-prefill-smoke-prof/prefill_smoke_kernel_trace.csv",
+    "kernels": [
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>(float const*, _Float16 const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+        "duration_ns": 12078
+      },
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(float const*, unsigned short const*, unsigned short const*, _Float16 const*, _Float16*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+        "duration_ns": 26036
+      }
+    ],
+    "notes": [
+      "Smoke exercises the final single-request prompt KV writer plus native causal GQA prefill attention with CPU-reference equality.",
+      "Grouped MoE/compact WMMA profiler evidence is recorded in WORKLOG.md task #13 entries."
+    ]
+  }
+}

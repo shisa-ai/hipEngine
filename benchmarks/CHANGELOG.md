@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-05-15
 
+- [correctness] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / native c=1 512/32: native single-request prefill gate blocked -> accepted with max KL 0.0168 and top-1 100%, but perf row remains no row because native prefill is 45.72 tok/s vs serial 117.24 tok/s; `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json`.
+- [blocked diagnostic] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / native c=1 512/32: retained throughput no row -> no row (blocked) because `single_request_native_full` is correctness-clean but slower than serial and parent baselines; `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json`.
 - [blocked diagnostic] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / c=1/2/4/8 prompt8/decode1: retained throughput no row -> no row (blocked) because `scheduler_serial_slot_bridge` is serial and not c=N 512/128 protocol; artifacts `benchmarks/results/2026-05-15-hipengine-qwen35-c{1,2,4,8}-scheduler-serial-bench-blocked.json`.
 - [correctness] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / c=1 512/32 parent fixture: generated-token equality blocked -> accepted after parent-mixed MoE parity fixes; `benchmarks/results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json`.
 - [correctness] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / c=2/4/8 generated equality: blocked -> accepted for scheduler-backed serial bridge with finite logits and graph/occupancy metadata; `benchmarks/results/2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json`.

@@ -9277,3 +9277,82 @@ rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-w
 Result: `/tmp/hipengine-wmma-prof/wmma_kernel_trace.csv` contains compact WMMA
 kernels for BF16 and FP16. Computed durations: BF16 dual `10520 ns`, BF16 single
 `6361 ns`, FP16 dual `6760 ns`, FP16 single `5161 ns`.
+
+## 2026-05-15 — Single-request native prefill wired into generation/bench
+
+Continued task #14 by wiring the final single-request native prefill route into
+resident generation and benchmark entrypoints. This is a correctness milestone,
+not a retained throughput row: the native path is accepted against serial and
+parent fixture gates, but current prefill timing is slower than the serial c=1
+fixture baseline.
+
+Changes:
+- `Qwen35ParoResidentSession.prefill_native(...)` now runs the full native
+  single-request path by default (`single_request_native_full`) and keeps
+  `require_full_native=False` as the explicit legacy/oracle path only;
+- added full-layer native orchestration across linear-attention and
+  full-attention layers, including grouped/compact MoE tails and decode-scratch
+  restoration;
+- added the single-request prompt KV writer
+  `qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(...)` so prompt rows are
+  appended into one request cache instead of the row-major c>N cache layout;
+- changed `Qwen35ParoOneTokenGenerator` and `scripts/qwen35_paro_bench.py` to
+  use `prefill_native(...)` by default, with serial prefill exposed only as an
+  explicit diagnostic mode;
+- added `scripts/qwen35_native_prefill_fixture_gate.py` to compare native vs
+  serial resident full lm-head logits with KL/top-1 gates on the parent 512/32
+  fixture;
+- updated benchmark rollup/docs and retained the accepted correctness artifact
+  at `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json`.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_decode_state.py tests/test_generation_qwen35_paro.py tests/test_qwen35_native_prefill_boundary.py tests/test_qwen35_paged_kv_write_plan.py -q
+python3 -m py_compile hipengine/kernels/hip_gfx1100/attention/paged_kv_write.py hipengine/kernels/hip_gfx1100/attention/__init__.py hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py hipengine/generation/qwen35_paro.py scripts/qwen35_paro_bench.py scripts/qwen35_e2e_correctness.py scripts/qwen35_native_prefill_correctness.py scripts/qwen35_native_prefill_boundary.py scripts/qwen35_native_prefill_fixture_gate.py scripts/smoke.py
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/qwen35_native_prefill_correctness.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --prompt-length 4 --max-layers 40 --json /tmp/hipengine-native-prefill-ml40-pl4.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json
+python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --prompt-length 512 --decode-tokens 32 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen35-native-prefill-bench-512-32.json
+```
+
+Result: targeted tests passed (`62 passed`); py_compile succeeded; prefill
+smoke reported `prefill_gate_fp16_max_abs=0` and mismatch `0`; 40-layer
+prompt-length-4 serial/native seed+decode correctness passed. The 512/32 parent
+fixture gate passed with generated IDs matching serial and parent, `max_kl=0.016753961542286394`,
+`mean_kl=0.0029413754094110554`, top-1 agreement `1.0`, and finite logits.
+Diagnostic timings: fixture native prefill `512 / 11.19840783206746 = 45.72 tok/s`,
+repeated-token bench prefill `46.956 tok/s`, decode `101.607 tok/s`; no
+performance row promoted because serial c=1 fixture prefill is `117.24 tok/s`
+and parent prefill is `2682.66 tok/s`.
+
+Profiler evidence:
+
+```bash
+rm -rf /tmp/hipengine-prefill-smoke-prof
+rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-prefill-smoke-prof --output-file prefill_smoke -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Result: `/tmp/hipengine-prefill-smoke-prof/prefill_smoke_kernel_trace.csv`
+contains the final prompt KV writer and native full-attention prefill kernels:
+`qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>`
+`12078 ns` and `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel` `26036 ns`.
+Grouped MoE/compact WMMA profiler evidence remains in the task #13 entries
+above.
+
+Remaining follow-up: `PrefillConfig` chunk-size knobs still execute the
+unchunked path; non-zero chunk-equivalence sweeps should be implemented before
+using chunking to reduce scratch memory. Compact c>N native prompt slabs remain
+task #15.
+
+Lineage check after the prompt-writer kernel edit:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: reports known parent drift in `qwen35_expert.hip`, `smoke.hip`, and
+`paroquant_kernels.py` from nano-vllm-amd head `5d8f496`; no additional hipENGINE
+source-lineage manifest change needed for the local prompt-writer wrapper.

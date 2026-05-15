@@ -10,6 +10,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_write_paged_kv_mixed_value_bf16_batch_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
     qwen35_write_paged_kv_mixed_value_fp16_batch_spans,
+    qwen35_write_paged_kv_mixed_value_fp16_prompt_spans,
     qwen35_write_paged_kv_mixed_value_fp16_spans,
     register_qwen35_paged_kv_write_kernels,
 )
@@ -78,6 +79,15 @@ def test_qwen35_paged_kv_write_registers_span_variants() -> None:
             backend="hip_gfx1100",
             layer="paged_kv_write",
             quant="w4_paro",
+            variant="mixed_fp16_prompt_spans",
+        )
+        is qwen35_write_paged_kv_mixed_value_fp16_prompt_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_kv_write",
+            quant="w4_paro",
             variant="f32_spans",
         )
         is qwen35_write_paged_kv_f32_spans
@@ -118,6 +128,8 @@ def test_qwen35_paged_kv_write_wrapper_validates_before_gpu_load() -> None:
         qwen35_write_paged_kv_mixed_value_fp16_spans(0, 0, 0, 0, _spans(), 0, 1, 8)
     with pytest.raises(ValueError, match="rows"):
         qwen35_write_paged_kv_mixed_value_fp16_batch_spans(0, 0, 0, 0, _spans(), 0, 4, 1, 8)
+    with pytest.raises(ValueError, match="rows"):
+        qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(0, 0, 0, 0, _spans(), 0, 4, 1, 8)
     with pytest.raises(ValueError, match="live_counts"):
         qwen35_write_paged_kv_mixed_value_bf16_batch_spans(
             0,

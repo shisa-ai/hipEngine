@@ -37,6 +37,10 @@ def test_qwen35_paro_generator_runs_multi_token_resident_decode(monkeypatch) -> 
         def __exit__(self, exc_type, exc, tb):
             calls.append(("close",))
 
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            return next(self.outputs) if sample else None
+
         def step(self, token_id: int, *, position: int, sample: bool = True):
             calls.append(("step", token_id, position, sample))
             return next(self.outputs) if sample else None
@@ -57,8 +61,7 @@ def test_qwen35_paro_generator_runs_multi_token_resident_decode(monkeypatch) -> 
     assert out == ["ABC"]
     assert calls == [
         ("init", runner, 6),
-        ("step", 10, 0, False),
-        ("step", 11, 1, True),
+        ("prefill_native", (10, 11), True),
         ("step", 100, 2, True),
         ("step", 101, 3, True),
         ("close",),
@@ -88,6 +91,9 @@ def test_qwen35_paro_generator_stops_on_eos(monkeypatch) -> None:
 
         def __exit__(self, exc_type, exc, tb):
             pass
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            return _result(100, "<eos>") if sample else None
 
         def step(self, token_id: int, *, position: int, sample: bool = True):
             return _result(100, "<eos>") if sample else None

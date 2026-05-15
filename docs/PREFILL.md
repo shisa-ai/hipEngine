@@ -45,8 +45,9 @@ prefill performance artifact is captured only after all native pieces are
 present, `PrefillConfig.require_full_native=True` is the default, and the c1
 selected-row MoE path no longer appears in the production prefill code path.
 In-progress measurements live in `WORKLOG.md`; `benchmarks/README.md` keeps the
-current 117.24 tok/s c=1 row as the retained baseline until the final
-single-request native artifact is accepted.
+current 117.24 tok/s c=1 row as the retained performance baseline until native
+prefill beats it. The first full single-request native correctness artifact is
+accepted, but it is diagnostic-only for throughput.
 
 Scope note: this plan targets `z-lab/Qwen3.5-35B-A3B-PARO` MoE hybrid. Dense
 `Qwen3.5-0.8B-PARO` needs tied-lm-head and dense PARO MLP support first; that is
@@ -89,6 +90,7 @@ hipENGINE current rows on the same 35B fixture:
 | Shape | Prefill tok/s | Decode tok/s | Artifact / notes |
 | --- | ---: | ---: | --- |
 | 512 / 32 | 117.24 | 101.68 | `benchmarks/results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json`; prompt runs as sequential resident steps |
+| 512 / 32 | 45.72 fixture / 46.96 repeated-token diagnostic | 101.61 | `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json`; `single_request_native_full`, correctness accepted (`max_kl=0.0168`, top-1 100%), no perf row promoted |
 | c=8 8/1 | 115.08 | 108.89 | `scheduler_serial_slot_bridge` diagnostic, not native compact batching |
 
 Correctness/blocker artifacts already retained:
@@ -98,11 +100,13 @@ Correctness/blocker artifacts already retained:
 - `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-serial-suffix-full40-accepted.json`
   — native linear prefix plus token-major serial suffix matches serial resident
   outputs; no throughput claim.
-- `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-attn-boundary-blocked.json`
-  — first native prefill boundary is layer 3 full attention.
-- `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-plan-blocked.json`
-  — 40-layer plan reports 30 linear-attention and 10 full-attention layers, with
-  native coverage currently stopping after the first 3 linear layers.
+- `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json`
+  — final single-request native prefill correctness gate accepted on the 512/32
+  parent fixture (`max_kl=0.0168`, top-1 100%, generated IDs match serial and
+  parent); diagnostic timing remains slower than serial and parent baselines.
+- Earlier blocked boundary artifacts (`native-prefill-full-attn-boundary-blocked`,
+  `native-prefill-plan-blocked`) are superseded by the accepted full native
+  orchestration artifact above.
 
 Reference files:
 
@@ -125,7 +129,7 @@ Landed and usable now:
 | Linear-attn prefill | `qwen35_linear_attn_conv_prefill_f32`, `qwen35_linear_attn_prefill_prepare_f32_fp16`, `qwen35_gdn_prefill_recurrent_k2_f32`, `qwen35_gdn_prefill_rmsnorm_gate_fp16`. |
 | Linear layer orchestrator | `run_linear_attention_moe_c1_layer_fp16(tokens=T)` already selects prefill conv/GDN when `tokens > 1`; final path must replace its c1 MoE tail with grouped MoE. |
 | Full-attention decode/prelude | Existing c=1 Q/K/V projection, vector-position RoPE prefill prelude, KV append, native append-then-attend causal GQA prefill kernel, context/GQA decode, gate, output projection. Decode kernels remain useful as oracle only for prefill attention. |
-| KV append | `qwen35_write_paged_kv_mixed_value_fp16_batch_spans(...)`; consumes per-row append positions in `spans.live_counts`. |
+| KV append | `qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(...)` appends all prompt rows into one request cache; row-major `*_batch_spans(...)` remains for c>N-shaped caches. Both consume per-row append positions in `spans.live_counts`. |
 | KV metadata | `KVLiveSpans` already carries `request_ids`, `row_positions`, and `span_role`; compact prefill needs wiring/population, not a span redesign. |
 | Graph primitives | `hipengine.core.hip.HipRuntime` exposes HIP graph capture/instantiate/launch; decode graph capture exists. |
 
@@ -253,8 +257,8 @@ For one request with prompt length `T`:
    - Specific scalar bug to avoid: current `prepare_full_attention_qkv_fp16(...)`
      casts only one row of K (`kv_width` elements) from FP16 to FP32. The bulk
      path must cast `T * kv_width` elements.
-   - Append all `T` K/V rows to the paged cache with
-     `qwen35_write_paged_kv_mixed_value_fp16_batch_spans(...)`, append spans
+   - Append all `T` K/V rows to the single request's paged cache with
+     `qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(...)`, append spans
      `live_counts = positions`, and `span_role="prefill"`.
    - Run native causal GQA prefill attention over the paged cache using context
      spans `live_counts = positions + 1`.

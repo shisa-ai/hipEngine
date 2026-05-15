@@ -3,10 +3,9 @@
 
 This runs real prompt-token prefill and generated-token decode with persistent
 per-layer linear-attention state and full-attention KV cache. By default,
-prefill is token-by-token c=1. ``--native-prefill`` requests the explicit
-``prefill_native(..., require_full_native=False)`` bring-up/oracle path until
-full native prefill is wired. Output rows still label this as not comparable to
-final native prefill throughput.
+prefill uses ``prefill_native(...)`` with the retained single-request native
+path labels. ``--serial-prefill-diagnostic`` is the explicit token-by-token c=1
+fallback for correctness/debug comparison and is not a native throughput row.
 """
 
 from __future__ import annotations
@@ -60,12 +59,17 @@ def main() -> int:
     parser.add_argument(
         "--native-prefill",
         action="store_true",
-        help="Request the explicit prefill_native(..., require_full_native=False) bring-up/oracle path.",
+        help="Deprecated compatibility no-op: native single-request prefill is the default.",
+    )
+    parser.add_argument(
+        "--serial-prefill-diagnostic",
+        action="store_true",
+        help="Use explicit token-by-token c=1 prompt prefill instead of the native prefill path.",
     )
     parser.add_argument(
         "--allow-rejected-native-prefill",
         action="store_true",
-        help="Compatibility flag retained for old rejected-correctness native-prefill diagnostics; no longer required for accepted linear prefixes.",
+        help="Deprecated compatibility no-op retained for old scripts; rejected native-prefill diagnostics use dedicated correctness helpers.",
     )
     parser.add_argument("--json", type=Path, default=None, help="Optional output JSON path")
     args = parser.parse_args()
@@ -78,8 +82,8 @@ def main() -> int:
         raise ValueError("--graph-steps-per-replay must be positive")
     if args.graph_replay_decode and args.decode_tokens and (args.decode_tokens % args.graph_steps_per_replay) != 0:
         raise ValueError("--decode-tokens must be divisible by --graph-steps-per-replay")
-    if args.allow_rejected_native_prefill and not args.native_prefill:
-        raise ValueError("--allow-rejected-native-prefill requires --native-prefill")
+    if args.native_prefill and args.serial_prefill_diagnostic:
+        raise ValueError("--native-prefill cannot be combined with --serial-prefill-diagnostic")
 
     model = Path(args.model)
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file is not None else None
@@ -103,13 +107,9 @@ def main() -> int:
     load_seconds = time.perf_counter() - load_start
 
     native_prefill_plan = session.native_prefill_plan()
-    native_prefill_execution = "serial_c1_prefill"
-    if args.native_prefill:
-        native_prefill_execution = (
-            "native_linear_prefix"
-            if native_prefill_plan.full_layer_limit_native
-            else "native_linear_prefix_serial_suffix_fallback"
-        )
+    native_prefill_execution = (
+        "serial_c1_prefill_diagnostic" if args.serial_prefill_diagnostic else native_prefill_plan.path
+    )
 
     generated: list[dict[str, Any]] = []
     decode_samples: list[float] = []
@@ -117,18 +117,14 @@ def main() -> int:
         prefill_start = time.perf_counter()
         next_result = None
         with roctx.range("hipengine:prefill"):
-            if args.native_prefill:
-                with roctx.range("hipengine:native_prefill_batch"):
-                    _ = args.allow_rejected_native_prefill
-                    next_result = session.prefill_native(
-                        prompt_tokens,
-                        sample=True,
-                        require_full_native=False,
-                    )
-            else:
+            if args.serial_prefill_diagnostic:
                 for pos, token in enumerate(prompt_tokens):
                     with roctx.range("hipengine:prefill_step"):
                         next_result = session.step(token, position=pos, sample=(pos == len(prompt_tokens) - 1))
+            else:
+                with roctx.range("hipengine:native_prefill_single_request"):
+                    _ = (args.native_prefill, args.allow_rejected_native_prefill)
+                    next_result = session.prefill_native(prompt_tokens, sample=True)
         prefill_seconds = time.perf_counter() - prefill_start
         if next_result is None:
             raise RuntimeError("prefill did not produce next-token logits")
@@ -194,13 +190,15 @@ def main() -> int:
         "warmup_decode_tokens": args.warmup_decode_tokens,
         "max_layers": args.max_layers or runner.config.num_hidden_layers,
         "tokens_per_step": 1,
-        "native_batched_prefill": bool(args.native_prefill),
+        "native_batched_prefill": not bool(args.serial_prefill_diagnostic),
         "native_prefill_execution": native_prefill_execution,
         "native_prefill_plan": native_prefill_plan.to_json_dict(),
+        "prefill_execution_detail": getattr(session, "last_prefill_execution", None),
+        "serial_prefill_diagnostic": bool(args.serial_prefill_diagnostic),
         "allow_rejected_native_prefill": bool(args.allow_rejected_native_prefill),
         "graph_replay": bool(args.graph_replay_decode),
         "graph_steps_per_replay": args.graph_steps_per_replay if args.graph_replay_decode else 0,
-        "prefill_comparable_to_plan_moe2": False,
+        "prefill_comparable_to_plan_moe2": bool((not args.serial_prefill_diagnostic) and native_prefill_plan.full_layer_limit_native),
         "decode_comparable_to_plan_moe2": "graph_replay_diagnostic" if args.graph_replay_decode else "partial_no_graph_replay",
         "timings": {
             "load_seconds": load_seconds,
@@ -211,16 +209,18 @@ def main() -> int:
         },
         "throughput": {
             "prefill_tok_s": len(prompt_tokens) / prefill_seconds if prefill_seconds > 0 else None,
-            "token_by_token_prefill_tok_s": (None if args.native_prefill else (len(prompt_tokens) / prefill_seconds if prefill_seconds > 0 else None)),
+            "token_by_token_prefill_tok_s": (
+                len(prompt_tokens) / prefill_seconds if args.serial_prefill_diagnostic and prefill_seconds > 0 else None
+            ),
             "warmed_decode_tok_s": args.decode_tokens / decode_seconds if decode_seconds > 0 and args.decode_tokens else None,
             "warmed_decode_step_median_s": statistics.median(decode_samples) if decode_samples else None,
         },
         "generated_preview": generated[:16],
         "notes": [
             (
-                f"Prefill execution is {native_prefill_execution}; still not compact/grouped-WMMA full-model prefill and not PLAN-MOE2-comparable."
-                if args.native_prefill
-                else "Prefill is actual autoregressive token-by-token c=1, not native batched/compact prefill."
+                "Prefill is explicit token-by-token c=1 diagnostic mode, not native prefill."
+                if args.serial_prefill_diagnostic
+                else f"Prefill execution is {native_prefill_execution} via prefill_native(...); c>N compact slabs remain separate work."
             ),
             (
                 f"Measured decode uses HIP graph replay ({args.graph_steps_per_replay} step(s) per replay) with device token/position state."

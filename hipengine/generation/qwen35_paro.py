@@ -19,9 +19,9 @@ from hipengine.runtime.qwen35_paro_runner import (
 class Qwen35ParoOneTokenGenerator:
     """Greedy Qwen3.5/PARO generator backed by resident c=1 execution.
 
-    The implementation is still serial across prompts, but each prompt runs real
-    token-by-token prefill followed by multi-token autoregressive decode using
-    the resident HIP layer chain.
+    The implementation is still serial across prompts, but each prompt uses the
+    resident single-request native prefill path followed by multi-token
+    autoregressive decode using the resident HIP layer chain.
     """
 
     model_path: str | Path
@@ -47,11 +47,9 @@ class Qwen35ParoOneTokenGenerator:
         max_sequence_length = len(prompt_ids) + max_tokens + 1
         generated = []
         with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence_length) as session:
-            next_result = None
-            for position, token_id in enumerate(prompt_ids):
-                next_result = session.step(token_id, position=position, sample=(position == len(prompt_ids) - 1))
+            next_result = session.prefill_native(prompt_ids, sample=True)
             if next_result is None:
-                raise RuntimeError("prefill did not produce next-token logits")
+                raise RuntimeError("native prefill did not produce next-token logits")
             generated.append(next_result)
             if not ignore_eos and _is_eos(session.tokenizer, next_result.token_id):
                 return "".join(item.token_text for item in generated)

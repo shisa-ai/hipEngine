@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Qwen3.5/PARO resident E2E correctness gate.
 
-This is a correctness smoke, not a benchmark. It runs real resident c=1
+This is a correctness smoke, not a benchmark. It runs real resident
 prefill/decode, checks finite logits, verifies deterministic repeated runs, and
 optionally checks expected generated-token IDs captured from the parent
-nano-vllm-amd implementation.
+nano-vllm-amd implementation. Native single-request prefill is the default;
+serial c=1 prefill remains an explicit diagnostic mode.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ def _run_once(
     decode_tokens: int,
     max_layers: int,
     include_prefill_seed: bool,
+    prefill_mode: str,
 ) -> dict[str, Any]:
     """Run one resident c=1 prompt+decode pass.
 
@@ -51,8 +53,13 @@ def _run_once(
         owned_device_bytes = _owned_device_bytes(session)
         next_result = None
         prefill_start = time.perf_counter()
-        for pos, token_id in enumerate(prompt_tokens):
-            next_result = session.step(token_id, position=pos, sample=(pos == len(prompt_tokens) - 1))
+        if prefill_mode == "native":
+            next_result = session.prefill_native(prompt_tokens, sample=True)
+        elif prefill_mode == "serial-diagnostic":
+            for pos, token_id in enumerate(prompt_tokens):
+                next_result = session.step(token_id, position=pos, sample=(pos == len(prompt_tokens) - 1))
+        else:
+            raise ValueError(f"unsupported prefill_mode {prefill_mode!r}")
         prefill_seconds = time.perf_counter() - prefill_start
         if next_result is None:
             raise RuntimeError("prefill did not produce a sampled token")
@@ -76,6 +83,7 @@ def _run_once(
         "prefill_seconds": prefill_seconds,
         "decode_seconds": decode_seconds,
         "owned_device_bytes": owned_device_bytes,
+        "prefill_execution_detail": getattr(session, "last_prefill_execution", None),
     }
 
 
@@ -127,6 +135,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             decode_tokens=decode_tokens,
             max_layers=args.max_layers,
             include_prefill_seed=include_prefill_seed,
+            prefill_mode=args.prefill_mode,
         )
         for _ in range(args.repeat)
     ]
@@ -148,6 +157,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "quant": "w4_paro",
         "backend": "hip_gfx1100",
         "mode": "resident_c1_e2e_correctness",
+        "prefill_mode": args.prefill_mode,
         "batch_size": 1,
         "specdec_enabled": False,
         "prompt_source": "parent_fixture" if fixture is not None else "repeated_token_id",
@@ -159,6 +169,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "max_layers": int(args.max_layers),
         "repeat": int(args.repeat),
         "seed_token_ids": seed_token_ids,
+        "prefill_execution_details": [run["prefill_execution_detail"] for run in runs],
         "token_ids": token_ids,
         "logits": logits,
         "timings": {
@@ -179,6 +190,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "passed": passed,
         "notes": [
             "c=1 resident E2E gate; c>N parity hooks are separate until batched layer runner lands.",
+            "Native prefill mode uses prefill_native(...); serial-diagnostic mode is an explicit fallback only.",
             "Fixture mode compares hipENGINE decode-loop outputs against parent nano-vllm-amd outputs after consuming the prefill seed token.",
         ],
     }
@@ -188,7 +200,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--token-id", type=int, default=9707)
-    parser.add_argument("--prompt-length", type=int, default=1)
+    parser.add_argument("--prompt-length", type=int, default=4)
+    parser.add_argument(
+        "--prefill-mode",
+        choices=("native", "serial-diagnostic"),
+        default="native",
+        help="Prompt prefill implementation to gate; native is the retained path.",
+    )
     parser.add_argument("--max-new-tokens", type=int, default=None)
     parser.add_argument("--max-layers", type=int, default=1, help="0 means all layers")
     parser.add_argument("--repeat", type=int, default=2)

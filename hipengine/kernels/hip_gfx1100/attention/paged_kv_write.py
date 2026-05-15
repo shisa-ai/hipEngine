@@ -17,6 +17,7 @@ _SYMBOL_MIXED_BF16 = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans"
 _SYMBOL_MIXED_BF16_BATCH = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_batch_spans"
 _SYMBOL_MIXED_FP16 = "hipengine_qwen35_write_paged_kv_mixed_value_fp16_spans"
 _SYMBOL_MIXED_FP16_BATCH = "hipengine_qwen35_write_paged_kv_mixed_value_fp16_batch_spans"
+_SYMBOL_MIXED_FP16_PROMPT = "hipengine_qwen35_write_paged_kv_mixed_value_fp16_prompt_spans"
 _SYMBOL_F32 = "hipengine_qwen35_write_paged_kv_f32_spans"
 
 
@@ -195,6 +196,40 @@ def qwen35_write_paged_kv_mixed_value_fp16_batch_spans(
     )
 
 
+def qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append prompt rows into one paged BF16 KV cache."""
+
+    _launch_write_batch(
+        _SYMBOL_MIXED_FP16_PROMPT,
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_write_paged_kv_f32_spans(
     key_ptr: int,
     value_ptr: int,
@@ -246,6 +281,11 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_kv_write", "w4_paro", "mixed_fp16_batch_spans"),
         qwen35_write_paged_kv_mixed_value_fp16_batch_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "w4_paro", "mixed_fp16_prompt_spans"),
+        qwen35_write_paged_kv_mixed_value_fp16_prompt_spans,
         replace=replace,
     )
     register(

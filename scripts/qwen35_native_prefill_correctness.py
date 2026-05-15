@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Compare Qwen3.5/PARO native linear-prefix prefill against serial c=1.
+"""Compare Qwen3.5/PARO native prefill against serial c=1.
 
 This is a correctness/blocker helper, not a benchmark.  It runs the same fixed
-prompt through (1) serial token-by-token resident prefill and (2) the diagnostic
-``prefill_linear_tokens_native`` helper, then compares the prefill seed token and
-one decode token.  Mismatches are emitted as ``rejected_correctness`` artifacts.
+prompt through (1) serial token-by-token resident prefill and (2)
+``prefill_native(...)``, then compares the prefill seed token and one decode
+token. Mismatches are emitted as ``rejected_correctness`` artifacts.
 """
 
 from __future__ import annotations
@@ -77,11 +77,7 @@ def _run_native(
         max_layers=max_layers,
     ) as session:
         plan = session.native_prefill_plan().to_json_dict()
-        seed = session.prefill_linear_tokens_native(
-            prompt_tokens,
-            sample=True,
-            allow_rejected_correctness=True,
-        )
+        seed = session.prefill_native(prompt_tokens, sample=True)
         if seed is None:
             raise RuntimeError("native prefill did not produce a seed token")
         decode = session.step(seed.token_id, position=len(prompt_tokens), sample=True)
@@ -167,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.max_layers <= 0:
-        raise ValueError("max_layers must select a finite linear-attention prefix for this helper")
+        raise ValueError("max_layers must select a finite layer prefix for this helper")
     if args.sweep_layer_prefixes is not None and args.sweep_layer_prefixes <= 0:
         raise ValueError("sweep-layer-prefixes must be positive")
     prompt_tokens = _prompt_tokens(args.token_id, args.prompt_length)
@@ -178,12 +174,12 @@ def main(argv: list[str] | None = None) -> int:
         payload = {
             **_base_payload(args, prompt_tokens),
             "status": "accepted" if passed else "rejected_correctness",
-            "blocked_reason": None if passed else "native linear-prefix prefill does not match serial c=1 token-by-token prefill",
+            "blocked_reason": None if passed else "native prefill does not match serial c=1 token-by-token prefill",
             "mode": "qwen35_paro_native_prefill_vs_serial_correctness",
             **case,
             "notes": [
                 "Correctness helper only; timings are intentionally omitted and no throughput claim is made.",
-                "The native linear-prefix helper is validated against serial c=1 before extending to compact/full-attention prefill.",
+                "The native prefill helper is validated against serial c=1 before retaining generation or throughput artifacts.",
             ],
         }
     else:
@@ -196,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
         payload = {
             **_base_payload(args, prompt_tokens),
             "status": "accepted" if passed else "rejected_correctness",
-            "blocked_reason": None if passed else "native linear-prefix prefill mismatches serial c=1 at one or more layer prefixes",
+            "blocked_reason": None if passed else "native prefill mismatches serial c=1 at one or more layer prefixes",
             "mode": "qwen35_paro_native_prefill_prefix_sweep_correctness",
             "sweep_layer_prefixes": int(args.sweep_layer_prefixes),
             "first_mismatching_prefix": first_mismatch,
@@ -204,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
             "passed": passed,
             "notes": [
                 "Correctness helper only; timings are intentionally omitted and no throughput claim is made.",
-                "Sweep mode validates the native linear-prefix helper and reports the first mismatching layer prefix, if any.",
+                "Sweep mode validates native prefill and reports the first mismatching layer prefix, if any.",
             ],
         }
     text = json.dumps(payload, indent=2, ensure_ascii=False)

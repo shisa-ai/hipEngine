@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Report the next unsupported Qwen3.5/PARO native-prefill layer boundary.
+"""Report Qwen3.5/PARO native-prefill layer coverage.
 
-This is a correctness/blocker planning helper, not a benchmark.  It records the
-accepted native linear-prefix coverage and the first layer type that prevents the
-resident native-prefill helper from covering a longer prefix.
+This is a correctness/blocker planning helper, not a benchmark. It records the
+retained single-request native prefill coverage and the first unsupported layer
+type, if any, for the selected prefix.
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ def _boundary_payload(
         "blocked_reason": (
             None
             if not blocked
-            else "native prefill currently stops at the first non-linear-attention layer boundary"
+            else "native prefill encountered an unsupported layer type"
         ),
         "model": str(Path(model)),
         "quant": "w4_paro",
@@ -112,7 +112,7 @@ def _boundary_payload(
         "next_actions": [],
         "notes": [
             "Correctness/blocker planning only; no timings are collected and no throughput claim is made.",
-            "The accepted predecessor is native linear-prefix prefill through the all-linear prefix; this artifact narrows the next blocker to the first unsupported layer boundary.",
+            "Single-request native prefill covers linear_attention and full_attention layers; this artifact narrows any remaining blocker to an unsupported layer type.",
         ],
     }
     if blocked and first_unsupported_type == "full_attention":

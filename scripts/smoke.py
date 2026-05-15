@@ -1203,7 +1203,9 @@ def qwen35_paged_attn_prefill_hip_smoke(
     from hipengine.kernels.cpu_reference import full_attn_prefill
     from hipengine.kernels.hip_gfx1100.attention import (
         build_qwen35_paged_attn_decode,
+        build_qwen35_paged_kv_write,
         qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
+        qwen35_write_paged_kv_mixed_value_fp16_prompt_spans,
     )
     from hipengine.kvcache import KVLiveSpans
 
@@ -1223,8 +1225,12 @@ def qwen35_paged_attn_prefill_hip_smoke(
     )
     key_cache_f32 = ((token_grid % 19.0) - 9.0) / 12.0
     value_cache_f32 = (7.0 - (token_grid % 13.0)) / 10.0
-    key_cache = _float32_to_bf16_bits(key_cache_f32)
-    value_cache = _float32_to_bf16_bits(value_cache_f32)
+    key_rows = key_cache_f32[0, :rows].astype(np.float32)
+    value_rows = value_cache_f32[0, :rows].astype(np.float16)
+    key_cache = np.zeros_like(_float32_to_bf16_bits(key_cache_f32))
+    value_cache = np.zeros_like(key_cache)
+    key_cache[0, :rows] = _float32_to_bf16_bits(key_rows)
+    value_cache[0, :rows] = _float32_to_bf16_bits(value_rows.astype(np.float32))
     context_counts = np.asarray([1, 2, 3], dtype=np.int64)
     positions = np.asarray([0, 1, 2], dtype=np.int64)
     block_tables = np.tile(np.asarray([0], dtype=np.int32), (rows, 1)).reshape(-1)
@@ -1243,7 +1249,12 @@ def qwen35_paged_attn_prefill_hip_smoke(
     )
 
     runtime = get_hip_runtime()
-    library = build_qwen35_paged_attn_decode(
+    attn_library = build_qwen35_paged_attn_decode(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    kv_library = build_qwen35_paged_kv_write(
         load=True,
         compiler_version=compiler_version,
         require_cached=require_cached_build,
@@ -1264,8 +1275,10 @@ def qwen35_paged_attn_prefill_hip_smoke(
     try:
         query_dev = dev(query)
         gate_dev = dev(gate)
-        key_cache_dev = dev(key_cache)
-        value_cache_dev = dev(value_cache)
+        key_rows_dev = dev(key_rows)
+        value_rows_dev = dev(value_rows)
+        key_cache_dev = out_dev(key_cache)
+        value_cache_dev = out_dev(value_cache)
         context_dev = dev(context_counts)
         positions_dev = dev(positions)
         block_tables_dev = dev(block_tables)
@@ -1277,6 +1290,27 @@ def qwen35_paged_attn_prefill_hip_smoke(
             storage_dtype="bf16",
             row_positions=Tensor.from_handle(positions_dev.ptr, positions.shape, "int64", Device("hip", 0)),
             span_role="prefill",
+        )
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(block_tables_dev.ptr, block_tables.shape, "int32", Device("hip", 0)),
+            live_counts=Tensor.from_handle(positions_dev.ptr, positions.shape, "int64", Device("hip", 0)),
+            max_live_count=int(rows - 1),
+            storage_dtype="bf16",
+            row_positions=Tensor.from_handle(positions_dev.ptr, positions.shape, "int64", Device("hip", 0)),
+            span_role="prefill",
+        )
+        qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(
+            key_rows_dev.ptr,
+            value_rows_dev.ptr,
+            key_cache_dev.ptr,
+            value_cache_dev.ptr,
+            append_spans,
+            rows,
+            block_size,
+            num_kv_heads,
+            head_dim,
+            library=kv_library,
+            runtime=runtime,
         )
         qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
             query_dev.ptr,
@@ -1294,7 +1328,7 @@ def qwen35_paged_attn_prefill_hip_smoke(
             head_dim,
             1,
             scale,
-            library=library,
+            library=attn_library,
             runtime=runtime,
         )
         runtime.device_synchronize()

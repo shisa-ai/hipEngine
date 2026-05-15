@@ -10,6 +10,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.runtime import PrefillConfig
+from hipengine.runtime.qwen35_paro import Qwen35ParoGroupedMoeScratch
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoResidentBatchLayout,
     Qwen35ParoResidentSession,
@@ -41,7 +42,7 @@ def test_qwen35_resident_batch_layout_is_batch_shaped_with_slot0_aliases() -> No
     assert layout.slot0_full_kv_shape == (4, 256, 2, 256)
 
 
-def test_qwen35_resident_native_prefill_plan_reports_linear_prefix_blocker() -> None:
+def test_qwen35_resident_native_prefill_plan_accepts_full_attention_layers() -> None:
     layer_types = ("linear_attention", "linear_attention", "full_attention", "linear_attention")
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.layer_limit = 4
@@ -52,19 +53,29 @@ def test_qwen35_resident_native_prefill_plan_reports_linear_prefix_blocker() -> 
 
     assert pure_plan == plan
 
-    assert plan.path == "linear_attention_prefix_only"
+    assert plan.path == "single_request_native_full"
     assert plan.layer_limit == 4
     assert plan.linear_prefix_layers == 2
-    assert not plan.full_layer_limit_native
-    assert plan.first_unsupported_layer == 2
-    assert plan.first_unsupported_type == "full_attention"
-    assert any("first unsupported layer 2" in blocker for blocker in plan.blockers)
+    assert plan.full_layer_limit_native
+    assert plan.first_unsupported_layer is None
+    assert plan.first_unsupported_type is None
+    assert plan.blockers == ()
     assert plan.to_json_dict()["linear_prefix_layers"] == 2
 
 
 def test_qwen35_resident_native_prefill_plan_rejects_invalid_layer_limit() -> None:
     with pytest.raises(ValueError, match="exceeds available"):
         qwen35_paro_native_prefill_plan(("linear_attention",), layer_limit=2)
+
+
+def test_qwen35_resident_native_prefill_plan_reports_unknown_layer_blocker() -> None:
+    plan = qwen35_paro_native_prefill_plan(("linear_attention", "weird"), layer_limit=2)
+
+    assert plan.path == "unsupported_layer_type"
+    assert not plan.full_layer_limit_native
+    assert plan.first_unsupported_layer == 1
+    assert plan.first_unsupported_type == "weird"
+    assert any("first unsupported layer 1" in blocker for blocker in plan.blockers)
 
 
 def test_qwen35_resident_native_prefill_plan_accepts_all_linear_layer_limit() -> None:
@@ -74,7 +85,7 @@ def test_qwen35_resident_native_prefill_plan_accepts_all_linear_layer_limit() ->
 
     plan = session.native_prefill_plan()
 
-    assert plan.path == "linear_attention_native_full_layer_limit"
+    assert plan.path == "single_request_native_full"
     assert plan.linear_prefix_layers == 2
     assert plan.full_layer_limit_native
     assert plan.first_unsupported_layer is None
@@ -117,13 +128,20 @@ def test_prefill_config_validates_chunk_sizes_and_defaults_to_full_native() -> N
         PrefillConfig(full_attn_query_chunk_size=-1)
 
 
-def test_qwen35_resident_prefill_native_contract_requires_full_native_by_default() -> None:
+def test_qwen35_resident_prefill_native_contract_uses_full_native_by_default() -> None:
     session = _prefill_validation_session()
+    calls: list[tuple[tuple[int, ...], bool]] = []
+
+    def fake_full(self, token_ids, *, sample=True):
+        calls.append((tuple(token_ids), bool(sample)))
+        return "full-native-result"
+
+    session._prefill_tokens_native_full = MethodType(fake_full, session)
 
     with pytest.raises(ValueError, match="linear_conv_kernel_dim"):
         session.prefill_native([1, 2, 3], sample=False)
-    with pytest.raises(NotImplementedError, match="full native Qwen3.5/PARO prefill is not wired"):
-        session.prefill_native([1, 2, 3, 4], sample=False)
+    assert session.prefill_native([1, 2, 3, 4], sample=False) == "full-native-result"
+    assert calls == [((1, 2, 3, 4), False)]
 
 
 def test_qwen35_resident_prefill_native_allows_explicit_oracle_bringup_path() -> None:
@@ -358,11 +376,11 @@ def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> No
     assert metadata.scheduler_owned
     assert metadata.row_execution == "serial_c1_layer_path"
     assert metadata.native_prefill_plan.linear_prefix_layers == 2
-    assert not metadata.native_prefill_plan.full_layer_limit_native
+    assert metadata.native_prefill_plan.full_layer_limit_native
     assert not metadata.native_compact_prefill
     assert not metadata.native_caware_decode
     assert not metadata.throughput_claim_eligible
-    assert any("unsupported layer 2" in blocker and "full_attention" in blocker for blocker in metadata.blockers)
+    assert any("c>N prefill" in blocker for blocker in metadata.blockers)
     payload = metadata.to_json_dict()
     assert payload["native_prefill_plan"]["linear_prefix_layers"] == 2
     assert payload["blockers"] == list(metadata.blockers)
@@ -381,6 +399,7 @@ class _FakePrefillState:
         self.device = device
         self.linear_reservations = []
         self.moe_reservations = []
+        self.grouped_reservations = []
         self.run_calls = []
 
     def reserve_linear_attention_scratch(self, *, tokens: int, activation_dtype):
@@ -395,6 +414,40 @@ class _FakePrefillState:
             normed=Tensor.from_handle(0x20000 + tokens * 0x100, (tokens, 8), DType.parse(activation_dtype), self.device),
         )
         self.moe_reservations.append(scratch)
+        return scratch
+
+    def reserve_moe_grouped_prefill_scratch(self, *, tokens: int, activation_dtype):
+        tensor = Tensor.from_handle(0x24000 + tokens * 0x100, (tokens, 8), DType.parse(activation_dtype), self.device)
+        scratch = Qwen35ParoGroupedMoeScratch(
+            normed=tensor,
+            residual=tensor,
+            router_logits=tensor,
+            routing_weights=tensor,
+            selected_experts=tensor,
+            counts=tensor,
+            padded_counts=tensor,
+            expert_start=tensor,
+            total_padded=tensor,
+            scatter_offsets=tensor,
+            sorted_lanes=tensor,
+            sorted_experts=tensor,
+            sorted_weights=tensor,
+            lane_to_row=tensor,
+            wmma_expert_start=tensor,
+            tile_expert=tensor,
+            wmma_total=tensor,
+            packed_hidden=tensor,
+            packed_gate_up_input=tensor,
+            gate_up=tensor,
+            down_input=tensor,
+            down_out=tensor,
+            selected_out=tensor,
+            shared_up=tensor,
+            shared_intermediate=tensor,
+            shared_out=tensor,
+            moe_out=tensor,
+        )
+        self.grouped_reservations.append(scratch)
         return scratch
 
     def run_linear_attention_moe_c1_layer_fp16(self, hidden, **kwargs):
@@ -428,7 +481,7 @@ def test_qwen35_resident_linear_prefill_restores_decode_scratch_token1() -> None
 
     assert out.shape == (4, 8)
     assert session.linear_scratch[0] is state.linear_reservations[0]
-    assert session.moe_scratch[0] is state.moe_reservations[0]
+    assert session.moe_scratch[0] is state.grouped_reservations[0]
     call_kwargs = state.run_calls[0][1]
     assert call_kwargs["linear_scratch"] is session.linear_scratch[0]
     assert call_kwargs["moe_scratch"] is session.moe_scratch[0]
@@ -438,7 +491,7 @@ def test_qwen35_resident_linear_prefill_restores_decode_scratch_token1() -> None
     session._restore_decode_scratch_after_prefill()
 
     assert session.linear_scratch[0] is state.linear_reservations[1]
-    assert session.moe_scratch[0] is state.moe_reservations[1]
+    assert session.moe_scratch[0] is state.moe_reservations[0]
     assert session.linear_scratch[0].attn_input.shape == (1, 8)
     assert session.moe_scratch[0].normed.shape == (1, 8)
 

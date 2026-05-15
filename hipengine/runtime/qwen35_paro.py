@@ -17,6 +17,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
     qwen35_write_paged_kv_mixed_value_fp16_batch_spans,
+    qwen35_write_paged_kv_mixed_value_fp16_prompt_spans,
     qwen35_write_paged_kv_mixed_value_fp16_spans,
 )
 from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16, f32_to_fp16, fp16_to_f32
@@ -1803,7 +1804,9 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> None:
-        qwen35_write_paged_kv_mixed_value_fp16_batch_spans(
+        """Append prompt K/V rows into one request's paged KV cache."""
+
+        qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(
             scratch.key.ptr,
             scratch.value.ptr,
             key_cache.ptr,
@@ -2063,6 +2066,118 @@ class Qwen35ParoDecodeState:
             stream=stream,
         )
         return self.run_moe_c1_fp16(
+            mlp_input,
+            residual,
+            scratch=moe_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+
+    def run_full_attention_moe_prefill_layer_fp16(
+        self,
+        hidden: Tensor,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        append_spans: KVLiveSpans,
+        prefill_spans: KVLiveSpans,
+        cos_table: Tensor,
+        sin_table: Tensor,
+        positions: Tensor,
+        max_positions: int,
+        attention_scratch: Qwen35ParoAttentionScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        block_size: int = 256,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run native multi-token full-attention prefill plus grouped MoE.
+
+        This is the single-request bulk prefill counterpart to
+        :meth:`run_full_attention_moe_c1_layer_fp16`: all prompt K/V rows are
+        appended first, the causal GQA prefill kernel attends each query row up
+        to its row position, and the post-attention MoE uses the grouped compact
+        route rather than selected c=1 rows.
+        """
+
+        if tokens <= 1:
+            raise ValueError("full-attention native prefill requires tokens > 1")
+        attention_scratch = attention_scratch or self.reserve_full_attention_scratch(
+            tokens=tokens,
+            num_splits=1,
+            activation_dtype=DType.FP16,
+            gated_dtype=DType.FP16,
+        )
+        if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+            moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        self.input_rmsnorm_fp16(hidden, attention_scratch.attn_input, tokens=tokens, library=library, stream=stream)
+        self.rotate_full_attention_inputs_fp16(
+            attention_scratch.attn_input,
+            attention_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        self.project_full_attention_qkv_fp16(
+            attention_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16(
+            attention_scratch,
+            cos_table=cos_table,
+            sin_table=sin_table,
+            position=positions,
+            max_positions=max_positions,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        self.append_full_attention_kv_fp16_batch(
+            attention_scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=append_spans,
+            rows=tokens,
+            block_size=block_size,
+            library=library,
+            stream=stream,
+        )
+        gated = self.prefill_full_attention_gqa_gate_fp16(
+            attention_scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=prefill_spans,
+            rows=tokens,
+            gate=gate,
+            block_size=block_size,
+            library=library,
+            stream=stream,
+        )
+        attn_out = self.project_full_attention_o_fp16(
+            gated,
+            attention_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        return self.run_moe_grouped_compact_fp16(
             mlp_input,
             residual,
             scratch=moe_scratch,
