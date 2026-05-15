@@ -1039,8 +1039,8 @@ class Qwen35ParoResidentSession:
         """Run a compact c>N native prompt slab, once packed stages exist.
 
         The scheduler can already construct validated compact slabs. Executing
-        them natively still requires varlen/block-diagonal full-attention and
-        final-row commit wiring. Segment-aware linear-attention kernels are
+        them natively still requires final-row sampling/state-commit wiring.
+        Segment-aware linear-attention and varlen full-attention kernels are
         landed, but this method remains fail-closed so callers cannot
         accidentally retain a per-request prompt loop as the c>N native path.
         """
@@ -1065,7 +1065,7 @@ class Qwen35ParoResidentSession:
             "block_count": slab.block_count,
             "blockers": [
                 "segment-aware linear-attention kernels are landed but not yet orchestrated in prefill_native_packed",
-                "varlen/block-diagonal full-attention prefill via cu_seqlens is not wired",
+                "varlen/block-diagonal full-attention prefill via cu_seqlens is landed but not yet orchestrated in prefill_native_packed",
                 "packed final-row sampling and per-request state commit are not wired",
             ],
         }

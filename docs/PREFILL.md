@@ -128,7 +128,7 @@ Landed and usable now:
 | Runtime state | `embedding_lookup_batch_{bf16,fp16}_i64`, mapped variants, `set_i64_vector`, scalar/vector decode position helpers. |
 | Linear-attn prefill | `qwen35_linear_attn_conv_prefill_f32`, segment-aware `qwen35_linear_attn_conv_prefill_segments_f32`, `qwen35_linear_attn_prefill_prepare_f32_fp16`, `qwen35_gdn_prefill_recurrent_k2_f32`, segment-aware `qwen35_gdn_prefill_recurrent_segments_k2_f32`, `qwen35_gdn_prefill_rmsnorm_gate_fp16`. |
 | Linear layer orchestrator | `run_linear_attention_moe_c1_layer_fp16(tokens=T)` already selects prefill conv/GDN when `tokens > 1`; final path must replace its c1 MoE tail with grouped MoE. |
-| Full-attention decode/prelude | Existing c=1 Q/K/V projection, vector-position RoPE prefill prelude, KV append, native append-then-attend causal GQA prefill kernel, context/GQA decode, gate, output projection. Decode kernels remain useful as oracle only for prefill attention. |
+| Full-attention decode/prelude | Existing c=1 Q/K/V projection, vector-position RoPE prefill prelude, KV append, native append-then-attend causal GQA prefill kernel including varlen/block-diagonal `cu_seqlens` ABI, context/GQA decode, gate, output projection. Decode kernels remain useful as oracle only for prefill attention. |
 | KV append | `qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(...)` appends all prompt rows into one request cache; row-major `*_batch_spans(...)` remains for c>N-shaped caches. Both consume per-row append positions in `spans.live_counts`. |
 | KV metadata | `KVLiveSpans` already carries `request_ids`, `row_positions`, and `span_role`; compact prefill needs wiring/population, not a span redesign. |
 | Graph primitives | `hipengine.core.hip.HipRuntime` exposes HIP graph capture/instantiate/launch; decode graph capture exists. |
@@ -140,7 +140,7 @@ Missing for the final path:
 | Public API wiring | **Landed for c=1:** `prefill_native(...)` is the default generation/benchmark path; compact c>N uses separate `prefill_native_packed(slab)` blocker path. |
 | Full-attn retained orchestration | **Landed for c=1:** batched Q/K/V + vector RoPE + prompt KV append + native causal prefill attention are wired and fixture-gated. |
 | Grouped/compact MoE | **Landed for c=1:** grouped scatter/gather and compact AWQ WMMA expert kernels are wired into native prefill. |
-| Compact c>N slab | **Metadata + linear state kernels landed:** `CompactPromptSlab`, `bucketize_by_block_count`, and segment-aware linear-attn conv/GDN state kernels exist; execution remains blocked on varlen/block-diagonal full-attention via `cu_seqlens`, final-row sampling/state commit, and packed orchestration. |
+| Compact c>N slab | **Metadata + linear/full-attn kernels landed:** `CompactPromptSlab`, `bucketize_by_block_count`, segment-aware linear-attn conv/GDN state kernels, and varlen/block-diagonal full-attn prefill via `cu_seqlens` exist; execution remains blocked on final-row sampling/state commit and packed orchestration. |
 | Prefill config/tuning | Add typed `PrefillConfig`; no hot-path env lookups. |
 
 ## Final API and config contract
@@ -384,9 +384,11 @@ Final compact requirements:
   `cu_seqlens` + state slots and `f32_k2_segments` GDN commits each request's
   recurrent tail independently. Packed prefill orchestration must call these
   landed kernels rather than retaining per-request invocation.
-- Native causal prefill attention must be var-len/block-diagonal: a query row may
-  attend only to rows/cache positions for the same request id and positions not
-  greater than the query position.
+- Native causal prefill attention is var-len/block-diagonal:
+  `qwen35_varlen_causal_gqa_gate_fp16` consumes `cu_seqlens_q/k`, row-shaped
+  block tables, context counts, and positions. Packed prefill orchestration must
+  call this landed kernel so a query row attends only to its request segment and
+  positions not greater than the query position.
 - Native compact prefill is non-speculative and commits canonical KV inline for
   admitted prompt rows. `KVPolicy.begin_transaction/commit/rollback` hooks remain
   for speculative verify/draft paths, not this ordinary prefill path.

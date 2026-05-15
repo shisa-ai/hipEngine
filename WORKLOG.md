@@ -9444,3 +9444,44 @@ Existing single-request linear prefill smoke still passed. Profiler CSV contains
 `qwen35_linear_attn_conv_prefill_segments_kernel` (`5800 ns`),
 `qwen35_linear_attn_conv_prefill_segments_state_kernel` (`2200 ns`), and
 `qwen35_gdn_prefill_recurrent_k2_segments_kernel` (`5480 ns`) on W7900.
+
+## 2026-05-15 — Varlen block-diagonal full-attention prefill kernel
+
+Continued compact c>N prefill task #17 by adding the append-then-attend
+varlen/block-diagonal full-attention prefill ABI. This is a kernel-level
+correctness/profiler gate; `prefill_native_packed(slab)` remains fail-closed
+until final-row sampling/state commit and packed orchestration are wired.
+
+Changes:
+- added `qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans(...)`, keyed
+  as `full_attn_prefill/w4_paro/qwen35_varlen_causal_gqa_gate_fp16`;
+- the kernel consumes row-shaped `KVLiveSpans`, `cu_seqlens_q`, and
+  `cu_seqlens_k`, clamps each query row to its request segment and causal
+  position, and reads only that row's request-owned paged block table;
+- added CPU `full_attn_prefill_varlen(...)` oracle and unit coverage comparing
+  packed segments against per-request `full_attn_prefill(...)` outputs;
+- added `qwen35-paged-attn-prefill-varlen-hip` smoke and artifact
+  `benchmarks/results/2026-05-15-hipengine-qwen35-varlen-full-attn-prefill-accepted.json`;
+- refreshed compact c=8 blocked artifact, docs, benchmark rollup/changelog, and
+  fail-closed packed-prefill blockers to show varlen full-attn landed while
+  final packed commit remains open.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_cpu_reference.py -q
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-varlen-prefill-prof --output-file varlen_prefill -- python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_cpu_reference.py tests/test_qwen35_resident_batch_layout.py -q
+python3 -m py_compile hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py hipengine/kernels/hip_gfx1100/attention/__init__.py hipengine/kernels/cpu_reference/ops.py hipengine/kernels/cpu_reference/__init__.py hipengine/runtime/qwen35_paro_runner.py scripts/smoke.py scripts/qwen35_native_compact_prefill_plan.py tests/test_cpu_reference.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_resident_batch_layout.py
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: targeted tests passed (`13 passed`, then `36 passed`); py_compile
+succeeded; lineage check still reports parent drift at `nano-vllm-amd@b95eaa5`
+(tree/speculative linear-attn kernels, not this varlen full-attn ABI). Varlen HIP smoke reported `varlen_prefill_gate_fp16_max_abs=0` and
+`varlen_prefill_gate_fp16_mismatch=0`. Existing single-request prefill smoke
+still passed. Profiler CSV contains prompt KV writer (`6880 ns`) and
+`qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel` (`21520 ns`) on
+W7900.

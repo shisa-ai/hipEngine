@@ -185,13 +185,14 @@ def test_qwen35_resident_prefill_native_packed_rejects_until_remaining_packed_ke
         block_count=1,
     )
 
-    with pytest.raises(NotImplementedError, match="varlen/block-diagonal full-attention"):
+    with pytest.raises(NotImplementedError, match="packed final-row"):
         session.prefill_native_packed(slab)
 
     assert session.last_prefill_execution["path"] == "native_prefill_compact_cN_blocked"
     assert session.last_prefill_execution["request_count"] == 2
     assert any("linear-attention kernels are landed" in blocker for blocker in session.last_prefill_execution["blockers"])
     assert any("cu_seqlens" in blocker for blocker in session.last_prefill_execution["blockers"])
+    assert any("final-row" in blocker for blocker in session.last_prefill_execution["blockers"])
 
 
 def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> None:

@@ -7,6 +7,7 @@ import numpy as np
 from hipengine.benchmark.correctness import evaluate_logits
 from hipengine.kernels.cpu_reference import (
     full_attn_prefill,
+    full_attn_prefill_varlen,
     gdn_prefill_recurrent_segments,
     linear_attn_conv_prefill_segments,
     load_fixture,
@@ -120,6 +121,70 @@ def test_cpu_reference_full_attn_prefill_causal_gqa_gate() -> None:
     )
 
     assert np.allclose(out, expected, atol=1e-5, rtol=1e-5)
+
+
+def test_cpu_reference_full_attn_prefill_varlen_is_block_diagonal() -> None:
+    query = np.asarray(
+        [
+            [[1.0, 0.0], [0.0, 1.0]],
+            [[0.0, 1.0], [1.0, 0.0]],
+            [[1.0, 1.0], [1.0, -1.0]],
+            [[-1.0, 1.0], [0.5, 0.5]],
+        ],
+        dtype=np.float32,
+    )
+    gate = np.zeros_like(query, dtype=np.float16)
+    key = np.zeros((2, 4, 1, 2), dtype=np.float32)
+    value = np.zeros_like(key)
+    key[0, :2, 0] = np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    value[0, :2, 0] = np.asarray([[1.0, 10.0], [2.0, 20.0]], dtype=np.float32)
+    key[1, :2, 0] = np.asarray([[0.5, 0.5], [-0.5, 0.5]], dtype=np.float32)
+    value[1, :2, 0] = np.asarray([[100.0, 1000.0], [200.0, 2000.0]], dtype=np.float32)
+    block_tables = np.asarray([[0], [0], [1], [1]], dtype=np.int32)
+
+    out = full_attn_prefill_varlen(
+        query,
+        gate,
+        _bf16_bits(key),
+        _bf16_bits(value),
+        positions=np.asarray([0, 1, 0, 1], dtype=np.int64),
+        cu_seqlens_q=np.asarray([0, 2, 4], dtype=np.int32),
+        cu_seqlens_k=np.asarray([0, 2, 4], dtype=np.int32),
+        context_counts=np.asarray([1, 2, 1, 2], dtype=np.int64),
+        block_tables=block_tables,
+        block_size=4,
+        scale=1.0,
+        output_dtype=np.float32,
+    )
+
+    seg0 = full_attn_prefill(
+        query[:2],
+        gate[:2],
+        _bf16_bits(key[:1]),
+        _bf16_bits(value[:1]),
+        np.asarray([0, 1], dtype=np.int64),
+        context_counts=np.asarray([1, 2], dtype=np.int64),
+        block_table=np.asarray([0], dtype=np.int32),
+        block_size=4,
+        scale=1.0,
+        output_dtype=np.float32,
+    )
+    seg1 = full_attn_prefill(
+        query[2:],
+        gate[2:],
+        _bf16_bits(key[1:2]),
+        _bf16_bits(value[1:2]),
+        np.asarray([0, 1], dtype=np.int64),
+        context_counts=np.asarray([1, 2], dtype=np.int64),
+        block_table=np.asarray([0], dtype=np.int32),
+        block_size=4,
+        scale=1.0,
+        output_dtype=np.float32,
+    )
+
+    assert np.allclose(out[:2], seg0, atol=1e-5, rtol=1e-5)
+    assert np.allclose(out[2:], seg1, atol=1e-5, rtol=1e-5)
+    assert np.max(out[2:]) > 50.0
 
 
 def test_cpu_reference_linear_attn_conv_prefill_segments_isolates_state() -> None:

@@ -323,6 +323,111 @@ def full_attn_prefill(
     return out.astype(np.dtype(output_dtype))
 
 
+def full_attn_prefill_varlen(
+    query: ArrayLike,
+    gate: ArrayLike,
+    key_cache: ArrayLike,
+    value_cache: ArrayLike,
+    positions: ArrayLike,
+    cu_seqlens_q: ArrayLike,
+    cu_seqlens_k: ArrayLike,
+    *,
+    context_counts: ArrayLike,
+    block_tables: ArrayLike,
+    block_size: int,
+    scale: float | None = None,
+    output_dtype: str | np.dtype | type | None = np.float16,
+) -> np.ndarray:
+    """Reference varlen/block-diagonal append-then-attend prefill.
+
+    The cache remains paged; `block_tables[row]` selects the request-owned KV
+    blocks for each packed query row. `cu_seqlens_q/k` define packed request
+    segments and clamp each row so it cannot attend beyond the segment's K end.
+    """
+
+    q = np.asarray(query, dtype=np.float32)
+    g = np.asarray(gate, dtype=np.float32)
+    positions_arr = np.asarray(positions, dtype=np.int64)
+    contexts = np.asarray(context_counts, dtype=np.int64)
+    tables = np.asarray(block_tables, dtype=np.int64)
+    cu_q = np.asarray(cu_seqlens_q, dtype=np.int64)
+    cu_k = np.asarray(cu_seqlens_k, dtype=np.int64)
+    if q.ndim != 3:
+        raise ValueError("query must have shape [T, num_q_heads, head_dim]")
+    if g.shape != q.shape:
+        raise ValueError("gate must match query shape")
+    if positions_arr.shape != (q.shape[0],) or contexts.shape != (q.shape[0],):
+        raise ValueError("positions and context_counts must have shape [T]")
+    if tables.ndim != 2 or tables.shape[0] != q.shape[0]:
+        raise ValueError("block_tables must have shape [T, block_table_len]")
+    dummy_slots = np.zeros((cu_q.shape[0] - 1,), dtype=np.int64)
+    _validate_segments(cu_q, dummy_slots, q.shape[0], 1)
+    _validate_segments(cu_k, dummy_slots, q.shape[0], 1)
+
+    key = _cache_to_float(key_cache)
+    value = _cache_to_float(value_cache)
+    if key.shape != value.shape or key.ndim != 4:
+        raise ValueError("key_cache and value_cache must have shape [B, block, Hkv, D]")
+    if key.shape[1] != block_size:
+        raise ValueError("block_size must match cache shape")
+    num_q_heads = q.shape[1]
+    num_kv_heads = key.shape[2]
+    head_dim = key.shape[3]
+    if q.shape[2] != head_dim:
+        raise ValueError("query head_dim must match cache head_dim")
+    if num_q_heads % num_kv_heads != 0:
+        raise ValueError("num_q_heads must be divisible by num_kv_heads")
+    kv_group = num_q_heads // num_kv_heads
+    scale_value = (head_dim ** -0.5) if scale is None else float(scale)
+    out = np.empty_like(q, dtype=np.float32)
+    for segment in range(cu_q.shape[0] - 1):
+        q_start = int(cu_q[segment])
+        q_end = int(cu_q[segment + 1])
+        k_len = int(cu_k[segment + 1] - cu_k[segment])
+        segment_position_start = int(positions_arr[q_start])
+        segment_visible_limit = segment_position_start + k_len
+        for row in range(q_start, q_end):
+            visible_len = min(int(contexts[row]), int(positions_arr[row]) + 1, segment_visible_limit)
+            if visible_len <= 0:
+                raise ValueError("causal mask left no visible cache positions")
+            for q_head in range(num_q_heads):
+                kv_head = q_head // kv_group
+                keys = np.stack(
+                    [
+                        _cache_row(
+                            key,
+                            cache_pos,
+                            kv_head,
+                            dense_cache=False,
+                            block_size=block_size,
+                            block_table=tables[row],
+                        )
+                        for cache_pos in range(visible_len)
+                    ],
+                    axis=0,
+                )
+                values = np.stack(
+                    [
+                        _cache_row(
+                            value,
+                            cache_pos,
+                            kv_head,
+                            dense_cache=False,
+                            block_size=block_size,
+                            block_table=tables[row],
+                        )
+                        for cache_pos in range(visible_len)
+                    ],
+                    axis=0,
+                )
+                logits = np.matmul(keys, q[row, q_head]) * scale_value
+                weights = _softmax(logits, axis=0)
+                out[row, q_head] = np.matmul(weights, values) * _sigmoid(g[row, q_head])
+    if output_dtype is None:
+        return out
+    return out.astype(np.dtype(output_dtype))
+
+
 def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     """Register the first CPU-reference primitive set under fp16 keys."""
 
@@ -334,6 +439,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "rotate": rotate,
         "attention_decode": attention_decode,
         "full_attn_prefill": full_attn_prefill,
+        "full_attn_prefill_varlen": full_attn_prefill_varlen,
         "linear_attn_conv_prefill_segments": linear_attn_conv_prefill_segments,
         "gdn_prefill_recurrent_segments": gdn_prefill_recurrent_segments,
         "o_proj": o_proj,

@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": false,
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "mode": "full_attn_prefill_varlen_kernel_smoke",
+  "workload": {
+    "segments": 2,
+    "total_tokens": 4,
+    "cu_seqlens_q": [0, 2, 4],
+    "cu_seqlens_k": [0, 2, 4],
+    "block_tables": [[0], [0], [1], [1]],
+    "context_counts": [1, 2, 1, 2],
+    "positions": [0, 1, 0, 1],
+    "num_q_heads": 4,
+    "num_kv_heads": 2,
+    "head_dim": 8,
+    "block_size": 256
+  },
+  "commands": [
+    "python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_cpu_reference.py -q",
+    "python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt",
+    "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-varlen-prefill-prof --output-file varlen_prefill -- python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build"
+  ],
+  "correctness": {
+    "pytest": "13 passed",
+    "varlen_prefill_gate_fp16_max_abs": 0.0,
+    "varlen_prefill_gate_fp16_mismatch": 0,
+    "passed": true
+  },
+  "profiler": {
+    "path": "/tmp/hipengine-varlen-prefill-prof/varlen_prefill_kernel_trace.csv",
+    "kernels": [
+      {
+        "name": "qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>",
+        "duration_ns": 6880
+      },
+      {
+        "name": "qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel",
+        "duration_ns": 21520
+      }
+    ]
+  },
+  "notes": [
+    "Kernel smoke only; no end-to-end throughput claim.",
+    "The fixture uses two packed request segments with distinct physical blocks to verify block-diagonal cache reads via cu_seqlens and row-shaped block tables."
+  ]
+}
