@@ -9,6 +9,7 @@ from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import WorkKind
 from hipengine.generation import (
+    CompactPromptSlab,
     GeneratedToken,
     GraphBucketCache,
     ResidentBatchScheduler,
@@ -65,6 +66,47 @@ def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:
     moves = scheduler.compact(order=(2, 0))
     assert [(move.request_id, move.old_slot, move.new_slot) for move in moves] == [(2, 1, 0), (0, 0, 1)]
     assert scheduler.active_batch.slot_to_request == (2, 0)
+
+
+def test_resident_batch_scheduler_bucketizes_and_builds_compact_prefill_slabs() -> None:
+    scheduler = ResidentBatchScheduler(capacity=3, context_bucket_size=4)
+    r0 = scheduler.submit([10, 11, 12], max_new_tokens=1)
+    r1 = scheduler.submit([20, 21, 22, 23, 24], max_new_tokens=1)
+    r2 = scheduler.submit([30, 31], max_new_tokens=1)
+    scheduler.admit_pending()
+
+    buckets = scheduler.bucketize_by_block_count(chunk_size=8, block_size=4)
+
+    assert [(bucket.block_count, bucket.request_ids) for bucket in buckets] == [
+        (1, (r0, r2)),
+        (2, (r1,)),
+    ]
+
+    slabs = scheduler.next_compact_prefill_slabs(chunk_size=8, block_size=4)
+
+    assert len(slabs) == 2
+    first = slabs[0]
+    assert first.request_ids == (r0, r2)
+    assert first.token_ids == (10, 11, 12, 30, 31)
+    assert first.positions == (0, 1, 2, 0, 1)
+    assert first.append_counts == first.positions
+    assert first.context_counts == (1, 2, 3, 1, 2)
+    assert first.cu_seqlens_q == (0, 3, 5)
+    assert first.cu_seqlens_k == (0, 3, 5)
+    assert first.row_to_request == (r0, r0, r0, r2, r2)
+    assert first.block_count == 1
+    assert first.block_tables == ((0,), (0,), (0,), (0,), (0,))
+    assert first.to_work_item().token_rows == ((10, 11, 12), (30, 31))
+
+    second = slabs[1]
+    assert second.request_ids == (r1,)
+    assert second.token_ids == (20, 21, 22, 23, 24)
+    assert second.cu_seqlens_q == (0, 5)
+    assert second.block_count == 2
+    assert second.block_tables == ((0, 1),) * 5
+    assert scheduler.active_batch.requests[r0].remaining_prefill == 0
+    assert scheduler.active_batch.requests[r1].remaining_prefill == 0
+    assert scheduler.active_batch.requests[r2].remaining_prefill == 0
 
 
 def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
@@ -390,6 +432,31 @@ def test_graph_bucket_cache_clear_resets_entries_and_counters() -> None:
     assert cache.stats.entries == 0
     assert cache.stats.hits == 0
     assert cache.stats.misses == 0
+
+
+def test_compact_prompt_slab_validates_cu_seqlens_and_row_shapes() -> None:
+    with pytest.raises(ValueError, match="cu_seqlens must end"):
+        CompactPromptSlab(
+            request_ids=(1,),
+            token_ids=(10, 11),
+            positions=(0, 1),
+            cu_seqlens_q=(0, 1),
+            cu_seqlens_k=(0, 2),
+            row_to_request=(1, 1),
+            block_tables=((0,), (0,)),
+            append_counts=(0, 1),
+            context_counts=(1, 2),
+            token_rows=((10, 11),),
+            block_count=1,
+        )
+    with pytest.raises(ValueError, match="block_tables rows"):
+        CompactPromptSlab.from_token_rows(
+            request_ids=(1,),
+            token_rows=((10,),),
+            start_positions=(0,),
+            block_count=2,
+            block_tables_by_request=((0,),),
+        )
 
 
 def test_resident_batch_scheduler_rejects_duplicate_ids_and_invalid_chunks() -> None:

@@ -9,6 +9,7 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
+from hipengine.generation import CompactPromptSlab
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro import Qwen35ParoGroupedMoeScratch
 from hipengine.runtime.qwen35_paro_runner import (
@@ -169,6 +170,27 @@ def test_qwen35_resident_prefill_native_uses_config_default_for_full_native() ->
     )
 
     assert session.prefill_native([1, 2, 3, 4], sample=False) == (1, 2, 3, 4)
+
+
+def test_qwen35_resident_prefill_native_packed_rejects_until_segment_kernels_land() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.max_batch_size = 2
+    session.max_sequence_length = 8
+    session.blocks = 1
+    slab = CompactPromptSlab.from_token_rows(
+        request_ids=(10, 11),
+        token_rows=((1, 2), (3,)),
+        start_positions=(0, 0),
+        block_count=1,
+    )
+
+    with pytest.raises(NotImplementedError, match="segment-aware linear-attention"):
+        session.prefill_native_packed(slab)
+
+    assert session.last_prefill_execution["path"] == "native_prefill_compact_cN_blocked"
+    assert session.last_prefill_execution["request_count"] == 2
+    assert any("cu_seqlens" in blocker for blocker in session.last_prefill_execution["blockers"])
 
 
 def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> None:

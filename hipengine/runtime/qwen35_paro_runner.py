@@ -1030,6 +1030,50 @@ class Qwen35ParoResidentSession:
             return self._prefill_linear_tokens_native_legacy(tokens, sample=sample, allow_rejected_correctness=False)
         return self._prefill_tokens_native_full(tokens, sample=sample)
 
+    def prefill_native_packed(
+        self,
+        slab,
+        *,
+        sample: bool = True,
+    ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
+        """Run a compact c>N native prompt slab, once segment kernels exist.
+
+        The scheduler can already construct validated compact slabs. Executing
+        them natively still requires segment-aware linear-attention state
+        updates and a varlen/block-diagonal full-attention prefill ABI. This
+        method is deliberately fail-closed so callers cannot accidentally retain
+        a per-request prompt loop as the c>N native path.
+        """
+
+        from hipengine.generation.batch_scheduler import CompactPromptSlab
+
+        if not isinstance(slab, CompactPromptSlab):
+            raise TypeError("slab must be a CompactPromptSlab")
+        if self.closed:
+            raise RuntimeError("session is closed")
+        if slab.request_count > self.max_batch_size:
+            raise ValueError("compact prompt slab request_count exceeds max_batch_size")
+        if slab.rows > self.max_sequence_length * self.max_batch_size:
+            raise ValueError("compact prompt slab rows exceed session capacity")
+        if slab.block_count > self.blocks:
+            raise ValueError("compact prompt slab block_count exceeds session block capacity")
+        self.last_prefill_execution = {
+            "path": "native_prefill_compact_cN_blocked",
+            "full_native": False,
+            "request_count": slab.request_count,
+            "rows": slab.rows,
+            "block_count": slab.block_count,
+            "blockers": [
+                "segment-aware linear-attention conv/GDN state kernels are not wired",
+                "varlen/block-diagonal full-attention prefill via cu_seqlens is not wired",
+                "packed final-row sampling and per-request state commit are not wired",
+            ],
+        }
+        raise NotImplementedError(
+            "native compact c>N prefill slabs are metadata-ready but not executable: "
+            + "; ".join(self.last_prefill_execution["blockers"])
+        )
+
     def prefill_linear_tokens_native(
         self,
         token_ids: list[int] | tuple[int, ...],
@@ -1320,11 +1364,36 @@ class Qwen35ParoResidentSession:
         if slot < 0 or slot >= self.max_batch_size:
             raise ValueError(f"slot {slot} outside batch capacity {self.max_batch_size}")
 
-    def _prefill_rows_tensor(self, tensor: Tensor, rows: int) -> Tensor:
-        return Tensor.from_handle(tensor.ptr, (rows,), tensor.dtype, tensor.device)
+    def _prefill_rows_tensor(self, tensor: Tensor, rows: int, *, start: int = 0) -> Tensor:
+        return Tensor.from_handle(
+            tensor.ptr + int(start) * tensor.dtype.itemsize,
+            (rows,),
+            tensor.dtype,
+            tensor.device,
+        )
 
-    def _prefill_block_table_rows(self, rows: int) -> Tensor:
-        return Tensor.from_handle(self.prefill_block_table_buf.ptr, (rows, self.blocks), DType.INT32, self.device)
+    def _prefill_row_matrix_view(self, tensor: Tensor, start: int, rows: int) -> Tensor:
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if len(tensor.shape) != 2:
+            raise ValueError(f"expected row-major matrix tensor, got {tensor.shape}")
+        width = int(tensor.shape[1])
+        if start < 0 or start + rows > int(tensor.shape[0]):
+            raise ValueError(f"row view {start}:{start + rows} outside tensor shape {tensor.shape}")
+        return Tensor.from_handle(
+            tensor.ptr + int(start) * width * tensor.dtype.itemsize,
+            (rows, width),
+            tensor.dtype,
+            tensor.device,
+        )
+
+    def _prefill_block_table_rows(self, rows: int, *, start: int = 0) -> Tensor:
+        return Tensor.from_handle(
+            self.prefill_block_table_buf.ptr + int(start) * self.blocks * DType.INT32.itemsize,
+            (rows, self.blocks),
+            DType.INT32,
+            self.device,
+        )
 
     def _prepare_prefill_context_counts(self, rows: int, *, stream: int = 0) -> None:
         counts = np.full((rows,), int(rows), dtype=np.int64)
@@ -1335,14 +1404,26 @@ class Qwen35ParoResidentSession:
             runtime=self.runtime,
         )
 
-    def _prefill_full_attention_spans(self, rows: int) -> tuple[KVLiveSpans, KVLiveSpans]:
-        block_table = self._prefill_block_table_rows(rows)
-        positions = self._prefill_rows_tensor(self.prefill_positions, rows)
-        context_counts = Tensor.from_handle(self.prefill_context_count_buf.ptr, (rows,), DType.INT64, self.device)
+    def _prefill_full_attention_spans(
+        self,
+        rows: int,
+        *,
+        start: int = 0,
+        total_tokens: int | None = None,
+    ) -> tuple[KVLiveSpans, KVLiveSpans]:
+        total = rows if total_tokens is None else int(total_tokens)
+        block_table = self._prefill_block_table_rows(rows, start=start)
+        positions = self._prefill_rows_tensor(self.prefill_positions, rows, start=start)
+        context_counts = Tensor.from_handle(
+            self.prefill_context_count_buf.ptr + int(start) * DType.INT64.itemsize,
+            (rows,),
+            DType.INT64,
+            self.device,
+        )
         append_spans = KVLiveSpans.paged_uniform(
             block_table=block_table,
             live_counts=positions,
-            max_live_count=rows - 1,
+            max_live_count=total - 1,
             storage_dtype=DType.BF16,
             row_positions=positions,
             span_role="prefill",
@@ -1350,7 +1431,7 @@ class Qwen35ParoResidentSession:
         prefill_spans = KVLiveSpans.paged_uniform(
             block_table=block_table,
             live_counts=context_counts,
-            max_live_count=rows,
+            max_live_count=total,
             storage_dtype=DType.BF16,
             row_positions=positions,
             span_role="prefill",

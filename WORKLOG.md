@@ -9356,3 +9356,43 @@ python3 scripts/check_lineage.py --kind kernel --diff stat
 Result: reports known parent drift in `qwen35_expert.hip`, `smoke.hip`, and
 `paroquant_kernels.py` from nano-vllm-amd head `5d8f496`; no additional hipENGINE
 source-lineage manifest change needed for the local prompt-writer wrapper.
+
+## 2026-05-15 — Compact c>N prompt slab metadata and blocker artifact
+
+Started task #15 by adding the host-side compact prompt slab contract and
+scheduler bucketization needed before native c>N prefill kernels can be wired.
+This is a metadata/blocker milestone only; no native packed prefill kernels are
+retained or benchmarked yet.
+
+Changes:
+- added `CompactPromptBucket` and `CompactPromptSlab` host descriptors with
+  flattened token rows, absolute positions, append/context counts,
+  `cu_seqlens_q`, `cu_seqlens_k`, row-to-request metadata, and row-shaped block
+  tables;
+- added `ResidentBatchScheduler.bucketize_by_block_count(...)` and
+  `next_compact_prefill_slabs(...)`, which emits one compact slab per uniform
+  block-table length and advances prompt cursors without falling back to
+  per-request work items;
+- added `Qwen35ParoResidentSession.prefill_native_packed(slab)` as a fail-closed
+  runtime entrypoint that validates slab/session shape and reports the remaining
+  native-kernel blockers instead of silently using the serial prompt loop;
+- added `scripts/qwen35_native_compact_prefill_plan.py` and blocked artifact
+  `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-compact-c8-blocked.json`;
+- updated `docs/PREFILL.md`, benchmark rollup, and changelog to mark compact
+  metadata as landed while keeping compact execution blocked.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py -q
+python3 -m py_compile hipengine/generation/batch_scheduler.py hipengine/generation/__init__.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_native_compact_prefill_plan.py
+python3 scripts/qwen35_native_compact_prefill_plan.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --batch-size 8 --prompt-length 8 --chunk-size 8 --block-size 256 --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-compact-c8-blocked.json
+```
+
+Result: targeted tests passed (`33 passed`); py_compile succeeded. The c=8
+planning artifact contains one 64-row compact slab with `cu_seqlens_q/k =
+[0,8,16,24,32,40,48,56,64]`, `block_count=1`, and prompt cursors advanced to 8
+for all requests. Status remains `blocked` because segment-aware linear-attn
+conv/GDN state kernels, varlen/block-diagonal full-attn prefill via
+`cu_seqlens`, packed final-row sampling, and per-request state/KV commit are not
+wired.

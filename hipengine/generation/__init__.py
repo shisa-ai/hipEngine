@@ -2,6 +2,8 @@
 
 from hipengine.generation.batch_scheduler import (
     BatchGenerateRequest,
+    CompactPromptBucket,
+    CompactPromptSlab,
     CompletedRequest,
     GeneratedToken,
     GraphBucketCache,
@@ -45,6 +47,8 @@ def register_builtin_generators() -> None:
 
 __all__ = [
     "BatchGenerateRequest",
+    "CompactPromptBucket",
+    "CompactPromptSlab",
     "CompletedRequest",
     "DuplicateGeneratorError",
     "GeneratedToken",

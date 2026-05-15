@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from math import ceil
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
@@ -41,6 +42,150 @@ class CompletedRequest:
     prompt_tokens: tuple[int, ...]
     generated_tokens: tuple[int, ...]
     finished: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CompactPromptBucket:
+    """Scheduler bucket of prefill requests sharing one block-table length."""
+
+    block_count: int
+    request_ids: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if self.block_count <= 0:
+            raise ValueError("block_count must be positive")
+        if not self.request_ids:
+            raise ValueError("compact prompt bucket must include request_ids")
+        if len(set(self.request_ids)) != len(self.request_ids):
+            raise ValueError("compact prompt bucket request_ids must be unique")
+
+
+@dataclass(frozen=True, slots=True)
+class CompactPromptSlab:
+    """Host compact-prompt slab descriptor for native c>N prefill.
+
+    Runtime code materializes these tuples as device tensors before launching
+    kernels. ``cu_seqlens_q``/``cu_seqlens_k`` define the block-diagonal prompt
+    segments; ``block_tables`` is row-shaped because the current KV writer ABI
+    requires a uniform block-table length for every row in one launch.
+    """
+
+    request_ids: tuple[int, ...]
+    token_ids: tuple[int, ...]
+    positions: tuple[int, ...]
+    cu_seqlens_q: tuple[int, ...]
+    cu_seqlens_k: tuple[int, ...]
+    row_to_request: tuple[int, ...]
+    block_tables: tuple[tuple[int, ...], ...]
+    append_counts: tuple[int, ...]
+    context_counts: tuple[int, ...]
+    token_rows: tuple[tuple[int, ...], ...]
+    block_count: int
+    block_size: int = 256
+
+    def __post_init__(self) -> None:
+        rows = len(self.token_ids)
+        if not self.request_ids:
+            raise ValueError("compact prompt slab must include request_ids")
+        if rows <= 0:
+            raise ValueError("compact prompt slab must include token rows")
+        if self.block_count <= 0:
+            raise ValueError("block_count must be positive")
+        if self.block_size <= 0:
+            raise ValueError("block_size must be positive")
+        _check_len("positions", self.positions, rows)
+        _check_len("row_to_request", self.row_to_request, rows)
+        _check_len("append_counts", self.append_counts, rows)
+        _check_len("context_counts", self.context_counts, rows)
+        _check_len("block_tables", self.block_tables, rows)
+        _check_len("token_rows", self.token_rows, len(self.request_ids))
+        _check_len("cu_seqlens_q", self.cu_seqlens_q, len(self.request_ids) + 1)
+        _check_len("cu_seqlens_k", self.cu_seqlens_k, len(self.request_ids) + 1)
+        if self.cu_seqlens_q[0] != 0 or self.cu_seqlens_k[0] != 0:
+            raise ValueError("cu_seqlens must start at 0")
+        if self.cu_seqlens_q[-1] != rows or self.cu_seqlens_k[-1] != rows:
+            raise ValueError("cu_seqlens must end at total row count")
+        if any(a > b for a, b in zip(self.cu_seqlens_q, self.cu_seqlens_q[1:])):
+            raise ValueError("cu_seqlens_q must be non-decreasing")
+        if any(a > b for a, b in zip(self.cu_seqlens_k, self.cu_seqlens_k[1:])):
+            raise ValueError("cu_seqlens_k must be non-decreasing")
+        if set(self.row_to_request).difference(self.request_ids):
+            raise ValueError("row_to_request contains request id outside request_ids")
+        if any(len(row) != self.block_count for row in self.block_tables):
+            raise ValueError("block_tables rows must match block_count")
+        if any(position < 0 for position in self.positions):
+            raise ValueError("positions must be non-negative")
+        if any(count < 0 for count in self.append_counts):
+            raise ValueError("append_counts must be non-negative")
+        if any(count <= 0 for count in self.context_counts):
+            raise ValueError("context_counts must be positive")
+
+    @classmethod
+    def from_token_rows(
+        cls,
+        *,
+        request_ids: Sequence[int],
+        token_rows: Sequence[Sequence[int]],
+        start_positions: Sequence[int],
+        block_count: int,
+        block_size: int = 256,
+        block_tables_by_request: Sequence[Sequence[int]] | None = None,
+    ) -> "CompactPromptSlab":
+        request_tuple = tuple(int(request_id) for request_id in request_ids)
+        row_tuple = tuple(tuple(int(token) for token in row) for row in token_rows)
+        starts = tuple(int(position) for position in start_positions)
+        if len(request_tuple) != len(row_tuple) or len(request_tuple) != len(starts):
+            raise ValueError("request_ids, token_rows, and start_positions must align")
+        if block_tables_by_request is None:
+            request_tables = tuple(tuple(range(int(block_count))) for _ in request_tuple)
+        else:
+            request_tables = tuple(tuple(int(block) for block in table) for table in block_tables_by_request)
+            if len(request_tables) != len(request_tuple):
+                raise ValueError("block_tables_by_request must align with request_ids")
+        token_ids: list[int] = []
+        positions: list[int] = []
+        row_to_request: list[int] = []
+        block_tables: list[tuple[int, ...]] = []
+        cu = [0]
+        for request_id, tokens, start, table in zip(request_tuple, row_tuple, starts, request_tables, strict=True):
+            if not tokens:
+                raise ValueError("compact prompt token rows must be non-empty")
+            for offset, token in enumerate(tokens):
+                token_ids.append(token)
+                positions.append(start + offset)
+                row_to_request.append(request_id)
+                block_tables.append(table)
+            cu.append(len(token_ids))
+        return cls(
+            request_ids=request_tuple,
+            token_ids=tuple(token_ids),
+            positions=tuple(positions),
+            cu_seqlens_q=tuple(cu),
+            cu_seqlens_k=tuple(cu),
+            row_to_request=tuple(row_to_request),
+            block_tables=tuple(block_tables),
+            append_counts=tuple(positions),
+            context_counts=tuple(position + 1 for position in positions),
+            token_rows=row_tuple,
+            block_count=int(block_count),
+            block_size=int(block_size),
+        )
+
+    @property
+    def rows(self) -> int:
+        return len(self.token_ids)
+
+    @property
+    def request_count(self) -> int:
+        return len(self.request_ids)
+
+    def to_work_item(self) -> WorkItem:
+        return WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=self.request_ids,
+            row_to_request=self.row_to_request,
+            token_rows=self.token_rows,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +331,75 @@ class ResidentBatchScheduler:
                 token_rows=(chunk,),
             )
         return None
+
+    def bucketize_by_block_count(
+        self,
+        *,
+        chunk_size: int,
+        block_size: int = 256,
+        request_ids: Sequence[int] | None = None,
+    ) -> tuple[CompactPromptBucket, ...]:
+        """Group active prefill requests by the KV block count needed now.
+
+        The compact KV writer currently requires one block-table length per
+        launch. This host bucketization is the guardrail that prevents silently
+        mixing requests with different per-request block-table lengths.
+        """
+
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        if block_size <= 0:
+            raise ValueError("block_size must be positive")
+        candidate_ids = self.active_batch.active_request_ids if request_ids is None else tuple(int(item) for item in request_ids)
+        buckets: dict[int, list[int]] = {}
+        for request_id in candidate_ids:
+            if request_id not in self.active_batch.requests:
+                raise KeyError(request_id)
+            request = self.active_batch.requests[request_id]
+            if request.finished or request.remaining_prefill <= 0:
+                continue
+            rows = min(int(chunk_size), request.remaining_prefill)
+            end_position_exclusive = request.next_prompt_index + rows
+            block_count = max(1, ceil(end_position_exclusive / int(block_size)))
+            buckets.setdefault(block_count, []).append(request_id)
+        return tuple(
+            CompactPromptBucket(block_count=block_count, request_ids=tuple(ids))
+            for block_count, ids in sorted(buckets.items())
+        )
+
+    def next_compact_prefill_slabs(
+        self,
+        *,
+        chunk_size: int,
+        block_size: int = 256,
+    ) -> tuple[CompactPromptSlab, ...]:
+        """Emit compact c>N prefill slab descriptors and advance cursors.
+
+        Each returned slab contains requests with a common block-table length.
+        Runtime code must execute each slab natively or reject it explicitly;
+        this scheduler method does not fall back to per-request prompt loops.
+        """
+
+        slabs: list[CompactPromptSlab] = []
+        for bucket in self.bucketize_by_block_count(chunk_size=chunk_size, block_size=block_size):
+            token_rows: list[tuple[int, ...]] = []
+            start_positions: list[int] = []
+            for request_id in bucket.request_ids:
+                request = self.active_batch.requests[request_id]
+                start_positions.append(request.next_prompt_index)
+                updated, chunk = request.take_prefill(chunk_size)
+                self.active_batch.update_request(updated)
+                token_rows.append(chunk)
+            slabs.append(
+                CompactPromptSlab.from_token_rows(
+                    request_ids=bucket.request_ids,
+                    token_rows=token_rows,
+                    start_positions=start_positions,
+                    block_count=bucket.block_count,
+                    block_size=block_size,
+                )
+            )
+        return tuple(slabs)
 
     def next_decode_work(self) -> WorkItem | None:
         """Emit one decode step over active requests with completed prefill."""
@@ -538,8 +752,15 @@ def _coerce_generated_token(item: GeneratedToken | tuple[int, int] | tuple[int, 
     return GeneratedToken(int(request_id), int(token_id), bool(finished))
 
 
+def _check_len(name: str, value: Sequence[object], expected: int) -> None:
+    if len(value) != expected:
+        raise ValueError(f"{name} length must be {expected}")
+
+
 __all__ = [
     "BatchGenerateRequest",
+    "CompactPromptBucket",
+    "CompactPromptSlab",
     "CompletedRequest",
     "GeneratedToken",
     "GraphBucketCache",

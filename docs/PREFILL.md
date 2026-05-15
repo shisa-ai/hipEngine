@@ -137,10 +137,10 @@ Missing for the final path:
 
 | Area | Required final work |
 | --- | --- |
-| Public API wiring | `prefill_native(...)` API/config skeleton exists; wire the final native implementation into it and update generation call sites after native kernels land. |
-| Full-attn retained orchestration | Wire batched Q/K/V + vector RoPE + KV append + native causal prefill attention into the retained full-attention layer path and prove contiguous per-row Q/K/V/gate layouts in stage probes. |
-| Grouped/compact MoE | Port/wire parent grouped scatter/gather and grouped expert kernels. |
-| Compact c>N slab | Build packed prompt metadata and segment-aware linear-attn/full-attn kernels. |
+| Public API wiring | **Landed for c=1:** `prefill_native(...)` is the default generation/benchmark path; compact c>N uses separate `prefill_native_packed(slab)` blocker path. |
+| Full-attn retained orchestration | **Landed for c=1:** batched Q/K/V + vector RoPE + prompt KV append + native causal prefill attention are wired and fixture-gated. |
+| Grouped/compact MoE | **Landed for c=1:** grouped scatter/gather and compact AWQ WMMA expert kernels are wired into native prefill. |
+| Compact c>N slab | **Metadata landed:** `CompactPromptSlab` and `bucketize_by_block_count` exist; execution remains blocked on segment-aware linear-attn state kernels and varlen/block-diagonal attention via `cu_seqlens`. |
 | Prefill config/tuning | Add typed `PrefillConfig`; no hot-path env lookups. |
 
 ## Final API and config contract
@@ -366,12 +366,14 @@ attention kernel.
 
 Final compact requirements:
 
-- `ResidentBatchScheduler.next_prefill_work(chunk_size=...)` forms compact slabs
-  for requests with prefill work.
-- Add an explicit `bucketize_by_block_count` step in the scheduler before slab
-  construction.
-- `Qwen35ParoResidentSession.prefill_native_packed(slab)` runs the same native
-  layer logic over `T_total` rows.
+- `ResidentBatchScheduler.next_compact_prefill_slabs(chunk_size=...)` forms
+  compact slab descriptors for requests with prefill work; legacy
+  `next_prefill_work(...)` remains the serial diagnostic path.
+- An explicit `bucketize_by_block_count` step in the scheduler runs before slab
+  construction and emits one slab per uniform block-table length.
+- `Qwen35ParoResidentSession.prefill_native_packed(slab)` is present and
+  fail-closed until segment-aware native kernels land; it must eventually run
+  the same native layer logic over `T_total` rows.
 - Current batch KV writer constraint: `_check_write_batch_shape(...)` computes
   one `block_table_len = base_offsets.numel // rows`, so every row in a writer
   call must expose the same block-table length. Final scheduler policy should
