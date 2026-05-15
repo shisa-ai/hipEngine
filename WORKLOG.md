@@ -8778,3 +8778,37 @@ For future comparison, the parent native PARO baseline from
 Needed before rerunning in hipENGINE: tied lm-head fallback plus dense PARO MLP
 materialization/runtime support, then rerun the 512/128 command with the normal
 post-run correctness/perf/memory gates.
+
+## 2026-05-15 — docs/PREFILL.md correction pass
+
+Reviewed `docs/PREFILL.md` against `docs/PLAN.md`, the current Qwen3.5/PARO
+resident runtime, `docs/KERNELS.md`, and retained prefill/batch artifacts. The
+old plan was broadly directionally right but had stale/incomplete implementation
+status: it treated grouped MoE as an immediate correctness blocker, implied the
+scalar RoPE position kernel might already cover T rows, did not distinguish the
+current token-major serial suffix from the desired layer-major fallback, and
+said `KVLiveSpans` needed extension even though `request_ids`/`row_positions`
+already exist.
+
+Rewrote `docs/PREFILL.md` as an implementation spec. Key decisions recorded:
+D2/layer-major serial full-attention fallback lands before the D1 native causal
+prefill attention kernel; existing `run_moe_c1_fp16(tokens=T)` is the B/C
+correctness fallback while grouped/compact MoE is a parent-parity perf step;
+full-attention D1 needs a new vector-position RoPE path because the landed
+`qwen35_head_rmsnorm_partial_rotary_position_f32_bf16` reads `position_ptr[0]`;
+compact c>N prefill should populate existing `KVLiveSpans` metadata rather than
+redesigning the span ABI.
+
+Validation (docs/process only; no GPU run required):
+
+```bash
+git diff --check -- docs/PREFILL.md
+python3 - <<'PY'
+from pathlib import Path
+text=Path('docs/PREFILL.md').read_text()
+assert text.count('```') % 2 == 0, 'unbalanced fences'
+print('docs/PREFILL.md ok', text.count('\n') + 1, 'lines')
+PY
+```
+
+Result: `docs/PREFILL.md ok 714 lines`.
