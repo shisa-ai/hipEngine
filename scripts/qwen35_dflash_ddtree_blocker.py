@@ -23,7 +23,7 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.dispatch import ActiveBatch, RequestState, WorkKind
 from hipengine.kvcache import FixedPagedKVPolicy, KVTransaction
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
-from hipengine.speculative import AcceptResult, DraftBatch, DraftModel, Verifier
+from hipengine.speculative import AcceptResult, DraftBatch, DraftModel, TargetVerifyBatch, Verifier
 
 DEFAULT_BATCH_ARTIFACT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json")
 DEFAULT_PREFILL_ARTIFACT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-attn-boundary-blocked.json")
@@ -50,6 +50,7 @@ def _interface_status() -> dict[str, Any]:
         "draft_batch": DraftBatch.__name__,
         "accept_result": AcceptResult.__name__,
         "draft_model_protocol": DraftModel.__name__,
+        "target_verify_batch": TargetVerifyBatch.__name__,
         "verifier_protocol": Verifier.__name__,
         "kv_policy": FixedPagedKVPolicy.__name__,
         "kv_transaction": KVTransaction.__name__,

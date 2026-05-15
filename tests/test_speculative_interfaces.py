@@ -8,7 +8,7 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.kvcache import FixedPagedKVPolicy
-from hipengine.speculative import AcceptResult, DraftBatch
+from hipengine.speculative import AcceptResult, DraftBatch, TargetVerifyBatch
 from scripts.qwen35_dflash_ddtree_blocker import build_payload
 
 
@@ -41,6 +41,88 @@ def test_draft_batch_and_accept_result_validate_row_metadata() -> None:
         )
     with pytest.raises(ValueError, match="lengths"):
         AcceptResult(request_ids=(1,), accepted_counts=(2,), accepted_tokens=((10,),))
+
+
+def test_target_verify_batch_materializes_root_and_candidate_rows() -> None:
+    draft = DraftBatch(
+        request_ids=(1, 2),
+        candidate_tokens=(10, 11, 20),
+        parent_positions=(5, 6, 3),
+        draft_depths=(1, 2, 1),
+        row_to_request=(1, 1, 2),
+        mode="verify_tree",
+        tree_parents=(-1, 0, -1),
+        active_mask=(True, True, False),
+    )
+
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
+
+    assert target.rows == 5
+    assert target.candidate_count == 3
+    assert target.request_ids == (1, 2)
+    assert target.tokens == (100, 200, 10, 11, 20)
+    assert target.positions == (5, 3, 6, 7, 4)
+    assert target.row_to_request == (1, 2, 1, 1, 2)
+    assert target.root_rows == (0, 1)
+    assert target.candidate_rows == (2, 3, 4)
+    assert target.parent_rows == (-1, -1, 0, 2, 1)
+    assert target.draft_depths == (0, 0, 1, 2, 1)
+    assert target.active_mask == (True, True, True, True, False)
+    assert target.mode == "verify_tree"
+
+    chain = TargetVerifyBatch.from_draft(
+        DraftBatch(
+            request_ids=(7,),
+            candidate_tokens=(31, 32, 33),
+            parent_positions=(8, 9, 10),
+            draft_depths=(1, 2, 3),
+            row_to_request=(7, 7, 7),
+        ),
+        root_tokens=(30,),
+        root_positions=(8,),
+    )
+    assert chain.parent_rows == (-1, 0, 1, 2)
+    assert chain.positions == (8, 9, 10, 11)
+
+
+def test_target_verify_batch_validates_native_row_layout() -> None:
+    with pytest.raises(ValueError, match="root tokens/positions"):
+        TargetVerifyBatch.from_draft(
+            DraftBatch(
+                request_ids=(1, 2),
+                candidate_tokens=(10,),
+                parent_positions=(5,),
+                draft_depths=(1,),
+                row_to_request=(1,),
+            ),
+            root_tokens=(100,),
+            root_positions=(5,),
+        )
+    with pytest.raises(ValueError, match="earlier candidate"):
+        TargetVerifyBatch.from_draft(
+            DraftBatch(
+                request_ids=(1,),
+                candidate_tokens=(10, 11),
+                parent_positions=(5, 6),
+                draft_depths=(1, 2),
+                row_to_request=(1, 1),
+                tree_parents=(1, 0),
+            ),
+            root_tokens=(100,),
+            root_positions=(5,),
+        )
+    with pytest.raises(ValueError, match="root rows"):
+        TargetVerifyBatch(
+            request_ids=(1,),
+            tokens=(100, 10),
+            positions=(5, 6),
+            row_to_request=(1, 1),
+            parent_rows=(0, 0),
+            root_rows=(0,),
+            candidate_rows=(1,),
+            draft_depths=(0, 1),
+            active_mask=(True, True),
+        )
 
 
 def test_speculative_draft_batch_drives_kv_transaction_commit_and_rollback() -> None:
@@ -115,6 +197,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["status"] == "blocked"
     assert not payload["performance_claim"]
     assert not payload["implementation_status"]["native_target_verify_ready"]
+    assert payload["implementation_status"]["interfaces_present"]["target_verify_batch"] == "TargetVerifyBatch"
     assert payload["implementation_status"]["resident_api"]["step_batch_serial"]
     assert not payload["implementation_status"]["resident_api"]["speculative_verify_batch"]
     assert payload["evidence"]["batch_execution"]["path"] == "scheduler_serial_slot_bridge"

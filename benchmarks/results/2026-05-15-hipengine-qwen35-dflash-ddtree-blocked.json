@@ -13,6 +13,7 @@
       "draft_batch": "DraftBatch",
       "accept_result": "AcceptResult",
       "draft_model_protocol": "DraftModel",
+      "target_verify_batch": "TargetVerifyBatch",
       "verifier_protocol": "Verifier",
       "kv_policy": "FixedPagedKVPolicy",
       "kv_transaction": "KVTransaction",

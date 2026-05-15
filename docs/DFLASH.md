@@ -31,9 +31,10 @@ reuses this verifier/commit infrastructure after DFlash lands.
 
 ## Current hipENGINE status (2026-05-15)
 
-The API scaffolding exists (`DraftBatch`, `AcceptResult`, `DraftModel`,
-`Verifier`, `KVTransaction`, and verify-shaped graph keys), but Qwen3.5/PARO
-DFlash/DDTree is currently **blocked**, not implemented as a throughput path.
+The API scaffolding exists (`DraftBatch`, `TargetVerifyBatch`, `AcceptResult`,
+`DraftModel`, `Verifier`, `KVTransaction`, and verify-shaped graph keys), but
+Qwen3.5/PARO DFlash/DDTree is currently **blocked**, not implemented as a
+throughput path.
 The exact blocker artifact is
 [`2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json`](../benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json).
 It records:

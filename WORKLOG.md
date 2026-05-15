@@ -6222,3 +6222,58 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count after completing #44: `1` (#15).
+
+---
+
+## 2026-05-15 — TargetVerifyBatch metadata scaffold for Task #15
+
+### Scope
+
+- Added torch-free speculative target-verification metadata:
+  - `hipengine.speculative.TargetVerifyBatch`
+  - exported via `hipengine/speculative/__init__.py`
+- `TargetVerifyBatch.from_draft(...)` materializes the native verifier row layout from a `DraftBatch` plus one committed root token/position per request:
+  - root rows first, one per request;
+  - candidate rows after roots;
+  - `parent_rows` references roots or earlier candidate rows;
+  - `row_to_request`, `draft_depths`, and `active_mask` cover every root+candidate row.
+- Updated the DFlash/DDTree blocker helper and artifact so the scaffolding is now recorded as present while runtime verifier/commit APIs remain missing.
+- Updated `docs/DFLASH.md` current-status text to mention `TargetVerifyBatch` as API scaffolding.
+- Updated Task #15 with the narrowed remaining blocker.
+
+### Evidence
+
+Target-verify metadata tests:
+
+```bash
+python3 -m compileall -q hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py tests/test_dispatch_batch.py -q
+```
+
+Result: `16 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records `implementation_status.interfaces_present.target_verify_batch="TargetVerifyBatch"`, while preserving:
+
+- `status=blocked`
+- `performance_claim=false`
+- `implementation_status.native_target_verify_ready=false`
+- `resident_api.speculative_verify_batch=false`
+- c=8 evidence still points at `scheduler_serial_slot_bridge` / `throughput_claim_eligible=false`.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows the blocker but does not complete native compact/c-aware execution.
