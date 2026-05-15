@@ -588,7 +588,7 @@ class TargetCommitPlan:
         if role.startswith("WorkKind."):
             role = role.rsplit(".", 1)[-1].lower()
         if role not in {"verify_chain", "verify_tree"}:
-            role = summary.mode
+            raise ValueError("transaction role must be verify_chain or verify_tree")
         if role != summary.mode:
             raise ValueError("transaction role must match target accept summary mode")
         return cls(

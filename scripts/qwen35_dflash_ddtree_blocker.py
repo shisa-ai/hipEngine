@@ -14,6 +14,7 @@ import json
 import shlex
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -101,6 +102,52 @@ def _kv_transaction_role_checked() -> bool:
     return False
 
 
+def _target_commit_plan_transaction_role_checked() -> bool:
+    draft = DraftBatch(
+        request_ids=(1,),
+        candidate_tokens=(10,),
+        parent_positions=(5,),
+        draft_depths=(1,),
+        row_to_request=(1,),
+        mode="verify_tree",
+        tree_parents=(-1,),
+    )
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100,), root_positions=(5,))
+    summary = TargetAcceptSummary.from_accept_result(
+        target,
+        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),)),
+    )
+    mismatch = SimpleNamespace(
+        transaction_id=0,
+        request_ids=(1,),
+        candidate_counts=(1,),
+        committed=False,
+        rolled_back=False,
+        role="verify_chain",
+    )
+    invalid = SimpleNamespace(
+        transaction_id=1,
+        request_ids=(1,),
+        candidate_counts=(1,),
+        committed=False,
+        rolled_back=False,
+        role="decode",
+    )
+    try:
+        TargetCommitPlan.from_summary(summary, mismatch)
+    except ValueError as exc:
+        mismatch_rejected = "role must match" in str(exc)
+    else:
+        mismatch_rejected = False
+    try:
+        TargetCommitPlan.from_summary(summary, invalid)
+    except ValueError as exc:
+        invalid_rejected = "verify_chain or verify_tree" in str(exc)
+    else:
+        invalid_rejected = False
+    return mismatch_rejected and invalid_rejected
+
+
 def _interface_status() -> dict[str, Any]:
     batch = ActiveBatch(2)
     batch.admit(RequestState.from_tokens(0, [1], max_new_tokens=1))
@@ -121,6 +168,7 @@ def _interface_status() -> dict[str, Any]:
         "kv_transaction_request_ids_unique_checked": _kv_transaction_request_ids_unique_checked(),
         "kv_transaction_terminal_state_checked": _kv_transaction_terminal_state_checked(),
         "kv_transaction_role_checked": _kv_transaction_role_checked(),
+        "target_commit_plan_transaction_role_checked": _target_commit_plan_transaction_role_checked(),
         "scheduler_speculative_verify_work": hasattr(ResidentBatchScheduler, "next_speculative_verify_work"),
         "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),

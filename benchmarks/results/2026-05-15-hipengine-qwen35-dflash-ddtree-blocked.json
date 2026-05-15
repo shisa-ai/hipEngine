@@ -25,6 +25,7 @@
       "kv_transaction_request_ids_unique_checked": true,
       "kv_transaction_terminal_state_checked": true,
       "kv_transaction_role_checked": true,
+      "target_commit_plan_transaction_role_checked": true,
       "scheduler_speculative_verify_work": true,
       "scheduler_speculative_accept": true,
       "scheduler_speculative_shape_key": true,

@@ -358,6 +358,27 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
     assert committed.committed
     assert committed.accepted_counts == plan.accepted_counts
 
+    mismatch_txn = SimpleNamespace(
+        transaction_id=8,
+        request_ids=(1, 2),
+        candidate_counts=(2, 1),
+        committed=False,
+        rolled_back=False,
+        role="verify_chain",
+    )
+    with pytest.raises(ValueError, match="role must match"):
+        TargetCommitPlan.from_summary(summary, mismatch_txn)
+    invalid_role_txn = SimpleNamespace(
+        transaction_id=9,
+        request_ids=(1, 2),
+        candidate_counts=(2, 1),
+        committed=False,
+        rolled_back=False,
+        role="decode",
+    )
+    with pytest.raises(ValueError, match="verify_chain or verify_tree"):
+        TargetCommitPlan.from_summary(summary, invalid_role_txn)
+
     with pytest.raises(ValueError, match="candidate_counts"):
         TargetCommitPlan(
             transaction_id=7,
@@ -593,6 +614,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["kv_transaction_request_ids_unique_checked"]
     assert payload["implementation_status"]["interfaces_present"]["kv_transaction_terminal_state_checked"]
     assert payload["implementation_status"]["interfaces_present"]["kv_transaction_role_checked"]
+    assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_verify_work"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_accept"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_shape_key"]

@@ -7953,3 +7953,52 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows speculative KV transaction role validation only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Target commit-plan transaction role binding
+
+### Scope
+
+- Tightened `TargetCommitPlan.from_summary(...)` role validation:
+  - transaction roles must be one of `verify_chain`/`verify_tree`;
+  - transaction role must match the target accept-summary mode;
+  - invalid roles are no longer silently treated as the summary mode.
+- Added speculative-interface coverage for role mismatch and invalid-role transaction-like objects.
+- Updated the DFlash/DDTree blocker artifact so commit-plan/transaction role binding is explicit evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative hipengine/kvcache scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py tests/test_kvcache_policy.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py -q
+```
+
+Result: `23 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.kv_transaction_role_checked=true`
+- `implementation_status.interfaces_present.target_commit_plan_transaction_role_checked=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: host commit-plan metadata now rejects verifier-mode mismatches before scheduler/native verifier commit routing can become ambiguous. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows speculative commit-plan role binding only; no performance claim or kernel change was made.
