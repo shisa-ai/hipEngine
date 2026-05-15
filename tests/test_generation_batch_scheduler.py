@@ -12,12 +12,13 @@ from hipengine.generation import (
     GraphBucketCache,
     ResidentBatchScheduler,
     SpeculativeCommitPlan,
+    SpeculativeStateCommitPlan,
     SpeculativeVerifyBufferPlan,
     SpeculativeVerifyPlan,
     SpeculativeVerifyWork,
 )
 from hipengine.kvcache import FixedPagedKVPolicy
-from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetVerifyBuffers
+from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
@@ -193,6 +194,22 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert commit.commit_plan.commit_rows == (3, 4)
     assert commit.commit_plan.candidate_counts == (2, 1)
     assert commit.commit_plan.mode == "verify_tree"
+    state_buffers = TargetStateCommitBuffers.for_plan(
+        commit.commit_plan,
+        accepted_counts=_tensor(0x3B00, (len(work.target_batch.request_ids),), "int32"),
+        commit_rows=_tensor(0x3C00, (len(work.target_batch.request_ids),), "int32"),
+        commit_positions=_tensor(0x3D00, (len(work.target_batch.request_ids),), "int32"),
+        linear_state_src=_tensor(0x3E00, (work.target_batch.rows, 4), "bf16"),
+        linear_state_dst=_tensor(0x3F00, (len(work.target_batch.request_ids), 4), "bf16"),
+        kv_rows_src=_tensor(0x4000, (work.target_batch.rows, 2, 4), "bf16"),
+        kv_rows_dst=_tensor(0x4100, (sum(summary.accepted_counts), 2, 4), "bf16"),
+    )
+    state_plan = scheduler.bind_speculative_commit_buffers(commit, state_buffers)
+    assert isinstance(state_plan, SpeculativeStateCommitPlan)
+    assert state_plan.commit_plan is commit
+    assert state_plan.buffers is state_buffers
+    assert state_plan.buffers.has_linear_state
+    assert state_plan.buffers.has_kv_rows
     completed = scheduler.record_speculative_accept(summary)
 
     assert [item.request_id for item in completed] == [r1]

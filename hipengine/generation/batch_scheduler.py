@@ -14,7 +14,7 @@ from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
 from hipengine.kvcache import KVTransaction
-from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetVerifyBatch, TargetVerifyBuffers
+from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +69,12 @@ class SpeculativeCommitPlan:
     verify_plan: SpeculativeVerifyBufferPlan
     summary: TargetAcceptSummary
     commit_plan: TargetCommitPlan
+
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeStateCommitPlan:
+    commit_plan: SpeculativeCommitPlan
+    buffers: TargetStateCommitBuffers
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,6 +388,22 @@ class ResidentBatchScheduler:
         commit = TargetCommitPlan.from_summary(summary, verify_plan.plan.transaction)
         return SpeculativeCommitPlan(verify_plan=verify_plan, summary=summary, commit_plan=commit)
 
+    def bind_speculative_commit_buffers(
+        self,
+        plan: SpeculativeCommitPlan,
+        buffers: TargetStateCommitBuffers,
+    ) -> SpeculativeStateCommitPlan:
+        """Bind verified state/KV commit buffers to a scheduler commit plan."""
+
+        commit = plan.commit_plan
+        if buffers.request_ids != commit.request_ids:
+            raise ValueError("state commit buffers request_ids must match speculative commit plan")
+        if buffers.mode != commit.mode:
+            raise ValueError("state commit buffers mode must match speculative commit plan")
+        if not buffers.has_linear_state and not buffers.has_kv_rows:
+            raise ValueError("state commit buffers must include linear state or KV rows")
+        return SpeculativeStateCommitPlan(commit_plan=plan, buffers=buffers)
+
     def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
         return self.active_batch.shape_key(
             mode=mode,
@@ -432,6 +454,7 @@ __all__ = [
     "GraphBucketStats",
     "ResidentBatchScheduler",
     "SpeculativeCommitPlan",
+    "SpeculativeStateCommitPlan",
     "SpeculativeVerifyBufferPlan",
     "SpeculativeVerifyPlan",
     "SpeculativeVerifyWork",

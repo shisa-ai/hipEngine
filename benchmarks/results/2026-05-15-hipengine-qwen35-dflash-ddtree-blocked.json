@@ -29,6 +29,7 @@
       "scheduler_speculative_verify_plan": true,
       "scheduler_speculative_buffer_plan": true,
       "scheduler_speculative_commit_plan": true,
+      "scheduler_speculative_state_commit_plan": true,
       "verify_graph_shape_key": {
         "mode": "verify_tree",
         "active_c": 1,
@@ -230,6 +231,17 @@
           1
         ],
         "mode": "verify_tree"
+      },
+      "scheduler_state_commit_plan": {
+        "request_ids": [
+          1,
+          2
+        ],
+        "request_rows": 2,
+        "mode": "verify_tree",
+        "has_linear_state": true,
+        "has_kv_rows": true,
+        "transaction_id": 1
       }
     },
     "resident_api": {
