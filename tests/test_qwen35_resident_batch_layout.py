@@ -16,6 +16,10 @@ from hipengine.runtime.qwen35_paro_runner import (
 from hipengine.speculative import DraftBatch
 
 
+def _tensor(ptr: int, shape: tuple[int, ...], dtype: str | DType) -> Tensor:
+    return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
+
+
 def test_qwen35_resident_batch_layout_is_batch_shaped_with_slot0_aliases() -> None:
     layout = Qwen35ParoResidentBatchLayout(
         max_batch_size=4,
@@ -115,6 +119,41 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
     assert target.parent_rows == (-1, -1, 0, 2, 1)
     assert target.tree_shape == (0, 1, 0)
     assert target.mode == "verify_tree"
+
+    buffers = session.verify_speculative_batch(
+        target,
+        token_ids=_tensor(0x3000, (5,), "int32"),
+        positions=_tensor(0x3100, (5,), "int32"),
+        parent_rows=_tensor(0x3200, (5,), "int32"),
+        draft_depths=_tensor(0x3300, (5,), "int32"),
+        row_to_request=_tensor(0x3400, (5,), "int32"),
+        active_mask=_tensor(0x3500, (5,), "bool"),
+        target_top1=_tensor(0x3600, (5,), "int32"),
+        accepted_counts=_tensor(0x3700, (2,), "int32"),
+        commit_rows=_tensor(0x3800, (2,), "int32"),
+        commit_tokens=_tensor(0x3900, (2,), "int32"),
+        commit_positions=_tensor(0x3A00, (2,), "int32"),
+    )
+    assert buffers.rows == 5
+    assert buffers.candidate_rows == 3
+    assert buffers.request_count == 2
+    assert str(buffers.device) == "hip:0"
+
+    with pytest.raises(ValueError, match="row tensors"):
+        session.verify_speculative_batch(
+            target,
+            token_ids=_tensor(0x3000, (4,), "int32"),
+            positions=_tensor(0x3100, (5,), "int32"),
+            parent_rows=_tensor(0x3200, (5,), "int32"),
+            draft_depths=_tensor(0x3300, (5,), "int32"),
+            row_to_request=_tensor(0x3400, (5,), "int32"),
+            active_mask=_tensor(0x3500, (5,), "bool"),
+            target_top1=_tensor(0x3600, (5,), "int32"),
+            accepted_counts=_tensor(0x3700, (2,), "int32"),
+            commit_rows=_tensor(0x3800, (2,), "int32"),
+            commit_tokens=_tensor(0x3900, (2,), "int32"),
+            commit_positions=_tensor(0x3A00, (2,), "int32"),
+        )
 
     session.max_batch_size = 4
     with pytest.raises(ValueError, match="max_batch_size"):

@@ -571,7 +571,8 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["root_rows_excluded_from_journal"]
     assert payload["implementation_status"]["resident_api"]["step_batch_serial"]
     assert payload["implementation_status"]["resident_api"]["native_target_verify_batch"]
-    assert not payload["implementation_status"]["resident_api"]["speculative_verify_batch"]
+    assert payload["implementation_status"]["resident_api"]["speculative_verify_batch"]
+    assert not payload["implementation_status"]["resident_api"]["commit_verified_state"]
     assert payload["evidence"]["batch_execution"]["path"] == "scheduler_serial_slot_bridge"
-    assert any("target_verify_batch" in blocker for blocker in payload["blockers"])
+    assert any("verify_speculative_batch" in blocker for blocker in payload["blockers"])
     assert any("throughput_claim_eligible=false" in blocker for blocker in payload["blockers"])

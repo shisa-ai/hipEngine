@@ -62,7 +62,7 @@ from hipengine.loading.materialize import (
 )
 from hipengine.runtime.qwen35_paro import Qwen35ParoDecodeState
 from hipengine.runtime.workspace import RuntimeWorkspace
-from hipengine.speculative import DraftBatch, TargetVerifyBatch
+from hipengine.speculative import DraftBatch, TargetVerifyBatch, TargetVerifyBuffers
 
 
 @dataclass(frozen=True)
@@ -839,6 +839,50 @@ class Qwen35ParoResidentSession:
                 if token_id >= int(vocab_size):
                     raise ValueError(f"target verify token_id {token_id} outside [0, {int(vocab_size)})")
         return target
+
+    def verify_speculative_batch(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        token_ids: Tensor,
+        positions: Tensor,
+        parent_rows: Tensor,
+        draft_depths: Tensor,
+        row_to_request: Tensor,
+        active_mask: Tensor,
+        target_top1: Tensor,
+        accepted_counts: Tensor,
+        commit_rows: Tensor,
+        commit_tokens: Tensor,
+        commit_positions: Tensor,
+    ) -> TargetVerifyBuffers:
+        """Validate resident target-verifier buffers for a speculative batch.
+
+        This is a metadata-only ABI bridge.  It binds a `TargetVerifyBatch` to
+        device Tensor handles that a future native target forward and GPU accept
+        summary would use, but it does not launch kernels or commit state/KV.
+        """
+
+        if getattr(self, "closed", False):
+            raise RuntimeError("session is closed")
+        if batch.rows > self.max_batch_size:
+            raise ValueError("target verify rows exceed resident max_batch_size")
+        for position in batch.positions:
+            self._check_position(position)
+        return TargetVerifyBuffers.for_batch(
+            batch,
+            token_ids=token_ids,
+            positions=positions,
+            parent_rows=parent_rows,
+            draft_depths=draft_depths,
+            row_to_request=row_to_request,
+            active_mask=active_mask,
+            target_top1=target_top1,
+            accepted_counts=accepted_counts,
+            commit_rows=commit_rows,
+            commit_tokens=commit_tokens,
+            commit_positions=commit_positions,
+        )
 
     def batch_execution_metadata(self, *, scheduler_owned: bool = False) -> Qwen35ParoResidentBatchExecution:
         """Describe whether the resident c>N path is native or a serial fallback."""
