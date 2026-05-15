@@ -9056,3 +9056,23 @@ Result: `/tmp/hipengine-prefill-prof/prefill_kernel_trace.csv` contains
 `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel`; computed duration
 `End_Timestamp - Start_Timestamp = 11200 ns`, `Workgroup_Size_X=256`,
 `Grid_Size_Y=3`.
+
+## 2026-05-15 — Full-attention prefill KV append wrapper
+
+Added the runtime wrapper needed to wire batched full-attention prefill through
+the existing row-shaped paged KV writer.
+
+Changes:
+- added `Qwen35ParoDecodeState.append_full_attention_kv_fp16_batch(...)`, calling
+  `qwen35_write_paged_kv_mixed_value_fp16_batch_spans(...)` over prompt rows;
+- added unit coverage to ensure the prefill path uses the batch writer with
+  row-shaped spans.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_decode_state.py -q
+python3 -m py_compile hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py
+```
+
+Result: `31 passed`; py_compile succeeded.

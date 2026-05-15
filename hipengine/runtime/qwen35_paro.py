@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
+    qwen35_write_paged_kv_mixed_value_fp16_batch_spans,
     qwen35_write_paged_kv_mixed_value_fp16_spans,
 )
 from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16, f32_to_fp16, fp16_to_f32
@@ -1729,6 +1730,33 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         return scratch.gated_attn
+
+    def append_full_attention_kv_fp16_batch(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        rows: int,
+        block_size: int = 256,
+        library=None,
+        stream: int = 0,
+    ) -> None:
+        qwen35_write_paged_kv_mixed_value_fp16_batch_spans(
+            scratch.key.ptr,
+            scratch.value.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            spans,
+            rows,
+            block_size,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            stream=stream,
+            library=_library_for(library, "kv"),
+            runtime=self.runtime,
+        )
 
     def decode_full_attention_context_gate_fp16(
         self,

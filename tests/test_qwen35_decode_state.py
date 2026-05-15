@@ -265,6 +265,44 @@ def test_qwen35_decode_state_prefill_full_attention_fp16_calls_native_kernel(mon
     assert args[12] == scratch.gate.shape[-1]
 
 
+def test_qwen35_decode_state_append_full_attention_kv_fp16_batch_calls_batch_writer(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights())
+    scratch = state.reserve_full_attention_scratch(tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
+    key_cache = _tensor(0xE000, (1, 256, 2, 256), "bf16")
+    value_cache = _tensor(0xF000, (1, 256, 2, 256), "bf16")
+    spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (2,), "int32"),
+        live_counts=_tensor(0x2000, (2,), "int64"),
+        max_live_count=2,
+        storage_dtype="bf16",
+        row_positions=_tensor(0x3000, (2,), "int64"),
+        span_role="prefill",
+    )
+    calls = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_write_paged_kv_mixed_value_fp16_batch_spans",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    state.append_full_attention_kv_fp16_batch(
+        scratch,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        spans=spans,
+        rows=2,
+    )
+
+    assert len(calls) == 1
+    args, _kwargs = calls[0]
+    assert args[0] == scratch.key.ptr
+    assert args[1] == scratch.value.ptr
+    assert args[4] is spans
+    assert args[5] == 2
+
+
 def test_qwen35_decode_state_reserves_moe_c1_scratch() -> None:
     runtime = FakeRuntime()
     state = _state(runtime)
