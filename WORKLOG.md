@@ -9799,3 +9799,40 @@ iteration 5's audit-only `multiloop_log` incorrectly supplied the wrapper-call
 count (`1113`) as the loop metric, which set `currentMetric` away from the
 retained 512/128 throughput. Logged a skip with metric `508.320074` to restore
 `currentMetric`/`bestMetric` before continuing optimization. No repo code change.
+
+## 2026-05-15 — Prefill multiloop iter 7: shape-split prefill attention threads
+
+Tuned the deterministic full-attention prefill softmax wrapper. A fixed
+32-thread block improved 512/128 (`~515-517 tok/s`) but regressed 4K to
+`236.212 tok/s`, below the new 95% 4K guard. Revised to a shape split:
+`threads=32` for `max_context_len <= 1024`, otherwise retain the deterministic
+64-thread path for long contexts. This keeps short-row one-wave overhead lower
+without sacrificing 4K value-loop throughput.
+
+Validation commands:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import build_qwen35_paged_attn_decode
+compiler_version=Path('/tmp/hipengine-hipcc-version.txt').read_text()
+build_qwen35_paged_attn_decode(load=False, compiler_version=compiler_version, profile='decode')
+PY
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_paro.py
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+for c in 2 4 8; do python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size $c --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/iter7-packed-c$c.json; done
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter7-threshold-512-run1.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter7-threshold-512-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter7-threshold-512-run3.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: 512/128 samples `514.232`, `516.042`, `516.431`, `516.961` tok/s
+(median `516.236`, +1.56% vs retained `508.320`). Fixture gate passed with
+`native_owned_device_bytes=1625645909`, native prefill `1.00033s`, max KL
+`0.00487`, top-1 `1.0`; compact c=2/4/8 gates and attention smokes passed.
+4K/128 stayed within guard at `316.586 tok/s` (99.54% of `318.037` baseline),
+prefill `12.9381s`, decode `101.419 tok/s`.
