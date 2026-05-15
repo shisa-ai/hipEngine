@@ -259,6 +259,7 @@ def _sample_target_verify_buffers(
     candidate_counts: Sequence[int] | None = None,
     draft_depth: int | None = None,
     tree_shape: Sequence[int] | None = None,
+    next_tokens: Tensor | None = None,
 ) -> TargetVerifyBuffers:
     device = Device("hip", 0)
     return TargetVerifyBuffers.for_batch(
@@ -274,6 +275,7 @@ def _sample_target_verify_buffers(
         commit_rows=Tensor.from_handle(0x3200, (len(target.request_ids),), "int32", device),
         commit_tokens=Tensor.from_handle(0x3300, (len(target.request_ids),), "int32", device),
         commit_positions=Tensor.from_handle(0x3400, (len(target.request_ids),), "int32", device),
+        next_tokens=next_tokens,
         transaction_id=transaction_id,
         candidate_counts=candidate_counts,
         draft_depth=draft_depth,
@@ -316,6 +318,24 @@ def _target_verify_buffers_topology_checked() -> bool:
     return depth_rejected and tree_rejected
 
 
+def _target_verify_buffers_next_tokens_checked() -> bool:
+    target = _sample_chain_target_batch()
+    device = Device("hip", 0)
+    try:
+        _sample_target_verify_buffers(target, next_tokens=Tensor.from_handle(0x3500, (2,), "int32", device))
+    except ValueError as exc:
+        shape_rejected = "summary tensors" in str(exc)
+    else:
+        shape_rejected = False
+    try:
+        _sample_target_verify_buffers(target, next_tokens=Tensor.from_handle(0x3600, (len(target.request_ids),), "fp16", device))
+    except ValueError as exc:
+        dtype_rejected = "integer buffers" in str(exc)
+    else:
+        dtype_rejected = False
+    return shape_rejected and dtype_rejected
+
+
 def _interface_status() -> dict[str, Any]:
     batch = ActiveBatch(2)
     batch.admit(RequestState.from_tokens(0, [1], max_new_tokens=1))
@@ -345,6 +365,7 @@ def _interface_status() -> dict[str, Any]:
         "target_verify_buffers_transaction_id_checked": _target_verify_buffers_transaction_id_checked(),
         "target_verify_buffers_candidate_counts_checked": _target_verify_buffers_candidate_counts_checked(),
         "target_verify_buffers_topology_checked": _target_verify_buffers_topology_checked(),
+        "target_verify_buffers_next_tokens_checked": _target_verify_buffers_next_tokens_checked(),
         "scheduler_speculative_verify_work": hasattr(ResidentBatchScheduler, "next_speculative_verify_work"),
         "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),
@@ -554,16 +575,17 @@ def _kv_transaction_status() -> dict[str, Any]:
         commit_rows=Tensor.from_handle(0x3800, (len(target.request_ids),), "int32", device),
         commit_tokens=Tensor.from_handle(0x3900, (len(target.request_ids),), "int32", device),
         commit_positions=Tensor.from_handle(0x3A00, (len(target.request_ids),), "int32", device),
+        next_tokens=Tensor.from_handle(0x3B00, (len(target.request_ids),), "int32", device),
     )
     state_buffers = TargetStateCommitBuffers.for_plan(
         plan,
-        accepted_counts=Tensor.from_handle(0x3B00, (len(target.request_ids),), "int32", device),
-        commit_rows=Tensor.from_handle(0x3C00, (len(target.request_ids),), "int32", device),
-        commit_positions=Tensor.from_handle(0x3D00, (len(target.request_ids),), "int32", device),
-        linear_state_src=Tensor.from_handle(0x3E00, (target.rows, 40, 128), "bf16", device),
-        linear_state_dst=Tensor.from_handle(0x3F00, (len(target.request_ids), 40, 128), "bf16", device),
-        kv_rows_src=Tensor.from_handle(0x4000, (target.rows, 8, 128), "bf16", device),
-        kv_rows_dst=Tensor.from_handle(0x4100, (sum(summary.accepted_counts), 8, 128), "bf16", device),
+        accepted_counts=Tensor.from_handle(0x3C00, (len(target.request_ids),), "int32", device),
+        commit_rows=Tensor.from_handle(0x3D00, (len(target.request_ids),), "int32", device),
+        commit_positions=Tensor.from_handle(0x3E00, (len(target.request_ids),), "int32", device),
+        linear_state_src=Tensor.from_handle(0x3F00, (target.rows, 40, 128), "bf16", device),
+        linear_state_dst=Tensor.from_handle(0x4000, (len(target.request_ids), 40, 128), "bf16", device),
+        kv_rows_src=Tensor.from_handle(0x4100, (target.rows, 8, 128), "bf16", device),
+        kv_rows_dst=Tensor.from_handle(0x4200, (sum(summary.accepted_counts), 8, 128), "bf16", device),
     )
     selection = target.select_commit_rows(summary.accepted_counts)
     active = ActiveBatch(2)
@@ -612,6 +634,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         commit_rows=buffers.commit_rows,
         commit_tokens=buffers.commit_tokens,
         commit_positions=buffers.commit_positions,
+        next_tokens=buffers.next_tokens,
         transaction_id=scheduler_plan.transaction.transaction_id,
     )
     scheduler_buffer_plan = scheduler.bind_speculative_verify_buffers(scheduler_plan, scheduler_buffers)
@@ -681,6 +704,8 @@ def _kv_transaction_status() -> dict[str, Any]:
             "active_mask_dtype": buffers.active_mask.dtype.value,
             "target_top1_shape": list(buffers.target_top1.shape),
             "accepted_counts_shape": list(buffers.accepted_counts.shape),
+            "next_tokens_shape": [] if buffers.next_tokens is None else list(buffers.next_tokens.shape),
+            "next_tokens_dtype": None if buffers.next_tokens is None else buffers.next_tokens.dtype.value,
         },
         "state_commit_buffers": {
             "transaction_id": state_buffers.transaction_id,
@@ -738,6 +763,7 @@ def _kv_transaction_status() -> dict[str, Any]:
             "buffer_transaction_id": scheduler_buffer_plan.buffers.transaction_id,
             "transaction_id": scheduler_buffer_plan.plan.transaction.transaction_id,
             "transaction_id_matches": scheduler_buffer_plan.buffers.transaction_id == scheduler_buffer_plan.plan.transaction.transaction_id,
+            "next_tokens_shape": [] if scheduler_buffer_plan.buffers.next_tokens is None else list(scheduler_buffer_plan.buffers.next_tokens.shape),
         },
         "scheduler_commit_plan": {
             "transaction_id": scheduler_commit_plan.commit_plan.transaction_id,

@@ -136,12 +136,15 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
         commit_rows=_tensor(0x3800, (2,), "int32"),
         commit_tokens=_tensor(0x3900, (2,), "int32"),
         commit_positions=_tensor(0x3A00, (2,), "int32"),
+        next_tokens=_tensor(0x3B00, (2,), "int32"),
         transaction_id=7,
     )
     assert buffers.transaction_id == 7
     assert buffers.candidate_counts == (2, 1)
     assert buffers.draft_depth == 2
     assert buffers.tree_shape == (0, 1, 0)
+    assert buffers.next_tokens is not None
+    assert buffers.next_tokens.shape == (2,)
     assert buffers.rows == 5
     assert buffers.candidate_rows == 3
     assert buffers.request_count == 2

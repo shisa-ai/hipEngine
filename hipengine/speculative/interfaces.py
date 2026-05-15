@@ -338,6 +338,7 @@ class TargetVerifyBuffers:
     commit_rows: Tensor
     commit_tokens: Tensor
     commit_positions: Tensor
+    next_tokens: Tensor | None = None
     mode: str = "verify_chain"
     transaction_id: int | None = None
     candidate_counts: tuple[int, ...] | None = None
@@ -378,16 +379,17 @@ class TargetVerifyBuffers:
             self.target_top1,
         )
         summary_tensors = (self.accepted_counts, self.commit_rows, self.commit_tokens, self.commit_positions)
+        optional_summary_tensors = () if self.next_tokens is None else (self.next_tokens,)
         for tensor in row_tensors:
             if tensor.shape != (self.rows,):
                 raise ValueError("row tensors must have shape (rows,)")
-        for tensor in summary_tensors:
+        for tensor in (*summary_tensors, *optional_summary_tensors):
             if tensor.shape != (len(self.request_ids),):
                 raise ValueError("summary tensors must have shape (request_count,)")
-        for tensor in (*row_tensors, *summary_tensors):
+        for tensor in (*row_tensors, *summary_tensors, *optional_summary_tensors):
             if tensor.device != self.token_ids.device:
                 raise ValueError("target verify buffers must live on one device")
-        for tensor in (self.token_ids, self.positions, self.parent_rows, self.draft_depths, self.row_to_request, self.target_top1, *summary_tensors):
+        for tensor in (self.token_ids, self.positions, self.parent_rows, self.draft_depths, self.row_to_request, self.target_top1, *summary_tensors, *optional_summary_tensors):
             if tensor.dtype not in {DType.INT32, DType.INT64}:
                 raise ValueError("target verify integer buffers must be int32 or int64")
         if self.active_mask.dtype != DType.BOOL:
@@ -411,6 +413,7 @@ class TargetVerifyBuffers:
         commit_rows: Tensor,
         commit_tokens: Tensor,
         commit_positions: Tensor,
+        next_tokens: Tensor | None = None,
         transaction_id: int | None = None,
         candidate_counts: Sequence[int] | None = None,
         draft_depth: int | None = None,
@@ -431,6 +434,7 @@ class TargetVerifyBuffers:
             commit_rows=commit_rows,
             commit_tokens=commit_tokens,
             commit_positions=commit_positions,
+            next_tokens=next_tokens,
             mode=batch.mode,
             transaction_id=transaction_id,
             candidate_counts=batch.candidate_counts if candidate_counts is None else tuple(int(count) for count in candidate_counts),
