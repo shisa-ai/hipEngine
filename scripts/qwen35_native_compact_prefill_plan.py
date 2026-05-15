@@ -31,7 +31,7 @@ BLOCKERS = (
     "segment-aware linear-attention kernels are landed but not yet orchestrated in prefill_native_packed",
     "varlen/block-diagonal causal full-attention prefill ABI via cu_seqlens is landed but not yet orchestrated in prefill_native_packed",
     "prefill_native_packed(slab) currently rejects instead of launching native packed kernels",
-    "packed final-row sampling and per-request state/KV commit are not wired",
+    "packed native layer orchestration and equality gates are not wired",
 )
 
 
@@ -47,6 +47,7 @@ def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> l
 def _slab_payload(slab) -> dict[str, Any]:
     return {
         "request_ids": list(slab.request_ids),
+        "slot_ids": list(slab.physical_slot_ids),
         "rows": slab.rows,
         "request_count": slab.request_count,
         "block_count": slab.block_count,

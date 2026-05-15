@@ -87,6 +87,8 @@ def test_resident_batch_scheduler_bucketizes_and_builds_compact_prefill_slabs() 
     assert len(slabs) == 2
     first = slabs[0]
     assert first.request_ids == (r0, r2)
+    assert first.slot_ids == (0, 2)
+    assert first.physical_slot_ids == (0, 2)
     assert first.token_ids == (10, 11, 12, 30, 31)
     assert first.positions == (0, 1, 2, 0, 1)
     assert first.append_counts == first.positions
@@ -100,6 +102,7 @@ def test_resident_batch_scheduler_bucketizes_and_builds_compact_prefill_slabs() 
 
     second = slabs[1]
     assert second.request_ids == (r1,)
+    assert second.slot_ids == (1,)
     assert second.token_ids == (20, 21, 22, 23, 24)
     assert second.cu_seqlens_q == (0, 5)
     assert second.block_count == 2
@@ -432,6 +435,33 @@ def test_graph_bucket_cache_clear_resets_entries_and_counters() -> None:
     assert cache.stats.entries == 0
     assert cache.stats.hits == 0
     assert cache.stats.misses == 0
+
+
+def test_compact_prompt_slab_tracks_optional_physical_slots() -> None:
+    slab = CompactPromptSlab.from_token_rows(
+        request_ids=(10, 11),
+        token_rows=((1,), (2, 3)),
+        start_positions=(0, 4),
+        block_count=1,
+        slot_ids=(1, 0),
+    )
+
+    assert slab.slot_ids == (1, 0)
+    assert slab.physical_slot_ids == (1, 0)
+
+    legacy = CompactPromptSlab.from_token_rows(
+        request_ids=(3,), token_rows=((4,),), start_positions=(0,), block_count=1
+    )
+    assert legacy.physical_slot_ids == (3,)
+
+    with pytest.raises(ValueError, match="slot_ids"):
+        CompactPromptSlab.from_token_rows(
+            request_ids=(10, 11),
+            token_rows=((1,), (2,)),
+            start_positions=(0, 0),
+            block_count=1,
+            slot_ids=(0,),
+        )
 
 
 def test_compact_prompt_slab_validates_cu_seqlens_and_row_shapes() -> None:

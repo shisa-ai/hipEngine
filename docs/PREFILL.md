@@ -140,7 +140,7 @@ Missing for the final path:
 | Public API wiring | **Landed for c=1:** `prefill_native(...)` is the default generation/benchmark path; compact c>N uses separate `prefill_native_packed(slab)` blocker path. |
 | Full-attn retained orchestration | **Landed for c=1:** batched Q/K/V + vector RoPE + prompt KV append + native causal prefill attention are wired and fixture-gated. |
 | Grouped/compact MoE | **Landed for c=1:** grouped scatter/gather and compact AWQ WMMA expert kernels are wired into native prefill. |
-| Compact c>N slab | **Metadata + linear/full-attn kernels landed:** `CompactPromptSlab`, `bucketize_by_block_count`, segment-aware linear-attn conv/GDN state kernels, and varlen/block-diagonal full-attn prefill via `cu_seqlens` exist; execution remains blocked on final-row sampling/state commit and packed orchestration. |
+| Compact c>N slab | **Metadata + linear/full-attn/final-row helpers landed:** `CompactPromptSlab`, `bucketize_by_block_count`, segment-aware linear-attn conv/GDN state kernels, varlen/block-diagonal full-attn prefill via `cu_seqlens`, physical slot metadata, and final-row commit helpers exist; execution remains blocked on packed layer orchestration and generated-token equality gates. |
 | Prefill config/tuning | Add typed `PrefillConfig`; no hot-path env lookups. |
 
 ## Final API and config contract
@@ -390,7 +390,9 @@ Final compact requirements:
   call this landed kernel so a query row attends only to its request segment and
   positions not greater than the query position.
 - Native compact prefill is non-speculative and commits canonical KV inline for
-  admitted prompt rows. `KVPolicy.begin_transaction/commit/rollback` hooks remain
+  admitted prompt rows. `CompactPromptSlab.slot_ids` carries the physical slots;
+  `_commit_packed_prefill_final_rows(...)` commits each segment tail hidden row
+  plus position/context metadata after packed layer execution. `KVPolicy.begin_transaction/commit/rollback` hooks remain
   for speculative verify/draft paths, not this ordinary prefill path.
 - Replace `scheduler_serial_slot_bridge` with `native_prefill_compact_cN` only
   after equality gates pass.

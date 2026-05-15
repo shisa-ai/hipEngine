@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-05-15
 
+- [blocked diagnostic] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / compact c=8 prompt8: retained throughput no row -> no row (blocked); physical slot metadata and final-row commit helpers landed, packed layer orchestration/equality gates remain; `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-compact-c8-blocked.json`.
 - [correctness] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / varlen full-attn prefill: kernel gate blocked -> accepted with max abs 0 and mismatch 0; no throughput row because this is a kernel smoke; `benchmarks/results/2026-05-15-hipengine-qwen35-varlen-full-attn-prefill-accepted.json`.
 - [correctness] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / segment linear-attn prefill: kernel gate blocked -> accepted with conv/GDN segment max abs <= 1.86e-09; no throughput row because this is a kernel smoke; `benchmarks/results/2026-05-15-hipengine-qwen35-linear-attn-segment-prefill-accepted.json`.
 - [blocked diagnostic] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / compact c=8 prompt8: retained throughput no row -> no row (blocked) after adding `CompactPromptSlab` metadata and `bucketize_by_block_count`; native packed execution still needs segment-aware linear-attn and varlen full-attn kernels; `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-compact-c8-blocked.json`.

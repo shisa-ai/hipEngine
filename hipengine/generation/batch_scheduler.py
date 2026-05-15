@@ -82,6 +82,7 @@ class CompactPromptSlab:
     token_rows: tuple[tuple[int, ...], ...]
     block_count: int
     block_size: int = 256
+    slot_ids: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         rows = len(self.token_ids)
@@ -99,6 +100,12 @@ class CompactPromptSlab:
         _check_len("context_counts", self.context_counts, rows)
         _check_len("block_tables", self.block_tables, rows)
         _check_len("token_rows", self.token_rows, len(self.request_ids))
+        if self.slot_ids:
+            _check_len("slot_ids", self.slot_ids, len(self.request_ids))
+            if len(set(self.slot_ids)) != len(self.slot_ids):
+                raise ValueError("compact prompt slab slot_ids must be unique")
+            if any(slot < 0 for slot in self.slot_ids):
+                raise ValueError("compact prompt slab slot_ids must be non-negative")
         _check_len("cu_seqlens_q", self.cu_seqlens_q, len(self.request_ids) + 1)
         _check_len("cu_seqlens_k", self.cu_seqlens_k, len(self.request_ids) + 1)
         if self.cu_seqlens_q[0] != 0 or self.cu_seqlens_k[0] != 0:
@@ -130,12 +137,16 @@ class CompactPromptSlab:
         block_count: int,
         block_size: int = 256,
         block_tables_by_request: Sequence[Sequence[int]] | None = None,
+        slot_ids: Sequence[int] | None = None,
     ) -> "CompactPromptSlab":
         request_tuple = tuple(int(request_id) for request_id in request_ids)
         row_tuple = tuple(tuple(int(token) for token in row) for row in token_rows)
         starts = tuple(int(position) for position in start_positions)
         if len(request_tuple) != len(row_tuple) or len(request_tuple) != len(starts):
             raise ValueError("request_ids, token_rows, and start_positions must align")
+        slot_tuple = () if slot_ids is None else tuple(int(slot) for slot in slot_ids)
+        if slot_tuple and len(slot_tuple) != len(request_tuple):
+            raise ValueError("slot_ids must align with request_ids")
         if block_tables_by_request is None:
             request_tables = tuple(tuple(range(int(block_count))) for _ in request_tuple)
         else:
@@ -169,6 +180,7 @@ class CompactPromptSlab:
             token_rows=row_tuple,
             block_count=int(block_count),
             block_size=int(block_size),
+            slot_ids=slot_tuple,
         )
 
     @property
@@ -178,6 +190,12 @@ class CompactPromptSlab:
     @property
     def request_count(self) -> int:
         return len(self.request_ids)
+
+    @property
+    def physical_slot_ids(self) -> tuple[int, ...]:
+        """Physical slot ids for runtime commit, defaulting to request ids for old fixtures."""
+
+        return self.slot_ids or self.request_ids
 
     def to_work_item(self) -> WorkItem:
         return WorkItem(
@@ -397,6 +415,7 @@ class ResidentBatchScheduler:
                     start_positions=start_positions,
                     block_count=bucket.block_count,
                     block_size=block_size,
+                    slot_ids=tuple(self.active_batch.slot_for(request_id) for request_id in bucket.request_ids),
                 )
             )
         return tuple(slabs)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from types import MethodType, SimpleNamespace
 
+import numpy as np
 import pytest
 
 from hipengine.core.device import Device
@@ -12,6 +13,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.generation import CompactPromptSlab
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro import Qwen35ParoGroupedMoeScratch
+from hipengine.runtime import qwen35_paro_runner as runner_module
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoResidentBatchLayout,
     Qwen35ParoResidentSession,
@@ -185,14 +187,55 @@ def test_qwen35_resident_prefill_native_packed_rejects_until_remaining_packed_ke
         block_count=1,
     )
 
-    with pytest.raises(NotImplementedError, match="packed final-row"):
+    with pytest.raises(NotImplementedError, match="packed native layer orchestration"):
         session.prefill_native_packed(slab)
 
     assert session.last_prefill_execution["path"] == "native_prefill_compact_cN_blocked"
     assert session.last_prefill_execution["request_count"] == 2
     assert any("linear-attention kernels are landed" in blocker for blocker in session.last_prefill_execution["blockers"])
     assert any("cu_seqlens" in blocker for blocker in session.last_prefill_execution["blockers"])
-    assert any("final-row" in blocker for blocker in session.last_prefill_execution["blockers"])
+    assert any("packed native layer orchestration" in blocker for blocker in session.last_prefill_execution["blockers"])
+
+
+def test_qwen35_resident_commit_packed_prefill_final_rows_updates_slots(monkeypatch) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.max_batch_size = 3
+    session.max_sequence_length = 8
+    session.device = Device("hip", 0)
+    session.config = SimpleNamespace(hidden_size=4)
+    session.hidden_nbytes = 4 * DType.FP16.itemsize
+    session.batch_hidden = _tensor(0x1000, (3, 4), DType.FP16)
+    session.position_arr = np.zeros((3,), dtype=np.int64)
+    session.context_arr = np.ones((3,), dtype=np.int64)
+    session.position_buf = SimpleNamespace(ptr=0x2000, nbytes=session.position_arr.nbytes)
+    session.context_buf = SimpleNamespace(ptr=0x3000, nbytes=session.context_arr.nbytes)
+    copies: list[tuple[int, int, int, int]] = []
+
+    class FakeRuntime:
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    session.runtime = FakeRuntime()
+    monkeypatch.setattr(runner_module, "copy_host_to_device", lambda *args, **kwargs: copies.append((0, 0, 0, -1)))
+    sampled: list[int] = []
+    session._sample_from_hidden = lambda hidden: sampled.append(hidden.ptr) or SimpleNamespace(token_id=hidden.ptr)
+    slab = CompactPromptSlab.from_token_rows(
+        request_ids=(10, 11),
+        token_rows=((1, 2), (3, 4, 5)),
+        start_positions=(0, 4),
+        block_count=1,
+        slot_ids=(2, 0),
+    )
+    hidden = _tensor(0x8000, (5, 4), DType.FP16)
+
+    result = session._commit_packed_prefill_final_rows(hidden, slab, sample=True)
+
+    assert [item.token_id for item in result] == [0x1000 + 2 * session.hidden_nbytes, 0x1000]
+    assert sampled == [0x1000 + 2 * session.hidden_nbytes, 0x1000]
+    assert (0x1000 + 2 * session.hidden_nbytes, 0x8000 + 1 * session.hidden_nbytes, session.hidden_nbytes, 0) in copies
+    assert (0x1000, 0x8000 + 4 * session.hidden_nbytes, session.hidden_nbytes, 0) in copies
+    assert session.position_arr.tolist() == [6, 0, 1]
+    assert session.context_arr.tolist() == [7, 1, 2]
 
 
 def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> None:

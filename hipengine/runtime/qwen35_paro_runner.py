@@ -1039,10 +1039,11 @@ class Qwen35ParoResidentSession:
         """Run a compact c>N native prompt slab, once packed stages exist.
 
         The scheduler can already construct validated compact slabs. Executing
-        them natively still requires final-row sampling/state-commit wiring.
-        Segment-aware linear-attention and varlen full-attention kernels are
-        landed, but this method remains fail-closed so callers cannot
-        accidentally retain a per-request prompt loop as the c>N native path.
+        them natively still requires packed layer orchestration. Segment-aware
+        linear-attention kernels, varlen full-attention kernels, and final-row
+        commit helpers are landed, but this method remains fail-closed so
+        callers cannot accidentally retain a per-request prompt loop as the c>N
+        native path.
         """
 
         from hipengine.generation.batch_scheduler import CompactPromptSlab
@@ -1066,7 +1067,7 @@ class Qwen35ParoResidentSession:
             "blockers": [
                 "segment-aware linear-attention kernels are landed but not yet orchestrated in prefill_native_packed",
                 "varlen/block-diagonal full-attention prefill via cu_seqlens is landed but not yet orchestrated in prefill_native_packed",
-                "packed final-row sampling and per-request state commit are not wired",
+                "packed native layer orchestration and equality gates are not wired",
             ],
         }
         raise NotImplementedError(
@@ -1437,6 +1438,65 @@ class Qwen35ParoResidentSession:
             span_role="prefill",
         )
         return append_spans, prefill_spans
+
+    def _packed_prefill_final_rows(self, slab) -> tuple[int, ...]:
+        if len(slab.cu_seqlens_q) != slab.request_count + 1:
+            raise ValueError("compact slab cu_seqlens_q must align with request_count")
+        rows = tuple(int(slab.cu_seqlens_q[index + 1]) - 1 for index in range(slab.request_count))
+        if any(row < 0 or row >= slab.rows for row in rows):
+            raise ValueError("compact slab final rows are outside slab rows")
+        return rows
+
+    def _commit_packed_prefill_final_rows(
+        self,
+        hidden: Tensor,
+        slab,
+        *,
+        sample: bool = True,
+        stream: int = 0,
+    ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
+        """Commit each compact request's final prompt row to its physical slot.
+
+        Linear recurrent state and KV rows are updated by the packed layer
+        kernels themselves. This helper commits the remaining per-request decode
+        metadata: final hidden row, position, and context count, then samples
+        from each final row if requested.
+        """
+
+        if len(hidden.shape) != 2 or int(hidden.shape[1]) != self.config.hidden_size:
+            raise ValueError("packed prefill hidden must have shape [rows, hidden_size]")
+        if int(hidden.shape[0]) < slab.rows:
+            raise ValueError("packed prefill hidden rows must cover slab rows")
+        final_rows = self._packed_prefill_final_rows(slab)
+        slot_ids = tuple(int(slot) for slot in slab.physical_slot_ids)
+        if len(slot_ids) != slab.request_count:
+            raise ValueError("compact slab slot ids must align with request_count")
+        results: list[Qwen35ParoAutoregressiveStepResult | None] = []
+        for final_row, slot in zip(final_rows, slot_ids, strict=True):
+            self._check_slot(slot)
+            position = int(slab.positions[final_row])
+            self._check_position(position)
+            context = int(slab.context_counts[final_row])
+            if context <= 0:
+                raise ValueError("compact slab final context count must be positive")
+            src_ptr = hidden.ptr + final_row * self.hidden_nbytes
+            dst_ptr = self.batch_hidden.ptr + slot * self.hidden_nbytes
+            self.runtime.memcpy_async(dst_ptr, src_ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+            self.position_arr[slot] = position
+            self.context_arr[slot] = context
+        copy_host_to_device(self.position_buf, host_array_ptr(self.position_arr), self.position_arr.nbytes, runtime=self.runtime)
+        copy_host_to_device(self.context_buf, host_array_ptr(self.context_arr), self.context_arr.nbytes, runtime=self.runtime)
+        if not sample:
+            return tuple(None for _ in slot_ids)
+        for slot in slot_ids:
+            final_hidden = Tensor.from_handle(
+                self.batch_hidden.ptr + slot * self.hidden_nbytes,
+                (1, self.config.hidden_size),
+                DType.FP16,
+                self.device,
+            )
+            results.append(self._sample_from_hidden(final_hidden))
+        return tuple(results)
 
     def _ensure_grouped_moe_prefill_scratch(self, layer_id: int, *, tokens: int) -> Qwen35ParoGroupedMoeScratch:
         state = self.states[layer_id]

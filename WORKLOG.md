@@ -9485,3 +9485,35 @@ succeeded; lineage check still reports parent drift at `nano-vllm-amd@b95eaa5`
 still passed. Profiler CSV contains prompt KV writer (`6880 ns`) and
 `qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel` (`21520 ns`) on
 W7900.
+
+## 2026-05-15 — Compact prefill physical slots and final-row commit helper
+
+Started task #18. This is a partial logical unit only: final-row sampling/state
+metadata helpers landed, but `prefill_native_packed(slab)` still rejects because
+packed layer orchestration and generated-token equality gates are not wired.
+
+Changes:
+- added optional `CompactPromptSlab.slot_ids` and `physical_slot_ids`; the
+  scheduler now records physical slots alongside stable request ids when
+  emitting compact slabs;
+- added `_packed_prefill_final_rows(...)` and
+  `_commit_packed_prefill_final_rows(...)` on `Qwen35ParoResidentSession` to
+  copy each request segment's tail hidden row into its physical batch slot,
+  update position/context metadata, and sample each final row without a
+  per-request prompt loop;
+- refreshed compact c=8 blocked artifact/rollup/docs to show linear/full-attn
+  kernels plus final-row commit helpers are landed, with packed orchestration
+  still blocked.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/generation/batch_scheduler.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_native_compact_prefill_plan.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py
+python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py -q
+python3 scripts/qwen35_native_compact_prefill_plan.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --batch-size 8 --prompt-length 8 --chunk-size 8 --block-size 256 --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-compact-c8-blocked.json
+```
+
+Result: targeted scheduler/resident tests passed (`35 passed`). Compact c=8
+planning artifact now includes `slot_ids` and reports the remaining blocker as
+packed native layer orchestration/equality gates, not missing segment/full-attn
+kernels or final-row commit helpers.
