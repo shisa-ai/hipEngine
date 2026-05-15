@@ -10239,3 +10239,37 @@ passed (`max_kl=0.01743`, top-1 `1.0`, `native_owned_device_bytes=1625645909`).
 4K was runnable at `332.419 tok/s`, but 512/128 samples `563.779`, `558.622`,
 `556.209`, `559.374` tok/s (median `558.998`) regressed below retained
 `565.213`. Decision: revert; the 256-thread head rotary path stays retained.
+
+## 2026-05-15 — Prefill multiloop iter 23: AWQ prefill-profile library rejected
+
+After the iter-22 plateau pivot, re-reviewed the retained docs/ROOFLINE.md and
+parent docs/OPTIMAL.md notes instead of doing another local thread sweep. The
+qualitatively different hypothesis was build-profile mismatch: docs/KERNELS.md
+says prefill-phase kernels should use the `prefill` profile (`-mllvm
+-amdgpu-unroll-threshold-local=600`, no `-mcumode`), while the resident runtime
+loaded the hot AWQ projection library with the decode profile for both prompt
+prefill and decode. Tried adding a separate prefill-profile AWQ `.so` and
+routing native prefill layer execution through it while leaving decode on the
+existing decode-profile library.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv
+build_paro_awq_gemv(profile='prefill', load=False, require_cached=False)
+PY
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter23-512-run{1,2,3}.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: targeted tests passed (`56 passed`) and fixture passed (`max_kl=0.01743`,
+top-1 `1.0`, `native_owned_device_bytes=1625645909`). 4K was runnable and above
+the retained guard at `333.398 tok/s`, but 512/128 samples `562.284`, `560.307`,
+`557.130`, `560.647` tok/s (median `560.477`) regressed below retained
+`565.213`. Decision: revert; the AWQ decode-profile build remains faster for
+this resident prefill path despite the nominal phase-profile mismatch.
