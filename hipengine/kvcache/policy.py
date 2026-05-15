@@ -181,9 +181,13 @@ class FixedPagedKVPolicy:
         for rid in request_ids:
             if rid not in self._reservations:
                 raise KeyError(rid)
+        candidate_rows = getattr(draft, "candidate_rows", None)
         row_to_request = getattr(draft, "row_to_request", None)
-        draft_rows = len(row_to_request) if row_to_request is not None else len(request_ids)
-        role = str(getattr(draft, "kind", "verify_chain"))
+        if candidate_rows is not None:
+            draft_rows = len(candidate_rows)
+        else:
+            draft_rows = len(row_to_request) if row_to_request is not None else len(request_ids)
+        role = str(getattr(draft, "kind", getattr(draft, "mode", "verify_chain")))
         if role.startswith("WorkKind."):
             role = role.rsplit(".", 1)[-1].lower()
         if role not in {"verify_chain", "verify_tree"}:

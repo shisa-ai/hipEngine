@@ -154,6 +154,12 @@ def test_speculative_draft_batch_drives_kv_transaction_commit_and_rollback() -> 
     assert committed.committed
     assert committed.accepted_counts == (2, 1)
 
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
+    txn_target = policy.begin_transaction([SimpleNamespace(request_id=1), SimpleNamespace(request_id=2)], target)
+    assert txn_target.request_ids == (1, 2)
+    assert txn_target.draft_rows == 3
+    assert txn_target.role == "verify_tree"
+
     txn2 = policy.begin_transaction([1], DraftBatch(
         request_ids=(1,),
         candidate_tokens=(12,),
@@ -198,6 +204,9 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert not payload["performance_claim"]
     assert not payload["implementation_status"]["native_target_verify_ready"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_batch"] == "TargetVerifyBatch"
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["target_verify_rows"] == 5
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["transaction_draft_rows"] == 3
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["root_rows_excluded_from_journal"]
     assert payload["implementation_status"]["resident_api"]["step_batch_serial"]
     assert not payload["implementation_status"]["resident_api"]["speculative_verify_batch"]
     assert payload["evidence"]["batch_execution"]["path"] == "scheduler_serial_slot_bridge"

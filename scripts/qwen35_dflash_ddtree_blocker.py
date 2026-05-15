@@ -20,6 +20,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.core.device import Device
+from hipengine.core.tensor import Tensor
 from hipengine.dispatch import ActiveBatch, RequestState, WorkKind
 from hipengine.kvcache import FixedPagedKVPolicy, KVTransaction
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
@@ -73,6 +75,36 @@ def _resident_api_status() -> dict[str, bool]:
     }
 
 
+def _kv_transaction_status() -> dict[str, Any]:
+    device = Device("hip", 0)
+    policy = FixedPagedKVPolicy()
+    for request_id, ptr in ((1, 0x1000), (2, 0x2000)):
+        policy.register(
+            request_id,
+            block_table=Tensor.from_handle(ptr, (4,), "int32", device),
+            live_counts=Tensor.from_handle(ptr + 0x100, (1,), "int64", device),
+            max_live_count=4,
+        )
+    draft = DraftBatch(
+        request_ids=(1, 2),
+        candidate_tokens=(10, 11, 20),
+        parent_positions=(5, 6, 3),
+        draft_depths=(1, 2, 1),
+        row_to_request=(1, 1, 2),
+        mode="verify_tree",
+        tree_parents=(-1, 0, -1),
+    )
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
+    txn = policy.begin_transaction((1, 2), target)
+    return {
+        "target_verify_rows": target.rows,
+        "candidate_rows": target.candidate_count,
+        "transaction_draft_rows": txn.draft_rows,
+        "role": txn.role,
+        "root_rows_excluded_from_journal": txn.draft_rows == target.candidate_count,
+    }
+
+
 def build_payload(*, batch_artifact: Path, prefill_artifact: Path, argv: Sequence[str] | None = None) -> dict[str, Any]:
     batch = _load_json(batch_artifact)
     prefill = _load_json(prefill_artifact)
@@ -106,6 +138,7 @@ def build_payload(*, batch_artifact: Path, prefill_artifact: Path, argv: Sequenc
         "specdec_enabled": False,
         "implementation_status": {
             "interfaces_present": _interface_status(),
+            "kv_transaction_target_verify": _kv_transaction_status(),
             "resident_api": resident_api,
             "native_target_verify_ready": bool(
                 resident_api["native_target_verify_batch"]

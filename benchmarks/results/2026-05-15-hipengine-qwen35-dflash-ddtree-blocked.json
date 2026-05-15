@@ -27,6 +27,13 @@
         ]
       }
     },
+    "kv_transaction_target_verify": {
+      "target_verify_rows": 5,
+      "candidate_rows": 3,
+      "transaction_draft_rows": 3,
+      "role": "verify_tree",
+      "root_rows_excluded_from_journal": true
+    },
     "resident_api": {
       "step_batch_serial": true,
       "batch_execution_metadata": true,

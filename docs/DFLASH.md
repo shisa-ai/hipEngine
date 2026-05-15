@@ -47,6 +47,9 @@ It records:
   `commit_verified_state` API;
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
+- host KV transaction bookkeeping now accounts for `TargetVerifyBatch`
+  candidate rows only (committed root rows are excluded from the speculative
+  journal), but no device-side state/KV commit is wired yet;
 - no speculative throughput claim is allowed until Task #15 lands a native
   compact/c-aware target verifier with selectable per-row state and GPU accept
   summaries.

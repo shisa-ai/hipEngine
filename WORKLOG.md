@@ -6329,3 +6329,55 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count remains `1` (#15). The legacy loop verify selector is still stale and exits with the old TaskList-not-found selector error.
+
+---
+
+## 2026-05-15 — TargetVerifyBatch KV transaction row accounting
+
+### Scope
+
+- Narrowed Task #15's speculative/native verifier blocker by connecting `TargetVerifyBatch` to KV transaction bookkeeping.
+- Updated `FixedPagedKVPolicy.begin_transaction(...)`:
+  - when passed a `TargetVerifyBatch`, transaction `draft_rows` now counts `candidate_rows` only;
+  - committed root rows are excluded from the speculative KV journal;
+  - role falls back to `mode` for target-verify batches.
+- Added tests that a root+candidate target verify batch with 5 total rows and 3 candidates creates a KV transaction with `draft_rows=3`, `role="verify_tree"`.
+- Updated `scripts/qwen35_dflash_ddtree_blocker.py`, its artifact, `docs/DFLASH.md`, and Task #15 with this narrower status.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/kvcache hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py tests/test_dispatch_batch.py -q
+```
+
+Result: `16 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.kv_transaction_target_verify.target_verify_rows=5`
+- `implementation_status.kv_transaction_target_verify.candidate_rows=3`
+- `implementation_status.kv_transaction_target_verify.transaction_draft_rows=3`
+- `implementation_status.kv_transaction_target_verify.root_rows_excluded_from_journal=true`
+- `implementation_status.kv_transaction_target_verify.role="verify_tree"`
+- still `status=blocked`, `performance_claim=false`, and `native_target_verify_ready=false`.
+
+Interpretation: host-side transaction metadata now matches the native verifier ABI: roots are committed context, candidates are speculative journal rows. Device-side selectable state/KV commit remains unimplemented and is still part of Task #15.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows the transaction/commit blocker but does not complete native compact/c-aware execution.
