@@ -10134,3 +10134,31 @@ Results: fixture passed (`max_kl=0.01743`, top-1 `1.0`,
 but 512/128 samples `566.285`, `566.742`, `565.331`, `564.287`, `558.782`,
 `557.391`, `558.201` tok/s (median `564.287`) were below retained `565.213`.
 Decision: revert to 256-thread FP16 prefill conv.
+
+## 2026-05-15 — Prefill multiloop iter 19: 128-thread FP16 conv rejected
+
+Tried changing the retained FP16-input linear-attention prefill conv wrapper from
+256 to 128 threads/block after the 512-thread variant regressed. Correctness
+held, but 512/128 throughput regressed below the retained 256-thread baseline.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/linear_attn/conv.py hipengine/runtime/qwen35_paro.py scripts/smoke.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.linear_attn.conv import build_qwen35_linear_attn_conv
+build_qwen35_linear_attn_conv(load=False, require_cached=False)
+PY
+python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter19-512-run{1,2,3}.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: fixture passed (`max_kl=0.01743`, top-1 `1.0`,
+`native_owned_device_bytes=1625645909`) and 4K was runnable at `333.775 tok/s`,
+but 512/128 samples `563.882`, `560.443`, `562.072`, `560.937` tok/s (median
+`561.504`) were below retained `565.213`. The linear-attn prefill smoke still
+passed for the FP16 conv variant. Decision: revert to 256-thread FP16 prefill
+conv.
