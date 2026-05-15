@@ -7717,3 +7717,50 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows resident speculative target-verifier ABI validation only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Resident verified-state commit row coverage
+
+### Scope
+
+- Tightened `Qwen35ParoResidentSession.commit_verified_state(...)`.
+- Linear-state and KV source buffers must cover the selected commit rows in the `TargetCommitPlan`.
+- KV destination buffers must cover `sum(accepted_counts)` accepted token rows.
+- Added negative resident-layout tests for too-short linear-state source rows and too-short KV destination rows.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/runtime scripts/qwen35_dflash_ddtree_blocker.py tests/test_qwen35_resident_batch_layout.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `30 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.resident_api.commit_verified_state_row_coverage_checked=true`
+- `implementation_status.resident_api.target_verify_buffers_resident_device_checked=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: resident speculative commit metadata now rejects state/KV commit buffers that cannot cover selected commit rows or accepted KV destination rows. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows resident speculative state/KV commit ABI validation only; no performance claim or kernel change was made.

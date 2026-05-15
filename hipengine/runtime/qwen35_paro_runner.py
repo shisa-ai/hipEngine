@@ -938,6 +938,14 @@ class Qwen35ParoResidentSession:
         device = getattr(self, "device", None)
         if device is not None and buffers.device != device:
             raise ValueError("state commit buffers must live on the resident device")
+        required_src_rows = max(plan.commit_rows) + 1
+        accepted_rows = sum(plan.accepted_counts)
+        if buffers.linear_state_src is not None and buffers.linear_state_src.shape[0] < required_src_rows:
+            raise ValueError("linear state source rows must cover selected commit rows")
+        if buffers.kv_rows_src is not None and buffers.kv_rows_src.shape[0] < required_src_rows:
+            raise ValueError("KV source rows must cover selected commit rows")
+        if buffers.kv_rows_dst is not None and buffers.kv_rows_dst.shape[0] < accepted_rows:
+            raise ValueError("KV destination rows must cover accepted token rows")
         return buffers
 
     def speculative_execution_metadata(self) -> Qwen35ParoResidentSpeculativeExecution:

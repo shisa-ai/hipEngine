@@ -128,6 +128,35 @@ def _resident_target_verify_device_checked() -> bool:
     return False
 
 
+def _resident_state_commit_row_coverage_checked() -> bool:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.device = Device("hip", 0)
+    plan = TargetCommitPlan(
+        transaction_id=0,
+        request_ids=(1, 2),
+        accepted_counts=(2, 1),
+        commit_rows=(3, 4),
+        commit_tokens=(11, 20),
+        commit_positions=(7, 4),
+        candidate_counts=(2, 1),
+        mode="verify_tree",
+    )
+    buffers = TargetStateCommitBuffers.for_plan(
+        plan,
+        accepted_counts=Tensor.from_handle(0x2000, (2,), "int32", session.device),
+        commit_rows=Tensor.from_handle(0x2100, (2,), "int32", session.device),
+        commit_positions=Tensor.from_handle(0x2200, (2,), "int32", session.device),
+        kv_rows_src=Tensor.from_handle(0x2300, (5, 8, 128), "bf16", session.device),
+        kv_rows_dst=Tensor.from_handle(0x2400, (2, 8, 128), "bf16", session.device),
+    )
+    try:
+        session.commit_verified_state(plan, buffers)
+    except ValueError as exc:
+        return "accepted token rows" in str(exc)
+    return False
+
+
 def _resident_api_status() -> dict[str, Any]:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     speculative = session.speculative_execution_metadata().to_json_dict()
@@ -135,6 +164,7 @@ def _resident_api_status() -> dict[str, Any]:
         "step_batch_serial": hasattr(Qwen35ParoResidentSession, "step_batch_serial"),
         "batch_execution_metadata": hasattr(Qwen35ParoResidentSession, "batch_execution_metadata"),
         "target_verify_buffers_resident_device_checked": _resident_target_verify_device_checked(),
+        "commit_verified_state_row_coverage_checked": _resident_state_commit_row_coverage_checked(),
         **speculative,
     }
 

@@ -179,6 +179,26 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
         kv_rows_dst=_tensor(0x4100, (3, 8, 128), "bf16"),
     )
     assert session.commit_verified_state(plan, state_buffers) is state_buffers
+    short_linear_src = TargetStateCommitBuffers.for_plan(
+        plan,
+        accepted_counts=_tensor(0x4200, (2,), "int32"),
+        commit_rows=_tensor(0x4300, (2,), "int32"),
+        commit_positions=_tensor(0x4400, (2,), "int32"),
+        linear_state_src=_tensor(0x4500, (4, 40, 128), "bf16"),
+        linear_state_dst=_tensor(0x4600, (2, 40, 128), "bf16"),
+    )
+    with pytest.raises(ValueError, match="selected commit rows"):
+        session.commit_verified_state(plan, short_linear_src)
+    short_kv_dst = TargetStateCommitBuffers.for_plan(
+        plan,
+        accepted_counts=_tensor(0x4700, (2,), "int32"),
+        commit_rows=_tensor(0x4800, (2,), "int32"),
+        commit_positions=_tensor(0x4900, (2,), "int32"),
+        kv_rows_src=_tensor(0x4A00, (5, 8, 128), "bf16"),
+        kv_rows_dst=_tensor(0x4B00, (2, 8, 128), "bf16"),
+    )
+    with pytest.raises(ValueError, match="accepted token rows"):
+        session.commit_verified_state(plan, short_kv_dst)
     with pytest.raises(ValueError, match="request_ids"):
         session.commit_verified_state(
             TargetCommitPlan(
