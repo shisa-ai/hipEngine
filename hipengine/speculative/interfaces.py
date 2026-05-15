@@ -138,6 +138,8 @@ class TargetVerifyBatch:
                     raise ValueError("root rows must have parent row -1")
             elif parent < 0 or parent >= row:
                 raise ValueError("candidate parent rows must reference an earlier row")
+            elif self.row_to_request[parent] != self.row_to_request[row]:
+                raise ValueError("candidate parent rows must belong to the same request")
         if self.mode not in {"verify_chain", "verify_tree"}:
             raise ValueError("mode must be verify_chain or verify_tree")
 
@@ -194,6 +196,42 @@ class TargetVerifyBatch:
         return tuple(
             sum(1 for row in self.candidate_rows if self.row_to_request[row] == request_id)
             for request_id in self.request_ids
+        )
+
+    @property
+    def draft_depth(self) -> int:
+        return max((self.draft_depths[row] for row in self.candidate_rows), default=0)
+
+    @property
+    def tree_shape(self) -> tuple[int, ...]:
+        candidate_index_by_row = {row: index for index, row in enumerate(self.candidate_rows)}
+        root_row_by_request = dict(zip(self.request_ids, self.root_rows, strict=True))
+        shape: list[int] = []
+        for row in self.candidate_rows:
+            parent = self.parent_rows[row]
+            if parent == root_row_by_request[self.row_to_request[row]]:
+                shape.append(0)
+            else:
+                shape.append(candidate_index_by_row[parent] + 1)
+        return tuple(shape)
+
+    def shape_key(
+        self,
+        active_batch,
+        *,
+        context_bucket_size: int,
+        top_k: int = 0,
+        experts_per_token: int = 0,
+        replay_steps: int = 1,
+    ):
+        return active_batch.shape_key(
+            mode=self.mode,
+            context_bucket_size=context_bucket_size,
+            top_k=top_k,
+            experts_per_token=experts_per_token,
+            replay_steps=replay_steps,
+            draft_depth=self.draft_depth,
+            tree_shape=self.tree_shape,
         )
 
     def select_commit_rows(

@@ -7,6 +7,7 @@ import pytest
 
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
+from hipengine.dispatch import ActiveBatch, RequestState
 from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetVerifyBatch
 from scripts.qwen35_dflash_ddtree_blocker import build_payload
@@ -68,6 +69,9 @@ def test_target_verify_batch_materializes_root_and_candidate_rows() -> None:
     assert target.parent_rows == (-1, -1, 0, 2, 1)
     assert target.draft_depths == (0, 0, 1, 2, 1)
     assert target.active_mask == (True, True, True, True, False)
+    assert target.candidate_counts == (2, 1)
+    assert target.draft_depth == 2
+    assert target.tree_shape == (0, 1, 0)
     assert target.mode == "verify_tree"
 
     chain = TargetVerifyBatch.from_draft(
@@ -83,6 +87,35 @@ def test_target_verify_batch_materializes_root_and_candidate_rows() -> None:
     )
     assert chain.parent_rows == (-1, 0, 1, 2)
     assert chain.positions == (8, 9, 10, 11)
+    assert chain.tree_shape == (0, 1, 2)
+
+
+def test_target_verify_batch_builds_graph_shape_key_from_active_batch() -> None:
+    draft = DraftBatch(
+        request_ids=(1, 2),
+        candidate_tokens=(10, 11, 20),
+        parent_positions=(5, 6, 3),
+        draft_depths=(1, 2, 1),
+        row_to_request=(1, 1, 2),
+        mode="verify_tree",
+        tree_parents=(-1, 0, -1),
+    )
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
+    active = ActiveBatch(2)
+    active.admit(RequestState(request_id=1, prompt_tokens=(1, 2, 3, 4, 5), max_new_tokens=4, next_prompt_index=5))
+    active.admit(RequestState(request_id=2, prompt_tokens=(6, 7, 8), max_new_tokens=4, next_prompt_index=3))
+
+    key = target.shape_key(active, context_bucket_size=4, top_k=8, experts_per_token=8, replay_steps=2)
+
+    assert key.mode.value == "verify_tree"
+    assert key.active_c == 2
+    assert key.context_bucket == 8
+    assert key.active_mask == (True, True)
+    assert key.top_k == 8
+    assert key.experts_per_token == 8
+    assert key.replay_steps == 2
+    assert key.draft_depth == 2
+    assert key.tree_shape == (0, 1, 0)
 
 
 def test_target_verify_batch_selects_commit_rows_from_accept_counts() -> None:
@@ -174,6 +207,18 @@ def test_target_verify_batch_validates_native_row_layout() -> None:
             draft_depths=(0, 1),
             active_mask=(True, True),
         )
+    with pytest.raises(ValueError, match="same request"):
+        TargetVerifyBatch(
+            request_ids=(1, 2),
+            tokens=(100, 200, 10),
+            positions=(5, 3, 6),
+            row_to_request=(1, 2, 1),
+            parent_rows=(-1, -1, 1),
+            root_rows=(0, 1),
+            candidate_rows=(2,),
+            draft_depths=(0, 0, 1),
+            active_mask=(True, True, True),
+        )
 
 
 def test_speculative_draft_batch_drives_kv_transaction_commit_and_rollback() -> None:
@@ -262,6 +307,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["target_verify_rows"] == 5
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["shape_key"]["tree_shape"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["transaction_draft_rows"] == 3
     assert payload["implementation_status"]["kv_transaction_target_verify"]["root_rows_excluded_from_journal"]
     assert payload["implementation_status"]["resident_api"]["step_batch_serial"]

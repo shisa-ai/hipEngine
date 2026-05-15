@@ -97,6 +97,10 @@ def _kv_transaction_status() -> dict[str, Any]:
     target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
     txn = policy.begin_transaction((1, 2), target)
     selection = target.select_commit_rows((2, 1))
+    active = ActiveBatch(2)
+    active.admit(RequestState(request_id=1, prompt_tokens=(1, 2, 3, 4, 5), max_new_tokens=4, next_prompt_index=5))
+    active.admit(RequestState(request_id=2, prompt_tokens=(6, 7, 8), max_new_tokens=4, next_prompt_index=3))
+    key = target.shape_key(active, context_bucket_size=4, top_k=8, experts_per_token=8, replay_steps=1)
     return {
         "target_verify_rows": target.rows,
         "candidate_rows": target.candidate_count,
@@ -106,6 +110,17 @@ def _kv_transaction_status() -> dict[str, Any]:
         "root_rows_excluded_from_journal": txn.draft_rows == target.candidate_count,
         "commit_selection_rows": list(selection.selected_rows),
         "commit_selection_positions": list(selection.selected_positions),
+        "shape_key": {
+            "mode": key.mode.value,
+            "active_c": key.active_c,
+            "context_bucket": key.context_bucket,
+            "active_mask": list(key.active_mask),
+            "top_k": key.top_k,
+            "experts_per_token": key.experts_per_token,
+            "replay_steps": key.replay_steps,
+            "draft_depth": key.draft_depth,
+            "tree_shape": list(key.tree_shape),
+        },
     }
 
 

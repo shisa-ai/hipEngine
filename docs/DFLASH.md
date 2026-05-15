@@ -50,9 +50,9 @@ It records:
 - host KV transaction bookkeeping now accounts for `TargetVerifyBatch`
   candidate rows only (committed root rows are excluded from the speculative
   journal), tracks per-request candidate counts, rejects accepted counts larger
-  than the verified candidate budget, and can select the per-request target row
-  whose state would be committed, but no device-side state/KV commit is wired
-  yet;
+  than the verified candidate budget, can select the per-request target row
+  whose state would be committed, and derives verify graph shape keys from the
+  target row topology, but no device-side state/KV commit is wired yet;
 - no speculative throughput claim is allowed until Task #15 lands a native
   compact/c-aware target verifier with selectable per-row state and GPU accept
   summaries.

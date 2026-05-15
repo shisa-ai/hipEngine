@@ -6480,3 +6480,59 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows the host selectable-state metadata only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — TargetVerifyBatch graph shape key scaffold
+
+### Scope
+
+- Added graph/replay bucket key derivation for `TargetVerifyBatch`.
+- `TargetVerifyBatch.tree_shape` now encodes candidate parent topology with non-negative entries for `BatchShapeKey` compatibility:
+  - `0` means parent is the committed request root row;
+  - `N+1` means parent is candidate index `N`.
+- `TargetVerifyBatch.shape_key(active_batch, ...)` delegates to the existing batch shape-key discipline with verify mode, active mask, context bucket, top-k/expert fields, replay steps, draft depth, and tree topology.
+- Updated blocker artifact/status and Task #15 with shape-key evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py tests/test_dispatch_batch.py -q
+```
+
+Result: `19 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records `implementation_status.kv_transaction_target_verify.shape_key`:
+
+- `mode="verify_tree"`
+- `active_c=2`
+- `context_bucket=8`
+- `active_mask=[true,true]`
+- `top_k=8`
+- `experts_per_token=8`
+- `replay_steps=1`
+- `draft_depth=2`
+- `tree_shape=[0,1,0]`
+
+It still records `status=blocked`, `performance_claim=false`, and `native_target_verify_ready=false`.
+
+Interpretation: host metadata can now derive the graph/replay cache bucket a native target verifier should use for fixed verify shapes. Actual resident graph capture/replay and device kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows graph-bucket metadata only; no performance claim or kernel change was made.

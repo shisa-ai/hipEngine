@@ -44,7 +44,25 @@
       "commit_selection_positions": [
         7,
         4
-      ]
+      ],
+      "shape_key": {
+        "mode": "verify_tree",
+        "active_c": 2,
+        "context_bucket": 8,
+        "active_mask": [
+          true,
+          true
+        ],
+        "top_k": 8,
+        "experts_per_token": 8,
+        "replay_steps": 1,
+        "draft_depth": 2,
+        "tree_shape": [
+          0,
+          1,
+          0
+        ]
+      }
     },
     "resident_api": {
       "step_batch_serial": true,
