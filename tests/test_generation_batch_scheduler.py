@@ -210,6 +210,11 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert state_plan.buffers is state_buffers
     assert state_plan.buffers.has_linear_state
     assert state_plan.buffers.has_kv_rows
+    committed_txn = scheduler.commit_speculative_kv_transaction(policy, state_plan)
+    assert committed_txn.transaction_id == plan.transaction.transaction_id
+    assert committed_txn.request_ids == (r0, r1)
+    assert committed_txn.accepted_counts == (2, 1)
+    assert committed_txn.committed
     completed = scheduler.record_speculative_accept(summary)
 
     assert [item.request_id for item in completed] == [r1]

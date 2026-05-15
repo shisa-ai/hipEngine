@@ -404,6 +404,17 @@ class ResidentBatchScheduler:
             raise ValueError("state commit buffers must include linear state or KV rows")
         return SpeculativeStateCommitPlan(commit_plan=plan, buffers=buffers)
 
+    def commit_speculative_kv_transaction(self, kv_policy, plan: SpeculativeStateCommitPlan) -> KVTransaction:
+        """Mark the scheduler-owned speculative KV transaction committed."""
+
+        commit = plan.commit_plan.commit_plan
+        transaction = plan.commit_plan.verify_plan.plan.transaction
+        if commit.transaction_id != transaction.transaction_id:
+            raise ValueError("speculative commit plan transaction_id must match KV transaction")
+        if commit.request_ids != transaction.request_ids:
+            raise ValueError("speculative commit plan request_ids must match KV transaction")
+        return kv_policy.commit(transaction, commit.kv_accept_counts)
+
     def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
         return self.active_batch.shape_key(
             mode=mode,
