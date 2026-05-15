@@ -54,9 +54,10 @@ It records:
   scheduler-owned speculative `TargetVerifyBatch`/`WorkItem` metadata, derive
   verify graph shape keys, cache graph/replay objects under those keys, begin
   speculative KV transactions, bundle scheduler-owned verify plans, bind those
-  plans to resident target-verifier device buffers, and record accepted
-  speculative token summaries against request budgets, while host KV transaction
-  bookkeeping now accounts
+  plans to resident target-verifier device buffers, derive scheduler-owned
+  commit plans from verifier accept summaries, and record accepted speculative
+  token summaries against request budgets, while host KV transaction bookkeeping
+  now accounts
   for `TargetVerifyBatch` candidate
   rows only (committed root rows are excluded from the speculative journal),
   tracks per-request candidate counts, rejects accepted counts larger

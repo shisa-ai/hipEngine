@@ -78,6 +78,7 @@ def _interface_status() -> dict[str, Any]:
         "scheduler_speculative_kv_transaction": hasattr(ResidentBatchScheduler, "begin_speculative_verify_transaction"),
         "scheduler_speculative_verify_plan": hasattr(ResidentBatchScheduler, "plan_speculative_verify"),
         "scheduler_speculative_buffer_plan": hasattr(ResidentBatchScheduler, "bind_speculative_verify_buffers"),
+        "scheduler_speculative_commit_plan": hasattr(ResidentBatchScheduler, "plan_speculative_commit"),
         "verify_graph_shape_key": {
             "mode": shape_key.mode.value,
             "active_c": shape_key.active_c,
@@ -171,6 +172,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         replay_steps=1,
     )
     scheduler_buffer_plan = scheduler.bind_speculative_verify_buffers(scheduler_plan, buffers)
+    scheduler_commit_plan = scheduler.plan_speculative_commit(scheduler_buffer_plan, summary)
     return {
         "target_verify_rows": target.rows,
         "candidate_rows": target.candidate_count,
@@ -250,6 +252,15 @@ def _kv_transaction_status() -> dict[str, Any]:
             "mode": scheduler_buffer_plan.buffers.mode,
             "target_batch_rows": scheduler_buffer_plan.plan.target_batch.rows,
             "transaction_id": scheduler_buffer_plan.plan.transaction.transaction_id,
+        },
+        "scheduler_commit_plan": {
+            "transaction_id": scheduler_commit_plan.commit_plan.transaction_id,
+            "request_ids": list(scheduler_commit_plan.commit_plan.request_ids),
+            "accepted_counts": list(scheduler_commit_plan.commit_plan.accepted_counts),
+            "commit_rows": list(scheduler_commit_plan.commit_plan.commit_rows),
+            "commit_positions": list(scheduler_commit_plan.commit_plan.commit_positions),
+            "candidate_counts": list(scheduler_commit_plan.commit_plan.candidate_counts or ()),
+            "mode": scheduler_commit_plan.commit_plan.mode,
         },
     }
 

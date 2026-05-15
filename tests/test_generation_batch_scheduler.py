@@ -11,6 +11,7 @@ from hipengine.generation import (
     GeneratedToken,
     GraphBucketCache,
     ResidentBatchScheduler,
+    SpeculativeCommitPlan,
     SpeculativeVerifyBufferPlan,
     SpeculativeVerifyPlan,
     SpeculativeVerifyWork,
@@ -182,6 +183,16 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
             accepted_tokens=((101, 102), (201,)),
         ),
     )
+    commit = scheduler.plan_speculative_commit(buffer_plan, summary)
+    assert isinstance(commit, SpeculativeCommitPlan)
+    assert commit.verify_plan is buffer_plan
+    assert commit.summary is summary
+    assert commit.commit_plan.transaction_id == plan.transaction.transaction_id
+    assert commit.commit_plan.request_ids == (r0, r1)
+    assert commit.commit_plan.accepted_counts == (2, 1)
+    assert commit.commit_plan.commit_rows == (3, 4)
+    assert commit.commit_plan.candidate_counts == (2, 1)
+    assert commit.commit_plan.mode == "verify_tree"
     completed = scheduler.record_speculative_accept(summary)
 
     assert [item.request_id for item in completed] == [r1]

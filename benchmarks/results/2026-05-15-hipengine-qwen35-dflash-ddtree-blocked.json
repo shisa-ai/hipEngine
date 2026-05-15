@@ -28,6 +28,7 @@
       "scheduler_speculative_kv_transaction": true,
       "scheduler_speculative_verify_plan": true,
       "scheduler_speculative_buffer_plan": true,
+      "scheduler_speculative_commit_plan": true,
       "verify_graph_shape_key": {
         "mode": "verify_tree",
         "active_c": 1,
@@ -205,6 +206,30 @@
         "mode": "verify_tree",
         "target_batch_rows": 5,
         "transaction_id": 1
+      },
+      "scheduler_commit_plan": {
+        "transaction_id": 1,
+        "request_ids": [
+          1,
+          2
+        ],
+        "accepted_counts": [
+          2,
+          1
+        ],
+        "commit_rows": [
+          3,
+          4
+        ],
+        "commit_positions": [
+          7,
+          4
+        ],
+        "candidate_counts": [
+          2,
+          1
+        ],
+        "mode": "verify_tree"
       }
     },
     "resident_api": {

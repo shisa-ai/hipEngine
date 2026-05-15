@@ -14,7 +14,7 @@ from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
 from hipengine.kvcache import KVTransaction
-from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetVerifyBatch, TargetVerifyBuffers
+from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetVerifyBatch, TargetVerifyBuffers
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +62,13 @@ class SpeculativeVerifyPlan:
 class SpeculativeVerifyBufferPlan:
     plan: SpeculativeVerifyPlan
     buffers: TargetVerifyBuffers
+
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeCommitPlan:
+    verify_plan: SpeculativeVerifyBufferPlan
+    summary: TargetAcceptSummary
+    commit_plan: TargetCommitPlan
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,6 +345,43 @@ class ResidentBatchScheduler:
             raise ValueError("target verify buffer mode must match speculative plan")
         return SpeculativeVerifyBufferPlan(plan=plan, buffers=buffers)
 
+    def plan_speculative_commit(
+        self,
+        verify_plan: SpeculativeVerifyBufferPlan,
+        summary: TargetAcceptSummary,
+    ) -> SpeculativeCommitPlan:
+        """Build the scheduler-owned commit plan for accepted verify rows."""
+
+        target = verify_plan.plan.target_batch
+        if summary.request_ids != target.request_ids:
+            raise ValueError("accept summary request_ids must match speculative plan")
+        if summary.mode != target.mode:
+            raise ValueError("accept summary mode must match speculative plan")
+        root_rows = set(target.root_rows)
+        candidate_rows = set(target.candidate_rows)
+        for request_id, count, row, token, position in zip(
+            summary.request_ids,
+            summary.accepted_counts,
+            summary.commit_rows,
+            summary.commit_tokens,
+            summary.commit_positions,
+            strict=True,
+        ):
+            if row < 0 or row >= target.rows:
+                raise ValueError("accept summary commit row must be in target batch")
+            if target.row_to_request[row] != request_id:
+                raise ValueError("accept summary commit row must belong to its request")
+            if count == 0 and row not in root_rows:
+                raise ValueError("zero accepted candidates must commit the request root row")
+            if count > 0 and row not in candidate_rows:
+                raise ValueError("accepted candidates must commit a candidate row")
+            if target.draft_depths[row] != count:
+                raise ValueError("accept summary commit row depth must match accepted count")
+            if target.tokens[row] != token or target.positions[row] != position:
+                raise ValueError("accept summary commit token/position must match target row")
+        commit = TargetCommitPlan.from_summary(summary, verify_plan.plan.transaction)
+        return SpeculativeCommitPlan(verify_plan=verify_plan, summary=summary, commit_plan=commit)
+
     def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
         return self.active_batch.shape_key(
             mode=mode,
@@ -387,6 +431,7 @@ __all__ = [
     "GraphBucketCache",
     "GraphBucketStats",
     "ResidentBatchScheduler",
+    "SpeculativeCommitPlan",
     "SpeculativeVerifyBufferPlan",
     "SpeculativeVerifyPlan",
     "SpeculativeVerifyWork",

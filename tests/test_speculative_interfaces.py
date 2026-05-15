@@ -561,6 +561,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_kv_transaction"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_verify_plan"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_buffer_plan"]
+    assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_commit_plan"]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["target_verify_rows"] == 5
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
@@ -591,6 +592,14 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert buffer_plan["mode"] == "verify_tree"
     assert buffer_plan["target_batch_rows"] == 5
     assert buffer_plan["transaction_id"] == plan["transaction_id"]
+    commit_plan = payload["implementation_status"]["kv_transaction_target_verify"]["scheduler_commit_plan"]
+    assert commit_plan["transaction_id"] == plan["transaction_id"]
+    assert commit_plan["request_ids"] == [1, 2]
+    assert commit_plan["accepted_counts"] == [2, 1]
+    assert commit_plan["commit_rows"] == [3, 4]
+    assert commit_plan["commit_positions"] == [7, 4]
+    assert commit_plan["candidate_counts"] == [2, 1]
+    assert commit_plan["mode"] == "verify_tree"
     assert payload["implementation_status"]["resident_api"]["step_batch_serial"]
     assert payload["implementation_status"]["resident_api"]["native_target_verify_batch"]
     assert payload["implementation_status"]["resident_api"]["speculative_verify_batch"]
