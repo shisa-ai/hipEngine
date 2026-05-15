@@ -9396,3 +9396,51 @@ for all requests. Status remains `blocked` because segment-aware linear-attn
 conv/GDN state kernels, varlen/block-diagonal full-attn prefill via
 `cu_seqlens`, packed final-row sampling, and per-request state/KV commit are not
 wired.
+
+## 2026-05-15 — Segment-aware linear-attention prefill state kernels
+
+Continued compact c>N prefill task #16 by adding the segment-aware linear
+attention state kernels needed by packed prompt slabs. These are kernel-level
+correctness/profiler gates only; `prefill_native_packed(slab)` remains blocked
+until varlen full-attention and final-row state/KV commit are wired.
+
+Lineage note:
+- `scripts/check_lineage.py --kind kernel --diff stat` reports parent drift at
+  `nano-vllm-amd@b95eaa5` adding tree/speculative conv/GDN kernels. Those tree
+  kernels are parent-indexed decode/speculation kernels, not the compact prompt
+  slab `cu_seqlens` ABI. This task implemented the hipENGINE slab ABI directly
+  over `cu_seqlens` + state-slot indices.
+
+Changes:
+- added `qwen35_linear_attn_conv_prefill_segments_f32(...)`, which consumes
+  packed `[T_total, qkv_width]` rows, `cu_seqlens`, and per-segment state slots,
+  writes packed conv outputs, and commits each segment's tail conv state without
+  reading neighboring request rows;
+- added `qwen35_gdn_prefill_recurrent_segments_k2_f32(...)`, which consumes
+  packed GDN Q/K/V/beta/decay rows plus `cu_seqlens` and commits each segment's
+  recurrent state slot independently;
+- added NumPy CPU references and unit tests for segment-state isolation;
+- added `qwen35-linear-attn-segments-hip` smoke and profiler artifact
+  `benchmarks/results/2026-05-15-hipengine-qwen35-linear-attn-segment-prefill-accepted.json`;
+- updated `docs/KERNELS.md`, `docs/PREFILL.md`, compact blocked artifact text,
+  benchmark rollup/changelog, and the fail-closed packed-prefill blocker list to
+  show segment kernels landed while packed orchestration remains blocked.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_linear_attn_conv_plan.py tests/test_qwen35_linear_attn_gdn_plan.py tests/test_cpu_reference.py -q
+python3 scripts/smoke.py --mode qwen35-linear-attn-segments-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-linear-segments-prof --output-file linear_segments -- python3 scripts/smoke.py --mode qwen35-linear-attn-segments-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 -m pytest tests/test_qwen35_linear_attn_conv_plan.py tests/test_qwen35_linear_attn_gdn_plan.py tests/test_cpu_reference.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: targeted tests passed (`15 passed`, then `48 passed`). Segment HIP smoke
+reported `segment_conv_out_max_abs=1.86e-09`, `segment_conv_state_max_abs=0`,
+`segment_gdn_out_max_abs=1.86e-09`, and `segment_gdn_state_max_abs=9.31e-10`.
+Existing single-request linear prefill smoke still passed. Profiler CSV contains
+`qwen35_linear_attn_conv_prefill_segments_kernel` (`5800 ns`),
+`qwen35_linear_attn_conv_prefill_segments_state_kernel` (`2200 ns`), and
+`qwen35_gdn_prefill_recurrent_k2_segments_kernel` (`5480 ns`) on W7900.

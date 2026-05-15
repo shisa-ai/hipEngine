@@ -380,6 +380,94 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
   recurrent_state[state_offset1] = state_value1;
 }
 
+__global__ void qwen35_gdn_prefill_recurrent_k2_segments_kernel(
+    const float* query,
+    const float* key,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    float* recurrent_state,
+    float* out,
+    const int32_t* __restrict__ cu_seqlens,
+    const int64_t* __restrict__ state_indices,
+    int64_t segments,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  __shared__ float partial[64];
+  const int64_t segment = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  const int64_t value_idx = blockIdx.z;
+  const int lane_id = threadIdx.x % warpSize;
+  const int warp_id = threadIdx.x / warpSize;
+  const int num_warps = (blockDim.x + warpSize - 1) / warpSize;
+  const int64_t k_base = static_cast<int64_t>(threadIdx.x) * 2;
+  if (segment >= segments || v_head >= num_v_heads || value_idx >= head_v_dim || k_base + 1 >= head_k_dim) {
+    return;
+  }
+  const int64_t start = static_cast<int64_t>(cu_seqlens[segment]);
+  const int64_t end = static_cast<int64_t>(cu_seqlens[segment + 1]);
+  if (end <= start) {
+    return;
+  }
+  const int64_t state_slot = state_indices[segment];
+  const int64_t state_stride = num_v_heads * head_k_dim * head_v_dim;
+  const int64_t state_offset0 = state_slot * state_stride + (v_head * head_k_dim + k_base) * head_v_dim + value_idx;
+  const int64_t state_offset1 = state_offset0 + head_v_dim;
+  float state_value0 = recurrent_state[state_offset0];
+  float state_value1 = recurrent_state[state_offset1];
+  for (int64_t token = start; token < end; ++token) {
+    const int64_t head_offset = token * num_v_heads + v_head;
+    const int64_t key_offset = head_offset * head_k_dim + k_base;
+    const float key_value0 = key[key_offset];
+    const float key_value1 = key[key_offset + 1];
+    const float decay_value = decay[head_offset];
+    state_value0 *= decay_value;
+    state_value1 *= decay_value;
+
+    float acc = key_value0 * state_value0 + key_value1 * state_value1;
+    for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+      acc += __shfl_down(acc, offset);
+    }
+    if (lane_id == 0) {
+      partial[warp_id] = acc;
+    }
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      float total = 0.0f;
+      for (int warp = 0; warp < num_warps; ++warp) {
+        total += partial[warp];
+      }
+      partial[0] = total;
+    }
+    __syncthreads();
+    const float delta =
+        (value[head_offset * head_v_dim + value_idx] - partial[0]) * beta[head_offset];
+    state_value0 += key_value0 * delta;
+    state_value1 += key_value1 * delta;
+
+    const int64_t query_offset = head_offset * head_k_dim + k_base;
+    acc = query[query_offset] * state_value0 + query[query_offset + 1] * state_value1;
+    for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+      acc += __shfl_down(acc, offset);
+    }
+    if (lane_id == 0) {
+      partial[warp_id] = acc;
+    }
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      float total = 0.0f;
+      for (int warp = 0; warp < num_warps; ++warp) {
+        total += partial[warp];
+      }
+      out[head_offset * head_v_dim + value_idx] = total;
+    }
+    __syncthreads();
+  }
+  recurrent_state[state_offset0] = state_value0;
+  recurrent_state[state_offset1] = state_value1;
+}
+
 template <typename scalar_t>
 __global__ void qwen35_linear_attn_prefill_prepare_kernel(
     const float* __restrict__ conv_out,
@@ -695,6 +783,51 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_k2_f32(
       recurrent_state,
       out,
       tokens,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_segments_k2_f32(
+    const float* query,
+    const float* key,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    float* recurrent_state,
+    float* out,
+    const int32_t* cu_seqlens,
+    const int64_t* state_indices,
+    int64_t total_tokens,
+    int64_t segments,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (total_tokens <= 0 || segments <= 0 || num_v_heads <= 0 || head_k_dim <= 0 || head_v_dim <= 0 || head_k_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = static_cast<int>(head_k_dim / 2);
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_recurrent_k2_segments_kernel,
+      dim3(
+          static_cast<unsigned int>(segments),
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>(head_v_dim)),
+      dim3(threads),
+      0,
+      stream,
+      query,
+      key,
+      value,
+      beta,
+      decay,
+      recurrent_state,
+      out,
+      cu_seqlens,
+      state_indices,
+      segments,
       num_v_heads,
       head_k_dim,
       head_v_dim);

@@ -172,7 +172,7 @@ def test_qwen35_resident_prefill_native_uses_config_default_for_full_native() ->
     assert session.prefill_native([1, 2, 3, 4], sample=False) == (1, 2, 3, 4)
 
 
-def test_qwen35_resident_prefill_native_packed_rejects_until_segment_kernels_land() -> None:
+def test_qwen35_resident_prefill_native_packed_rejects_until_remaining_packed_kernels_land() -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.closed = False
     session.max_batch_size = 2
@@ -185,11 +185,12 @@ def test_qwen35_resident_prefill_native_packed_rejects_until_segment_kernels_lan
         block_count=1,
     )
 
-    with pytest.raises(NotImplementedError, match="segment-aware linear-attention"):
+    with pytest.raises(NotImplementedError, match="varlen/block-diagonal full-attention"):
         session.prefill_native_packed(slab)
 
     assert session.last_prefill_execution["path"] == "native_prefill_compact_cN_blocked"
     assert session.last_prefill_execution["request_count"] == 2
+    assert any("linear-attention kernels are landed" in blocker for blocker in session.last_prefill_execution["blockers"])
     assert any("cu_seqlens" in blocker for blocker in session.last_prefill_execution["blockers"])
 
 

@@ -15,6 +15,7 @@ _SYMBOL_F32 = "hipengine_qwen35_linear_attn_conv_decode_f32"
 _SYMBOL_BF16 = "hipengine_qwen35_linear_attn_conv_decode_bf16"
 _SYMBOL_FP16 = "hipengine_qwen35_linear_attn_conv_decode_fp16"
 _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
+_SYMBOL_PREFILL_SEGMENTS_F32 = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32"
 
 
 def plan_qwen35_linear_attn_conv_build(
@@ -169,6 +170,48 @@ def qwen35_linear_attn_conv_prefill_f32(
     )
 
 
+def qwen35_linear_attn_conv_prefill_segments_f32(
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch segment-aware FP32 prefill convolution over packed prompt rows.
+
+    ``cu_seqlens`` has shape ``[segments + 1]`` and defines packed prompt
+    ranges. ``state_indices`` maps each segment to the leading conv-state slot
+    in a ``[state_slots, channels, kernel_size]`` state slab. Unlike the legacy
+    one-request wrapper, short segments are allowed and update only their own
+    mapped state slot.
+    """
+
+    _launch_conv_prefill_segments(
+        hidden_states_ptr,
+        conv_state_ptr,
+        conv_weight_ptr,
+        out_ptr,
+        cu_seqlens_ptr,
+        state_indices_ptr,
+        total_tokens,
+        segments,
+        channels,
+        kernel_size,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_attn_conv_decode", "w4_paro", "f32"),
@@ -188,6 +231,11 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "w4_paro", "f32"),
         qwen35_linear_attn_conv_prefill_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "w4_paro", "f32_segments"),
+        qwen35_linear_attn_conv_prefill_segments_f32,
         replace=replace,
     )
 
@@ -269,6 +317,58 @@ def _launch_conv_prefill(
         ctypes.c_void_p(conv_weight_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_int64(tokens),
+        ctypes.c_int64(channels),
+        ctypes.c_int64(kernel_size),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_conv_prefill_segments(
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_conv_shape(channels, kernel_size)
+    _check_positive(total_tokens, "total_tokens")
+    _check_positive(segments, "segments")
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_SEGMENTS_F32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_states_ptr),
+        ctypes.c_void_p(conv_state_ptr),
+        ctypes.c_void_p(conv_weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(cu_seqlens_ptr),
+        ctypes.c_void_p(state_indices_ptr),
+        ctypes.c_int64(total_tokens),
+        ctypes.c_int64(segments),
         ctypes.c_int64(channels),
         ctypes.c_int64(kernel_size),
         ctypes.c_void_p(stream),

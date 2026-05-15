@@ -43,6 +43,7 @@ def main() -> int:
             "qwen35-linear-attn-conv-hip",
             "qwen35-linear-attn-gdn-hip",
             "qwen35-linear-attn-prefill-hip",
+            "qwen35-linear-attn-segments-hip",
             "qwen35-paged-kv-write-hip",
             "qwen35-full-attn-decode-hip",
             "qwen35-paged-attn-decode-hip",
@@ -159,6 +160,11 @@ def main() -> int:
         )
     if args.mode == "qwen35-linear-attn-prefill-hip":
         return qwen35_linear_attn_prefill_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-linear-attn-segments-hip":
+        return qwen35_linear_attn_segments_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -2249,6 +2255,211 @@ def qwen35_paged_kv_write_hip_smoke(
         and f32_key_mismatch == 0
         and f32_value_mismatch == 0
     ) else 1
+
+def qwen35_linear_attn_segments_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.cpu_reference import (
+        gdn_prefill_recurrent_segments,
+        linear_attn_conv_prefill_segments,
+    )
+    from hipengine.kernels.hip_gfx1100.linear_attn import (
+        build_qwen35_linear_attn_conv,
+        build_qwen35_linear_attn_gdn,
+        qwen35_gdn_prefill_recurrent_segments_k2_f32,
+        qwen35_linear_attn_conv_prefill_segments_f32,
+    )
+
+    runtime = get_hip_runtime()
+    conv_library = build_qwen35_linear_attn_conv(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    gdn_library = build_qwen35_linear_attn_gdn(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        arr = np.ascontiguousarray(array)
+        buffer = malloc(arr.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(arr), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    cu_seqlens = np.asarray([0, 2, 5], dtype=np.int32)
+    state_indices = np.asarray([2, 0], dtype=np.int64)
+    channels = 8
+    kernel_size = 4
+    hidden = np.asarray(
+        [[((row * 5 + channel * 3) % 17 - 8) * 0.03125 for channel in range(channels)] for row in range(5)],
+        dtype=np.float32,
+    )
+    conv_state = np.asarray(
+        [
+            [[((slot * 13 + channel * 7 + k * 3) % 19 - 9) * 0.02 for k in range(kernel_size)] for channel in range(channels)]
+            for slot in range(3)
+        ],
+        dtype=np.float32,
+    )
+    conv_weight = np.asarray(
+        [[((channel * 11 + k * 5) % 13 - 6) * 0.025 for k in range(kernel_size)] for channel in range(channels)],
+        dtype=np.float32,
+    )
+    expected_conv_out, expected_conv_state = linear_attn_conv_prefill_segments(
+        hidden,
+        conv_state,
+        conv_weight,
+        cu_seqlens,
+        state_indices,
+    )
+    conv_out = np.empty_like(expected_conv_out)
+    conv_state_actual = conv_state.copy()
+
+    tokens = 5
+    num_v_heads = 2
+    head_k_dim = 128
+    head_v_dim = 4
+    query = np.asarray(
+        [
+            [[((row * 19 + head * 7 + k * 3) % 23 - 11) * 0.004 for k in range(head_k_dim)] for head in range(num_v_heads)]
+            for row in range(tokens)
+        ],
+        dtype=np.float32,
+    )
+    key = np.asarray(
+        [
+            [[((row * 17 + head * 5 + k * 11) % 29 - 14) * 0.003 for k in range(head_k_dim)] for head in range(num_v_heads)]
+            for row in range(tokens)
+        ],
+        dtype=np.float32,
+    )
+    value = np.asarray(
+        [
+            [[((row * 13 + head * 3 + d * 7) % 17 - 8) * 0.005 for d in range(head_v_dim)] for head in range(num_v_heads)]
+            for row in range(tokens)
+        ],
+        dtype=np.float32,
+    )
+    beta = np.asarray(
+        [[0.2 + 0.05 * ((row + head) % 3) for head in range(num_v_heads)] for row in range(tokens)],
+        dtype=np.float32,
+    )
+    decay = np.asarray(
+        [[0.85 + 0.02 * ((row * 2 + head) % 4) for head in range(num_v_heads)] for row in range(tokens)],
+        dtype=np.float32,
+    )
+    recurrent_state = np.asarray(
+        [
+            [
+                [[((slot * 31 + head * 11 + k * 5 + d * 3) % 37 - 18) * 0.001 for d in range(head_v_dim)] for k in range(head_k_dim)]
+                for head in range(num_v_heads)
+            ]
+            for slot in range(3)
+        ],
+        dtype=np.float32,
+    )
+    expected_gdn_out, expected_gdn_state = gdn_prefill_recurrent_segments(
+        query,
+        key,
+        value,
+        beta,
+        decay,
+        recurrent_state,
+        cu_seqlens,
+        state_indices,
+    )
+    gdn_out = np.empty_like(expected_gdn_out)
+    recurrent_state_actual = recurrent_state.copy()
+
+    try:
+        hidden_dev = dev(hidden)
+        conv_state_dev = dev(conv_state_actual)
+        conv_weight_dev = dev(conv_weight)
+        conv_out_dev = out_dev(conv_out)
+        cu_dev = dev(cu_seqlens)
+        state_indices_dev = dev(state_indices)
+        qwen35_linear_attn_conv_prefill_segments_f32(
+            hidden_dev.ptr,
+            conv_state_dev.ptr,
+            conv_weight_dev.ptr,
+            conv_out_dev.ptr,
+            cu_dev.ptr,
+            state_indices_dev.ptr,
+            hidden.shape[0],
+            state_indices.shape[0],
+            channels,
+            kernel_size,
+            library=conv_library,
+            runtime=runtime,
+        )
+
+        query_dev = dev(query)
+        key_dev = dev(key)
+        value_dev = dev(value)
+        beta_dev = dev(beta)
+        decay_dev = dev(decay)
+        recurrent_state_dev = dev(recurrent_state_actual)
+        gdn_out_dev = out_dev(gdn_out)
+        qwen35_gdn_prefill_recurrent_segments_k2_f32(
+            query_dev.ptr,
+            key_dev.ptr,
+            value_dev.ptr,
+            beta_dev.ptr,
+            decay_dev.ptr,
+            recurrent_state_dev.ptr,
+            gdn_out_dev.ptr,
+            cu_dev.ptr,
+            state_indices_dev.ptr,
+            tokens,
+            state_indices.shape[0],
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=gdn_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(conv_out), conv_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(conv_state_actual), conv_state_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(gdn_out), gdn_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(recurrent_state_actual), recurrent_state_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    conv_out_max_abs = float(np.max(np.abs(conv_out - expected_conv_out)))
+    conv_state_max_abs = float(np.max(np.abs(conv_state_actual - expected_conv_state)))
+    gdn_out_max_abs = float(np.max(np.abs(gdn_out - expected_gdn_out)))
+    gdn_state_max_abs = float(np.max(np.abs(recurrent_state_actual - expected_gdn_state)))
+    print(
+        f"segment_conv_out_max_abs={conv_out_max_abs:.3g} "
+        f"segment_conv_state_max_abs={conv_state_max_abs:.3g} "
+        f"segment_gdn_out_max_abs={gdn_out_max_abs:.3g} "
+        f"segment_gdn_state_max_abs={gdn_state_max_abs:.3g}"
+    )
+    return 0 if max(conv_out_max_abs, conv_state_max_abs, gdn_out_max_abs, gdn_state_max_abs) <= 1.0e-5 else 1
+
 
 def qwen35_linear_attn_prefill_hip_smoke(
     *,

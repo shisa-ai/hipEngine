@@ -7,6 +7,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
     qwen35_linear_attn_conv_decode_fp16,
     qwen35_linear_attn_conv_prefill_f32,
+    qwen35_linear_attn_conv_prefill_segments_f32,
     register_qwen35_linear_attn_conv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
@@ -14,6 +15,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     plan_qwen35_linear_attn_gdn_build,
     qwen35_gdn_prefill_recurrent_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
+    qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_prefill_rmsnorm_gate_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
@@ -30,6 +32,7 @@ __all__ = [
     "plan_qwen35_linear_attn_gdn_build",
     "qwen35_gdn_prefill_recurrent_f32",
     "qwen35_gdn_prefill_recurrent_k2_f32",
+    "qwen35_gdn_prefill_recurrent_segments_k2_f32",
     "qwen35_gdn_prefill_rmsnorm_gate_bf16",
     "qwen35_gdn_prefill_rmsnorm_gate_fp16",
     "qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16",
@@ -40,6 +43,7 @@ __all__ = [
     "qwen35_linear_attn_conv_decode_f32",
     "qwen35_linear_attn_conv_decode_fp16",
     "qwen35_linear_attn_conv_prefill_f32",
+    "qwen35_linear_attn_conv_prefill_segments_f32",
     "register_qwen35_linear_attn_conv_kernels",
     "register_qwen35_linear_attn_gdn_kernels",
 ]

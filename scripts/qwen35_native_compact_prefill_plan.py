@@ -28,7 +28,7 @@ DEFAULT_MODEL = (
 )
 
 BLOCKERS = (
-    "segment-aware linear-attention conv/GDN state kernels are not wired",
+    "segment-aware linear-attention kernels are landed but not yet orchestrated in prefill_native_packed",
     "varlen/block-diagonal causal full-attention prefill ABI via cu_seqlens is not wired",
     "prefill_native_packed(slab) currently rejects instead of launching native packed kernels",
     "packed final-row sampling and per-request state/KV commit are not wired",
@@ -112,7 +112,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "native_prefill_packed_ready": False,
         "blockers": list(BLOCKERS),
         "next_actions": [
-            "Port or implement segment-aware linear-attention prefill kernels that update per-request tail state from cu_seqlens segments.",
+            "Wire the landed segment-aware linear-attention prefill kernels into prefill_native_packed once the remaining packed stages exist.",
             "Add varlen/block-diagonal causal full-attention prefill kernel ABI consuming cu_seqlens_q/cu_seqlens_k.",
             "Materialize CompactPromptSlab device buffers and wire Qwen35ParoResidentSession.prefill_native_packed(slab) without per-request prompt loops.",
             "Run c=2/4/8 generated-token equality gates and retain throughput only after native packed kernels launch.",

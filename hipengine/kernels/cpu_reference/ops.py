@@ -107,6 +107,109 @@ def attention_decode(
     return np.matmul(weights, v)
 
 
+def linear_attn_conv_prefill_segments(
+    hidden_states: ArrayLike,
+    conv_state: ArrayLike,
+    conv_weight: ArrayLike,
+    cu_seqlens: ArrayLike,
+    state_indices: ArrayLike,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Segment-aware linear-attention convolution prefill reference.
+
+    ``hidden_states`` is packed ``[T_total, channels]``. ``conv_state`` is a
+    mutable-state snapshot shaped ``[state_slots, channels, kernel_size]`` and
+    ``state_indices[segment]`` selects the slot committed by each segment.
+    Short segments are valid: their tail state is the old shifted state plus the
+    segment rows, without reading rows from neighboring segments.
+    """
+
+    hidden = np.asarray(hidden_states, dtype=np.float32)
+    state = np.asarray(conv_state, dtype=np.float32).copy()
+    weight = np.asarray(conv_weight, dtype=np.float32)
+    cu = np.asarray(cu_seqlens, dtype=np.int64)
+    slots = np.asarray(state_indices, dtype=np.int64)
+    if hidden.ndim != 2:
+        raise ValueError("hidden_states must have shape [T_total, channels]")
+    if state.ndim != 3:
+        raise ValueError("conv_state must have shape [state_slots, channels, kernel_size]")
+    if weight.shape != state.shape[1:]:
+        raise ValueError("conv_weight must have shape [channels, kernel_size]")
+    _validate_segments(cu, slots, hidden.shape[0], state.shape[0])
+    channels = hidden.shape[1]
+    kernel_size = state.shape[2]
+    out = np.empty_like(hidden, dtype=np.float32)
+    for segment, slot in enumerate(slots):
+        start = int(cu[segment])
+        end = int(cu[segment + 1])
+        tokens = end - start
+        for local_token, row in enumerate(range(start, end)):
+            for channel in range(channels):
+                acc = np.float32(0.0)
+                for k in range(kernel_size):
+                    padded = local_token + k
+                    if padded < kernel_size - 1:
+                        value = state[slot, channel, padded + 1]
+                    else:
+                        value = hidden[start + padded - (kernel_size - 1), channel]
+                    acc = np.float32(acc + np.float32(value * weight[channel, k]))
+                out[row, channel] = _silu(acc)
+        if tokens >= kernel_size:
+            state[slot] = hidden[end - kernel_size : end].T
+        else:
+            kept = kernel_size - tokens
+            state[slot, :, :kept] = state[slot, :, tokens:]
+            state[slot, :, kept:] = hidden[start:end].T
+    return out, state
+
+
+def gdn_prefill_recurrent_segments(
+    query: ArrayLike,
+    key: ArrayLike,
+    value: ArrayLike,
+    beta: ArrayLike,
+    decay: ArrayLike,
+    recurrent_state: ArrayLike,
+    cu_seqlens: ArrayLike,
+    state_indices: ArrayLike,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Segment-aware GDN recurrent prefill reference over packed prompt rows."""
+
+    q = np.asarray(query, dtype=np.float32)
+    k_arr = np.asarray(key, dtype=np.float32)
+    v_arr = np.asarray(value, dtype=np.float32)
+    beta_arr = np.asarray(beta, dtype=np.float32)
+    decay_arr = np.asarray(decay, dtype=np.float32)
+    state = np.asarray(recurrent_state, dtype=np.float32).copy()
+    cu = np.asarray(cu_seqlens, dtype=np.int64)
+    slots = np.asarray(state_indices, dtype=np.int64)
+    if q.ndim != 3:
+        raise ValueError("query must have shape [T_total, num_v_heads, head_k_dim]")
+    if k_arr.shape != q.shape:
+        raise ValueError("key must match query shape")
+    if v_arr.ndim != 3 or v_arr.shape[:2] != q.shape[:2]:
+        raise ValueError("value must have shape [T_total, num_v_heads, head_v_dim]")
+    if beta_arr.shape != q.shape[:2] or decay_arr.shape != q.shape[:2]:
+        raise ValueError("beta and decay must have shape [T_total, num_v_heads]")
+    if state.ndim != 4 or state.shape[1:] != (q.shape[1], q.shape[2], v_arr.shape[2]):
+        raise ValueError("recurrent_state must have shape [state_slots, num_v_heads, head_k_dim, head_v_dim]")
+    _validate_segments(cu, slots, q.shape[0], state.shape[0])
+    out = np.empty_like(v_arr, dtype=np.float32)
+    for segment, slot in enumerate(slots):
+        start = int(cu[segment])
+        end = int(cu[segment + 1])
+        for row in range(start, end):
+            for v_head in range(q.shape[1]):
+                for value_idx in range(v_arr.shape[2]):
+                    state_vec = state[slot, v_head, :, value_idx]
+                    state_vec = np.asarray(state_vec * decay_arr[row, v_head], dtype=np.float32)
+                    kv_mem = np.sum(k_arr[row, v_head] * state_vec, dtype=np.float32)
+                    delta = np.float32((v_arr[row, v_head, value_idx] - kv_mem) * beta_arr[row, v_head])
+                    state_vec = np.asarray(state_vec + k_arr[row, v_head] * delta, dtype=np.float32)
+                    state[slot, v_head, :, value_idx] = state_vec
+                    out[row, v_head, value_idx] = np.sum(q[row, v_head] * state_vec, dtype=np.float32)
+    return out, state
+
+
 def full_attn_prefill(
     query: ArrayLike,
     gate: ArrayLike,
@@ -231,6 +334,8 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "rotate": rotate,
         "attention_decode": attention_decode,
         "full_attn_prefill": full_attn_prefill,
+        "linear_attn_conv_prefill_segments": linear_attn_conv_prefill_segments,
+        "gdn_prefill_recurrent_segments": gdn_prefill_recurrent_segments,
         "o_proj": o_proj,
         "lm_head": lm_head,
     }
@@ -241,6 +346,23 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         full_attn_prefill,
         replace=replace,
     )
+
+
+def _validate_segments(cu: np.ndarray, slots: np.ndarray, total_rows: int, state_slots: int) -> None:
+    if cu.ndim != 1:
+        raise ValueError("cu_seqlens must be 1D")
+    if slots.ndim != 1:
+        raise ValueError("state_indices must be 1D")
+    if cu.shape[0] != slots.shape[0] + 1:
+        raise ValueError("cu_seqlens length must be len(state_indices) + 1")
+    if cu.shape[0] <= 1:
+        raise ValueError("at least one segment is required")
+    if int(cu[0]) != 0 or int(cu[-1]) != int(total_rows):
+        raise ValueError("cu_seqlens must span all rows")
+    if np.any(cu[1:] <= cu[:-1]):
+        raise ValueError("cu_seqlens segments must be non-empty and increasing")
+    if np.any(slots < 0) or np.any(slots >= state_slots):
+        raise ValueError("state_indices reference state slot outside state")
 
 
 def _half_rotary_table(value: ArrayLike, half: int, name: str) -> np.ndarray:
@@ -278,6 +400,11 @@ def _cache_row(
     if physical_block < 0 or physical_block >= cache.shape[0]:
         raise ValueError("block_table references cache block outside key/value cache")
     return cache[physical_block, block_offset, kv_head]
+
+
+def _silu(x: np.ndarray | np.float32 | float) -> np.ndarray | np.float32:
+    x_arr = np.asarray(x, dtype=np.float32)
+    return x_arr / (np.float32(1.0) + np.exp(-x_arr).astype(np.float32))
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:

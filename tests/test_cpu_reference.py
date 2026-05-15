@@ -7,6 +7,8 @@ import numpy as np
 from hipengine.benchmark.correctness import evaluate_logits
 from hipengine.kernels.cpu_reference import (
     full_attn_prefill,
+    gdn_prefill_recurrent_segments,
+    linear_attn_conv_prefill_segments,
     load_fixture,
     register_cpu_reference_kernels,
     rmsnorm,
@@ -118,6 +120,62 @@ def test_cpu_reference_full_attn_prefill_causal_gqa_gate() -> None:
     )
 
     assert np.allclose(out, expected, atol=1e-5, rtol=1e-5)
+
+
+def test_cpu_reference_linear_attn_conv_prefill_segments_isolates_state() -> None:
+    hidden = np.asarray(
+        [[0.1, -0.2], [0.3, 0.4], [-0.5, 0.6], [0.7, -0.8], [0.9, 1.0]],
+        dtype=np.float32,
+    )
+    state = np.asarray(
+        [
+            [[1.0, 2.0, 3.0, 4.0], [-1.0, -2.0, -3.0, -4.0]],
+            [[0.5, 0.25, -0.25, -0.5], [0.75, -0.75, 1.25, -1.25]],
+            [[2.0, 1.0, 0.0, -1.0], [-2.0, -1.0, 0.0, 1.0]],
+        ],
+        dtype=np.float32,
+    )
+    weight = np.asarray([[0.25, -0.5, 0.75, 1.0], [-1.0, 0.5, 0.25, -0.25]], dtype=np.float32)
+
+    out, new_state = linear_attn_conv_prefill_segments(
+        hidden,
+        state,
+        weight,
+        np.asarray([0, 2, 5], dtype=np.int32),
+        np.asarray([2, 0], dtype=np.int64),
+    )
+
+    isolated0, state0 = linear_attn_conv_prefill_segments(hidden[:2], state[[2]], weight, [0, 2], [0])
+    isolated1, state1 = linear_attn_conv_prefill_segments(hidden[2:], state[[0]], weight, [0, 3], [0])
+    assert np.allclose(out[:2], isolated0, atol=1e-6, rtol=1e-6)
+    assert np.allclose(out[2:], isolated1, atol=1e-6, rtol=1e-6)
+    assert np.allclose(new_state[2], state0[0], atol=1e-6, rtol=1e-6)
+    assert np.allclose(new_state[0], state1[0], atol=1e-6, rtol=1e-6)
+    assert np.allclose(new_state[1], state[1], atol=1e-6, rtol=1e-6)
+
+
+def test_cpu_reference_gdn_prefill_recurrent_segments_isolates_state() -> None:
+    rng = np.random.default_rng(123)
+    query = rng.normal(0.0, 0.05, size=(5, 2, 4)).astype(np.float32)
+    key = rng.normal(0.0, 0.05, size=(5, 2, 4)).astype(np.float32)
+    value = rng.normal(0.0, 0.05, size=(5, 2, 3)).astype(np.float32)
+    beta = rng.uniform(0.1, 0.9, size=(5, 2)).astype(np.float32)
+    decay = rng.uniform(0.8, 0.99, size=(5, 2)).astype(np.float32)
+    state = rng.normal(0.0, 0.02, size=(3, 2, 4, 3)).astype(np.float32)
+
+    out, new_state = gdn_prefill_recurrent_segments(query, key, value, beta, decay, state, [0, 2, 5], [2, 0])
+    isolated0, state0 = gdn_prefill_recurrent_segments(
+        query[:2], key[:2], value[:2], beta[:2], decay[:2], state[[2]], [0, 2], [0]
+    )
+    isolated1, state1 = gdn_prefill_recurrent_segments(
+        query[2:], key[2:], value[2:], beta[2:], decay[2:], state[[0]], [0, 3], [0]
+    )
+
+    assert np.allclose(out[:2], isolated0, atol=1e-6, rtol=1e-6)
+    assert np.allclose(out[2:], isolated1, atol=1e-6, rtol=1e-6)
+    assert np.allclose(new_state[2], state0[0], atol=1e-6, rtol=1e-6)
+    assert np.allclose(new_state[0], state1[0], atol=1e-6, rtol=1e-6)
+    assert np.allclose(new_state[1], state[1], atol=1e-6, rtol=1e-6)
 
 
 def test_json_layer_fixture_round_trips_and_runs() -> None:

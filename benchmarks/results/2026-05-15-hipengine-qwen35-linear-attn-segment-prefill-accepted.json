@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": false,
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "mode": "linear_attn_segment_prefill_kernel_smoke",
+  "workload": {
+    "segments": 2,
+    "total_tokens": 5,
+    "cu_seqlens": [0, 2, 5],
+    "state_indices": [2, 0],
+    "conv_channels": 8,
+    "conv_kernel_size": 4,
+    "gdn_num_v_heads": 2,
+    "gdn_head_k_dim": 128,
+    "gdn_head_v_dim": 4
+  },
+  "commands": [
+    "python3 -m pytest tests/test_qwen35_linear_attn_conv_plan.py tests/test_qwen35_linear_attn_gdn_plan.py tests/test_cpu_reference.py -q",
+    "python3 scripts/smoke.py --mode qwen35-linear-attn-segments-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt",
+    "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-linear-segments-prof --output-file linear_segments -- python3 scripts/smoke.py --mode qwen35-linear-attn-segments-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build"
+  ],
+  "correctness": {
+    "pytest": "15 passed",
+    "segment_conv_out_max_abs": 1.86e-09,
+    "segment_conv_state_max_abs": 0.0,
+    "segment_gdn_out_max_abs": 1.86e-09,
+    "segment_gdn_state_max_abs": 9.31e-10,
+    "passed": true
+  },
+  "profiler": {
+    "path": "/tmp/hipengine-linear-segments-prof/linear_segments_kernel_trace.csv",
+    "kernels": [
+      {
+        "name": "qwen35_linear_attn_conv_prefill_segments_kernel",
+        "duration_ns": 5800
+      },
+      {
+        "name": "qwen35_linear_attn_conv_prefill_segments_state_kernel",
+        "duration_ns": 2200
+      },
+      {
+        "name": "qwen35_gdn_prefill_recurrent_k2_segments_kernel",
+        "duration_ns": 5480
+      }
+    ]
+  },
+  "notes": [
+    "Kernel smoke only; no end-to-end throughput claim.",
+    "Segment metadata mirrors CompactPromptSlab/cu_seqlens packing and verifies no cross-request conv/recurrent state leakage."
+  ]
+}

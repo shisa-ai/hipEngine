@@ -126,7 +126,7 @@ Landed and usable now:
 | Area | Current usable pieces |
 | --- | --- |
 | Runtime state | `embedding_lookup_batch_{bf16,fp16}_i64`, mapped variants, `set_i64_vector`, scalar/vector decode position helpers. |
-| Linear-attn prefill | `qwen35_linear_attn_conv_prefill_f32`, `qwen35_linear_attn_prefill_prepare_f32_fp16`, `qwen35_gdn_prefill_recurrent_k2_f32`, `qwen35_gdn_prefill_rmsnorm_gate_fp16`. |
+| Linear-attn prefill | `qwen35_linear_attn_conv_prefill_f32`, segment-aware `qwen35_linear_attn_conv_prefill_segments_f32`, `qwen35_linear_attn_prefill_prepare_f32_fp16`, `qwen35_gdn_prefill_recurrent_k2_f32`, segment-aware `qwen35_gdn_prefill_recurrent_segments_k2_f32`, `qwen35_gdn_prefill_rmsnorm_gate_fp16`. |
 | Linear layer orchestrator | `run_linear_attention_moe_c1_layer_fp16(tokens=T)` already selects prefill conv/GDN when `tokens > 1`; final path must replace its c1 MoE tail with grouped MoE. |
 | Full-attention decode/prelude | Existing c=1 Q/K/V projection, vector-position RoPE prefill prelude, KV append, native append-then-attend causal GQA prefill kernel, context/GQA decode, gate, output projection. Decode kernels remain useful as oracle only for prefill attention. |
 | KV append | `qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(...)` appends all prompt rows into one request cache; row-major `*_batch_spans(...)` remains for c>N-shaped caches. Both consume per-row append positions in `spans.live_counts`. |
@@ -140,7 +140,7 @@ Missing for the final path:
 | Public API wiring | **Landed for c=1:** `prefill_native(...)` is the default generation/benchmark path; compact c>N uses separate `prefill_native_packed(slab)` blocker path. |
 | Full-attn retained orchestration | **Landed for c=1:** batched Q/K/V + vector RoPE + prompt KV append + native causal prefill attention are wired and fixture-gated. |
 | Grouped/compact MoE | **Landed for c=1:** grouped scatter/gather and compact AWQ WMMA expert kernels are wired into native prefill. |
-| Compact c>N slab | **Metadata landed:** `CompactPromptSlab` and `bucketize_by_block_count` exist; execution remains blocked on segment-aware linear-attn state kernels and varlen/block-diagonal attention via `cu_seqlens`. |
+| Compact c>N slab | **Metadata + linear state kernels landed:** `CompactPromptSlab`, `bucketize_by_block_count`, and segment-aware linear-attn conv/GDN state kernels exist; execution remains blocked on varlen/block-diagonal full-attention via `cu_seqlens`, final-row sampling/state commit, and packed orchestration. |
 | Prefill config/tuning | Add typed `PrefillConfig`; no hot-path env lookups. |
 
 ## Final API and config contract
@@ -372,19 +372,18 @@ Final compact requirements:
 - An explicit `bucketize_by_block_count` step in the scheduler runs before slab
   construction and emits one slab per uniform block-table length.
 - `Qwen35ParoResidentSession.prefill_native_packed(slab)` is present and
-  fail-closed until segment-aware native kernels land; it must eventually run
-  the same native layer logic over `T_total` rows.
+  fail-closed until the remaining packed full-attn and final commit stages
+  land; it must eventually run the same native layer logic over `T_total` rows.
 - Current batch KV writer constraint: `_check_write_batch_shape(...)` computes
   one `block_table_len = base_offsets.numel // rows`, so every row in a writer
   call must expose the same block-table length. Final scheduler policy should
   bucket slabs by common `blocks_per_request`; cross-bucket requests launch as
   separate native slabs. A true varlen block-table writer is a future kernel
   port, not a reason to use a serial per-request fallback.
-- Linear-attention conv/GDN must be segment-aware so each request's tail state is
-  preserved independently. Check the parent for any
-  `linear_attn_conv_prefill_segments_*` equivalent before writing a new kernel;
-  if absent, implement/port the segment-aware kernel rather than retaining
-  per-request invocation.
+- Linear-attention conv/GDN is segment-aware: `f32_segments` conv consumes
+  `cu_seqlens` + state slots and `f32_k2_segments` GDN commits each request's
+  recurrent tail independently. Packed prefill orchestration must call these
+  landed kernels rather than retaining per-request invocation.
 - Native causal prefill attention must be var-len/block-diagonal: a query row may
   attend only to rows/cache positions for the same request id and positions not
   greater than the query position.

@@ -15,6 +15,7 @@ _SYMBOL_LOWP = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16"
 _SYMBOL_LOWP_FP16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16"
 _SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
 _SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
+_SYMBOL_PREFILL_SEGMENTS_K2 = "hipengine_qwen35_gdn_prefill_recurrent_segments_k2_f32"
 _SYMBOL_PREFILL_PREPARE = "hipengine_qwen35_linear_attn_prefill_prepare_f32_bf16"
 _SYMBOL_PREFILL_PREPARE_FP16 = "hipengine_qwen35_linear_attn_prefill_prepare_f32_fp16"
 _SYMBOL_PREFILL_RMSNORM_GATE = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_bf16"
@@ -297,6 +298,53 @@ def qwen35_gdn_prefill_recurrent_k2_f32(
         recurrent_state_ptr,
         out_ptr,
         tokens,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_prefill_recurrent_segments_k2_f32(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch segment-aware FP32 GDN recurrent prefill K2 kernel.
+
+    ``cu_seqlens`` defines packed row ranges; ``state_indices`` maps each
+    segment to a leading state slot in ``[state_slots, V, K, Dv]``.
+    """
+
+    _launch_prefill_recurrent_segments(
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        cu_seqlens_ptr,
+        state_indices_ptr,
+        total_tokens,
+        segments,
         num_v_heads,
         head_k_dim,
         head_v_dim,
@@ -603,6 +651,11 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "w4_paro", "f32_k2_segments"),
+        qwen35_gdn_prefill_recurrent_segments_k2_f32,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear_attn_prefill_prepare", "w4_paro", "f32_bf16"),
         qwen35_linear_attn_prefill_prepare_f32_bf16,
         replace=replace,
@@ -675,6 +728,74 @@ def _launch_prefill_recurrent(
         ctypes.c_void_p(recurrent_state_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_int64(tokens),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_prefill_recurrent_segments(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(total_tokens, "total_tokens")
+    _check_positive(segments, "segments")
+    _check_positive(num_v_heads, "num_v_heads")
+    _check_positive(head_k_dim, "head_k_dim")
+    _check_positive(head_v_dim, "head_v_dim")
+    if head_k_dim != 128:
+        raise ValueError("head_k_dim must be 128 for native prefill GDN")
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_SEGMENTS_K2)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(beta_ptr),
+        ctypes.c_void_p(decay_ptr),
+        ctypes.c_void_p(recurrent_state_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(cu_seqlens_ptr),
+        ctypes.c_void_p(state_indices_ptr),
+        ctypes.c_int64(total_tokens),
+        ctypes.c_int64(segments),
         ctypes.c_int64(num_v_heads),
         ctypes.c_int64(head_k_dim),
         ctypes.c_int64(head_v_dim),

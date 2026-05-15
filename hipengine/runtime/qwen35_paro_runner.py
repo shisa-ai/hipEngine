@@ -1036,13 +1036,13 @@ class Qwen35ParoResidentSession:
         *,
         sample: bool = True,
     ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
-        """Run a compact c>N native prompt slab, once segment kernels exist.
+        """Run a compact c>N native prompt slab, once packed stages exist.
 
         The scheduler can already construct validated compact slabs. Executing
-        them natively still requires segment-aware linear-attention state
-        updates and a varlen/block-diagonal full-attention prefill ABI. This
-        method is deliberately fail-closed so callers cannot accidentally retain
-        a per-request prompt loop as the c>N native path.
+        them natively still requires varlen/block-diagonal full-attention and
+        final-row commit wiring. Segment-aware linear-attention kernels are
+        landed, but this method remains fail-closed so callers cannot
+        accidentally retain a per-request prompt loop as the c>N native path.
         """
 
         from hipengine.generation.batch_scheduler import CompactPromptSlab
@@ -1064,7 +1064,7 @@ class Qwen35ParoResidentSession:
             "rows": slab.rows,
             "block_count": slab.block_count,
             "blockers": [
-                "segment-aware linear-attention conv/GDN state kernels are not wired",
+                "segment-aware linear-attention kernels are landed but not yet orchestrated in prefill_native_packed",
                 "varlen/block-diagonal full-attention prefill via cu_seqlens is not wired",
                 "packed final-row sampling and per-request state commit are not wired",
             ],

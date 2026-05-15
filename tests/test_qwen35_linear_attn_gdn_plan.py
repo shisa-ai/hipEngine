@@ -6,6 +6,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn import (
     plan_qwen35_linear_attn_gdn_build,
     qwen35_gdn_prefill_recurrent_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
+    qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_prefill_rmsnorm_gate_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
@@ -59,6 +60,15 @@ def test_qwen35_linear_attn_gdn_registers_decode_and_prefill_variants() -> None:
             variant="f32_k2",
         )
         is qwen35_gdn_prefill_recurrent_k2_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="w4_paro",
+            variant="f32_k2_segments",
+        )
+        is qwen35_gdn_prefill_recurrent_segments_k2_f32
     )
     assert (
         resolve(
@@ -132,6 +142,8 @@ def test_qwen35_linear_attn_gdn_wrapper_validates_before_gpu_load() -> None:
         qwen35_gdn_prefill_recurrent_f32(0, 0, 0, 0, 0, 0, 0, 1, 2, 64, 4)
     with pytest.raises(ValueError, match="tokens must be positive"):
         qwen35_gdn_prefill_recurrent_k2_f32(0, 0, 0, 0, 0, 0, 0, 0, 2, 128, 4)
+    with pytest.raises(ValueError, match="segments must be positive"):
+        qwen35_gdn_prefill_recurrent_segments_k2_f32(0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 2, 128, 4)
     with pytest.raises(ValueError, match="num_v_heads must be divisible"):
         qwen35_linear_attn_prefill_prepare_f32_bf16(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 128, 4)
     with pytest.raises(ValueError, match="head_v_dim must be positive"):
