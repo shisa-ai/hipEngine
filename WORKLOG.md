@@ -8906,3 +8906,35 @@ rg -n "same IDs/logits|bit-stable|D1|D2|## Phased implementation plan" docs/PREF
 
 Result: `docs/PREFILL.md reviewer-tightening ok 498 lines`; stale-term grep
 returned no matches.
+
+## 2026-05-15 — Prefill API/config implementation start
+
+Started implementation of the final-path prefill spec with the API/config
+foundation, without adding a retained intermediate production prefill path.
+
+Changes:
+- added `hipengine.runtime.PrefillConfig` with typed chunk knobs and
+  `require_full_native=True` default;
+- wired `PrefillConfig` into `Qwen35ParoResidentSession`;
+- added session-owned `prefill_token_ids` / `prefill_positions` device buffers;
+- added `Qwen35ParoResidentSession.prefill_native(...)` with the public
+  position-0 contract, `linear_conv_kernel_dim` short-prompt guard, per-call
+  `require_full_native` override precedence, and default NotImplementedError
+  until native full-attention prefill + grouped MoE are wired;
+- preserved `prefill_linear_tokens_native(...)` as a compatibility alias for
+  retained legacy/native-prefix artifacts;
+- updated `scripts/qwen35_paro_bench.py --native-prefill` to call
+  `prefill_native(..., require_full_native=False)` explicitly so oracle/probe
+  usage is labelled at the call site.
+
+Validation:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -40
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q
+python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/__init__.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py
+```
+
+Result: ROCm visible (`gfx1100`, W7900); targeted pytest passed `21 passed`;
+py_compile succeeded.

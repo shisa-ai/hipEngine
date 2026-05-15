@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 
 import pytest
 
@@ -9,6 +9,7 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
+from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoResidentBatchLayout,
     Qwen35ParoResidentSession,
@@ -81,18 +82,75 @@ def test_qwen35_resident_native_prefill_plan_accepts_all_linear_layer_limit() ->
     assert plan.blockers == ()
 
 
-def test_qwen35_resident_prefill_linear_tokens_native_validates_prompt_tokens() -> None:
+def _prefill_validation_session() -> Qwen35ParoResidentSession:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.closed = False
     session.max_sequence_length = 8
     session.vocab_size = 100
     session.layer_limit = 2
-    session.config = SimpleNamespace(layer_types=("linear_attention", "full_attention"))
+    session.config = SimpleNamespace(
+        layer_types=("linear_attention", "full_attention"),
+        linear_conv_kernel_dim=4,
+    )
+    session.prefill_config = PrefillConfig()
+    session._check_position = MethodType(lambda self, position: None, session)
+    return session
+
+
+def test_qwen35_resident_prefill_linear_tokens_native_validates_prompt_tokens() -> None:
+    session = _prefill_validation_session()
 
     with pytest.raises(ValueError, match="token_ids must be non-empty"):
         session.prefill_linear_tokens_native([], sample=True)
     with pytest.raises(ValueError, match="outside"):
         session.prefill_linear_tokens_native([100], sample=True)
+
+
+def test_prefill_config_validates_chunk_sizes_and_defaults_to_full_native() -> None:
+    config = PrefillConfig(linear_chunk_size="4", require_full_native=False)
+
+    assert config.linear_chunk_size == 4
+    assert config.require_full_native is False
+    assert config.moe_grouped_device_gather is True
+
+    with pytest.raises(ValueError, match="full_attn_query_chunk_size"):
+        PrefillConfig(full_attn_query_chunk_size=-1)
+
+
+def test_qwen35_resident_prefill_native_contract_requires_full_native_by_default() -> None:
+    session = _prefill_validation_session()
+
+    with pytest.raises(ValueError, match="linear_conv_kernel_dim"):
+        session.prefill_native([1, 2, 3], sample=False)
+    with pytest.raises(NotImplementedError, match="full native Qwen3.5/PARO prefill is not wired"):
+        session.prefill_native([1, 2, 3, 4], sample=False)
+
+
+def test_qwen35_resident_prefill_native_allows_explicit_oracle_bringup_path() -> None:
+    session = _prefill_validation_session()
+    calls: list[tuple[tuple[int, ...], bool, bool]] = []
+
+    def fake_legacy(self, token_ids, *, sample=True, allow_rejected_correctness=False):
+        calls.append((tuple(token_ids), bool(sample), bool(allow_rejected_correctness)))
+        return "legacy-result"
+
+    session._prefill_linear_tokens_native_legacy = MethodType(fake_legacy, session)
+
+    result = session.prefill_native([1, 2, 3, 4], sample=False, require_full_native=False)
+
+    assert result == "legacy-result"
+    assert calls == [((1, 2, 3, 4), False, False)]
+
+
+def test_qwen35_resident_prefill_native_uses_config_default_for_full_native() -> None:
+    session = _prefill_validation_session()
+    session.prefill_config = PrefillConfig(require_full_native=False)
+    session._prefill_linear_tokens_native_legacy = MethodType(
+        lambda self, token_ids, *, sample=True, allow_rejected_correctness=False: tuple(token_ids),
+        session,
+    )
+
+    assert session.prefill_native([1, 2, 3, 4], sample=False) == (1, 2, 3, 4)
 
 
 def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> None:

@@ -60,6 +60,7 @@ from hipengine.loading.materialize import (
     load_host_array_to_device_as_dtype,
     load_tensor_info_to_device,
 )
+from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_paro import Qwen35ParoDecodeState
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
@@ -709,6 +710,7 @@ class Qwen35ParoResidentSession:
         compiler_version: str | None = None,
         require_cached_build: bool = False,
         progress: Callable[[dict[str, Any]], None] | None = None,
+        prefill_config: PrefillConfig | None = None,
     ) -> None:
         if max_sequence_length <= 0:
             raise ValueError("max_sequence_length must be positive")
@@ -729,6 +731,7 @@ class Qwen35ParoResidentSession:
         self.max_batch_size = int(max_batch_size)
         self.compiler_version = compiler_version
         self.require_cached_build = bool(require_cached_build)
+        self.prefill_config = prefill_config or PrefillConfig()
         self.max_splits = (self.max_sequence_length + self.chunk_size - 1) // self.chunk_size
         self.blocks = (self.max_sequence_length + self.block_size - 1) // self.block_size
         self.batch_layout = Qwen35ParoResidentBatchLayout(
@@ -1001,6 +1004,29 @@ class Qwen35ParoResidentSession:
             blockers=tuple(dict.fromkeys(blockers)),
         )
 
+    def prefill_native(
+        self,
+        token_ids: Sequence[int],
+        *,
+        sample: bool = True,
+        require_full_native: bool | None = None,
+    ) -> Qwen35ParoAutoregressiveStepResult | None:
+        """Run full-native prefill, or an explicit bring-up oracle path.
+
+        The retained prefill path requires native full-attention prefill and
+        grouped/compact MoE. Until those kernels are wired, callers must pass
+        ``require_full_native=False`` to use the legacy oracle helper for
+        bring-up and reproduction only.
+        """
+
+        tokens = self._validate_prefill_tokens(token_ids, require_min_prompt=True)
+        if self._resolve_require_full_native(require_full_native):
+            raise NotImplementedError(
+                "full native Qwen3.5/PARO prefill is not wired yet: "
+                "native causal full-attention prefill and grouped MoE prefill are required"
+            )
+        return self._prefill_linear_tokens_native_legacy(tokens, sample=sample, allow_rejected_correctness=False)
+
     def prefill_linear_tokens_native(
         self,
         token_ids: list[int] | tuple[int, ...],
@@ -1008,33 +1034,39 @@ class Qwen35ParoResidentSession:
         sample: bool = True,
         allow_rejected_correctness: bool = False,
     ) -> Qwen35ParoAutoregressiveStepResult | None:
-        """Run native prefill over currently supported linear-attention prefixes.
+        """Compatibility alias for retained native-prefix artifacts.
 
-        The helper is correctness-accepted for the available all-linear prefix
-        coverage (see ``benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-scratch-restore-sweep.json``).
-        When the configured layer limit extends past that prefix, remaining
-        layers run token-by-token through the existing c=1 resident path as an
-        explicitly labelled fallback. It is still not compact/full-attention
-        native prefill for the real 40-layer model. ``allow_rejected_correctness``
-        is retained only for compatibility with older diagnostic scripts.
+        New call sites should use :meth:`prefill_native`. This helper preserves
+        the historical linear-prefix plus serial-suffix oracle behavior for
+        existing correctness scripts and artifacts.
         """
 
-        if self.closed:
-            raise RuntimeError("session is closed")
-        tokens = tuple(int(token) for token in token_ids)
-        if not tokens:
-            raise ValueError("token_ids must be non-empty")
-        if len(tokens) > self.max_sequence_length:
-            raise ValueError("token_ids exceed session capacity")
-        for pos, token in enumerate(tokens):
-            self._check_position(pos)
-            if token < 0 or token >= self.vocab_size:
-                raise ValueError(f"token_id {token} outside [0, {self.vocab_size})")
+        return self._prefill_linear_tokens_native_legacy(
+            token_ids,
+            sample=sample,
+            allow_rejected_correctness=allow_rejected_correctness,
+        )
+
+    def _prefill_linear_tokens_native_legacy(
+        self,
+        token_ids: Sequence[int],
+        *,
+        sample: bool = True,
+        allow_rejected_correctness: bool = False,
+    ) -> Qwen35ParoAutoregressiveStepResult | None:
+        """Run the legacy linear-prefix native prefill oracle."""
+
+        tokens = self._validate_prefill_tokens(token_ids, require_min_prompt=False)
         native_prefill_plan = self.native_prefill_plan()
         _ = allow_rejected_correctness
         token_arr = np.asarray(tokens, dtype=np.int64)
-        token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
-        copy_host_to_device(token_buf, host_array_ptr(token_arr), runtime=self.runtime)
+        if hasattr(self, "prefill_token_id_buf") and self.prefill_token_id_buf.nbytes >= token_arr.nbytes:
+            token_buf = self.prefill_token_id_buf
+            owns_token_buf = False
+        else:
+            token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
+            owns_token_buf = True
+        copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
         try:
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
@@ -1069,7 +1101,37 @@ class Qwen35ParoResidentSession:
                 return None
             return self._sample_from_hidden(self.hidden)
         finally:
-            free(token_buf, runtime=self.runtime)
+            if owns_token_buf:
+                free(token_buf, runtime=self.runtime)
+
+    def _validate_prefill_tokens(self, token_ids: Sequence[int], *, require_min_prompt: bool) -> tuple[int, ...]:
+        if self.closed:
+            raise RuntimeError("session is closed")
+        tokens = tuple(int(token) for token in token_ids)
+        if not tokens:
+            raise ValueError("token_ids must be non-empty")
+        if len(tokens) > self.max_sequence_length:
+            raise ValueError("token_ids exceed session capacity")
+        for pos, token in enumerate(tokens):
+            self._check_position(pos)
+            if token < 0 or token >= self.vocab_size:
+                raise ValueError(f"token_id {token} outside [0, {self.vocab_size})")
+        if require_min_prompt:
+            min_tokens = int(getattr(self.config, "linear_conv_kernel_dim", 1))
+            if len(tokens) < min_tokens:
+                raise ValueError(
+                    "native prefill requires at least linear_conv_kernel_dim "
+                    f"tokens ({min_tokens}); got {len(tokens)}"
+                )
+        return tokens
+
+    def _resolve_require_full_native(self, require_full_native: bool | None) -> bool:
+        if require_full_native is not None:
+            return bool(require_full_native)
+        config = getattr(self, "prefill_config", None)
+        if config is None:
+            return PrefillConfig().require_full_native
+        return bool(config.require_full_native)
 
     def capture_decode_graph(self, *, position: int, steps_per_replay: int = 1) -> "Qwen35ParoDecodeGraph":
         """Capture one generated-token decode step for replay.
@@ -1510,6 +1572,22 @@ class Qwen35ParoResidentSession:
         self.active_mask_buf = self._dev(self.active_mask_arr)
         self.block_table = Tensor.from_handle(self.block_table_buf.ptr, block_table_arr.shape, DType.INT32, self.device)
         self.batch_positions = Tensor.from_handle(self.position_buf.ptr, self.batch_layout.slot_scalar_shape, DType.INT64, self.device)
+        prefill_token_arr = np.zeros((self.max_sequence_length,), dtype=np.int64)
+        prefill_position_arr = np.arange(self.max_sequence_length, dtype=np.int64)
+        self.prefill_token_id_buf = self._dev(prefill_token_arr)
+        self.prefill_position_buf = self._dev(prefill_position_arr)
+        self.prefill_token_ids = Tensor.from_handle(
+            self.prefill_token_id_buf.ptr,
+            prefill_token_arr.shape,
+            DType.INT64,
+            self.device,
+        )
+        self.prefill_positions = Tensor.from_handle(
+            self.prefill_position_buf.ptr,
+            prefill_position_arr.shape,
+            DType.INT64,
+            self.device,
+        )
         self.batch_contexts = Tensor.from_handle(self.context_buf.ptr, self.batch_layout.slot_scalar_shape, DType.INT64, self.device)
         self.batch_token_ids = Tensor.from_handle(self.token_id_buf.ptr, self.batch_layout.slot_scalar_shape, DType.INT64, self.device)
         self.active_mask = Tensor.from_handle(self.active_mask_buf.ptr, self.batch_layout.slot_scalar_shape, DType.BOOL, self.device)

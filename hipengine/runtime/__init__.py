@@ -1,5 +1,6 @@
 """Torch-free runtime scaffolding."""
 
+from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_paro import (
     Qwen35ParoAttentionScratch,
     Qwen35ParoDecodeState,
@@ -17,6 +18,7 @@ from hipengine.runtime.qwen35_paro_runner import (
 from hipengine.runtime.workspace import RuntimeWorkspace, WorkspaceAllocation, tensor_nbytes
 
 __all__ = [
+    "PrefillConfig",
     "Qwen35ParoAttentionScratch",
     "Qwen35ParoDecodeState",
     "Qwen35ParoLinearAttentionScratch",

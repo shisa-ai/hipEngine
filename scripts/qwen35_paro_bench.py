@@ -3,10 +3,10 @@
 
 This runs real prompt-token prefill and generated-token decode with persistent
 per-layer linear-attention state and full-attention KV cache. By default,
-prefill is token-by-token c=1. ``--native-prefill`` requests native batched
-prefill for the currently supported linear-attention-only layer prefixes. It is
-not yet compact/grouped-WMMA full-model prefill, so output rows still label it
-as not comparable to PLAN-MOE2 prefill throughput.
+prefill is token-by-token c=1. ``--native-prefill`` requests the explicit
+``prefill_native(..., require_full_native=False)`` bring-up/oracle path until
+full native prefill is wired. Output rows still label this as not comparable to
+final native prefill throughput.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def main() -> int:
     parser.add_argument(
         "--native-prefill",
         action="store_true",
-        help="Request accepted native batched prefill for a linear-attention-only layer prefix.",
+        help="Request the explicit prefill_native(..., require_full_native=False) bring-up/oracle path.",
     )
     parser.add_argument(
         "--allow-rejected-native-prefill",
@@ -119,10 +119,11 @@ def main() -> int:
         with roctx.range("hipengine:prefill"):
             if args.native_prefill:
                 with roctx.range("hipengine:native_prefill_batch"):
-                    next_result = session.prefill_linear_tokens_native(
+                    _ = args.allow_rejected_native_prefill
+                    next_result = session.prefill_native(
                         prompt_tokens,
                         sample=True,
-                        allow_rejected_correctness=args.allow_rejected_native_prefill,
+                        require_full_native=False,
                     )
             else:
                 for pos, token in enumerate(prompt_tokens):
