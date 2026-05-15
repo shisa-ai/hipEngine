@@ -32,6 +32,7 @@
       "scheduler_speculative_state_commit_plan": true,
       "scheduler_speculative_kv_commit": true,
       "scheduler_speculative_kv_rollback": true,
+      "scheduler_speculative_accept_finalize": true,
       "verify_graph_shape_key": {
         "mode": "verify_tree",
         "active_c": 1,
@@ -266,6 +267,14 @@
         ],
         "committed": false,
         "rolled_back": true
+      },
+      "scheduler_accept_finalize": {
+        "completed_request_ids": [],
+        "active_generated_counts": {
+          "1": 2,
+          "2": 1
+        },
+        "completed_generated_counts": {}
       }
     },
     "resident_api": {

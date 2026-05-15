@@ -229,7 +229,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert committed_txn.request_ids == (r0, r1)
     assert committed_txn.accepted_counts == (2, 1)
     assert committed_txn.committed
-    completed = scheduler.record_speculative_accept(summary)
+    completed = scheduler.finalize_speculative_accept(committed_txn, state_plan)
 
     assert [item.request_id for item in completed] == [r1]
     assert scheduler.active_batch.requests[r0].generated_tokens == (101, 102)

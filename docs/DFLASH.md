@@ -57,8 +57,9 @@ It records:
   plans to resident target-verifier device buffers, derive scheduler-owned
   commit plans from verifier accept summaries, bind those commit plans to
   state/KV commit device buffers, commit or roll back speculative KV transaction
-  metadata, and record accepted speculative token summaries against request
-  budgets, while host KV transaction bookkeeping now accounts
+  metadata, finalize accepted-token recording after KV commit, and record
+  accepted speculative token summaries against request budgets, while host KV
+  transaction bookkeeping now accounts
   for `TargetVerifyBatch` candidate
   rows only (committed root rows are excluded from the speculative journal),
   tracks per-request candidate counts, rejects accepted counts larger

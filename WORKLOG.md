@@ -7528,3 +7528,50 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows scheduler speculative KV transaction rollback metadata only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Scheduler speculative accept finalization metadata
+
+### Scope
+
+- Added `ResidentBatchScheduler.finalize_speculative_accept(...)`.
+- The scheduler now validates that the committed `KVTransaction` matches the scheduler commit plan transaction id, request ids, and accepted counts before recording accepted tokens/completions.
+- This closes the host-side speculative accept lifecycle after state/KV commit buffers and KV commit metadata are available.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `21 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.scheduler_speculative_accept_finalize=true`
+- `implementation_status.kv_transaction_target_verify.scheduler_accept_finalize.active_generated_counts={"1":2,"2":1}`
+- `implementation_status.kv_transaction_target_verify.scheduler_accept_finalize.completed_request_ids=[]`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: scheduler-owned speculative verifier metadata now records accepted tokens only after a matching committed KV transaction. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows scheduler speculative accept-finalization metadata only; no performance claim or kernel change was made.

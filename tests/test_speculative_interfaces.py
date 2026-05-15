@@ -565,6 +565,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_state_commit_plan"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_kv_commit"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_kv_rollback"]
+    assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_accept_finalize"]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["target_verify_rows"] == 5
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
@@ -621,6 +622,10 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert not kv_rollback["committed"]
     assert kv_rollback["rolled_back"]
     assert kv_rollback["transaction_id"] != kv_commit["transaction_id"]
+    finalize = payload["implementation_status"]["kv_transaction_target_verify"]["scheduler_accept_finalize"]
+    assert finalize["completed_request_ids"] == []
+    assert finalize["active_generated_counts"] == {"1": 2, "2": 1}
+    assert finalize["completed_generated_counts"] == {}
     assert payload["implementation_status"]["resident_api"]["step_batch_serial"]
     assert payload["implementation_status"]["resident_api"]["native_target_verify_batch"]
     assert payload["implementation_status"]["resident_api"]["speculative_verify_batch"]
