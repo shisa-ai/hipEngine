@@ -9892,3 +9892,33 @@ Results: fixture correctness stayed clean (`max_kl=0.00487`, top-1 `1.0`,
 `192.753 tok/s`, below the 95% guard floor (`302.135 tok/s`). Decision: revert;
 hipENGINE's transposed projection kernels remain faster for this path despite
 the parent engine's different optimal flag stack.
+
+## 2026-05-15 — Prefill multiloop iter 10: 64-thread prefill projection GEMV
+
+Tuned multi-token transposed pack8 prefill projections. The previous strided
+layout trial showed transposed qweights are the right layout in hipENGINE, so
+this iteration kept that layout and changed only the thread count for the
+multi-token FP16 full-attention Q/K and linear-attention QKV/Z projections from
+default `128` to `64`. These projections are one of the largest launch families
+(80 calls at 512/4K), and 64-thread blocks are faster for the retained prefill
+path.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+for c in 2 4 8; do python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size $c --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/iter10-packed-c$c.json; done
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter10-512-run1.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter10-512-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter10-512-run3.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: 512/128 samples `530.738`, `530.202`, `529.673`, `529.768` tok/s
+(median `529.985`, +2.66% vs retained `516.236`). Fixture gate passed with
+`native_owned_device_bytes=1625645909`, native prefill `0.97720s`, max KL
+`0.02207` (still below 0.05), top-1 `1.0`; compact c=2/4/8 prompt8 gates passed.
+4K/128 improved to `322.359 tok/s` (new 4K guard baseline), prefill `12.7063s`,
+decode `101.695 tok/s`.
