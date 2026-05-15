@@ -214,12 +214,14 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
             request_ids=(r0, r1),
             accepted_counts=(2, 1),
             accepted_tokens=((101, 102), (201,)),
+            transaction_id=plan.transaction.transaction_id,
         ),
     )
     commit = scheduler.plan_speculative_commit(buffer_plan, summary)
     assert isinstance(commit, SpeculativeCommitPlan)
     assert commit.verify_plan is buffer_plan
     assert commit.summary is summary
+    assert summary.transaction_id == plan.transaction.transaction_id
     assert commit.commit_plan.transaction_id == plan.transaction.transaction_id
     assert commit.commit_plan.request_ids == (r0, r1)
     assert commit.commit_plan.accepted_counts == (2, 1)
@@ -228,6 +230,9 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert commit.commit_plan.draft_depth == work.target_batch.draft_depth
     assert commit.commit_plan.tree_shape == work.target_batch.tree_shape
     assert commit.commit_plan.mode == "verify_tree"
+    wrong_summary_txn = replace(summary, transaction_id=plan.transaction.transaction_id + 1)
+    with pytest.raises(ValueError, match="transaction_id"):
+        scheduler.plan_speculative_commit(buffer_plan, wrong_summary_txn)
     wrong_summary_depth = replace(summary, draft_depth=work.target_batch.draft_depth + 1)
     with pytest.raises(ValueError, match="draft_depth"):
         scheduler.plan_speculative_commit(buffer_plan, wrong_summary_depth)

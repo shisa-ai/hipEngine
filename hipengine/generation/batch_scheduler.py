@@ -369,6 +369,8 @@ class ResidentBatchScheduler:
         target = verify_plan.plan.target_batch
         if summary.request_ids != target.request_ids:
             raise ValueError("accept summary request_ids must match speculative plan")
+        if summary.transaction_id is not None and summary.transaction_id != verify_plan.plan.transaction.transaction_id:
+            raise ValueError("accept summary transaction_id must match speculative plan")
         if summary.mode != target.mode:
             raise ValueError("accept summary mode must match speculative plan")
         if summary.candidate_counts is not None and summary.candidate_counts != target.candidate_counts:

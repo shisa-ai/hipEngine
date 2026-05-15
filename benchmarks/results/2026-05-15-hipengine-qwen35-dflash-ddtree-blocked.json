@@ -27,6 +27,7 @@
       "kv_transaction_role_checked": true,
       "target_commit_plan_transaction_role_checked": true,
       "target_commit_plan_candidate_budget_checked": true,
+      "target_accept_summary_transaction_id_checked": true,
       "target_accept_summary_topology_checked": true,
       "target_verify_buffers_transaction_id_checked": true,
       "target_verify_buffers_candidate_counts_checked": true,
@@ -72,6 +73,7 @@
         4
       ],
       "accept_summary": {
+        "transaction_id": 0,
         "accepted_counts": [
           2,
           1
@@ -280,6 +282,7 @@
           1,
           2
         ],
+        "summary_transaction_id": 1,
         "accepted_counts": [
           2,
           1

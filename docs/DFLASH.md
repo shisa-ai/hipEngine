@@ -53,7 +53,7 @@ It records:
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
 - speculative metadata and KV transactions reject duplicate request ids,
-  invalid transaction roles, commit-plan/transaction role mismatches,
+  invalid transaction roles, accept-summary/commit-plan transaction mismatches,
   accept-summary/transaction candidate-budget/topology mismatches, and
   inconsistent transaction terminal states, and the batch scheduler can validate active-request readiness, emit
   scheduler-owned speculative `TargetVerifyBatch`/`WorkItem` metadata, derive

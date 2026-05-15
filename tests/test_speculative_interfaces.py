@@ -37,6 +37,8 @@ def test_speculative_request_ids_must_be_unique() -> None:
         )
     with pytest.raises(ValueError, match="unique"):
         AcceptResult(request_ids=(1, 1), accepted_counts=(1, 0), accepted_tokens=((10,), ()))
+    with pytest.raises(ValueError, match="transaction_id"):
+        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), transaction_id=-1)
     with pytest.raises(ValueError, match="unique"):
         TargetVerifyBatch(
             request_ids=(1, 1),
@@ -304,9 +306,10 @@ def test_target_accept_summary_validates_paths_and_commit_rows() -> None:
 
     summary = TargetAcceptSummary.from_accept_result(
         target,
-        AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,))),
+        AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,)), transaction_id=7),
     )
 
+    assert summary.transaction_id == 7
     assert summary.request_ids == (1, 2)
     assert summary.accepted_counts == (2, 1)
     assert summary.accepted_tokens == ((10, 11), (20,))
@@ -331,6 +334,8 @@ def test_target_accept_summary_validates_paths_and_commit_rows() -> None:
     assert zero.draft_depth == 2
     assert zero.tree_shape == (0, 1, 0)
 
+    with pytest.raises(ValueError, match="transaction_id"):
+        replace(summary, transaction_id=-1)
     with pytest.raises(ValueError, match="draft_depth"):
         replace(summary, draft_depth=-1)
     with pytest.raises(ValueError, match="tree_shape"):
@@ -361,11 +366,16 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
         tree_parents=(-1, 0, -1),
     )
     target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
+    txn = policy.begin_transaction((1, 2), target)
     summary = TargetAcceptSummary.from_accept_result(
         target,
-        AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,))),
+        AcceptResult(
+            request_ids=(1, 2),
+            accepted_counts=(2, 1),
+            accepted_tokens=((10, 11), (20,)),
+            transaction_id=txn.transaction_id,
+        ),
     )
-    txn = policy.begin_transaction((1, 2), target)
 
     plan = TargetCommitPlan.from_summary(summary, txn)
 
@@ -393,7 +403,7 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
         role="verify_chain",
     )
     with pytest.raises(ValueError, match="role must match"):
-        TargetCommitPlan.from_summary(summary, mismatch_txn)
+        TargetCommitPlan.from_summary(replace(summary, transaction_id=mismatch_txn.transaction_id), mismatch_txn)
     invalid_role_txn = SimpleNamespace(
         transaction_id=9,
         request_ids=(1, 2),
@@ -403,7 +413,10 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
         role="decode",
     )
     with pytest.raises(ValueError, match="verify_chain or verify_tree"):
-        TargetCommitPlan.from_summary(summary, invalid_role_txn)
+        TargetCommitPlan.from_summary(replace(summary, transaction_id=invalid_role_txn.transaction_id), invalid_role_txn)
+    mismatched_summary_txn = replace(summary, transaction_id=txn.transaction_id + 1)
+    with pytest.raises(ValueError, match="transaction_id"):
+        TargetCommitPlan.from_summary(mismatched_summary_txn, txn)
     mismatched_candidate_txn = SimpleNamespace(
         transaction_id=10,
         request_ids=(1, 2),
@@ -413,7 +426,7 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
         role="verify_tree",
     )
     with pytest.raises(ValueError, match="candidate_counts must match"):
-        TargetCommitPlan.from_summary(summary, mismatched_candidate_txn)
+        TargetCommitPlan.from_summary(replace(summary, transaction_id=mismatched_candidate_txn.transaction_id), mismatched_candidate_txn)
 
     with pytest.raises(ValueError, match="candidate_counts"):
         TargetCommitPlan(
@@ -655,6 +668,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["kv_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_candidate_budget_checked"]
+    assert payload["implementation_status"]["interfaces_present"]["target_accept_summary_transaction_id_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_accept_summary_topology_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_transaction_id_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_candidate_counts_checked"]
@@ -675,6 +689,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["commit_rows"] == [3, 4]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["transaction_id"] == 0
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["accepted_tokens"] == [[10, 11], [20]]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["draft_depth"] == 2
@@ -721,6 +736,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert buffer_plan["transaction_id"] == plan["transaction_id"]
     commit_plan = payload["implementation_status"]["kv_transaction_target_verify"]["scheduler_commit_plan"]
     assert commit_plan["transaction_id"] == plan["transaction_id"]
+    assert commit_plan["summary_transaction_id"] == plan["transaction_id"]
     assert commit_plan["request_ids"] == [1, 2]
     assert commit_plan["accepted_counts"] == [2, 1]
     assert commit_plan["commit_rows"] == [3, 4]

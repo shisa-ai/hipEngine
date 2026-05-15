@@ -454,11 +454,14 @@ class AcceptResult:
     request_ids: tuple[int, ...]
     accepted_counts: tuple[int, ...]
     accepted_tokens: tuple[tuple[int, ...], ...]
+    transaction_id: int | None = None
 
     def __post_init__(self) -> None:
         if not self.request_ids:
             raise ValueError("AcceptResult must contain at least one request")
         _validate_unique_request_ids(self.request_ids)
+        if self.transaction_id is not None and self.transaction_id < 0:
+            raise ValueError("transaction_id must be non-negative")
         if len(self.accepted_counts) != len(self.request_ids) or len(self.accepted_tokens) != len(self.request_ids):
             raise ValueError("accepted counts/tokens must align with request_ids")
         if any(count < 0 for count in self.accepted_counts):
@@ -482,6 +485,7 @@ class TargetAcceptSummary:
     commit_positions: tuple[int, ...]
     full_accept: tuple[bool, ...]
     candidate_counts: tuple[int, ...] | None = None
+    transaction_id: int | None = None
     draft_depth: int | None = None
     tree_shape: tuple[int, ...] | None = None
     mode: str = "verify_chain"
@@ -490,6 +494,8 @@ class TargetAcceptSummary:
         if not self.request_ids:
             raise ValueError("TargetAcceptSummary must contain at least one request")
         _validate_unique_request_ids(self.request_ids)
+        if self.transaction_id is not None and self.transaction_id < 0:
+            raise ValueError("transaction_id must be non-negative")
         lengths = (
             len(self.accepted_counts),
             len(self.accepted_tokens),
@@ -575,6 +581,7 @@ class TargetAcceptSummary:
                 for accepted, max_depth in zip(selection.accepted_counts, max_depths, strict=True)
             ),
             candidate_counts=target.candidate_counts,
+            transaction_id=result.transaction_id,
             draft_depth=target.draft_depth,
             tree_shape=target.tree_shape,
             mode=target.mode,
@@ -640,6 +647,9 @@ class TargetCommitPlan:
             raise ValueError("cannot build a commit plan for an already committed transaction")
         if bool(getattr(transaction, "rolled_back", False)):
             raise ValueError("cannot build a commit plan for a rolled-back transaction")
+        transaction_id = int(getattr(transaction, "transaction_id"))
+        if summary.transaction_id is not None and summary.transaction_id != transaction_id:
+            raise ValueError("target accept summary transaction_id must match transaction")
         candidate_counts = getattr(transaction, "candidate_counts", None)
         counts = None if candidate_counts is None else tuple(int(count) for count in candidate_counts)
         summary_candidate_counts = getattr(summary, "candidate_counts", None)
@@ -655,7 +665,7 @@ class TargetCommitPlan:
         if role != summary.mode:
             raise ValueError("transaction role must match target accept summary mode")
         return cls(
-            transaction_id=int(getattr(transaction, "transaction_id")),
+            transaction_id=transaction_id,
             request_ids=summary.request_ids,
             accepted_counts=summary.accepted_counts,
             commit_rows=summary.commit_rows,

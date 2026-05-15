@@ -103,7 +103,7 @@ def _kv_transaction_role_checked() -> bool:
     return False
 
 
-def _sample_tree_accept_summary() -> TargetAcceptSummary:
+def _sample_tree_accept_summary(*, transaction_id: int | None = None) -> TargetAcceptSummary:
     draft = DraftBatch(
         request_ids=(1,),
         candidate_tokens=(10,),
@@ -116,7 +116,7 @@ def _sample_tree_accept_summary() -> TargetAcceptSummary:
     target = TargetVerifyBatch.from_draft(draft, root_tokens=(100,), root_positions=(5,))
     return TargetAcceptSummary.from_accept_result(
         target,
-        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),)),
+        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), transaction_id=transaction_id),
     )
 
 
@@ -167,6 +167,14 @@ def _target_commit_plan_candidate_budget_checked() -> bool:
         TargetCommitPlan.from_summary(summary, mismatch)
     except ValueError as exc:
         return "candidate_counts must match" in str(exc)
+    return False
+
+
+def _target_accept_summary_transaction_id_checked() -> bool:
+    try:
+        _sample_tree_accept_summary(transaction_id=-1)
+    except ValueError as exc:
+        return "transaction_id" in str(exc)
     return False
 
 
@@ -284,6 +292,7 @@ def _interface_status() -> dict[str, Any]:
         "kv_transaction_role_checked": _kv_transaction_role_checked(),
         "target_commit_plan_transaction_role_checked": _target_commit_plan_transaction_role_checked(),
         "target_commit_plan_candidate_budget_checked": _target_commit_plan_candidate_budget_checked(),
+        "target_accept_summary_transaction_id_checked": _target_accept_summary_transaction_id_checked(),
         "target_accept_summary_topology_checked": _target_accept_summary_topology_checked(),
         "target_verify_buffers_transaction_id_checked": _target_verify_buffers_transaction_id_checked(),
         "target_verify_buffers_candidate_counts_checked": _target_verify_buffers_candidate_counts_checked(),
@@ -474,7 +483,12 @@ def _kv_transaction_status() -> dict[str, Any]:
     )
     target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
     txn = policy.begin_transaction((1, 2), target)
-    accept = AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,)))
+    accept = AcceptResult(
+        request_ids=(1, 2),
+        accepted_counts=(2, 1),
+        accepted_tokens=((10, 11), (20,)),
+        transaction_id=txn.transaction_id,
+    )
     summary = TargetAcceptSummary.from_accept_result(target, accept)
     plan = TargetCommitPlan.from_summary(summary, txn)
     buffers = TargetVerifyBuffers.for_batch(
@@ -551,7 +565,8 @@ def _kv_transaction_status() -> dict[str, Any]:
         transaction_id=scheduler_plan.transaction.transaction_id,
     )
     scheduler_buffer_plan = scheduler.bind_speculative_verify_buffers(scheduler_plan, scheduler_buffers)
-    scheduler_commit_plan = scheduler.plan_speculative_commit(scheduler_buffer_plan, summary)
+    scheduler_summary = replace(summary, transaction_id=scheduler_plan.transaction.transaction_id)
+    scheduler_commit_plan = scheduler.plan_speculative_commit(scheduler_buffer_plan, scheduler_summary)
     scheduler_state_buffers = TargetStateCommitBuffers.for_plan(
         scheduler_commit_plan.commit_plan,
         accepted_counts=state_buffers.accepted_counts,
@@ -575,6 +590,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         "commit_selection_rows": list(selection.selected_rows),
         "commit_selection_positions": list(selection.selected_positions),
         "accept_summary": {
+            "transaction_id": summary.transaction_id,
             "accepted_counts": list(summary.accepted_counts),
             "accepted_tokens": [list(row) for row in summary.accepted_tokens],
             "candidate_counts": None if summary.candidate_counts is None else list(summary.candidate_counts),
@@ -669,6 +685,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         "scheduler_commit_plan": {
             "transaction_id": scheduler_commit_plan.commit_plan.transaction_id,
             "request_ids": list(scheduler_commit_plan.commit_plan.request_ids),
+            "summary_transaction_id": scheduler_commit_plan.summary.transaction_id,
             "accepted_counts": list(scheduler_commit_plan.commit_plan.accepted_counts),
             "commit_rows": list(scheduler_commit_plan.commit_plan.commit_rows),
             "commit_positions": list(scheduler_commit_plan.commit_plan.commit_positions),
