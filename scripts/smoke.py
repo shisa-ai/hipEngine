@@ -49,6 +49,7 @@ def main() -> int:
             "qwen35-paged-attn-gate-hip",
             "qwen35-paged-attn-gate-bf16-hip",
             "qwen35-paged-attn-gqa-hip",
+            "qwen35-paged-attn-prefill-hip",
             "qwen35-paged-attn-gqa-state-hip",
             "paro-selected-gemv-hip",
             "paro-selected-gemv-rotate-hip",
@@ -186,6 +187,11 @@ def main() -> int:
         )
     if args.mode == "qwen35-paged-attn-gqa-hip":
         return qwen35_paged_attn_gqa_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-paged-attn-prefill-hip":
+        return qwen35_paged_attn_prefill_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -1164,6 +1170,136 @@ def qwen35_paged_attn_gqa_hip_smoke(
     )
     print("gqa_attn_head0=", gqa_out[0, :8].tolist())
     return 0 if warp_max_abs <= 1.0e-5 and gqa_max_abs <= 1.0e-5 and gate_mismatch == 0 else 1
+
+def qwen35_paged_attn_prefill_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.core.tensor import Tensor
+    from hipengine.kernels.cpu_reference import full_attn_prefill
+    from hipengine.kernels.hip_gfx1100.attention import (
+        build_qwen35_paged_attn_decode,
+        qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
+    )
+    from hipengine.kvcache import KVLiveSpans
+
+    rows = 3
+    block_size = 256
+    blocks = 1
+    max_context = 3
+    num_q_heads = 4
+    num_kv_heads = 2
+    head_dim = 8
+    scale = head_dim ** -0.5
+    query_grid = np.arange(rows * num_q_heads * head_dim, dtype=np.float32).reshape(rows, num_q_heads, head_dim)
+    query = ((query_grid % 23.0) - 11.0) / 16.0
+    gate = (((query_grid % 17.0) - 8.0) / 8.0).astype(np.float16)
+    token_grid = np.arange(blocks * block_size * num_kv_heads * head_dim, dtype=np.float32).reshape(
+        blocks, block_size, num_kv_heads, head_dim
+    )
+    key_cache_f32 = ((token_grid % 19.0) - 9.0) / 12.0
+    value_cache_f32 = (7.0 - (token_grid % 13.0)) / 10.0
+    key_cache = _float32_to_bf16_bits(key_cache_f32)
+    value_cache = _float32_to_bf16_bits(value_cache_f32)
+    context_counts = np.asarray([1, 2, 3], dtype=np.int64)
+    positions = np.asarray([0, 1, 2], dtype=np.int64)
+    block_tables = np.tile(np.asarray([0], dtype=np.int32), (rows, 1)).reshape(-1)
+    out = np.empty((rows, num_q_heads, head_dim), dtype=np.float16)
+    expected = full_attn_prefill(
+        query,
+        gate,
+        key_cache,
+        value_cache,
+        positions,
+        context_counts=context_counts,
+        block_table=np.asarray([0], dtype=np.int32),
+        block_size=block_size,
+        scale=scale,
+        output_dtype=np.float16,
+    )
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_paged_attn_decode(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        query_dev = dev(query)
+        gate_dev = dev(gate)
+        key_cache_dev = dev(key_cache)
+        value_cache_dev = dev(value_cache)
+        context_dev = dev(context_counts)
+        positions_dev = dev(positions)
+        block_tables_dev = dev(block_tables)
+        out_dev_buf = out_dev(out)
+        spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(block_tables_dev.ptr, block_tables.shape, "int32", Device("hip", 0)),
+            live_counts=Tensor.from_handle(context_dev.ptr, context_counts.shape, "int64", Device("hip", 0)),
+            max_live_count=int(max_context),
+            storage_dtype="bf16",
+            row_positions=Tensor.from_handle(positions_dev.ptr, positions.shape, "int64", Device("hip", 0)),
+            span_role="prefill",
+        )
+        qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
+            query_dev.ptr,
+            key_cache_dev.ptr,
+            value_cache_dev.ptr,
+            gate_dev.ptr,
+            out_dev_buf.ptr,
+            spans,
+            rows,
+            max_context,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            head_dim,
+            1,
+            scale,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out), out_dev_buf, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    max_abs = float(np.max(np.abs(out.astype(np.float32) - expected.astype(np.float32))))
+    mismatch = int(np.count_nonzero(out.view(np.uint16) != expected.view(np.uint16)))
+    print(
+        f"rows={rows} context_counts={context_counts.tolist()} shape={num_q_heads}x{head_dim}/{num_kv_heads} "
+        f"prefill_gate_fp16_max_abs={max_abs:.3g} prefill_gate_fp16_mismatch={mismatch}"
+    )
+    print("prefill_attn_row2_head0=", out[2, 0, :8].astype(np.float32).tolist())
+    return 0 if max_abs <= 5.0e-4 else 1
+
 
 def qwen35_paged_attn_gate_bf16_hip_smoke(
     *,

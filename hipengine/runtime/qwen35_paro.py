@@ -14,6 +14,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
+    qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
     qwen35_write_paged_kv_mixed_value_fp16_spans,
 )
@@ -1691,6 +1692,43 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "kv"),
             runtime=self.runtime,
         )
+
+    def prefill_full_attention_gqa_gate_fp16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        rows: int,
+        gate: Tensor | None = None,
+        block_size: int = 256,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        gate_tensor = scratch.gate if gate is None else gate
+        qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
+            scratch.query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            gate_tensor.ptr,
+            scratch.gated_attn.ptr,
+            spans,
+            rows,
+            spans.max_live_count,
+            block_size,
+            self.config.num_attention_heads,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            gate_tensor.shape[-1],
+            1,
+            (self.config.head_dim ** -0.5) if scale is None else scale,
+            stream=stream,
+            library=_library_for(library, "attention"),
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
 
     def decode_full_attention_context_gate_fp16(
         self,

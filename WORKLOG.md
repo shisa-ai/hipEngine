@@ -9012,3 +9012,47 @@ python3 -m pytest tests/test_qwen35_rotary_plan.py tests/test_qwen35_decode_stat
 Result: targeted pytest passed (`32 passed`); rotary HIP smoke passed with
 `vector_position_max_abs=2.38e-07`; fixture checks passed; combined pytest
 passed (`39 passed`).
+
+## 2026-05-15 — Native causal full-attention prefill kernel
+
+Landed the first gfx1100 native append-then-attend full-attention prefill kernel.
+This is still not a retained prefill performance path: grouped/compact MoE and
+final full-layer orchestration remain open.
+
+Changes:
+- added `qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(...)`, registered as
+  `(hip_gfx1100, full_attn_prefill, w4_paro, qwen35_causal_gqa_gate_fp16)`;
+- kernel consumes row-major query `[rows, q_heads, head_dim]`, BF16 paged KV
+  cache, FP16 gate, row-shaped context spans, optional `row_positions`, and
+  writes post-sigmoid-gate FP16 output `[rows, q_heads * head_dim]`;
+- added `Qwen35ParoDecodeState.prefill_full_attention_gqa_gate_fp16(...)` wrapper
+  for future full-attention prefill orchestration;
+- added CPU-reference-backed HIP smoke mode `qwen35-paged-attn-prefill-hip`;
+- updated tests and kernel catalog/PREFILL inventory.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py -q
+python3 -m py_compile hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py hipengine/kernels/hip_gfx1100/attention/__init__.py hipengine/runtime/qwen35_paro.py scripts/smoke.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py tests/test_cpu_reference.py -q
+```
+
+Result: targeted pytest passed (`33 passed`); HIP smoke passed with
+`prefill_gate_fp16_max_abs=0`, `prefill_gate_fp16_mismatch=0`; combined pytest
+passed (`40 passed`).
+
+Profiler evidence for the new kernel:
+
+```bash
+rm -rf /tmp/hipengine-prefill-prof
+rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-prefill-prof --output-file prefill -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Result: `/tmp/hipengine-prefill-prof/prefill_kernel_trace.csv` contains
+`qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel`; computed duration
+`End_Timestamp - Start_Timestamp = 11200 ns`, `Workgroup_Size_X=256`,
+`Grid_Size_Y=3`.

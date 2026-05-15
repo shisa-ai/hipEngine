@@ -124,7 +124,7 @@ Landed and usable now:
 | Runtime state | `embedding_lookup_batch_{bf16,fp16}_i64`, mapped variants, `set_i64_vector`, scalar/vector decode position helpers. |
 | Linear-attn prefill | `qwen35_linear_attn_conv_prefill_f32`, `qwen35_linear_attn_prefill_prepare_f32_fp16`, `qwen35_gdn_prefill_recurrent_k2_f32`, `qwen35_gdn_prefill_rmsnorm_gate_fp16`. |
 | Linear layer orchestrator | `run_linear_attention_moe_c1_layer_fp16(tokens=T)` already selects prefill conv/GDN when `tokens > 1`; final path must replace its c1 MoE tail with grouped MoE. |
-| Full-attention decode/prelude | Existing c=1 Q/K/V projection, vector-position RoPE prefill prelude, KV append, context/GQA decode, gate, output projection. Decode kernels remain useful as oracle only for prefill attention. |
+| Full-attention decode/prelude | Existing c=1 Q/K/V projection, vector-position RoPE prefill prelude, KV append, native append-then-attend causal GQA prefill kernel, context/GQA decode, gate, output projection. Decode kernels remain useful as oracle only for prefill attention. |
 | KV append | `qwen35_write_paged_kv_mixed_value_fp16_batch_spans(...)`; consumes per-row append positions in `spans.live_counts`. |
 | KV metadata | `KVLiveSpans` already carries `request_ids`, `row_positions`, and `span_role`; compact prefill needs wiring/population, not a span redesign. |
 | Graph primitives | `hipengine.core.hip.HipRuntime` exposes HIP graph capture/instantiate/launch; decode graph capture exists. |
@@ -134,8 +134,7 @@ Missing for the final path:
 | Area | Required final work |
 | --- | --- |
 | Public API wiring | `prefill_native(...)` API/config skeleton exists; wire the final native implementation into it and update generation call sites after native kernels land. |
-| Batched full-attn Q/K/V | Remove remaining `tokens != 1` guards in retained full-attention orchestration and prove contiguous per-row Q/K/V/gate layouts in stage probes. |
-| Native causal full-attn prefill | New append-then-attend causal GQA kernel reading from paged cache. |
+| Full-attn retained orchestration | Wire batched Q/K/V + vector RoPE + KV append + native causal prefill attention into the retained full-attention layer path and prove contiguous per-row Q/K/V/gate layouts in stage probes. |
 | Grouped/compact MoE | Port/wire parent grouped scatter/gather and grouped expert kernels. |
 | Compact c>N slab | Build packed prompt metadata and segment-aware linear-attn/full-attn kernels. |
 | Prefill config/tuning | Add typed `PrefillConfig`; no hot-path env lookups. |
