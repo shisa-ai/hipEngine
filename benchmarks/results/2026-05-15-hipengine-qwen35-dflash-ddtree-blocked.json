@@ -29,6 +29,7 @@
       "target_commit_plan_candidate_budget_checked": true,
       "target_verify_buffers_transaction_id_checked": true,
       "target_verify_buffers_candidate_counts_checked": true,
+      "target_verify_buffers_topology_checked": true,
       "scheduler_speculative_verify_work": true,
       "scheduler_speculative_accept": true,
       "scheduler_speculative_shape_key": true,
@@ -132,6 +133,12 @@
           2,
           1
         ],
+        "draft_depth": 2,
+        "tree_shape": [
+          0,
+          1,
+          0
+        ],
         "summary_rows": 2,
         "device": "hip:0",
         "token_ids_dtype": "int32",
@@ -234,6 +241,20 @@
           1
         ],
         "candidate_counts_match": true,
+        "draft_depth": 2,
+        "target_draft_depth": 2,
+        "draft_depth_matches": true,
+        "tree_shape": [
+          0,
+          1,
+          0
+        ],
+        "target_tree_shape": [
+          0,
+          1,
+          0
+        ],
+        "tree_shape_matches": true,
         "mode": "verify_tree",
         "target_batch_rows": 5,
         "buffer_transaction_id": 1,

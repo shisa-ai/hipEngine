@@ -181,7 +181,14 @@ def _sample_chain_target_batch() -> TargetVerifyBatch:
     return TargetVerifyBatch.from_draft(draft, root_tokens=(100,), root_positions=(5,))
 
 
-def _sample_target_verify_buffers(target: TargetVerifyBatch, *, transaction_id: int | None = None, candidate_counts: Sequence[int] | None = None) -> TargetVerifyBuffers:
+def _sample_target_verify_buffers(
+    target: TargetVerifyBatch,
+    *,
+    transaction_id: int | None = None,
+    candidate_counts: Sequence[int] | None = None,
+    draft_depth: int | None = None,
+    tree_shape: Sequence[int] | None = None,
+) -> TargetVerifyBuffers:
     device = Device("hip", 0)
     return TargetVerifyBuffers.for_batch(
         target,
@@ -198,6 +205,8 @@ def _sample_target_verify_buffers(target: TargetVerifyBatch, *, transaction_id: 
         commit_positions=Tensor.from_handle(0x3400, (len(target.request_ids),), "int32", device),
         transaction_id=transaction_id,
         candidate_counts=candidate_counts,
+        draft_depth=draft_depth,
+        tree_shape=tree_shape,
     )
 
 
@@ -217,6 +226,23 @@ def _target_verify_buffers_candidate_counts_checked() -> bool:
     except ValueError as exc:
         return "candidate_counts" in str(exc)
     return False
+
+
+def _target_verify_buffers_topology_checked() -> bool:
+    target = _sample_chain_target_batch()
+    try:
+        _sample_target_verify_buffers(target, draft_depth=-1)
+    except ValueError as exc:
+        depth_rejected = "draft_depth" in str(exc)
+    else:
+        depth_rejected = False
+    try:
+        _sample_target_verify_buffers(target, tree_shape=())
+    except ValueError as exc:
+        tree_rejected = "tree_shape" in str(exc)
+    else:
+        tree_rejected = False
+    return depth_rejected and tree_rejected
 
 
 def _interface_status() -> dict[str, Any]:
@@ -243,6 +269,7 @@ def _interface_status() -> dict[str, Any]:
         "target_commit_plan_candidate_budget_checked": _target_commit_plan_candidate_budget_checked(),
         "target_verify_buffers_transaction_id_checked": _target_verify_buffers_transaction_id_checked(),
         "target_verify_buffers_candidate_counts_checked": _target_verify_buffers_candidate_counts_checked(),
+        "target_verify_buffers_topology_checked": _target_verify_buffers_topology_checked(),
         "scheduler_speculative_verify_work": hasattr(ResidentBatchScheduler, "next_speculative_verify_work"),
         "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),
@@ -514,6 +541,8 @@ def _kv_transaction_status() -> dict[str, Any]:
             "rows": buffers.rows,
             "candidate_rows": buffers.candidate_rows,
             "candidate_counts": None if buffers.candidate_counts is None else list(buffers.candidate_counts),
+            "draft_depth": buffers.draft_depth,
+            "tree_shape": [] if buffers.tree_shape is None else list(buffers.tree_shape),
             "summary_rows": buffers.request_count,
             "device": str(buffers.device),
             "token_ids_dtype": buffers.token_ids.dtype.value,
@@ -566,6 +595,12 @@ def _kv_transaction_status() -> dict[str, Any]:
             "candidate_counts": None if scheduler_buffer_plan.buffers.candidate_counts is None else list(scheduler_buffer_plan.buffers.candidate_counts),
             "target_candidate_counts": list(scheduler_buffer_plan.plan.target_batch.candidate_counts),
             "candidate_counts_match": scheduler_buffer_plan.buffers.candidate_counts == scheduler_buffer_plan.plan.target_batch.candidate_counts,
+            "draft_depth": scheduler_buffer_plan.buffers.draft_depth,
+            "target_draft_depth": scheduler_buffer_plan.plan.target_batch.draft_depth,
+            "draft_depth_matches": scheduler_buffer_plan.buffers.draft_depth == scheduler_buffer_plan.plan.target_batch.draft_depth,
+            "tree_shape": [] if scheduler_buffer_plan.buffers.tree_shape is None else list(scheduler_buffer_plan.buffers.tree_shape),
+            "target_tree_shape": list(scheduler_buffer_plan.plan.target_batch.tree_shape),
+            "tree_shape_matches": scheduler_buffer_plan.buffers.tree_shape == scheduler_buffer_plan.plan.target_batch.tree_shape,
             "mode": scheduler_buffer_plan.buffers.mode,
             "target_batch_rows": scheduler_buffer_plan.plan.target_batch.rows,
             "buffer_transaction_id": scheduler_buffer_plan.buffers.transaction_id,

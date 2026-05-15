@@ -190,6 +190,8 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     buffer_plan = scheduler.bind_speculative_verify_buffers(plan, buffers)
     assert buffers.transaction_id == plan.transaction.transaction_id
     assert buffers.candidate_counts == work.target_batch.candidate_counts
+    assert buffers.draft_depth == work.target_batch.draft_depth
+    assert buffers.tree_shape == work.target_batch.tree_shape
     assert isinstance(buffer_plan, SpeculativeVerifyBufferPlan)
     assert buffer_plan.plan is plan
     assert buffer_plan.buffers is buffers
@@ -199,6 +201,12 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     wrong_candidate_buffers = replace(buffers, candidate_counts=(1, 2))
     with pytest.raises(ValueError, match="candidate_counts"):
         scheduler.bind_speculative_verify_buffers(plan, wrong_candidate_buffers)
+    wrong_depth_buffers = replace(buffers, draft_depth=work.target_batch.draft_depth + 1)
+    with pytest.raises(ValueError, match="draft_depth"):
+        scheduler.bind_speculative_verify_buffers(plan, wrong_depth_buffers)
+    wrong_tree_buffers = replace(buffers, tree_shape=(0, 0, 1))
+    with pytest.raises(ValueError, match="tree_shape"):
+        scheduler.bind_speculative_verify_buffers(plan, wrong_tree_buffers)
 
     summary = TargetAcceptSummary.from_accept_result(
         work.target_batch,

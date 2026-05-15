@@ -349,6 +349,10 @@ class ResidentBatchScheduler:
             raise ValueError("target verify candidate rows must match speculative plan")
         if buffers.candidate_counts is not None and buffers.candidate_counts != plan.target_batch.candidate_counts:
             raise ValueError("target verify buffer candidate_counts must match speculative plan")
+        if buffers.draft_depth is not None and buffers.draft_depth != plan.target_batch.draft_depth:
+            raise ValueError("target verify buffer draft_depth must match speculative plan")
+        if buffers.tree_shape is not None and buffers.tree_shape != plan.target_batch.tree_shape:
+            raise ValueError("target verify buffer tree_shape must match speculative plan")
         if buffers.transaction_id is not None and buffers.transaction_id != plan.transaction.transaction_id:
             raise ValueError("target verify buffers transaction_id must match speculative plan")
         if buffers.mode != plan.target_batch.mode:

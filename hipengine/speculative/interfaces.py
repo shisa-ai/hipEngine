@@ -341,6 +341,8 @@ class TargetVerifyBuffers:
     mode: str = "verify_chain"
     transaction_id: int | None = None
     candidate_counts: tuple[int, ...] | None = None
+    draft_depth: int | None = None
+    tree_shape: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.request_ids:
@@ -348,6 +350,8 @@ class TargetVerifyBuffers:
         _validate_unique_request_ids(self.request_ids)
         if self.transaction_id is not None and self.transaction_id < 0:
             raise ValueError("transaction_id must be non-negative")
+        if self.draft_depth is not None and self.draft_depth < 0:
+            raise ValueError("draft_depth must be non-negative")
         if self.rows <= 0:
             raise ValueError("rows must be positive")
         if self.candidate_rows <= 0 or self.candidate_rows > self.rows:
@@ -359,6 +363,11 @@ class TargetVerifyBuffers:
                 raise ValueError("candidate_counts must be non-negative")
             if sum(self.candidate_counts) != self.candidate_rows:
                 raise ValueError("candidate_counts must sum to candidate_rows")
+        if self.tree_shape is not None:
+            if len(self.tree_shape) != self.candidate_rows:
+                raise ValueError("tree_shape must align with candidate_rows")
+            if any(parent < 0 for parent in self.tree_shape):
+                raise ValueError("tree_shape entries must be non-negative")
         row_tensors = (
             self.token_ids,
             self.positions,
@@ -404,6 +413,8 @@ class TargetVerifyBuffers:
         commit_positions: Tensor,
         transaction_id: int | None = None,
         candidate_counts: Sequence[int] | None = None,
+        draft_depth: int | None = None,
+        tree_shape: Sequence[int] | None = None,
     ) -> "TargetVerifyBuffers":
         return cls(
             request_ids=batch.request_ids,
@@ -423,6 +434,8 @@ class TargetVerifyBuffers:
             mode=batch.mode,
             transaction_id=transaction_id,
             candidate_counts=batch.candidate_counts if candidate_counts is None else tuple(int(count) for count in candidate_counts),
+            draft_depth=batch.draft_depth if draft_depth is None else int(draft_depth),
+            tree_shape=batch.tree_shape if tree_shape is None else tuple(int(parent) for parent in tree_shape),
         )
 
     @property
