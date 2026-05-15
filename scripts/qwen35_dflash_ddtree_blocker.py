@@ -291,6 +291,42 @@ def _interface_status() -> dict[str, Any]:
     }
 
 
+def _resident_target_verify_transaction_id_checked() -> bool:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.max_batch_size = 2
+    session.max_sequence_length = 4
+    session.vocab_size = 100
+    session.device = Device("hip", 0)
+    draft = DraftBatch(
+        request_ids=(1,),
+        candidate_tokens=(10,),
+        parent_positions=(0,),
+        draft_depths=(1,),
+        row_to_request=(1,),
+    )
+    target = session.target_verify_batch(draft, root_tokens=(9,), root_positions=(0,))
+    try:
+        session.verify_speculative_batch(
+            target,
+            token_ids=Tensor.from_handle(0x0A00, (target.rows,), "int32", session.device),
+            positions=Tensor.from_handle(0x0B00, (target.rows,), "int32", session.device),
+            parent_rows=Tensor.from_handle(0x0C00, (target.rows,), "int32", session.device),
+            draft_depths=Tensor.from_handle(0x0D00, (target.rows,), "int32", session.device),
+            row_to_request=Tensor.from_handle(0x0E00, (target.rows,), "int32", session.device),
+            active_mask=Tensor.from_handle(0x0F00, (target.rows,), "bool", session.device),
+            target_top1=Tensor.from_handle(0x1000, (target.rows,), "int32", session.device),
+            accepted_counts=Tensor.from_handle(0x1100, (len(target.request_ids),), "int32", session.device),
+            commit_rows=Tensor.from_handle(0x1200, (len(target.request_ids),), "int32", session.device),
+            commit_tokens=Tensor.from_handle(0x1300, (len(target.request_ids),), "int32", session.device),
+            commit_positions=Tensor.from_handle(0x1400, (len(target.request_ids),), "int32", session.device),
+            transaction_id=-1,
+        )
+    except ValueError as exc:
+        return "transaction_id" in str(exc)
+    return False
+
+
 def _resident_target_verify_device_checked() -> bool:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.closed = False
@@ -391,6 +427,7 @@ def _resident_api_status() -> dict[str, Any]:
     return {
         "step_batch_serial": hasattr(Qwen35ParoResidentSession, "step_batch_serial"),
         "batch_execution_metadata": hasattr(Qwen35ParoResidentSession, "batch_execution_metadata"),
+        "target_verify_buffers_transaction_id_checked": _resident_target_verify_transaction_id_checked(),
         "target_verify_buffers_resident_device_checked": _resident_target_verify_device_checked(),
         "commit_verified_state_transaction_id_checked": _resident_state_commit_transaction_id_checked(),
         "commit_verified_state_row_coverage_checked": _resident_state_commit_row_coverage_checked(),

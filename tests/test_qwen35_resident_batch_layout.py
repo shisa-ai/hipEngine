@@ -136,11 +136,33 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
         commit_rows=_tensor(0x3800, (2,), "int32"),
         commit_tokens=_tensor(0x3900, (2,), "int32"),
         commit_positions=_tensor(0x3A00, (2,), "int32"),
+        transaction_id=7,
     )
+    assert buffers.transaction_id == 7
+    assert buffers.candidate_counts == (2, 1)
+    assert buffers.draft_depth == 2
+    assert buffers.tree_shape == (0, 1, 0)
     assert buffers.rows == 5
     assert buffers.candidate_rows == 3
     assert buffers.request_count == 2
     assert str(buffers.device) == "hip:0"
+
+    with pytest.raises(ValueError, match="transaction_id"):
+        session.verify_speculative_batch(
+            target,
+            token_ids=_tensor(0x3B00, (5,), "int32"),
+            positions=_tensor(0x3C00, (5,), "int32"),
+            parent_rows=_tensor(0x3D00, (5,), "int32"),
+            draft_depths=_tensor(0x3E00, (5,), "int32"),
+            row_to_request=_tensor(0x3F00, (5,), "int32"),
+            active_mask=_tensor(0x4000, (5,), "bool"),
+            target_top1=_tensor(0x4100, (5,), "int32"),
+            accepted_counts=_tensor(0x4200, (2,), "int32"),
+            commit_rows=_tensor(0x4300, (2,), "int32"),
+            commit_tokens=_tensor(0x4400, (2,), "int32"),
+            commit_positions=_tensor(0x4500, (2,), "int32"),
+            transaction_id=-1,
+        )
 
     other_device = Device("hip", 1)
     with pytest.raises(ValueError, match="resident device"):

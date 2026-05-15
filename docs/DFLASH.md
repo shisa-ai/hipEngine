@@ -47,8 +47,8 @@ It records:
 - `Qwen35ParoResidentSession` exposes `step_batch_serial()`, batch metadata,
   `speculative_execution_metadata()`, and metadata-only `target_verify_batch()`,
   `verify_speculative_batch()`, and `commit_verified_state()` layout helpers;
-  target-verifier buffers are validated against the resident device, and
-  state/KV commit buffers are checked against commit-row/accepted-row coverage,
+  target-verifier buffers are validated against the resident transaction id and
+  device, and state/KV commit buffers are checked against commit-row/accepted-row coverage,
   but no native verifier execution or state/KV copy kernels are wired;
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);

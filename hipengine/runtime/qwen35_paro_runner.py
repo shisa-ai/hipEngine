@@ -881,6 +881,7 @@ class Qwen35ParoResidentSession:
         commit_rows: Tensor,
         commit_tokens: Tensor,
         commit_positions: Tensor,
+        transaction_id: int | None = None,
     ) -> TargetVerifyBuffers:
         """Validate resident target-verifier buffers for a speculative batch.
 
@@ -908,6 +909,7 @@ class Qwen35ParoResidentSession:
             commit_rows=commit_rows,
             commit_tokens=commit_tokens,
             commit_positions=commit_positions,
+            transaction_id=transaction_id,
         )
         device = getattr(self, "device", None)
         if device is not None and buffers.device != device:
