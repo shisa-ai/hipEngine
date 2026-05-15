@@ -96,6 +96,7 @@ def _kv_transaction_status() -> dict[str, Any]:
     )
     target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
     txn = policy.begin_transaction((1, 2), target)
+    selection = target.select_commit_rows((2, 1))
     return {
         "target_verify_rows": target.rows,
         "candidate_rows": target.candidate_count,
@@ -103,6 +104,8 @@ def _kv_transaction_status() -> dict[str, Any]:
         "transaction_draft_rows": txn.draft_rows,
         "role": txn.role,
         "root_rows_excluded_from_journal": txn.draft_rows == target.candidate_count,
+        "commit_selection_rows": list(selection.selected_rows),
+        "commit_selection_positions": list(selection.selected_positions),
     }
 
 

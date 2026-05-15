@@ -6430,3 +6430,53 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows the host transaction guard only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — TargetVerifyBatch commit-row selection scaffold
+
+### Scope
+
+- Added `TargetCommitSelection` and `TargetVerifyBatch.select_commit_rows(...)`.
+- The selection maps per-request accepted counts to the target row whose state/KV would be committed:
+  - accepted count `0` selects the request root row;
+  - non-zero accepted counts select the unique active candidate row at that request/depth;
+  - ambiguous tree depths require explicit `selected_candidate_rows` from the future GPU accept summary.
+- Updated blocker artifact/status and Task #15 with selected row evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py tests/test_dispatch_batch.py -q
+```
+
+Result: `18 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.kv_transaction_target_verify.target_verify_rows=5`
+- `implementation_status.kv_transaction_target_verify.candidate_counts=[2,1]`
+- `implementation_status.kv_transaction_target_verify.commit_selection_rows=[3,4]`
+- `implementation_status.kv_transaction_target_verify.commit_selection_positions=[7,4]`
+- still `status=blocked`, `performance_claim=false`, and `native_target_verify_ready=false`.
+
+Interpretation: host metadata can now name which verified target row would feed selectable state/KV commit for each request. The actual device-side copy/select of linear-attention state and full-attention K/V rows remains unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows the host selectable-state metadata only; no performance claim or kernel change was made.

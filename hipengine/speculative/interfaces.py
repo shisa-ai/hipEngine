@@ -53,6 +53,35 @@ class DraftBatch:
 
 
 @dataclass(frozen=True, slots=True)
+class TargetCommitSelection:
+    """Per-request target rows selected for state/KV commit."""
+
+    request_ids: tuple[int, ...]
+    accepted_counts: tuple[int, ...]
+    selected_rows: tuple[int, ...]
+    selected_tokens: tuple[int, ...]
+    selected_positions: tuple[int, ...]
+    mode: str = "verify_chain"
+
+    def __post_init__(self) -> None:
+        if not self.request_ids:
+            raise ValueError("TargetCommitSelection must contain at least one request")
+        lengths = (len(self.accepted_counts), len(self.selected_rows), len(self.selected_tokens), len(self.selected_positions))
+        if any(length != len(self.request_ids) for length in lengths):
+            raise ValueError("commit selection fields must align with request_ids")
+        if any(count < 0 for count in self.accepted_counts):
+            raise ValueError("accepted_counts must be non-negative")
+        if any(row < 0 for row in self.selected_rows):
+            raise ValueError("selected_rows must be non-negative")
+        if any(token < 0 for token in self.selected_tokens):
+            raise ValueError("selected_tokens must be non-negative")
+        if any(position < 0 for position in self.selected_positions):
+            raise ValueError("selected_positions must be non-negative")
+        if self.mode not in {"verify_chain", "verify_tree"}:
+            raise ValueError("mode must be verify_chain or verify_tree")
+
+
+@dataclass(frozen=True, slots=True)
 class TargetVerifyBatch:
     """Root + draft rows for one native target-verification forward.
 
@@ -160,6 +189,69 @@ class TargetVerifyBatch:
     def candidate_count(self) -> int:
         return len(self.candidate_rows)
 
+    @property
+    def candidate_counts(self) -> tuple[int, ...]:
+        return tuple(
+            sum(1 for row in self.candidate_rows if self.row_to_request[row] == request_id)
+            for request_id in self.request_ids
+        )
+
+    def select_commit_rows(
+        self,
+        accepted_counts: Sequence[int],
+        *,
+        selected_candidate_rows: Sequence[int | None] | None = None,
+    ) -> TargetCommitSelection:
+        counts = tuple(int(count) for count in accepted_counts)
+        if len(counts) != len(self.request_ids):
+            raise ValueError("accepted_counts must align with request_ids")
+        if any(count < 0 for count in counts):
+            raise ValueError("accepted_counts must be non-negative")
+        selected_hint = None if selected_candidate_rows is None else tuple(selected_candidate_rows)
+        if selected_hint is not None and len(selected_hint) != len(self.request_ids):
+            raise ValueError("selected_candidate_rows must align with request_ids")
+        candidate_set = set(self.candidate_rows)
+        selected_rows: list[int] = []
+        for index, (request_id, accepted_count) in enumerate(zip(self.request_ids, counts, strict=True)):
+            if accepted_count == 0:
+                hint = None if selected_hint is None else selected_hint[index]
+                root_row = self.root_rows[index]
+                if hint is not None and int(hint) != root_row:
+                    raise ValueError("zero accepted candidates must select the request root row")
+                selected_rows.append(root_row)
+                continue
+            hint = None if selected_hint is None else selected_hint[index]
+            if hint is None:
+                matches = [
+                    row
+                    for row in self.candidate_rows
+                    if self.row_to_request[row] == request_id
+                    and self.draft_depths[row] == accepted_count
+                    and self.active_mask[row]
+                ]
+                if len(matches) != 1:
+                    raise ValueError("accepted_count is ambiguous for request; pass selected_candidate_rows")
+                row = matches[0]
+            else:
+                row = int(hint)
+                if row not in candidate_set:
+                    raise ValueError("selected candidate row must be a candidate row")
+                if self.row_to_request[row] != request_id:
+                    raise ValueError("selected candidate row belongs to a different request")
+                if self.draft_depths[row] != accepted_count:
+                    raise ValueError("selected candidate row depth must match accepted_count")
+                if not self.active_mask[row]:
+                    raise ValueError("selected candidate row is inactive")
+            selected_rows.append(row)
+        return TargetCommitSelection(
+            request_ids=self.request_ids,
+            accepted_counts=counts,
+            selected_rows=tuple(selected_rows),
+            selected_tokens=tuple(self.tokens[row] for row in selected_rows),
+            selected_positions=tuple(self.positions[row] for row in selected_rows),
+            mode=self.mode,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class AcceptResult:
@@ -197,4 +289,4 @@ class Verifier(Protocol):
     def verify(self, batch: TargetVerifyBatch) -> AcceptResult: ...
 
 
-__all__ = ["AcceptResult", "DraftBatch", "DraftModel", "TargetVerifyBatch", "Verifier"]
+__all__ = ["AcceptResult", "DraftBatch", "DraftModel", "TargetCommitSelection", "TargetVerifyBatch", "Verifier"]

@@ -36,7 +36,15 @@
       ],
       "transaction_draft_rows": 3,
       "role": "verify_tree",
-      "root_rows_excluded_from_journal": true
+      "root_rows_excluded_from_journal": true,
+      "commit_selection_rows": [
+        3,
+        4
+      ],
+      "commit_selection_positions": [
+        7,
+        4
+      ]
     },
     "resident_api": {
       "step_batch_serial": true,
