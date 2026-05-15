@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
+from hipengine.speculative import DraftBatch, TargetVerifyBatch
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,12 @@ class CompletedRequest:
     prompt_tokens: tuple[int, ...]
     generated_tokens: tuple[int, ...]
     finished: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeVerifyWork:
+    target_batch: TargetVerifyBatch
+    work_item: WorkItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +172,31 @@ class ResidentBatchScheduler:
             return None
         return WorkItem(kind=WorkKind.DECODE, request_ids=request_ids, row_to_request=request_ids)
 
+    def next_speculative_verify_work(
+        self,
+        draft: DraftBatch,
+        *,
+        root_tokens: Sequence[int],
+        root_positions: Sequence[int],
+    ) -> SpeculativeVerifyWork:
+        """Emit scheduler metadata for a target verification batch.
+
+        This only validates scheduler ownership/readiness and materializes the
+        root+candidate row layout.  It does not run a draft model, target
+        verifier, or commit accepted state.
+        """
+
+        for request_id in draft.request_ids:
+            if request_id not in self.active_batch.requests:
+                raise KeyError(request_id)
+            request = self.active_batch.requests[request_id]
+            if request.remaining_prefill != 0:
+                raise ValueError("speculative verification requires completed prefill")
+            if request.remaining_decode <= 0 or request.finished:
+                raise ValueError("speculative verification requires an active decode request")
+        target = TargetVerifyBatch.from_draft(draft, root_tokens=root_tokens, root_positions=root_positions)
+        return SpeculativeVerifyWork(target_batch=target, work_item=target.to_work_item())
+
     def record_generated(self, tokens: Sequence[GeneratedToken | tuple[int, int] | tuple[int, int, bool]]) -> tuple[CompletedRequest, ...]:
         """Record generated tokens and reclaim newly completed requests."""
 
@@ -219,4 +251,5 @@ __all__ = [
     "GraphBucketCache",
     "GraphBucketStats",
     "ResidentBatchScheduler",
+    "SpeculativeVerifyWork",
 ]

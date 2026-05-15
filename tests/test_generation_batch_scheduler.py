@@ -5,7 +5,8 @@ import json
 import pytest
 
 from hipengine.dispatch import WorkKind
-from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler
+from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler, SpeculativeVerifyWork
+from hipengine.speculative import DraftBatch
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
@@ -47,6 +48,56 @@ def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:
     moves = scheduler.compact(order=(2, 0))
     assert [(move.request_id, move.old_slot, move.new_slot) for move in moves] == [(2, 1, 0), (0, 0, 1)]
     assert scheduler.active_batch.slot_to_request == (2, 0)
+
+
+def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
+    r0 = scheduler.submit([10, 11], max_new_tokens=3)
+    r1 = scheduler.submit([20], max_new_tokens=2)
+    scheduler.admit_pending()
+    scheduler.next_prefill_work(chunk_size=8)
+    scheduler.next_prefill_work(chunk_size=8)
+    draft = DraftBatch(
+        request_ids=(r0, r1),
+        candidate_tokens=(101, 102, 201),
+        parent_positions=(1, 2, 0),
+        draft_depths=(1, 2, 1),
+        row_to_request=(r0, r0, r1),
+        mode="verify_tree",
+        tree_parents=(-1, 0, -1),
+    )
+
+    work = scheduler.next_speculative_verify_work(
+        draft,
+        root_tokens=(11, 20),
+        root_positions=(1, 0),
+    )
+
+    assert isinstance(work, SpeculativeVerifyWork)
+    assert work.target_batch.rows == 5
+    assert work.target_batch.tokens == (11, 20, 101, 102, 201)
+    assert work.target_batch.parent_rows == (-1, -1, 0, 2, 1)
+    assert work.work_item.kind is WorkKind.VERIFY_TREE
+    assert work.work_item.request_ids == (r0, r1)
+    assert work.work_item.row_to_request == (r0, r0, r1)
+    assert work.work_item.token_rows == ((101,), (102,), (201,))
+    assert work.work_item.tree_parents == (0, 1, 0)
+
+
+def test_resident_batch_scheduler_rejects_speculative_verify_before_prefill() -> None:
+    scheduler = ResidentBatchScheduler(capacity=1)
+    r0 = scheduler.submit([10, 11], max_new_tokens=3)
+    scheduler.admit_pending()
+    draft = DraftBatch(
+        request_ids=(r0,),
+        candidate_tokens=(101,),
+        parent_positions=(1,),
+        draft_depths=(1,),
+        row_to_request=(r0,),
+    )
+
+    with pytest.raises(ValueError, match="completed prefill"):
+        scheduler.next_speculative_verify_work(draft, root_tokens=(11,), root_positions=(1,))
 
 
 def test_resident_batch_scheduler_shape_key_graph_bucket_and_completion() -> None:

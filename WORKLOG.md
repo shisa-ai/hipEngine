@@ -7003,3 +7003,47 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`78 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows resident readiness/reporting only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Scheduler speculative verify work metadata
+
+### Scope
+
+- Added `SpeculativeVerifyWork` and `ResidentBatchScheduler.next_speculative_verify_work(...)`.
+- The scheduler now validates that draft requests are active, prefill-complete, and still decode-eligible before materializing scheduler-owned `TargetVerifyBatch` plus candidate-row `WorkItem` metadata.
+- Updated the DFlash blocker helper/artifact and Task #15 with scheduler speculative verifier evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `20 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records `implementation_status.interfaces_present.scheduler_speculative_verify_work=true` while resident speculative status remains blocked:
+
+- `native_target_verify_ready=false`
+- `throughput_claim_eligible=false`
+
+Interpretation: scheduler-owned speculative verifier metadata can now be emitted before resident runtime handoff, but native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`80 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows scheduler metadata only; no performance claim or kernel change was made.

@@ -50,9 +50,11 @@ It records:
   but no native verifier execution or state/KV copy kernels;
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
-- host KV transaction bookkeeping now accounts for `TargetVerifyBatch`
-  candidate rows only (committed root rows are excluded from the speculative
-  journal), tracks per-request candidate counts, rejects accepted counts larger
+- the batch scheduler can validate active-request readiness and emit
+  scheduler-owned speculative `TargetVerifyBatch`/`WorkItem` metadata, and host
+  KV transaction bookkeeping now accounts for `TargetVerifyBatch` candidate
+  rows only (committed root rows are excluded from the speculative journal),
+  tracks per-request candidate counts, rejects accepted counts larger
   than the verified candidate budget, validates accepted target paths, can
   select the per-request target row whose state would be committed, binds the
   summary to a transaction-scoped commit plan, validates target-verifier and
