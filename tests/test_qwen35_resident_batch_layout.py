@@ -74,7 +74,7 @@ def test_qwen35_resident_native_prefill_plan_accepts_all_linear_layer_limit() ->
     assert plan.blockers == ()
 
 
-def test_qwen35_resident_prefill_linear_tokens_native_rejects_non_linear_prefix() -> None:
+def test_qwen35_resident_prefill_linear_tokens_native_validates_prompt_tokens() -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.closed = False
     session.max_sequence_length = 8
@@ -82,8 +82,10 @@ def test_qwen35_resident_prefill_linear_tokens_native_rejects_non_linear_prefix(
     session.layer_limit = 2
     session.config = SimpleNamespace(layer_types=("linear_attention", "full_attention"))
 
-    with pytest.raises(NotImplementedError, match="linear-attention-only"):
-        session.prefill_linear_tokens_native([1, 2], sample=True)
+    with pytest.raises(ValueError, match="token_ids must be non-empty"):
+        session.prefill_linear_tokens_native([], sample=True)
+    with pytest.raises(ValueError, match="outside"):
+        session.prefill_linear_tokens_native([100], sample=True)
 
 
 def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> None:

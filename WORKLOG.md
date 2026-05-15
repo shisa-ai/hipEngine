@@ -5979,3 +5979,81 @@ Result: pytest exit code `0` (`75 passed`).
 - The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
 - This iteration added a diagnostic helper only; no kernel body was ported, so no source-lineage or rocprof evidence is required.
 - Next Task #15 target: wire a clearly-labelled native-linear-prefix + serial full-attention fallback path, then replace the fallback with true batched full-attention prefill/KV row-position/causal attention work.
+
+---
+
+## 2026-05-15 — Wire native-prefix + serial full-attention fallback
+
+### Scope
+
+- Continued Task #15 after the layer-3 full-attention stage probe showed a serial c=1 full-attention bridge can consume accepted native linear-prefix rows.
+- Updated `Qwen35ParoResidentSession.prefill_linear_tokens_native()`:
+  - runs the accepted native batched linear-prefix layers first;
+  - when the configured layer limit extends past the linear prefix, replays the remaining suffix layers token-by-token through the resident c=1 path;
+  - keeps the path explicitly labelled as a fallback rather than PLAN-MOE2/native compact prefill.
+- Added benchmark JSON labelling:
+  - `native_prefill_execution="native_linear_prefix_serial_suffix_fallback"` for mixed prefixes;
+  - `native_prefill_plan={...}`;
+  - `prefill_comparable_to_plan_moe2=false` remains unchanged.
+- Updated the resident batch-layout test that previously expected non-linear native-prefill prefixes to reject.
+
+### Evidence
+
+Correctness gate for the first mixed prefix:
+
+```bash
+python3 scripts/qwen35_native_prefill_correctness.py \
+  --prompt-length 4 \
+  --max-layers 4 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-serial-fullattn-layer4-accepted.json
+```
+
+Result: accepted, no throughput claim.
+
+- `status=accepted`
+- `performance_claim=false`
+- `max_layers=4`
+- `native_prefill_plan.path="linear_attention_prefix_only"`
+- `native_prefill_plan.linear_prefix_layers=3`
+- `native_prefill_plan.first_unsupported_layer=3`
+- `seed_match=true`, `decode_match=true`, `finite_logits=true`
+- `serial.seed=232708`, `native.seed=232708`
+- `serial.decode=169222`, `native.decode=169222`
+- `logit_abs_delta.seed=0.0051021575927734375`
+- `logit_abs_delta.decode=0.0009202957153320312`
+
+Label smoke:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --native-prefill \
+  --prompt-length 4 \
+  --decode-tokens 0 \
+  --warmup-decode-tokens 0 \
+  --max-layers 4 \
+  --json /tmp/hipengine-native-prefix-serial-fullattn-bench-smoke.json
+```
+
+Result: exits `0`; JSON includes `native_prefill_execution="native_linear_prefix_serial_suffix_fallback"`, `native_batched_prefill=true`, and `prefill_comparable_to_plan_moe2=false`. Timing fields are smoke side effects only and are not retained as a performance claim.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py scripts/qwen35_native_prefill_correctness.py tests/test_qwen35_resident_batch_layout.py && \
+  python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_generation_qwen35_paro.py -q
+```
+
+Result: `18 passed`.
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`75 passed`).
+
+### Notes
+
+- The original pi-multiloop verify command remains stale and exits the legacy TaskList-not-found selector error; robust active TaskList count remains `4` (#15, #43, #44, #45).
+- This is not a performance win and is not PLAN-MOE2-comparable; it is a correctness-safe bridge until full-attention prefill/KV row-position/causal-attention kernels are wired.
+- No kernel bodies were changed, so source-lineage and rocprof evidence are not required for this iteration.

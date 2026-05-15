@@ -102,6 +102,15 @@ def main() -> int:
         )
     load_seconds = time.perf_counter() - load_start
 
+    native_prefill_plan = session.native_prefill_plan()
+    native_prefill_execution = "serial_c1_prefill"
+    if args.native_prefill:
+        native_prefill_execution = (
+            "native_linear_prefix"
+            if native_prefill_plan.full_layer_limit_native
+            else "native_linear_prefix_serial_suffix_fallback"
+        )
+
     generated: list[dict[str, Any]] = []
     decode_samples: list[float] = []
     try:
@@ -185,6 +194,8 @@ def main() -> int:
         "max_layers": args.max_layers or runner.config.num_hidden_layers,
         "tokens_per_step": 1,
         "native_batched_prefill": bool(args.native_prefill),
+        "native_prefill_execution": native_prefill_execution,
+        "native_prefill_plan": native_prefill_plan.to_json_dict(),
         "allow_rejected_native_prefill": bool(args.allow_rejected_native_prefill),
         "graph_replay": bool(args.graph_replay_decode),
         "graph_steps_per_replay": args.graph_steps_per_replay if args.graph_replay_decode else 0,
@@ -206,7 +217,7 @@ def main() -> int:
         "generated_preview": generated[:16],
         "notes": [
             (
-                "Prefill uses the accepted native linear-prefix helper; still not compact/grouped-WMMA full-model prefill and not PLAN-MOE2-comparable."
+                f"Prefill execution is {native_prefill_execution}; still not compact/grouped-WMMA full-model prefill and not PLAN-MOE2-comparable."
                 if args.native_prefill
                 else "Prefill is actual autoregressive token-by-token c=1, not native batched/compact prefill."
             ),

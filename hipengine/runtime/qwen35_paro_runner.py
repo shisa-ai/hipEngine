@@ -842,10 +842,12 @@ class Qwen35ParoResidentSession:
         """Run native prefill over currently supported linear-attention prefixes.
 
         The helper is correctness-accepted for the available all-linear prefix
-        coverage (see ``benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-scratch-restore-sweep.json``),
-        but it is still not compact/full-attention prefill for the real 40-layer
-        model.  ``allow_rejected_correctness`` is retained only for compatibility
-        with older diagnostic scripts.
+        coverage (see ``benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-scratch-restore-sweep.json``).
+        When the configured layer limit extends past that prefix, remaining
+        layers run token-by-token through the existing c=1 resident path as an
+        explicitly labelled fallback. It is still not compact/full-attention
+        native prefill for the real 40-layer model. ``allow_rejected_correctness``
+        is retained only for compatibility with older diagnostic scripts.
         """
 
         if self.closed:
@@ -860,12 +862,6 @@ class Qwen35ParoResidentSession:
             if token < 0 or token >= self.vocab_size:
                 raise ValueError(f"token_id {token} outside [0, {self.vocab_size})")
         native_prefill_plan = self.native_prefill_plan()
-        if not native_prefill_plan.full_layer_limit_native:
-            raise NotImplementedError(
-                "native batched prefill currently supports linear-attention-only layer limits; "
-                f"first unsupported layer {native_prefill_plan.first_unsupported_layer} "
-                f"is {native_prefill_plan.first_unsupported_type!r}"
-            )
         _ = allow_rejected_correctness
         token_arr = np.asarray(tokens, dtype=np.int64)
         token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
@@ -881,9 +877,22 @@ class Qwen35ParoResidentSession:
                 library=self.libraries["runtime_state"],
                 runtime=self.runtime,
             )
-            hidden = self._run_linear_prefill_layers(tokens=len(tokens), stream=0)
+            hidden = self._run_linear_prefill_layers(
+                tokens=len(tokens),
+                layer_limit=native_prefill_plan.linear_prefix_layers,
+                stream=0,
+            )
+            if not native_prefill_plan.full_layer_limit_native:
+                hidden = self._run_prefill_suffix_layers_serial(
+                    hidden,
+                    start_layer=native_prefill_plan.linear_prefix_layers,
+                    tokens=len(tokens),
+                    stream=0,
+                )
             self.runtime.stream_synchronize(0)
-            last_ptr = hidden.ptr + (len(tokens) - 1) * self.hidden_nbytes
+            last_ptr = hidden.ptr
+            if len(hidden.shape) > 1 and int(hidden.shape[0]) == len(tokens):
+                last_ptr += (len(tokens) - 1) * self.hidden_nbytes
             self.runtime.memcpy(self.hidden.ptr, last_ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
             self._restore_decode_scratch_after_prefill()
             self._set_position(len(tokens) - 1)
@@ -1013,10 +1022,14 @@ class Qwen35ParoResidentSession:
         if slot < 0 or slot >= self.max_batch_size:
             raise ValueError(f"slot {slot} outside batch capacity {self.max_batch_size}")
 
-    def _run_linear_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
+    def _run_linear_prefill_layers(self, *, tokens: int, layer_limit: int | None = None, stream: int = 0) -> Tensor:
         hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
-        for layer_id, state in enumerate(self.states):
+        limit = len(self.states) if layer_limit is None else int(layer_limit)
+        if limit < 0 or limit > len(self.states):
+            raise ValueError("layer_limit outside resident state range")
+        for layer_id in range(limit):
+            state = self.states[layer_id]
             layer_type = self.config.layer_types[layer_id]
             if layer_type != "linear_attention":
                 raise NotImplementedError(f"native linear prefill cannot run layer {layer_id} type {layer_type!r}")
@@ -1042,6 +1055,79 @@ class Qwen35ParoResidentSession:
             self.runtime.memcpy_async(next_hidden.ptr, out.ptr, tokens * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
             hidden, next_hidden = next_hidden, hidden
         return hidden
+
+    def _prefill_row_hidden_view(self, tensor: Tensor, row: int) -> Tensor:
+        if row < 0 or row >= int(tensor.shape[0]):
+            raise ValueError(f"row {row} outside tensor shape {tensor.shape}")
+        return Tensor.from_handle(
+            tensor.ptr + int(row) * self.hidden_nbytes,
+            (1, self.config.hidden_size),
+            tensor.dtype,
+            tensor.device,
+        )
+
+    def _run_prefill_suffix_layers_serial(
+        self,
+        hidden_rows: Tensor,
+        *,
+        start_layer: int,
+        tokens: int,
+        stream: int = 0,
+    ) -> Tensor:
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if start_layer < 0 or start_layer > len(self.states):
+            raise ValueError("start_layer outside resident state range")
+        if start_layer == len(self.states):
+            return self._prefill_row_hidden_view(hidden_rows, tokens - 1)
+        last_hidden: Tensor | None = None
+        for position in range(tokens):
+            self._set_position(position, stream=stream)
+            hidden = self._prefill_row_hidden_view(hidden_rows, position)
+            next_hidden = self.next_hidden
+            position_tensor, append_spans, decode_spans = self._slot_spans(0)
+            for layer_id in range(start_layer, len(self.states)):
+                state = self.states[layer_id]
+                layer_type = self.config.layer_types[layer_id]
+                if layer_type == "linear_attention":
+                    conv_state, recurrent_state = self._slot_linear_state(layer_id, 0)
+                    out = state.run_linear_attention_moe_c1_layer_fp16(
+                        hidden,
+                        conv_state=conv_state,
+                        recurrent_state=recurrent_state,
+                        linear_scratch=self.linear_scratch[layer_id],
+                        moe_scratch=self.moe_scratch[layer_id],
+                        library=self.libraries,
+                        stream=stream,
+                    )
+                elif layer_type == "full_attention":
+                    key_cache, value_cache = self._slot_full_cache(layer_id, 0)
+                    num_splits = max(1, (position + 1 + self.chunk_size - 1) // self.chunk_size)
+                    out = state.run_full_attention_moe_c1_layer_fp16(
+                        hidden,
+                        key_cache=key_cache,
+                        value_cache=value_cache,
+                        append_spans=append_spans,
+                        decode_spans=decode_spans,
+                        cos_table=self.cos,
+                        sin_table=self.sin,
+                        position=position_tensor,
+                        max_positions=self.max_sequence_length,
+                        attention_scratch=self.full_scratch[layer_id],
+                        moe_scratch=self.moe_scratch[layer_id],
+                        chunk_size=self.chunk_size,
+                        num_splits=num_splits,
+                        library=self.libraries,
+                        stream=stream,
+                    )
+                else:
+                    raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
+                self.runtime.memcpy_async(next_hidden.ptr, out.ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+                hidden, next_hidden = next_hidden, hidden
+            last_hidden = hidden
+        if last_hidden is None:
+            raise RuntimeError("serial suffix prefill produced no hidden row")
+        return last_hidden
 
     def _restore_decode_scratch_after_prefill(self) -> None:
         for layer_id, state in enumerate(self.states):
