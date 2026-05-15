@@ -10186,3 +10186,27 @@ change). 4K was runnable at `333.237 tok/s`, but 512/128 samples `560.143`,
 `562.544`, `560.982`, `561.091` tok/s (median `561.036`) regressed below
 retained `565.213`. Decision: revert; the allocation elision does not help the
 timed path and complicates scratch reuse.
+
+## 2026-05-15 — Prefill multiloop iter 21: direct layer output rejected
+
+Tried letting grouped MoE combine write directly into the runner's `next_hidden`
+ping-pong prefill buffer for single-request native prefill, skipping the explicit
+per-layer device-to-device copy from `scratch.moe_out` to `next_hidden`. This
+removes the copy operation mechanically but did not improve the timed path.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter21-512-run{1,2,3}.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: tests passed (`56 passed`) and fixture passed (`max_kl=0.01743`, top-1
+`1.0`, `native_owned_device_bytes=1625645909`). 4K was runnable at
+`332.699 tok/s`, but 512/128 samples `559.527`, `565.015`, `563.030`,
+`560.252` tok/s (median `561.641`) regressed below retained `565.213`.
+Decision: revert; the D2D copy is not a useful short-depth bottleneck.
