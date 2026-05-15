@@ -4,10 +4,17 @@ import json
 
 import pytest
 
+from hipengine.core.device import Device
+from hipengine.core.tensor import Tensor
 from hipengine.dispatch import WorkKind
 from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler, SpeculativeVerifyWork
+from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
+
+
+def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
+    return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 
 
 def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:
@@ -110,6 +117,20 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
         replay_steps=2,
     ) is graph
     assert scheduler.graph_buckets.stats.hits == 1
+
+    policy = FixedPagedKVPolicy()
+    for request_id, ptr in [(r0, 0x1000), (r1, 0x2000)]:
+        policy.register(
+            request_id,
+            block_table=_tensor(ptr, (4,), "int32"),
+            live_counts=_tensor(ptr + 0x100, (1,), "int64"),
+            max_live_count=4,
+        )
+    txn = scheduler.begin_speculative_verify_transaction(policy, work)
+    assert txn.request_ids == (r0, r1)
+    assert txn.draft_rows == 3
+    assert txn.candidate_counts == (2, 1)
+    assert txn.role == "verify_tree"
 
     summary = TargetAcceptSummary.from_accept_result(
         work.target_batch,

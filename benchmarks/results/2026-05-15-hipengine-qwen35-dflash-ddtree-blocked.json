@@ -25,6 +25,7 @@
       "scheduler_speculative_accept": true,
       "scheduler_speculative_shape_key": true,
       "scheduler_speculative_graph_cache": true,
+      "scheduler_speculative_kv_transaction": true,
       "verify_graph_shape_key": {
         "mode": "verify_tree",
         "active_c": 1,

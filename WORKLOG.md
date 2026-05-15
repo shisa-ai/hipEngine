@@ -7188,3 +7188,52 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows scheduler graph-cache metadata only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Scheduler speculative verify KV transaction helper
+
+### Scope
+
+- Added `ResidentBatchScheduler.begin_speculative_verify_transaction(...)`.
+- Scheduler-owned speculative verify work can now open a `KVTransaction` through the configured KV policy using active request states and the `TargetVerifyBatch` candidate rows.
+- Updated the DFlash blocker helper/artifact and Task #15 with scheduler KV-transaction evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `21 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.scheduler_speculative_verify_work=true`
+- `implementation_status.interfaces_present.scheduler_speculative_accept=true`
+- `implementation_status.interfaces_present.scheduler_speculative_shape_key=true`
+- `implementation_status.interfaces_present.scheduler_speculative_graph_cache=true`
+- `implementation_status.interfaces_present.scheduler_speculative_kv_transaction=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: scheduler-owned speculative verifier metadata now opens the KV transaction that future native verifier writes must use. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows scheduler KV-transaction metadata only; no performance claim or kernel change was made.

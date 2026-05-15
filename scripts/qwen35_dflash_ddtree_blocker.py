@@ -75,6 +75,7 @@ def _interface_status() -> dict[str, Any]:
         "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),
         "scheduler_speculative_graph_cache": hasattr(ResidentBatchScheduler, "get_or_create_speculative_verify_graph"),
+        "scheduler_speculative_kv_transaction": hasattr(ResidentBatchScheduler, "begin_speculative_verify_transaction"),
         "verify_graph_shape_key": {
             "mode": shape_key.mode.value,
             "active_c": shape_key.active_c,

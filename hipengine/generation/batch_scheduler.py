@@ -197,6 +197,14 @@ class ResidentBatchScheduler:
         target = TargetVerifyBatch.from_draft(draft, root_tokens=root_tokens, root_positions=root_positions)
         return SpeculativeVerifyWork(target_batch=target, work_item=target.to_work_item())
 
+    def begin_speculative_verify_transaction(self, kv_policy, work: SpeculativeVerifyWork):
+        """Begin the KV transaction for scheduler-owned target verification."""
+
+        if work.work_item.request_ids != work.target_batch.request_ids:
+            raise ValueError("speculative work request_ids must match target batch")
+        seqs = tuple(self.active_batch.requests[request_id] for request_id in work.target_batch.request_ids)
+        return kv_policy.begin_transaction(seqs, work.target_batch)
+
     def record_generated(self, tokens: Sequence[GeneratedToken | tuple[int, int] | tuple[int, int, bool]]) -> tuple[CompletedRequest, ...]:
         """Record generated tokens and reclaim newly completed requests."""
 
