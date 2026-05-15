@@ -7,6 +7,7 @@ from hipengine.generation.batch_scheduler import (
     GraphBucketCache,
     GraphBucketStats,
     ResidentBatchScheduler,
+    SpeculativeVerifyBufferPlan,
     SpeculativeVerifyPlan,
     SpeculativeVerifyWork,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "GenerationRequest",
     "MissingGeneratorError",
     "ResidentBatchScheduler",
+    "SpeculativeVerifyBufferPlan",
     "SpeculativeVerifyPlan",
     "SpeculativeVerifyWork",
     "TextGenerator",

@@ -7,9 +7,16 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import WorkKind
-from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler, SpeculativeVerifyPlan, SpeculativeVerifyWork
+from hipengine.generation import (
+    GeneratedToken,
+    GraphBucketCache,
+    ResidentBatchScheduler,
+    SpeculativeVerifyBufferPlan,
+    SpeculativeVerifyPlan,
+    SpeculativeVerifyWork,
+)
 from hipengine.kvcache import FixedPagedKVPolicy
-from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary
+from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetVerifyBuffers
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
@@ -148,6 +155,24 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert plan.shape_key == key
     assert plan.graph is graph
     assert scheduler.graph_buckets.stats.hits == 2
+    buffers = TargetVerifyBuffers.for_batch(
+        work.target_batch,
+        token_ids=_tensor(0x3000, (work.target_batch.rows,), "int32"),
+        positions=_tensor(0x3100, (work.target_batch.rows,), "int32"),
+        parent_rows=_tensor(0x3200, (work.target_batch.rows,), "int32"),
+        draft_depths=_tensor(0x3300, (work.target_batch.rows,), "int32"),
+        row_to_request=_tensor(0x3400, (work.target_batch.rows,), "int32"),
+        active_mask=_tensor(0x3500, (work.target_batch.rows,), "bool"),
+        target_top1=_tensor(0x3600, (work.target_batch.rows,), "int32"),
+        accepted_counts=_tensor(0x3700, (len(work.target_batch.request_ids),), "int32"),
+        commit_rows=_tensor(0x3800, (len(work.target_batch.request_ids),), "int32"),
+        commit_tokens=_tensor(0x3900, (len(work.target_batch.request_ids),), "int32"),
+        commit_positions=_tensor(0x3A00, (len(work.target_batch.request_ids),), "int32"),
+    )
+    buffer_plan = scheduler.bind_speculative_verify_buffers(plan, buffers)
+    assert isinstance(buffer_plan, SpeculativeVerifyBufferPlan)
+    assert buffer_plan.plan is plan
+    assert buffer_plan.buffers is buffers
 
     summary = TargetAcceptSummary.from_accept_result(
         work.target_batch,

@@ -14,7 +14,7 @@ from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
 from hipengine.kvcache import KVTransaction
-from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetVerifyBatch
+from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetVerifyBatch, TargetVerifyBuffers
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +56,12 @@ class SpeculativeVerifyPlan:
     transaction: KVTransaction
     shape_key: BatchShapeKey
     graph: object
+
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeVerifyBufferPlan:
+    plan: SpeculativeVerifyPlan
+    buffers: TargetVerifyBuffers
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,6 +321,23 @@ class ResidentBatchScheduler:
             graph=graph,
         )
 
+    def bind_speculative_verify_buffers(
+        self,
+        plan: SpeculativeVerifyPlan,
+        buffers: TargetVerifyBuffers,
+    ) -> SpeculativeVerifyBufferPlan:
+        """Bind target-verifier device buffers to a scheduler plan."""
+
+        if buffers.request_ids != plan.target_batch.request_ids:
+            raise ValueError("target verify buffers request_ids must match speculative plan")
+        if buffers.rows != plan.target_batch.rows:
+            raise ValueError("target verify buffer rows must match speculative plan")
+        if buffers.candidate_rows != plan.target_batch.candidate_count:
+            raise ValueError("target verify candidate rows must match speculative plan")
+        if buffers.mode != plan.target_batch.mode:
+            raise ValueError("target verify buffer mode must match speculative plan")
+        return SpeculativeVerifyBufferPlan(plan=plan, buffers=buffers)
+
     def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
         return self.active_batch.shape_key(
             mode=mode,
@@ -364,6 +387,7 @@ __all__ = [
     "GraphBucketCache",
     "GraphBucketStats",
     "ResidentBatchScheduler",
+    "SpeculativeVerifyBufferPlan",
     "SpeculativeVerifyPlan",
     "SpeculativeVerifyWork",
 ]

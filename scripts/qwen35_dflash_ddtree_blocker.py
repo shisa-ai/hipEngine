@@ -77,6 +77,7 @@ def _interface_status() -> dict[str, Any]:
         "scheduler_speculative_graph_cache": hasattr(ResidentBatchScheduler, "get_or_create_speculative_verify_graph"),
         "scheduler_speculative_kv_transaction": hasattr(ResidentBatchScheduler, "begin_speculative_verify_transaction"),
         "scheduler_speculative_verify_plan": hasattr(ResidentBatchScheduler, "plan_speculative_verify"),
+        "scheduler_speculative_buffer_plan": hasattr(ResidentBatchScheduler, "bind_speculative_verify_buffers"),
         "verify_graph_shape_key": {
             "mode": shape_key.mode.value,
             "active_c": shape_key.active_c,
@@ -169,6 +170,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         experts_per_token=8,
         replay_steps=1,
     )
+    scheduler_buffer_plan = scheduler.bind_speculative_verify_buffers(scheduler_plan, buffers)
     return {
         "target_verify_rows": target.rows,
         "candidate_rows": target.candidate_count,
@@ -240,6 +242,14 @@ def _kv_transaction_status() -> dict[str, Any]:
             "graph_cache_entries": scheduler.graph_buckets.stats.entries,
             "graph_mode": scheduler_plan.graph["mode"],
             "graph_draft_depth": scheduler_plan.graph["draft_depth"],
+        },
+        "scheduler_buffer_plan": {
+            "request_ids": list(scheduler_buffer_plan.buffers.request_ids),
+            "rows": scheduler_buffer_plan.buffers.rows,
+            "candidate_rows": scheduler_buffer_plan.buffers.candidate_rows,
+            "mode": scheduler_buffer_plan.buffers.mode,
+            "target_batch_rows": scheduler_buffer_plan.plan.target_batch.rows,
+            "transaction_id": scheduler_buffer_plan.plan.transaction.transaction_id,
         },
     }
 
