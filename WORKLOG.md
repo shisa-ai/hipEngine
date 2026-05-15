@@ -9671,3 +9671,39 @@ flaky native-prefill correctness failures.
 
 Validation: re-read `docs/LESSONS-LEARNED.md` end-to-end; docs-only change, no
 GPU run needed.
+
+## 2026-05-15 — Prefill multiloop resumed: determinism unblock verified
+
+Resumed `prefill-perf/run-20260515-154601` after committing the native-prefill
+attention determinism fix (`4f252cf`) and lesson doc (`fab7d8c`). First verify
+attempt hit the expected stale-cache condition for the changed attention source
+under `--require-cached-build`; prebuilt the new cached artifact outside any
+profiler with:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import build_qwen35_paged_attn_decode
+compiler_version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+build_qwen35_paged_attn_decode(load=False, compiler_version=compiler_version, profile='decode')
+PY
+```
+
+Verification commands:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128-run3.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: 512/128 samples `485.424`, `481.047`, `479.101` tok/s (median
+`481.047`, effectively flat / -0.21% vs current loop baseline `482.057`); fixture
+gate passed with `native_owned_device_bytes=1625645909`, native prefill
+`1.06309s`, max KL `0.00565`, top-1 `1.0`; 4K/128 remains the known baseline OOM
+in grouped MoE prefill scratch allocation (`HIP error 2: out of memory`). This
+iteration is a log-only correctness-unblock verification, not a primary-metric
+keep; next active work should target the 4K scratch OOM / scratch reuse before
+more 512 launch tuning.
