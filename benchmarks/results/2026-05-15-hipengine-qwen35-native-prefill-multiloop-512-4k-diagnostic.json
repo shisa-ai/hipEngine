@@ -10,23 +10,23 @@
   "path": "native_prefill_c1_multiloop",
   "max_layers": 40,
   "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
-  "change": "Use 64-thread transposed pack8 GEMV for multi-token FP16 full-attention Q/K, full-attention V, and linear-attention QKV/Z prefill projections.",
+  "change": "Use 64-thread pack8 GEMV for multi-token FP16 full-attention Q/K/V/O and linear-attention QKV/Z/out prefill projections.",
   "workloads": {
     "512_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json",
-      "prefill_tok_s_samples": [531.2785053155555, 531.1620270132937, 530.4652662446827, 530.0059921766646],
-      "prefill_tok_s_median": 530.8136466289882,
-      "previous_retained_prefill_tok_s": 529.9846954707302,
-      "delta_percent": 0.15641110719369386,
-      "representative_prefill_seconds": 0.9637129958719015,
-      "representative_decode_tok_s": 100.80487612858525
+      "prefill_tok_s_samples": [553.1635696229175, 554.6000433926188, 554.3011154613987, 552.4985199966111],
+      "prefill_tok_s_median": 553.7323425421581,
+      "previous_retained_prefill_tok_s": 530.8136466289882,
+      "delta_percent": 4.317648682752892,
+      "representative_prefill_seconds": 0.9255851760972291,
+      "representative_decode_tok_s": 101.0088175910472
     },
     "4096_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json",
-      "prefill_tok_s": 322.35895988196967,
-      "previous_retained_prefill_tok_s": 322.35930615668434,
-      "prefill_seconds": 12.706332101020962,
-      "decode_tok_s": 101.49557560965687,
+      "prefill_tok_s": 330.0817258920494,
+      "previous_retained_prefill_tok_s": 322.35895988196967,
+      "prefill_seconds": 12.409048059023917,
+      "decode_tok_s": 101.78958058059192,
       "guard_floor_prefill_tok_s": 306.2413408488501,
       "guard_passed": true
     }
@@ -38,10 +38,10 @@
     "generated_match": true,
     "kl_pass": true,
     "top1_pass": true,
-    "max_kl": 0.01733979492749827,
+    "max_kl": 0.01742831788881887,
     "top1_agreement": 1.0,
     "native_owned_device_bytes": 1625645909,
-    "native_prefill_seconds": 0.9777544259559363
+    "native_prefill_seconds": 0.9403415259439498
   },
   "additional_gates": [
     {
@@ -49,10 +49,10 @@
       "passed": true
     },
     {
-      "command": "python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size {2,4,8} --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/iter11-packed-c{2,4,8}.json",
+      "command": "python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size {2,4,8} --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/iter12-packed-c{2,4,8}.json",
       "passed": true,
       "evidence": "c=2, c=4, c=8 generated_match=true finite_logits=true passed=true"
     }
   ],
-  "worklog": "2026-05-15 — Prefill multiloop iter 11: 64-thread full-attention V projection"
+  "worklog": "2026-05-15 — Prefill multiloop iter 12: 64-thread output projection GEMVs"
 }

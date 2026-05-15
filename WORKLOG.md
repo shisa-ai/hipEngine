@@ -9947,3 +9947,30 @@ Results: 512/128 samples `531.279`, `531.162`, `530.465`, `530.006` tok/s
 `native_owned_device_bytes=1625645909`, native prefill `0.97775s`, max KL
 `0.01734`, top-1 `1.0`; compact c=2/4/8 prompt8 gates passed. 4K/128 stayed at
 `322.359 tok/s`, preserving the iter-10 4K baseline.
+
+## 2026-05-15 — Prefill multiloop iter 12: 64-thread output projection GEMVs
+
+Extended the 64-thread prefill GEMV policy to multi-token output projections:
+full-attention `o_proj` and linear-attention `out_proj` now pass `threads=64`
+when `tokens > 1`, while c=1/decode remains at 128 threads. This targets the
+remaining strided pack8 prefill projection launches after iter 10/11 handled Q/K,
+V, and QKV/Z.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+for c in 2 4 8; do python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size $c --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/iter12-packed-c$c.json; done
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter12-512-run1.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter12-512-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter12-512-run3.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: 512/128 samples `553.164`, `554.600`, `554.301`, `552.499` tok/s
+(median `553.732`, +4.32% vs retained `530.814`). Fixture gate passed with
+`native_owned_device_bytes=1625645909`, native prefill `0.94034s`, max KL
+`0.01743`, top-1 `1.0`; compact c=2/4/8 prompt8 gates passed. 4K/128 improved
+to `330.082 tok/s`, prefill `12.4090s`, decode `101.790 tok/s`.

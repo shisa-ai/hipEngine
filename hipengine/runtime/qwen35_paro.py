@@ -2003,6 +2003,7 @@ class Qwen35ParoDecodeState:
             rows=tokens,
             in_features=q_width,
             group_size=group_size,
+            threads=64 if tokens > 1 else 128,
             library=library,
             stream=stream,
         )
@@ -2788,6 +2789,7 @@ class Qwen35ParoDecodeState:
             rows=tokens,
             in_features=width,
             group_size=group_size,
+            threads=64 if tokens > 1 else 128,
             library=library,
             stream=stream,
         )
@@ -2826,6 +2828,7 @@ class Qwen35ParoDecodeState:
             rows=tokens,
             in_features=width,
             group_size=group_size,
+            threads=64 if tokens > 1 else 128,
             library=library,
             stream=stream,
         )
