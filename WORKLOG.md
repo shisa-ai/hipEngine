@@ -8850,3 +8850,59 @@ PY
 ```
 
 Result: `docs/PREFILL.md final-spec ok 453 lines`.
+
+## 2026-05-15 — PREFILL final spec reviewer tightening
+
+Incorporated the final reviewer pass on `docs/PREFILL.md` before implementation.
+The spec remains final-path-only, but now clarifies how code may land without
+retaining intermediate perf artifacts: native pieces can be merged behind
+`require_full_native=False` / probe-only entrypoints while oracle paths fill
+missing pieces, but the first retained prefill performance row requires all
+native pieces, `PrefillConfig.require_full_native=True`, and no c1 selected-row
+MoE in the production prefill path.
+
+Additional tightened points:
+- current 117.24 tok/s c=1 row stays the retained benchmark baseline until the
+  final single-request native artifact is accepted;
+- full native prefill requires `T >= config.linear_conv_kernel_dim`, with short
+  prompts raising instead of silently serial-falling-back;
+- Qwen3.5/PARO embedding dispatch is FP16-hidden (`embedding_lookup_batch_fp16_i64`)
+  through the backend/model path;
+- bulk full-attention prepare must cast `T * kv_width` K elements, not the scalar
+  `kv_width` amount;
+- compact c>N attention uses `cu_seqlens_q/cu_seqlens_k` as the kernel mask ABI,
+  while `row_to_request` stays scheduler/debug metadata;
+- compact scheduler needs `bucketize_by_block_count`, and ordinary compact
+  prefill commits canonical KV inline rather than using speculative KV
+  transactions;
+- final validation now uses greedy ID equality plus KL <= 0.05 / top-1 >= 90%,
+  and adds a chunk-equivalence sweep for all non-zero PrefillConfig chunk knobs.
+
+Validation (docs/process only; no GPU run required):
+
+```bash
+git diff --check -- docs/PREFILL.md
+python3 - <<'PY'
+from pathlib import Path
+text=Path('docs/PREFILL.md').read_text()
+assert text.count('```') % 2 == 0, 'unbalanced fences'
+required = [
+    'Implementation landing policy',
+    'linear_conv_kernel_dim',
+    'T * kv_width',
+    'bucketize_by_block_count',
+    'cu_seqlens_q`/`cu_seqlens_k` define',
+    'non-speculative and commits canonical KV inline',
+    'KL ≤ 0.05',
+    'Chunk-equivalence sweep',
+]
+missing=[item for item in required if item not in text]
+if missing:
+    raise SystemExit(f'missing required text: {missing}')
+print('docs/PREFILL.md reviewer-tightening ok', text.count('\n') + 1, 'lines')
+PY
+rg -n "same IDs/logits|bit-stable|D1|D2|## Phased implementation plan" docs/PREFILL.md || true
+```
+
+Result: `docs/PREFILL.md reviewer-tightening ok 498 lines`; stale-term grep
+returned no matches.

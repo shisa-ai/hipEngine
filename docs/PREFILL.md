@@ -9,7 +9,7 @@
 
 We are **not** landing throwaway intermediate prefill paths. hipENGINE already
 has correct reference implementations: the original `nano-vllm-amd` native bulk
-engine and hipENGINE's bit-stable serial resident path. Use those as oracles and
+engine and hipENGINE's validated serial resident path. Use those as oracles and
 build the complete native path directly.
 
 Final target:
@@ -37,6 +37,16 @@ Explicitly skipped as retained implementations:
 | Layer-major full-attention row loop through c=1 decode kernels | Stage oracle/probe only; do not wire into generation or retain perf rows. |
 | c1-style selected-row MoE as the prefill path | Oracle for grouped MoE and bring-up probes only. |
 | Per-request c>N packed fallback | Debug/equality oracle only; no c>N throughput claim. |
+
+Implementation landing policy: native pieces may land independently in code
+behind `require_full_native=False` or test-only/probe entrypoints, using the
+oracle paths above to fill missing pieces during bring-up. The first retained
+prefill performance artifact is captured only after all native pieces are
+present, `PrefillConfig.require_full_native=True` is the default, and the c1
+selected-row MoE path no longer appears in the production prefill code path.
+In-progress measurements live in `WORKLOG.md`; `benchmarks/README.md` keeps the
+current 117.24 tok/s c=1 row as the retained baseline until the final
+single-request native artifact is accepted.
 
 Scope note: this plan targets `z-lab/Qwen3.5-35B-A3B-PARO` MoE hybrid. Dense
 `Qwen3.5-0.8B-PARO` needs tied-lm-head and dense PARO MLP support first; that is
@@ -171,6 +181,11 @@ Semantics:
 
 - Public `prefill_native(token_ids, ...)` starts at position 0 on a fresh
   session. Non-zero external `start_position` is not a public API.
+- Final native prefill requires `T >= config.linear_conv_kernel_dim` (typically
+  4 for Qwen3.5/PARO) because the linear-attention conv prefill kernels require
+  enough rows. Shorter prompts raise `ValueError`; no production serial fallback
+  is added for this corner unless a future dedicated short-prompt native kernel
+  lands.
 - Internal chunking may process the prompt as multiple contiguous chunks, but it
   must preserve exactly the same final conv/recurrent state and KV cache as a
   single full-prompt call.
@@ -185,6 +200,9 @@ Semantics:
 - `hipengine/generation/qwen35_paro.py` should call `session.prefill_native(...)`
   directly; no generation-time serial prompt loop except an explicitly requested
   diagnostic mode.
+- Prefill work does not change decode policy: multi-token decode scheduling and
+  any future `Qwen35ParoOneTokenGenerator` rename/behavior changes are out of
+  scope here. This plan only replaces prompt setup.
 
 Path labels for artifacts:
 
@@ -205,7 +223,9 @@ For one request with prompt length `T`:
    - Validate `token_ids` and capacity.
    - Fill/copy `prefill_token_ids[int64, T]` and `prefill_positions[int64, T] =
      arange(T)`.
-   - Run `embedding_lookup_batch_fp16_i64(...)` into `prefill_hidden[T, hidden]`.
+   - Resolve the embedding op through the backend/model dispatch path. Qwen3.5
+     PARO uses FP16 hidden buffers, so the concrete gfx1100 launch is
+     `embedding_lookup_batch_fp16_i64(...)` into `prefill_hidden[T, hidden]`.
 
 2. **Layer-major execution with no production row-loop fallbacks**
    - Maintain `hidden[T, H]` and `next_hidden[T, H]` double buffers.
@@ -232,6 +252,9 @@ For one request with prompt length `T`:
    - Split/cast query/gate as needed and run batched Q/K head RMSNorm + RoPE with
      per-row positions. The new RoPE kernel must use `positions[row]`; the
      existing scalar-position kernel is oracle-only for prefill.
+   - Specific scalar bug to avoid: current `prepare_full_attention_qkv_fp16(...)`
+     casts only one row of K (`kv_width` elements) from FP16 to FP32. The bulk
+     path must cast `T * kv_width` elements.
    - Append all `T` K/V rows to the paged cache with
      `qwen35_write_paged_kv_mixed_value_fp16_batch_spans(...)`, append spans
      `live_counts = positions`, and `span_role="prefill"`.
@@ -266,7 +289,11 @@ KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro", "qwen35_causal_gqa_gate
 registrations; the attention kernel itself does not dequantize weights.
 
 Mirror the existing GQA split-K gate-fused decode shape
-(`qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans`):
+(`qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans`). What differs from
+decode: the new kernel processes `T` query rows instead of one, consumes
+`positions[row]`/per-row context spans, and applies a causal mask
+`cache_position <= positions[row]`. Scratch layout, gate fusion, split-K/reduce
+shape, and softmax scale should otherwise match decode.
 
 - Inputs:
   - query `fp32[T, num_q_heads, head_dim]`,
@@ -316,15 +343,23 @@ class CompactPromptSlab:
     cu_seqlens_k: Tensor     # int32[N + 1]
     row_to_request: Tensor   # int64[T_total]
     request_ids: Tensor      # int64[N]
-    block_tables: Tensor     # int32[T_total, blocks_per_request] for current batch-writer ABI
+    block_tables: Tensor     # int32[T_total, blocks_per_request] == KVLiveSpans.base_offsets reshaped for the current batch-writer ABI
     append_counts: Tensor    # int64[T_total], 0-based append positions
     context_counts: Tensor   # int64[T_total], 1-based visible lengths
 ```
+
+Kernel ABI convention: `cu_seqlens_q`/`cu_seqlens_k` define the varlen
+block-diagonal attention segments passed to the native causal prefill kernel.
+`row_to_request` remains scheduler/debug metadata and is used for validation,
+state routing, and output ownership; it is not the primary mask input to the
+attention kernel.
 
 Final compact requirements:
 
 - `ResidentBatchScheduler.next_prefill_work(chunk_size=...)` forms compact slabs
   for requests with prefill work.
+- Add an explicit `bucketize_by_block_count` step in the scheduler before slab
+  construction.
 - `Qwen35ParoResidentSession.prefill_native_packed(slab)` runs the same native
   layer logic over `T_total` rows.
 - Current batch KV writer constraint: `_check_write_batch_shape(...)` computes
@@ -341,6 +376,9 @@ Final compact requirements:
 - Native causal prefill attention must be var-len/block-diagonal: a query row may
   attend only to rows/cache positions for the same request id and positions not
   greater than the query position.
+- Native compact prefill is non-speculative and commits canonical KV inline for
+  admitted prompt rows. `KVPolicy.begin_transaction/commit/rollback` hooks remain
+  for speculative verify/draft paths, not this ordinary prefill path.
 - Replace `scheduler_serial_slot_bridge` with `native_prefill_compact_cN` only
   after equality gates pass.
 
@@ -394,11 +432,18 @@ Required checks:
    - causal attention post-gate output,
    - grouped MoE output,
    - full layer hidden output.
-3. Full 40-layer fixture equality on `fixtures/qwen35_paro/parent_512_32_seed1234.json`.
-4. `rocprofv3 --kernel-trace` proves native full-attn prefill and grouped MoE
+3. Full 40-layer fixture gate on `fixtures/qwen35_paro/parent_512_32_seed1234.json`:
+   greedy generated IDs match the serial resident path, with KL ≤ 0.05 and
+   top-1 agreement ≥ 90% on logits at each sampled position.
+4. Chunk-equivalence sweep: for non-zero
+   `PrefillConfig.{linear_chunk_size, full_attn_query_chunk_size,
+   full_attn_post_chunk_size, full_attn_rope_chunk_size}` values, final hidden
+   row and KV cache contents match the single-chunk run within the stage-probe
+   tolerance, and generated decode IDs/logits satisfy the same KL/top-1 gate.
+5. `rocprofv3 --kernel-trace` proves native full-attn prefill and grouped MoE
    kernels ran, with expected names and plausible durations.
-5. `LLM.generate`/`Qwen35ParoOneTokenGenerator` uses `prefill_native(...)` by
-   default and produces the same IDs/logits as the current c=1 fixture.
+6. `LLM.generate`/`Qwen35ParoOneTokenGenerator` uses `prefill_native(...)` by
+   default and satisfies the fixture ID/KL/top-1 gate above.
 
 Retained artifact target:
 
