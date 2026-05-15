@@ -30,6 +30,10 @@
     "kv_transaction_target_verify": {
       "target_verify_rows": 5,
       "candidate_rows": 3,
+      "candidate_counts": [
+        2,
+        1
+      ],
       "transaction_draft_rows": 3,
       "role": "verify_tree",
       "root_rows_excluded_from_journal": true

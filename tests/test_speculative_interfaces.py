@@ -147,6 +147,7 @@ def test_speculative_draft_batch_drives_kv_transaction_commit_and_rollback() -> 
     txn = policy.begin_transaction([SimpleNamespace(request_id=1), SimpleNamespace(request_id=2)], draft)
     assert txn.request_ids == (1, 2)
     assert txn.draft_rows == 3
+    assert txn.candidate_counts == (2, 1)
     assert txn.role == "verify_tree"
 
     accepted = AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,)))
@@ -158,7 +159,10 @@ def test_speculative_draft_batch_drives_kv_transaction_commit_and_rollback() -> 
     txn_target = policy.begin_transaction([SimpleNamespace(request_id=1), SimpleNamespace(request_id=2)], target)
     assert txn_target.request_ids == (1, 2)
     assert txn_target.draft_rows == 3
+    assert txn_target.candidate_counts == (2, 1)
     assert txn_target.role == "verify_tree"
+    with pytest.raises(ValueError, match="candidate_counts"):
+        policy.commit(txn_target, [3, 0])
 
     txn2 = policy.begin_transaction([1], DraftBatch(
         request_ids=(1,),
@@ -205,6 +209,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert not payload["implementation_status"]["native_target_verify_ready"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_batch"] == "TargetVerifyBatch"
     assert payload["implementation_status"]["kv_transaction_target_verify"]["target_verify_rows"] == 5
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["transaction_draft_rows"] == 3
     assert payload["implementation_status"]["kv_transaction_target_verify"]["root_rows_excluded_from_journal"]
     assert payload["implementation_status"]["resident_api"]["step_batch_serial"]

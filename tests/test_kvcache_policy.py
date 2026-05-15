@@ -113,13 +113,15 @@ def test_fixed_paged_policy_transaction_commit_and_rollback() -> None:
     draft = WorkItem(kind=WorkKind.VERIFY_CHAIN, request_ids=(1, 2), row_to_request=(1, 1, 2), draft_depth=2)
 
     txn = policy.begin_transaction([1, 2], draft)
-    assert txn == KVTransaction(transaction_id=0, request_ids=(1, 2), draft_rows=3, role="verify_chain")
+    assert txn == KVTransaction(transaction_id=0, request_ids=(1, 2), draft_rows=3, role="verify_chain", candidate_counts=(2, 1))
 
     committed = policy.commit(txn, [2, 1])
     assert committed.committed
     assert committed.accepted_counts == (2, 1)
     with pytest.raises(ValueError, match="committed"):
         policy.rollback(committed)
+    with pytest.raises(ValueError, match="candidate_counts"):
+        policy.commit(txn, [3, 0])
 
     txn2 = policy.begin_transaction([1], WorkItem(kind=WorkKind.VERIFY_TREE, request_ids=(1,), row_to_request=(1,), draft_depth=1))
     rolled_back = policy.rollback(txn2)

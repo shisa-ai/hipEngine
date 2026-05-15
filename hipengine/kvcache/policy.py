@@ -47,6 +47,7 @@ class KVTransaction:
     request_ids: tuple[int, ...]
     draft_rows: int
     role: str
+    candidate_counts: tuple[int, ...] | None = None
     committed: bool = False
     rolled_back: bool = False
     accepted_counts: tuple[int, ...] | None = None
@@ -60,6 +61,13 @@ class KVTransaction:
             raise ValueError("draft_rows must be positive")
         if self.committed and self.rolled_back:
             raise ValueError("transaction cannot be both committed and rolled back")
+        if self.candidate_counts is not None:
+            if len(self.candidate_counts) != len(self.request_ids):
+                raise ValueError("candidate_counts must match request_ids")
+            if any(count < 0 for count in self.candidate_counts):
+                raise ValueError("candidate_counts must be non-negative")
+            if sum(self.candidate_counts) > self.draft_rows:
+                raise ValueError("candidate_counts cannot exceed draft_rows")
         if self.accepted_counts is not None and len(self.accepted_counts) != len(self.request_ids):
             raise ValueError("accepted_counts must match request_ids")
 
@@ -183,10 +191,25 @@ class FixedPagedKVPolicy:
                 raise KeyError(rid)
         candidate_rows = getattr(draft, "candidate_rows", None)
         row_to_request = getattr(draft, "row_to_request", None)
+        candidate_row_to_request = None
+        if row_to_request is not None:
+            row_requests = tuple(int(item) for item in row_to_request)
+            if candidate_rows is not None:
+                candidate_row_to_request = tuple(row_requests[int(row)] for row in candidate_rows)
+            else:
+                candidate_row_to_request = row_requests
+            unknown = set(candidate_row_to_request) - set(request_ids)
+            if unknown:
+                raise ValueError(f"draft rows reference unknown request ids {sorted(unknown)!r}")
         if candidate_rows is not None:
             draft_rows = len(candidate_rows)
         else:
-            draft_rows = len(row_to_request) if row_to_request is not None else len(request_ids)
+            draft_rows = len(candidate_row_to_request) if candidate_row_to_request is not None else len(request_ids)
+        candidate_counts = (
+            tuple(sum(1 for row_request in candidate_row_to_request if row_request == request_id) for request_id in request_ids)
+            if candidate_row_to_request is not None
+            else None
+        )
         role = str(getattr(draft, "kind", getattr(draft, "mode", "verify_chain")))
         if role.startswith("WorkKind."):
             role = role.rsplit(".", 1)[-1].lower()
@@ -197,6 +220,7 @@ class FixedPagedKVPolicy:
             request_ids=request_ids,
             draft_rows=draft_rows,
             role=role,
+            candidate_counts=candidate_counts,
         )
         self._next_transaction_id += 1
         self._transactions[txn.transaction_id] = txn
@@ -211,6 +235,10 @@ class FixedPagedKVPolicy:
             raise ValueError("accepted_counts must match transaction request_ids")
         if any(item < 0 for item in counts):
             raise ValueError("accepted_counts must be non-negative")
+        if current.candidate_counts is not None:
+            for accepted, available in zip(counts, current.candidate_counts, strict=True):
+                if accepted > available:
+                    raise ValueError("accepted_counts cannot exceed candidate_counts")
         updated = replace(current, committed=True, accepted_counts=counts)
         self._transactions[updated.transaction_id] = updated
         return updated

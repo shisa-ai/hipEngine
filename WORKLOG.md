@@ -6381,3 +6381,52 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows the transaction/commit blocker but does not complete native compact/c-aware execution.
+
+---
+
+## 2026-05-15 — TargetVerifyBatch accepted-count budget guard
+
+### Scope
+
+- Tightened the host-side transaction/commit scaffold for Task #15's eventual native verifier path.
+- Added `KVTransaction.candidate_counts` and populate it from `TargetVerifyBatch`/row maps in `FixedPagedKVPolicy.begin_transaction(...)`.
+- `FixedPagedKVPolicy.commit(...)` now rejects accepted counts that exceed the verified candidate budget for each request.
+- Updated speculative/KV tests, DFlash blocker helper/artifact, `docs/DFLASH.md`, and Task #15.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/kvcache hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py tests/test_kvcache_policy.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py tests/test_dispatch_batch.py -q
+```
+
+Result: `16 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.kv_transaction_target_verify.target_verify_rows=5`
+- `implementation_status.kv_transaction_target_verify.candidate_rows=3`
+- `implementation_status.kv_transaction_target_verify.candidate_counts=[2,1]`
+- `implementation_status.kv_transaction_target_verify.transaction_draft_rows=3`
+- `implementation_status.kv_transaction_target_verify.root_rows_excluded_from_journal=true`
+- still `status=blocked`, `performance_claim=false`, and `native_target_verify_ready=false`.
+
+Interpretation: the host transaction layer now has enough per-request candidate budget metadata to prevent committing more speculative tokens than a native target verifier actually verified. Device-side state/KV commit and resident target verification remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows the host transaction guard only; no performance claim or kernel change was made.

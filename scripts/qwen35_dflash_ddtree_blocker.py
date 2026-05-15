@@ -99,6 +99,7 @@ def _kv_transaction_status() -> dict[str, Any]:
     return {
         "target_verify_rows": target.rows,
         "candidate_rows": target.candidate_count,
+        "candidate_counts": list(txn.candidate_counts) if txn.candidate_counts is not None else None,
         "transaction_draft_rows": txn.draft_rows,
         "role": txn.role,
         "root_rows_excluded_from_journal": txn.draft_rows == target.candidate_count,
