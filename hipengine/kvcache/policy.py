@@ -65,6 +65,8 @@ class KVTransaction:
         _validate_unique_request_ids(self.request_ids)
         if self.draft_rows <= 0:
             raise ValueError("draft_rows must be positive")
+        if self.role not in {"verify_chain", "verify_tree"}:
+            raise ValueError("role must be verify_chain or verify_tree")
         if self.committed and self.rolled_back:
             raise ValueError("transaction cannot be both committed and rolled back")
         if self.candidate_counts is not None:

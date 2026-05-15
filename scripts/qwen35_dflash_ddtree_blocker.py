@@ -93,6 +93,14 @@ def _kv_transaction_terminal_state_checked() -> bool:
     return committed_requires_counts and counts_require_commit
 
 
+def _kv_transaction_role_checked() -> bool:
+    try:
+        KVTransaction(transaction_id=0, request_ids=(1,), draft_rows=1, role="decode")
+    except ValueError as exc:
+        return "role" in str(exc)
+    return False
+
+
 def _interface_status() -> dict[str, Any]:
     batch = ActiveBatch(2)
     batch.admit(RequestState.from_tokens(0, [1], max_new_tokens=1))
@@ -112,6 +120,7 @@ def _interface_status() -> dict[str, Any]:
         "speculative_request_ids_unique_checked": _speculative_request_ids_unique_checked(),
         "kv_transaction_request_ids_unique_checked": _kv_transaction_request_ids_unique_checked(),
         "kv_transaction_terminal_state_checked": _kv_transaction_terminal_state_checked(),
+        "kv_transaction_role_checked": _kv_transaction_role_checked(),
         "scheduler_speculative_verify_work": hasattr(ResidentBatchScheduler, "next_speculative_verify_work"),
         "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),

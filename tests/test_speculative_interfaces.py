@@ -592,6 +592,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["speculative_request_ids_unique_checked"]
     assert payload["implementation_status"]["interfaces_present"]["kv_transaction_request_ids_unique_checked"]
     assert payload["implementation_status"]["interfaces_present"]["kv_transaction_terminal_state_checked"]
+    assert payload["implementation_status"]["interfaces_present"]["kv_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_verify_work"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_accept"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_shape_key"]

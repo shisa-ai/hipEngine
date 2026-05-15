@@ -118,6 +118,11 @@ def test_fixed_paged_policy_rejects_duplicate_transaction_requests() -> None:
         policy.begin_transaction([1, SimpleNamespace(request_id=1)], draft)
 
 
+def test_kv_transaction_validates_role() -> None:
+    with pytest.raises(ValueError, match="role"):
+        KVTransaction(transaction_id=0, request_ids=(1,), draft_rows=1, role="decode")
+
+
 def test_kv_transaction_validates_terminal_state() -> None:
     with pytest.raises(ValueError, match="requires accepted_counts"):
         KVTransaction(transaction_id=0, request_ids=(1,), draft_rows=1, role="verify_chain", committed=True)
