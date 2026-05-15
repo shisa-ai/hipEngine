@@ -9768,3 +9768,26 @@ Results: correctness stayed clean (`max_kl=0.00567`, top-1 `1.0`, fixture
 `505.890`, `504.797`, `505.787` tok/s (median `505.787`), below the retained
 `508.320` current. Decision: reject/revert this micro-cleanup; the reserve loop
 is not the current bottleneck.
+
+## 2026-05-15 — Prefill multiloop iter 5 audit: retained path launch counts
+
+Audit-only iteration after retaining shared prefill scratch. Wrapped hipENGINE
+Python kernel-wrapper callables and ran `prefill_native(..., sample=False)` at
+T=512 and T=4096 to count host-side launches on the current retained path:
+
+```bash
+python3 - <<'PY'
+# wrapper-count audit; writes /tmp/prefill-audit-counts-{512,4096}.json
+PY
+```
+
+Results: both T=512 and T=4096 issue `1113` wrapper calls for 40 layers. Top
+families/counts are unchanged by sequence length: 80 transposed pack8 GEMV, 80
+rotate1, 80 W8A16 shared-expert linears, 60 dense GEMV, 50 strided pack8 GEMV,
+40 RMSNorm, 40 fp16->f32 casts, 40 add+rmsnorm, 40 router, 40 each grouped-MoE
+metadata/scatter/WMMA/up/down/combine family, 30 linear-attention conv/GDN, and
+10 full-attention prefill GQA gate calls. This confirms the remaining large 4K
+slowdown is not launch-count growth; it is shape cost inside the 10 full-attention
+prefill kernels and/or token-scaled MoE/projection work. Next code iteration
+should target a parent-proven full-attention/projection path or profiling of
+those 10 full-attention kernels rather than more Python restore-loop cleanup.
