@@ -88,6 +88,20 @@ Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 shootout entry and
 | Qwen3.5/PARO c=N generated equality | `hip_gfx1100` | `python3 scripts/qwen35_batch_serial_correctness.py --scheduler ...` for c=2/4/8; exact commands in artifact | c=2/4/8 `finite_logits=true`, `generated_match=true`, `passed=true` | [`2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json`](results/2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json) | 2026-05-15 | Correctness gate only; current c>N bridge is serial, not a native compact/c-aware throughput path. |
 | `smoke_add` HIP runtime/build | `hip_gfx1100` | `python3 scripts/smoke.py --mode smoke-add-hip --n 1024` | `max_abs=0.0` | `~/.cache/hipengine/build/smoke-101db2a5ad5526c3/smoke_add.so` | 2026-05-13 | Correctness/build smoke only; no throughput claim. |
 
+## Blocked / diagnostic benchmark attempts
+
+These rows are **not** current-fastest hipENGINE results. They are committed so
+we do not lose exact commands, hardware/software context, correctness status,
+and blocker evidence for attempted shapes. Their timing fields are diagnostic
+only unless a future artifact has `status="accepted"` and `performance_claim=true`.
+
+| Model | Quant | Workload | Path | Correctness / status | Diagnostic timing | Memory | Artifact | Last updated | Blocker / notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3.5-35B-A3B-PARO | w4_paro | c=1, prompt 8 / decode 1, max_layers=40 | `scheduler_serial_slot_bridge` | `status=blocked`, `finite_logits=true`, `performance_claim=false` | prefill 90.464 tok/s; aggregate decode 106.765 tok/s; per-request decode 106.765 tok/s | peak allocator n/a; max batch 1, max sequence 10 | [`2026-05-15-hipengine-qwen35-c1-scheduler-serial-bench-blocked.json`](results/2026-05-15-hipengine-qwen35-c1-scheduler-serial-bench-blocked.json) | 2026-05-15 | Reduced diagnostic shape and serial row execution; not the c=N 512/128 retained protocol. |
+| Qwen3.5-35B-A3B-PARO | w4_paro | c=2, prompt 8 / decode 1, max_layers=40 | `scheduler_serial_slot_bridge` | `status=blocked`, `finite_logits=true`, `performance_claim=false` | prefill 103.567 tok/s; aggregate decode 107.149 tok/s; per-request decode 53.575 tok/s | peak allocator n/a; max batch 2, max sequence 10 | [`2026-05-15-hipengine-qwen35-c2-scheduler-serial-bench-blocked.json`](results/2026-05-15-hipengine-qwen35-c2-scheduler-serial-bench-blocked.json) | 2026-05-15 | `batch_execution.throughput_claim_eligible=false`; native compact/c-aware c>N kernels remain Task #15. |
+| Qwen3.5-35B-A3B-PARO | w4_paro | c=4, prompt 8 / decode 1, max_layers=40 | `scheduler_serial_slot_bridge` | `status=blocked`, `finite_logits=true`, `performance_claim=false` | prefill 111.226 tok/s; aggregate decode 108.434 tok/s; per-request decode 27.108 tok/s | peak allocator n/a; max batch 4, max sequence 10 | [`2026-05-15-hipengine-qwen35-c4-scheduler-serial-bench-blocked.json`](results/2026-05-15-hipengine-qwen35-c4-scheduler-serial-bench-blocked.json) | 2026-05-15 | Aggregate decode stays flat because rows execute serially; do not compare as throughput win. |
+| Qwen3.5-35B-A3B-PARO | w4_paro | c=8, prompt 8 / decode 1, max_layers=40 | `scheduler_serial_slot_bridge` | `status=blocked`, `finite_logits=true`, `performance_claim=false` | prefill 115.080 tok/s; aggregate decode 108.904 tok/s; per-request decode 13.613 tok/s | peak allocator n/a; max batch 8, max sequence 10 | [`2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json`](results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json) | 2026-05-15 | Confirms serial bridge blocker: per-request decode falls with c while aggregate stays ~109 tok/s. |
+
 ## Table conventions
 
 - Workload format is `prompt_tokens/decode_tokens` unless otherwise stated.

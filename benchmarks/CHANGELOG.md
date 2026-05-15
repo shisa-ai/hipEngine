@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-05-15
 
+- [blocked diagnostic] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / c=1/2/4/8 prompt8/decode1: retained throughput no row -> no row (blocked) because `scheduler_serial_slot_bridge` is serial and not c=N 512/128 protocol; artifacts `benchmarks/results/2026-05-15-hipengine-qwen35-c{1,2,4,8}-scheduler-serial-bench-blocked.json`.
 - [correctness] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / c=1 512/32 parent fixture: generated-token equality blocked -> accepted after parent-mixed MoE parity fixes; `benchmarks/results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json`.
 - [correctness] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / c=2/4/8 generated equality: blocked -> accepted for scheduler-backed serial bridge with finite logits and graph/occupancy metadata; `benchmarks/results/2026-05-15-hipengine-qwen35-cn-generated-equality-accepted.json`.
 - [rollup] hipENGINE Qwen3.5/PARO correctness rows: no retained throughput row -> accepted non-throughput c=1 and c=N correctness gates; `benchmarks/README.md` smoke/non-throughput table.

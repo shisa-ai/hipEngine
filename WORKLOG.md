@@ -6123,5 +6123,40 @@ Result: pytest exit code `0` (`76 passed`).
 
 ### Notes
 
-- Original pi-multiloop verify selector remains stale and exits with `active HIPENGINE parity TaskList not found`; robust active TaskList count is now `3` (#15, #44, #45) after completing #43.
+- Original pi-multiloop verify selector remains stale and exits with the legacy TaskList-not-found error; robust active TaskList count is now `3` (#15, #44, #45) after completing #43.
 - Task #45 is now unblocked: summarize these c=1/2/4/8 results as blocked/diagnostic rows in `benchmarks/README.md`/`CHANGELOG.md`, not in current-fastest accepted rows.
+
+---
+
+## 2026-05-15 — Task #45 benchmark rollup update for c=N diagnostics
+
+### Scope
+
+- Updated `benchmarks/README.md` after Task #43 artifacts:
+  - kept `Current fastest hipENGINE rows` empty;
+  - added a clearly marked `Blocked / diagnostic benchmark attempts` table;
+  - linked the c=1/c=2/c=4/c=8 scheduler-serial blocked artifacts;
+  - included workload shape, correctness/status, diagnostic timing, memory availability, and blocker notes.
+- Updated `benchmarks/CHANGELOG.md` with a 2026-05-15 blocked-diagnostic one-liner.
+- Completed Task #45.
+
+### Result
+
+No retained throughput row was added. The rollup explicitly states these rows are not current-fastest results and are not performance claims because:
+
+- artifact `status=blocked`;
+- `performance_claim=false`;
+- `batch_execution.throughput_claim_eligible=false`;
+- path is `scheduler_serial_slot_bridge` / `serial_c1_layer_path`;
+- workload is reduced prompt8/decode1 rather than the retained c=N 512/128 protocol.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count after completing #45: `2` (#15 and #44).
