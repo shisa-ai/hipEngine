@@ -170,6 +170,37 @@ def _target_commit_plan_candidate_budget_checked() -> bool:
     return False
 
 
+def _target_verify_buffers_transaction_id_checked() -> bool:
+    draft = DraftBatch(
+        request_ids=(1,),
+        candidate_tokens=(10,),
+        parent_positions=(5,),
+        draft_depths=(1,),
+        row_to_request=(1,),
+    )
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100,), root_positions=(5,))
+    device = Device("hip", 0)
+    try:
+        TargetVerifyBuffers.for_batch(
+            target,
+            token_ids=Tensor.from_handle(0x2A00, (target.rows,), "int32", device),
+            positions=Tensor.from_handle(0x2B00, (target.rows,), "int32", device),
+            parent_rows=Tensor.from_handle(0x2C00, (target.rows,), "int32", device),
+            draft_depths=Tensor.from_handle(0x2D00, (target.rows,), "int32", device),
+            row_to_request=Tensor.from_handle(0x2E00, (target.rows,), "int32", device),
+            active_mask=Tensor.from_handle(0x2F00, (target.rows,), "bool", device),
+            target_top1=Tensor.from_handle(0x3000, (target.rows,), "int32", device),
+            accepted_counts=Tensor.from_handle(0x3100, (1,), "int32", device),
+            commit_rows=Tensor.from_handle(0x3200, (1,), "int32", device),
+            commit_tokens=Tensor.from_handle(0x3300, (1,), "int32", device),
+            commit_positions=Tensor.from_handle(0x3400, (1,), "int32", device),
+            transaction_id=-1,
+        )
+    except ValueError as exc:
+        return "transaction_id" in str(exc)
+    return False
+
+
 def _interface_status() -> dict[str, Any]:
     batch = ActiveBatch(2)
     batch.admit(RequestState.from_tokens(0, [1], max_new_tokens=1))
@@ -192,6 +223,7 @@ def _interface_status() -> dict[str, Any]:
         "kv_transaction_role_checked": _kv_transaction_role_checked(),
         "target_commit_plan_transaction_role_checked": _target_commit_plan_transaction_role_checked(),
         "target_commit_plan_candidate_budget_checked": _target_commit_plan_candidate_budget_checked(),
+        "target_verify_buffers_transaction_id_checked": _target_verify_buffers_transaction_id_checked(),
         "scheduler_speculative_verify_work": hasattr(ResidentBatchScheduler, "next_speculative_verify_work"),
         "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),
@@ -402,7 +434,22 @@ def _kv_transaction_status() -> dict[str, Any]:
         replay_steps=1,
     )
     scheduler_rolled_txn = scheduler.rollback_speculative_kv_transaction(policy, scheduler_rollback_plan)
-    scheduler_buffer_plan = scheduler.bind_speculative_verify_buffers(scheduler_plan, buffers)
+    scheduler_buffers = TargetVerifyBuffers.for_batch(
+        scheduler_work.target_batch,
+        token_ids=buffers.token_ids,
+        positions=buffers.positions,
+        parent_rows=buffers.parent_rows,
+        draft_depths=buffers.draft_depths,
+        row_to_request=buffers.row_to_request,
+        active_mask=buffers.active_mask,
+        target_top1=buffers.target_top1,
+        accepted_counts=buffers.accepted_counts,
+        commit_rows=buffers.commit_rows,
+        commit_tokens=buffers.commit_tokens,
+        commit_positions=buffers.commit_positions,
+        transaction_id=scheduler_plan.transaction.transaction_id,
+    )
+    scheduler_buffer_plan = scheduler.bind_speculative_verify_buffers(scheduler_plan, scheduler_buffers)
     scheduler_commit_plan = scheduler.plan_speculative_commit(scheduler_buffer_plan, summary)
     scheduler_state_buffers = TargetStateCommitBuffers.for_plan(
         scheduler_commit_plan.commit_plan,
@@ -444,6 +491,7 @@ def _kv_transaction_status() -> dict[str, Any]:
             "mode": plan.mode,
         },
         "device_buffers": {
+            "transaction_id": buffers.transaction_id,
             "rows": buffers.rows,
             "candidate_rows": buffers.candidate_rows,
             "summary_rows": buffers.request_count,
@@ -497,7 +545,9 @@ def _kv_transaction_status() -> dict[str, Any]:
             "candidate_rows": scheduler_buffer_plan.buffers.candidate_rows,
             "mode": scheduler_buffer_plan.buffers.mode,
             "target_batch_rows": scheduler_buffer_plan.plan.target_batch.rows,
+            "buffer_transaction_id": scheduler_buffer_plan.buffers.transaction_id,
             "transaction_id": scheduler_buffer_plan.plan.transaction.transaction_id,
+            "transaction_id_matches": scheduler_buffer_plan.buffers.transaction_id == scheduler_buffer_plan.plan.transaction.transaction_id,
         },
         "scheduler_commit_plan": {
             "transaction_id": scheduler_commit_plan.commit_plan.transaction_id,

@@ -8098,3 +8098,50 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows speculative state/KV commit transaction binding only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Target verify-buffer transaction binding
+
+### Scope
+
+- Added optional `TargetVerifyBuffers.transaction_id`; buffer construction rejects negative ids.
+- Tightened `ResidentBatchScheduler.bind_speculative_verify_buffers(...)` so target-verifier buffers that carry a transaction id must match the scheduler-owned speculative KV transaction.
+- Updated scheduler/speculative tests and DFlash/DDTree blocker artifact evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: `22 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.target_verify_buffers_transaction_id_checked=true`
+- `implementation_status.kv_transaction_target_verify.scheduler_buffer_plan.buffer_transaction_id=1`
+- `implementation_status.kv_transaction_target_verify.scheduler_buffer_plan.transaction_id_matches=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: host target-verifier device buffers can now bind to the same speculative transaction as the scheduler verify plan before native verifier kernels consume them. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows speculative target-verifier buffer transaction binding only; no performance claim or kernel change was made.

@@ -27,6 +27,7 @@
       "kv_transaction_role_checked": true,
       "target_commit_plan_transaction_role_checked": true,
       "target_commit_plan_candidate_budget_checked": true,
+      "target_verify_buffers_transaction_id_checked": true,
       "scheduler_speculative_verify_work": true,
       "scheduler_speculative_accept": true,
       "scheduler_speculative_shape_key": true,
@@ -123,6 +124,7 @@
         "mode": "verify_tree"
       },
       "device_buffers": {
+        "transaction_id": null,
         "rows": 5,
         "candidate_rows": 3,
         "summary_rows": 2,
@@ -220,7 +222,9 @@
         "candidate_rows": 3,
         "mode": "verify_tree",
         "target_batch_rows": 5,
-        "transaction_id": 1
+        "buffer_transaction_id": 1,
+        "transaction_id": 1,
+        "transaction_id_matches": true
       },
       "scheduler_commit_plan": {
         "transaction_id": 1,

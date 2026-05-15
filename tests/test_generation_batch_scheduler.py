@@ -185,11 +185,16 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
         commit_rows=_tensor(0x3800, (len(work.target_batch.request_ids),), "int32"),
         commit_tokens=_tensor(0x3900, (len(work.target_batch.request_ids),), "int32"),
         commit_positions=_tensor(0x3A00, (len(work.target_batch.request_ids),), "int32"),
+        transaction_id=plan.transaction.transaction_id,
     )
     buffer_plan = scheduler.bind_speculative_verify_buffers(plan, buffers)
+    assert buffers.transaction_id == plan.transaction.transaction_id
     assert isinstance(buffer_plan, SpeculativeVerifyBufferPlan)
     assert buffer_plan.plan is plan
     assert buffer_plan.buffers is buffers
+    wrong_verify_buffers = replace(buffers, transaction_id=plan.transaction.transaction_id + 1)
+    with pytest.raises(ValueError, match="transaction_id"):
+        scheduler.bind_speculative_verify_buffers(plan, wrong_verify_buffers)
 
     summary = TargetAcceptSummary.from_accept_result(
         work.target_batch,

@@ -347,6 +347,8 @@ class ResidentBatchScheduler:
             raise ValueError("target verify buffer rows must match speculative plan")
         if buffers.candidate_rows != plan.target_batch.candidate_count:
             raise ValueError("target verify candidate rows must match speculative plan")
+        if buffers.transaction_id is not None and buffers.transaction_id != plan.transaction.transaction_id:
+            raise ValueError("target verify buffers transaction_id must match speculative plan")
         if buffers.mode != plan.target_batch.mode:
             raise ValueError("target verify buffer mode must match speculative plan")
         return SpeculativeVerifyBufferPlan(plan=plan, buffers=buffers)

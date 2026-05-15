@@ -209,8 +209,10 @@ def test_target_verify_buffers_validate_device_abi() -> None:
         commit_rows=_tensor(0x3800, (2,), "int32"),
         commit_tokens=_tensor(0x3900, (2,), "int32"),
         commit_positions=_tensor(0x3A00, (2,), "int32"),
+        transaction_id=7,
     )
 
+    assert buffers.transaction_id == 7
     assert buffers.rows == 5
     assert buffers.candidate_rows == 3
     assert buffers.request_ids == (1, 2)
@@ -218,6 +220,8 @@ def test_target_verify_buffers_validate_device_abi() -> None:
     assert str(buffers.device) == "hip:0"
     assert buffers.mode == "verify_tree"
 
+    with pytest.raises(ValueError, match="transaction_id"):
+        replace(buffers, transaction_id=-1)
     with pytest.raises(ValueError, match="row tensors"):
         TargetVerifyBuffers.for_batch(
             target,
@@ -632,6 +636,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["kv_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_candidate_budget_checked"]
+    assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_transaction_id_checked"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_verify_work"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_accept"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_shape_key"]

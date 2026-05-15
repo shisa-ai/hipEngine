@@ -339,11 +339,14 @@ class TargetVerifyBuffers:
     commit_tokens: Tensor
     commit_positions: Tensor
     mode: str = "verify_chain"
+    transaction_id: int | None = None
 
     def __post_init__(self) -> None:
         if not self.request_ids:
             raise ValueError("TargetVerifyBuffers must contain at least one request")
         _validate_unique_request_ids(self.request_ids)
+        if self.transaction_id is not None and self.transaction_id < 0:
+            raise ValueError("transaction_id must be non-negative")
         if self.rows <= 0:
             raise ValueError("rows must be positive")
         if self.candidate_rows <= 0 or self.candidate_rows > self.rows:
@@ -391,6 +394,7 @@ class TargetVerifyBuffers:
         commit_rows: Tensor,
         commit_tokens: Tensor,
         commit_positions: Tensor,
+        transaction_id: int | None = None,
     ) -> "TargetVerifyBuffers":
         return cls(
             request_ids=batch.request_ids,
@@ -408,6 +412,7 @@ class TargetVerifyBuffers:
             commit_tokens=commit_tokens,
             commit_positions=commit_positions,
             mode=batch.mode,
+            transaction_id=transaction_id,
         )
 
     @property
