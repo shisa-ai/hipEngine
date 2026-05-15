@@ -6949,3 +6949,57 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`77 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows resident commit-buffer metadata API only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Resident speculative execution metadata status
+
+### Scope
+
+- Added `Qwen35ParoResidentSpeculativeExecution` and `Qwen35ParoResidentSession.speculative_execution_metadata()`.
+- The runtime now owns the readiness distinction between metadata-only resident APIs and executable native target verification:
+  - `target_verify_batch` metadata is present;
+  - `verify_speculative_batch` metadata is present;
+  - `commit_verified_state` metadata is present;
+  - native root+candidate target-forward kernels are not wired;
+  - state/KV copy kernels are not wired;
+  - throughput claims remain ineligible.
+- Updated the DFlash blocker helper/artifact and Task #15 to consume the runtime status instead of inferring readiness from `hasattr(...)` alone.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_dflash_ddtree_blocker.py tests/test_qwen35_resident_batch_layout.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `30 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records `implementation_status.resident_api.blockers`:
+
+- `target_verify_batch/verify_speculative_batch/commit_verified_state are metadata-only`
+- `native root+candidate target forward kernels are not wired`
+- `GPU accept-summary kernels are not wired`
+- `verified state/KV copy kernels are not wired`
+
+It also records `native_target_verify_ready=false` and `throughput_claim_eligible=false` from the resident metadata object.
+
+Interpretation: the resident runtime now centrally reports why speculative target verification is blocked. API presence alone can no longer make the blocker artifact look ready; real kernel/copy execution must flip explicit status fields.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`78 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows resident readiness/reporting only; no performance claim or kernel change was made.

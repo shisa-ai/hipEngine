@@ -45,9 +45,9 @@ It records:
   `scheduler_serial_slot_bridge`, `serial_c1_layer_path`, and
   `throughput_claim_eligible=false`;
 - `Qwen35ParoResidentSession` exposes `step_batch_serial()`, batch metadata,
-  metadata-only `target_verify_batch()`, `verify_speculative_batch()`, and
-  `commit_verified_state()` layout helpers, but no native verifier execution or
-  state/KV copy kernels;
+  `speculative_execution_metadata()`, and metadata-only `target_verify_batch()`,
+  `verify_speculative_batch()`, and `commit_verified_state()` layout helpers,
+  but no native verifier execution or state/KV copy kernels;
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
 - host KV transaction bookkeeping now accounts for `TargetVerifyBatch`

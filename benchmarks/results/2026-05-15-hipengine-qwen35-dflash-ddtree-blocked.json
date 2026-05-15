@@ -180,7 +180,15 @@
       "speculative_verify_batch": true,
       "commit_verified_state": true,
       "native_target_verify_executes_kernels": false,
-      "commit_verified_state_executes_copies": false
+      "commit_verified_state_executes_copies": false,
+      "native_target_verify_ready": false,
+      "throughput_claim_eligible": false,
+      "blockers": [
+        "target_verify_batch/verify_speculative_batch/commit_verified_state are metadata-only",
+        "native root+candidate target forward kernels are not wired",
+        "GPU accept-summary kernels are not wired",
+        "verified state/KV copy kernels are not wired"
+      ]
     },
     "native_target_verify_ready": false
   },
@@ -265,7 +273,10 @@
     ]
   },
   "blockers": [
-    "Qwen35ParoResidentSession target_verify_batch/verify_speculative_batch/commit_verified_state APIs are metadata-only and do not run a native root+candidate target forward or state/KV copy",
+    "resident speculative status: target_verify_batch/verify_speculative_batch/commit_verified_state are metadata-only",
+    "resident speculative status: native root+candidate target forward kernels are not wired",
+    "resident speculative status: GPU accept-summary kernels are not wired",
+    "resident speculative status: verified state/KV copy kernels are not wired",
     "step_batch_serial is still the only c>N target path and executes rows through the c=1 layer path",
     "exact selectable per-row target state for linear-attention Conv/GDN state and full-attention K/V commit is not exposed",
     "GPU accept-summary and state/KV commit kernels are not wired; only host-side DraftBatch/AcceptResult metadata and KVTransaction bookkeeping exist",

@@ -79,15 +79,13 @@ def _interface_status() -> dict[str, Any]:
     }
 
 
-def _resident_api_status() -> dict[str, bool]:
+def _resident_api_status() -> dict[str, Any]:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    speculative = session.speculative_execution_metadata().to_json_dict()
     return {
         "step_batch_serial": hasattr(Qwen35ParoResidentSession, "step_batch_serial"),
         "batch_execution_metadata": hasattr(Qwen35ParoResidentSession, "batch_execution_metadata"),
-        "native_target_verify_batch": hasattr(Qwen35ParoResidentSession, "target_verify_batch"),
-        "speculative_verify_batch": hasattr(Qwen35ParoResidentSession, "verify_speculative_batch"),
-        "commit_verified_state": hasattr(Qwen35ParoResidentSession, "commit_verified_state"),
-        "native_target_verify_executes_kernels": False,
-        "commit_verified_state_executes_copies": False,
+        **speculative,
     }
 
 
@@ -217,7 +215,7 @@ def build_payload(*, batch_artifact: Path, prefill_artifact: Path, argv: Sequenc
     native_prefill_plan = batch_execution.get("native_prefill_plan") or prefill.get("native_prefill_plan") or prefill.get("plan") or {}
     resident_api = _resident_api_status()
     blockers = [
-        "Qwen35ParoResidentSession target_verify_batch/verify_speculative_batch/commit_verified_state APIs are metadata-only and do not run a native root+candidate target forward or state/KV copy",
+        *(f"resident speculative status: {blocker}" for blocker in resident_api.get("blockers", ())),
         "step_batch_serial is still the only c>N target path and executes rows through the c=1 layer path",
         "exact selectable per-row target state for linear-attention Conv/GDN state and full-attention K/V commit is not exposed",
         "GPU accept-summary and state/KV commit kernels are not wired; only host-side DraftBatch/AcceptResult metadata and KVTransaction bookkeeping exist",
@@ -245,13 +243,7 @@ def build_payload(*, batch_artifact: Path, prefill_artifact: Path, argv: Sequenc
             "interfaces_present": _interface_status(),
             "kv_transaction_target_verify": _kv_transaction_status(),
             "resident_api": resident_api,
-            "native_target_verify_ready": bool(
-                resident_api["native_target_verify_batch"]
-                and resident_api["speculative_verify_batch"]
-                and resident_api["commit_verified_state"]
-                and resident_api["native_target_verify_executes_kernels"]
-                and resident_api["commit_verified_state_executes_copies"]
-            ),
+            "native_target_verify_ready": bool(resident_api["native_target_verify_ready"]),
         },
         "evidence": {
             "batch_artifact": str(batch_artifact),

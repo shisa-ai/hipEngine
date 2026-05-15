@@ -11,6 +11,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoResidentBatchLayout,
     Qwen35ParoResidentSession,
+    Qwen35ParoResidentSpeculativeExecution,
     qwen35_paro_native_prefill_plan,
 )
 from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommitBuffers
@@ -197,6 +198,27 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
     session.max_batch_size = 5
     with pytest.raises(ValueError, match="outside"):
         session.target_verify_batch(draft, root_tokens=(9, 100), root_positions=(5, 3))
+
+
+def test_qwen35_resident_speculative_execution_metadata_stays_blocked() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+
+    metadata = session.speculative_execution_metadata()
+
+    assert isinstance(metadata, Qwen35ParoResidentSpeculativeExecution)
+    assert metadata.target_verify_batch_metadata
+    assert metadata.verify_speculative_batch_metadata
+    assert metadata.commit_verified_state_metadata
+    assert not metadata.native_target_verify_executes_kernels
+    assert not metadata.commit_verified_state_executes_copies
+    assert not metadata.native_target_verify_ready
+    assert not metadata.throughput_claim_eligible
+    assert any("metadata-only" in blocker for blocker in metadata.blockers)
+    payload = metadata.to_json_dict()
+    assert payload["native_target_verify_batch"]
+    assert payload["speculative_verify_batch"]
+    assert payload["commit_verified_state"]
+    assert not payload["native_target_verify_ready"]
 
 
 def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> None:

@@ -613,6 +613,32 @@ class Qwen35ParoResidentBatchExecution:
         }
 
 
+@dataclass(frozen=True)
+class Qwen35ParoResidentSpeculativeExecution:
+    """Serializable status for resident speculative target verification."""
+
+    target_verify_batch_metadata: bool
+    verify_speculative_batch_metadata: bool
+    commit_verified_state_metadata: bool
+    native_target_verify_executes_kernels: bool
+    commit_verified_state_executes_copies: bool
+    native_target_verify_ready: bool
+    throughput_claim_eligible: bool
+    blockers: tuple[str, ...]
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "native_target_verify_batch": self.target_verify_batch_metadata,
+            "speculative_verify_batch": self.verify_speculative_batch_metadata,
+            "commit_verified_state": self.commit_verified_state_metadata,
+            "native_target_verify_executes_kernels": self.native_target_verify_executes_kernels,
+            "commit_verified_state_executes_copies": self.commit_verified_state_executes_copies,
+            "native_target_verify_ready": self.native_target_verify_ready,
+            "throughput_claim_eligible": self.throughput_claim_eligible,
+            "blockers": list(self.blockers),
+        }
+
+
 def qwen35_paro_native_prefill_plan(
     layer_types: Sequence[str],
     *,
@@ -909,6 +935,32 @@ class Qwen35ParoResidentSession:
         if device is not None and buffers.device != device:
             raise ValueError("state commit buffers must live on the resident device")
         return buffers
+
+    def speculative_execution_metadata(self) -> Qwen35ParoResidentSpeculativeExecution:
+        """Describe whether resident speculative target verification is executable."""
+
+        target_api = hasattr(type(self), "target_verify_batch")
+        verify_api = hasattr(type(self), "verify_speculative_batch")
+        commit_api = hasattr(type(self), "commit_verified_state")
+        executes_kernels = False
+        executes_copies = False
+        ready = bool(target_api and verify_api and commit_api and executes_kernels and executes_copies)
+        blockers = (
+            "target_verify_batch/verify_speculative_batch/commit_verified_state are metadata-only",
+            "native root+candidate target forward kernels are not wired",
+            "GPU accept-summary kernels are not wired",
+            "verified state/KV copy kernels are not wired",
+        )
+        return Qwen35ParoResidentSpeculativeExecution(
+            target_verify_batch_metadata=target_api,
+            verify_speculative_batch_metadata=verify_api,
+            commit_verified_state_metadata=commit_api,
+            native_target_verify_executes_kernels=executes_kernels,
+            commit_verified_state_executes_copies=executes_copies,
+            native_target_verify_ready=ready,
+            throughput_claim_eligible=False,
+            blockers=blockers,
+        )
 
     def batch_execution_metadata(self, *, scheduler_owned: bool = False) -> Qwen35ParoResidentBatchExecution:
         """Describe whether the resident c>N path is native or a serial fallback."""
