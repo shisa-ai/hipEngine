@@ -62,7 +62,7 @@ from hipengine.loading.materialize import (
 )
 from hipengine.runtime.qwen35_paro import Qwen35ParoDecodeState
 from hipengine.runtime.workspace import RuntimeWorkspace
-from hipengine.speculative import DraftBatch, TargetVerifyBatch, TargetVerifyBuffers
+from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
 
 @dataclass(frozen=True)
@@ -883,6 +883,32 @@ class Qwen35ParoResidentSession:
             commit_tokens=commit_tokens,
             commit_positions=commit_positions,
         )
+
+    def commit_verified_state(
+        self,
+        plan: TargetCommitPlan,
+        buffers: TargetStateCommitBuffers,
+    ) -> TargetStateCommitBuffers:
+        """Validate resident buffers for future verified state/KV commit.
+
+        This metadata-only bridge checks that a transaction-scoped commit plan
+        matches the device Tensor handles that a future state/KV copy kernel
+        would consume.  It does not copy recurrent state, mutate KV, or mark the
+        transaction committed.
+        """
+
+        if getattr(self, "closed", False):
+            raise RuntimeError("session is closed")
+        if plan.request_ids != buffers.request_ids:
+            raise ValueError("commit plan request_ids must match state commit buffers")
+        if plan.mode != buffers.mode:
+            raise ValueError("commit plan mode must match state commit buffers")
+        if not buffers.has_linear_state and not buffers.has_kv_rows:
+            raise ValueError("state commit buffers must include linear state or KV rows")
+        device = getattr(self, "device", None)
+        if device is not None and buffers.device != device:
+            raise ValueError("state commit buffers must live on the resident device")
+        return buffers
 
     def batch_execution_metadata(self, *, scheduler_owned: bool = False) -> Qwen35ParoResidentBatchExecution:
         """Describe whether the resident c>N path is native or a serial fallback."""

@@ -13,7 +13,7 @@ from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoResidentSession,
     qwen35_paro_native_prefill_plan,
 )
-from hipengine.speculative import DraftBatch
+from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommitBuffers
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str | DType) -> Tensor:
@@ -138,6 +138,42 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
     assert buffers.candidate_rows == 3
     assert buffers.request_count == 2
     assert str(buffers.device) == "hip:0"
+
+    plan = TargetCommitPlan(
+        transaction_id=0,
+        request_ids=(1, 2),
+        accepted_counts=(2, 1),
+        commit_rows=(3, 4),
+        commit_tokens=(11, 20),
+        commit_positions=(7, 4),
+        candidate_counts=(2, 1),
+        mode="verify_tree",
+    )
+    state_buffers = TargetStateCommitBuffers.for_plan(
+        plan,
+        accepted_counts=_tensor(0x3B00, (2,), "int32"),
+        commit_rows=_tensor(0x3C00, (2,), "int32"),
+        commit_positions=_tensor(0x3D00, (2,), "int32"),
+        linear_state_src=_tensor(0x3E00, (5, 40, 128), "bf16"),
+        linear_state_dst=_tensor(0x3F00, (2, 40, 128), "bf16"),
+        kv_rows_src=_tensor(0x4000, (5, 8, 128), "bf16"),
+        kv_rows_dst=_tensor(0x4100, (3, 8, 128), "bf16"),
+    )
+    assert session.commit_verified_state(plan, state_buffers) is state_buffers
+    with pytest.raises(ValueError, match="request_ids"):
+        session.commit_verified_state(
+            TargetCommitPlan(
+                transaction_id=0,
+                request_ids=(1,),
+                accepted_counts=(1,),
+                commit_rows=(3,),
+                commit_tokens=(11,),
+                commit_positions=(7,),
+                candidate_counts=(1,),
+                mode="verify_tree",
+            ),
+            state_buffers,
+        )
 
     with pytest.raises(ValueError, match="row tensors"):
         session.verify_speculative_batch(

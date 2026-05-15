@@ -6895,3 +6895,57 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`77 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows resident verifier-buffer metadata API only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Resident commit_verified_state metadata API
+
+### Scope
+
+- Added metadata-only `Qwen35ParoResidentSession.commit_verified_state(...)`.
+- The helper binds a `TargetCommitPlan` to `TargetStateCommitBuffers` and validates:
+  - request ids and mode match;
+  - at least one linear-state or KV-row copy buffer pair is present;
+  - buffers live on the resident device when the session has device metadata.
+- It intentionally does **not** copy recurrent state, mutate KV, or mark the transaction committed.
+- Updated the DFlash blocker helper/artifact and Task #15 with resident API evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_dflash_ddtree_blocker.py tests/test_qwen35_resident_batch_layout.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `29 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records `implementation_status.resident_api`:
+
+- `native_target_verify_batch=true`
+- `speculative_verify_batch=true`
+- `commit_verified_state=true`
+- `native_target_verify_executes_kernels=false`
+- `commit_verified_state_executes_copies=false`
+- `native_target_verify_ready=false`
+
+The leading blocker now states that `target_verify_batch/verify_speculative_batch/commit_verified_state` are metadata-only and do not run a native root+candidate target forward or state/KV copy.
+
+Interpretation: the resident runtime now has metadata-only entry points for target verify row layout, verifier buffers, and commit buffers. Native verifier execution, GPU accept summaries, and device-side state/KV copies remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`77 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows resident commit-buffer metadata API only; no performance claim or kernel change was made.
