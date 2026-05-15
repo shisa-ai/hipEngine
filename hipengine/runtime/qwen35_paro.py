@@ -1650,6 +1650,7 @@ class Qwen35ParoDecodeState:
             weight_prefix=f"{prefix}.v_proj",
             rows=tokens,
             group_size=group_size,
+            threads=64 if tokens > 1 else 128,
             library=library,
             stream=stream,
         )
