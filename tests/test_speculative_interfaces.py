@@ -215,6 +215,7 @@ def test_target_verify_buffers_validate_device_abi() -> None:
     assert buffers.transaction_id == 7
     assert buffers.rows == 5
     assert buffers.candidate_rows == 3
+    assert buffers.candidate_counts == (2, 1)
     assert buffers.request_ids == (1, 2)
     assert buffers.request_count == 2
     assert str(buffers.device) == "hip:0"
@@ -222,6 +223,8 @@ def test_target_verify_buffers_validate_device_abi() -> None:
 
     with pytest.raises(ValueError, match="transaction_id"):
         replace(buffers, transaction_id=-1)
+    with pytest.raises(ValueError, match="candidate_counts"):
+        replace(buffers, candidate_counts=(3, 1))
     with pytest.raises(ValueError, match="row tensors"):
         TargetVerifyBuffers.for_batch(
             target,
@@ -637,6 +640,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_candidate_budget_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_transaction_id_checked"]
+    assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_candidate_counts_checked"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_verify_work"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_accept"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_shape_key"]
@@ -659,6 +663,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["state_commit_buffers"]["transaction_id"] == 0
     assert payload["implementation_status"]["kv_transaction_target_verify"]["device_buffers"]["rows"] == 5
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["device_buffers"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["device_buffers"]["summary_rows"] == 2
     assert payload["implementation_status"]["kv_transaction_target_verify"]["state_commit_buffers"]["has_linear_state"]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["state_commit_buffers"]["has_kv_rows"]
@@ -680,6 +685,9 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert buffer_plan["candidate_rows"] == 3
     assert buffer_plan["mode"] == "verify_tree"
     assert buffer_plan["target_batch_rows"] == 5
+    assert buffer_plan["candidate_counts"] == [2, 1]
+    assert buffer_plan["target_candidate_counts"] == [2, 1]
+    assert buffer_plan["candidate_counts_match"]
     assert buffer_plan["transaction_id"] == plan["transaction_id"]
     commit_plan = payload["implementation_status"]["kv_transaction_target_verify"]["scheduler_commit_plan"]
     assert commit_plan["transaction_id"] == plan["transaction_id"]

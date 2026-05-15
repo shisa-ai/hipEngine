@@ -189,12 +189,16 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     )
     buffer_plan = scheduler.bind_speculative_verify_buffers(plan, buffers)
     assert buffers.transaction_id == plan.transaction.transaction_id
+    assert buffers.candidate_counts == work.target_batch.candidate_counts
     assert isinstance(buffer_plan, SpeculativeVerifyBufferPlan)
     assert buffer_plan.plan is plan
     assert buffer_plan.buffers is buffers
     wrong_verify_buffers = replace(buffers, transaction_id=plan.transaction.transaction_id + 1)
     with pytest.raises(ValueError, match="transaction_id"):
         scheduler.bind_speculative_verify_buffers(plan, wrong_verify_buffers)
+    wrong_candidate_buffers = replace(buffers, candidate_counts=(1, 2))
+    with pytest.raises(ValueError, match="candidate_counts"):
+        scheduler.bind_speculative_verify_buffers(plan, wrong_candidate_buffers)
 
     summary = TargetAcceptSummary.from_accept_result(
         work.target_batch,

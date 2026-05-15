@@ -340,6 +340,7 @@ class TargetVerifyBuffers:
     commit_positions: Tensor
     mode: str = "verify_chain"
     transaction_id: int | None = None
+    candidate_counts: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.request_ids:
@@ -351,6 +352,13 @@ class TargetVerifyBuffers:
             raise ValueError("rows must be positive")
         if self.candidate_rows <= 0 or self.candidate_rows > self.rows:
             raise ValueError("candidate_rows must be positive and no larger than rows")
+        if self.candidate_counts is not None:
+            if len(self.candidate_counts) != len(self.request_ids):
+                raise ValueError("candidate_counts must align with request_ids")
+            if any(count < 0 for count in self.candidate_counts):
+                raise ValueError("candidate_counts must be non-negative")
+            if sum(self.candidate_counts) != self.candidate_rows:
+                raise ValueError("candidate_counts must sum to candidate_rows")
         row_tensors = (
             self.token_ids,
             self.positions,
@@ -395,6 +403,7 @@ class TargetVerifyBuffers:
         commit_tokens: Tensor,
         commit_positions: Tensor,
         transaction_id: int | None = None,
+        candidate_counts: Sequence[int] | None = None,
     ) -> "TargetVerifyBuffers":
         return cls(
             request_ids=batch.request_ids,
@@ -413,6 +422,7 @@ class TargetVerifyBuffers:
             commit_positions=commit_positions,
             mode=batch.mode,
             transaction_id=transaction_id,
+            candidate_counts=batch.candidate_counts if candidate_counts is None else tuple(int(count) for count in candidate_counts),
         )
 
     @property

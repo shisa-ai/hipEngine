@@ -28,6 +28,7 @@
       "target_commit_plan_transaction_role_checked": true,
       "target_commit_plan_candidate_budget_checked": true,
       "target_verify_buffers_transaction_id_checked": true,
+      "target_verify_buffers_candidate_counts_checked": true,
       "scheduler_speculative_verify_work": true,
       "scheduler_speculative_accept": true,
       "scheduler_speculative_shape_key": true,
@@ -127,6 +128,10 @@
         "transaction_id": null,
         "rows": 5,
         "candidate_rows": 3,
+        "candidate_counts": [
+          2,
+          1
+        ],
         "summary_rows": 2,
         "device": "hip:0",
         "token_ids_dtype": "int32",
@@ -220,6 +225,15 @@
         ],
         "rows": 5,
         "candidate_rows": 3,
+        "candidate_counts": [
+          2,
+          1
+        ],
+        "target_candidate_counts": [
+          2,
+          1
+        ],
+        "candidate_counts_match": true,
         "mode": "verify_tree",
         "target_batch_rows": 5,
         "buffer_transaction_id": 1,

@@ -170,7 +170,7 @@ def _target_commit_plan_candidate_budget_checked() -> bool:
     return False
 
 
-def _target_verify_buffers_transaction_id_checked() -> bool:
+def _sample_chain_target_batch() -> TargetVerifyBatch:
     draft = DraftBatch(
         request_ids=(1,),
         candidate_tokens=(10,),
@@ -178,26 +178,44 @@ def _target_verify_buffers_transaction_id_checked() -> bool:
         draft_depths=(1,),
         row_to_request=(1,),
     )
-    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100,), root_positions=(5,))
+    return TargetVerifyBatch.from_draft(draft, root_tokens=(100,), root_positions=(5,))
+
+
+def _sample_target_verify_buffers(target: TargetVerifyBatch, *, transaction_id: int | None = None, candidate_counts: Sequence[int] | None = None) -> TargetVerifyBuffers:
     device = Device("hip", 0)
+    return TargetVerifyBuffers.for_batch(
+        target,
+        token_ids=Tensor.from_handle(0x2A00, (target.rows,), "int32", device),
+        positions=Tensor.from_handle(0x2B00, (target.rows,), "int32", device),
+        parent_rows=Tensor.from_handle(0x2C00, (target.rows,), "int32", device),
+        draft_depths=Tensor.from_handle(0x2D00, (target.rows,), "int32", device),
+        row_to_request=Tensor.from_handle(0x2E00, (target.rows,), "int32", device),
+        active_mask=Tensor.from_handle(0x2F00, (target.rows,), "bool", device),
+        target_top1=Tensor.from_handle(0x3000, (target.rows,), "int32", device),
+        accepted_counts=Tensor.from_handle(0x3100, (len(target.request_ids),), "int32", device),
+        commit_rows=Tensor.from_handle(0x3200, (len(target.request_ids),), "int32", device),
+        commit_tokens=Tensor.from_handle(0x3300, (len(target.request_ids),), "int32", device),
+        commit_positions=Tensor.from_handle(0x3400, (len(target.request_ids),), "int32", device),
+        transaction_id=transaction_id,
+        candidate_counts=candidate_counts,
+    )
+
+
+def _target_verify_buffers_transaction_id_checked() -> bool:
+    target = _sample_chain_target_batch()
     try:
-        TargetVerifyBuffers.for_batch(
-            target,
-            token_ids=Tensor.from_handle(0x2A00, (target.rows,), "int32", device),
-            positions=Tensor.from_handle(0x2B00, (target.rows,), "int32", device),
-            parent_rows=Tensor.from_handle(0x2C00, (target.rows,), "int32", device),
-            draft_depths=Tensor.from_handle(0x2D00, (target.rows,), "int32", device),
-            row_to_request=Tensor.from_handle(0x2E00, (target.rows,), "int32", device),
-            active_mask=Tensor.from_handle(0x2F00, (target.rows,), "bool", device),
-            target_top1=Tensor.from_handle(0x3000, (target.rows,), "int32", device),
-            accepted_counts=Tensor.from_handle(0x3100, (1,), "int32", device),
-            commit_rows=Tensor.from_handle(0x3200, (1,), "int32", device),
-            commit_tokens=Tensor.from_handle(0x3300, (1,), "int32", device),
-            commit_positions=Tensor.from_handle(0x3400, (1,), "int32", device),
-            transaction_id=-1,
-        )
+        _sample_target_verify_buffers(target, transaction_id=-1)
     except ValueError as exc:
         return "transaction_id" in str(exc)
+    return False
+
+
+def _target_verify_buffers_candidate_counts_checked() -> bool:
+    target = _sample_chain_target_batch()
+    try:
+        _sample_target_verify_buffers(target, candidate_counts=(2,))
+    except ValueError as exc:
+        return "candidate_counts" in str(exc)
     return False
 
 
@@ -224,6 +242,7 @@ def _interface_status() -> dict[str, Any]:
         "target_commit_plan_transaction_role_checked": _target_commit_plan_transaction_role_checked(),
         "target_commit_plan_candidate_budget_checked": _target_commit_plan_candidate_budget_checked(),
         "target_verify_buffers_transaction_id_checked": _target_verify_buffers_transaction_id_checked(),
+        "target_verify_buffers_candidate_counts_checked": _target_verify_buffers_candidate_counts_checked(),
         "scheduler_speculative_verify_work": hasattr(ResidentBatchScheduler, "next_speculative_verify_work"),
         "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),
@@ -494,6 +513,7 @@ def _kv_transaction_status() -> dict[str, Any]:
             "transaction_id": buffers.transaction_id,
             "rows": buffers.rows,
             "candidate_rows": buffers.candidate_rows,
+            "candidate_counts": None if buffers.candidate_counts is None else list(buffers.candidate_counts),
             "summary_rows": buffers.request_count,
             "device": str(buffers.device),
             "token_ids_dtype": buffers.token_ids.dtype.value,
@@ -543,6 +563,9 @@ def _kv_transaction_status() -> dict[str, Any]:
             "request_ids": list(scheduler_buffer_plan.buffers.request_ids),
             "rows": scheduler_buffer_plan.buffers.rows,
             "candidate_rows": scheduler_buffer_plan.buffers.candidate_rows,
+            "candidate_counts": None if scheduler_buffer_plan.buffers.candidate_counts is None else list(scheduler_buffer_plan.buffers.candidate_counts),
+            "target_candidate_counts": list(scheduler_buffer_plan.plan.target_batch.candidate_counts),
+            "candidate_counts_match": scheduler_buffer_plan.buffers.candidate_counts == scheduler_buffer_plan.plan.target_batch.candidate_counts,
             "mode": scheduler_buffer_plan.buffers.mode,
             "target_batch_rows": scheduler_buffer_plan.plan.target_batch.rows,
             "buffer_transaction_id": scheduler_buffer_plan.buffers.transaction_id,
