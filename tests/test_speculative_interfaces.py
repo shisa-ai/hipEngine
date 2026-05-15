@@ -300,6 +300,7 @@ def test_target_accept_summary_validates_paths_and_commit_rows() -> None:
     assert summary.commit_tokens == (11, 20)
     assert summary.commit_positions == (7, 4)
     assert summary.full_accept == (True, True)
+    assert summary.candidate_counts == (2, 1)
     assert summary.mode == "verify_tree"
 
     zero = TargetAcceptSummary.from_accept_result(
@@ -310,6 +311,7 @@ def test_target_accept_summary_validates_paths_and_commit_rows() -> None:
     assert zero.commit_tokens == (100, 200)
     assert zero.commit_positions == (5, 3)
     assert zero.full_accept == (False, False)
+    assert zero.candidate_counts == (2, 1)
 
     with pytest.raises(ValueError, match="selected target verify paths"):
         TargetAcceptSummary.from_accept_result(
@@ -378,6 +380,16 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
     )
     with pytest.raises(ValueError, match="verify_chain or verify_tree"):
         TargetCommitPlan.from_summary(summary, invalid_role_txn)
+    mismatched_candidate_txn = SimpleNamespace(
+        transaction_id=10,
+        request_ids=(1, 2),
+        candidate_counts=(3, 1),
+        committed=False,
+        rolled_back=False,
+        role="verify_tree",
+    )
+    with pytest.raises(ValueError, match="candidate_counts must match"):
+        TargetCommitPlan.from_summary(summary, mismatched_candidate_txn)
 
     with pytest.raises(ValueError, match="candidate_counts"):
         TargetCommitPlan(
@@ -615,6 +627,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["kv_transaction_terminal_state_checked"]
     assert payload["implementation_status"]["interfaces_present"]["kv_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_transaction_role_checked"]
+    assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_candidate_budget_checked"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_verify_work"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_accept"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_shape_key"]
@@ -632,6 +645,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["commit_rows"] == [3, 4]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["accepted_tokens"] == [[10, 11], [20]]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["accepted_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["device_buffers"]["rows"] == 5

@@ -102,7 +102,7 @@ def _kv_transaction_role_checked() -> bool:
     return False
 
 
-def _target_commit_plan_transaction_role_checked() -> bool:
+def _sample_tree_accept_summary() -> TargetAcceptSummary:
     draft = DraftBatch(
         request_ids=(1,),
         candidate_tokens=(10,),
@@ -113,10 +113,14 @@ def _target_commit_plan_transaction_role_checked() -> bool:
         tree_parents=(-1,),
     )
     target = TargetVerifyBatch.from_draft(draft, root_tokens=(100,), root_positions=(5,))
-    summary = TargetAcceptSummary.from_accept_result(
+    return TargetAcceptSummary.from_accept_result(
         target,
         AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),)),
     )
+
+
+def _target_commit_plan_transaction_role_checked() -> bool:
+    summary = _sample_tree_accept_summary()
     mismatch = SimpleNamespace(
         transaction_id=0,
         request_ids=(1,),
@@ -148,6 +152,23 @@ def _target_commit_plan_transaction_role_checked() -> bool:
     return mismatch_rejected and invalid_rejected
 
 
+def _target_commit_plan_candidate_budget_checked() -> bool:
+    summary = _sample_tree_accept_summary()
+    mismatch = SimpleNamespace(
+        transaction_id=2,
+        request_ids=(1,),
+        candidate_counts=(2,),
+        committed=False,
+        rolled_back=False,
+        role="verify_tree",
+    )
+    try:
+        TargetCommitPlan.from_summary(summary, mismatch)
+    except ValueError as exc:
+        return "candidate_counts must match" in str(exc)
+    return False
+
+
 def _interface_status() -> dict[str, Any]:
     batch = ActiveBatch(2)
     batch.admit(RequestState.from_tokens(0, [1], max_new_tokens=1))
@@ -169,6 +190,7 @@ def _interface_status() -> dict[str, Any]:
         "kv_transaction_terminal_state_checked": _kv_transaction_terminal_state_checked(),
         "kv_transaction_role_checked": _kv_transaction_role_checked(),
         "target_commit_plan_transaction_role_checked": _target_commit_plan_transaction_role_checked(),
+        "target_commit_plan_candidate_budget_checked": _target_commit_plan_candidate_budget_checked(),
         "scheduler_speculative_verify_work": hasattr(ResidentBatchScheduler, "next_speculative_verify_work"),
         "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),
@@ -366,6 +388,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         "accept_summary": {
             "accepted_counts": list(summary.accepted_counts),
             "accepted_tokens": [list(row) for row in summary.accepted_tokens],
+            "candidate_counts": None if summary.candidate_counts is None else list(summary.candidate_counts),
             "commit_rows": list(summary.commit_rows),
             "commit_tokens": list(summary.commit_tokens),
             "commit_positions": list(summary.commit_positions),

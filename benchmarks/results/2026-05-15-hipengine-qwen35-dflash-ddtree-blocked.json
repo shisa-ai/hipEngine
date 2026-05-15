@@ -26,6 +26,7 @@
       "kv_transaction_terminal_state_checked": true,
       "kv_transaction_role_checked": true,
       "target_commit_plan_transaction_role_checked": true,
+      "target_commit_plan_candidate_budget_checked": true,
       "scheduler_speculative_verify_work": true,
       "scheduler_speculative_accept": true,
       "scheduler_speculative_shape_key": true,
@@ -79,6 +80,10 @@
           [
             20
           ]
+        ],
+        "candidate_counts": [
+          2,
+          1
         ],
         "commit_rows": [
           3,

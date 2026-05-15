@@ -453,6 +453,7 @@ class TargetAcceptSummary:
     commit_tokens: tuple[int, ...]
     commit_positions: tuple[int, ...]
     full_accept: tuple[bool, ...]
+    candidate_counts: tuple[int, ...] | None = None
     mode: str = "verify_chain"
 
     def __post_init__(self) -> None:
@@ -482,6 +483,14 @@ class TargetAcceptSummary:
                 raise ValueError("accepted_counts must match accepted_tokens lengths")
             if any(token < 0 for token in tokens):
                 raise ValueError("accepted token ids must be non-negative")
+        if self.candidate_counts is not None:
+            if len(self.candidate_counts) != len(self.request_ids):
+                raise ValueError("candidate_counts must align with request_ids")
+            if any(count < 0 for count in self.candidate_counts):
+                raise ValueError("candidate_counts must be non-negative")
+            for accepted, available in zip(self.accepted_counts, self.candidate_counts, strict=True):
+                if accepted > available:
+                    raise ValueError("accepted_counts cannot exceed candidate_counts")
         if self.mode not in {"verify_chain", "verify_tree"}:
             raise ValueError("mode must be verify_chain or verify_tree")
 
@@ -528,6 +537,7 @@ class TargetAcceptSummary:
                 accepted == max_depth
                 for accepted, max_depth in zip(selection.accepted_counts, max_depths, strict=True)
             ),
+            candidate_counts=target.candidate_counts,
             mode=target.mode,
         )
 
@@ -584,6 +594,11 @@ class TargetCommitPlan:
             raise ValueError("cannot build a commit plan for a rolled-back transaction")
         candidate_counts = getattr(transaction, "candidate_counts", None)
         counts = None if candidate_counts is None else tuple(int(count) for count in candidate_counts)
+        summary_candidate_counts = getattr(summary, "candidate_counts", None)
+        if summary_candidate_counts is not None:
+            expected_counts = tuple(int(count) for count in summary_candidate_counts)
+            if counts != expected_counts:
+                raise ValueError("transaction candidate_counts must match target accept summary")
         role = str(getattr(transaction, "role", summary.mode))
         if role.startswith("WorkKind."):
             role = role.rsplit(".", 1)[-1].lower()
