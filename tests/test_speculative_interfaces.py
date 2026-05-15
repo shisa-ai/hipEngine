@@ -25,6 +25,41 @@ def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 
 
+def test_speculative_request_ids_must_be_unique() -> None:
+    with pytest.raises(ValueError, match="unique"):
+        DraftBatch(
+            request_ids=(1, 1),
+            candidate_tokens=(10,),
+            parent_positions=(0,),
+            draft_depths=(1,),
+            row_to_request=(1,),
+        )
+    with pytest.raises(ValueError, match="unique"):
+        AcceptResult(request_ids=(1, 1), accepted_counts=(1, 0), accepted_tokens=((10,), ()))
+    with pytest.raises(ValueError, match="unique"):
+        TargetVerifyBatch(
+            request_ids=(1, 1),
+            tokens=(100, 200, 10),
+            positions=(0, 0, 1),
+            row_to_request=(1, 1, 1),
+            parent_rows=(-1, -1, 0),
+            root_rows=(0, 1),
+            candidate_rows=(2,),
+            draft_depths=(0, 0, 1),
+            active_mask=(True, True, True),
+        )
+    with pytest.raises(ValueError, match="unique"):
+        TargetCommitPlan(
+            transaction_id=0,
+            request_ids=(1, 1),
+            accepted_counts=(1, 0),
+            commit_rows=(2, 0),
+            commit_tokens=(10, 100),
+            commit_positions=(1, 0),
+            candidate_counts=(1, 0),
+        )
+
+
 def test_draft_batch_and_accept_result_validate_row_metadata() -> None:
     draft = DraftBatch(
         request_ids=(1, 2),
@@ -554,6 +589,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan"] == "TargetCommitPlan"
     assert payload["implementation_status"]["interfaces_present"]["target_state_commit_buffers"] == "TargetStateCommitBuffers"
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers"] == "TargetVerifyBuffers"
+    assert payload["implementation_status"]["interfaces_present"]["speculative_request_ids_unique_checked"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_verify_work"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_accept"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_shape_key"]

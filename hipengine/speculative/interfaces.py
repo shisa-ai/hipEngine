@@ -10,6 +10,11 @@ from hipengine.core.tensor import Tensor
 from hipengine.dispatch.batch import WorkItem, WorkKind
 
 
+def _validate_unique_request_ids(request_ids: Sequence[int]) -> None:
+    if len(set(request_ids)) != len(request_ids):
+        raise ValueError("request_ids must be unique")
+
+
 @dataclass(frozen=True, slots=True)
 class DraftBatch:
     """Flattened candidate rows proposed by a draft provider."""
@@ -29,6 +34,7 @@ class DraftBatch:
             raise ValueError("DraftBatch must contain at least one candidate row")
         if not self.request_ids:
             raise ValueError("DraftBatch must contain at least one request")
+        _validate_unique_request_ids(self.request_ids)
         if len(self.parent_positions) != rows or len(self.draft_depths) != rows or len(self.row_to_request) != rows:
             raise ValueError("candidate_tokens, parent_positions, draft_depths, and row_to_request must align")
         if self.tree_parents and len(self.tree_parents) != rows:
@@ -70,6 +76,7 @@ class TargetCommitSelection:
     def __post_init__(self) -> None:
         if not self.request_ids:
             raise ValueError("TargetCommitSelection must contain at least one request")
+        _validate_unique_request_ids(self.request_ids)
         lengths = (len(self.accepted_counts), len(self.selected_rows), len(self.selected_tokens), len(self.selected_positions))
         if any(length != len(self.request_ids) for length in lengths):
             raise ValueError("commit selection fields must align with request_ids")
@@ -114,6 +121,7 @@ class TargetVerifyBatch:
             raise ValueError("TargetVerifyBatch must contain at least one row")
         if not self.request_ids:
             raise ValueError("TargetVerifyBatch must contain at least one request")
+        _validate_unique_request_ids(self.request_ids)
         aligned = (len(self.positions), len(self.row_to_request), len(self.parent_rows), len(self.draft_depths), len(self.active_mask))
         if any(length != rows for length in aligned):
             raise ValueError("tokens, positions, row_to_request, parent_rows, draft_depths, and active_mask must align")
@@ -335,6 +343,7 @@ class TargetVerifyBuffers:
     def __post_init__(self) -> None:
         if not self.request_ids:
             raise ValueError("TargetVerifyBuffers must contain at least one request")
+        _validate_unique_request_ids(self.request_ids)
         if self.rows <= 0:
             raise ValueError("rows must be positive")
         if self.candidate_rows <= 0 or self.candidate_rows > self.rows:
@@ -421,6 +430,7 @@ class AcceptResult:
     def __post_init__(self) -> None:
         if not self.request_ids:
             raise ValueError("AcceptResult must contain at least one request")
+        _validate_unique_request_ids(self.request_ids)
         if len(self.accepted_counts) != len(self.request_ids) or len(self.accepted_tokens) != len(self.request_ids):
             raise ValueError("accepted counts/tokens must align with request_ids")
         if any(count < 0 for count in self.accepted_counts):
@@ -448,6 +458,7 @@ class TargetAcceptSummary:
     def __post_init__(self) -> None:
         if not self.request_ids:
             raise ValueError("TargetAcceptSummary must contain at least one request")
+        _validate_unique_request_ids(self.request_ids)
         lengths = (
             len(self.accepted_counts),
             len(self.accepted_tokens),
@@ -539,6 +550,7 @@ class TargetCommitPlan:
             raise ValueError("transaction_id must be non-negative")
         if not self.request_ids:
             raise ValueError("TargetCommitPlan must contain at least one request")
+        _validate_unique_request_ids(self.request_ids)
         lengths = (len(self.accepted_counts), len(self.commit_rows), len(self.commit_tokens), len(self.commit_positions))
         if any(length != len(self.request_ids) for length in lengths):
             raise ValueError("commit plan fields must align with request_ids")
@@ -612,6 +624,7 @@ class TargetStateCommitBuffers:
     def __post_init__(self) -> None:
         if not self.request_ids:
             raise ValueError("TargetStateCommitBuffers must contain at least one request")
+        _validate_unique_request_ids(self.request_ids)
         count = len(self.request_ids)
         summary_tensors = (self.accepted_counts, self.commit_rows, self.commit_positions)
         for tensor in summary_tensors:

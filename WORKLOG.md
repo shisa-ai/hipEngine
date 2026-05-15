@@ -7764,3 +7764,48 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows resident speculative state/KV commit ABI validation only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Speculative metadata unique request ids
+
+### Scope
+
+- Added shared unique-`request_ids` validation for speculative metadata dataclasses.
+- `DraftBatch`, `TargetVerifyBatch`, `TargetVerifyBuffers`, `AcceptResult`, `TargetAcceptSummary`, `TargetCommitSelection`, `TargetCommitPlan`, and `TargetStateCommitBuffers` now reject duplicate request ids.
+- Added negative speculative-interface tests for duplicate request ids in draft, accept, target batch, and commit plan metadata.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py -q
+```
+
+Result: `14 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.speculative_request_ids_unique_checked=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: speculative verifier metadata now rejects duplicate request ids before row/root/accept/commit maps can become ambiguous. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows speculative metadata correctness validation only; no performance claim or kernel change was made.
