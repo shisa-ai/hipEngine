@@ -29,6 +29,27 @@ speculative decoders, but DFlash is the first native block-verifier target. See
 [`MTP.md`](MTP.md) for the target-attached multi-token predictor plan that
 reuses this verifier/commit infrastructure after DFlash lands.
 
+## Current hipENGINE status (2026-05-15)
+
+The API scaffolding exists (`DraftBatch`, `AcceptResult`, `DraftModel`,
+`Verifier`, `KVTransaction`, and verify-shaped graph keys), but Qwen3.5/PARO
+DFlash/DDTree is currently **blocked**, not implemented as a throughput path.
+The exact blocker artifact is
+[`2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json`](../benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json).
+It records:
+
+- the latest c=8 resident batch artifact still reports
+  `scheduler_serial_slot_bridge`, `serial_c1_layer_path`, and
+  `throughput_claim_eligible=false`;
+- `Qwen35ParoResidentSession` exposes `step_batch_serial()` and batch metadata,
+  but no `target_verify_batch`, `verify_speculative_batch`, or
+  `commit_verified_state` API;
+- native prefill still stops at the three-layer linear prefix, with first
+  unsupported layer 3 (`full_attention`);
+- no speculative throughput claim is allowed until Task #15 lands a native
+  compact/c-aware target verifier with selectable per-row state and GPU accept
+  summaries.
+
 ## Current evidence from `~/amd-gpu-tuning`
 
 ### Best current Python-harness row

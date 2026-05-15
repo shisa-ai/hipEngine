@@ -6160,3 +6160,65 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count after completing #45: `2` (#15 and #44).
+
+---
+
+## 2026-05-15 — Task #44 DFlash/DDTree blocker artifact
+
+### Scope
+
+- Inspected the current speculative scaffolding and Qwen3.5/PARO resident batch evidence for DFlash/DDTree.
+- Added `scripts/qwen35_dflash_ddtree_blocker.py` to emit a compact blocker artifact.
+- Added `benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json`.
+- Added unit coverage in `tests/test_speculative_interfaces.py` for the blocker payload.
+- Updated `docs/DFLASH.md` with the current hipENGINE status and artifact link.
+- Completed Task #44 via its documented blocker path; no speculative throughput claim was made.
+
+### Evidence
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Result: exits `0`; artifact has:
+
+- `status=blocked`
+- `performance_claim=false`
+- `specdec_enabled=false`
+- `implementation_status.native_target_verify_ready=false`
+- interfaces present: `DraftBatch`, `AcceptResult`, `DraftModel`, `Verifier`, `FixedPagedKVPolicy`, `KVTransaction`, verify-tree graph shape key
+- resident API status:
+  - `step_batch_serial=true`
+  - `batch_execution_metadata=true`
+  - `native_target_verify_batch=false`
+  - `speculative_verify_batch=false`
+  - `commit_verified_state=false`
+- c=8 evidence from `benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json`:
+  - `batch_execution.path="scheduler_serial_slot_bridge"`
+  - `batch_execution.row_execution="serial_c1_layer_path"`
+  - `batch_execution.throughput_claim_eligible=false`
+- native prefill evidence:
+  - `linear_prefix_layers=3`
+  - `first_unsupported_layer=3`
+  - `first_unsupported_type="full_attention"`
+
+Interpretation: DFlash/DDTree policy work cannot become a valid throughput path until Task #15 lands a native compact/c-aware target verifier with selectable per-row target state and GPU accept summaries. The host-side interface/KV transaction scaffolding is present, but target verify/commit is the blocker.
+
+### Validation
+
+```bash
+python3 -m compileall -q scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py tests/test_dispatch_batch.py -q
+```
+
+Result: `14 passed`.
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count after completing #44: `1` (#15).

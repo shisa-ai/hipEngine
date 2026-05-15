@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Emit the current Qwen3.5/PARO DFlash/DDTree implementation blocker.
+
+The speculative interfaces and KV transaction scaffolding exist, but the native
+DFlash/DDTree fast path requires a batched target verifier with selectable
+per-row state.  This helper records the exact evidence tying that dependency to
+current Qwen3.5/PARO resident metadata and c>N diagnostics.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import shlex
+import sys
+from pathlib import Path
+from typing import Any, Sequence
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine.dispatch import ActiveBatch, RequestState, WorkKind
+from hipengine.kvcache import FixedPagedKVPolicy, KVTransaction
+from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
+from hipengine.speculative import AcceptResult, DraftBatch, DraftModel, Verifier
+
+DEFAULT_BATCH_ARTIFACT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json")
+DEFAULT_PREFILL_ARTIFACT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-attn-boundary-blocked.json")
+DEFAULT_OUT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json")
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(path)
+    return json.loads(path.read_text())
+
+
+def _command(argv: Sequence[str] | None) -> str:
+    parts = ["python3", "scripts/qwen35_dflash_ddtree_blocker.py"]
+    parts.extend(sys.argv[1:] if argv is None else list(argv))
+    return " ".join(shlex.quote(part) for part in parts)
+
+
+def _interface_status() -> dict[str, Any]:
+    batch = ActiveBatch(2)
+    batch.admit(RequestState.from_tokens(0, [1], max_new_tokens=1))
+    shape_key = batch.shape_key(mode=WorkKind.VERIFY_TREE, context_bucket_size=256, draft_depth=2, tree_shape=(1, 2))
+    return {
+        "draft_batch": DraftBatch.__name__,
+        "accept_result": AcceptResult.__name__,
+        "draft_model_protocol": DraftModel.__name__,
+        "verifier_protocol": Verifier.__name__,
+        "kv_policy": FixedPagedKVPolicy.__name__,
+        "kv_transaction": KVTransaction.__name__,
+        "verify_graph_shape_key": {
+            "mode": shape_key.mode.value,
+            "active_c": shape_key.active_c,
+            "draft_depth": shape_key.draft_depth,
+            "tree_shape": list(shape_key.tree_shape),
+        },
+    }
+
+
+def _resident_api_status() -> dict[str, bool]:
+    return {
+        "step_batch_serial": hasattr(Qwen35ParoResidentSession, "step_batch_serial"),
+        "batch_execution_metadata": hasattr(Qwen35ParoResidentSession, "batch_execution_metadata"),
+        "native_target_verify_batch": hasattr(Qwen35ParoResidentSession, "target_verify_batch"),
+        "speculative_verify_batch": hasattr(Qwen35ParoResidentSession, "verify_speculative_batch"),
+        "commit_verified_state": hasattr(Qwen35ParoResidentSession, "commit_verified_state"),
+    }
+
+
+def build_payload(*, batch_artifact: Path, prefill_artifact: Path, argv: Sequence[str] | None = None) -> dict[str, Any]:
+    batch = _load_json(batch_artifact)
+    prefill = _load_json(prefill_artifact)
+    batch_execution = batch.get("execution", {}).get("batch_execution", {})
+    native_prefill_plan = batch_execution.get("native_prefill_plan") or prefill.get("native_prefill_plan") or prefill.get("plan") or {}
+    resident_api = _resident_api_status()
+    blockers = [
+        "native TargetVerifyBatch over root+candidate rows is not wired in Qwen35ParoResidentSession",
+        "step_batch_serial is still the only c>N target path and executes rows through the c=1 layer path",
+        "exact selectable per-row target state for linear-attention Conv/GDN state and full-attention K/V commit is not exposed",
+        "GPU accept-summary and state/KV commit kernels are not wired; only host-side DraftBatch/AcceptResult metadata and KVTransaction bookkeeping exist",
+        "native compact/full-attention prefill remains incomplete, so speculative verify rows cannot share the final c>N target forward required by DFlash/DDTree",
+    ]
+    if batch_execution.get("throughput_claim_eligible") is False:
+        blockers.append("latest c=8 scheduler artifact reports batch_execution.throughput_claim_eligible=false")
+    if native_prefill_plan and not native_prefill_plan.get("full_layer_limit_native", False):
+        blockers.append(
+            "native prefill plan stops at linear prefix layer "
+            f"{native_prefill_plan.get('linear_prefix_layers')} with first unsupported layer "
+            f"{native_prefill_plan.get('first_unsupported_layer')} ({native_prefill_plan.get('first_unsupported_type')})"
+        )
+    return {
+        "schema": 1,
+        "status": "blocked",
+        "summary": "Qwen3.5/PARO DFlash/DDTree native speculative decoding is blocked on native target verification and selectable state commit",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "command": _command(argv),
+        "performance_claim": False,
+        "specdec_enabled": False,
+        "implementation_status": {
+            "interfaces_present": _interface_status(),
+            "resident_api": resident_api,
+            "native_target_verify_ready": bool(
+                resident_api["native_target_verify_batch"]
+                and resident_api["speculative_verify_batch"]
+                and resident_api["commit_verified_state"]
+            ),
+        },
+        "evidence": {
+            "batch_artifact": str(batch_artifact),
+            "batch_status": batch.get("status"),
+            "batch_performance_claim": batch.get("performance_claim"),
+            "batch_workload": batch.get("workload"),
+            "batch_execution": batch_execution,
+            "prefill_artifact": str(prefill_artifact),
+            "native_prefill_plan": native_prefill_plan,
+            "docs": ["docs/DFLASH.md", "docs/MTP.md", "docs/BENCHMARK.md"],
+        },
+        "blockers": blockers,
+        "required_next_actions": [
+            "Complete Task #15 native compact/c-aware target path first: batched verify rows must not execute through step_batch_serial.",
+            "Add a TargetVerifyBatch runtime ABI carrying root+candidate token rows, positions, parent/depth metadata, row-to-request maps, and output state row buffers.",
+            "Expose selectable per-row linear-attention state and full-attention K/V rows, then commit accepted rows through KVTransaction/state transactions without target re-forward.",
+            "Add GPU top1/accept-summary buffers and deterministic equality gates before any speculative throughput artifact can be accepted.",
+        ],
+        "decision": {
+            "accepted": False,
+            "reason": "Speculative interfaces are present, but native DFlash/DDTree cannot be implemented as a throughput path until the target verifier/commit dependencies above land.",
+        },
+        "notes": [
+            "This is a blocker artifact, not a benchmark result.",
+            "It completes the current Task #44 evidence requirement without promoting speculative decoding performance claims.",
+        ],
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--batch-artifact", type=Path, default=DEFAULT_BATCH_ARTIFACT)
+    parser.add_argument("--prefill-artifact", type=Path, default=DEFAULT_PREFILL_ARTIFACT)
+    parser.add_argument("--json", type=Path, default=DEFAULT_OUT)
+    args = parser.parse_args(argv)
+    payload = build_payload(batch_artifact=args.batch_artifact, prefill_artifact=args.prefill_artifact, argv=argv)
+    text = json.dumps(payload, indent=2, ensure_ascii=False)
+    print(text)
+    if args.json is not None:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(text + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

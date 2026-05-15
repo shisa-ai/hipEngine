@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -8,6 +9,7 @@ from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch
+from scripts.qwen35_dflash_ddtree_blocker import build_payload
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
@@ -79,3 +81,42 @@ def test_speculative_draft_batch_drives_kv_transaction_commit_and_rollback() -> 
     ))
     rolled = policy.rollback(txn2)
     assert rolled.rolled_back
+
+
+def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path) -> None:
+    batch_artifact = tmp_path / "batch.json"
+    batch_artifact.write_text(
+        json.dumps(
+            {
+                "status": "blocked",
+                "performance_claim": False,
+                "workload": {"concurrency": 8},
+                "execution": {
+                    "batch_execution": {
+                        "path": "scheduler_serial_slot_bridge",
+                        "row_execution": "serial_c1_layer_path",
+                        "throughput_claim_eligible": False,
+                        "native_prefill_plan": {
+                            "linear_prefix_layers": 3,
+                            "full_layer_limit_native": False,
+                            "first_unsupported_layer": 3,
+                            "first_unsupported_type": "full_attention",
+                        },
+                    }
+                },
+            }
+        )
+    )
+    prefill_artifact = tmp_path / "prefill.json"
+    prefill_artifact.write_text(json.dumps({"native_prefill_plan": {"linear_prefix_layers": 3}}))
+
+    payload = build_payload(batch_artifact=batch_artifact, prefill_artifact=prefill_artifact, argv=[])
+
+    assert payload["status"] == "blocked"
+    assert not payload["performance_claim"]
+    assert not payload["implementation_status"]["native_target_verify_ready"]
+    assert payload["implementation_status"]["resident_api"]["step_batch_serial"]
+    assert not payload["implementation_status"]["resident_api"]["speculative_verify_batch"]
+    assert payload["evidence"]["batch_execution"]["path"] == "scheduler_serial_slot_bridge"
+    assert any("TargetVerifyBatch" in blocker for blocker in payload["blockers"])
+    assert any("throughput_claim_eligible=false" in blocker for blocker in payload["blockers"])

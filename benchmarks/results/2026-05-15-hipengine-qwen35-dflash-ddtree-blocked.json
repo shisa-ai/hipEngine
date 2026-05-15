@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "status": "blocked",
+  "summary": "Qwen3.5/PARO DFlash/DDTree native speculative decoding is blocked on native target verification and selectable state commit",
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "command": "python3 scripts/qwen35_dflash_ddtree_blocker.py --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json",
+  "performance_claim": false,
+  "specdec_enabled": false,
+  "implementation_status": {
+    "interfaces_present": {
+      "draft_batch": "DraftBatch",
+      "accept_result": "AcceptResult",
+      "draft_model_protocol": "DraftModel",
+      "verifier_protocol": "Verifier",
+      "kv_policy": "FixedPagedKVPolicy",
+      "kv_transaction": "KVTransaction",
+      "verify_graph_shape_key": {
+        "mode": "verify_tree",
+        "active_c": 1,
+        "draft_depth": 2,
+        "tree_shape": [
+          1,
+          2
+        ]
+      }
+    },
+    "resident_api": {
+      "step_batch_serial": true,
+      "batch_execution_metadata": true,
+      "native_target_verify_batch": false,
+      "speculative_verify_batch": false,
+      "commit_verified_state": false
+    },
+    "native_target_verify_ready": false
+  },
+  "evidence": {
+    "batch_artifact": "benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json",
+    "batch_status": "blocked",
+    "batch_performance_claim": false,
+    "batch_workload": {
+      "shape": "c=8 prompt=8 decode=1",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "quant": "w4_paro",
+      "prompt_tokens_per_request": 8,
+      "prompt_tokens_aggregate": 64,
+      "gen_tokens_per_request": 1,
+      "gen_tokens_aggregate": 8,
+      "warmup_decode_tokens": 0,
+      "concurrency": 8,
+      "prompt_lengths": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "max_layers": 40,
+      "kv_policy": "dense_paged",
+      "scheduler_path": "scheduler_serial_slot_bridge",
+      "native_compact_prefill": false,
+      "native_caware_decode": false
+    },
+    "batch_execution": {
+      "path": "scheduler_serial_slot_bridge",
+      "scheduler_owned": true,
+      "row_execution": "serial_c1_layer_path",
+      "native_prefill_plan": {
+        "path": "linear_attention_prefix_only",
+        "layer_limit": 40,
+        "linear_prefix_layers": 3,
+        "full_layer_limit_native": false,
+        "first_unsupported_layer": 3,
+        "first_unsupported_type": "full_attention",
+        "blockers": [
+          "native prefill currently covers only linear-attention layer prefixes",
+          "native compact/grouped MoE and full-attention prefill are not wired",
+          "first unsupported layer 3 is 'full_attention'"
+        ]
+      },
+      "native_compact_prefill": false,
+      "native_caware_decode": false,
+      "throughput_claim_eligible": false,
+      "blockers": [
+        "step_batch_serial executes active physical slots serially through the c=1 layer path",
+        "native compact/grouped MoE c>N prefill is not wired",
+        "native c-aware full-attention decode graph replay is not wired",
+        "native prefill currently covers only linear-attention layer prefixes",
+        "native compact/grouped MoE and full-attention prefill are not wired",
+        "first unsupported layer 3 is 'full_attention'"
+      ]
+    },
+    "prefill_artifact": "benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-attn-boundary-blocked.json",
+    "native_prefill_plan": {
+      "path": "linear_attention_prefix_only",
+      "layer_limit": 40,
+      "linear_prefix_layers": 3,
+      "full_layer_limit_native": false,
+      "first_unsupported_layer": 3,
+      "first_unsupported_type": "full_attention",
+      "blockers": [
+        "native prefill currently covers only linear-attention layer prefixes",
+        "native compact/grouped MoE and full-attention prefill are not wired",
+        "first unsupported layer 3 is 'full_attention'"
+      ]
+    },
+    "docs": [
+      "docs/DFLASH.md",
+      "docs/MTP.md",
+      "docs/BENCHMARK.md"
+    ]
+  },
+  "blockers": [
+    "native TargetVerifyBatch over root+candidate rows is not wired in Qwen35ParoResidentSession",
+    "step_batch_serial is still the only c>N target path and executes rows through the c=1 layer path",
+    "exact selectable per-row target state for linear-attention Conv/GDN state and full-attention K/V commit is not exposed",
+    "GPU accept-summary and state/KV commit kernels are not wired; only host-side DraftBatch/AcceptResult metadata and KVTransaction bookkeeping exist",
+    "native compact/full-attention prefill remains incomplete, so speculative verify rows cannot share the final c>N target forward required by DFlash/DDTree",
+    "latest c=8 scheduler artifact reports batch_execution.throughput_claim_eligible=false",
+    "native prefill plan stops at linear prefix layer 3 with first unsupported layer 3 (full_attention)"
+  ],
+  "required_next_actions": [
+    "Complete Task #15 native compact/c-aware target path first: batched verify rows must not execute through step_batch_serial.",
+    "Add a TargetVerifyBatch runtime ABI carrying root+candidate token rows, positions, parent/depth metadata, row-to-request maps, and output state row buffers.",
+    "Expose selectable per-row linear-attention state and full-attention K/V rows, then commit accepted rows through KVTransaction/state transactions without target re-forward.",
+    "Add GPU top1/accept-summary buffers and deterministic equality gates before any speculative throughput artifact can be accepted."
+  ],
+  "decision": {
+    "accepted": false,
+    "reason": "Speculative interfaces are present, but native DFlash/DDTree cannot be implemented as a throughput path until the target verifier/commit dependencies above land."
+  },
+  "notes": [
+    "This is a blocker artifact, not a benchmark result.",
+    "It completes the current Task #44 evidence requirement without promoting speculative decoding performance claims."
+  ]
+}
