@@ -10308,3 +10308,38 @@ passed (`max_kl=0.01743`, top-1 `1.0`, `native_owned_device_bytes=1625645909`).
 samples `558.703`, `559.778`, `557.489`, `559.987` tok/s (median `559.240`)
 regressed below retained `565.213`. Decision: revert; the decode-profile linear
 conv/GDN builds remain faster for the resident native prefill path.
+
+## 2026-05-15 — Prefill multiloop iter 25: fused split+key cast rejected
+
+Tried a small full-attention prefill launch fusion: added
+`qwen35_split_qgate_key_fp16`, which splits the interleaved FP16 Q/gate rows and
+casts the FP16 K projection to FP32 in one `qwen35_rotary` launch. The prefill
+path used it only for `tokens > 1`; c=1/decode kept the existing separate
+`qwen35_split_qgate_fp16` + `fp16_to_f32` sequence. Unit tests were updated to
+monkeypatch the fused wrapper so fake-pointer tests do not accidentally launch a
+real GPU kernel.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/rotary/qwen35_rotary.py hipengine/runtime/qwen35_paro.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import build_qwen35_rotary
+build_qwen35_rotary(load=False, require_cached=False)
+PY
+python3 scripts/smoke.py --mode qwen35-rotary-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 -m pytest tests/test_qwen35_rotary_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter25-512-run{1,2,3}.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: targeted tests passed (`59 passed`), qwen35 rotary smoke passed
+(`vector_position_max_abs=2.38e-07`, existing split FP16 checks clean), and
+fixture passed (`max_kl=0.01743`, top-1 `1.0`,
+`native_owned_device_bytes=1625645909`). 4K was runnable and above the retained
+guard at `333.491 tok/s`, but 512/128 samples `562.365`, `560.989`, `562.071`,
+`559.839` tok/s (median `561.530`) regressed below retained `565.213`.
+Decision: revert; eliminating this small full-attention cast launch does not help
+short prefill enough to retain.
