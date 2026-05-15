@@ -101,6 +101,7 @@ def _kv_transaction_status() -> dict[str, Any]:
     active.admit(RequestState(request_id=1, prompt_tokens=(1, 2, 3, 4, 5), max_new_tokens=4, next_prompt_index=5))
     active.admit(RequestState(request_id=2, prompt_tokens=(6, 7, 8), max_new_tokens=4, next_prompt_index=3))
     key = target.shape_key(active, context_bucket_size=4, top_k=8, experts_per_token=8, replay_steps=1)
+    work = target.to_work_item()
     return {
         "target_verify_rows": target.rows,
         "candidate_rows": target.candidate_count,
@@ -120,6 +121,14 @@ def _kv_transaction_status() -> dict[str, Any]:
             "replay_steps": key.replay_steps,
             "draft_depth": key.draft_depth,
             "tree_shape": list(key.tree_shape),
+        },
+        "work_item": {
+            "kind": work.kind.value,
+            "request_ids": list(work.request_ids),
+            "row_to_request": list(work.row_to_request),
+            "token_rows": [list(row) for row in work.token_rows],
+            "draft_depth": work.draft_depth,
+            "tree_parents": list(work.tree_parents),
         },
     }
 

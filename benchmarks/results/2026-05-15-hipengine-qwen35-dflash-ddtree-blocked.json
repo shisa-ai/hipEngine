@@ -62,6 +62,35 @@
           1,
           0
         ]
+      },
+      "work_item": {
+        "kind": "verify_tree",
+        "request_ids": [
+          1,
+          2
+        ],
+        "row_to_request": [
+          1,
+          1,
+          2
+        ],
+        "token_rows": [
+          [
+            10
+          ],
+          [
+            11
+          ],
+          [
+            20
+          ]
+        ],
+        "draft_depth": 2,
+        "tree_parents": [
+          0,
+          1,
+          0
+        ]
       }
     },
     "resident_api": {

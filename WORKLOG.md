@@ -6536,3 +6536,56 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows graph-bucket metadata only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — TargetVerifyBatch candidate WorkItem projection
+
+### Scope
+
+- Added `TargetVerifyBatch.to_work_item()` for scheduler/kernel routing metadata.
+- The projection keeps committed root rows out of scheduler candidate rows:
+  - `WorkItem.row_to_request` contains candidate rows only;
+  - `WorkItem.token_rows` contains candidate token rows only;
+  - `WorkItem.draft_depth` and `WorkItem.tree_parents` carry the target verify topology.
+- Updated blocker artifact/status and Task #15 with WorkItem evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py tests/test_dispatch_batch.py -q
+```
+
+Result: `20 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records `implementation_status.kv_transaction_target_verify.work_item`:
+
+- `kind="verify_tree"`
+- `request_ids=[1,2]`
+- `row_to_request=[1,1,2]`
+- `token_rows=[[10],[11],[20]]`
+- `draft_depth=2`
+- `tree_parents=[0,1,0]`
+
+It still records `status=blocked`, `performance_claim=false`, and `native_target_verify_ready=false`.
+
+Interpretation: host metadata can now project a target verify batch to the scheduler work item that future native verifier kernels should consume, while roots remain committed context metadata. Resident target verification and device-side state/KV commit remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows scheduler work metadata only; no performance claim or kernel change was made.

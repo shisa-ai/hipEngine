@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Sequence, runtime_checkable
 
+from hipengine.dispatch.batch import WorkItem, WorkKind
+
 
 @dataclass(frozen=True, slots=True)
 class DraftBatch:
@@ -232,6 +234,23 @@ class TargetVerifyBatch:
             replay_steps=replay_steps,
             draft_depth=self.draft_depth,
             tree_shape=self.tree_shape,
+        )
+
+    def to_work_item(self) -> WorkItem:
+        """Project candidate rows into scheduler work metadata.
+
+        Root rows are committed context and stay out of row-to-request/token rows;
+        graph/verify code can recover root topology from ``tree_shape`` and the
+        accompanying ``TargetVerifyBatch`` metadata.
+        """
+
+        return WorkItem(
+            kind=WorkKind(self.mode),
+            request_ids=self.request_ids,
+            row_to_request=tuple(self.row_to_request[row] for row in self.candidate_rows),
+            token_rows=tuple((self.tokens[row],) for row in self.candidate_rows),
+            draft_depth=self.draft_depth,
+            tree_parents=self.tree_shape,
         )
 
     def select_commit_rows(

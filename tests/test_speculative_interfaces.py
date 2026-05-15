@@ -118,6 +118,28 @@ def test_target_verify_batch_builds_graph_shape_key_from_active_batch() -> None:
     assert key.tree_shape == (0, 1, 0)
 
 
+def test_target_verify_batch_projects_candidate_rows_to_work_item() -> None:
+    draft = DraftBatch(
+        request_ids=(1, 2),
+        candidate_tokens=(10, 11, 20),
+        parent_positions=(5, 6, 3),
+        draft_depths=(1, 2, 1),
+        row_to_request=(1, 1, 2),
+        mode="verify_tree",
+        tree_parents=(-1, 0, -1),
+    )
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
+
+    work = target.to_work_item()
+
+    assert work.kind.value == "verify_tree"
+    assert work.request_ids == (1, 2)
+    assert work.row_to_request == (1, 1, 2)
+    assert work.token_rows == ((10,), (11,), (20,))
+    assert work.draft_depth == 2
+    assert work.tree_parents == (0, 1, 0)
+
+
 def test_target_verify_batch_selects_commit_rows_from_accept_counts() -> None:
     draft = DraftBatch(
         request_ids=(1, 2),
@@ -308,6 +330,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["shape_key"]["tree_shape"] == [0, 1, 0]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["work_item"]["tree_parents"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["transaction_draft_rows"] == 3
     assert payload["implementation_status"]["kv_transaction_target_verify"]["root_rows_excluded_from_journal"]
     assert payload["implementation_status"]["resident_api"]["step_batch_serial"]
