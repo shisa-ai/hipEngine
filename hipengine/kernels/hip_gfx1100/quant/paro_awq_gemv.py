@@ -18,6 +18,7 @@ _SYMBOL_DUAL_PACK8_TRANSPOSED = "hipengine_gemv_awq_dual_pack8_transposed_bf16"
 _SYMBOL_PACK8_STRIDED_FP16 = "hipengine_gemv_awq_pack8_strided_fp16"
 _SYMBOL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_transposed_fp16"
 _SYMBOL_FUSEDW4_PREFILL_FP16 = "hipengine_awq_fusedw4_prefill_fp16"
+_SYMBOL_FUSEDW4_PREFILL_STRIDED_FP16 = "hipengine_awq_fusedw4_prefill_strided_fp16"
 _SYMBOL_DUAL_PACK8_STRIDED_FP16 = "hipengine_gemv_awq_dual_pack8_strided_fp16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_transposed_fp16"
 _SYMBOL_SELECTED_DUAL_ROTATE_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16"
@@ -325,44 +326,61 @@ def awq_fusedw4_prefill_fp16(
 ) -> None:
     """Launch FP16 AWQ pack8 W4 -> WMMA prefill GEMM for transposed weights."""
 
-    _check_fusedw4_shape(rows, in_features, out_packed, group_size, tile_m, tile_n)
-    if tile_m is None:
-        tile_m = 32 if out_packed * 8 >= 32 else 16
-    if tile_n is None:
-        tile_n = 32 if rows >= 32 else 16
-    library = library or build_paro_awq_gemv(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_FUSEDW4_PREFILL_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(qweight_t_ptr),
-        ctypes.c_void_p(qzeros_ptr),
-        ctypes.c_void_p(scales_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_packed),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(tile_m),
-        ctypes.c_int64(tile_n),
-        ctypes.c_void_p(stream),
+    _launch_fusedw4_prefill_fp16(
+        _SYMBOL_FUSEDW4_PREFILL_FP16,
+        x_ptr,
+        qweight_t_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        tile_m=tile_m,
+        tile_n=tile_n,
+        stream=stream,
+        library=library,
+        runtime=runtime,
     )
-    _check_launch(runtime, err)
+
+
+def awq_fusedw4_prefill_strided_fp16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16 AWQ pack8 W4 -> WMMA prefill GEMM for strided weights."""
+
+    _launch_fusedw4_prefill_fp16(
+        _SYMBOL_FUSEDW4_PREFILL_STRIDED_FP16,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        tile_m=tile_m,
+        tile_n=tile_n,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def gemv_awq_dual_pack8_strided_fp16(
@@ -966,6 +984,11 @@ def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "pack8_gemm", "w4_paro", "fusedw4_prefill_strided_fp16"),
+        awq_fusedw4_prefill_strided_fp16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "dual_pack8_gemv", "w4_paro", "strided_fp16"),
         gemv_awq_dual_pack8_strided_fp16,
         replace=replace,
@@ -1374,6 +1397,64 @@ def _launch_selected_single(
     _check_launch(runtime, err)
 
 
+
+
+def _launch_fusedw4_prefill_fp16(
+    symbol: str,
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    tile_m: int | None,
+    tile_n: int | None,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_fusedw4_shape(rows, in_features, out_packed, group_size, tile_m, tile_n)
+    if tile_m is None:
+        tile_m = 32 if out_packed * 8 >= 32 else 16
+    if tile_n is None:
+        tile_n = 32 if rows >= 32 else 16
+    library = library or build_paro_awq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(qzeros_ptr),
+        ctypes.c_void_p(scales_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_packed),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(tile_m),
+        ctypes.c_int64(tile_n),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def _check_fusedw4_shape(

@@ -10468,3 +10468,47 @@ kernel catalog/source lineage plus benchmark diagnostic rollup. Remaining gap:
 strided V/O/out W4 projections and W8/dense auxiliaries still use GEMV-style
 paths, so continue with fused-W4/WMMA projection coverage rather than small
 launch fusions.
+
+## 2026-05-15 — Prefill multiloop iter 29: strided fused W4 prefill projections kept
+
+Continued the fused-W4/WMMA projection pivot from iter 28. The transposed Q/K
+and QKV/Z route was fast, but full-attention V/O and linear-attention out_proj
+still called strided pack8 GEMV for every prompt row. Generalized the
+`awq_fusedw4_prefill_fp16` kernel with a `qweight_transposed` template, added a
+raw-pointer `hipengine_awq_fusedw4_prefill_strided_fp16` wrapper, and routed
+`project_pack8_fp16(..., rows>1)` through it when the group size is compatible.
+The old pack8 GEMV remains the c=1/small-group fallback and no extra transposed
+weight copies were added.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/kernels/hip_gfx1100/quant/__init__.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_paro_awq_gemv_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv
+lib = build_paro_awq_gemv(load=True, require_cached=False)
+for name in ('hipengine_awq_fusedw4_prefill_fp16','hipengine_awq_fusedw4_prefill_strided_fp16'):
+    getattr(lib, name)
+print('awq fusedw4 transposed+strided symbols loaded')
+PY
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+for i in 1 2 3; do python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter29-512-run${i}.json >/tmp/iter29-512-run${i}.stdout; done
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter29-fusedw4-strided-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter29-fusedw4-strided-trace-smoke.json
+sqlite3 -header -csv /tmp/iter29-fusedw4-strided-trace/trace_results.db "select name, count(*) as n, min(duration) as min_ns, max(duration) as max_ns, avg(duration) as avg_ns, min(workgroup_x) as wg from kernels where name like '%awq_fusedw4_prefill_fp16_kernel%' group by name;"
+```
+
+Results: targeted tests passed (`59 passed`) and the AWQ library rebuilt with both
+fused-W4 symbols. 512/128 samples were `1693.328`, `1680.357`, `1675.910`, and
+`1674.902` tok/s (median `1678.133`), +125.7% over retained `743.424`. Fixture
+gate passed (`max_kl=0.02233`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.3073s`), so the change
+did not grow the recorded owned device footprint. 4K/128 was runnable at
+`564.616 tok/s` (`prefill_seconds=7.2545`, decode `102.145 tok/s`), above the
+retained guard. The profiler smoke confirmed the new strided instantiation ran:
+`awq_fusedw4_prefill_fp16_kernel<32,32,false>` once (`327164 ns`,
+`Workgroup_Size_X=32`) alongside the existing transposed instantiation. Decision:
+keep. Remaining obvious projection gap is dense/W8 auxiliary prefill work and any
+remaining non-W4 projection buckets, not the W4 prompt projection family.

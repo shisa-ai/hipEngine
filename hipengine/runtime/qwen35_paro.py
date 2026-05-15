@@ -77,6 +77,7 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16, qwen35_router_topk_shared_out_fp16
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     awq_fusedw4_prefill_fp16,
+    awq_fusedw4_prefill_strided_fp16,
     gemv_awq_dual_pack8_transposed_bf16,
     gemv_awq_dual_pack8_transposed_fp16,
     gemv_awq_pack8_strided_bf16,
@@ -346,21 +347,40 @@ class Qwen35ParoDecodeState:
         scales = self.tensor(f"{prefix}.scales")
         if not qweight.shape:
             raise ValueError(f"{prefix}.qweight must have at least one dimension")
-        gemv_awq_pack8_strided_fp16(
-            x.ptr,
-            qweight.ptr,
-            qzeros.ptr,
-            scales.ptr,
-            out.ptr,
-            rows,
-            x.shape[-1] if in_features is None else in_features,
-            _out_packed_from_strided_qweight(qweight),
-            group_size,
-            threads=threads,
-            stream=stream,
-            library=_library_for(library, "awq"),
-            runtime=self.runtime,
-        )
+        width = x.shape[-1] if in_features is None else in_features
+        out_packed = _out_packed_from_strided_qweight(qweight)
+        awq_library = _library_for(library, "awq")
+        if rows > 1 and group_size % 16 == 0 and width % group_size == 0:
+            awq_fusedw4_prefill_strided_fp16(
+                x.ptr,
+                qweight.ptr,
+                qzeros.ptr,
+                scales.ptr,
+                out.ptr,
+                rows,
+                width,
+                out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+        else:
+            gemv_awq_pack8_strided_fp16(
+                x.ptr,
+                qweight.ptr,
+                qzeros.ptr,
+                scales.ptr,
+                out.ptr,
+                rows,
+                width,
+                out_packed,
+                group_size,
+                threads=threads,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         return out
 
     def rotate_full_attention_inputs_bf16(

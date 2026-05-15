@@ -109,7 +109,7 @@ __device__ inline int awq_shift_for_pack_lane(int lane) {
   }
 
 
-template <int AWQ_TILE_M, int AWQ_TILE_N>
+template <int AWQ_TILE_M, int AWQ_TILE_N, bool qweight_transposed>
 __launch_bounds__(32, 8)
 __global__ void awq_fusedw4_prefill_fp16_kernel(
     const int32_t* __restrict__ qweight_t,
@@ -180,10 +180,18 @@ __global__ void awq_fusedw4_prefill_fp16_kernel(
       uint32_t pw[TM][16];
 #pragma unroll
       for (int tm = 0; tm < TM; ++tm) {
-        const int32_t* __restrict__ qw_row = qweight_t + static_cast<int64_t>(out_pack[tm]) * in_features;
+        if constexpr (qweight_transposed) {
+          const int32_t* __restrict__ qw_row = qweight_t + static_cast<int64_t>(out_pack[tm]) * in_features;
 #pragma unroll
-        for (int kk = 0; kk < 16; ++kk) {
-          pw[tm][kk] = static_cast<uint32_t>(qw_row[g_k_base + k_off + kk]);
+          for (int kk = 0; kk < 16; ++kk) {
+            pw[tm][kk] = static_cast<uint32_t>(qw_row[g_k_base + k_off + kk]);
+          }
+        } else {
+#pragma unroll
+          for (int kk = 0; kk < 16; ++kk) {
+            const int k = g_k_base + k_off + kk;
+            pw[tm][kk] = static_cast<uint32_t>(qweight_t[static_cast<int64_t>(k) * out_packed + out_pack[tm]]);
+          }
         }
       }
 
@@ -227,6 +235,7 @@ __global__ void awq_fusedw4_prefill_fp16_kernel(
   }
 }
 
+template <bool qweight_transposed>
 int launch_awq_fusedw4_prefill_fp16(
     const half_t* x,
     const int32_t* qweight_t,
@@ -254,7 +263,7 @@ int launch_awq_fusedw4_prefill_fp16(
 
 #define HIPENGINE_LAUNCH_FUSEDW4(TM, TN) \
   hipLaunchKernelGGL( \
-      (awq_fusedw4_prefill_fp16_kernel<TM, TN>), \
+      (awq_fusedw4_prefill_fp16_kernel<TM, TN, qweight_transposed>), \
       grid, \
       block, \
       0, \
@@ -1354,8 +1363,25 @@ extern "C" int hipengine_awq_fusedw4_prefill_fp16(
     int64_t tile_m,
     int64_t tile_n,
     hipStream_t stream) {
-  return launch_awq_fusedw4_prefill_fp16(
+  return launch_awq_fusedw4_prefill_fp16<true>(
       x, qweight_t, qzeros, scales, out, rows, in_features, out_packed, group_size, tile_m, tile_n, stream);
+}
+
+extern "C" int hipengine_awq_fusedw4_prefill_strided_fp16(
+    const half_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  return launch_awq_fusedw4_prefill_fp16<false>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, tile_m, tile_n, stream);
 }
 
 extern "C" int hipengine_gemv_awq_dual_pack8_strided_fp16(
