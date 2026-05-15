@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from hipengine.kernels.hip_gfx1100.quant import (
+    awq_fusedw4_prefill_fp16,
     gemv_awq_dual_pack8_strided_bf16,
     gemv_awq_dual_pack8_strided_fp16,
     gemv_awq_dual_pack8_transposed_bf16,
@@ -82,6 +83,15 @@ def test_paro_awq_gemv_registers_pack8_variants() -> None:
             variant="transposed_fp16",
         )
         is gemv_awq_pack8_transposed_fp16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="pack8_gemm",
+            quant="w4_paro",
+            variant="fusedw4_prefill_fp16",
+        )
+        is awq_fusedw4_prefill_fp16
     )
     assert (
         resolve(
@@ -221,6 +231,10 @@ def test_paro_awq_gemv_wrappers_validate_before_gpu_load() -> None:
         gemv_awq_dual_pack8_transposed_bf16(0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 16, 1, 1, 8, threads=256)
     with pytest.raises(ValueError, match="rows must be positive"):
         gemv_awq_pack8_strided_fp16(0, 0, 0, 0, 0, 0, 16, 1, 8)
+    with pytest.raises(ValueError, match="group_size must be a multiple of 16"):
+        awq_fusedw4_prefill_fp16(0, 0, 0, 0, 0, 2, 16, 1, 8)
+    with pytest.raises(ValueError, match="tile_m must be one of"):
+        awq_fusedw4_prefill_fp16(0, 0, 0, 0, 0, 2, 16, 1, 16, tile_m=48)
     with pytest.raises(ValueError, match="in_features must be divisible"):
         gemv_awq_pack8_transposed_fp16(0, 0, 0, 0, 0, 2, 18, 1, 8)
     with pytest.raises(ValueError, match="group_size must be a multiple of 8"):

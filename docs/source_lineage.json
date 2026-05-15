@@ -42,6 +42,12 @@
     },
     {
       "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/paroquant_fusedw4.py",
+      "kind": "kernel",
+      "family": "PARO fused W4 prefill WMMA"
+    },
+    {
+      "repo": "nano-vllm-amd",
       "path": "nanovllm/native/qwen35/paroquant.py",
       "kind": "dispatch",
       "family": "PARO native dispatch"

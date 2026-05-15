@@ -10422,3 +10422,49 @@ retained guard at `333.792 tok/s` (`prefill_seconds=12.2711`). The primary
 extra combined arithmetic/order did not offset the launch reduction, so keep the
 existing separate weighted-lane sum plus shared/residual combine on the default
 path.
+
+## 2026-05-15 — Prefill multiloop iter 28: fused W4 prefill projections kept
+
+After five failed launch/copy micro-fusion trials and the parent WORKLOG/ROOFLINE
+review, pivoted to the major algorithmic gap versus the parent route: hipENGINE
+multi-token prefill was still running non-expert transposed W4 pack8 projections
+through row-wise GEMV kernels. Ported the parent dense fused W4→WMMA prefill
+kernel from `nano-vllm-amd@55fede9` (`nanovllm/native/qwen35/paroquant_fusedw4.py`)
+into the raw-pointer `paro_awq_gemv` family as `awq_fusedw4_prefill_fp16`, then
+routed FP16 multi-token full-attention Q/K and linear-attention QKV/Z prompt
+projections through it. c=1/decode and strided V/O/out projections retain the
+existing GEMV fallback path.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/kernels/hip_gfx1100/quant/__init__.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_paro_awq_gemv_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv
+lib = build_paro_awq_gemv(load=True, require_cached=False)
+getattr(lib, 'hipengine_awq_fusedw4_prefill_fp16')
+print('awq fusedw4 prefill symbol loaded')
+PY
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+for i in 1 2 3; do python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter28-512-run${i}.json >/tmp/iter28-512-run${i}.stdout; done
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter28-fusedw4-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter28-fusedw4-trace-smoke.json
+sqlite3 -header -csv /tmp/iter28-fusedw4-trace/trace_results.db "select name, count(*) as n, min(duration) as min_ns, max(duration) as max_ns, avg(duration) as avg_ns, min(workgroup_x) as wg from kernels where name like '%fusedw4%' group by name;"
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Results: targeted tests passed (`59 passed`) and the AWQ library rebuilt with the
+new symbol. 512/128 samples were `745.087`, `743.684`, `743.163`, and
+`739.965` tok/s (median `743.424`), +31.5% over retained `565.213`. Fixture gate
+passed (`max_kl=0.01005`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.6925s`). 4K/128 was
+runnable and improved to `395.308 tok/s` (`prefill_seconds=10.3615`, decode
+`102.127 tok/s`), above the retained guard. The profiler smoke confirmed
+`awq_fusedw4_prefill_fp16_kernel<32, 32>` launched twice for a one-layer prompt
+run (`avg_ns=267743.5`, `Workgroup_Size_X=32`). Decision: keep and update the
+kernel catalog/source lineage plus benchmark diagnostic rollup. Remaining gap:
+strided V/O/out W4 projections and W8/dense auxiliaries still use GEMV-style
+paths, so continue with fused-W4/WMMA projection coverage rather than small
+launch fusions.

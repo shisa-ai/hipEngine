@@ -10,23 +10,30 @@
   "path": "native_prefill_c1_multiloop",
   "max_layers": 40,
   "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
-  "change": "Use FP16-input linear-attention prefill convolution to avoid a separate FP16-to-F32 qkv materialization launch before conv.",
+  "change": "Port parent fused W4->WMMA FP16 prefill projection and route multi-token transposed pack8 Q/K and QKV/Z prompt projections through it.",
+  "source_lineage": "nano-vllm-amd@55fede9 nanovllm/native/qwen35/paroquant_fusedw4.py",
   "workloads": {
     "512_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json",
-      "prefill_tok_s_samples": [565.1457552946306, 565.40799420366, 565.2811327274644, 564.6457379754063],
-      "prefill_tok_s_median": 565.2134440110475,
-      "previous_retained_prefill_tok_s": 561.0993881699317,
-      "delta_percent": 0.7332133892596238,
-      "representative_prefill_seconds": 0.9059609759133309,
-      "representative_decode_tok_s": 100.78662003754758
+      "prefill_tok_s_samples": [
+        745.0874291427994,
+        743.6839429370995,
+        743.163300307474,
+        739.9648856731935
+      ],
+      "prefill_tok_s_median": 743.4236216222866,
+      "previous_retained_prefill_tok_s": 565.2134440110475,
+      "delta_percent": 31.529713155187423,
+      "representative_prefill_seconds": 0.6871676798909903,
+      "representative_decode_tok_s": 101.56305099719863
     },
     "4096_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json",
-      "prefill_tok_s": 333.3281934932708,
-      "previous_retained_prefill_tok_s": 333.1717142510515,
-      "prefill_seconds": 12.288189477985725,
-      "decode_tok_s": 101.9623875466935,
+      "prefill_tok_s": 395.30803771616377,
+      "previous_retained_prefill_tok_s": 333.3281934932708,
+      "delta_percent": 18.594239981126638,
+      "prefill_seconds": 10.361539885867387,
+      "decode_tok_s": 102.12680726939497,
       "guard_floor_prefill_tok_s": 316.66178381860726,
       "guard_passed": true
     }
@@ -38,31 +45,31 @@
     "generated_match": true,
     "kl_pass": true,
     "top1_pass": true,
-    "max_kl": 0.01742831788881887,
+    "max_kl": 0.010053519824344184,
     "top1_agreement": 1.0,
     "native_owned_device_bytes": 1625645909,
-    "native_prefill_seconds": 0.9193622069433331
+    "native_prefill_seconds": 0.6925131040625274
   },
   "additional_gates": [
     {
-      "command": "python3 -m py_compile hipengine/kernels/hip_gfx1100/linear_attn/conv.py hipengine/runtime/qwen35_paro.py scripts/smoke.py",
+      "command": "python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/kernels/hip_gfx1100/quant/__init__.py hipengine/runtime/qwen35_paro.py",
       "passed": true
     },
     {
-      "command": "python3 -m pytest tests/test_qwen35_linear_attn_conv_plan.py -q",
+      "command": "python3 -m pytest tests/test_paro_awq_gemv_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q",
       "passed": true,
-      "evidence": "3 passed"
+      "evidence": "59 passed"
     },
     {
-      "command": "python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY' ... build_paro_awq_gemv(load=True, require_cached=False) ... PY",
       "passed": true,
-      "evidence": "FP16 conv variant fp16_conv_out_max_abs=1.49e-08, fp16_conv_state_max_abs=0, fp16_gated_mismatch=0"
+      "evidence": "hipengine_awq_fusedw4_prefill_fp16 symbol loaded"
     },
     {
-      "command": "python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size {2,4,8} --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/iter17-packed-c{2,4,8}.json",
+      "command": "rocprofv3 --kernel-trace -d /tmp/iter28-fusedw4-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter28-fusedw4-trace-smoke.json",
       "passed": true,
-      "evidence": "c=2, c=4, c=8 generated_match=true finite_logits=true passed=true"
+      "evidence": "SQLite kernels table: awq_fusedw4_prefill_fp16_kernel<32, 32> ran twice, avg_ns=267743.5, Workgroup_Size_X=32"
     }
   ],
-  "worklog": "2026-05-15 — Prefill multiloop iter 17: FP16-input linear conv prefill"
+  "worklog": "2026-05-15 \u2014 Prefill multiloop iter 28: fused W4 prefill projections"
 }

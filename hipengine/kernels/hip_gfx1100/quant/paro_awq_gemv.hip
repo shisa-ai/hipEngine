@@ -7,6 +7,8 @@
 namespace {
 
 using half_t = _Float16;
+typedef half_t __attribute__((ext_vector_type(16))) half16_t;
+typedef float __attribute__((ext_vector_type(8))) float8_t;
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
@@ -105,6 +107,178 @@ __device__ inline int awq_shift_for_pack_lane(int lane) {
       r7 += xchg[g * 8 + 7]; \
     } \
   }
+
+
+template <int AWQ_TILE_M, int AWQ_TILE_N>
+__launch_bounds__(32, 8)
+__global__ void awq_fusedw4_prefill_fp16_kernel(
+    const int32_t* __restrict__ qweight_t,
+    const int32_t* __restrict__ qzeros,
+    const half_t* __restrict__ scales,
+    const half_t* __restrict__ x,
+    half_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features,
+    int out_packed,
+    int group_size) {
+  constexpr int TM = AWQ_TILE_M / 16;
+  constexpr int TN = AWQ_TILE_N / 16;
+  const int out_tile = blockIdx.x;
+  const int row_tile = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int row_start = row_tile * AWQ_TILE_N;
+  const int out_start = out_tile * AWQ_TILE_M;
+  if (row_start >= rows || out_start >= out_features) return;
+
+  const int groups = in_features / group_size;
+  const int k_tiles_per_group = group_size / 16;
+
+  int my_out[TM];
+  int safe_out[TM];
+  int out_pack[TM];
+  int shift[TM];
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+    my_out[tm] = out_start + tm * 16 + (tid & 15);
+    safe_out[tm] = (my_out[tm] < out_features) ? my_out[tm] : (out_features - 1);
+    out_pack[tm] = safe_out[tm] >> 3;
+    shift[tm] = awq_shift_for_pack_lane(safe_out[tm] & 7);
+  }
+
+  int my_token[TN];
+  int safe_token[TN];
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    my_token[tn] = row_start + tn * 16 + (tid & 15);
+    safe_token[tn] = (my_token[tn] < rows) ? my_token[tn] : (rows - 1);
+  }
+
+  float8_t acc[TM][TN];
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+    for (int tn = 0; tn < TN; ++tn) {
+      acc[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+    }
+  }
+
+  for (int g = 0; g < groups; ++g) {
+    half_t scale_h[TM];
+    half_t zp_h[TM];
+#pragma unroll
+    for (int tm = 0; tm < TM; ++tm) {
+      scale_h[tm] = scales[static_cast<int64_t>(g) * out_features + safe_out[tm]];
+      const uint32_t zp_packed = static_cast<uint32_t>(qzeros[static_cast<int64_t>(g) * out_packed + out_pack[tm]]);
+      const int zp_q = static_cast<int>((zp_packed >> shift[tm]) & 0xFu);
+      zp_h[tm] = -static_cast<half_t>(static_cast<float>(zp_q)) * scale_h[tm];
+    }
+
+    const int g_k_base = g * group_size;
+    for (int kt = 0; kt < k_tiles_per_group; ++kt) {
+      const int k_off = kt * 16;
+      uint32_t pw[TM][16];
+#pragma unroll
+      for (int tm = 0; tm < TM; ++tm) {
+        const int32_t* __restrict__ qw_row = qweight_t + static_cast<int64_t>(out_pack[tm]) * in_features;
+#pragma unroll
+        for (int kk = 0; kk < 16; ++kk) {
+          pw[tm][kk] = static_cast<uint32_t>(qw_row[g_k_base + k_off + kk]);
+        }
+      }
+
+      half16_t b_reg[TN];
+#pragma unroll
+      for (int tn = 0; tn < TN; ++tn) {
+        const half_t* __restrict__ x_row = x + static_cast<int64_t>(safe_token[tn]) * in_features;
+        b_reg[tn] = *reinterpret_cast<const half16_t*>(x_row + g_k_base + k_off);
+      }
+
+      half16_t a_reg;
+#pragma unroll
+      for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+        for (int kk = 0; kk < 16; ++kk) {
+          const int q = static_cast<int>((pw[tm][kk] >> shift[tm]) & 0xFu);
+          a_reg[kk] = scale_h[tm] * static_cast<half_t>(static_cast<float>(q)) + zp_h[tm];
+        }
+#pragma unroll
+        for (int tn = 0; tn < TN; ++tn) {
+          acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg[tn], acc[tm][tn]);
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    const int out_row = row_start + tn * 16 + (tid & 15);
+    if (out_row >= rows) continue;
+#pragma unroll
+    for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int col = out_start + tm * 16 + 2 * j + (tid >> 4);
+        if (col < out_features) {
+          out[static_cast<int64_t>(out_row) * out_features + col] = static_cast<half_t>(static_cast<float>(acc[tm][tn][j]));
+        }
+      }
+    }
+  }
+}
+
+int launch_awq_fusedw4_prefill_fp16(
+    const half_t* x,
+    const int32_t* qweight_t,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_packed <= 0 || group_size <= 0 ||
+      (in_features % group_size) != 0 || (group_size % 16) != 0 ||
+      (tile_m != 16 && tile_m != 32 && tile_m != 64) ||
+      (tile_n != 16 && tile_n != 32)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_features = out_packed * 8;
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + tile_m - 1) / tile_m),
+      static_cast<unsigned int>((rows + tile_n - 1) / tile_n));
+
+#define HIPENGINE_LAUNCH_FUSEDW4(TM, TN) \
+  hipLaunchKernelGGL( \
+      (awq_fusedw4_prefill_fp16_kernel<TM, TN>), \
+      grid, \
+      block, \
+      0, \
+      stream, \
+      qweight_t, \
+      qzeros, \
+      scales, \
+      x, \
+      out, \
+      static_cast<int>(rows), \
+      static_cast<int>(in_features), \
+      static_cast<int>(out_features), \
+      static_cast<int>(out_packed), \
+      static_cast<int>(group_size)); \
+  return static_cast<int>(hipGetLastError())
+
+  if (tile_m == 16 && tile_n == 16) { HIPENGINE_LAUNCH_FUSEDW4(16, 16); }
+  if (tile_m == 32 && tile_n == 16) { HIPENGINE_LAUNCH_FUSEDW4(32, 16); }
+  if (tile_m == 16 && tile_n == 32) { HIPENGINE_LAUNCH_FUSEDW4(16, 32); }
+  if (tile_m == 32 && tile_n == 32) { HIPENGINE_LAUNCH_FUSEDW4(32, 32); }
+  if (tile_m == 64 && tile_n == 16) { HIPENGINE_LAUNCH_FUSEDW4(64, 16); }
+  HIPENGINE_LAUNCH_FUSEDW4(64, 32);
+#undef HIPENGINE_LAUNCH_FUSEDW4
+}
 
 template <typename scalar_t, bool qweight_transposed>
 __launch_bounds__(128, 4)
@@ -1164,6 +1338,24 @@ extern "C" int hipengine_gemv_awq_pack8_transposed_fp16(
     hipStream_t stream) {
   return launch_pack8<half_t, true>(
       x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
+
+extern "C" int hipengine_awq_fusedw4_prefill_fp16(
+    const half_t* x,
+    const int32_t* qweight_t,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  return launch_awq_fusedw4_prefill_fp16(
+      x, qweight_t, qzeros, scales, out, rows, in_features, out_packed, group_size, tile_m, tile_n, stream);
 }
 
 extern "C" int hipengine_gemv_awq_dual_pack8_strided_fp16(

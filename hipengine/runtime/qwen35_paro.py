@@ -76,6 +76,7 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16, qwen35_router_topk_shared_out_fp16
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
+    awq_fusedw4_prefill_fp16,
     gemv_awq_dual_pack8_transposed_bf16,
     gemv_awq_dual_pack8_transposed_fp16,
     gemv_awq_pack8_strided_bf16,
@@ -1615,7 +1616,7 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         else:
-            gemv_awq_pack8_transposed_fp16(
+            awq_fusedw4_prefill_fp16(
                 scratch.q_rot.ptr,
                 q_qweight.ptr,
                 self.tensor(f"{q}.qzeros").ptr,
@@ -1625,12 +1626,11 @@ class Qwen35ParoDecodeState:
                 scratch.q_rot.shape[-1],
                 q_out_packed,
                 group_size,
-                threads=64,
                 stream=stream,
                 library=awq_library,
                 runtime=self.runtime,
             )
-            gemv_awq_pack8_transposed_fp16(
+            awq_fusedw4_prefill_fp16(
                 scratch.k_rot.ptr,
                 k_qweight.ptr,
                 self.tensor(f"{k}.qzeros").ptr,
@@ -1640,7 +1640,6 @@ class Qwen35ParoDecodeState:
                 scratch.k_rot.shape[-1],
                 k_out_packed,
                 group_size,
-                threads=64,
                 stream=stream,
                 library=awq_library,
                 runtime=self.runtime,
@@ -2425,7 +2424,7 @@ class Qwen35ParoDecodeState:
             # prefill conv/GDN consumes contiguous [tokens,qkv] and [tokens,z]
             # streams, so split multi-token prefill into two projections.
             awq_library = _library_for(library, "awq")
-            gemv_awq_pack8_transposed_fp16(
+            awq_fusedw4_prefill_fp16(
                 scratch.qkv_rot.ptr,
                 qkv_qweight.ptr,
                 self.tensor(f"{qkv}.qzeros").ptr,
@@ -2435,12 +2434,11 @@ class Qwen35ParoDecodeState:
                 scratch.qkv_rot.shape[-1],
                 qkv_out_packed,
                 group_size,
-                threads=64,
                 stream=stream,
                 library=awq_library,
                 runtime=self.runtime,
             )
-            gemv_awq_pack8_transposed_fp16(
+            awq_fusedw4_prefill_fp16(
                 scratch.z_rot.ptr,
                 z_qweight.ptr,
                 self.tensor(f"{z}.qzeros").ptr,
@@ -2450,7 +2448,6 @@ class Qwen35ParoDecodeState:
                 scratch.z_rot.shape[-1],
                 z_out_packed,
                 group_size,
-                threads=64,
                 stream=stream,
                 library=awq_library,
                 runtime=self.runtime,

@@ -1,6 +1,7 @@
 """gfx1100 quantized kernel wrappers."""
 
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
+    awq_fusedw4_prefill_fp16,
     build_paro_awq_gemv,
     gemv_awq_dual_pack8_strided_bf16,
     gemv_awq_dual_pack8_strided_fp16,
@@ -34,6 +35,7 @@ from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
 )
 
 __all__ = [
+    "awq_fusedw4_prefill_fp16",
     "build_paro_awq_gemv",
     "build_w8a16_linear",
     "gemv_awq_dual_pack8_strided_bf16",
