@@ -22,6 +22,7 @@
       "kv_policy": "FixedPagedKVPolicy",
       "kv_transaction": "KVTransaction",
       "speculative_request_ids_unique_checked": true,
+      "kv_transaction_request_ids_unique_checked": true,
       "scheduler_speculative_verify_work": true,
       "scheduler_speculative_accept": true,
       "scheduler_speculative_shape_key": true,

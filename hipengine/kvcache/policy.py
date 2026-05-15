@@ -10,6 +10,11 @@ from hipengine.core.tensor import Tensor
 from hipengine.kvcache.spans import KVLiveSpans
 
 
+def _validate_unique_request_ids(request_ids: Sequence[int]) -> None:
+    if len(set(request_ids)) != len(request_ids):
+        raise ValueError("request_ids must be unique")
+
+
 @dataclass(frozen=True, slots=True)
 class KVReservation:
     """Host-side reservation metadata for one request's KV arena."""
@@ -57,6 +62,7 @@ class KVTransaction:
             raise ValueError("transaction_id must be non-negative")
         if not self.request_ids:
             raise ValueError("transaction must include at least one request")
+        _validate_unique_request_ids(self.request_ids)
         if self.draft_rows <= 0:
             raise ValueError("draft_rows must be positive")
         if self.committed and self.rolled_back:
@@ -186,6 +192,7 @@ class FixedPagedKVPolicy:
         request_ids = tuple(_request_id(seq) for seq in seqs)
         if not request_ids:
             raise ValueError("begin_transaction requires at least one request")
+        _validate_unique_request_ids(request_ids)
         for rid in request_ids:
             if rid not in self._reservations:
                 raise KeyError(rid)

@@ -7809,3 +7809,49 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows speculative metadata correctness validation only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — KV transaction unique request ids
+
+### Scope
+
+- Added unique-`request_ids` validation to `KVTransaction`.
+- `FixedPagedKVPolicy.begin_transaction(...)` now rejects duplicate request ids before candidate counts are derived.
+- Added negative KV policy tests for direct `KVTransaction` construction and duplicate sequence ids passed to `begin_transaction(...)`.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/kvcache hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_kvcache_policy.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_kvcache_policy.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `21 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.speculative_request_ids_unique_checked=true`
+- `implementation_status.interfaces_present.kv_transaction_request_ids_unique_checked=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: host KV transaction metadata now rejects duplicate request ids before candidate/accept counts can become ambiguous. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows speculative KV transaction metadata correctness validation only; no performance claim or kernel change was made.

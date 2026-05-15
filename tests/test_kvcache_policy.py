@@ -106,6 +106,18 @@ def test_fixed_paged_policy_requires_packed_metadata_for_c_gt_1() -> None:
     assert spans.row_positions is not None and spans.row_positions.ptr == 0xD000
 
 
+def test_fixed_paged_policy_rejects_duplicate_transaction_requests() -> None:
+    with pytest.raises(ValueError, match="unique"):
+        KVTransaction(transaction_id=0, request_ids=(1, 1), draft_rows=1, role="verify_chain")
+
+    policy = FixedPagedKVPolicy()
+    _register(policy, 1, ptr_base=0x1000)
+    draft = WorkItem(kind=WorkKind.VERIFY_CHAIN, request_ids=(1,), row_to_request=(1,), draft_depth=1)
+
+    with pytest.raises(ValueError, match="unique"):
+        policy.begin_transaction([1, SimpleNamespace(request_id=1)], draft)
+
+
 def test_fixed_paged_policy_transaction_commit_and_rollback() -> None:
     policy = FixedPagedKVPolicy()
     _register(policy, 1, ptr_base=0x1000)

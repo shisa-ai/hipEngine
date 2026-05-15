@@ -52,8 +52,8 @@ It records:
   but no native verifier execution or state/KV copy kernels are wired;
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
-- speculative metadata rejects duplicate request ids, and the batch scheduler
-  can validate active-request readiness, emit
+- speculative metadata and KV transactions reject duplicate request ids, and
+  the batch scheduler can validate active-request readiness, emit
   scheduler-owned speculative `TargetVerifyBatch`/`WorkItem` metadata, derive
   verify graph shape keys, cache graph/replay objects under those keys, begin
   speculative KV transactions, bundle scheduler-owned verify plans, bind those
