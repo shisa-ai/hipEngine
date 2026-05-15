@@ -62,6 +62,7 @@ from hipengine.loading.materialize import (
 )
 from hipengine.runtime.qwen35_paro import Qwen35ParoDecodeState
 from hipengine.runtime.workspace import RuntimeWorkspace
+from hipengine.speculative import DraftBatch, TargetVerifyBatch
 
 
 @dataclass(frozen=True)
@@ -810,6 +811,34 @@ class Qwen35ParoResidentSession:
         """Return the native prefill coverage currently available for this session."""
 
         return qwen35_paro_native_prefill_plan(self.config.layer_types, layer_limit=self.layer_limit)
+
+    def target_verify_batch(
+        self,
+        draft: DraftBatch,
+        *,
+        root_tokens: Sequence[int],
+        root_positions: Sequence[int],
+    ) -> TargetVerifyBatch:
+        """Materialize metadata for a resident target-verification row batch.
+
+        This is a layout/validation helper only.  It does not run a native
+        target verifier or commit state/KV rows; those remain separate runtime
+        APIs before speculative decoding can become a throughput path.
+        """
+
+        if getattr(self, "closed", False):
+            raise RuntimeError("session is closed")
+        target = TargetVerifyBatch.from_draft(draft, root_tokens=root_tokens, root_positions=root_positions)
+        if target.rows > self.max_batch_size:
+            raise ValueError("target verify rows exceed resident max_batch_size")
+        for position in target.positions:
+            self._check_position(position)
+        vocab_size = getattr(self, "vocab_size", None)
+        if vocab_size is not None:
+            for token_id in target.tokens:
+                if token_id >= int(vocab_size):
+                    raise ValueError(f"target verify token_id {token_id} outside [0, {int(vocab_size)})")
+        return target
 
     def batch_execution_metadata(self, *, scheduler_owned: bool = False) -> Qwen35ParoResidentBatchExecution:
         """Describe whether the resident c>N path is native or a serial fallback."""

@@ -215,7 +215,7 @@ def build_payload(*, batch_artifact: Path, prefill_artifact: Path, argv: Sequenc
     native_prefill_plan = batch_execution.get("native_prefill_plan") or prefill.get("native_prefill_plan") or prefill.get("plan") or {}
     resident_api = _resident_api_status()
     blockers = [
-        "native TargetVerifyBatch over root+candidate rows is not wired in Qwen35ParoResidentSession",
+        "Qwen35ParoResidentSession.target_verify_batch is metadata-only and does not run a native root+candidate target forward",
         "step_batch_serial is still the only c>N target path and executes rows through the c=1 layer path",
         "exact selectable per-row target state for linear-attention Conv/GDN state and full-attention K/V commit is not exposed",
         "GPU accept-summary and state/KV commit kernels are not wired; only host-side DraftBatch/AcceptResult metadata and KVTransaction bookkeeping exist",
@@ -262,7 +262,7 @@ def build_payload(*, batch_artifact: Path, prefill_artifact: Path, argv: Sequenc
         "blockers": blockers,
         "required_next_actions": [
             "Complete Task #15 native compact/c-aware target path first: batched verify rows must not execute through step_batch_serial.",
-            "Add a TargetVerifyBatch runtime ABI carrying root+candidate token rows, positions, parent/depth metadata, row-to-request maps, and output state row buffers.",
+            "Wire Qwen35ParoResidentSession.target_verify_batch metadata into an actual native root+candidate target forward over TargetVerifyBuffers.",
             "Expose selectable per-row linear-attention state and full-attention K/V rows, then commit accepted rows through KVTransaction/state transactions without target re-forward.",
             "Add GPU top1/accept-summary buffers and deterministic equality gates before any speculative throughput artifact can be accepted.",
         ],

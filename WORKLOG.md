@@ -6791,3 +6791,55 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows state/KV commit-buffer ABI metadata only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Resident target_verify_batch metadata API
+
+### Scope
+
+- Added metadata-only `Qwen35ParoResidentSession.target_verify_batch(...)`.
+- The helper materializes a `TargetVerifyBatch` inside the resident runtime and validates:
+  - target row count fits resident `max_batch_size`;
+  - target positions fit `max_sequence_length`;
+  - target token ids fit `vocab_size` when available.
+- It intentionally does **not** run native target verification or commit state/KV rows.
+- Updated the DFlash blocker helper/artifact and Task #15 with resident API evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_dflash_ddtree_blocker.py tests/test_qwen35_resident_batch_layout.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `29 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records `implementation_status.resident_api`:
+
+- `native_target_verify_batch=true`
+- `speculative_verify_batch=false`
+- `commit_verified_state=false`
+- `native_target_verify_ready=false`
+
+It also updates the leading blocker to state that `target_verify_batch` is metadata-only and does not run a native root+candidate target forward.
+
+Interpretation: the resident runtime can now construct/validate target-verifier row metadata, but native verifier execution, GPU accept summaries, and device-side state/KV commit remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`77 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows resident runtime metadata API only; no performance claim or kernel change was made.

@@ -13,6 +13,7 @@ from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoResidentSession,
     qwen35_paro_native_prefill_plan,
 )
+from hipengine.speculative import DraftBatch
 
 
 def test_qwen35_resident_batch_layout_is_batch_shaped_with_slot0_aliases() -> None:
@@ -86,6 +87,41 @@ def test_qwen35_resident_prefill_linear_tokens_native_validates_prompt_tokens() 
         session.prefill_linear_tokens_native([], sample=True)
     with pytest.raises(ValueError, match="outside"):
         session.prefill_linear_tokens_native([100], sample=True)
+
+
+def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.max_batch_size = 5
+    session.max_sequence_length = 16
+    session.vocab_size = 100
+    draft = DraftBatch(
+        request_ids=(1, 2),
+        candidate_tokens=(10, 11, 20),
+        parent_positions=(5, 6, 3),
+        draft_depths=(1, 2, 1),
+        row_to_request=(1, 1, 2),
+        mode="verify_tree",
+        tree_parents=(-1, 0, -1),
+    )
+
+    target = session.target_verify_batch(draft, root_tokens=(9, 19), root_positions=(5, 3))
+
+    assert target.request_ids == (1, 2)
+    assert target.rows == 5
+    assert target.candidate_count == 3
+    assert target.tokens == (9, 19, 10, 11, 20)
+    assert target.positions == (5, 3, 6, 7, 4)
+    assert target.parent_rows == (-1, -1, 0, 2, 1)
+    assert target.tree_shape == (0, 1, 0)
+    assert target.mode == "verify_tree"
+
+    session.max_batch_size = 4
+    with pytest.raises(ValueError, match="max_batch_size"):
+        session.target_verify_batch(draft, root_tokens=(9, 19), root_positions=(5, 3))
+    session.max_batch_size = 5
+    with pytest.raises(ValueError, match="outside"):
+        session.target_verify_batch(draft, root_tokens=(9, 100), root_positions=(5, 3))
 
 
 def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> None:
