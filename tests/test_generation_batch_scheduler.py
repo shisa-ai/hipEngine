@@ -83,6 +83,17 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert work.work_item.token_rows == ((101,), (102,), (201,))
     assert work.work_item.tree_parents == (0, 1, 0)
 
+    key = scheduler.speculative_verify_shape_key(work, top_k=8, experts_per_token=8, replay_steps=2)
+    assert key.mode is WorkKind.VERIFY_TREE
+    assert key.active_c == 2
+    assert key.context_bucket == 4
+    assert key.active_mask == (True, True)
+    assert key.top_k == 8
+    assert key.experts_per_token == 8
+    assert key.replay_steps == 2
+    assert key.draft_depth == 2
+    assert key.tree_shape == (0, 1, 0)
+
     summary = TargetAcceptSummary.from_accept_result(
         work.target_batch,
         AcceptResult(

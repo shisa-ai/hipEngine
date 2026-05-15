@@ -226,6 +226,24 @@ class ResidentBatchScheduler:
                     break
         return tuple(completed)
 
+    def speculative_verify_shape_key(
+        self,
+        work: SpeculativeVerifyWork,
+        *,
+        top_k: int = 0,
+        experts_per_token: int = 0,
+        replay_steps: int = 1,
+    ) -> BatchShapeKey:
+        """Return the graph bucket key for scheduler-owned verify work."""
+
+        return work.target_batch.shape_key(
+            self.active_batch,
+            context_bucket_size=self.context_bucket_size,
+            top_k=top_k,
+            experts_per_token=experts_per_token,
+            replay_steps=replay_steps,
+        )
+
     def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
         return self.active_batch.shape_key(
             mode=mode,

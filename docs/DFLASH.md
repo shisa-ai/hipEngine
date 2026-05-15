@@ -51,9 +51,10 @@ It records:
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
 - the batch scheduler can validate active-request readiness, emit
-  scheduler-owned speculative `TargetVerifyBatch`/`WorkItem` metadata, and
-  record accepted speculative token summaries against request budgets, while
-  host KV transaction bookkeeping now accounts for `TargetVerifyBatch` candidate
+  scheduler-owned speculative `TargetVerifyBatch`/`WorkItem` metadata, derive
+  verify graph shape keys, and record accepted speculative token summaries
+  against request budgets, while host KV transaction bookkeeping now accounts
+  for `TargetVerifyBatch` candidate
   rows only (committed root rows are excluded from the speculative journal),
   tracks per-request candidate counts, rejects accepted counts larger
   than the verified candidate budget, validates accepted target paths, can
