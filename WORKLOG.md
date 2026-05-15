@@ -6277,3 +6277,55 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows the blocker but does not complete native compact/c-aware execution.
+
+---
+
+## 2026-05-15 — Full-stack native-linear-prefix bridge correctness
+
+### Scope
+
+- Ran the existing native prefill correctness helper against the full 40-layer Qwen3.5/PARO stack.
+- This validates the current bridge only:
+  - native batched linear-prefix layers (`linear_prefix_layers=3`);
+  - serial c=1 suffix replay for the rest of the layer stack;
+  - no PLAN-MOE2/compact/full-attention throughput claim.
+- Updated Task #15 with the full-stack bridge evidence.
+
+### Evidence
+
+```bash
+python3 scripts/qwen35_native_prefill_correctness.py \
+  --prompt-length 4 \
+  --max-layers 40 \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-native-prefix-serial-suffix-full40-accepted.json
+```
+
+Result: accepted, no performance claim.
+
+- `status=accepted`
+- `performance_claim=false`
+- `max_layers=40`
+- `native_prefill_plan.path="linear_attention_prefix_only"`
+- `native_prefill_plan.linear_prefix_layers=3`
+- `native_prefill_plan.first_unsupported_layer=3`
+- `native_prefill_plan.first_unsupported_type="full_attention"`
+- `seed_match=true`
+- `decode_match=true`
+- `finite_logits=true`
+- serial/native seed token: `9707`
+- serial/native decode token: `9707`
+- `logit_abs_delta.seed=0.0036106109619140625`
+- `logit_abs_delta.decode=0.009748458862304688`
+
+Interpretation: the labelled native-linear-prefix + serial suffix bridge is correctness-safe on this prompt-length-4 full-stack smoke. Task #15 remains open because the retained target is true compact/native c>N prefill and target verification, not serial suffix replay.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count remains `1` (#15). The legacy loop verify selector is still stale and exits with the old TaskList-not-found selector error.
