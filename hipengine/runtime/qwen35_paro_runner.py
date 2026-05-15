@@ -931,6 +931,8 @@ class Qwen35ParoResidentSession:
             raise RuntimeError("session is closed")
         if plan.request_ids != buffers.request_ids:
             raise ValueError("commit plan request_ids must match state commit buffers")
+        if plan.transaction_id != buffers.transaction_id:
+            raise ValueError("commit plan transaction_id must match state commit buffers")
         if plan.mode != buffers.mode:
             raise ValueError("commit plan mode must match state commit buffers")
         if not buffers.has_linear_state and not buffers.has_kv_rows:

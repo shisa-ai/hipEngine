@@ -627,6 +627,7 @@ class TargetStateCommitBuffers:
     """Device-buffer ABI descriptor for committing verified target state rows."""
 
     request_ids: tuple[int, ...]
+    transaction_id: int
     accepted_counts: Tensor
     commit_rows: Tensor
     commit_positions: Tensor
@@ -640,6 +641,8 @@ class TargetStateCommitBuffers:
         if not self.request_ids:
             raise ValueError("TargetStateCommitBuffers must contain at least one request")
         _validate_unique_request_ids(self.request_ids)
+        if self.transaction_id < 0:
+            raise ValueError("transaction_id must be non-negative")
         count = len(self.request_ids)
         summary_tensors = (self.accepted_counts, self.commit_rows, self.commit_positions)
         for tensor in summary_tensors:
@@ -669,6 +672,7 @@ class TargetStateCommitBuffers:
     ) -> "TargetStateCommitBuffers":
         return cls(
             request_ids=plan.request_ids,
+            transaction_id=plan.transaction_id,
             accepted_counts=accepted_counts,
             commit_rows=commit_rows,
             commit_positions=commit_positions,

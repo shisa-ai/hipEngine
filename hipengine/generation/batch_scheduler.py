@@ -398,6 +398,8 @@ class ResidentBatchScheduler:
         commit = plan.commit_plan
         if buffers.request_ids != commit.request_ids:
             raise ValueError("state commit buffers request_ids must match speculative commit plan")
+        if buffers.transaction_id != commit.transaction_id:
+            raise ValueError("state commit buffers transaction_id must match speculative commit plan")
         if buffers.mode != commit.mode:
             raise ValueError("state commit buffers mode must match speculative commit plan")
         if buffers.device != plan.verify_plan.buffers.device:

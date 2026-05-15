@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -219,6 +220,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
         kv_rows_dst=_tensor(0x4100, (sum(summary.accepted_counts), 2, 4), "bf16"),
     )
     state_plan = scheduler.bind_speculative_commit_buffers(commit, state_buffers)
+    assert state_buffers.transaction_id == commit.commit_plan.transaction_id
     assert isinstance(state_plan, SpeculativeStateCommitPlan)
     assert state_plan.commit_plan is commit
     assert state_plan.buffers is state_buffers
@@ -239,6 +241,9 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     )
     with pytest.raises(ValueError, match="accepted token rows"):
         scheduler.bind_speculative_commit_buffers(commit, short_kv_dst_buffers)
+    wrong_transaction_buffers = replace(state_buffers, transaction_id=commit.commit_plan.transaction_id + 1)
+    with pytest.raises(ValueError, match="transaction_id"):
+        scheduler.bind_speculative_commit_buffers(commit, wrong_transaction_buffers)
     other_device = Device("hip", 1)
     other_state_buffers = TargetStateCommitBuffers.for_plan(
         commit.commit_plan,

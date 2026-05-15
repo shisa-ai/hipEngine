@@ -137,6 +137,7 @@
         ]
       },
       "state_commit_buffers": {
+        "transaction_id": 0,
         "request_rows": 2,
         "device": "hip:0",
         "has_linear_state": true,
@@ -252,6 +253,7 @@
         ],
         "request_rows": 2,
         "mode": "verify_tree",
+        "buffer_transaction_id": 1,
         "device": "hip:0",
         "verify_device": "hip:0",
         "device_matches_verify": true,
@@ -265,7 +267,8 @@
         "kv_src_covers_target": true,
         "kv_dst_rows": 3,
         "kv_dst_covers_accepts": true,
-        "transaction_id": 1
+        "transaction_id": 1,
+        "transaction_id_matches": true
       },
       "scheduler_kv_commit": {
         "transaction_id": 1,
@@ -302,6 +305,7 @@
       "step_batch_serial": true,
       "batch_execution_metadata": true,
       "target_verify_buffers_resident_device_checked": true,
+      "commit_verified_state_transaction_id_checked": true,
       "commit_verified_state_row_coverage_checked": true,
       "native_target_verify_batch": true,
       "speculative_verify_batch": true,

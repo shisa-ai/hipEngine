@@ -13,6 +13,7 @@ import argparse
 import json
 import shlex
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Sequence
@@ -248,6 +249,35 @@ def _resident_target_verify_device_checked() -> bool:
     return False
 
 
+def _resident_state_commit_transaction_id_checked() -> bool:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.device = Device("hip", 0)
+    plan = TargetCommitPlan(
+        transaction_id=0,
+        request_ids=(1,),
+        accepted_counts=(1,),
+        commit_rows=(1,),
+        commit_tokens=(10,),
+        commit_positions=(6,),
+        candidate_counts=(1,),
+        mode="verify_chain",
+    )
+    buffers = TargetStateCommitBuffers.for_plan(
+        plan,
+        accepted_counts=Tensor.from_handle(0x1B00, (1,), "int32", session.device),
+        commit_rows=Tensor.from_handle(0x1C00, (1,), "int32", session.device),
+        commit_positions=Tensor.from_handle(0x1D00, (1,), "int32", session.device),
+        kv_rows_src=Tensor.from_handle(0x1E00, (2, 8, 128), "bf16", session.device),
+        kv_rows_dst=Tensor.from_handle(0x1F00, (1, 8, 128), "bf16", session.device),
+    )
+    try:
+        session.commit_verified_state(plan, replace(buffers, transaction_id=1))
+    except ValueError as exc:
+        return "transaction_id" in str(exc)
+    return False
+
+
 def _resident_state_commit_row_coverage_checked() -> bool:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.closed = False
@@ -284,6 +314,7 @@ def _resident_api_status() -> dict[str, Any]:
         "step_batch_serial": hasattr(Qwen35ParoResidentSession, "step_batch_serial"),
         "batch_execution_metadata": hasattr(Qwen35ParoResidentSession, "batch_execution_metadata"),
         "target_verify_buffers_resident_device_checked": _resident_target_verify_device_checked(),
+        "commit_verified_state_transaction_id_checked": _resident_state_commit_transaction_id_checked(),
         "commit_verified_state_row_coverage_checked": _resident_state_commit_row_coverage_checked(),
         **speculative,
     }
@@ -373,7 +404,17 @@ def _kv_transaction_status() -> dict[str, Any]:
     scheduler_rolled_txn = scheduler.rollback_speculative_kv_transaction(policy, scheduler_rollback_plan)
     scheduler_buffer_plan = scheduler.bind_speculative_verify_buffers(scheduler_plan, buffers)
     scheduler_commit_plan = scheduler.plan_speculative_commit(scheduler_buffer_plan, summary)
-    scheduler_state_plan = scheduler.bind_speculative_commit_buffers(scheduler_commit_plan, state_buffers)
+    scheduler_state_buffers = TargetStateCommitBuffers.for_plan(
+        scheduler_commit_plan.commit_plan,
+        accepted_counts=state_buffers.accepted_counts,
+        commit_rows=state_buffers.commit_rows,
+        commit_positions=state_buffers.commit_positions,
+        linear_state_src=state_buffers.linear_state_src,
+        linear_state_dst=state_buffers.linear_state_dst,
+        kv_rows_src=state_buffers.kv_rows_src,
+        kv_rows_dst=state_buffers.kv_rows_dst,
+    )
+    scheduler_state_plan = scheduler.bind_speculative_commit_buffers(scheduler_commit_plan, scheduler_state_buffers)
     scheduler_committed_txn = scheduler.commit_speculative_kv_transaction(policy, scheduler_state_plan)
     scheduler_completed = scheduler.finalize_speculative_accept(scheduler_committed_txn, scheduler_state_plan)
     return {
@@ -413,6 +454,7 @@ def _kv_transaction_status() -> dict[str, Any]:
             "accepted_counts_shape": list(buffers.accepted_counts.shape),
         },
         "state_commit_buffers": {
+            "transaction_id": state_buffers.transaction_id,
             "request_rows": state_buffers.request_count,
             "device": str(state_buffers.device),
             "has_linear_state": state_buffers.has_linear_state,
@@ -470,6 +512,7 @@ def _kv_transaction_status() -> dict[str, Any]:
             "request_ids": list(scheduler_state_plan.buffers.request_ids),
             "request_rows": scheduler_state_plan.buffers.request_count,
             "mode": scheduler_state_plan.buffers.mode,
+            "buffer_transaction_id": scheduler_state_plan.buffers.transaction_id,
             "device": str(scheduler_state_plan.buffers.device),
             "verify_device": str(scheduler_state_plan.commit_plan.verify_plan.buffers.device),
             "device_matches_verify": scheduler_state_plan.buffers.device == scheduler_state_plan.commit_plan.verify_plan.buffers.device,
@@ -493,6 +536,7 @@ def _kv_transaction_status() -> dict[str, Any]:
                 and scheduler_state_plan.buffers.kv_rows_dst.shape[0] >= sum(scheduler_state_plan.commit_plan.commit_plan.accepted_counts)
             ),
             "transaction_id": scheduler_state_plan.commit_plan.commit_plan.transaction_id,
+            "transaction_id_matches": scheduler_state_plan.buffers.transaction_id == scheduler_state_plan.commit_plan.commit_plan.transaction_id,
         },
         "scheduler_kv_commit": {
             "transaction_id": scheduler_committed_txn.transaction_id,

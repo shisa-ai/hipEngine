@@ -8049,3 +8049,52 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows speculative commit-plan candidate-budget binding only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — State commit-buffer transaction binding
+
+### Scope
+
+- Added `TargetStateCommitBuffers.transaction_id`; `for_plan(...)` now stamps buffers with the source `TargetCommitPlan.transaction_id`.
+- Tightened scheduler and resident commit-buffer binding:
+  - `ResidentBatchScheduler.bind_speculative_commit_buffers(...)` rejects state/KV commit buffers whose transaction id does not match the scheduler commit plan;
+  - `Qwen35ParoResidentSession.commit_verified_state(...)` rejects state/KV commit buffers whose transaction id does not match the resident commit plan.
+- Updated speculative, scheduler, and resident tests plus blocker artifact evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative hipengine/generation hipengine/runtime scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py -q
+```
+
+Result: `39 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.resident_api.commit_verified_state_transaction_id_checked=true`
+- `implementation_status.kv_transaction_target_verify.state_commit_buffers.transaction_id=0`
+- `implementation_status.kv_transaction_target_verify.scheduler_state_commit_plan.transaction_id_matches=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: host state/KV commit buffers now bind to the same speculative transaction as the commit plan before scheduler/resident copy routing can proceed. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows speculative state/KV commit transaction binding only; no performance claim or kernel change was made.

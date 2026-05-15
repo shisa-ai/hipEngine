@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -178,7 +179,11 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
         kv_rows_src=_tensor(0x4000, (5, 8, 128), "bf16"),
         kv_rows_dst=_tensor(0x4100, (3, 8, 128), "bf16"),
     )
+    assert state_buffers.transaction_id == plan.transaction_id
     assert session.commit_verified_state(plan, state_buffers) is state_buffers
+    wrong_transaction_buffers = replace(state_buffers, transaction_id=plan.transaction_id + 1)
+    with pytest.raises(ValueError, match="transaction_id"):
+        session.commit_verified_state(plan, wrong_transaction_buffers)
     short_linear_src = TargetStateCommitBuffers.for_plan(
         plan,
         accepted_counts=_tensor(0x4200, (2,), "int32"),
