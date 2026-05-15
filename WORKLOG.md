@@ -6741,3 +6741,53 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows device-buffer ABI metadata only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — TargetStateCommitBuffers state/KV commit ABI scaffold
+
+### Scope
+
+- Added `hipengine.speculative.TargetStateCommitBuffers` as a torch-free device-buffer ABI descriptor for committing verified target state rows.
+- `TargetStateCommitBuffers.for_plan(plan, ...)` validates per-request accepted-count/commit-row/commit-position summary tensors and optional src/dst buffer pairs for linear-state and full-attention KV row copies.
+- Updated the DFlash blocker helper/artifact and Task #15 with state/KV commit-buffer evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py tests/test_dispatch_batch.py -q
+```
+
+Result: `24 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records `implementation_status.interfaces_present.target_state_commit_buffers="TargetStateCommitBuffers"` and `implementation_status.kv_transaction_target_verify.state_commit_buffers`:
+
+- `request_rows=2`
+- `device="hip:0"`
+- `has_linear_state=true`
+- `linear_state_tail_shape=[40,128]`
+- `has_kv_rows=true`
+- `kv_dst_rows=3`
+
+It still records `status=blocked`, `performance_claim=false`, and `native_target_verify_ready=false`.
+
+Interpretation: the host/runtime boundary now has validated Tensor-handle metadata for future device-side copies from verified target rows into live recurrent state and KV destinations. Resident target verification, GPU accept-summary kernels, and device-side state/KV commit remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows state/KV commit-buffer ABI metadata only; no performance claim or kernel change was made.

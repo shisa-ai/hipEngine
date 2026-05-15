@@ -25,7 +25,17 @@ from hipengine.core.tensor import Tensor
 from hipengine.dispatch import ActiveBatch, RequestState, WorkKind
 from hipengine.kvcache import FixedPagedKVPolicy, KVTransaction
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
-from hipengine.speculative import AcceptResult, DraftBatch, DraftModel, TargetAcceptSummary, TargetCommitPlan, TargetVerifyBatch, TargetVerifyBuffers, Verifier
+from hipengine.speculative import (
+    AcceptResult,
+    DraftBatch,
+    DraftModel,
+    TargetAcceptSummary,
+    TargetCommitPlan,
+    TargetStateCommitBuffers,
+    TargetVerifyBatch,
+    TargetVerifyBuffers,
+    Verifier,
+)
 
 DEFAULT_BATCH_ARTIFACT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json")
 DEFAULT_PREFILL_ARTIFACT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-attn-boundary-blocked.json")
@@ -55,6 +65,7 @@ def _interface_status() -> dict[str, Any]:
         "target_verify_batch": TargetVerifyBatch.__name__,
         "target_accept_summary": TargetAcceptSummary.__name__,
         "target_commit_plan": TargetCommitPlan.__name__,
+        "target_state_commit_buffers": TargetStateCommitBuffers.__name__,
         "target_verify_buffers": TargetVerifyBuffers.__name__,
         "verifier_protocol": Verifier.__name__,
         "kv_policy": FixedPagedKVPolicy.__name__,
@@ -116,6 +127,16 @@ def _kv_transaction_status() -> dict[str, Any]:
         commit_tokens=Tensor.from_handle(0x3900, (len(target.request_ids),), "int32", device),
         commit_positions=Tensor.from_handle(0x3A00, (len(target.request_ids),), "int32", device),
     )
+    state_buffers = TargetStateCommitBuffers.for_plan(
+        plan,
+        accepted_counts=Tensor.from_handle(0x3B00, (len(target.request_ids),), "int32", device),
+        commit_rows=Tensor.from_handle(0x3C00, (len(target.request_ids),), "int32", device),
+        commit_positions=Tensor.from_handle(0x3D00, (len(target.request_ids),), "int32", device),
+        linear_state_src=Tensor.from_handle(0x3E00, (target.rows, 40, 128), "bf16", device),
+        linear_state_dst=Tensor.from_handle(0x3F00, (len(target.request_ids), 40, 128), "bf16", device),
+        kv_rows_src=Tensor.from_handle(0x4000, (target.rows, 8, 128), "bf16", device),
+        kv_rows_dst=Tensor.from_handle(0x4100, (sum(summary.accepted_counts), 8, 128), "bf16", device),
+    )
     selection = target.select_commit_rows(summary.accepted_counts)
     active = ActiveBatch(2)
     active.admit(RequestState(request_id=1, prompt_tokens=(1, 2, 3, 4, 5), max_new_tokens=4, next_prompt_index=5))
@@ -156,6 +177,14 @@ def _kv_transaction_status() -> dict[str, Any]:
             "active_mask_dtype": buffers.active_mask.dtype.value,
             "target_top1_shape": list(buffers.target_top1.shape),
             "accepted_counts_shape": list(buffers.accepted_counts.shape),
+        },
+        "state_commit_buffers": {
+            "request_rows": state_buffers.request_count,
+            "device": str(state_buffers.device),
+            "has_linear_state": state_buffers.has_linear_state,
+            "linear_state_tail_shape": list(state_buffers.linear_state_src.shape[1:]) if state_buffers.linear_state_src else [],
+            "has_kv_rows": state_buffers.has_kv_rows,
+            "kv_dst_rows": state_buffers.kv_rows_dst.shape[0] if state_buffers.kv_rows_dst else 0,
         },
         "shape_key": {
             "mode": key.mode.value,

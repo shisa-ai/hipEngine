@@ -595,6 +595,95 @@ class TargetCommitPlan:
         return self.accepted_counts
 
 
+@dataclass(frozen=True, slots=True)
+class TargetStateCommitBuffers:
+    """Device-buffer ABI descriptor for committing verified target state rows."""
+
+    request_ids: tuple[int, ...]
+    accepted_counts: Tensor
+    commit_rows: Tensor
+    commit_positions: Tensor
+    linear_state_src: Tensor | None = None
+    linear_state_dst: Tensor | None = None
+    kv_rows_src: Tensor | None = None
+    kv_rows_dst: Tensor | None = None
+    mode: str = "verify_chain"
+
+    def __post_init__(self) -> None:
+        if not self.request_ids:
+            raise ValueError("TargetStateCommitBuffers must contain at least one request")
+        count = len(self.request_ids)
+        summary_tensors = (self.accepted_counts, self.commit_rows, self.commit_positions)
+        for tensor in summary_tensors:
+            if tensor.shape != (count,):
+                raise ValueError("state commit summary tensors must have shape (request_count,)")
+            if tensor.dtype not in {DType.INT32, DType.INT64}:
+                raise ValueError("state commit summary tensors must be int32 or int64")
+            if tensor.device != self.commit_rows.device:
+                raise ValueError("state commit buffers must live on one device")
+        self._validate_optional_pair("linear_state", self.linear_state_src, self.linear_state_dst, count)
+        self._validate_optional_pair("kv_rows", self.kv_rows_src, self.kv_rows_dst, count)
+        if self.mode not in {"verify_chain", "verify_tree"}:
+            raise ValueError("mode must be verify_chain or verify_tree")
+
+    @classmethod
+    def for_plan(
+        cls,
+        plan: TargetCommitPlan,
+        *,
+        accepted_counts: Tensor,
+        commit_rows: Tensor,
+        commit_positions: Tensor,
+        linear_state_src: Tensor | None = None,
+        linear_state_dst: Tensor | None = None,
+        kv_rows_src: Tensor | None = None,
+        kv_rows_dst: Tensor | None = None,
+    ) -> "TargetStateCommitBuffers":
+        return cls(
+            request_ids=plan.request_ids,
+            accepted_counts=accepted_counts,
+            commit_rows=commit_rows,
+            commit_positions=commit_positions,
+            linear_state_src=linear_state_src,
+            linear_state_dst=linear_state_dst,
+            kv_rows_src=kv_rows_src,
+            kv_rows_dst=kv_rows_dst,
+            mode=plan.mode,
+        )
+
+    @property
+    def request_count(self) -> int:
+        return len(self.request_ids)
+
+    @property
+    def device(self):
+        return self.commit_rows.device
+
+    @property
+    def has_linear_state(self) -> bool:
+        return self.linear_state_src is not None
+
+    @property
+    def has_kv_rows(self) -> bool:
+        return self.kv_rows_src is not None
+
+    def _validate_optional_pair(self, name: str, src: Tensor | None, dst: Tensor | None, request_count: int) -> None:
+        if (src is None) != (dst is None):
+            raise ValueError(f"{name} buffers must be provided as a src/dst pair")
+        if src is None or dst is None:
+            return
+        if src.device != self.device or dst.device != self.device:
+            raise ValueError(f"{name} buffers must live on the state commit device")
+        if src.dtype != dst.dtype:
+            raise ValueError(f"{name} source and destination buffers must share dtype")
+        if src.ndim == 0 or dst.ndim == 0:
+            raise ValueError(f"{name} buffers must be row-major tensors")
+        if src.shape[1:] != dst.shape[1:]:
+            raise ValueError(f"{name} source and destination row tail shape must match")
+        if src.shape[0] <= 0 or dst.shape[0] < request_count:
+            raise ValueError(f"{name} buffers must contain enough rows")
+
+
 def _target_path_tokens(target: TargetVerifyBatch, selected_row: int, accepted_count: int) -> tuple[int, ...]:
     if accepted_count == 0:
         if selected_row not in target.root_rows:
@@ -637,6 +726,7 @@ __all__ = [
     "TargetAcceptSummary",
     "TargetCommitPlan",
     "TargetCommitSelection",
+    "TargetStateCommitBuffers",
     "TargetVerifyBatch",
     "TargetVerifyBuffers",
     "Verifier",

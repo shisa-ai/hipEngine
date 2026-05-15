@@ -9,7 +9,15 @@ from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import ActiveBatch, RequestState
 from hipengine.kvcache import FixedPagedKVPolicy
-from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetVerifyBatch, TargetVerifyBuffers
+from hipengine.speculative import (
+    AcceptResult,
+    DraftBatch,
+    TargetAcceptSummary,
+    TargetCommitPlan,
+    TargetStateCommitBuffers,
+    TargetVerifyBatch,
+    TargetVerifyBuffers,
+)
 from scripts.qwen35_dflash_ddtree_blocker import build_payload
 
 
@@ -327,6 +335,55 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
         )
 
 
+def test_target_state_commit_buffers_validate_copy_contract() -> None:
+    plan = TargetCommitPlan(
+        transaction_id=3,
+        request_ids=(1, 2),
+        accepted_counts=(2, 1),
+        commit_rows=(3, 4),
+        commit_tokens=(11, 20),
+        commit_positions=(7, 4),
+        candidate_counts=(2, 1),
+        mode="verify_tree",
+    )
+
+    buffers = TargetStateCommitBuffers.for_plan(
+        plan,
+        accepted_counts=_tensor(0x4000, (2,), "int32"),
+        commit_rows=_tensor(0x4100, (2,), "int32"),
+        commit_positions=_tensor(0x4200, (2,), "int32"),
+        linear_state_src=_tensor(0x4300, (5, 40, 128), "bf16"),
+        linear_state_dst=_tensor(0x4400, (2, 40, 128), "bf16"),
+        kv_rows_src=_tensor(0x4500, (5, 8, 128), "bf16"),
+        kv_rows_dst=_tensor(0x4600, (3, 8, 128), "bf16"),
+    )
+
+    assert buffers.request_ids == (1, 2)
+    assert buffers.request_count == 2
+    assert str(buffers.device) == "hip:0"
+    assert buffers.has_linear_state
+    assert buffers.has_kv_rows
+    assert buffers.mode == "verify_tree"
+
+    with pytest.raises(ValueError, match="src/dst pair"):
+        TargetStateCommitBuffers.for_plan(
+            plan,
+            accepted_counts=_tensor(0x4000, (2,), "int32"),
+            commit_rows=_tensor(0x4100, (2,), "int32"),
+            commit_positions=_tensor(0x4200, (2,), "int32"),
+            linear_state_src=_tensor(0x4300, (5, 40, 128), "bf16"),
+        )
+    with pytest.raises(ValueError, match="tail shape"):
+        TargetStateCommitBuffers.for_plan(
+            plan,
+            accepted_counts=_tensor(0x4000, (2,), "int32"),
+            commit_rows=_tensor(0x4100, (2,), "int32"),
+            commit_positions=_tensor(0x4200, (2,), "int32"),
+            kv_rows_src=_tensor(0x4500, (5, 8, 128), "bf16"),
+            kv_rows_dst=_tensor(0x4600, (3, 4, 128), "bf16"),
+        )
+
+
 def test_target_verify_batch_requires_selected_rows_for_ambiguous_tree_depth() -> None:
     target = TargetVerifyBatch.from_draft(
         DraftBatch(
@@ -495,6 +552,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["target_verify_batch"] == "TargetVerifyBatch"
     assert payload["implementation_status"]["interfaces_present"]["target_accept_summary"] == "TargetAcceptSummary"
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan"] == "TargetCommitPlan"
+    assert payload["implementation_status"]["interfaces_present"]["target_state_commit_buffers"] == "TargetStateCommitBuffers"
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers"] == "TargetVerifyBuffers"
     assert payload["implementation_status"]["kv_transaction_target_verify"]["target_verify_rows"] == 5
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
@@ -505,6 +563,8 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["device_buffers"]["rows"] == 5
     assert payload["implementation_status"]["kv_transaction_target_verify"]["device_buffers"]["summary_rows"] == 2
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["state_commit_buffers"]["has_linear_state"]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["state_commit_buffers"]["has_kv_rows"]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["shape_key"]["tree_shape"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["work_item"]["tree_parents"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["transaction_draft_rows"] == 3
