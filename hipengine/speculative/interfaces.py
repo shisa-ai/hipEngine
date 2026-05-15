@@ -319,6 +319,76 @@ class TargetVerifyBatch:
             mode=self.mode,
         )
 
+    def accept_from_top1(
+        self,
+        target_top1: Sequence[int],
+        *,
+        transaction_id: int | None = None,
+        remaining_decode: Sequence[int] | None = None,
+    ) -> "AcceptResult":
+        """CPU oracle for device accept-summary kernels.
+
+        ``target_top1[row]`` is the target model's selected next token for the
+        prefix ending at ``row``.  The oracle follows matching draft edges from
+        each request root, returns the accepted draft prefix, records the final
+        row selected for commit, and emits the target correction/bonus token
+        when the caller's remaining decode budget has room for it.
+        """
+
+        top1 = tuple(int(token) for token in target_top1)
+        if len(top1) != self.rows:
+            raise ValueError("target_top1 must align with target verify rows")
+        if any(token < 0 for token in top1):
+            raise ValueError("target_top1 tokens must be non-negative")
+        budgets = None if remaining_decode is None else tuple(int(count) for count in remaining_decode)
+        if budgets is not None:
+            if len(budgets) != len(self.request_ids):
+                raise ValueError("remaining_decode must align with request_ids")
+            if any(count < 0 for count in budgets):
+                raise ValueError("remaining_decode must be non-negative")
+
+        child_rows: dict[int, list[int]] = {row: [] for row in range(self.rows)}
+        for row in self.candidate_rows:
+            if self.active_mask[row]:
+                child_rows[self.parent_rows[row]].append(row)
+
+        accepted_counts: list[int] = []
+        accepted_tokens: list[tuple[int, ...]] = []
+        selected_rows: list[int] = []
+        next_tokens: list[int | None] = []
+        for index, (request_id, root_row) in enumerate(zip(self.request_ids, self.root_rows, strict=True)):
+            budget = None if budgets is None else budgets[index]
+            row = root_row
+            request_tokens: list[int] = []
+            while budget is None or len(request_tokens) < budget:
+                matches = [
+                    child
+                    for child in child_rows[row]
+                    if self.row_to_request[child] == request_id and self.tokens[child] == top1[row]
+                ]
+                if not matches:
+                    break
+                if len(matches) > 1:
+                    raise ValueError("target_top1 matches multiple candidate rows")
+                row = matches[0]
+                request_tokens.append(self.tokens[row])
+            selected_rows.append(row)
+            accepted_counts.append(len(request_tokens))
+            accepted_tokens.append(tuple(request_tokens))
+            if budget is not None and len(request_tokens) >= budget:
+                next_tokens.append(None)
+            else:
+                next_tokens.append(top1[row])
+
+        return AcceptResult(
+            request_ids=self.request_ids,
+            accepted_counts=tuple(accepted_counts),
+            accepted_tokens=tuple(accepted_tokens),
+            transaction_id=transaction_id,
+            selected_candidate_rows=tuple(selected_rows),
+            next_tokens=tuple(next_tokens),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class TargetVerifyBuffers:

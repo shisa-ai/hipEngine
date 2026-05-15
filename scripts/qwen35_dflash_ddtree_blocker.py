@@ -178,6 +178,29 @@ def _target_accept_summary_transaction_id_checked() -> bool:
     return False
 
 
+def _target_accept_oracle_checked() -> bool:
+    draft = DraftBatch(
+        request_ids=(1,),
+        candidate_tokens=(10, 11),
+        parent_positions=(5, 6),
+        draft_depths=(1, 2),
+        row_to_request=(1, 1),
+        mode="verify_tree",
+        tree_parents=(-1, 0),
+    )
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100,), root_positions=(5,))
+    result = target.accept_from_top1((10, 11, 12), transaction_id=7, remaining_decode=(3,))
+    if result.accepted_counts != (2,) or result.accepted_tokens != ((10, 11),):
+        return False
+    if result.selected_candidate_rows != (2,) or result.next_tokens != (12,) or result.transaction_id != 7:
+        return False
+    try:
+        target.accept_from_top1((10, 11))
+    except ValueError as exc:
+        return "target_top1" in str(exc)
+    return False
+
+
 def _accept_result_selected_rows_checked() -> bool:
     try:
         AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), selected_candidate_rows=(-1,))
@@ -397,6 +420,7 @@ def _interface_status() -> dict[str, Any]:
         "target_commit_plan_transaction_role_checked": _target_commit_plan_transaction_role_checked(),
         "target_commit_plan_candidate_budget_checked": _target_commit_plan_candidate_budget_checked(),
         "target_accept_summary_transaction_id_checked": _target_accept_summary_transaction_id_checked(),
+        "target_accept_oracle_checked": _target_accept_oracle_checked(),
         "accept_result_selected_rows_checked": _accept_result_selected_rows_checked(),
         "accept_result_next_tokens_checked": _accept_result_next_tokens_checked(),
         "target_accept_summary_topology_checked": _target_accept_summary_topology_checked(),
@@ -591,14 +615,8 @@ def _kv_transaction_status() -> dict[str, Any]:
     )
     target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
     txn = policy.begin_transaction((1, 2), target)
-    accept = AcceptResult(
-        request_ids=(1, 2),
-        accepted_counts=(2, 1),
-        accepted_tokens=((10, 11), (20,)),
-        transaction_id=txn.transaction_id,
-        selected_candidate_rows=(3, 4),
-        next_tokens=(12, 21),
-    )
+    target_top1 = (10, 20, 11, 12, 21)
+    accept = target.accept_from_top1(target_top1, transaction_id=txn.transaction_id)
     summary = TargetAcceptSummary.from_accept_result(target, accept)
     plan = TargetCommitPlan.from_summary(summary, txn)
     buffers = TargetVerifyBuffers.for_batch(
@@ -701,6 +719,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         "root_rows_excluded_from_journal": txn.draft_rows == target.candidate_count,
         "commit_selection_rows": list(selection.selected_rows),
         "commit_selection_positions": list(selection.selected_positions),
+        "target_top1": list(target_top1),
         "accept_result": {
             "transaction_id": accept.transaction_id,
             "selected_candidate_rows": [] if accept.selected_candidate_rows is None else list(accept.selected_candidate_rows),

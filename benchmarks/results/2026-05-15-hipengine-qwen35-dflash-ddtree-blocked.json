@@ -28,6 +28,7 @@
       "target_commit_plan_transaction_role_checked": true,
       "target_commit_plan_candidate_budget_checked": true,
       "target_accept_summary_transaction_id_checked": true,
+      "target_accept_oracle_checked": true,
       "accept_result_selected_rows_checked": true,
       "accept_result_next_tokens_checked": true,
       "target_accept_summary_topology_checked": true,
@@ -75,6 +76,13 @@
       "commit_selection_positions": [
         7,
         4
+      ],
+      "target_top1": [
+        10,
+        20,
+        11,
+        12,
+        21
       ],
       "accept_result": {
         "transaction_id": 0,

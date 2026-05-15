@@ -8575,3 +8575,51 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows scheduler speculative next-token finalization only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Target accept-summary CPU oracle
+
+### Scope
+
+- Added `TargetVerifyBatch.accept_from_top1(...)`, a CPU oracle for future GPU accept-summary kernels.
+- The oracle follows target-top1 edges from each request root across chain/tree candidate rows, emits accepted draft counts/tokens, selected commit rows, transaction ids, and target next-token correction/bonus metadata.
+- It honors optional remaining-decode budgets and rejects invalid target-top1 shapes/negative ids and ambiguous duplicate matching children.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: `23 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.target_accept_oracle_checked=true`
+- `implementation_status.kv_transaction_target_verify.target_top1=[10,20,11,12,21]`
+- `implementation_status.kv_transaction_target_verify.accept_result.selected_candidate_rows=[3,4]`
+- `implementation_status.kv_transaction_target_verify.accept_result.next_tokens=[12,21]`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: future GPU accept-summary kernels now have a deterministic host oracle for accepted counts/tokens, selected commit rows, and correction/bonus tokens over the same `TargetVerifyBatch` layout. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows target accept-summary oracle coverage only; no performance claim or kernel change was made.
