@@ -9974,3 +9974,28 @@ Results: 512/128 samples `553.164`, `554.600`, `554.301`, `552.499` tok/s
 `native_owned_device_bytes=1625645909`, native prefill `0.94034s`, max KL
 `0.01743`, top-1 `1.0`; compact c=2/4/8 prompt8 gates passed. 4K/128 improved
 to `330.082 tok/s`, prefill `12.4090s`, decode `101.790 tok/s`.
+
+## 2026-05-15 — Prefill multiloop iter 13: 128-thread shared-expert W8A16 rejected
+
+Tried increasing shared-expert W8A16 prefill GEMVs from 64 to 128 threads for
+`tokens > 1` while leaving c=1/decode at the existing 64-thread default. This
+covers the shared-expert gate/up and down projections (80 launches for 40
+layers), but it regressed the retained path.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter13-512-run1.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter13-512-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter13-512-run3.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: fixture passed (`max_kl=0.02090`, top-1 `1.0`,
+`native_owned_device_bytes=1625645909`) and 4K remained above the 95% guard at
+`324.879 tok/s`, but 512/128 samples `533.023`, `535.455`, `532.551`,
+`533.145` tok/s (median `533.084`) regressed below retained `553.732`. Decision:
+revert; shared-expert W8A16 should stay at 64 threads for prefill.
