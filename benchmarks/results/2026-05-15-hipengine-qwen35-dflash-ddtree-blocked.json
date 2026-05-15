@@ -26,6 +26,7 @@
       "scheduler_speculative_shape_key": true,
       "scheduler_speculative_graph_cache": true,
       "scheduler_speculative_kv_transaction": true,
+      "scheduler_speculative_verify_plan": true,
       "verify_graph_shape_key": {
         "mode": "verify_tree",
         "active_c": 1,
@@ -176,6 +177,22 @@
           1,
           0
         ]
+      },
+      "scheduler_verify_plan": {
+        "transaction_id": 1,
+        "request_ids": [
+          1,
+          2
+        ],
+        "transaction_draft_rows": 3,
+        "candidate_counts": [
+          2,
+          1
+        ],
+        "shape_key_matches_target": true,
+        "graph_cache_entries": 1,
+        "graph_mode": "verify_tree",
+        "graph_draft_depth": 2
       }
     },
     "resident_api": {

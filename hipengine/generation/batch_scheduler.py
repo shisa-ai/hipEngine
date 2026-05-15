@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
+from hipengine.kvcache import KVTransaction
 from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetVerifyBatch
 
 
@@ -46,6 +47,15 @@ class CompletedRequest:
 class SpeculativeVerifyWork:
     target_batch: TargetVerifyBatch
     work_item: WorkItem
+
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeVerifyPlan:
+    target_batch: TargetVerifyBatch
+    work_item: WorkItem
+    transaction: KVTransaction
+    shape_key: BatchShapeKey
+    graph: object
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,6 +281,40 @@ class ResidentBatchScheduler:
         )
         return self.graph_buckets.get_or_create(key, factory)
 
+    def plan_speculative_verify(
+        self,
+        kv_policy,
+        work: SpeculativeVerifyWork,
+        factory,
+        *,
+        top_k: int = 0,
+        experts_per_token: int = 0,
+        replay_steps: int = 1,
+    ) -> SpeculativeVerifyPlan:
+        """Bundle scheduler metadata for one native target-verifier replay."""
+
+        transaction = self.begin_speculative_verify_transaction(kv_policy, work)
+        if transaction.request_ids != work.target_batch.request_ids:
+            raise ValueError("speculative transaction request_ids must match target batch")
+        if transaction.draft_rows != work.target_batch.candidate_count:
+            raise ValueError("speculative transaction rows must match target candidate rows")
+        if transaction.candidate_counts is not None and transaction.candidate_counts != work.target_batch.candidate_counts:
+            raise ValueError("speculative transaction candidate counts must match target batch")
+        key = self.speculative_verify_shape_key(
+            work,
+            top_k=top_k,
+            experts_per_token=experts_per_token,
+            replay_steps=replay_steps,
+        )
+        graph = self.graph_buckets.get_or_create(key, factory)
+        return SpeculativeVerifyPlan(
+            target_batch=work.target_batch,
+            work_item=work.work_item,
+            transaction=transaction,
+            shape_key=key,
+            graph=graph,
+        )
+
     def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
         return self.active_batch.shape_key(
             mode=mode,
@@ -320,5 +364,6 @@ __all__ = [
     "GraphBucketCache",
     "GraphBucketStats",
     "ResidentBatchScheduler",
+    "SpeculativeVerifyPlan",
     "SpeculativeVerifyWork",
 ]

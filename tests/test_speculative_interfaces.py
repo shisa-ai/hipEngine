@@ -559,6 +559,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_shape_key"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_graph_cache"]
     assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_kv_transaction"]
+    assert payload["implementation_status"]["interfaces_present"]["scheduler_speculative_verify_plan"]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["target_verify_rows"] == 5
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
@@ -574,6 +575,14 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["work_item"]["tree_parents"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["transaction_draft_rows"] == 3
     assert payload["implementation_status"]["kv_transaction_target_verify"]["root_rows_excluded_from_journal"]
+    plan = payload["implementation_status"]["kv_transaction_target_verify"]["scheduler_verify_plan"]
+    assert plan["request_ids"] == [1, 2]
+    assert plan["transaction_draft_rows"] == 3
+    assert plan["candidate_counts"] == [2, 1]
+    assert plan["shape_key_matches_target"]
+    assert plan["graph_cache_entries"] == 1
+    assert plan["graph_mode"] == "verify_tree"
+    assert plan["graph_draft_depth"] == 2
     assert payload["implementation_status"]["resident_api"]["step_batch_serial"]
     assert payload["implementation_status"]["resident_api"]["native_target_verify_batch"]
     assert payload["implementation_status"]["resident_api"]["speculative_verify_batch"]

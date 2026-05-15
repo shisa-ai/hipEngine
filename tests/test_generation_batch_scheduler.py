@@ -7,7 +7,7 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import WorkKind
-from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler, SpeculativeVerifyWork
+from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler, SpeculativeVerifyPlan, SpeculativeVerifyWork
 from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
@@ -131,6 +131,23 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert txn.draft_rows == 3
     assert txn.candidate_counts == (2, 1)
     assert txn.role == "verify_tree"
+    plan = scheduler.plan_speculative_verify(
+        policy,
+        work,
+        lambda bucket: {"unexpected": bucket},
+        top_k=8,
+        experts_per_token=8,
+        replay_steps=2,
+    )
+    assert isinstance(plan, SpeculativeVerifyPlan)
+    assert plan.target_batch is work.target_batch
+    assert plan.work_item is work.work_item
+    assert plan.transaction.request_ids == (r0, r1)
+    assert plan.transaction.draft_rows == 3
+    assert plan.transaction.candidate_counts == (2, 1)
+    assert plan.shape_key == key
+    assert plan.graph is graph
+    assert scheduler.graph_buckets.stats.hits == 2
 
     summary = TargetAcceptSummary.from_accept_result(
         work.target_batch,

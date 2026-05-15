@@ -76,6 +76,7 @@ def _interface_status() -> dict[str, Any]:
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),
         "scheduler_speculative_graph_cache": hasattr(ResidentBatchScheduler, "get_or_create_speculative_verify_graph"),
         "scheduler_speculative_kv_transaction": hasattr(ResidentBatchScheduler, "begin_speculative_verify_transaction"),
+        "scheduler_speculative_verify_plan": hasattr(ResidentBatchScheduler, "plan_speculative_verify"),
         "verify_graph_shape_key": {
             "mode": shape_key.mode.value,
             "active_c": shape_key.active_c,
@@ -149,6 +150,25 @@ def _kv_transaction_status() -> dict[str, Any]:
     active.admit(RequestState(request_id=2, prompt_tokens=(6, 7, 8), max_new_tokens=4, next_prompt_index=3))
     key = target.shape_key(active, context_bucket_size=4, top_k=8, experts_per_token=8, replay_steps=1)
     work = target.to_work_item()
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
+    scheduler.submit([1, 2, 3, 4, 5], max_new_tokens=4, request_id=1)
+    scheduler.submit([6, 7, 8], max_new_tokens=4, request_id=2)
+    scheduler.admit_pending()
+    scheduler.next_prefill_work(chunk_size=8)
+    scheduler.next_prefill_work(chunk_size=8)
+    scheduler_work = scheduler.next_speculative_verify_work(
+        draft,
+        root_tokens=(100, 200),
+        root_positions=(5, 3),
+    )
+    scheduler_plan = scheduler.plan_speculative_verify(
+        policy,
+        scheduler_work,
+        lambda bucket: {"mode": bucket.mode.value, "draft_depth": bucket.draft_depth},
+        top_k=8,
+        experts_per_token=8,
+        replay_steps=1,
+    )
     return {
         "target_verify_rows": target.rows,
         "candidate_rows": target.candidate_count,
@@ -210,6 +230,16 @@ def _kv_transaction_status() -> dict[str, Any]:
             "token_rows": [list(row) for row in work.token_rows],
             "draft_depth": work.draft_depth,
             "tree_parents": list(work.tree_parents),
+        },
+        "scheduler_verify_plan": {
+            "transaction_id": scheduler_plan.transaction.transaction_id,
+            "request_ids": list(scheduler_plan.transaction.request_ids),
+            "transaction_draft_rows": scheduler_plan.transaction.draft_rows,
+            "candidate_counts": list(scheduler_plan.transaction.candidate_counts or ()),
+            "shape_key_matches_target": scheduler_plan.shape_key == key,
+            "graph_cache_entries": scheduler.graph_buckets.stats.entries,
+            "graph_mode": scheduler_plan.graph["mode"],
+            "graph_draft_depth": scheduler_plan.graph["draft_depth"],
         },
     }
 
