@@ -74,8 +74,21 @@ class KVTransaction:
                 raise ValueError("candidate_counts must be non-negative")
             if sum(self.candidate_counts) > self.draft_rows:
                 raise ValueError("candidate_counts cannot exceed draft_rows")
-        if self.accepted_counts is not None and len(self.accepted_counts) != len(self.request_ids):
-            raise ValueError("accepted_counts must match request_ids")
+        if self.committed and self.accepted_counts is None:
+            raise ValueError("committed transaction requires accepted_counts")
+        if self.accepted_counts is not None:
+            if not self.committed:
+                raise ValueError("accepted_counts require committed transaction")
+            if len(self.accepted_counts) != len(self.request_ids):
+                raise ValueError("accepted_counts must match request_ids")
+            if any(count < 0 for count in self.accepted_counts):
+                raise ValueError("accepted_counts must be non-negative")
+            if self.candidate_counts is not None:
+                for accepted, available in zip(self.accepted_counts, self.candidate_counts, strict=True):
+                    if accepted > available:
+                        raise ValueError("accepted_counts cannot exceed candidate_counts")
+            elif sum(self.accepted_counts) > self.draft_rows:
+                raise ValueError("accepted_counts cannot exceed draft_rows")
 
 
 @runtime_checkable
@@ -237,6 +250,8 @@ class FixedPagedKVPolicy:
         current = self._current_transaction(txn)
         if current.rolled_back:
             raise ValueError("cannot commit a rolled-back KV transaction")
+        if current.committed:
+            raise ValueError("cannot commit an already committed KV transaction")
         counts = tuple(int(item) for item in accepted_counts)
         if len(counts) != len(current.request_ids):
             raise ValueError("accepted_counts must match transaction request_ids")
@@ -254,6 +269,8 @@ class FixedPagedKVPolicy:
         current = self._current_transaction(txn)
         if current.committed:
             raise ValueError("cannot rollback a committed KV transaction")
+        if current.rolled_back:
+            raise ValueError("cannot rollback an already rolled-back KV transaction")
         updated = replace(current, rolled_back=True)
         self._transactions[updated.transaction_id] = updated
         return updated

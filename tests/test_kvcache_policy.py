@@ -118,6 +118,41 @@ def test_fixed_paged_policy_rejects_duplicate_transaction_requests() -> None:
         policy.begin_transaction([1, SimpleNamespace(request_id=1)], draft)
 
 
+def test_kv_transaction_validates_terminal_state() -> None:
+    with pytest.raises(ValueError, match="requires accepted_counts"):
+        KVTransaction(transaction_id=0, request_ids=(1,), draft_rows=1, role="verify_chain", committed=True)
+    with pytest.raises(ValueError, match="require committed"):
+        KVTransaction(transaction_id=0, request_ids=(1,), draft_rows=1, role="verify_chain", accepted_counts=(1,))
+    with pytest.raises(ValueError, match="non-negative"):
+        KVTransaction(
+            transaction_id=0,
+            request_ids=(1,),
+            draft_rows=1,
+            role="verify_chain",
+            committed=True,
+            accepted_counts=(-1,),
+        )
+    with pytest.raises(ValueError, match="candidate_counts"):
+        KVTransaction(
+            transaction_id=0,
+            request_ids=(1,),
+            draft_rows=1,
+            role="verify_chain",
+            candidate_counts=(0,),
+            committed=True,
+            accepted_counts=(1,),
+        )
+    with pytest.raises(ValueError, match="draft_rows"):
+        KVTransaction(
+            transaction_id=0,
+            request_ids=(1, 2),
+            draft_rows=1,
+            role="verify_chain",
+            committed=True,
+            accepted_counts=(1, 1),
+        )
+
+
 def test_fixed_paged_policy_transaction_commit_and_rollback() -> None:
     policy = FixedPagedKVPolicy()
     _register(policy, 1, ptr_base=0x1000)
@@ -127,19 +162,23 @@ def test_fixed_paged_policy_transaction_commit_and_rollback() -> None:
     txn = policy.begin_transaction([1, 2], draft)
     assert txn == KVTransaction(transaction_id=0, request_ids=(1, 2), draft_rows=3, role="verify_chain", candidate_counts=(2, 1))
 
+    with pytest.raises(ValueError, match="candidate_counts"):
+        policy.commit(txn, [3, 0])
     committed = policy.commit(txn, [2, 1])
     assert committed.committed
     assert committed.accepted_counts == (2, 1)
     with pytest.raises(ValueError, match="committed"):
         policy.rollback(committed)
-    with pytest.raises(ValueError, match="candidate_counts"):
-        policy.commit(txn, [3, 0])
+    with pytest.raises(ValueError, match="already committed"):
+        policy.commit(committed, [2, 1])
 
     txn2 = policy.begin_transaction([1], WorkItem(kind=WorkKind.VERIFY_TREE, request_ids=(1,), row_to_request=(1,), draft_depth=1))
     rolled_back = policy.rollback(txn2)
     assert rolled_back.rolled_back
     with pytest.raises(ValueError, match="rolled-back"):
         policy.commit(rolled_back, [0])
+    with pytest.raises(ValueError, match="already rolled-back"):
+        policy.rollback(rolled_back)
 
 
 def test_fixed_paged_policy_reclaims_reservations() -> None:

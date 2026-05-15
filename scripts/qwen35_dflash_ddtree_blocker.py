@@ -77,6 +77,22 @@ def _kv_transaction_request_ids_unique_checked() -> bool:
     return False
 
 
+def _kv_transaction_terminal_state_checked() -> bool:
+    try:
+        KVTransaction(transaction_id=0, request_ids=(1,), draft_rows=1, role="verify_chain", committed=True)
+    except ValueError as exc:
+        committed_requires_counts = "requires accepted_counts" in str(exc)
+    else:
+        committed_requires_counts = False
+    try:
+        KVTransaction(transaction_id=0, request_ids=(1,), draft_rows=1, role="verify_chain", accepted_counts=(1,))
+    except ValueError as exc:
+        counts_require_commit = "require committed" in str(exc)
+    else:
+        counts_require_commit = False
+    return committed_requires_counts and counts_require_commit
+
+
 def _interface_status() -> dict[str, Any]:
     batch = ActiveBatch(2)
     batch.admit(RequestState.from_tokens(0, [1], max_new_tokens=1))
@@ -95,6 +111,7 @@ def _interface_status() -> dict[str, Any]:
         "kv_transaction": KVTransaction.__name__,
         "speculative_request_ids_unique_checked": _speculative_request_ids_unique_checked(),
         "kv_transaction_request_ids_unique_checked": _kv_transaction_request_ids_unique_checked(),
+        "kv_transaction_terminal_state_checked": _kv_transaction_terminal_state_checked(),
         "scheduler_speculative_verify_work": hasattr(ResidentBatchScheduler, "next_speculative_verify_work"),
         "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),

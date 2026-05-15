@@ -7855,3 +7855,54 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows speculative KV transaction metadata correctness validation only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — KV transaction terminal-state invariants
+
+### Scope
+
+- Tightened `KVTransaction` terminal-state validation:
+  - committed transactions require `accepted_counts`;
+  - `accepted_counts` require `committed=True`;
+  - accepted counts must be non-negative and within candidate/draft budgets.
+- Tightened `FixedPagedKVPolicy` terminal transitions:
+  - already committed transactions cannot be committed again;
+  - already rolled-back transactions cannot be rolled back again.
+- Added negative KV policy tests for direct terminal-state construction and repeated commit/rollback transitions.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/kvcache hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_kvcache_policy.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_kvcache_policy.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `22 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.kv_transaction_request_ids_unique_checked=true`
+- `implementation_status.interfaces_present.kv_transaction_terminal_state_checked=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: host KV transaction metadata now rejects inconsistent terminal states before scheduler finalization or rollback can become ambiguous. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows speculative KV transaction lifecycle validation only; no performance claim or kernel change was made.
