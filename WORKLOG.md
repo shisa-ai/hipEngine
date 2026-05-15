@@ -10210,3 +10210,32 @@ Results: tests passed (`56 passed`) and fixture passed (`max_kl=0.01743`, top-1
 `332.699 tok/s`, but 512/128 samples `559.527`, `565.015`, `563.030`,
 `560.252` tok/s (median `561.641`) regressed below retained `565.213`.
 Decision: revert; the D2D copy is not a useful short-depth bottleneck.
+
+## 2026-05-15 — Prefill multiloop iter 22: 128-thread head rotary rejected
+
+After four consecutive orchestration/copy failures, switched back to a kernel-side
+full-attention prefill target. Tried changing the multi-token
+`qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16` wrapper from 256 to 128
+threads/block. The row width is 128, so the hypothesis was that 256 threads did
+extra shared reduction work with half the lanes idle.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/rotary/qwen35_rotary.py hipengine/runtime/qwen35_paro.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import build_qwen35_rotary
+build_qwen35_rotary(load=False, require_cached=False)
+PY
+python3 scripts/smoke.py --mode qwen35-rotary-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter22-512-run{1,2,3}.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: rotary smoke passed (`vector_position_max_abs=2.38e-07`) and fixture
+passed (`max_kl=0.01743`, top-1 `1.0`, `native_owned_device_bytes=1625645909`).
+4K was runnable at `332.419 tok/s`, but 512/128 samples `563.779`, `558.622`,
+`556.209`, `559.374` tok/s (median `558.998`) regressed below retained
+`565.213`. Decision: revert; the 256-thread head rotary path stays retained.
