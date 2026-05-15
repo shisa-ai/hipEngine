@@ -8528,3 +8528,50 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows target-verifier next-token output-buffer provenance only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Scheduler speculative next-token recording
+
+### Scope
+
+- `ResidentBatchScheduler.record_speculative_accept(...)` now records accepted speculative tokens plus optional target next tokens from `TargetAcceptSummary.next_tokens`.
+- The scheduler rejects accepted+next output paths that exceed the request's remaining decode budget.
+- `finalize_speculative_accept(...)` inherits the same behavior because it records the scheduler-owned commit summary only after KV transaction commit validation.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `22 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.scheduler_speculative_next_tokens_checked=true`
+- `implementation_status.kv_transaction_target_verify.scheduler_accept_finalize.active_generated_counts={"1":3,"2":2}`
+- `implementation_status.kv_transaction_target_verify.scheduler_commit_plan.next_tokens=[12,21]`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: scheduler finalization can now emit the target-side correction/bonus token after the accepted draft prefix and enforces request decode budgets for that combined output path. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows scheduler speculative next-token finalization only; no performance claim or kernel change was made.

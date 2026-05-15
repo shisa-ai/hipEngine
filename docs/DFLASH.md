@@ -65,7 +65,7 @@ It records:
   commit plans from verifier accept summaries, bind those commit plans to
   same-transaction, same-device, row-covering state/KV commit device buffers, commit or roll back
   speculative KV transaction metadata, finalize accepted-token recording after KV commit, and record
-  accepted speculative token summaries against request budgets, while host KV
+  accepted speculative token summaries plus target next tokens against request budgets, while host KV
   transaction bookkeeping now accounts
   for `TargetVerifyBatch` candidate
   rows only (committed root rows are excluded from the speculative journal),

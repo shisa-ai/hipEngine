@@ -215,7 +215,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
             accepted_counts=(2, 1),
             accepted_tokens=((101, 102), (201,)),
             transaction_id=plan.transaction.transaction_id,
-            next_tokens=(103, 202),
+            next_tokens=(103, None),
         ),
     )
     commit = scheduler.plan_speculative_commit(buffer_plan, summary)
@@ -227,7 +227,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert commit.commit_plan.request_ids == (r0, r1)
     assert commit.commit_plan.accepted_counts == (2, 1)
     assert commit.commit_plan.commit_rows == (3, 4)
-    assert commit.commit_plan.next_tokens == (103, 202)
+    assert commit.commit_plan.next_tokens == (103, None)
     assert commit.commit_plan.candidate_counts == (2, 1)
     assert commit.commit_plan.draft_depth == work.target_batch.draft_depth
     assert commit.commit_plan.tree_shape == work.target_batch.tree_shape
@@ -294,10 +294,10 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert committed_txn.committed
     completed = scheduler.finalize_speculative_accept(committed_txn, state_plan)
 
-    assert [item.request_id for item in completed] == [r1]
-    assert scheduler.active_batch.requests[r0].generated_tokens == (101, 102)
+    assert [item.request_id for item in completed] == [r0, r1]
+    assert scheduler.completed[r0].generated_tokens == (101, 102, 103)
     assert scheduler.completed[r1].generated_tokens == (201,)
-    assert scheduler.active_batch.slot_to_request == (r0, None)
+    assert scheduler.active_batch.slot_to_request == (None, None)
 
 
 def test_resident_batch_scheduler_rejects_speculative_accept_over_budget() -> None:
@@ -320,6 +320,14 @@ def test_resident_batch_scheduler_rejects_speculative_accept_over_budget() -> No
 
     with pytest.raises(ValueError, match="remaining decode"):
         scheduler.record_speculative_accept(summary)
+
+    next_token_over_budget_summary = TargetAcceptSummary.from_accept_result(
+        work.target_batch,
+        AcceptResult(request_ids=(r0,), accepted_counts=(1,), accepted_tokens=((101,),), next_tokens=(102,)),
+        selected_candidate_rows=(1,),
+    )
+    with pytest.raises(ValueError, match="remaining decode"):
+        scheduler.record_speculative_accept(next_token_over_budget_summary)
 
 
 def test_resident_batch_scheduler_rejects_speculative_verify_before_prefill() -> None:

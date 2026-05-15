@@ -246,17 +246,20 @@ class ResidentBatchScheduler:
         return tuple(completed)
 
     def record_speculative_accept(self, summary: TargetAcceptSummary) -> tuple[CompletedRequest, ...]:
-        """Record accepted speculative tokens from a target verifier summary."""
+        """Record accepted speculative tokens plus optional target next tokens."""
 
-        for request_id, tokens in zip(summary.request_ids, summary.accepted_tokens, strict=True):
+        next_tokens = summary.next_tokens or (None,) * len(summary.request_ids)
+        for request_id, tokens, next_token in zip(summary.request_ids, summary.accepted_tokens, next_tokens, strict=True):
             if request_id not in self.active_batch.requests:
                 raise KeyError(request_id)
             request = self.active_batch.requests[request_id]
-            if len(tokens) > request.remaining_decode:
-                raise ValueError("accepted speculative tokens exceed remaining decode budget")
+            output_count = len(tokens) + (0 if next_token is None else 1)
+            if output_count > request.remaining_decode:
+                raise ValueError("accepted speculative output tokens exceed remaining decode budget")
         completed: list[CompletedRequest] = []
-        for request_id, tokens in zip(summary.request_ids, summary.accepted_tokens, strict=True):
-            for token_id in tokens:
+        for request_id, tokens, next_token in zip(summary.request_ids, summary.accepted_tokens, next_tokens, strict=True):
+            output_tokens = tokens if next_token is None else (*tokens, next_token)
+            for token_id in output_tokens:
                 done = self._append_generated_token(GeneratedToken(request_id, token_id))
                 if done is not None:
                     completed.append(done)

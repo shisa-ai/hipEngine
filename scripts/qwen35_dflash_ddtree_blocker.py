@@ -336,6 +336,44 @@ def _target_verify_buffers_next_tokens_checked() -> bool:
     return shape_rejected and dtype_rejected
 
 
+def _scheduler_speculative_next_tokens_checked() -> bool:
+    scheduler = ResidentBatchScheduler(capacity=1)
+    request_id = scheduler.submit([10], max_new_tokens=2)
+    scheduler.admit_pending()
+    scheduler.next_prefill_work(chunk_size=8)
+    draft = DraftBatch(
+        request_ids=(request_id,),
+        candidate_tokens=(101,),
+        parent_positions=(0,),
+        draft_depths=(1,),
+        row_to_request=(request_id,),
+    )
+    work = scheduler.next_speculative_verify_work(draft, root_tokens=(10,), root_positions=(0,))
+    summary = TargetAcceptSummary.from_accept_result(
+        work.target_batch,
+        AcceptResult(request_ids=(request_id,), accepted_counts=(1,), accepted_tokens=((101,),), next_tokens=(102,)),
+    )
+    completed = scheduler.record_speculative_accept(summary)
+    emitted = scheduler.completed[request_id].generated_tokens == (101, 102) and tuple(item.request_id for item in completed) == (request_id,)
+
+    over_budget_scheduler = ResidentBatchScheduler(capacity=1)
+    over_budget_request_id = over_budget_scheduler.submit([10], max_new_tokens=1)
+    over_budget_scheduler.admit_pending()
+    over_budget_scheduler.next_prefill_work(chunk_size=8)
+    over_budget_work = over_budget_scheduler.next_speculative_verify_work(draft, root_tokens=(10,), root_positions=(0,))
+    over_budget_summary = TargetAcceptSummary.from_accept_result(
+        over_budget_work.target_batch,
+        AcceptResult(request_ids=(over_budget_request_id,), accepted_counts=(1,), accepted_tokens=((101,),), next_tokens=(102,)),
+    )
+    try:
+        over_budget_scheduler.record_speculative_accept(over_budget_summary)
+    except ValueError as exc:
+        budget_rejected = "remaining decode" in str(exc)
+    else:
+        budget_rejected = False
+    return emitted and budget_rejected
+
+
 def _interface_status() -> dict[str, Any]:
     batch = ActiveBatch(2)
     batch.admit(RequestState.from_tokens(0, [1], max_new_tokens=1))
@@ -368,6 +406,7 @@ def _interface_status() -> dict[str, Any]:
         "target_verify_buffers_next_tokens_checked": _target_verify_buffers_next_tokens_checked(),
         "scheduler_speculative_verify_work": hasattr(ResidentBatchScheduler, "next_speculative_verify_work"),
         "scheduler_speculative_accept": hasattr(ResidentBatchScheduler, "record_speculative_accept"),
+        "scheduler_speculative_next_tokens_checked": _scheduler_speculative_next_tokens_checked(),
         "scheduler_speculative_shape_key": hasattr(ResidentBatchScheduler, "speculative_verify_shape_key"),
         "scheduler_speculative_graph_cache": hasattr(ResidentBatchScheduler, "get_or_create_speculative_verify_graph"),
         "scheduler_speculative_kv_transaction": hasattr(ResidentBatchScheduler, "begin_speculative_verify_transaction"),

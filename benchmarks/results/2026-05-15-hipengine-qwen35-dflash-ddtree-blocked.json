@@ -37,6 +37,7 @@
       "target_verify_buffers_next_tokens_checked": true,
       "scheduler_speculative_verify_work": true,
       "scheduler_speculative_accept": true,
+      "scheduler_speculative_next_tokens_checked": true,
       "scheduler_speculative_shape_key": true,
       "scheduler_speculative_graph_cache": true,
       "scheduler_speculative_kv_transaction": true,
@@ -383,8 +384,8 @@
       "scheduler_accept_finalize": {
         "completed_request_ids": [],
         "active_generated_counts": {
-          "1": 2,
-          "2": 1
+          "1": 3,
+          "2": 2
         },
         "completed_generated_counts": {}
       }
