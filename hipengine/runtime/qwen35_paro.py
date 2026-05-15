@@ -3202,6 +3202,7 @@ class Qwen35ParoDecodeState:
     ) -> tuple[Tensor, Tensor]:
         cfg = self.config
         combined = self.tensor(f"layers.{self.layer_weights.layer_id}.mlp.router_shared_gate.weight")
+        prefill_threads = 256 if tokens > 1 else threads
         qwen35_router_topk_shared_out_fp16(
             hidden.ptr,
             combined.ptr,
@@ -3213,7 +3214,7 @@ class Qwen35ParoDecodeState:
             cfg.num_experts + 1,
             cfg.num_experts,
             cfg.num_experts_per_tok,
-            threads=threads,
+            threads=prefill_threads,
             stream=stream,
             library=_library_for(library, "router"),
             runtime=self.runtime,
