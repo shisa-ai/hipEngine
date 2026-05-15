@@ -34,7 +34,7 @@ class FakeRuntime:
 
     def memset(self, dst: int, value: int, nbytes: int) -> None:
         assert dst in self.allocations
-        assert value == 0
+        assert value in {0, 0xFF}
         assert nbytes <= self.allocations[dst]
 
     def memset_async(self, dst: int, value: int, nbytes: int, stream: int) -> None:
@@ -822,8 +822,10 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
     monkeypatch.setattr(qwen_runtime, "paro_add_rmsnorm_out_bf16", record("post_norm"))
     monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_bf16", record("router"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", record("gate_up"))
+    monkeypatch.setattr(qwen_runtime, "gemm_awq_selected_dual_pack8_wmma_compact_bf16", record("gate_up_wmma"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", record("silu_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", record("down"))
+    monkeypatch.setattr(qwen_runtime, "gemm_awq_selected_pack8_wmma_compact_bf16", record("down_wmma"))
     monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", record("w8a16"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", record("shared_silu"))
     monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_out_bf16_f32w", record("combine"))
@@ -911,9 +913,9 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "tile_map",
         "scatter_gather",
         "rotate1",
-        "gate_up",
+        "gate_up_wmma",
         "silu_rotate",
-        "down",
+        "down_wmma",
         "weighted_lanes",
         "w8a16",
         "shared_silu",

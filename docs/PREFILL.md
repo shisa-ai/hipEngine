@@ -315,9 +315,11 @@ Required ports/wiring:
 - `moe/group_scatter.hip` count, prefix, scatter/scatter_gather, gather packed
   hidden, and WMMA tile-map metadata kernels are landed; the current grouped
   prefill wire-up builds `lane_to_row` in the weighted-lane combine kernel.
-- The grouped GEMV fallback is wired over packed/sorted lanes and registered as
-  `moe_prefill/w4_paro/qwen35_grouped_compact`; compact WMMA expert kernels are
-  still required before making a retained throughput claim.
+- The grouped compact route is wired over packed/sorted lanes and registered as
+  `moe_prefill/w4_paro/qwen35_grouped_compact`; compact WMMA gate/up and down
+  expert kernels are now the default grouped expert path. A retained throughput
+  claim still requires full single-request prefill orchestration and benchmark
+  artifact closure.
 - The selected-row c1 path is registered only as
   `moe_prefill/w4_paro/qwen35_selected_c1_rows` oracle/fallback coverage; native
   multi-token prefill layer orchestration routes to grouped compact instead.

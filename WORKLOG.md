@@ -9228,3 +9228,52 @@ Remaining task #13 gaps: compact WMMA expert kernels
 (`gemm_awq_selected_dual_pack8_wmma_compact_kernel` and
 `gemm_awq_selected_pack8_wmma_compact_kernel`) are not ported yet, so grouped
 MoE prefill has no retained performance artifact.
+
+## 2026-05-15 — Compact AWQ WMMA MoE prefill expert kernels
+
+Ported the parent compact-buffer AWQ WMMA expert kernels for the grouped MoE
+prefill route. This closes the main task #13 kernel gap, while still avoiding a
+retained throughput claim until final single-request native prefill orchestration
+and benchmark artifact closure.
+
+Source lineage:
+- parent source: `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py`
+- source commit observed before port: `nano-vllm-amd@5d8f496`
+- port subset: `gemm_awq_selected_dual_pack8_wmma_compact_kernel` and
+  `gemm_awq_selected_pack8_wmma_compact_kernel`.
+
+Changes:
+- added `hipengine/kernels/hip_gfx1100/wmma/paro_awq_wmma.{hip,py}` with BF16
+  and FP16 raw-pointer wrappers;
+- registered compact dual/single AWQ WMMA variants under `awq_wmma`;
+- changed `run_moe_grouped_compact_{bf16,fp16}` to use compact WMMA gate/up and
+  down kernels over grouped packed lanes;
+- pre-cleared `tile_expert` to `-1` so runtime can safely launch over the
+  preallocated max WMMA tile budget without a host readback of `wmma_total`;
+- added `paro-awq-wmma-compact-hip` smoke and unit registration/build tests.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_paro_awq_wmma_plan.py tests/test_qwen35_decode_state.py tests/test_paro_combine_plan.py tests/test_qwen35_moe_group_scatter_plan.py -q
+python3 -m py_compile hipengine/kernels/hip_gfx1100/wmma/paro_awq_wmma.py hipengine/kernels/hip_gfx1100/wmma/__init__.py hipengine/runtime/qwen35_paro.py scripts/smoke.py tests/test_paro_awq_wmma_plan.py tests/test_qwen35_decode_state.py
+python3 scripts/smoke.py --mode paro-awq-wmma-compact-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+python3 scripts/smoke.py --mode paro-combine-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt
+```
+
+Result: targeted tests passed (`40 passed`); py_compile succeeded; compact WMMA
+smoke reported `dual_mismatch=0`, `single_mismatch=0`, `dual_fp16_mismatch=0`,
+`single_fp16_mismatch=0`; combine smoke still reported zero mismatches.
+
+Profiler evidence:
+
+```bash
+rm -rf /tmp/hipengine-wmma-prof
+rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-wmma-prof --output-file wmma -- \
+  python3 scripts/smoke.py --mode paro-awq-wmma-compact-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Result: `/tmp/hipengine-wmma-prof/wmma_kernel_trace.csv` contains compact WMMA
+kernels for BF16 and FP16. Computed durations: BF16 dual `10520 ns`, BF16 single
+`6361 ns`, FP16 dual `6760 ns`, FP16 single `5161 ns`.

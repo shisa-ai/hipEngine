@@ -90,6 +90,12 @@ from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import (
     paro_rotate3_bf16,
     paro_rotate3_fp16,
 )
+from hipengine.kernels.hip_gfx1100.wmma import (
+    gemm_awq_selected_dual_pack8_wmma_compact_bf16,
+    gemm_awq_selected_dual_pack8_wmma_compact_fp16,
+    gemm_awq_selected_pack8_wmma_compact_bf16,
+    gemm_awq_selected_pack8_wmma_compact_fp16,
+)
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
     qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
     qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16,
@@ -2956,6 +2962,7 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "group_scatter"),
             runtime=runtime,
         )
+        self._memset_tensor(scratch.tile_expert, value=0xFF, stream=stream, runtime=runtime)
         qwen35_moe_wmma_tile_map(
             scratch.expert_start.ptr,
             scratch.wmma_expert_start.ptr,
@@ -3031,9 +3038,12 @@ class Qwen35ParoDecodeState:
         up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
         up_qzeros = self.tensor(f"{prefix}.stacked_up_qzeros")
         up_scales = self.tensor(f"{prefix}.stacked_up_scales")
-        gemv_awq_selected_dual_pack8_transposed_fp16(
+        wmma_total_rows = scratch.tile_expert.numel * 16
+        gemm_awq_selected_dual_pack8_wmma_compact_fp16(
             scratch.packed_gate_up_input.ptr,
-            scratch.sorted_experts.ptr,
+            scratch.expert_start.ptr,
+            scratch.wmma_expert_start.ptr,
+            scratch.tile_expert.ptr,
             gate_qweight.ptr,
             gate_qzeros.ptr,
             gate_scales.ptr,
@@ -3042,14 +3052,14 @@ class Qwen35ParoDecodeState:
             up_scales.ptr,
             scratch.gate_up.ptr,
             total_lanes,
-            total_lanes,
             cfg.hidden_size,
             _out_packed_from_transposed_qweight(gate_qweight),
             _out_packed_from_transposed_qweight(up_qweight),
             cfg.num_experts,
             group_size,
+            wmma_total_rows,
             stream=stream,
-            library=_library_for(library, "awq"),
+            library=_library_for(library, "wmma"),
             runtime=self.runtime,
         )
         pairs = self.tensor(f"{prefix}.down_weight_pairs")
@@ -3068,9 +3078,11 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         down_qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
-        gemv_awq_selected_pack8_transposed_fp16(
+        gemm_awq_selected_pack8_wmma_compact_fp16(
             scratch.down_input.ptr,
-            scratch.sorted_experts.ptr,
+            scratch.expert_start.ptr,
+            scratch.wmma_expert_start.ptr,
+            scratch.tile_expert.ptr,
             down_qweight.ptr,
             self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
             self.tensor(f"{prefix}.stacked_down_scales").ptr,
@@ -3080,8 +3092,9 @@ class Qwen35ParoDecodeState:
             _out_packed_from_transposed_qweight(down_qweight),
             cfg.num_experts,
             group_size,
+            wmma_total_rows,
             stream=stream,
-            library=_library_for(library, "awq"),
+            library=_library_for(library, "wmma"),
             runtime=self.runtime,
         )
         weighted_lanes_sum_out_fp16_f32w(
@@ -3436,9 +3449,12 @@ class Qwen35ParoDecodeState:
         up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
         up_qzeros = self.tensor(f"{prefix}.stacked_up_qzeros")
         up_scales = self.tensor(f"{prefix}.stacked_up_scales")
-        gemv_awq_selected_dual_pack8_transposed_bf16(
+        wmma_total_rows = scratch.tile_expert.numel * 16
+        gemm_awq_selected_dual_pack8_wmma_compact_bf16(
             scratch.packed_gate_up_input.ptr,
-            scratch.sorted_experts.ptr,
+            scratch.expert_start.ptr,
+            scratch.wmma_expert_start.ptr,
+            scratch.tile_expert.ptr,
             gate_qweight.ptr,
             gate_qzeros.ptr,
             gate_scales.ptr,
@@ -3447,14 +3463,14 @@ class Qwen35ParoDecodeState:
             up_scales.ptr,
             scratch.gate_up.ptr,
             total_lanes,
-            total_lanes,
             cfg.hidden_size,
             _out_packed_from_transposed_qweight(gate_qweight),
             _out_packed_from_transposed_qweight(up_qweight),
             cfg.num_experts,
             group_size,
+            wmma_total_rows,
             stream=stream,
-            library=_library_for(library, "awq"),
+            library=_library_for(library, "wmma"),
             runtime=self.runtime,
         )
         pairs = self.tensor(f"{prefix}.down_weight_pairs")
@@ -3473,9 +3489,11 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         down_qweight = self.tensor(f"{prefix}.stacked_down_qweight_pack8_decode")
-        gemv_awq_selected_pack8_transposed_bf16(
+        gemm_awq_selected_pack8_wmma_compact_bf16(
             scratch.down_input.ptr,
-            scratch.sorted_experts.ptr,
+            scratch.expert_start.ptr,
+            scratch.wmma_expert_start.ptr,
+            scratch.tile_expert.ptr,
             down_qweight.ptr,
             self.tensor(f"{prefix}.stacked_down_qzeros").ptr,
             self.tensor(f"{prefix}.stacked_down_scales").ptr,
@@ -3485,8 +3503,9 @@ class Qwen35ParoDecodeState:
             _out_packed_from_transposed_qweight(down_qweight),
             cfg.num_experts,
             group_size,
+            wmma_total_rows,
             stream=stream,
-            library=_library_for(library, "awq"),
+            library=_library_for(library, "wmma"),
             runtime=self.runtime,
         )
         weighted_lanes_sum_out_bf16_f32w(
@@ -3651,12 +3670,12 @@ class Qwen35ParoDecodeState:
             moe_out=self.workspace.reserve_tensor("moe.out", (tokens, cfg.hidden_size), lowp),
         )
 
-    def _memset_tensor(self, tensor: Tensor, *, stream: int, runtime) -> None:
+    def _memset_tensor(self, tensor: Tensor, *, stream: int, runtime, value: int = 0) -> None:
         nbytes = tensor.numel * tensor.dtype.itemsize
         if stream:
-            runtime.memset_async(tensor.ptr, 0, nbytes, stream)
+            runtime.memset_async(tensor.ptr, value, nbytes, stream)
         else:
-            runtime.memset(tensor.ptr, 0, nbytes)
+            runtime.memset(tensor.ptr, value, nbytes)
 
     def free(self) -> None:
         self.workspace.free()

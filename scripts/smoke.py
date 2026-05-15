@@ -58,6 +58,7 @@ def main() -> int:
             "paro-rotate-hip",
             "paro-silu-hip",
             "paro-combine-hip",
+            "paro-awq-wmma-compact-hip",
             "dense-gemv-hip",
             "lm-head-hip",
             "w8a16-linear-hip",
@@ -245,6 +246,11 @@ def main() -> int:
         return paro_combine_hip_smoke(
             args.rows,
             args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "paro-awq-wmma-compact-hip":
+        return paro_awq_wmma_compact_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -4920,6 +4926,150 @@ def w8a16_linear_hip_smoke(
         and lowp_mismatch == 0
         and fp16_lowp_mismatch == 0
     ) else 1
+
+
+def paro_awq_wmma_compact_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.kernels.hip_gfx1100.wmma import (
+        build_paro_awq_wmma,
+        gemm_awq_selected_dual_pack8_wmma_compact_bf16,
+        gemm_awq_selected_dual_pack8_wmma_compact_fp16,
+        gemm_awq_selected_pack8_wmma_compact_bf16,
+        gemm_awq_selected_pack8_wmma_compact_fp16,
+    )
+
+    compact_rows = 1
+    in_features = 16
+    out_features = 16
+    out_packed = out_features // 8
+    num_experts = 2
+    group_size = 16
+    wmma_total_rows = 16
+    expert_start = np.asarray([0, 1, 1], dtype=np.int64)
+    wmma_start = np.asarray([0, 16, 16], dtype=np.int64)
+    tile_expert = np.asarray([0], dtype=np.int64)
+    x = (np.arange(compact_rows * in_features, dtype=np.float32).reshape(compact_rows, in_features) % 5 - 2) / 4.0
+    x_bits = _float32_to_bf16_bits(x)
+    x_fp16 = x.astype(np.float16)
+
+    def packed(value_by_expert: list[int]) -> np.ndarray:
+        q = np.zeros((num_experts, out_packed, in_features), dtype=np.int32)
+        for expert, value in enumerate(value_by_expert):
+            word = np.int32(0)
+            for lane in range(8):
+                packed_pos = 4 + (lane >> 1) if (lane & 1) else (lane >> 1)
+                word |= np.int32(value & 0xF) << np.int32(packed_pos * 4)
+            q[expert, :, :] = word
+        return q
+
+    qa = packed([1, 2])
+    qb = packed([2, 3])
+    qs = packed([3, 4])
+    qzeros = np.zeros((num_experts, 1, out_packed), dtype=np.int32)
+    scale = np.full((num_experts, 1, out_features), 0.25, dtype=np.float32)
+    scale_bits = _float32_to_bf16_bits(scale)
+    scale_fp16 = scale.astype(np.float16)
+    out_dual_bits = np.zeros((compact_rows, out_features * 2), dtype=np.uint16)
+    out_single_bits = np.zeros((compact_rows, out_features), dtype=np.uint16)
+    out_dual_fp16 = np.zeros((compact_rows, out_features * 2), dtype=np.float16)
+    out_single_fp16 = np.zeros((compact_rows, out_features), dtype=np.float16)
+
+    row_expert = np.asarray([0], dtype=np.int64)
+    x_bf32 = _bf16_bits_to_float32(x_bits)
+    expected_a = np.vstack([np.sum(x_bf32[row]) * (row_expert[row] + 1) * 0.25 for row in range(compact_rows)]).astype(np.float32)
+    expected_b = np.vstack([np.sum(x_bf32[row]) * (row_expert[row] + 2) * 0.25 for row in range(compact_rows)]).astype(np.float32)
+    expected_s = np.vstack([np.sum(x_bf32[row]) * (row_expert[row] + 3) * 0.25 for row in range(compact_rows)]).astype(np.float32)
+    expected_dual_bits = _float32_to_bf16_bits(np.concatenate([np.repeat(expected_a, out_features, axis=1), np.repeat(expected_b, out_features, axis=1)], axis=1))
+    expected_single_bits = _float32_to_bf16_bits(np.repeat(expected_s, out_features, axis=1))
+    x_f32 = x_fp16.astype(np.float32)
+    expected_a_fp16 = np.vstack([np.sum(x_f32[row]) * (row_expert[row] + 1) * 0.25 for row in range(compact_rows)]).astype(np.float32)
+    expected_b_fp16 = np.vstack([np.sum(x_f32[row]) * (row_expert[row] + 2) * 0.25 for row in range(compact_rows)]).astype(np.float32)
+    expected_s_fp16 = np.vstack([np.sum(x_f32[row]) * (row_expert[row] + 3) * 0.25 for row in range(compact_rows)]).astype(np.float32)
+    expected_dual_fp16 = np.concatenate([np.repeat(expected_a_fp16, out_features, axis=1), np.repeat(expected_b_fp16, out_features, axis=1)], axis=1).astype(np.float16)
+    expected_single_fp16 = np.repeat(expected_s_fp16, out_features, axis=1).astype(np.float16)
+
+    runtime = get_hip_runtime()
+    library = build_paro_awq_wmma(load=True, compiler_version=compiler_version, require_cached=require_cached_build)
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = dev(x_bits)
+        x_fp16_dev = dev(x_fp16)
+        expert_start_dev = dev(expert_start)
+        wmma_start_dev = dev(wmma_start)
+        tile_expert_dev = dev(tile_expert)
+        qa_dev = dev(qa)
+        qb_dev = dev(qb)
+        qs_dev = dev(qs)
+        qzeros_dev = dev(qzeros)
+        scale_bits_dev = dev(scale_bits)
+        scale_fp16_dev = dev(scale_fp16)
+        out_dual_dev = out_dev(out_dual_bits)
+        out_single_dev = out_dev(out_single_bits)
+        out_dual_fp16_dev = out_dev(out_dual_fp16)
+        out_single_fp16_dev = out_dev(out_single_fp16)
+        gemm_awq_selected_dual_pack8_wmma_compact_bf16(
+            x_dev.ptr, expert_start_dev.ptr, wmma_start_dev.ptr, tile_expert_dev.ptr,
+            qa_dev.ptr, qzeros_dev.ptr, scale_bits_dev.ptr, qb_dev.ptr, qzeros_dev.ptr, scale_bits_dev.ptr,
+            out_dual_dev.ptr, compact_rows, in_features, out_packed, out_packed, num_experts, group_size, wmma_total_rows,
+            library=library, runtime=runtime,
+        )
+        gemm_awq_selected_pack8_wmma_compact_bf16(
+            x_dev.ptr, expert_start_dev.ptr, wmma_start_dev.ptr, tile_expert_dev.ptr,
+            qs_dev.ptr, qzeros_dev.ptr, scale_bits_dev.ptr, out_single_dev.ptr,
+            compact_rows, in_features, out_packed, num_experts, group_size, wmma_total_rows,
+            library=library, runtime=runtime,
+        )
+        gemm_awq_selected_dual_pack8_wmma_compact_fp16(
+            x_fp16_dev.ptr, expert_start_dev.ptr, wmma_start_dev.ptr, tile_expert_dev.ptr,
+            qa_dev.ptr, qzeros_dev.ptr, scale_fp16_dev.ptr, qb_dev.ptr, qzeros_dev.ptr, scale_fp16_dev.ptr,
+            out_dual_fp16_dev.ptr, compact_rows, in_features, out_packed, out_packed, num_experts, group_size, wmma_total_rows,
+            library=library, runtime=runtime,
+        )
+        gemm_awq_selected_pack8_wmma_compact_fp16(
+            x_fp16_dev.ptr, expert_start_dev.ptr, wmma_start_dev.ptr, tile_expert_dev.ptr,
+            qs_dev.ptr, qzeros_dev.ptr, scale_fp16_dev.ptr, out_single_fp16_dev.ptr,
+            compact_rows, in_features, out_packed, num_experts, group_size, wmma_total_rows,
+            library=library, runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_dual_bits), out_dual_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_single_bits), out_single_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_dual_fp16), out_dual_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_single_fp16), out_single_fp16_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    dual_mismatch = int(np.count_nonzero(out_dual_bits != expected_dual_bits))
+    single_mismatch = int(np.count_nonzero(out_single_bits != expected_single_bits))
+    dual_fp16_mismatch = int(np.count_nonzero(out_dual_fp16.view(np.uint16) != expected_dual_fp16.view(np.uint16)))
+    single_fp16_mismatch = int(np.count_nonzero(out_single_fp16.view(np.uint16) != expected_single_fp16.view(np.uint16)))
+    print(
+        f"compact_rows={compact_rows} in_features={in_features} out_features={out_features} "
+        f"dual_mismatch={dual_mismatch} single_mismatch={single_mismatch} "
+        f"dual_fp16_mismatch={dual_fp16_mismatch} single_fp16_mismatch={single_fp16_mismatch}"
+    )
+    print("dual_bf16=", _bf16_bits_to_float32(out_dual_bits)[0, :8].tolist())
+    return 0 if dual_mismatch == single_mismatch == dual_fp16_mismatch == single_fp16_mismatch == 0 else 1
 
 
 def paro_combine_hip_smoke(
