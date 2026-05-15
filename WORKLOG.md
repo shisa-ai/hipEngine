@@ -9836,3 +9836,31 @@ Results: 512/128 samples `514.232`, `516.042`, `516.431`, `516.961` tok/s
 `0.00487`, top-1 `1.0`; compact c=2/4/8 gates and attention smokes passed.
 4K/128 stayed within guard at `316.586 tok/s` (99.54% of `318.037` baseline),
 prefill `12.9381s`, decode `101.419 tok/s`.
+
+## 2026-05-15 — Prefill multiloop iter 8: 16-thread short attention rejected
+
+Tried changing the short-context full-attention prefill threshold from 32 threads
+to 16 threads for `max_context_len <= 1024` while keeping 64 threads for long
+contexts. Correctness stayed clean, but the primary metric regressed.
+
+Validation commands:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import build_qwen35_paged_attn_decode
+compiler_version=Path('/tmp/hipengine-hipcc-version.txt').read_text()
+build_qwen35_paged_attn_decode(load=False, compiler_version=compiler_version, profile='decode')
+PY
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter8-512-run1.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter8-512-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter8-512-run3.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: fixture passed (`max_kl=0.00584`, top-1 `1.0`,
+`native_owned_device_bytes=1625645909`) and 4K stayed within guard at
+`316.729 tok/s`, but 512/128 samples `508.483`, `507.023`, `507.921` tok/s
+(median `507.921`) regressed below retained `516.236`. Decision: revert to the
+32/64 shape split from iter 7; half-wave short blocks are too small.
