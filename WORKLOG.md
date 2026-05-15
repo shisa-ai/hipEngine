@@ -9999,3 +9999,27 @@ Results: fixture passed (`max_kl=0.02090`, top-1 `1.0`,
 `324.879 tok/s`, but 512/128 samples `533.023`, `535.455`, `532.551`,
 `533.145` tok/s (median `533.084`) regressed below retained `553.732`. Decision:
 revert; shared-expert W8A16 should stay at 64 threads for prefill.
+
+## 2026-05-15 — Prefill multiloop iter 14: 128-thread linear A/B dense rejected
+
+Tried increasing the multi-token linear-attention A/B dense GEMVs from 64 to 128
+threads while preserving c=1/decode defaults. These are the remaining 60 dense
+GEMV launches in the 40-layer prefill path.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter14-512-run1.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter14-512-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter14-512-run3.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: fixture passed (`max_kl=0.02058`, top-1 `1.0`,
+`native_owned_device_bytes=1625645909`) and 4K improved slightly to
+`330.524 tok/s`, but 512/128 samples `552.942`, `553.533`, `553.068`,
+`552.682` tok/s (median `553.005`) were below retained `553.732`. Decision:
+revert; A/B dense GEMV stays at 64 threads.
