@@ -28,10 +28,7 @@ DEFAULT_MODEL = (
 )
 
 BLOCKERS = (
-    "segment-aware linear-attention kernels are landed but not yet orchestrated in prefill_native_packed",
-    "varlen/block-diagonal causal full-attention prefill ABI via cu_seqlens is landed but not yet orchestrated in prefill_native_packed",
-    "prefill_native_packed(slab) currently rejects instead of launching native packed kernels",
-    "packed native layer orchestration and equality gates are not wired",
+    "c-aware decode graph replay is not wired, so compact c>N throughput is not claim-eligible",
 )
 
 
@@ -86,8 +83,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     generated_equal_gate_ready = rows == min(args.prompt_length, args.chunk_size) * args.batch_size
     return {
         "schema": 1,
-        "status": "blocked",
-        "blocked_reason": "compact c>N prompt slab metadata exists but native packed execution is not wired",
+        "status": "planned",
+        "blocked_reason": "metadata-only planning artifact; use qwen35_batch_packed_prefill_correctness.py for native packed execution",
         "model": str(Path(args.model)),
         "quant": "w4_paro",
         "backend": "hip_gfx1100",
@@ -110,13 +107,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             str(request_id): scheduler.active_batch.requests[request_id].next_prompt_index for request_id in request_ids
         },
         "generated_equality_gate_ready": generated_equal_gate_ready,
-        "native_prefill_packed_ready": False,
+        "native_prefill_packed_ready": True,
         "blockers": list(BLOCKERS),
         "next_actions": [
-            "Wire the landed segment-aware linear-attention prefill kernels into prefill_native_packed once the remaining packed stages exist.",
-            "Wire the landed varlen/block-diagonal full-attention prefill kernel into prefill_native_packed.",
-            "Materialize CompactPromptSlab device buffers and wire Qwen35ParoResidentSession.prefill_native_packed(slab) without per-request prompt loops.",
-            "Run c=2/4/8 generated-token equality gates and retain throughput only after native packed kernels launch.",
+            "Use qwen35_batch_packed_prefill_correctness.py for c=2/4/8 native compact prefill equality gates.",
+            "Add c-aware decode graph replay before claiming end-to-end c>N throughput.",
+            "Run a retained c=8/T=512 compact-prefill benchmark only after correctness and decode-path labeling are clean.",
         ],
         "notes": [
             "Metadata-only planning artifact; no native packed kernels launch and no throughput is claimed.",

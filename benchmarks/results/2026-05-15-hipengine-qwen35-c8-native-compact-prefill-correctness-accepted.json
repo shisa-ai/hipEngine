@@ -1,0 +1,239 @@
+{
+  "schema": 1,
+  "status": "accepted_correctness_smoke",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "mode": "resident_c8_native_compact_prefill_serial_decode_correctness",
+  "command": "python3 scripts/qwen35_batch_packed_prefill_correctness.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --prompt-length 8 --max-layers 40 --batch-size 8 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json benchmarks/results/2026-05-15-hipengine-qwen35-c8-native-compact-prefill-correctness-accepted.json",
+  "batch_execution": {
+    "path": "scheduler_serial_slot_bridge",
+    "scheduler_owned": true,
+    "row_execution": "serial_c1_layer_path",
+    "native_prefill_plan": {
+      "path": "single_request_native_full",
+      "layer_limit": 40,
+      "linear_prefix_layers": 3,
+      "full_layer_limit_native": true,
+      "first_unsupported_layer": null,
+      "first_unsupported_type": null,
+      "blockers": []
+    },
+    "native_compact_prefill": true,
+    "native_caware_decode": false,
+    "throughput_claim_eligible": false,
+    "blockers": [
+      "step_batch_serial executes decode active physical slots serially through the c=1 layer path",
+      "native c-aware full-attention decode graph replay is not wired"
+    ]
+  },
+  "benchmark_eligible": false,
+  "batch_size": 8,
+  "prompt_lengths": [
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8,
+    8
+  ],
+  "max_layers": 40,
+  "expected_c1_native": [
+    {
+      "seed": 3709,
+      "decode": 96342,
+      "seed_logit": 9.071938514709473,
+      "decode_logit": 8.603414535522461
+    },
+    {
+      "seed": 220,
+      "decode": 17,
+      "seed_logit": 8.8932466506958,
+      "decode_logit": 9.94959545135498
+    },
+    {
+      "seed": 11,
+      "decode": 321,
+      "seed_logit": 10.504422187805176,
+      "decode_logit": 11.993691444396973
+    },
+    {
+      "seed": 96554,
+      "decode": 3709,
+      "seed_logit": 9.354057312011719,
+      "decode_logit": 9.76660442352295
+    },
+    {
+      "seed": 1,
+      "decode": 198,
+      "seed_logit": 11.8959321975708,
+      "decode_logit": 11.56457233428955
+    },
+    {
+      "seed": 2280,
+      "decode": 13,
+      "seed_logit": 13.43446159362793,
+      "decode_logit": 10.57671070098877
+    },
+    {
+      "seed": 220,
+      "decode": 16,
+      "seed_logit": 9.726588249206543,
+      "decode_logit": 11.684350967407227
+    },
+    {
+      "seed": 271,
+      "decode": 248068,
+      "seed_logit": 9.02897834777832,
+      "decode_logit": 12.38135814666748
+    }
+  ],
+  "packed_prefill_serial_decode": [
+    {
+      "seed": 3709,
+      "decode": 96342,
+      "seed_logit": 9.071938514709473,
+      "decode_logit": 8.603414535522461
+    },
+    {
+      "seed": 220,
+      "decode": 17,
+      "seed_logit": 8.8932466506958,
+      "decode_logit": 9.94959545135498
+    },
+    {
+      "seed": 11,
+      "decode": 321,
+      "seed_logit": 10.504422187805176,
+      "decode_logit": 11.993691444396973
+    },
+    {
+      "seed": 96554,
+      "decode": 3709,
+      "seed_logit": 9.354057312011719,
+      "decode_logit": 9.76660442352295
+    },
+    {
+      "seed": 1,
+      "decode": 198,
+      "seed_logit": 11.8959321975708,
+      "decode_logit": 11.56457233428955
+    },
+    {
+      "seed": 2280,
+      "decode": 13,
+      "seed_logit": 13.43446159362793,
+      "decode_logit": 10.57671070098877
+    },
+    {
+      "seed": 220,
+      "decode": 16,
+      "seed_logit": 9.726588249206543,
+      "decode_logit": 11.684350967407227
+    },
+    {
+      "seed": 271,
+      "decode": 248068,
+      "seed_logit": 9.02897834777832,
+      "decode_logit": 12.38135814666748
+    }
+  ],
+  "scheduler_metadata": {
+    "request_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "admitted": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "prefill_slabs": [
+      {
+        "request_ids": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "slot_ids": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "rows": 64,
+        "block_count": 1,
+        "cu_seqlens_q": [
+          0,
+          8,
+          16,
+          24,
+          32,
+          40,
+          48,
+          56,
+          64
+        ],
+        "cu_seqlens_k": [
+          0,
+          8,
+          16,
+          24,
+          32,
+          40,
+          48,
+          56,
+          64
+        ]
+      }
+    ],
+    "last_prefill_execution": {
+      "path": "native_prefill_compact_cN",
+      "full_native": true,
+      "request_count": 8,
+      "rows": 64,
+      "block_count": 1,
+      "slot_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "linear_prefix_layers": 3,
+      "layer_limit": 40
+    }
+  },
+  "generated_match": true,
+  "finite_logits": true,
+  "passed": true,
+  "notes": [
+    "Native compact c>N prefill with packed prompt slabs; decode remains step_batch_serial.",
+    "Correctness gate only; not a throughput claim until c-aware decode graph replay lands."
+  ]
+}

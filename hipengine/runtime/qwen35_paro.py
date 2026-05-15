@@ -15,6 +15,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
+    qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
     qwen35_write_paged_kv_mixed_value_fp16_batch_spans,
     qwen35_write_paged_kv_mixed_value_fp16_prompt_spans,
@@ -47,9 +48,11 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_bf16,
     qwen35_linear_attn_conv_decode_fp16,
     qwen35_linear_attn_conv_prefill_f32,
+    qwen35_linear_attn_conv_prefill_segments_f32,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_k2_f32,
+    qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_prefill_rmsnorm_gate_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
@@ -1792,6 +1795,49 @@ class Qwen35ParoDecodeState:
         )
         return scratch.gated_attn
 
+    def prefill_full_attention_varlen_gqa_gate_fp16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        cu_seqlens_q: Tensor,
+        cu_seqlens_k: Tensor,
+        rows: int,
+        segments: int,
+        gate: Tensor | None = None,
+        block_size: int = 256,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        gate_tensor = scratch.gate if gate is None else gate
+        qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans(
+            scratch.query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            gate_tensor.ptr,
+            scratch.gated_attn.ptr,
+            spans,
+            cu_seqlens_q.ptr,
+            cu_seqlens_k.ptr,
+            rows,
+            segments,
+            spans.max_live_count,
+            block_size,
+            self.config.num_attention_heads,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            gate_tensor.shape[-1],
+            1,
+            (self.config.head_dim ** -0.5) if scale is None else scale,
+            stream=stream,
+            library=_library_for(library, "attention"),
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
+
     def append_full_attention_kv_fp16_batch(
         self,
         scratch: Qwen35ParoAttentionScratch,
@@ -2187,6 +2233,117 @@ class Qwen35ParoDecodeState:
             stream=stream,
         )
 
+    def run_full_attention_moe_prefill_varlen_layer_fp16(
+        self,
+        hidden: Tensor,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        append_spans: KVLiveSpans,
+        prefill_spans: KVLiveSpans,
+        cu_seqlens_q: Tensor,
+        cu_seqlens_k: Tensor,
+        segments: int,
+        cos_table: Tensor,
+        sin_table: Tensor,
+        positions: Tensor,
+        max_positions: int,
+        attention_scratch: Qwen35ParoAttentionScratch | None = None,
+        moe_scratch: Qwen35ParoGroupedMoeScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        block_size: int = 256,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if segments <= 0:
+            raise ValueError("segments must be positive")
+        attention_scratch = attention_scratch or self.reserve_full_attention_scratch(
+            tokens=tokens,
+            num_splits=1,
+            activation_dtype=DType.FP16,
+            gated_dtype=DType.FP16,
+        )
+        if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+            moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        self.input_rmsnorm_fp16(hidden, attention_scratch.attn_input, tokens=tokens, library=library, stream=stream)
+        self.rotate_full_attention_inputs_fp16(
+            attention_scratch.attn_input,
+            attention_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        self.project_full_attention_qkv_fp16(
+            attention_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16(
+            attention_scratch,
+            cos_table=cos_table,
+            sin_table=sin_table,
+            position=positions,
+            max_positions=max_positions,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        self.append_full_attention_kv_fp16_batch(
+            attention_scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=append_spans,
+            rows=tokens,
+            block_size=block_size,
+            library=library,
+            stream=stream,
+        )
+        gated = self.prefill_full_attention_varlen_gqa_gate_fp16(
+            attention_scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=prefill_spans,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_k=cu_seqlens_k,
+            rows=tokens,
+            segments=segments,
+            gate=gate,
+            block_size=block_size,
+            library=library,
+            stream=stream,
+        )
+        attn_out = self.project_full_attention_o_fp16(
+            gated,
+            attention_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        return self.run_moe_grouped_compact_fp16(
+            mlp_input,
+            residual,
+            scratch=moe_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+
     def rotate_linear_attention_inputs_fp16(
         self,
         hidden: Tensor,
@@ -2484,6 +2641,107 @@ class Qwen35ParoDecodeState:
             raise ValueError("linear-attention recurrent scratch width mismatch")
         return scratch.recurrent_bf16
 
+    def run_linear_attention_prefill_conv_gdn_segments_fp16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        cu_seqlens: Tensor,
+        state_indices: Tensor,
+        tokens: int,
+        segments: int,
+        eps: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        cfg = self.config
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if segments <= 0:
+            raise ValueError("segments must be positive")
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        qkv_width = _linear_qkv_width(cfg)
+        z_width = _linear_value_width(cfg)
+        fp16_to_f32(
+            scratch.qkv.ptr,
+            scratch.qkv_f32.ptr,
+            tokens * qkv_width,
+            stream=stream,
+            library=_library_for(library, "cast"),
+            runtime=self.runtime,
+        )
+        qwen35_linear_attn_conv_prefill_segments_f32(
+            scratch.qkv_f32.ptr,
+            conv_state.ptr,
+            self.tensor(f"{prefix}.conv1d.weight").ptr,
+            scratch.conv_out.ptr,
+            cu_seqlens.ptr,
+            state_indices.ptr,
+            tokens,
+            segments,
+            qkv_width,
+            cfg.linear_conv_kernel_dim,
+            stream=stream,
+            library=_library_for(library, "linear_conv"),
+            runtime=self.runtime,
+        )
+        qwen35_linear_attn_prefill_prepare_f32_fp16(
+            scratch.conv_out.ptr,
+            scratch.a.ptr,
+            scratch.b.ptr,
+            self.tensor(f"{prefix}.dt_bias").ptr,
+            self.tensor(f"{prefix}.A_log").ptr,
+            scratch.prefill_query.ptr,
+            scratch.prefill_key.ptr,
+            scratch.prefill_value.ptr,
+            scratch.prefill_beta.ptr,
+            scratch.prefill_decay.ptr,
+            tokens,
+            cfg.linear_num_key_heads,
+            cfg.linear_num_value_heads,
+            cfg.linear_key_head_dim,
+            cfg.linear_value_head_dim,
+            stream=stream,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        qwen35_gdn_prefill_recurrent_segments_k2_f32(
+            scratch.prefill_query.ptr,
+            scratch.prefill_key.ptr,
+            scratch.prefill_value.ptr,
+            scratch.prefill_beta.ptr,
+            scratch.prefill_decay.ptr,
+            recurrent_state.ptr,
+            scratch.recurrent_out.ptr,
+            cu_seqlens.ptr,
+            state_indices.ptr,
+            tokens,
+            segments,
+            cfg.linear_num_value_heads,
+            cfg.linear_key_head_dim,
+            cfg.linear_value_head_dim,
+            stream=stream,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        qwen35_gdn_prefill_rmsnorm_gate_fp16(
+            scratch.recurrent_out.ptr,
+            scratch.z.ptr,
+            self.tensor(f"{prefix}.norm.weight").ptr,
+            scratch.recurrent_bf16.ptr,
+            cfg.rms_norm_eps if eps is None else eps,
+            tokens,
+            cfg.linear_num_value_heads,
+            cfg.linear_value_head_dim,
+            stream=stream,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        if scratch.recurrent_bf16.shape[-1] != z_width:
+            raise ValueError("linear-attention recurrent scratch width mismatch")
+        return scratch.recurrent_bf16
+
     def project_linear_attention_out_fp16(
         self,
         scratch: Qwen35ParoLinearAttentionScratch,
@@ -2683,6 +2941,74 @@ class Qwen35ParoDecodeState:
             stream=stream,
         )
 
+    def run_linear_attention_prefill_state_segments_fp16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        cu_seqlens: Tensor,
+        state_indices: Tensor,
+        segments: int,
+        scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        self.rotate_linear_attention_inputs_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        self.project_linear_attention_qkv_z_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        self.project_linear_attention_ab_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        return self.run_linear_attention_prefill_conv_gdn_segments_fp16(
+            scratch,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            cu_seqlens=cu_seqlens,
+            state_indices=state_indices,
+            tokens=tokens,
+            segments=segments,
+            library=library,
+            stream=stream,
+        )
+
+    def run_linear_attention_prefill_out_proj_segments_fp16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        cu_seqlens: Tensor,
+        state_indices: Tensor,
+        segments: int,
+        scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        self.run_linear_attention_prefill_state_segments_fp16(
+            hidden,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            cu_seqlens=cu_seqlens,
+            state_indices=state_indices,
+            segments=segments,
+            scratch=scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        return self.project_linear_attention_prefill_out_fp16(
+            scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+
     def input_rmsnorm_fp16(
         self,
         hidden: Tensor,
@@ -2793,6 +3119,59 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
+        return self.run_moe_grouped_compact_fp16(
+            mlp_input,
+            residual,
+            scratch=moe_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+
+    def run_linear_attention_moe_packed_prefill_layer_fp16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        cu_seqlens: Tensor,
+        state_indices: Tensor,
+        segments: int,
+        linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        moe_scratch: Qwen35ParoGroupedMoeScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+            moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        self.input_rmsnorm_fp16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
+        attn_out = self.run_linear_attention_prefill_out_proj_segments_fp16(
+            linear_scratch.attn_input,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            cu_seqlens=cu_seqlens,
+            state_indices=state_indices,
+            segments=segments,
+            scratch=linear_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
         return self.run_moe_grouped_compact_fp16(
             mlp_input,
             residual,

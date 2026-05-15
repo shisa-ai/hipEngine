@@ -615,6 +615,20 @@ class Qwen35ParoResidentBatchExecution:
 
 
 @dataclass(frozen=True)
+class Qwen35ParoPackedPrefillMetadata:
+    token_ids: Tensor
+    positions: Tensor
+    context_counts: Tensor
+    block_tables: Tensor
+    cu_seqlens_q: Tensor
+    cu_seqlens_k: Tensor
+    state_indices: Tensor
+    append_spans: KVLiveSpans
+    prefill_spans: KVLiveSpans
+    temp_buffers: tuple[DeviceBuffer, ...]
+
+
+@dataclass(frozen=True)
 class Qwen35ParoResidentSpeculativeExecution:
     """Serializable status for resident speculative target verification."""
 
@@ -988,8 +1002,7 @@ class Qwen35ParoResidentSession:
 
         native_prefill_plan = self.native_prefill_plan()
         blockers = [
-            "step_batch_serial executes active physical slots serially through the c=1 layer path",
-            "native compact/grouped MoE c>N prefill is not wired",
+            "step_batch_serial executes decode active physical slots serially through the c=1 layer path",
             "native c-aware full-attention decode graph replay is not wired",
         ]
         blockers.extend(native_prefill_plan.blockers)
@@ -998,7 +1011,7 @@ class Qwen35ParoResidentSession:
             scheduler_owned=bool(scheduler_owned),
             row_execution="serial_c1_layer_path",
             native_prefill_plan=native_prefill_plan,
-            native_compact_prefill=False,
+            native_compact_prefill=bool(native_prefill_plan.full_layer_limit_native),
             native_caware_decode=False,
             throughput_claim_eligible=False,
             blockers=tuple(dict.fromkeys(blockers)),
@@ -1039,11 +1052,11 @@ class Qwen35ParoResidentSession:
         """Run a compact c>N native prompt slab, once packed stages exist.
 
         The scheduler can already construct validated compact slabs. Executing
-        them natively still requires packed layer orchestration. Segment-aware
-        linear-attention kernels, varlen full-attention kernels, and final-row
-        commit helpers are landed, but this method remains fail-closed so
-        callers cannot accidentally retain a per-request prompt loop as the c>N
-        native path.
+        them natively requires row-shaped physical block tables and segment
+        metadata. This path launches one packed prompt slab over native linear
+        and full-attention layers, then commits/samples one final row per
+        physical slot. Decode after those seed tokens still uses the serial
+        c=1 bridge until c-aware decode graph replay lands.
         """
 
         from hipengine.generation.batch_scheduler import CompactPromptSlab
@@ -1058,22 +1071,44 @@ class Qwen35ParoResidentSession:
             raise ValueError("compact prompt slab rows exceed session capacity")
         if slab.block_count > self.blocks:
             raise ValueError("compact prompt slab block_count exceeds session block capacity")
-        self.last_prefill_execution = {
-            "path": "native_prefill_compact_cN_blocked",
-            "full_native": False,
-            "request_count": slab.request_count,
-            "rows": slab.rows,
-            "block_count": slab.block_count,
-            "blockers": [
-                "segment-aware linear-attention kernels are landed but not yet orchestrated in prefill_native_packed",
-                "varlen/block-diagonal full-attention prefill via cu_seqlens is landed but not yet orchestrated in prefill_native_packed",
-                "packed native layer orchestration and equality gates are not wired",
-            ],
-        }
-        raise NotImplementedError(
-            "native compact c>N prefill slabs are metadata-ready but not executable: "
-            + "; ".join(self.last_prefill_execution["blockers"])
-        )
+        if slab.block_size != self.block_size:
+            raise ValueError("compact prompt slab block_size must match session block_size")
+        native_prefill_plan = self.native_prefill_plan()
+        if not native_prefill_plan.full_layer_limit_native:
+            raise NotImplementedError(
+                "native Qwen3.5/PARO packed prefill cannot cover this layer limit: "
+                + "; ".join(native_prefill_plan.blockers)
+            )
+        metadata = self._materialize_packed_prefill_metadata(slab)
+        try:
+            embedding_lookup_batch_fp16_i64(
+                self.embedding.tensor.ptr,
+                metadata.token_ids.ptr,
+                self.prefill_hidden.ptr,
+                slab.rows,
+                self.config.hidden_size,
+                self.vocab_size,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
+            hidden = self._run_native_prefill_packed_layers(slab, metadata, stream=0)
+            self.runtime.stream_synchronize(0)
+            results = self._commit_packed_prefill_final_rows(hidden, slab, sample=sample, stream=0)
+            self._restore_decode_scratch_after_prefill()
+            self.last_prefill_execution = {
+                "path": "native_prefill_compact_cN",
+                "full_native": True,
+                "request_count": slab.request_count,
+                "rows": slab.rows,
+                "block_count": slab.block_count,
+                "slot_ids": list(slab.physical_slot_ids),
+                "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
+                "layer_limit": native_prefill_plan.layer_limit,
+            }
+            return results
+        finally:
+            for buffer in reversed(metadata.temp_buffers):
+                free(buffer, runtime=self.runtime)
 
     def prefill_linear_tokens_native(
         self,
@@ -1439,6 +1474,84 @@ class Qwen35ParoResidentSession:
         )
         return append_spans, prefill_spans
 
+    def _full_cache_all_slots(self, layer_id: int) -> tuple[Tensor, Tensor]:
+        key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
+        shape = (self.max_batch_size * self.blocks, self.block_size, self.config.num_key_value_heads, self.config.head_dim)
+        return (
+            Tensor.from_handle(key_buf.ptr, shape, key_cache.dtype, key_cache.device),
+            Tensor.from_handle(value_buf.ptr, shape, value_cache.dtype, value_cache.device),
+        )
+
+    def _materialize_packed_prefill_metadata(self, slab) -> Qwen35ParoPackedPrefillMetadata:
+        if slab.rows > self.prefill_capacity_rows:
+            raise ValueError("compact prompt slab rows exceed prefill buffer capacity")
+        if slab.block_size != self.block_size:
+            raise ValueError("compact prompt slab block_size must match session block_size")
+        slot_by_request = dict(zip(slab.request_ids, slab.physical_slot_ids, strict=True))
+        physical_tables: list[tuple[int, ...]] = []
+        for request_id, local_table in zip(slab.row_to_request, slab.block_tables, strict=True):
+            slot = int(slot_by_request[int(request_id)])
+            self._check_slot(slot)
+            row: list[int] = []
+            for local_block in local_table:
+                block = int(local_block)
+                if block < 0 or block >= self.blocks:
+                    raise ValueError("compact prompt slab block table references block outside session")
+                row.append(slot * self.blocks + block)
+            physical_tables.append(tuple(row))
+        token_arr = np.asarray(slab.token_ids, dtype=np.int64)
+        position_arr = np.asarray(slab.positions, dtype=np.int64)
+        context_arr = np.asarray(slab.context_counts, dtype=np.int64)
+        block_table_arr = np.asarray(physical_tables, dtype=np.int32)
+        copy_host_to_device(self.prefill_token_id_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
+        copy_host_to_device(self.prefill_position_buf, host_array_ptr(position_arr), position_arr.nbytes, runtime=self.runtime)
+        copy_host_to_device(self.prefill_context_count_buf, host_array_ptr(context_arr), context_arr.nbytes, runtime=self.runtime)
+        copy_host_to_device(self.prefill_block_table_buf, host_array_ptr(block_table_arr), block_table_arr.nbytes, runtime=self.runtime)
+        temp_buffers: list[DeviceBuffer] = []
+
+        def temp_tensor(array: np.ndarray, dtype: DType) -> Tensor:
+            contiguous = np.ascontiguousarray(array)
+            buffer = malloc(contiguous.nbytes, runtime=self.runtime)
+            temp_buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(contiguous), contiguous.nbytes, runtime=self.runtime)
+            return Tensor.from_handle(buffer.ptr, contiguous.shape, dtype, self.device)
+
+        cu_q = temp_tensor(np.asarray(slab.cu_seqlens_q, dtype=np.int32), DType.INT32)
+        cu_k = temp_tensor(np.asarray(slab.cu_seqlens_k, dtype=np.int32), DType.INT32)
+        state_indices = temp_tensor(np.asarray(slab.physical_slot_ids, dtype=np.int64), DType.INT64)
+        token_tensor = Tensor.from_handle(self.prefill_token_id_buf.ptr, (slab.rows,), DType.INT64, self.device)
+        position_tensor = Tensor.from_handle(self.prefill_position_buf.ptr, (slab.rows,), DType.INT64, self.device)
+        context_tensor = Tensor.from_handle(self.prefill_context_count_buf.ptr, (slab.rows,), DType.INT64, self.device)
+        block_table_tensor = Tensor.from_handle(self.prefill_block_table_buf.ptr, block_table_arr.shape, DType.INT32, self.device)
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table_tensor,
+            live_counts=position_tensor,
+            max_live_count=max(int(value) for value in slab.positions),
+            storage_dtype=DType.BF16,
+            row_positions=position_tensor,
+            span_role="prefill",
+        )
+        prefill_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table_tensor,
+            live_counts=context_tensor,
+            max_live_count=max(int(value) for value in slab.context_counts),
+            storage_dtype=DType.BF16,
+            row_positions=position_tensor,
+            span_role="prefill",
+        )
+        return Qwen35ParoPackedPrefillMetadata(
+            token_ids=token_tensor,
+            positions=position_tensor,
+            context_counts=context_tensor,
+            block_tables=block_table_tensor,
+            cu_seqlens_q=cu_q,
+            cu_seqlens_k=cu_k,
+            state_indices=state_indices,
+            append_spans=append_spans,
+            prefill_spans=prefill_spans,
+            temp_buffers=tuple(temp_buffers),
+        )
+
     def _packed_prefill_final_rows(self, slab) -> tuple[int, ...]:
         if len(slab.cu_seqlens_q) != slab.request_count + 1:
             raise ValueError("compact slab cu_seqlens_q must align with request_count")
@@ -1484,9 +1597,14 @@ class Qwen35ParoResidentSession:
             self.runtime.memcpy_async(dst_ptr, src_ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
             self.position_arr[slot] = position
             self.context_arr[slot] = context
+            if hasattr(self, "active_mask_arr"):
+                self.active_mask_arr[slot] = 1
         copy_host_to_device(self.position_buf, host_array_ptr(self.position_arr), self.position_arr.nbytes, runtime=self.runtime)
         copy_host_to_device(self.context_buf, host_array_ptr(self.context_arr), self.context_arr.nbytes, runtime=self.runtime)
+        if hasattr(self, "active_mask_arr") and hasattr(self, "active_mask_buf"):
+            copy_host_to_device(self.active_mask_buf, host_array_ptr(self.active_mask_arr), self.active_mask_arr.nbytes, runtime=self.runtime)
         if not sample:
+            self.runtime.stream_synchronize(stream)
             return tuple(None for _ in slot_ids)
         for slot in slot_ids:
             final_hidden = Tensor.from_handle(
@@ -1563,6 +1681,76 @@ class Qwen35ParoResidentSession:
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
             self.runtime.memcpy_async(next_hidden.ptr, out.ptr, tokens * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+            hidden, next_hidden = next_hidden, hidden
+        return hidden
+
+    def _run_native_prefill_packed_layers(
+        self,
+        slab,
+        metadata: Qwen35ParoPackedPrefillMetadata,
+        *,
+        stream: int = 0,
+    ) -> Tensor:
+        rows = int(slab.rows)
+        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        for layer_id, state in enumerate(self.states):
+            layer_type = self.config.layer_types[layer_id]
+            if layer_type == "linear_attention":
+                conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+                linear_scratch = self.linear_scratch[layer_id]
+                if linear_scratch.attn_input.shape[0] < rows:
+                    linear_scratch = state.reserve_linear_attention_scratch(tokens=rows, activation_dtype=DType.FP16)
+                    self.linear_scratch[layer_id] = linear_scratch
+                moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
+                out = state.run_linear_attention_moe_packed_prefill_layer_fp16(
+                    hidden,
+                    conv_state=conv_state,
+                    recurrent_state=recurrent_state,
+                    cu_seqlens=metadata.cu_seqlens_q,
+                    state_indices=metadata.state_indices,
+                    segments=slab.request_count,
+                    linear_scratch=linear_scratch,
+                    moe_scratch=moe_scratch,
+                    tokens=rows,
+                    library=self.libraries,
+                    stream=stream,
+                )
+            elif layer_type == "full_attention":
+                key_cache, value_cache = self._full_cache_all_slots(layer_id)
+                attention_scratch = self.full_scratch[layer_id]
+                if attention_scratch.attn_input.shape[0] < rows:
+                    attention_scratch = state.reserve_full_attention_scratch(
+                        tokens=rows,
+                        num_splits=1,
+                        activation_dtype=DType.FP16,
+                        gated_dtype=DType.FP16,
+                    )
+                    self.full_scratch[layer_id] = attention_scratch
+                moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
+                out = state.run_full_attention_moe_prefill_varlen_layer_fp16(
+                    hidden,
+                    key_cache=key_cache,
+                    value_cache=value_cache,
+                    append_spans=metadata.append_spans,
+                    prefill_spans=metadata.prefill_spans,
+                    cu_seqlens_q=metadata.cu_seqlens_q,
+                    cu_seqlens_k=metadata.cu_seqlens_k,
+                    segments=slab.request_count,
+                    cos_table=self.cos,
+                    sin_table=self.sin,
+                    positions=metadata.positions,
+                    max_positions=self.max_sequence_length,
+                    attention_scratch=attention_scratch,
+                    moe_scratch=moe_scratch,
+                    tokens=rows,
+                    block_size=self.block_size,
+                    library=self.libraries,
+                    stream=stream,
+                )
+            else:
+                raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
+            self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
             hidden, next_hidden = next_hidden, hidden
         return hidden
 
@@ -1813,7 +2001,8 @@ class Qwen35ParoResidentSession:
         self.vocab_size = int(embed_fp16.shape[0])
         self.hidden_nbytes = int(self.config.hidden_size) * DType.FP16.itemsize
         self.batch_hidden_nbytes = self.max_batch_size * self.hidden_nbytes
-        self.prefill_hidden_nbytes = self.max_sequence_length * self.hidden_nbytes
+        self.prefill_capacity_rows = self.max_sequence_length * self.max_batch_size
+        self.prefill_hidden_nbytes = self.prefill_capacity_rows * self.hidden_nbytes
         self._emit("load_embedding_done", vocab_size=self.vocab_size, hidden_size=self.config.hidden_size)
 
     def _load_final_norm_and_head(self) -> None:
@@ -1871,20 +2060,20 @@ class Qwen35ParoResidentSession:
         self.norm_out_bf16 = Tensor.from_handle(norm_out_bf16_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
         self.prefill_hidden = Tensor.from_handle(
             prefill_hidden_buf.ptr,
-            (self.max_sequence_length, self.config.hidden_size),
+            (self.prefill_capacity_rows, self.config.hidden_size),
             DType.FP16,
             self.device,
         )
         self.prefill_next_hidden = Tensor.from_handle(
             prefill_next_hidden_buf.ptr,
-            (self.max_sequence_length, self.config.hidden_size),
+            (self.prefill_capacity_rows, self.config.hidden_size),
             DType.FP16,
             self.device,
         )
 
         block_table_arr = np.arange(self.blocks, dtype=np.int32)
-        prefill_block_table_arr = np.tile(block_table_arr, (self.max_sequence_length, 1))
-        prefill_context_count_arr = np.zeros((self.max_sequence_length,), dtype=np.int64)
+        prefill_block_table_arr = np.tile(block_table_arr, (self.prefill_capacity_rows, 1))
+        prefill_context_count_arr = np.zeros((self.prefill_capacity_rows,), dtype=np.int64)
         self.position_arr = np.zeros(self.batch_layout.slot_scalar_shape, dtype=np.int64)
         self.context_arr = np.ones(self.batch_layout.slot_scalar_shape, dtype=np.int64)
         self.token_id_arr = np.zeros(self.batch_layout.slot_scalar_shape, dtype=np.int64)
@@ -1899,8 +2088,8 @@ class Qwen35ParoResidentSession:
         self.active_mask_buf = self._dev(self.active_mask_arr)
         self.block_table = Tensor.from_handle(self.block_table_buf.ptr, block_table_arr.shape, DType.INT32, self.device)
         self.batch_positions = Tensor.from_handle(self.position_buf.ptr, self.batch_layout.slot_scalar_shape, DType.INT64, self.device)
-        prefill_token_arr = np.zeros((self.max_sequence_length,), dtype=np.int64)
-        prefill_position_arr = np.arange(self.max_sequence_length, dtype=np.int64)
+        prefill_token_arr = np.zeros((self.prefill_capacity_rows,), dtype=np.int64)
+        prefill_position_arr = np.arange(self.prefill_capacity_rows, dtype=np.int64)
         self.prefill_token_id_buf = self._dev(prefill_token_arr)
         self.prefill_position_buf = self._dev(prefill_position_arr)
         self.prefill_token_ids = Tensor.from_handle(

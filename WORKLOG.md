@@ -9517,3 +9517,42 @@ Result: targeted scheduler/resident tests passed (`35 passed`). Compact c=8
 planning artifact now includes `slot_ids` and reports the remaining blocker as
 packed native layer orchestration/equality gates, not missing segment/full-attn
 kernels or final-row commit helpers.
+
+## 2026-05-15 — Native compact c>N prefill execution and equality gates
+
+Completed task #18's retained compact prefill wiring: `prefill_native_packed(slab)`
+now materializes compact slab device metadata, runs packed native layers, commits
+one final hidden row per physical slot, and returns one seed sample per request.
+Decode after the seed still uses `step_batch_serial`; this is therefore a
+correctness milestone, not a throughput claim.
+
+Changes:
+- imported/wired segment-aware linear-attention conv/GDN wrappers into
+  `Qwen35ParoDecodeState` packed prefill paths;
+- added varlen/block-diagonal full-attention prefill layer orchestration using
+  `qwen35_varlen_causal_gqa_gate_fp16` over row-shaped physical block tables;
+- expanded resident prefill buffers to `max_sequence_length * max_batch_size`
+  rows for compact slabs;
+- `Qwen35ParoResidentSession.prefill_native_packed(slab)` now runs the packed
+  native prefill path and commits final rows/samples via physical `slot_ids`;
+- added `scripts/qwen35_batch_packed_prefill_correctness.py` and c=2/4/8
+  accepted correctness artifacts under `benchmarks/results/`;
+- updated docs/rollup/changelog to mark native compact prefill correctness as
+  landed while keeping c-aware decode/throughput pending.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py hipengine/generation/batch_scheduler.py scripts/qwen35_batch_packed_prefill_correctness.py scripts/qwen35_native_compact_prefill_plan.py
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 4 --max-layers 2 --batch-size 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/packed-c2-l2.json
+python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json benchmarks/results/2026-05-15-hipengine-qwen35-c2-native-compact-prefill-correctness-accepted.json
+python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size 4 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json benchmarks/results/2026-05-15-hipengine-qwen35-c4-native-compact-prefill-correctness-accepted.json
+python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size 8 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json benchmarks/results/2026-05-15-hipengine-qwen35-c8-native-compact-prefill-correctness-accepted.json
+```
+
+Result: targeted tests passed (`67 passed`). The reduced c=2/max_layers=2 smoke
+matched independent c=1 native prefill+decode. Full max_layers=40 prompt8 gates
+passed for c=2, c=4, and c=8 with `generated_match=true` and
+`finite_logits=true`. The c=8 compact slab ran as one 64-row native prefill slab
+with `cu_seqlens_q/k=[0,8,16,24,32,40,48,56,64]` and slot ids `[0..7]`.

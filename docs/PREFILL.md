@@ -137,10 +137,10 @@ Missing for the final path:
 
 | Area | Required final work |
 | --- | --- |
-| Public API wiring | **Landed for c=1:** `prefill_native(...)` is the default generation/benchmark path; compact c>N uses separate `prefill_native_packed(slab)` blocker path. |
+| Public API wiring | **Landed:** `prefill_native(...)` is the default single-request path; compact c>N uses `prefill_native_packed(slab)` and generated-equality gates now pass for c=2/4/8 prompt8. |
 | Full-attn retained orchestration | **Landed for c=1:** batched Q/K/V + vector RoPE + prompt KV append + native causal prefill attention are wired and fixture-gated. |
 | Grouped/compact MoE | **Landed for c=1:** grouped scatter/gather and compact AWQ WMMA expert kernels are wired into native prefill. |
-| Compact c>N slab | **Metadata + linear/full-attn/final-row helpers landed:** `CompactPromptSlab`, `bucketize_by_block_count`, segment-aware linear-attn conv/GDN state kernels, varlen/block-diagonal full-attn prefill via `cu_seqlens`, physical slot metadata, and final-row commit helpers exist; execution remains blocked on packed layer orchestration and generated-token equality gates. |
+| Compact c>N slab | **Correctness landed:** `CompactPromptSlab`, `bucketize_by_block_count`, physical slot metadata, segment-aware linear-attn conv/GDN, varlen/block-diagonal full-attn via `cu_seqlens`, grouped compact MoE, and final-row commit are wired through `prefill_native_packed(slab)`; c-aware decode graph replay and retained throughput remain future work. |
 | Prefill config/tuning | Add typed `PrefillConfig`; no hot-path env lookups. |
 
 ## Final API and config contract
@@ -394,8 +394,10 @@ Final compact requirements:
   `_commit_packed_prefill_final_rows(...)` commits each segment tail hidden row
   plus position/context metadata after packed layer execution. `KVPolicy.begin_transaction/commit/rollback` hooks remain
   for speculative verify/draft paths, not this ordinary prefill path.
-- Replace `scheduler_serial_slot_bridge` with `native_prefill_compact_cN` only
-  after equality gates pass.
+- `prefill_native_packed(slab)` now runs the native compact prefill path and
+  returns one final-row sample per request. Decode after the seed still uses
+  `step_batch_serial`; replace that serial decode bridge only after c-aware
+  decode graph replay lands.
 
 ## CPU references and oracles
 
@@ -476,11 +478,20 @@ Required checks:
 
 1. c=2/4/8 generated-token equality vs independent serial c=1 sessions.
 2. Finite logits and per-request state/KV bounds checks.
-3. Native compact kernels run; no per-request prompt loop in the retained path.
+3. Native compact kernels run; no per-request prompt loop in the retained prefill path.
 4. At c=8/T=512, prefill tok/s improves over `scheduler_serial_slot_bridge` by
-   at least 2× before retaining a throughput claim.
+   at least 2× before retaining a throughput claim. This perf row is still
+   pending; c=2/4/8 prompt8 correctness is accepted but not a throughput claim.
 
-Retained artifact target:
+Accepted correctness artifacts:
+
+```text
+benchmarks/results/2026-05-15-hipengine-qwen35-c2-native-compact-prefill-correctness-accepted.json
+benchmarks/results/2026-05-15-hipengine-qwen35-c4-native-compact-prefill-correctness-accepted.json
+benchmarks/results/2026-05-15-hipengine-qwen35-c8-native-compact-prefill-correctness-accepted.json
+```
+
+Retained throughput artifact target:
 
 ```text
 benchmarks/results/2026-05-XX-hipengine-qwen35-native-prefill-compact-c8-accepted.json

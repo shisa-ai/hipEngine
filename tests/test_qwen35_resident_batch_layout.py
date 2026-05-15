@@ -174,27 +174,53 @@ def test_qwen35_resident_prefill_native_uses_config_default_for_full_native() ->
     assert session.prefill_native([1, 2, 3, 4], sample=False) == (1, 2, 3, 4)
 
 
-def test_qwen35_resident_prefill_native_packed_rejects_until_remaining_packed_kernels_land() -> None:
+def test_qwen35_resident_prefill_native_packed_wires_metadata_layers_and_commit(monkeypatch) -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.closed = False
     session.max_batch_size = 2
     session.max_sequence_length = 8
     session.blocks = 1
+    session.block_size = 256
+    session.config = SimpleNamespace(hidden_size=4)
+    session.vocab_size = 100
+    session.libraries = {"runtime_state": object()}
+    session.embedding = SimpleNamespace(tensor=_tensor(0x1000, (100, 4), DType.FP16))
+    session.prefill_hidden = _tensor(0x1800, (8, 4), DType.FP16)
+    calls: list[str] = []
+
+    class FakeRuntime:
+        def stream_synchronize(self, stream):
+            calls.append(f"sync:{stream}")
+
+    session.runtime = FakeRuntime()
+    session.native_prefill_plan = lambda: SimpleNamespace(
+        full_layer_limit_native=True,
+        blockers=(),
+        linear_prefix_layers=1,
+        layer_limit=2,
+    )
+    metadata = SimpleNamespace(token_ids=_tensor(0x2000, (3,), DType.INT64), temp_buffers=())
+    session._materialize_packed_prefill_metadata = lambda slab: calls.append("metadata") or metadata
+    hidden = _tensor(0x3000, (3, 4), DType.FP16)
+    session._run_native_prefill_packed_layers = lambda slab, metadata, stream=0: calls.append("layers") or hidden
+    session._commit_packed_prefill_final_rows = (
+        lambda hidden_arg, slab, sample=True, stream=0: calls.append(f"commit:{sample}") or ("result",)
+    )
+    session._restore_decode_scratch_after_prefill = lambda: calls.append("restore")
+    monkeypatch.setattr(runner_module, "embedding_lookup_batch_fp16_i64", lambda *args, **kwargs: calls.append("embed"))
     slab = CompactPromptSlab.from_token_rows(
         request_ids=(10, 11),
         token_rows=((1, 2), (3,)),
         start_positions=(0, 0),
         block_count=1,
+        slot_ids=(0, 1),
     )
 
-    with pytest.raises(NotImplementedError, match="packed native layer orchestration"):
-        session.prefill_native_packed(slab)
+    assert session.prefill_native_packed(slab, sample=False) == ("result",)
 
-    assert session.last_prefill_execution["path"] == "native_prefill_compact_cN_blocked"
-    assert session.last_prefill_execution["request_count"] == 2
-    assert any("linear-attention kernels are landed" in blocker for blocker in session.last_prefill_execution["blockers"])
-    assert any("cu_seqlens" in blocker for blocker in session.last_prefill_execution["blockers"])
-    assert any("packed native layer orchestration" in blocker for blocker in session.last_prefill_execution["blockers"])
+    assert calls == ["metadata", "embed", "layers", "sync:0", "commit:False", "restore"]
+    assert session.last_prefill_execution["path"] == "native_prefill_compact_cN"
+    assert session.last_prefill_execution["slot_ids"] == [0, 1]
 
 
 def test_qwen35_resident_commit_packed_prefill_final_rows_updates_slots(monkeypatch) -> None:
@@ -444,10 +470,10 @@ def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> No
     assert metadata.row_execution == "serial_c1_layer_path"
     assert metadata.native_prefill_plan.linear_prefix_layers == 2
     assert metadata.native_prefill_plan.full_layer_limit_native
-    assert not metadata.native_compact_prefill
+    assert metadata.native_compact_prefill
     assert not metadata.native_caware_decode
     assert not metadata.throughput_claim_eligible
-    assert any("c>N prefill" in blocker for blocker in metadata.blockers)
+    assert any("decode" in blocker for blocker in metadata.blockers)
     payload = metadata.to_json_dict()
     assert payload["native_prefill_plan"]["linear_prefix_layers"] == 2
     assert payload["blockers"] == list(metadata.blockers)
