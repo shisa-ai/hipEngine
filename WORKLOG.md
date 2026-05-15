@@ -7140,3 +7140,51 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows scheduler graph-key metadata only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Scheduler speculative verify graph cache helper
+
+### Scope
+
+- Added `ResidentBatchScheduler.get_or_create_speculative_verify_graph(...)`.
+- Scheduler-owned speculative verify work can now retrieve/cache graph or replay objects under the same `GraphBucketCache` using `TargetVerifyBatch` draft-depth/tree-shape metadata.
+- Updated the DFlash blocker helper/artifact and Task #15 with scheduler graph-cache evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_generation_batch_scheduler.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `21 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.scheduler_speculative_verify_work=true`
+- `implementation_status.interfaces_present.scheduler_speculative_accept=true`
+- `implementation_status.interfaces_present.scheduler_speculative_shape_key=true`
+- `implementation_status.interfaces_present.scheduler_speculative_graph_cache=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: scheduler-owned speculative verifier metadata now has the cache entry point future graph replay needs. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows scheduler graph-cache metadata only; no performance claim or kernel change was made.

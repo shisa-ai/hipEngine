@@ -244,6 +244,25 @@ class ResidentBatchScheduler:
             replay_steps=replay_steps,
         )
 
+    def get_or_create_speculative_verify_graph(
+        self,
+        work: SpeculativeVerifyWork,
+        factory,
+        *,
+        top_k: int = 0,
+        experts_per_token: int = 0,
+        replay_steps: int = 1,
+    ) -> object:
+        """Cache graph/replay objects for scheduler-owned verify work."""
+
+        key = self.speculative_verify_shape_key(
+            work,
+            top_k=top_k,
+            experts_per_token=experts_per_token,
+            replay_steps=replay_steps,
+        )
+        return self.graph_buckets.get_or_create(key, factory)
+
     def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
         return self.active_batch.shape_key(
             mode=mode,

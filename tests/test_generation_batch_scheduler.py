@@ -93,6 +93,23 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert key.replay_steps == 2
     assert key.draft_depth == 2
     assert key.tree_shape == (0, 1, 0)
+    graph = scheduler.get_or_create_speculative_verify_graph(
+        work,
+        lambda bucket: {"bucket": bucket},
+        top_k=8,
+        experts_per_token=8,
+        replay_steps=2,
+    )
+    assert graph == {"bucket": key}
+    assert scheduler.graph_buckets.stats.entries == 1
+    assert scheduler.get_or_create_speculative_verify_graph(
+        work,
+        lambda bucket: {"unexpected": bucket},
+        top_k=8,
+        experts_per_token=8,
+        replay_steps=2,
+    ) is graph
+    assert scheduler.graph_buckets.stats.hits == 1
 
     summary = TargetAcceptSummary.from_accept_result(
         work.target_batch,
