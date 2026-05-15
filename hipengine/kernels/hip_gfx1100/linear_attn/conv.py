@@ -15,6 +15,7 @@ _SYMBOL_F32 = "hipengine_qwen35_linear_attn_conv_decode_f32"
 _SYMBOL_BF16 = "hipengine_qwen35_linear_attn_conv_decode_bf16"
 _SYMBOL_FP16 = "hipengine_qwen35_linear_attn_conv_decode_fp16"
 _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
+_SYMBOL_PREFILL_FP16 = "hipengine_qwen35_linear_attn_conv_prefill_fp16"
 _SYMBOL_PREFILL_SEGMENTS_F32 = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32"
 
 
@@ -170,6 +171,36 @@ def qwen35_linear_attn_conv_prefill_f32(
     )
 
 
+def qwen35_linear_attn_conv_prefill_fp16(
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16-input native prefill convolution and update conv_state."""
+
+    _launch_conv_prefill(
+        _SYMBOL_PREFILL_FP16,
+        hidden_states_ptr,
+        conv_state_ptr,
+        conv_weight_ptr,
+        out_ptr,
+        tokens,
+        channels,
+        kernel_size,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_linear_attn_conv_prefill_segments_f32(
     hidden_states_ptr: int,
     conv_state_ptr: int,
@@ -231,6 +262,11 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "w4_paro", "f32"),
         qwen35_linear_attn_conv_prefill_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "w4_paro", "fp16"),
+        qwen35_linear_attn_conv_prefill_fp16,
         replace=replace,
     )
     register(

@@ -7,6 +7,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
     qwen35_linear_attn_conv_decode_fp16,
     qwen35_linear_attn_conv_prefill_f32,
+    qwen35_linear_attn_conv_prefill_fp16,
     qwen35_linear_attn_conv_prefill_segments_f32,
     register_qwen35_linear_attn_conv_kernels,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "qwen35_linear_attn_conv_decode_f32",
     "qwen35_linear_attn_conv_decode_fp16",
     "qwen35_linear_attn_conv_prefill_f32",
+    "qwen35_linear_attn_conv_prefill_fp16",
     "qwen35_linear_attn_conv_prefill_segments_f32",
     "register_qwen35_linear_attn_conv_kernels",
     "register_qwen35_linear_attn_gdn_kernels",

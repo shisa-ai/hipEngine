@@ -10071,3 +10071,38 @@ Results: `py_compile` passed, but fixture failed (`generated_match=false`,
 `native_owned_device_bytes=1625645909`). Diagnostic-only benchmark output was
 512/128 `568.846 tok/s` and 4K/128 `334.454 tok/s`, but both are invalid due to
 correctness failure. Decision: revert to the retained 256-thread router prefill.
+
+## 2026-05-15 — Prefill multiloop iter 17: FP16-input linear conv prefill
+
+Added an FP16-input native linear-attention prefill convolution wrapper/kernel so
+the FP16 qkv projection rows are converted inside the convolution kernel instead
+of first materializing `scratch.qkv_f32` via a separate cast launch. The kernel
+uses the same F32 conv math and writes the F32 conv state directly; c=1 decode
+and segment prefill paths are unchanged.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.linear_attn.conv import build_qwen35_linear_attn_conv
+build_qwen35_linear_attn_conv(load=False, require_cached=False)
+PY
+python3 -m py_compile hipengine/kernels/hip_gfx1100/linear_attn/conv.py hipengine/runtime/qwen35_paro.py scripts/smoke.py
+python3 -m pytest tests/test_qwen35_linear_attn_conv_plan.py -q
+python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+for c in 2 4 8; do python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size $c --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/iter17-packed-c$c.json; done
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter17-512-run1.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter17-512-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter17-512-run3.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: 512/128 samples `565.146`, `565.408`, `565.281`, `564.646` tok/s
+(median `565.213`, +0.73% vs retained `561.099`). Fixture gate passed with
+`native_owned_device_bytes=1625645909`, native prefill `0.91936s`, max KL
+`0.01743`, top-1 `1.0`; compact c=2/4/8 prompt8 gates passed. The linear-attn
+prefill smoke covered the new FP16 conv variant (`fp16_conv_out_max_abs=1.49e-08`,
+`fp16_conv_state_max_abs=0`). 4K/128 stayed above guard at `333.328 tok/s`,
+prefill `12.2882s`, decode `101.962 tok/s`.

@@ -48,6 +48,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_bf16,
     qwen35_linear_attn_conv_decode_fp16,
     qwen35_linear_attn_conv_prefill_f32,
+    qwen35_linear_attn_conv_prefill_fp16,
     qwen35_linear_attn_conv_prefill_segments_f32,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
@@ -2574,16 +2575,8 @@ class Qwen35ParoDecodeState:
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
         qkv_width = _linear_qkv_width(cfg)
         z_width = _linear_value_width(cfg)
-        fp16_to_f32(
+        qwen35_linear_attn_conv_prefill_fp16(
             scratch.qkv.ptr,
-            scratch.qkv_f32.ptr,
-            tokens * qkv_width,
-            stream=stream,
-            library=_library_for(library, "cast"),
-            runtime=self.runtime,
-        )
-        qwen35_linear_attn_conv_prefill_f32(
-            scratch.qkv_f32.ptr,
             conv_state.ptr,
             self.tensor(f"{prefix}.conv1d.weight").ptr,
             scratch.conv_out.ptr,

@@ -2667,6 +2667,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
         qwen35_gdn_prefill_rmsnorm_gate_bf16,
         qwen35_gdn_prefill_rmsnorm_gate_fp16,
         qwen35_linear_attn_conv_prefill_f32,
+        qwen35_linear_attn_conv_prefill_fp16,
         qwen35_linear_attn_prefill_prepare_f32_bf16,
         qwen35_linear_attn_prefill_prepare_f32_fp16,
     )
@@ -2834,8 +2835,12 @@ def qwen35_linear_attn_prefill_hip_smoke(
         [[0.25 * ((channel + 2 * k) % 5 - 2) for k in range(kernel_size)] for channel in range(channels)],
         dtype=np.float32,
     )
+    hidden_fp16 = hidden.astype(np.float16)
     conv_out = np.empty_like(hidden)
+    conv_out_fp16 = np.empty_like(hidden)
+    conv_state_fp16 = conv_state.copy()
     expected_conv_out, expected_conv_state = conv_prefill_ref(hidden, conv_state, conv_weight)
+    expected_conv_fp16_out, expected_conv_fp16_state = conv_prefill_ref(hidden_fp16.astype(np.float32), conv_state, conv_weight)
 
     tokens = 3
     num_k_heads = 1
@@ -2928,14 +2933,28 @@ def qwen35_linear_attn_prefill_hip_smoke(
 
     try:
         hidden_dev = dev(hidden)
+        hidden_fp16_dev = dev(hidden_fp16)
         conv_state_dev = dev(conv_state.copy())
+        conv_state_fp16_dev = dev(conv_state_fp16.copy())
         conv_weight_dev = dev(conv_weight)
         conv_out_dev = out_dev(conv_out)
+        conv_out_fp16_dev = out_dev(conv_out_fp16)
         qwen35_linear_attn_conv_prefill_f32(
             hidden_dev.ptr,
             conv_state_dev.ptr,
             conv_weight_dev.ptr,
             conv_out_dev.ptr,
+            conv_tokens,
+            channels,
+            kernel_size,
+            library=conv_library,
+            runtime=runtime,
+        )
+        qwen35_linear_attn_conv_prefill_fp16(
+            hidden_fp16_dev.ptr,
+            conv_state_fp16_dev.ptr,
+            conv_weight_dev.ptr,
+            conv_out_fp16_dev.ptr,
             conv_tokens,
             channels,
             kernel_size,
@@ -3079,7 +3098,9 @@ def qwen35_linear_attn_prefill_hip_smoke(
         )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(conv_out), conv_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(conv_out_fp16), conv_out_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(conv_state), conv_state_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(conv_state_fp16), conv_state_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(query_actual), query_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(key_actual), key_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(value_actual), value_dev, runtime=runtime)
@@ -3104,6 +3125,8 @@ def qwen35_linear_attn_prefill_hip_smoke(
 
     conv_out_max_abs = float(np.max(np.abs(conv_out - expected_conv_out)))
     conv_state_max_abs = float(np.max(np.abs(conv_state - expected_conv_state)))
+    fp16_conv_out_max_abs = float(np.max(np.abs(conv_out_fp16 - expected_conv_fp16_out)))
+    fp16_conv_state_max_abs = float(np.max(np.abs(conv_state_fp16 - expected_conv_fp16_state)))
     query_max_abs = float(np.max(np.abs(query_actual - query)))
     key_max_abs = float(np.max(np.abs(key_actual - key)))
     value_max_abs = float(np.max(np.abs(value_actual - value)))
@@ -3124,6 +3147,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
     fp16_gated_mismatch = int(np.count_nonzero(gated_fp16.view(np.uint16) != expected_gated_fp16.view(np.uint16)))
     print(
         f"conv_out_max_abs={conv_out_max_abs:.3g} conv_state_max_abs={conv_state_max_abs:.3g} "
+        f"fp16_conv_out_max_abs={fp16_conv_out_max_abs:.3g} fp16_conv_state_max_abs={fp16_conv_state_max_abs:.3g} "
         f"prepare_max_abs={max(query_max_abs, key_max_abs, value_max_abs, beta_max_abs, decay_max_abs):.3g} "
         f"gdn_out_max_abs={gdn_out_max_abs:.3g} gdn_state_max_abs={gdn_state_max_abs:.3g} "
         f"gdn_k2_out_max_abs={gdn_k2_out_max_abs:.3g} gdn_k2_state_max_abs={gdn_k2_state_max_abs:.3g} "
@@ -3136,6 +3160,8 @@ def qwen35_linear_attn_prefill_hip_smoke(
     return 0 if max(
         conv_out_max_abs,
         conv_state_max_abs,
+        fp16_conv_out_max_abs,
+        fp16_conv_state_max_abs,
         query_max_abs,
         key_max_abs,
         value_max_abs,

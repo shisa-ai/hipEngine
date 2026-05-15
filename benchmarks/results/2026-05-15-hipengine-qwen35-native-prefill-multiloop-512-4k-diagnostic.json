@@ -10,24 +10,24 @@
   "path": "native_prefill_c1_multiloop",
   "max_layers": 40,
   "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
-  "change": "Use 256-thread router/top-k shared-gate prefill for tokens > 1 while preserving 512-thread c=1 decode default.",
+  "change": "Use FP16-input linear-attention prefill convolution to avoid a separate FP16-to-F32 qkv materialization launch before conv.",
   "workloads": {
     "512_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json",
-      "prefill_tok_s_samples": [559.9373944852076, 561.425822982768, 560.7729533570954, 562.0906743814145],
-      "prefill_tok_s_median": 561.0993881699317,
-      "previous_retained_prefill_tok_s": 553.7323425421581,
-      "delta_percent": 1.330434410594794,
-      "representative_prefill_seconds": 0.9143879387993366,
-      "representative_decode_tok_s": 100.61504159348523
+      "prefill_tok_s_samples": [565.1457552946306, 565.40799420366, 565.2811327274644, 564.6457379754063],
+      "prefill_tok_s_median": 565.2134440110475,
+      "previous_retained_prefill_tok_s": 561.0993881699317,
+      "delta_percent": 0.7332133892596238,
+      "representative_prefill_seconds": 0.9059609759133309,
+      "representative_decode_tok_s": 100.78662003754758
     },
     "4096_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json",
-      "prefill_tok_s": 333.1717142510515,
-      "previous_retained_prefill_tok_s": 330.0817258920494,
-      "prefill_seconds": 12.293960815994069,
-      "decode_tok_s": 101.89569277314061,
-      "guard_floor_prefill_tok_s": 316.51312853849896,
+      "prefill_tok_s": 333.3281934932708,
+      "previous_retained_prefill_tok_s": 333.1717142510515,
+      "prefill_seconds": 12.288189477985725,
+      "decode_tok_s": 101.9623875466935,
+      "guard_floor_prefill_tok_s": 316.66178381860726,
       "guard_passed": true
     }
   },
@@ -41,18 +41,28 @@
     "max_kl": 0.01742831788881887,
     "top1_agreement": 1.0,
     "native_owned_device_bytes": 1625645909,
-    "native_prefill_seconds": 0.9229367889929563
+    "native_prefill_seconds": 0.9193622069433331
   },
   "additional_gates": [
     {
-      "command": "python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py",
+      "command": "python3 -m py_compile hipengine/kernels/hip_gfx1100/linear_attn/conv.py hipengine/runtime/qwen35_paro.py scripts/smoke.py",
       "passed": true
     },
     {
-      "command": "python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size {2,4,8} --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/iter15-packed-c{2,4,8}.json",
+      "command": "python3 -m pytest tests/test_qwen35_linear_attn_conv_plan.py -q",
+      "passed": true,
+      "evidence": "3 passed"
+    },
+    {
+      "command": "python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "passed": true,
+      "evidence": "FP16 conv variant fp16_conv_out_max_abs=1.49e-08, fp16_conv_state_max_abs=0, fp16_gated_mismatch=0"
+    },
+    {
+      "command": "python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size {2,4,8} --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/iter17-packed-c{2,4,8}.json",
       "passed": true,
       "evidence": "c=2, c=4, c=8 generated_match=true finite_logits=true passed=true"
     }
   ],
-  "worklog": "2026-05-15 — Prefill multiloop iter 15: 256-thread router prefill"
+  "worklog": "2026-05-15 — Prefill multiloop iter 17: FP16-input linear conv prefill"
 }
