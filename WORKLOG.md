@@ -9660,3 +9660,14 @@ prefill check after the determinism fix measured `479.755 tok/s`
 post-preload `482.057 tok/s` baseline. The active loop remains paused until the
 human asks to resume; next perf work can proceed with a repeat-stable native
 prefill gate while 4K/128 scratch OOM remains a separate blocker.
+
+## 2026-05-15 — Document native prefill determinism lesson
+
+Added `docs/LESSONS-LEARNED.md` with the retained native-prefill flakiness
+lesson from commit `4f252cf`: layer-3/full-attention localization, ruled-out
+state/MoE/KV causes, repeat-launch attention probe, 64-thread prefill attention
+fix, shared scratch sizing rule, validation evidence, and a checklist for future
+flaky native-prefill correctness failures.
+
+Validation: re-read `docs/LESSONS-LEARNED.md` end-to-end; docs-only change, no
+GPU run needed.
