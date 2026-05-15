@@ -207,6 +207,23 @@ def _accept_result_selected_rows_checked() -> bool:
     return negative_rejected and resolved_ambiguous_row
 
 
+def _accept_result_next_tokens_checked() -> bool:
+    try:
+        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), next_tokens=(-1,))
+    except ValueError as exc:
+        negative_rejected = "next_tokens" in str(exc)
+    else:
+        negative_rejected = False
+    summary = _sample_tree_accept_summary()
+    try:
+        replace(summary, next_tokens=(-1,))
+    except ValueError as exc:
+        summary_rejected = "next_tokens" in str(exc)
+    else:
+        summary_rejected = False
+    return negative_rejected and summary_rejected
+
+
 def _target_accept_summary_topology_checked() -> bool:
     summary = _sample_tree_accept_summary()
     try:
@@ -323,6 +340,7 @@ def _interface_status() -> dict[str, Any]:
         "target_commit_plan_candidate_budget_checked": _target_commit_plan_candidate_budget_checked(),
         "target_accept_summary_transaction_id_checked": _target_accept_summary_transaction_id_checked(),
         "accept_result_selected_rows_checked": _accept_result_selected_rows_checked(),
+        "accept_result_next_tokens_checked": _accept_result_next_tokens_checked(),
         "target_accept_summary_topology_checked": _target_accept_summary_topology_checked(),
         "target_verify_buffers_transaction_id_checked": _target_verify_buffers_transaction_id_checked(),
         "target_verify_buffers_candidate_counts_checked": _target_verify_buffers_candidate_counts_checked(),
@@ -519,6 +537,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         accepted_tokens=((10, 11), (20,)),
         transaction_id=txn.transaction_id,
         selected_candidate_rows=(3, 4),
+        next_tokens=(12, 21),
     )
     summary = TargetAcceptSummary.from_accept_result(target, accept)
     plan = TargetCommitPlan.from_summary(summary, txn)
@@ -623,11 +642,13 @@ def _kv_transaction_status() -> dict[str, Any]:
         "accept_result": {
             "transaction_id": accept.transaction_id,
             "selected_candidate_rows": [] if accept.selected_candidate_rows is None else list(accept.selected_candidate_rows),
+            "next_tokens": [] if accept.next_tokens is None else list(accept.next_tokens),
         },
         "accept_summary": {
             "transaction_id": summary.transaction_id,
             "accepted_counts": list(summary.accepted_counts),
             "accepted_tokens": [list(row) for row in summary.accepted_tokens],
+            "next_tokens": [] if summary.next_tokens is None else list(summary.next_tokens),
             "candidate_counts": None if summary.candidate_counts is None else list(summary.candidate_counts),
             "draft_depth": summary.draft_depth,
             "tree_shape": [] if summary.tree_shape is None else list(summary.tree_shape),
@@ -641,6 +662,7 @@ def _kv_transaction_status() -> dict[str, Any]:
             "accepted_counts": list(plan.accepted_counts),
             "commit_rows": list(plan.commit_rows),
             "commit_positions": list(plan.commit_positions),
+            "next_tokens": [] if plan.next_tokens is None else list(plan.next_tokens),
             "candidate_counts": None if plan.candidate_counts is None else list(plan.candidate_counts),
             "draft_depth": plan.draft_depth,
             "tree_shape": [] if plan.tree_shape is None else list(plan.tree_shape),
@@ -724,6 +746,7 @@ def _kv_transaction_status() -> dict[str, Any]:
             "accepted_counts": list(scheduler_commit_plan.commit_plan.accepted_counts),
             "commit_rows": list(scheduler_commit_plan.commit_plan.commit_rows),
             "commit_positions": list(scheduler_commit_plan.commit_plan.commit_positions),
+            "next_tokens": [] if scheduler_commit_plan.commit_plan.next_tokens is None else list(scheduler_commit_plan.commit_plan.next_tokens),
             "candidate_counts": list(scheduler_commit_plan.commit_plan.candidate_counts or ()),
             "mode": scheduler_commit_plan.commit_plan.mode,
         },

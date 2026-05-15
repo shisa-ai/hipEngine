@@ -456,6 +456,7 @@ class AcceptResult:
     accepted_tokens: tuple[tuple[int, ...], ...]
     transaction_id: int | None = None
     selected_candidate_rows: tuple[int | None, ...] | None = None
+    next_tokens: tuple[int | None, ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.request_ids:
@@ -468,6 +469,11 @@ class AcceptResult:
                 raise ValueError("selected_candidate_rows must align with request_ids")
             if any(row is not None and row < 0 for row in self.selected_candidate_rows):
                 raise ValueError("selected_candidate_rows must be non-negative")
+        if self.next_tokens is not None:
+            if len(self.next_tokens) != len(self.request_ids):
+                raise ValueError("next_tokens must align with request_ids")
+            if any(token is not None and token < 0 for token in self.next_tokens):
+                raise ValueError("next_tokens must be non-negative")
         if len(self.accepted_counts) != len(self.request_ids) or len(self.accepted_tokens) != len(self.request_ids):
             raise ValueError("accepted counts/tokens must align with request_ids")
         if any(count < 0 for count in self.accepted_counts):
@@ -490,6 +496,7 @@ class TargetAcceptSummary:
     commit_tokens: tuple[int, ...]
     commit_positions: tuple[int, ...]
     full_accept: tuple[bool, ...]
+    next_tokens: tuple[int | None, ...] | None = None
     candidate_counts: tuple[int, ...] | None = None
     transaction_id: int | None = None
     draft_depth: int | None = None
@@ -520,6 +527,11 @@ class TargetAcceptSummary:
             raise ValueError("commit_tokens must be non-negative")
         if any(position < 0 for position in self.commit_positions):
             raise ValueError("commit_positions must be non-negative")
+        if self.next_tokens is not None:
+            if len(self.next_tokens) != len(self.request_ids):
+                raise ValueError("next_tokens must align with request_ids")
+            if any(token is not None and token < 0 for token in self.next_tokens):
+                raise ValueError("next_tokens must be non-negative")
         for count, tokens in zip(self.accepted_counts, self.accepted_tokens, strict=True):
             if count != len(tokens):
                 raise ValueError("accepted_counts must match accepted_tokens lengths")
@@ -593,6 +605,7 @@ class TargetAcceptSummary:
                 accepted == max_depth
                 for accepted, max_depth in zip(selection.accepted_counts, max_depths, strict=True)
             ),
+            next_tokens=None if result.next_tokens is None else tuple(result.next_tokens),
             candidate_counts=target.candidate_counts,
             transaction_id=result.transaction_id,
             draft_depth=target.draft_depth,
@@ -611,6 +624,7 @@ class TargetCommitPlan:
     commit_rows: tuple[int, ...]
     commit_tokens: tuple[int, ...]
     commit_positions: tuple[int, ...]
+    next_tokens: tuple[int | None, ...] | None = None
     candidate_counts: tuple[int, ...] | None = None
     draft_depth: int | None = None
     tree_shape: tuple[int, ...] | None = None
@@ -633,6 +647,11 @@ class TargetCommitPlan:
             raise ValueError("commit_tokens must be non-negative")
         if any(position < 0 for position in self.commit_positions):
             raise ValueError("commit_positions must be non-negative")
+        if self.next_tokens is not None:
+            if len(self.next_tokens) != len(self.request_ids):
+                raise ValueError("next_tokens must align with request_ids")
+            if any(token is not None and token < 0 for token in self.next_tokens):
+                raise ValueError("next_tokens must be non-negative")
         if self.candidate_counts is not None:
             if len(self.candidate_counts) != len(self.request_ids):
                 raise ValueError("candidate_counts must align with request_ids")
@@ -684,6 +703,7 @@ class TargetCommitPlan:
             commit_rows=summary.commit_rows,
             commit_tokens=summary.commit_tokens,
             commit_positions=summary.commit_positions,
+            next_tokens=summary.next_tokens,
             candidate_counts=counts,
             draft_depth=summary.draft_depth,
             tree_shape=summary.tree_shape,

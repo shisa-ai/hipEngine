@@ -8431,3 +8431,52 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows speculative accept-result selected-row provenance only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Accept-result next-token provenance
+
+### Scope
+
+- Added optional `next_tokens` metadata to `AcceptResult`.
+- `TargetAcceptSummary.from_accept_result(...)` now propagates verifier next-token metadata.
+- `TargetCommitPlan` now preserves next-token metadata so scheduler commit plans can carry correction/bonus tokens alongside accepted rows.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: `22 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.accept_result_next_tokens_checked=true`
+- `implementation_status.kv_transaction_target_verify.accept_result.next_tokens=[12,21]`
+- `implementation_status.kv_transaction_target_verify.accept_summary.next_tokens=[12,21]`
+- `implementation_status.kv_transaction_target_verify.commit_plan.next_tokens=[12,21]`
+- `implementation_status.kv_transaction_target_verify.scheduler_commit_plan.next_tokens=[12,21]`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: target verifier accept results can now carry the target-side correction/bonus token metadata needed after the accepted prefix. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows speculative accept-result next-token provenance only; no performance claim or kernel change was made.

@@ -215,6 +215,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
             accepted_counts=(2, 1),
             accepted_tokens=((101, 102), (201,)),
             transaction_id=plan.transaction.transaction_id,
+            next_tokens=(103, 202),
         ),
     )
     commit = scheduler.plan_speculative_commit(buffer_plan, summary)
@@ -226,6 +227,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert commit.commit_plan.request_ids == (r0, r1)
     assert commit.commit_plan.accepted_counts == (2, 1)
     assert commit.commit_plan.commit_rows == (3, 4)
+    assert commit.commit_plan.next_tokens == (103, 202)
     assert commit.commit_plan.candidate_counts == (2, 1)
     assert commit.commit_plan.draft_depth == work.target_batch.draft_depth
     assert commit.commit_plan.tree_shape == work.target_batch.tree_shape

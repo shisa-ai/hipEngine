@@ -29,6 +29,7 @@
       "target_commit_plan_candidate_budget_checked": true,
       "target_accept_summary_transaction_id_checked": true,
       "accept_result_selected_rows_checked": true,
+      "accept_result_next_tokens_checked": true,
       "target_accept_summary_topology_checked": true,
       "target_verify_buffers_transaction_id_checked": true,
       "target_verify_buffers_candidate_counts_checked": true,
@@ -78,6 +79,10 @@
         "selected_candidate_rows": [
           3,
           4
+        ],
+        "next_tokens": [
+          12,
+          21
         ]
       },
       "accept_summary": {
@@ -94,6 +99,10 @@
           [
             20
           ]
+        ],
+        "next_tokens": [
+          12,
+          21
         ],
         "candidate_counts": [
           2,
@@ -135,6 +144,10 @@
         "commit_positions": [
           7,
           4
+        ],
+        "next_tokens": [
+          12,
+          21
         ],
         "candidate_counts": [
           2,
@@ -302,6 +315,10 @@
         "commit_positions": [
           7,
           4
+        ],
+        "next_tokens": [
+          12,
+          21
         ],
         "candidate_counts": [
           2,

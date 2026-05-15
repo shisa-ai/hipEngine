@@ -43,6 +43,10 @@ def test_speculative_request_ids_must_be_unique() -> None:
         AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), selected_candidate_rows=(-1,))
     with pytest.raises(ValueError, match="selected_candidate_rows"):
         AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), selected_candidate_rows=(1, 2))
+    with pytest.raises(ValueError, match="next_tokens"):
+        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), next_tokens=(-1,))
+    with pytest.raises(ValueError, match="next_tokens"):
+        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), next_tokens=(10, 11))
     with pytest.raises(ValueError, match="unique"):
         TargetVerifyBatch(
             request_ids=(1, 1),
@@ -82,6 +86,7 @@ def test_draft_batch_and_accept_result_validate_row_metadata() -> None:
     result = AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,)))
     assert result.accepted_tokens == ((10, 11), (20,))
     assert result.selected_candidate_rows is None
+    assert result.next_tokens is None
 
     with pytest.raises(ValueError, match="align"):
         DraftBatch(
@@ -311,13 +316,20 @@ def test_target_accept_summary_validates_paths_and_commit_rows() -> None:
 
     summary = TargetAcceptSummary.from_accept_result(
         target,
-        AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,)), transaction_id=7),
+        AcceptResult(
+            request_ids=(1, 2),
+            accepted_counts=(2, 1),
+            accepted_tokens=((10, 11), (20,)),
+            transaction_id=7,
+            next_tokens=(12, 21),
+        ),
     )
 
     assert summary.transaction_id == 7
     assert summary.request_ids == (1, 2)
     assert summary.accepted_counts == (2, 1)
     assert summary.accepted_tokens == ((10, 11), (20,))
+    assert summary.next_tokens == (12, 21)
     assert summary.commit_rows == (3, 4)
     assert summary.commit_tokens == (11, 20)
     assert summary.commit_positions == (7, 4)
@@ -341,6 +353,10 @@ def test_target_accept_summary_validates_paths_and_commit_rows() -> None:
 
     with pytest.raises(ValueError, match="transaction_id"):
         replace(summary, transaction_id=-1)
+    with pytest.raises(ValueError, match="next_tokens"):
+        replace(summary, next_tokens=(12,))
+    with pytest.raises(ValueError, match="next_tokens"):
+        replace(summary, next_tokens=(12, -1))
     with pytest.raises(ValueError, match="draft_depth"):
         replace(summary, draft_depth=-1)
     with pytest.raises(ValueError, match="tree_shape"):
@@ -379,6 +395,7 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
             accepted_counts=(2, 1),
             accepted_tokens=((10, 11), (20,)),
             transaction_id=txn.transaction_id,
+            next_tokens=(12, 21),
         ),
     )
 
@@ -391,6 +408,7 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
     assert plan.commit_rows == (3, 4)
     assert plan.commit_tokens == (11, 20)
     assert plan.commit_positions == (7, 4)
+    assert plan.next_tokens == (12, 21)
     assert plan.candidate_counts == (2, 1)
     assert plan.draft_depth == 2
     assert plan.tree_shape == (0, 1, 0)
@@ -443,6 +461,10 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
             commit_positions=(7,),
             candidate_counts=(1,),
         )
+    with pytest.raises(ValueError, match="next_tokens"):
+        replace(plan, next_tokens=(12,))
+    with pytest.raises(ValueError, match="next_tokens"):
+        replace(plan, next_tokens=(12, -1))
 
 
 def test_target_state_commit_buffers_validate_copy_contract() -> None:
@@ -681,6 +703,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_candidate_budget_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_accept_summary_transaction_id_checked"]
     assert payload["implementation_status"]["interfaces_present"]["accept_result_selected_rows_checked"]
+    assert payload["implementation_status"]["interfaces_present"]["accept_result_next_tokens_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_accept_summary_topology_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_transaction_id_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_candidate_counts_checked"]
@@ -701,13 +724,16 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_result"]["selected_candidate_rows"] == [3, 4]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_result"]["next_tokens"] == [12, 21]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["commit_rows"] == [3, 4]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["transaction_id"] == 0
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["accepted_tokens"] == [[10, 11], [20]]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["next_tokens"] == [12, 21]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["draft_depth"] == 2
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["tree_shape"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["accepted_counts"] == [2, 1]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["next_tokens"] == [12, 21]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["draft_depth"] == 2
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["tree_shape"] == [0, 1, 0]
@@ -754,6 +780,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert commit_plan["accepted_counts"] == [2, 1]
     assert commit_plan["commit_rows"] == [3, 4]
     assert commit_plan["commit_positions"] == [7, 4]
+    assert commit_plan["next_tokens"] == [12, 21]
     assert commit_plan["candidate_counts"] == [2, 1]
     assert commit_plan["mode"] == "verify_tree"
     state_plan = payload["implementation_status"]["kv_transaction_target_verify"]["scheduler_state_commit_plan"]
