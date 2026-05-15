@@ -9076,3 +9076,45 @@ python3 -m py_compile hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_
 ```
 
 Result: `31 passed`; py_compile succeeded.
+
+## 2025-05-15 — Weight index speedup + HF hub resolution + E2E generation
+
+### Problem
+`load_weight_index` used `safetensors.safe_open` + per-tensor `get_slice` to read metadata.
+For `z-lab/Qwen3.5-35B-A3B-PARO` (single 20GB shard, 93,996 tensors, 12.4MB header), this
+took 120s+. Also, `load_weight_index` only accepted filesystem paths, not HF model IDs.
+
+### Fix
+- Direct binary header parsing: read 8-byte header length, read header bytes, `json.loads`.
+  0.6s for 94K tensors (200× speedup).
+- `_resolve_hf_hub_path()`: falls back to `huggingface_hub.snapshot_download(local_files_only=True)`
+  when the path doesn't exist on disk, so users can pass `z-lab/Qwen3.5-35B-A3B-PARO` directly.
+- `LLM._load_model_metadata()` stores the resolved filesystem path in `self.model` so the
+  tokenizer and runner get a real directory.
+
+### E2E generation verified
+```bash
+LD_LIBRARY_PATH=/home/lhl/miniforge3/lib/python3.10/site-packages/_rocm_sdk_devel/lib \
+  python3 -c "
+from hipengine import LLM, SamplingParams
+llm = LLM('z-lab/Qwen3.5-35B-A3B-PARO', quant='w4_paro')
+out = llm.generate('The capital of France is', SamplingParams(max_tokens=32))
+print(out)
+"
+```
+Output: `[' Paris.\nThe capital of France is Paris.\nThe capital of France is...']` ✓
+
+### Runtime note
+Conda `_rocm_sdk_devel` installs hipcc 7.13 which compiles against `libamdhip64.so.7`.
+The system has ROCm 6.2 (`libamdhip64.so.6`). Kernels load fine with:
+`LD_LIBRARY_PATH=/home/lhl/miniforge3/lib/python3.10/site-packages/_rocm_sdk_devel/lib`
+
+### 0.8B dense model assessment
+`z-lab/Qwen3.5-0.8B-PARO` is `Qwen3_5ForConditionalGeneration` (dense, not MoE).
+- 24 layers, 18 linear_attention + 6 full_attention
+- Dense MLP: gate_proj/up_proj/down_proj with PARO quant (no router/experts/shared_expert)
+- Same weight name prefix as 35B (`model.language_model.layers.*`)
+- Same linear/full attention structure as 35B layers
+- Main gap: no dense MLP execution path registered; MoE runner hardcodes expert dispatch
+- Supporting it requires a dense model plugin + dense MLP kernel chain, but the attention
+  and PARO dequant kernels are shared.
