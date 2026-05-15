@@ -371,6 +371,12 @@ class ResidentBatchScheduler:
             raise ValueError("accept summary request_ids must match speculative plan")
         if summary.mode != target.mode:
             raise ValueError("accept summary mode must match speculative plan")
+        if summary.candidate_counts is not None and summary.candidate_counts != target.candidate_counts:
+            raise ValueError("accept summary candidate_counts must match speculative plan")
+        if summary.draft_depth is not None and summary.draft_depth != target.draft_depth:
+            raise ValueError("accept summary draft_depth must match speculative plan")
+        if summary.tree_shape is not None and summary.tree_shape != target.tree_shape:
+            raise ValueError("accept summary tree_shape must match speculative plan")
         root_rows = set(target.root_rows)
         candidate_rows = set(target.candidate_rows)
         for request_id, count, row, token, position in zip(

@@ -225,7 +225,15 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert commit.commit_plan.accepted_counts == (2, 1)
     assert commit.commit_plan.commit_rows == (3, 4)
     assert commit.commit_plan.candidate_counts == (2, 1)
+    assert commit.commit_plan.draft_depth == work.target_batch.draft_depth
+    assert commit.commit_plan.tree_shape == work.target_batch.tree_shape
     assert commit.commit_plan.mode == "verify_tree"
+    wrong_summary_depth = replace(summary, draft_depth=work.target_batch.draft_depth + 1)
+    with pytest.raises(ValueError, match="draft_depth"):
+        scheduler.plan_speculative_commit(buffer_plan, wrong_summary_depth)
+    wrong_summary_tree = replace(summary, tree_shape=(0, 0, 1))
+    with pytest.raises(ValueError, match="tree_shape"):
+        scheduler.plan_speculative_commit(buffer_plan, wrong_summary_tree)
     state_buffers = TargetStateCommitBuffers.for_plan(
         commit.commit_plan,
         accepted_counts=_tensor(0x3B00, (len(work.target_batch.request_ids),), "int32"),

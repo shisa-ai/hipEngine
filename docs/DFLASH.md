@@ -54,8 +54,8 @@ It records:
   unsupported layer 3 (`full_attention`);
 - speculative metadata and KV transactions reject duplicate request ids,
   invalid transaction roles, commit-plan/transaction role mismatches,
-  accept-summary/transaction candidate-budget mismatches, and inconsistent
-  transaction terminal states, and the batch scheduler can validate active-request readiness, emit
+  accept-summary/transaction candidate-budget/topology mismatches, and
+  inconsistent transaction terminal states, and the batch scheduler can validate active-request readiness, emit
   scheduler-owned speculative `TargetVerifyBatch`/`WorkItem` metadata, derive
   verify graph shape keys, cache graph/replay objects under those keys, begin
   speculative KV transactions, bundle scheduler-owned verify plans, bind those

@@ -315,6 +315,8 @@ def test_target_accept_summary_validates_paths_and_commit_rows() -> None:
     assert summary.commit_positions == (7, 4)
     assert summary.full_accept == (True, True)
     assert summary.candidate_counts == (2, 1)
+    assert summary.draft_depth == 2
+    assert summary.tree_shape == (0, 1, 0)
     assert summary.mode == "verify_tree"
 
     zero = TargetAcceptSummary.from_accept_result(
@@ -326,7 +328,13 @@ def test_target_accept_summary_validates_paths_and_commit_rows() -> None:
     assert zero.commit_positions == (5, 3)
     assert zero.full_accept == (False, False)
     assert zero.candidate_counts == (2, 1)
+    assert zero.draft_depth == 2
+    assert zero.tree_shape == (0, 1, 0)
 
+    with pytest.raises(ValueError, match="draft_depth"):
+        replace(summary, draft_depth=-1)
+    with pytest.raises(ValueError, match="tree_shape"):
+        replace(summary, tree_shape=(0, 1))
     with pytest.raises(ValueError, match="selected target verify paths"):
         TargetAcceptSummary.from_accept_result(
             target,
@@ -369,6 +377,8 @@ def test_target_commit_plan_binds_accept_summary_to_kv_transaction() -> None:
     assert plan.commit_tokens == (11, 20)
     assert plan.commit_positions == (7, 4)
     assert plan.candidate_counts == (2, 1)
+    assert plan.draft_depth == 2
+    assert plan.tree_shape == (0, 1, 0)
     assert plan.mode == "verify_tree"
     committed = policy.commit(txn, plan.kv_accept_counts)
     assert committed.committed
@@ -645,6 +655,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["kv_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_candidate_budget_checked"]
+    assert payload["implementation_status"]["interfaces_present"]["target_accept_summary_topology_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_transaction_id_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_candidate_counts_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_topology_checked"]
@@ -666,8 +677,12 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["commit_rows"] == [3, 4]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["accepted_tokens"] == [[10, 11], [20]]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["candidate_counts"] == [2, 1]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["draft_depth"] == 2
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["tree_shape"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["accepted_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["candidate_counts"] == [2, 1]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["draft_depth"] == 2
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_plan"]["tree_shape"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["state_commit_buffers"]["transaction_id"] == 0
     assert payload["implementation_status"]["kv_transaction_target_verify"]["device_buffers"]["rows"] == 5
     assert payload["implementation_status"]["kv_transaction_target_verify"]["device_buffers"]["candidate_counts"] == [2, 1]

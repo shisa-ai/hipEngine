@@ -27,6 +27,7 @@
       "kv_transaction_role_checked": true,
       "target_commit_plan_transaction_role_checked": true,
       "target_commit_plan_candidate_budget_checked": true,
+      "target_accept_summary_topology_checked": true,
       "target_verify_buffers_transaction_id_checked": true,
       "target_verify_buffers_candidate_counts_checked": true,
       "target_verify_buffers_topology_checked": true,
@@ -88,6 +89,12 @@
           2,
           1
         ],
+        "draft_depth": 2,
+        "tree_shape": [
+          0,
+          1,
+          0
+        ],
         "commit_rows": [
           3,
           4
@@ -122,6 +129,12 @@
         "candidate_counts": [
           2,
           1
+        ],
+        "draft_depth": 2,
+        "tree_shape": [
+          0,
+          1,
+          0
         ],
         "mode": "verify_tree"
       },

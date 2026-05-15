@@ -482,6 +482,8 @@ class TargetAcceptSummary:
     commit_positions: tuple[int, ...]
     full_accept: tuple[bool, ...]
     candidate_counts: tuple[int, ...] | None = None
+    draft_depth: int | None = None
+    tree_shape: tuple[int, ...] | None = None
     mode: str = "verify_chain"
 
     def __post_init__(self) -> None:
@@ -519,6 +521,13 @@ class TargetAcceptSummary:
             for accepted, available in zip(self.accepted_counts, self.candidate_counts, strict=True):
                 if accepted > available:
                     raise ValueError("accepted_counts cannot exceed candidate_counts")
+        if self.draft_depth is not None and self.draft_depth < 0:
+            raise ValueError("draft_depth must be non-negative")
+        if self.tree_shape is not None:
+            if self.candidate_counts is not None and len(self.tree_shape) != sum(self.candidate_counts):
+                raise ValueError("tree_shape must align with candidate_counts")
+            if any(parent < 0 for parent in self.tree_shape):
+                raise ValueError("tree_shape entries must be non-negative")
         if self.mode not in {"verify_chain", "verify_tree"}:
             raise ValueError("mode must be verify_chain or verify_tree")
 
@@ -566,6 +575,8 @@ class TargetAcceptSummary:
                 for accepted, max_depth in zip(selection.accepted_counts, max_depths, strict=True)
             ),
             candidate_counts=target.candidate_counts,
+            draft_depth=target.draft_depth,
+            tree_shape=target.tree_shape,
             mode=target.mode,
         )
 
@@ -581,6 +592,8 @@ class TargetCommitPlan:
     commit_tokens: tuple[int, ...]
     commit_positions: tuple[int, ...]
     candidate_counts: tuple[int, ...] | None = None
+    draft_depth: int | None = None
+    tree_shape: tuple[int, ...] | None = None
     mode: str = "verify_chain"
 
     def __post_init__(self) -> None:
@@ -608,6 +621,13 @@ class TargetCommitPlan:
             for accepted, available in zip(self.accepted_counts, self.candidate_counts, strict=True):
                 if accepted > available:
                     raise ValueError("accepted_counts cannot exceed candidate_counts")
+        if self.draft_depth is not None and self.draft_depth < 0:
+            raise ValueError("draft_depth must be non-negative")
+        if self.tree_shape is not None:
+            if self.candidate_counts is not None and len(self.tree_shape) != sum(self.candidate_counts):
+                raise ValueError("tree_shape must align with candidate_counts")
+            if any(parent < 0 for parent in self.tree_shape):
+                raise ValueError("tree_shape entries must be non-negative")
         if self.mode not in {"verify_chain", "verify_tree"}:
             raise ValueError("mode must be verify_chain or verify_tree")
 
@@ -642,6 +662,8 @@ class TargetCommitPlan:
             commit_tokens=summary.commit_tokens,
             commit_positions=summary.commit_positions,
             candidate_counts=counts,
+            draft_depth=summary.draft_depth,
+            tree_shape=summary.tree_shape,
             mode=summary.mode,
         )
 

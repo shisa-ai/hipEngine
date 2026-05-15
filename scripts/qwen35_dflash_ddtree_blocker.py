@@ -170,6 +170,23 @@ def _target_commit_plan_candidate_budget_checked() -> bool:
     return False
 
 
+def _target_accept_summary_topology_checked() -> bool:
+    summary = _sample_tree_accept_summary()
+    try:
+        replace(summary, draft_depth=-1)
+    except ValueError as exc:
+        depth_rejected = "draft_depth" in str(exc)
+    else:
+        depth_rejected = False
+    try:
+        replace(summary, tree_shape=())
+    except ValueError as exc:
+        tree_rejected = "tree_shape" in str(exc)
+    else:
+        tree_rejected = False
+    return depth_rejected and tree_rejected
+
+
 def _sample_chain_target_batch() -> TargetVerifyBatch:
     draft = DraftBatch(
         request_ids=(1,),
@@ -267,6 +284,7 @@ def _interface_status() -> dict[str, Any]:
         "kv_transaction_role_checked": _kv_transaction_role_checked(),
         "target_commit_plan_transaction_role_checked": _target_commit_plan_transaction_role_checked(),
         "target_commit_plan_candidate_budget_checked": _target_commit_plan_candidate_budget_checked(),
+        "target_accept_summary_topology_checked": _target_accept_summary_topology_checked(),
         "target_verify_buffers_transaction_id_checked": _target_verify_buffers_transaction_id_checked(),
         "target_verify_buffers_candidate_counts_checked": _target_verify_buffers_candidate_counts_checked(),
         "target_verify_buffers_topology_checked": _target_verify_buffers_topology_checked(),
@@ -560,6 +578,8 @@ def _kv_transaction_status() -> dict[str, Any]:
             "accepted_counts": list(summary.accepted_counts),
             "accepted_tokens": [list(row) for row in summary.accepted_tokens],
             "candidate_counts": None if summary.candidate_counts is None else list(summary.candidate_counts),
+            "draft_depth": summary.draft_depth,
+            "tree_shape": [] if summary.tree_shape is None else list(summary.tree_shape),
             "commit_rows": list(summary.commit_rows),
             "commit_tokens": list(summary.commit_tokens),
             "commit_positions": list(summary.commit_positions),
@@ -571,6 +591,8 @@ def _kv_transaction_status() -> dict[str, Any]:
             "commit_rows": list(plan.commit_rows),
             "commit_positions": list(plan.commit_positions),
             "candidate_counts": None if plan.candidate_counts is None else list(plan.candidate_counts),
+            "draft_depth": plan.draft_depth,
+            "tree_shape": [] if plan.tree_shape is None else list(plan.tree_shape),
             "mode": plan.mode,
         },
         "device_buffers": {

@@ -8285,3 +8285,52 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows resident target-verifier buffer transaction-id propagation only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Accept-summary and commit-plan topology binding
+
+### Scope
+
+- Added `draft_depth` and `tree_shape` metadata to `TargetAcceptSummary` and `TargetCommitPlan`.
+- `TargetAcceptSummary.from_accept_result(...)` now stamps accept summaries with the originating target batch topology.
+- `TargetCommitPlan.from_summary(...)` now preserves topology on the commit plan.
+- `ResidentBatchScheduler.plan_speculative_commit(...)` now rejects accept summaries whose candidate budget, draft depth, or tree shape do not match the scheduler target batch.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: `22 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.target_accept_summary_topology_checked=true`
+- `implementation_status.kv_transaction_target_verify.accept_summary.draft_depth=2`
+- `implementation_status.kv_transaction_target_verify.accept_summary.tree_shape=[0,1,0]`
+- `implementation_status.kv_transaction_target_verify.commit_plan.tree_shape=[0,1,0]`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: host accept summaries and commit plans now preserve and validate the target verify-tree topology before native verifier accept/commit routing consumes them. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows speculative accept-summary / commit-plan topology binding only; no performance claim or kernel change was made.
