@@ -9742,3 +9742,29 @@ now runnable rather than OOM: `318.037 tok/s`, prefill `12.8790s`, decode
 `101.714 tok/s`. This establishes the first 4K guard baseline; future active
 keeps should preserve at least 95% of `318.037 tok/s` until a faster 4K baseline
 is retained.
+
+## 2026-05-15 — Prefill multiloop iter 4: skip decode-scratch restore loop rejected
+
+Tried to remove the `_restore_decode_scratch_after_prefill()` per-layer c=1
+scratch reserve loop now that native prefill scratch lives in a transient shared
+workspace. The intent was to reduce post-prefill orchestration overhead while
+leaving decode scratch untouched.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/iter4-fixture.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter4-512-run1.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter4-512-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter4-512-run3.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter4-4k-128.json
+```
+
+Results: correctness stayed clean (`max_kl=0.00567`, top-1 `1.0`, fixture
+`native_owned_device_bytes=1625645909`) and 4K stayed runnable at `317.711 tok/s`
+(>=95% of the new `318.037` guard baseline), but 512/128 samples were
+`505.890`, `504.797`, `505.787` tok/s (median `505.787`), below the retained
+`508.320` current. Decision: reject/revert this micro-cleanup; the reserve loop
+is not the current bottleneck.
