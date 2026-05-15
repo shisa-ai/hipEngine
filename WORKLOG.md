@@ -10049,3 +10049,25 @@ Results: 512/128 samples `559.937`, `561.426`, `560.773`, `562.091` tok/s
 `native_owned_device_bytes=1625645909`, native prefill `0.92294s`, max KL
 `0.01743`, top-1 `1.0`; compact c=2/4/8 prompt8 gates passed. 4K/128 improved
 to `333.172 tok/s`, prefill `12.2940s`, decode `101.896 tok/s`.
+
+## 2026-05-15 — Prefill multiloop iter 16: 128-thread router rejected (correctness)
+
+Tried continuing the router/top-k shared-gate thread sweep by lowering multi-token
+prefill from 256 to 128 threads while leaving c=1/decode at the existing default.
+This looked faster in the repeated-token benchmark but broke the fixture gate,
+so performance is invalid.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: `py_compile` passed, but fixture failed (`generated_match=false`,
+`kl_pass=false`, `top1_pass=false`, max KL `8.6823`, top-1 agreement `48.5%`,
+`native_owned_device_bytes=1625645909`). Diagnostic-only benchmark output was
+512/128 `568.846 tok/s` and 4K/128 `334.454 tok/s`, but both are invalid due to
+correctness failure. Decision: revert to the retained 256-thread router prefill.
