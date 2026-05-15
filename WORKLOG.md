@@ -9791,3 +9791,11 @@ slowdown is not launch-count growth; it is shape cost inside the 10 full-attenti
 prefill kernels and/or token-scaled MoE/projection work. Next code iteration
 should target a parent-proven full-attention/projection path or profiling of
 those 10 full-attention kernels rather than more Python restore-loop cleanup.
+
+## 2026-05-15 — Prefill multiloop iter 6 skipped: restore audit metric
+
+Skipped the planned full-attention thread-count trial before code changes because
+iteration 5's audit-only `multiloop_log` incorrectly supplied the wrapper-call
+count (`1113`) as the loop metric, which set `currentMetric` away from the
+retained 512/128 throughput. Logged a skip with metric `508.320074` to restore
+`currentMetric`/`bestMetric` before continuing optimization. No repo code change.
