@@ -421,6 +421,80 @@ class TargetAcceptSummary:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class TargetCommitPlan:
+    """Validated host commit contract for a target verification transaction."""
+
+    transaction_id: int
+    request_ids: tuple[int, ...]
+    accepted_counts: tuple[int, ...]
+    commit_rows: tuple[int, ...]
+    commit_tokens: tuple[int, ...]
+    commit_positions: tuple[int, ...]
+    candidate_counts: tuple[int, ...] | None = None
+    mode: str = "verify_chain"
+
+    def __post_init__(self) -> None:
+        if self.transaction_id < 0:
+            raise ValueError("transaction_id must be non-negative")
+        if not self.request_ids:
+            raise ValueError("TargetCommitPlan must contain at least one request")
+        lengths = (len(self.accepted_counts), len(self.commit_rows), len(self.commit_tokens), len(self.commit_positions))
+        if any(length != len(self.request_ids) for length in lengths):
+            raise ValueError("commit plan fields must align with request_ids")
+        if any(count < 0 for count in self.accepted_counts):
+            raise ValueError("accepted_counts must be non-negative")
+        if any(row < 0 for row in self.commit_rows):
+            raise ValueError("commit_rows must be non-negative")
+        if any(token < 0 for token in self.commit_tokens):
+            raise ValueError("commit_tokens must be non-negative")
+        if any(position < 0 for position in self.commit_positions):
+            raise ValueError("commit_positions must be non-negative")
+        if self.candidate_counts is not None:
+            if len(self.candidate_counts) != len(self.request_ids):
+                raise ValueError("candidate_counts must align with request_ids")
+            if any(count < 0 for count in self.candidate_counts):
+                raise ValueError("candidate_counts must be non-negative")
+            for accepted, available in zip(self.accepted_counts, self.candidate_counts, strict=True):
+                if accepted > available:
+                    raise ValueError("accepted_counts cannot exceed candidate_counts")
+        if self.mode not in {"verify_chain", "verify_tree"}:
+            raise ValueError("mode must be verify_chain or verify_tree")
+
+    @classmethod
+    def from_summary(cls, summary: TargetAcceptSummary, transaction) -> "TargetCommitPlan":
+        request_ids = tuple(int(request_id) for request_id in getattr(transaction, "request_ids"))
+        if request_ids != summary.request_ids:
+            raise ValueError("transaction request_ids must match target accept summary")
+        if bool(getattr(transaction, "committed", False)):
+            raise ValueError("cannot build a commit plan for an already committed transaction")
+        if bool(getattr(transaction, "rolled_back", False)):
+            raise ValueError("cannot build a commit plan for a rolled-back transaction")
+        candidate_counts = getattr(transaction, "candidate_counts", None)
+        counts = None if candidate_counts is None else tuple(int(count) for count in candidate_counts)
+        role = str(getattr(transaction, "role", summary.mode))
+        if role.startswith("WorkKind."):
+            role = role.rsplit(".", 1)[-1].lower()
+        if role not in {"verify_chain", "verify_tree"}:
+            role = summary.mode
+        if role != summary.mode:
+            raise ValueError("transaction role must match target accept summary mode")
+        return cls(
+            transaction_id=int(getattr(transaction, "transaction_id")),
+            request_ids=summary.request_ids,
+            accepted_counts=summary.accepted_counts,
+            commit_rows=summary.commit_rows,
+            commit_tokens=summary.commit_tokens,
+            commit_positions=summary.commit_positions,
+            candidate_counts=counts,
+            mode=summary.mode,
+        )
+
+    @property
+    def kv_accept_counts(self) -> tuple[int, ...]:
+        return self.accepted_counts
+
+
 def _target_path_tokens(target: TargetVerifyBatch, selected_row: int, accepted_count: int) -> tuple[int, ...]:
     if accepted_count == 0:
         if selected_row not in target.root_rows:
@@ -461,6 +535,7 @@ __all__ = [
     "DraftBatch",
     "DraftModel",
     "TargetAcceptSummary",
+    "TargetCommitPlan",
     "TargetCommitSelection",
     "TargetVerifyBatch",
     "Verifier",

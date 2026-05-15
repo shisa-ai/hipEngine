@@ -25,7 +25,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.dispatch import ActiveBatch, RequestState, WorkKind
 from hipengine.kvcache import FixedPagedKVPolicy, KVTransaction
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
-from hipengine.speculative import AcceptResult, DraftBatch, DraftModel, TargetAcceptSummary, TargetVerifyBatch, Verifier
+from hipengine.speculative import AcceptResult, DraftBatch, DraftModel, TargetAcceptSummary, TargetCommitPlan, TargetVerifyBatch, Verifier
 
 DEFAULT_BATCH_ARTIFACT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json")
 DEFAULT_PREFILL_ARTIFACT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-attn-boundary-blocked.json")
@@ -54,6 +54,7 @@ def _interface_status() -> dict[str, Any]:
         "draft_model_protocol": DraftModel.__name__,
         "target_verify_batch": TargetVerifyBatch.__name__,
         "target_accept_summary": TargetAcceptSummary.__name__,
+        "target_commit_plan": TargetCommitPlan.__name__,
         "verifier_protocol": Verifier.__name__,
         "kv_policy": FixedPagedKVPolicy.__name__,
         "kv_transaction": KVTransaction.__name__,
@@ -99,6 +100,7 @@ def _kv_transaction_status() -> dict[str, Any]:
     txn = policy.begin_transaction((1, 2), target)
     accept = AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,)))
     summary = TargetAcceptSummary.from_accept_result(target, accept)
+    plan = TargetCommitPlan.from_summary(summary, txn)
     selection = target.select_commit_rows(summary.accepted_counts)
     active = ActiveBatch(2)
     active.admit(RequestState(request_id=1, prompt_tokens=(1, 2, 3, 4, 5), max_new_tokens=4, next_prompt_index=5))
@@ -121,6 +123,14 @@ def _kv_transaction_status() -> dict[str, Any]:
             "commit_tokens": list(summary.commit_tokens),
             "commit_positions": list(summary.commit_positions),
             "full_accept": list(summary.full_accept),
+        },
+        "commit_plan": {
+            "transaction_id": plan.transaction_id,
+            "accepted_counts": list(plan.accepted_counts),
+            "commit_rows": list(plan.commit_rows),
+            "commit_positions": list(plan.commit_positions),
+            "candidate_counts": None if plan.candidate_counts is None else list(plan.candidate_counts),
+            "mode": plan.mode,
         },
         "shape_key": {
             "mode": key.mode.value,

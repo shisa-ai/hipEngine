@@ -15,6 +15,7 @@
       "draft_model_protocol": "DraftModel",
       "target_verify_batch": "TargetVerifyBatch",
       "target_accept_summary": "TargetAcceptSummary",
+      "target_commit_plan": "TargetCommitPlan",
       "verifier_protocol": "Verifier",
       "kv_policy": "FixedPagedKVPolicy",
       "kv_transaction": "KVTransaction",
@@ -76,6 +77,26 @@
           true,
           true
         ]
+      },
+      "commit_plan": {
+        "transaction_id": 0,
+        "accepted_counts": [
+          2,
+          1
+        ],
+        "commit_rows": [
+          3,
+          4
+        ],
+        "commit_positions": [
+          7,
+          4
+        ],
+        "candidate_counts": [
+          2,
+          1
+        ],
+        "mode": "verify_tree"
       },
       "shape_key": {
         "mode": "verify_tree",

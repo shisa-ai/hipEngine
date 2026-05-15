@@ -6639,3 +6639,53 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows accept/commit metadata only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — TargetCommitPlan transaction binding
+
+### Scope
+
+- Added `hipengine.speculative.TargetCommitPlan` as a torch-free host ABI scaffold that binds a validated `TargetAcceptSummary` to a KV transaction id and candidate budget.
+- `TargetCommitPlan.from_summary(summary, transaction)` now validates transaction request ids, role, committed/rolled-back state, and accepted counts against `candidate_counts`, then exposes `kv_accept_counts` for the existing `FixedPagedKVPolicy.commit(...)` call.
+- Updated the DFlash blocker helper/artifact and Task #15 with commit-plan evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py tests/test_dispatch_batch.py -q
+```
+
+Result: `22 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records `implementation_status.interfaces_present.target_commit_plan="TargetCommitPlan"` and `implementation_status.kv_transaction_target_verify.commit_plan`:
+
+- `transaction_id=0`
+- `accepted_counts=[2,1]`
+- `commit_rows=[3,4]`
+- `commit_positions=[7,4]`
+- `candidate_counts=[2,1]`
+- `mode="verify_tree"`
+
+It still records `status=blocked`, `performance_claim=false`, and `native_target_verify_ready=false`.
+
+Interpretation: host metadata can now carry a validated transaction-scoped commit contract from verifier acceptance to KV commit bookkeeping. Resident target verification, GPU accept-summary buffers, and device-side state/KV commit remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows transaction-scoped commit metadata only; no performance claim or kernel change was made.
