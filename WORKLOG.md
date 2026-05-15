@@ -10379,3 +10379,46 @@ runnable and above the retained guard at `333.557 tok/s`, but 512/128 samples
 below retained `565.213`. Decision: revert; even the larger full-attention Q/K
 launch fusion is not enough to improve short prefill and should not complicate
 layout semantics.
+
+## 2026-05-15 — Prefill multiloop iter 27: fused grouped lane/shared combine rejected
+
+Pivoted away from more full-attention Q/K launch fusion after four consecutive
+negative trials and tried a grouped-MoE tail fusion for the FP16 native prefill
+path. Added a temporary `weighted_lanes_shared_gate_combine_residual_batch_out_*`
+PARO combine specialization that kept the existing sorted-lane inverse map but
+merged the grouped weighted-lane accumulation with the shared-gate residual
+combine. `run_moe_grouped_compact_fp16()` computed the shared expert first and
+then launched the fused lane-aware combine into `scratch.moe_out`.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/fused/paro_combine.py hipengine/kernels/hip_gfx1100/fused/__init__.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_paro_combine_plan.py -q
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.fused.paro_combine import build_paro_combine
+lib = build_paro_combine(load=True, require_cached=False)
+for name in (
+    'hipengine_weighted_lanes_shared_gate_combine_residual_batch_out_bf16_f32w',
+    'hipengine_weighted_lanes_shared_gate_combine_residual_batch_out_fp16_f32w',
+):
+    getattr(lib, name)
+print('paro_combine rebuilt with fused lane shared symbols')
+PY
+python3 -m pytest tests/test_paro_combine_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+for i in 1 2 3; do python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter27-512-run${i}.json >/tmp/iter27-512-run${i}.stdout; done
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+```
+
+Results: targeted tests passed (`59 passed`) and the temporary HIP combine
+library rebuilt with the fused symbols. Fixture correctness passed
+(`max_kl=0.01743`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`). 4K/128 remained runnable and above the
+retained guard at `333.792 tok/s` (`prefill_seconds=12.2711`). The primary
+512/128 samples were `564.284`, `559.974`, `559.840`, and `560.922` tok/s
+(median `560.448`), below the retained `565.213` tok/s. Decision: revert; the
+extra combined arithmetic/order did not offset the launch reduction, so keep the
+existing separate weighted-lane sum plus shared/residual combine on the default
+path.
