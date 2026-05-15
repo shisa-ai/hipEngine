@@ -9600,3 +9600,25 @@ gate passes after the close synchronization (`generated_match=true`,
 allocation, matching the baseline blocker rather than a new regression; next
 prefill-perf work should address shared/chunked prefill scratch so the 4K guard
 can become active.
+
+## 2026-05-15 — Prefill multiloop blocker: native fixture flakiness
+
+After retaining the grouped-library preload fix, restarted the prefill loop as
+`prefill-perf/run-20260515-154601` with a corrected 4K guard policy: 4K/128 is
+attempted/logged every iteration but the known scratch OOM does not discard
+unrelated 512 wins until a 4K-capable baseline exists.
+
+New baseline is the committed preload state: 512/128 native prefill median
+`482.057` tok/s. However, repeated fixture probes exposed that the native
+single-request prefill correctness gate is flaky: some runs match the serial
+resident/parent fixture, while others diverge after five decode tokens with the
+native sequence repeating `[4, 220, 16, 15, 15, ...]`; failing runs show
+`max_kl≈8.6-9.0` and top-1 agreement `~0.485`. Probes with `group_scatter`/`wmma`
+loaded, popped back to on-demand loading, and even monkeypatched c1 MoE all show
+the same pass/fail pattern, so this is a pre-existing native-prefill state/KV
+or scratch determinism blocker rather than solely the preload fix. `HIP_LAUNCH_BLOCKING=1`
+did not eliminate the flake.
+
+Current loop status: blocked for further performance keeps until native prefill
+fixture determinism is fixed or the gate is made repeat-deterministic. 4K/128
+also remains blocked by prefill scratch OOM.
