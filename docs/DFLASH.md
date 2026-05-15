@@ -46,8 +46,9 @@ It records:
   `throughput_claim_eligible=false`;
 - `Qwen35ParoResidentSession` exposes `step_batch_serial()`, batch metadata,
   `speculative_execution_metadata()`, and metadata-only `target_verify_batch()`,
-  `verify_speculative_batch()`, and `commit_verified_state()` layout helpers,
-  but no native verifier execution or state/KV copy kernels;
+  `verify_speculative_batch()`, and `commit_verified_state()` layout helpers;
+  target-verifier buffers are validated against the resident device, but no
+  native verifier execution or state/KV copy kernels are wired;
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
 - the batch scheduler can validate active-request readiness, emit

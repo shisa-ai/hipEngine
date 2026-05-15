@@ -291,6 +291,7 @@
     "resident_api": {
       "step_batch_serial": true,
       "batch_execution_metadata": true,
+      "target_verify_buffers_resident_device_checked": true,
       "native_target_verify_batch": true,
       "speculative_verify_batch": true,
       "commit_verified_state": true,

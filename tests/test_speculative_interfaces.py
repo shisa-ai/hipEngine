@@ -640,6 +640,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["resident_api"]["step_batch_serial"]
     assert payload["implementation_status"]["resident_api"]["native_target_verify_batch"]
     assert payload["implementation_status"]["resident_api"]["speculative_verify_batch"]
+    assert payload["implementation_status"]["resident_api"]["target_verify_buffers_resident_device_checked"]
     assert payload["implementation_status"]["resident_api"]["commit_verified_state"]
     assert not payload["implementation_status"]["resident_api"]["native_target_verify_executes_kernels"]
     assert not payload["implementation_status"]["resident_api"]["commit_verified_state_executes_copies"]

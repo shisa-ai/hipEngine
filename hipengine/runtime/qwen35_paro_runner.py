@@ -895,7 +895,7 @@ class Qwen35ParoResidentSession:
             raise ValueError("target verify rows exceed resident max_batch_size")
         for position in batch.positions:
             self._check_position(position)
-        return TargetVerifyBuffers.for_batch(
+        buffers = TargetVerifyBuffers.for_batch(
             batch,
             token_ids=token_ids,
             positions=positions,
@@ -909,6 +909,10 @@ class Qwen35ParoResidentSession:
             commit_tokens=commit_tokens,
             commit_positions=commit_positions,
         )
+        device = getattr(self, "device", None)
+        if device is not None and buffers.device != device:
+            raise ValueError("target verify buffers must live on the resident device")
+        return buffers
 
     def commit_verified_state(
         self,

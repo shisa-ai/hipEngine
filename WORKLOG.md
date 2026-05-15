@@ -7672,3 +7672,48 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows scheduler speculative state/KV commit ABI validation only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Resident target-verifier buffer device validation
+
+### Scope
+
+- Tightened `Qwen35ParoResidentSession.verify_speculative_batch(...)`.
+- Metadata-only target-verifier buffers must now live on the resident session device when the resident device is available.
+- Added a negative resident-layout test that rejects target-verifier buffers on `hip:1` for a resident `hip:0` session.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/runtime scripts/qwen35_dflash_ddtree_blocker.py tests/test_qwen35_resident_batch_layout.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_speculative_interfaces.py -q
+```
+
+Result: `30 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.resident_api.target_verify_buffers_resident_device_checked=true`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: resident speculative verifier metadata now rejects cross-device target-verifier buffers before native kernels are wired. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows resident speculative target-verifier ABI validation only; no performance claim or kernel change was made.

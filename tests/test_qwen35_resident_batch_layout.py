@@ -100,6 +100,7 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
     session.max_batch_size = 5
     session.max_sequence_length = 16
     session.vocab_size = 100
+    session.device = Device("hip", 0)
     draft = DraftBatch(
         request_ids=(1, 2),
         candidate_tokens=(10, 11, 20),
@@ -139,6 +140,23 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
     assert buffers.candidate_rows == 3
     assert buffers.request_count == 2
     assert str(buffers.device) == "hip:0"
+
+    other_device = Device("hip", 1)
+    with pytest.raises(ValueError, match="resident device"):
+        session.verify_speculative_batch(
+            target,
+            token_ids=Tensor.from_handle(0x4200, (5,), "int32", other_device),
+            positions=Tensor.from_handle(0x4300, (5,), "int32", other_device),
+            parent_rows=Tensor.from_handle(0x4400, (5,), "int32", other_device),
+            draft_depths=Tensor.from_handle(0x4500, (5,), "int32", other_device),
+            row_to_request=Tensor.from_handle(0x4600, (5,), "int32", other_device),
+            active_mask=Tensor.from_handle(0x4700, (5,), "bool", other_device),
+            target_top1=Tensor.from_handle(0x4800, (5,), "int32", other_device),
+            accepted_counts=Tensor.from_handle(0x4900, (2,), "int32", other_device),
+            commit_rows=Tensor.from_handle(0x4A00, (2,), "int32", other_device),
+            commit_tokens=Tensor.from_handle(0x4B00, (2,), "int32", other_device),
+            commit_positions=Tensor.from_handle(0x4C00, (2,), "int32", other_device),
+        )
 
     plan = TargetCommitPlan(
         transaction_id=0,

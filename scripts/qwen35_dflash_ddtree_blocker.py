@@ -92,12 +92,49 @@ def _interface_status() -> dict[str, Any]:
     }
 
 
+def _resident_target_verify_device_checked() -> bool:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.max_batch_size = 2
+    session.max_sequence_length = 4
+    session.vocab_size = 100
+    session.device = Device("hip", 0)
+    draft = DraftBatch(
+        request_ids=(1,),
+        candidate_tokens=(10,),
+        parent_positions=(0,),
+        draft_depths=(1,),
+        row_to_request=(1,),
+    )
+    target = session.target_verify_batch(draft, root_tokens=(9,), root_positions=(0,))
+    other = Device("hip", 1)
+    try:
+        session.verify_speculative_batch(
+            target,
+            token_ids=Tensor.from_handle(0x1000, (target.rows,), "int32", other),
+            positions=Tensor.from_handle(0x1100, (target.rows,), "int32", other),
+            parent_rows=Tensor.from_handle(0x1200, (target.rows,), "int32", other),
+            draft_depths=Tensor.from_handle(0x1300, (target.rows,), "int32", other),
+            row_to_request=Tensor.from_handle(0x1400, (target.rows,), "int32", other),
+            active_mask=Tensor.from_handle(0x1500, (target.rows,), "bool", other),
+            target_top1=Tensor.from_handle(0x1600, (target.rows,), "int32", other),
+            accepted_counts=Tensor.from_handle(0x1700, (len(target.request_ids),), "int32", other),
+            commit_rows=Tensor.from_handle(0x1800, (len(target.request_ids),), "int32", other),
+            commit_tokens=Tensor.from_handle(0x1900, (len(target.request_ids),), "int32", other),
+            commit_positions=Tensor.from_handle(0x1A00, (len(target.request_ids),), "int32", other),
+        )
+    except ValueError as exc:
+        return "resident device" in str(exc)
+    return False
+
+
 def _resident_api_status() -> dict[str, Any]:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     speculative = session.speculative_execution_metadata().to_json_dict()
     return {
         "step_batch_serial": hasattr(Qwen35ParoResidentSession, "step_batch_serial"),
         "batch_execution_metadata": hasattr(Qwen35ParoResidentSession, "batch_execution_metadata"),
+        "target_verify_buffers_resident_device_checked": _resident_target_verify_device_checked(),
         **speculative,
     }
 
