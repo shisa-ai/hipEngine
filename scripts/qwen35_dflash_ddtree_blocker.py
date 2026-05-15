@@ -25,7 +25,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.dispatch import ActiveBatch, RequestState, WorkKind
 from hipengine.kvcache import FixedPagedKVPolicy, KVTransaction
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
-from hipengine.speculative import AcceptResult, DraftBatch, DraftModel, TargetVerifyBatch, Verifier
+from hipengine.speculative import AcceptResult, DraftBatch, DraftModel, TargetAcceptSummary, TargetVerifyBatch, Verifier
 
 DEFAULT_BATCH_ARTIFACT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-c8-scheduler-serial-bench-blocked.json")
 DEFAULT_PREFILL_ARTIFACT = Path("benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-attn-boundary-blocked.json")
@@ -53,6 +53,7 @@ def _interface_status() -> dict[str, Any]:
         "accept_result": AcceptResult.__name__,
         "draft_model_protocol": DraftModel.__name__,
         "target_verify_batch": TargetVerifyBatch.__name__,
+        "target_accept_summary": TargetAcceptSummary.__name__,
         "verifier_protocol": Verifier.__name__,
         "kv_policy": FixedPagedKVPolicy.__name__,
         "kv_transaction": KVTransaction.__name__,
@@ -96,7 +97,9 @@ def _kv_transaction_status() -> dict[str, Any]:
     )
     target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
     txn = policy.begin_transaction((1, 2), target)
-    selection = target.select_commit_rows((2, 1))
+    accept = AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,)))
+    summary = TargetAcceptSummary.from_accept_result(target, accept)
+    selection = target.select_commit_rows(summary.accepted_counts)
     active = ActiveBatch(2)
     active.admit(RequestState(request_id=1, prompt_tokens=(1, 2, 3, 4, 5), max_new_tokens=4, next_prompt_index=5))
     active.admit(RequestState(request_id=2, prompt_tokens=(6, 7, 8), max_new_tokens=4, next_prompt_index=3))
@@ -111,6 +114,14 @@ def _kv_transaction_status() -> dict[str, Any]:
         "root_rows_excluded_from_journal": txn.draft_rows == target.candidate_count,
         "commit_selection_rows": list(selection.selected_rows),
         "commit_selection_positions": list(selection.selected_positions),
+        "accept_summary": {
+            "accepted_counts": list(summary.accepted_counts),
+            "accepted_tokens": [list(row) for row in summary.accepted_tokens],
+            "commit_rows": list(summary.commit_rows),
+            "commit_tokens": list(summary.commit_tokens),
+            "commit_positions": list(summary.commit_positions),
+            "full_accept": list(summary.full_accept),
+        },
         "shape_key": {
             "mode": key.mode.value,
             "active_c": key.active_c,

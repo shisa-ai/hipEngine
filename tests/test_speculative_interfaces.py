@@ -9,7 +9,7 @@ from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import ActiveBatch, RequestState
 from hipengine.kvcache import FixedPagedKVPolicy
-from hipengine.speculative import AcceptResult, DraftBatch, TargetVerifyBatch
+from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetVerifyBatch
 from scripts.qwen35_dflash_ddtree_blocker import build_payload
 
 
@@ -167,6 +167,48 @@ def test_target_verify_batch_selects_commit_rows_from_accept_counts() -> None:
     assert zero.selected_positions == (5, 3)
 
 
+def test_target_accept_summary_validates_paths_and_commit_rows() -> None:
+    draft = DraftBatch(
+        request_ids=(1, 2),
+        candidate_tokens=(10, 11, 20),
+        parent_positions=(5, 6, 3),
+        draft_depths=(1, 2, 1),
+        row_to_request=(1, 1, 2),
+        mode="verify_tree",
+        tree_parents=(-1, 0, -1),
+    )
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100, 200), root_positions=(5, 3))
+
+    summary = TargetAcceptSummary.from_accept_result(
+        target,
+        AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,))),
+    )
+
+    assert summary.request_ids == (1, 2)
+    assert summary.accepted_counts == (2, 1)
+    assert summary.accepted_tokens == ((10, 11), (20,))
+    assert summary.commit_rows == (3, 4)
+    assert summary.commit_tokens == (11, 20)
+    assert summary.commit_positions == (7, 4)
+    assert summary.full_accept == (True, True)
+    assert summary.mode == "verify_tree"
+
+    zero = TargetAcceptSummary.from_accept_result(
+        target,
+        AcceptResult(request_ids=(1, 2), accepted_counts=(0, 0), accepted_tokens=((), ())),
+    )
+    assert zero.commit_rows == (0, 1)
+    assert zero.commit_tokens == (100, 200)
+    assert zero.commit_positions == (5, 3)
+    assert zero.full_accept == (False, False)
+
+    with pytest.raises(ValueError, match="selected target verify paths"):
+        TargetAcceptSummary.from_accept_result(
+            target,
+            AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 12), (20,))),
+        )
+
+
 def test_target_verify_batch_requires_selected_rows_for_ambiguous_tree_depth() -> None:
     target = TargetVerifyBatch.from_draft(
         DraftBatch(
@@ -187,6 +229,13 @@ def test_target_verify_batch_requires_selected_rows_for_ambiguous_tree_depth() -
     selected = target.select_commit_rows((1,), selected_candidate_rows=(2,))
     assert selected.selected_rows == (2,)
     assert selected.selected_tokens == (11,)
+    summary = TargetAcceptSummary.from_accept_result(
+        target,
+        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((11,),)),
+        selected_candidate_rows=(2,),
+    )
+    assert summary.commit_rows == (2,)
+    assert summary.accepted_tokens == ((11,),)
     with pytest.raises(ValueError, match="candidate row"):
         target.select_commit_rows((1,), selected_candidate_rows=(0,))
 
@@ -326,9 +375,12 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert not payload["performance_claim"]
     assert not payload["implementation_status"]["native_target_verify_ready"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_batch"] == "TargetVerifyBatch"
+    assert payload["implementation_status"]["interfaces_present"]["target_accept_summary"] == "TargetAcceptSummary"
     assert payload["implementation_status"]["kv_transaction_target_verify"]["target_verify_rows"] == 5
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["commit_rows"] == [3, 4]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["accepted_tokens"] == [[10, 11], [20]]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["shape_key"]["tree_shape"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["work_item"]["tree_parents"] == [0, 1, 0]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["transaction_draft_rows"] == 3

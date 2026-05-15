@@ -6589,3 +6589,53 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`76 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows scheduler work metadata only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — TargetAcceptSummary host accept/commit bridge
+
+### Scope
+
+- Added `hipengine.speculative.TargetAcceptSummary` as a torch-free host/device ABI scaffold tying verifier acceptance to target rows selected for commit.
+- `TargetAcceptSummary.from_accept_result(target, result, ...)` now validates that `AcceptResult.accepted_tokens` exactly matches the selected `TargetVerifyBatch` parent path, handles ambiguous tree depths via explicit selected rows, and records per-request commit rows/tokens/positions plus `full_accept` flags.
+- Updated the DFlash blocker helper/artifact and Task #15 with accept-summary evidence.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_kvcache_policy.py tests/test_dispatch_batch.py -q
+```
+
+Result: `21 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records `implementation_status.interfaces_present.target_accept_summary="TargetAcceptSummary"` and `implementation_status.kv_transaction_target_verify.accept_summary`:
+
+- `accepted_counts=[2,1]`
+- `accepted_tokens=[[10,11],[20]]`
+- `commit_rows=[3,4]`
+- `commit_tokens=[11,20]`
+- `commit_positions=[7,4]`
+- `full_accept=[true,true]`
+
+It still records `status=blocked`, `performance_claim=false`, and `native_target_verify_ready=false`.
+
+Interpretation: host metadata can now validate the accepted path that a future GPU accept summary must produce and map it to the target state/KV row that would be committed. Resident target verification, GPU accept-summary buffers, and device-side state/KV commit remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`76 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows accept/commit metadata only; no performance claim or kernel change was made.

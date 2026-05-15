@@ -332,6 +332,116 @@ class AcceptResult:
                 raise ValueError("accepted token ids must be non-negative")
 
 
+@dataclass(frozen=True, slots=True)
+class TargetAcceptSummary:
+    """Accepted target paths plus the per-request row selected for commit."""
+
+    request_ids: tuple[int, ...]
+    accepted_counts: tuple[int, ...]
+    accepted_tokens: tuple[tuple[int, ...], ...]
+    commit_rows: tuple[int, ...]
+    commit_tokens: tuple[int, ...]
+    commit_positions: tuple[int, ...]
+    full_accept: tuple[bool, ...]
+    mode: str = "verify_chain"
+
+    def __post_init__(self) -> None:
+        if not self.request_ids:
+            raise ValueError("TargetAcceptSummary must contain at least one request")
+        lengths = (
+            len(self.accepted_counts),
+            len(self.accepted_tokens),
+            len(self.commit_rows),
+            len(self.commit_tokens),
+            len(self.commit_positions),
+            len(self.full_accept),
+        )
+        if any(length != len(self.request_ids) for length in lengths):
+            raise ValueError("accept summary fields must align with request_ids")
+        if any(count < 0 for count in self.accepted_counts):
+            raise ValueError("accepted_counts must be non-negative")
+        if any(row < 0 for row in self.commit_rows):
+            raise ValueError("commit_rows must be non-negative")
+        if any(token < 0 for token in self.commit_tokens):
+            raise ValueError("commit_tokens must be non-negative")
+        if any(position < 0 for position in self.commit_positions):
+            raise ValueError("commit_positions must be non-negative")
+        for count, tokens in zip(self.accepted_counts, self.accepted_tokens, strict=True):
+            if count != len(tokens):
+                raise ValueError("accepted_counts must match accepted_tokens lengths")
+            if any(token < 0 for token in tokens):
+                raise ValueError("accepted token ids must be non-negative")
+        if self.mode not in {"verify_chain", "verify_tree"}:
+            raise ValueError("mode must be verify_chain or verify_tree")
+
+    @classmethod
+    def from_accept_result(
+        cls,
+        target: TargetVerifyBatch,
+        result: AcceptResult,
+        *,
+        selected_candidate_rows: Sequence[int | None] | None = None,
+    ) -> "TargetAcceptSummary":
+        if tuple(result.request_ids) != target.request_ids:
+            raise ValueError("accept result request_ids must match target batch request_ids")
+        selection = target.select_commit_rows(
+            result.accepted_counts,
+            selected_candidate_rows=selected_candidate_rows,
+        )
+        accepted_tokens = tuple(tuple(int(token) for token in tokens) for tokens in result.accepted_tokens)
+        expected_tokens = tuple(
+            _target_path_tokens(target, row, count)
+            for row, count in zip(selection.selected_rows, selection.accepted_counts, strict=True)
+        )
+        if accepted_tokens != expected_tokens:
+            raise ValueError("accepted_tokens must match selected target verify paths")
+        max_depths = tuple(
+            max(
+                (
+                    target.draft_depths[row]
+                    for row in target.candidate_rows
+                    if target.row_to_request[row] == request_id and target.active_mask[row]
+                ),
+                default=0,
+            )
+            for request_id in target.request_ids
+        )
+        return cls(
+            request_ids=target.request_ids,
+            accepted_counts=selection.accepted_counts,
+            accepted_tokens=accepted_tokens,
+            commit_rows=selection.selected_rows,
+            commit_tokens=selection.selected_tokens,
+            commit_positions=selection.selected_positions,
+            full_accept=tuple(
+                accepted == max_depth
+                for accepted, max_depth in zip(selection.accepted_counts, max_depths, strict=True)
+            ),
+            mode=target.mode,
+        )
+
+
+def _target_path_tokens(target: TargetVerifyBatch, selected_row: int, accepted_count: int) -> tuple[int, ...]:
+    if accepted_count == 0:
+        if selected_row not in target.root_rows:
+            raise ValueError("zero accepted candidates must select a root row")
+        return ()
+    root_rows = set(target.root_rows)
+    row = int(selected_row)
+    path_rows: list[int] = []
+    while row not in root_rows:
+        if row < 0 or row >= target.rows:
+            raise ValueError("selected target row is outside the target batch")
+        path_rows.append(row)
+        row = target.parent_rows[row]
+    path_rows.reverse()
+    if len(path_rows) != accepted_count:
+        raise ValueError("selected target path length must match accepted_count")
+    if any(not target.active_mask[row] for row in path_rows):
+        raise ValueError("selected target path contains inactive rows")
+    return tuple(target.tokens[row] for row in path_rows)
+
+
 @runtime_checkable
 class DraftModel(Protocol):
     """Protocol for MTP/EAGLE3/DFlash/Medusa/Lookahead draft providers."""
@@ -346,4 +456,12 @@ class Verifier(Protocol):
     def verify(self, batch: TargetVerifyBatch) -> AcceptResult: ...
 
 
-__all__ = ["AcceptResult", "DraftBatch", "DraftModel", "TargetCommitSelection", "TargetVerifyBatch", "Verifier"]
+__all__ = [
+    "AcceptResult",
+    "DraftBatch",
+    "DraftModel",
+    "TargetAcceptSummary",
+    "TargetCommitSelection",
+    "TargetVerifyBatch",
+    "Verifier",
+]
