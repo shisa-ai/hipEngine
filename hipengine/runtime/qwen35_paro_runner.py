@@ -780,6 +780,12 @@ class Qwen35ParoResidentSession:
     def close(self) -> None:
         if self.closed:
             return
+        # Kernel launches use the default stream throughout this resident session.
+        # Once prefill no longer spends ~10s in accidental on-demand build calls,
+        # callers can close a session while decode/prefill work is still queued;
+        # freeing those buffers early can corrupt the next session in the same
+        # process.  Synchronize before releasing any device allocations.
+        self.runtime.device_synchronize()
         self.closed = True
         for state in reversed(self.states):
             state.free()
@@ -1953,6 +1959,7 @@ class Qwen35ParoResidentSession:
         from hipengine.kernels.hip_gfx1100.linear import build_dense_gemv, build_lm_head
         from hipengine.kernels.hip_gfx1100.linear_attn.conv import build_qwen35_linear_attn_conv
         from hipengine.kernels.hip_gfx1100.linear_attn.gdn import build_qwen35_linear_attn_gdn
+        from hipengine.kernels.hip_gfx1100.moe.group_scatter import build_qwen35_moe_group_scatter
         from hipengine.kernels.hip_gfx1100.moe.router import build_qwen35_router
         from hipengine.kernels.hip_gfx1100.norm import build_qwen35_rmsnorm
         from hipengine.kernels.hip_gfx1100.runtime import build_runtime_state
@@ -1960,6 +1967,7 @@ class Qwen35ParoResidentSession:
         from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
         from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import build_paro_rotate
         from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import build_qwen35_rotary
+        from hipengine.kernels.hip_gfx1100.wmma import build_paro_awq_wmma
 
         build_kwargs = {
             "load": True,
@@ -1972,6 +1980,7 @@ class Qwen35ParoResidentSession:
             "cast": build_cast(**build_kwargs),
             "combine": build_paro_combine(**build_kwargs),
             "dense": build_dense_gemv(**build_kwargs),
+            "group_scatter": build_qwen35_moe_group_scatter(**build_kwargs),
             "kv": build_qwen35_paged_kv_write(**build_kwargs),
             "linear_conv": build_qwen35_linear_attn_conv(**build_kwargs),
             "linear_gdn": build_qwen35_linear_attn_gdn(**build_kwargs),
@@ -1983,6 +1992,7 @@ class Qwen35ParoResidentSession:
             "runtime_state": build_runtime_state(**build_kwargs),
             "silu": build_paro_silu(**build_kwargs),
             "w8a16": build_w8a16_linear(**build_kwargs),
+            "wmma": build_paro_awq_wmma(**build_kwargs),
         }
         self._emit("load_kernel_libraries_done", count=len(self.libraries))
 

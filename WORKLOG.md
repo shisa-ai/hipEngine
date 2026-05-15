@@ -9556,3 +9556,47 @@ matched independent c=1 native prefill+decode. Full max_layers=40 prompt8 gates
 passed for c=2, c=4, and c=8 with `generated_match=true` and
 `finite_logits=true`. The c=8 compact slab ran as one 64-row native prefill slab
 with `cu_seqlens_q/k=[0,8,16,24,32,40,48,56,64]` and slot ids `[0..7]`.
+
+## 2026-05-15 — Prefill multiloop audit: load grouped MoE libraries once
+
+Started `prefill-perf/run-20260515-141513` with audit-first policy and 300-iter
+cap. Baseline before edits: native `single_request_native_full` 512/128 samples
+`48.065, 47.986, 48.506` tok/s (median `48.065`); fixture correctness passed
+but 4K/128 OOMed in prefill scratch allocation. `rocprofv3 --kernel-trace`
+hung before emitting CSV for both full and max_layers=4 Qwen3.5/PARO bench runs,
+so I used a wrapper-count audit while keeping the profiler blocker logged.
+
+Root cause found in the audit: `_load_kernel_libraries()` did not preload the
+`group_scatter` or `wmma` libraries, while the grouped compact MoE path passed
+`library=self.libraries`. `_library_for(..., "group_scatter"/"wmma")` therefore
+returned `None`, making each grouped-MoE metadata/WMMA wrapper run
+`build_hip(...)` / compiler-version resolution on demand. The 512 prefill path
+made 1117 HIP wrapper calls; the missing two libraries accounted for ~240
+per-layer grouped-MoE calls and nearly all of the 10.7s prefill time.
+
+Changes:
+- added `group_scatter` and `wmma` to `Qwen35ParoResidentSession`'s preloaded
+  kernel library map;
+- added a `device_synchronize()` at `Qwen35ParoResidentSession.close()` before
+  freeing buffers. Once the accidental on-demand-build delays were gone, a
+  serial fixture session could close with queued work and corrupt the next
+  native session in the same process; synchronizing before free restores the
+  fixture gate.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128-iter2-run{1,2,3}.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate-iter2-fixed.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128-iter2-fixed.json
+```
+
+Result: 512/128 native prefill improved to `484.094, 482.057, 482.044` tok/s
+(median `482.057`, ~10.0x vs baseline) with decode still ~101 tok/s. Fixture
+gate passes after the close synchronization (`generated_match=true`,
+`max_kl=0.0226`, top-1 `1.0`, native fixture prefill `1.0806s`,
+`owned_device_bytes=1625645909`). 4K/128 still OOMs in grouped MoE scratch
+allocation, matching the baseline blocker rather than a new regression; next
+prefill-perf work should address shared/chunked prefill scratch so the 4K guard
+can become active.
