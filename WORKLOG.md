@@ -9707,3 +9707,38 @@ in grouped MoE prefill scratch allocation (`HIP error 2: out of memory`). This
 iteration is a log-only correctness-unblock verification, not a primary-metric
 keep; next active work should target the 4K scratch OOM / scratch reuse before
 more 512 launch tuning.
+
+## 2026-05-15 — Prefill multiloop iter 3: share native prefill scratch
+
+Iteration `prefill-perf/run-20260515-154601` targeted the 4K/128 OOM. Root
+cause was per-layer growth of native prefill scratch: each layer kept its own
+4096-row linear/full-attention and grouped-MoE workspace until prefill finished,
+with the OOM occurring in grouped MoE `gate_up` allocation. Implemented a
+session-level transient `prefill_workspace` and shared linear/full/MoE prefill
+scratch across layers; `_restore_decode_scratch_after_prefill()` frees this
+transient workspace before recreating the per-layer c=1 decode scratch.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json
+python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/shared-prefill-packed-c2.json
+python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size 4 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/shared-prefill-packed-c4.json
+python3 scripts/qwen35_batch_packed_prefill_correctness.py --prompt-length 8 --max-layers 40 --batch-size 8 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/shared-prefill-packed-c8.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-iter3-512-run1.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-iter3-512-run2.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-iter3-512-run3.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: 512/128 samples `509.518`, `508.554`, `507.502`, `508.086` tok/s
+(median `508.320`, +5.45% vs current loop baseline `482.057`). Fixture gate
+passed with `native_owned_device_bytes=1625645909`, native prefill `1.00693s`,
+max KL `0.00534`, top-1 `1.0`; c=2/4/8 compact prompt8 gates passed. 4K/128 is
+now runnable rather than OOM: `318.037 tok/s`, prefill `12.8790s`, decode
+`101.714 tok/s`. This establishes the first 4K guard baseline; future active
+keeps should preserve at least 95% of `318.037 tok/s` until a faster 4K baseline
+is retained.

@@ -61,7 +61,12 @@ from hipengine.loading.materialize import (
     load_tensor_info_to_device,
 )
 from hipengine.runtime.prefill import PrefillConfig
-from hipengine.runtime.qwen35_paro import Qwen35ParoDecodeState, Qwen35ParoGroupedMoeScratch
+from hipengine.runtime.qwen35_paro import (
+    Qwen35ParoAttentionScratch,
+    Qwen35ParoDecodeState,
+    Qwen35ParoGroupedMoeScratch,
+    Qwen35ParoLinearAttentionScratch,
+)
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
@@ -773,6 +778,11 @@ class Qwen35ParoResidentSession:
         self.linear_scratch = {}
         self.full_scratch = {}
         self.moe_scratch = {}
+        self.prefill_workspace = RuntimeWorkspace(runtime=self.runtime)
+        self._prefill_scratch_state: Qwen35ParoDecodeState | None = None
+        self.prefill_linear_scratch: Qwen35ParoLinearAttentionScratch | None = None
+        self.prefill_full_scratch: Qwen35ParoAttentionScratch | None = None
+        self.prefill_moe_scratch: Qwen35ParoGroupedMoeScratch | None = None
         self.tokenizer = _load_tokenizer(self.model)
         self.closed = False
         self._build()
@@ -787,6 +797,7 @@ class Qwen35ParoResidentSession:
         # process.  Synchronize before releasing any device allocations.
         self.runtime.device_synchronize()
         self.closed = True
+        self._release_prefill_workspace()
         for state in reversed(self.states):
             state.free()
         for allocation in reversed(self.allocations):
@@ -1622,13 +1633,61 @@ class Qwen35ParoResidentSession:
             results.append(self._sample_from_hidden(final_hidden))
         return tuple(results)
 
-    def _ensure_grouped_moe_prefill_scratch(self, layer_id: int, *, tokens: int) -> Qwen35ParoGroupedMoeScratch:
-        state = self.states[layer_id]
-        scratch = self.moe_scratch.get(layer_id)
+    def _prefill_scratch_owner(self):
+        if not self.states:
+            raise RuntimeError("prefill scratch requested before layers are materialized")
+        if not hasattr(self, "prefill_workspace"):
+            return self.states[0]
+        if getattr(self, "_prefill_scratch_state", None) is None:
+            self._prefill_scratch_state = Qwen35ParoDecodeState(
+                layer_weights=self.states[0].layer_weights,
+                workspace=self.prefill_workspace,
+                runtime=self.runtime,
+            )
+        return self._prefill_scratch_state
+
+    def _release_prefill_workspace(self) -> None:
+        workspace = getattr(self, "prefill_workspace", None)
+        if workspace is not None:
+            workspace.free()
+        self.prefill_linear_scratch = None
+        self.prefill_full_scratch = None
+        self.prefill_moe_scratch = None
+
+    def _ensure_linear_prefill_scratch(self, *, tokens: int) -> Qwen35ParoLinearAttentionScratch:
+        scratch = getattr(self, "prefill_linear_scratch", None)
+        if scratch is not None and scratch.attn_input.shape[0] >= tokens:
+            return scratch
+        scratch = self._prefill_scratch_owner().reserve_linear_attention_scratch(
+            tokens=tokens,
+            activation_dtype=DType.FP16,
+        )
+        self.prefill_linear_scratch = scratch
+        return scratch
+
+    def _ensure_full_prefill_scratch(self, *, tokens: int) -> Qwen35ParoAttentionScratch:
+        scratch = getattr(self, "prefill_full_scratch", None)
+        if scratch is not None and scratch.attn_input.shape[0] >= tokens:
+            return scratch
+        scratch = self._prefill_scratch_owner().reserve_full_attention_scratch(
+            tokens=tokens,
+            num_splits=1,
+            activation_dtype=DType.FP16,
+            gated_dtype=DType.FP16,
+        )
+        self.prefill_full_scratch = scratch
+        return scratch
+
+    def _ensure_grouped_moe_prefill_scratch(self, layer_id: int | None = None, *, tokens: int) -> Qwen35ParoGroupedMoeScratch:
+        _ = layer_id
+        scratch = getattr(self, "prefill_moe_scratch", None)
         if isinstance(scratch, Qwen35ParoGroupedMoeScratch) and scratch.normed.shape[0] >= tokens:
             return scratch
-        scratch = state.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        self.moe_scratch[layer_id] = scratch
+        scratch = self._prefill_scratch_owner().reserve_moe_grouped_prefill_scratch(
+            tokens=tokens,
+            activation_dtype=DType.FP16,
+        )
+        self.prefill_moe_scratch = scratch
         return scratch
 
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
@@ -1640,10 +1699,7 @@ class Qwen35ParoResidentSession:
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
                 conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
-                linear_scratch = self.linear_scratch[layer_id]
-                if linear_scratch.attn_input.shape[0] < tokens:
-                    linear_scratch = state.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
-                    self.linear_scratch[layer_id] = linear_scratch
+                linear_scratch = self._ensure_linear_prefill_scratch(tokens=tokens)
                 moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=tokens)
                 out = state.run_linear_attention_moe_c1_layer_fp16(
                     hidden,
@@ -1657,15 +1713,7 @@ class Qwen35ParoResidentSession:
                 )
             elif layer_type == "full_attention":
                 key_cache, value_cache = self._slot_full_cache(layer_id, 0)
-                attention_scratch = self.full_scratch[layer_id]
-                if attention_scratch.attn_input.shape[0] < tokens:
-                    attention_scratch = state.reserve_full_attention_scratch(
-                        tokens=tokens,
-                        num_splits=1,
-                        activation_dtype=DType.FP16,
-                        gated_dtype=DType.FP16,
-                    )
-                    self.full_scratch[layer_id] = attention_scratch
+                attention_scratch = self._ensure_full_prefill_scratch(tokens=tokens)
                 moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=tokens)
                 out = state.run_full_attention_moe_prefill_layer_fp16(
                     hidden,
@@ -1704,10 +1752,7 @@ class Qwen35ParoResidentSession:
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
                 conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
-                linear_scratch = self.linear_scratch[layer_id]
-                if linear_scratch.attn_input.shape[0] < rows:
-                    linear_scratch = state.reserve_linear_attention_scratch(tokens=rows, activation_dtype=DType.FP16)
-                    self.linear_scratch[layer_id] = linear_scratch
+                linear_scratch = self._ensure_linear_prefill_scratch(tokens=rows)
                 moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
                 out = state.run_linear_attention_moe_packed_prefill_layer_fp16(
                     hidden,
@@ -1724,15 +1769,7 @@ class Qwen35ParoResidentSession:
                 )
             elif layer_type == "full_attention":
                 key_cache, value_cache = self._full_cache_all_slots(layer_id)
-                attention_scratch = self.full_scratch[layer_id]
-                if attention_scratch.attn_input.shape[0] < rows:
-                    attention_scratch = state.reserve_full_attention_scratch(
-                        tokens=rows,
-                        num_splits=1,
-                        activation_dtype=DType.FP16,
-                        gated_dtype=DType.FP16,
-                    )
-                    self.full_scratch[layer_id] = attention_scratch
+                attention_scratch = self._ensure_full_prefill_scratch(tokens=rows)
                 moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
                 out = state.run_full_attention_moe_prefill_varlen_layer_fp16(
                     hidden,
@@ -1772,10 +1809,7 @@ class Qwen35ParoResidentSession:
             if layer_type != "linear_attention":
                 raise NotImplementedError(f"native linear prefill cannot run layer {layer_id} type {layer_type!r}")
             conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
-            linear_scratch = self.linear_scratch[layer_id]
-            if linear_scratch.attn_input.shape[0] < tokens:
-                linear_scratch = state.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
-                self.linear_scratch[layer_id] = linear_scratch
+            linear_scratch = self._ensure_linear_prefill_scratch(tokens=tokens)
             if tokens > 1:
                 moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=tokens)
             else:
@@ -1871,6 +1905,7 @@ class Qwen35ParoResidentSession:
         return last_hidden
 
     def _restore_decode_scratch_after_prefill(self) -> None:
+        self._release_prefill_workspace()
         for layer_id, state in enumerate(self.states):
             self.moe_scratch[layer_id] = state.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16)
             if self.config.layer_types[layer_id] == "linear_attention":

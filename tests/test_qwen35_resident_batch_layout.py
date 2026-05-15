@@ -573,16 +573,20 @@ def test_qwen35_resident_linear_prefill_restores_decode_scratch_token1() -> None
     out = session._run_linear_prefill_layers(tokens=4)
 
     assert out.shape == (4, 8)
-    assert session.linear_scratch[0] is state.linear_reservations[0]
-    assert session.moe_scratch[0] is state.grouped_reservations[0]
+    assert session.linear_scratch[0] is decode_linear
+    assert session.moe_scratch[0] is decode_moe
+    assert session.prefill_linear_scratch is state.linear_reservations[0]
+    assert session.prefill_moe_scratch is state.grouped_reservations[0]
     call_kwargs = state.run_calls[0][1]
-    assert call_kwargs["linear_scratch"] is session.linear_scratch[0]
-    assert call_kwargs["moe_scratch"] is session.moe_scratch[0]
+    assert call_kwargs["linear_scratch"] is session.prefill_linear_scratch
+    assert call_kwargs["moe_scratch"] is session.prefill_moe_scratch
     assert call_kwargs["tokens"] == 4
     assert runtime.memcpy_async_calls
 
     session._restore_decode_scratch_after_prefill()
 
+    assert session.prefill_linear_scratch is None
+    assert session.prefill_moe_scratch is None
     assert session.linear_scratch[0] is state.linear_reservations[1]
     assert session.moe_scratch[0] is state.moe_reservations[0]
     assert session.linear_scratch[0].attn_input.shape == (1, 8)
