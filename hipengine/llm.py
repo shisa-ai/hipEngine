@@ -82,6 +82,9 @@ class LLM:
         from hipengine.models import resolve_model
 
         index = load_weight_index(self.model)
+        # Store resolved filesystem path so downstream code (tokenizer, runner) gets a
+        # real directory instead of an HF model ID string.
+        self.model = str(index.model_path)
         plugin = resolve_model(_primary_architecture(index.config))
         self._weight_index = index
         self._model_plugin = plugin
