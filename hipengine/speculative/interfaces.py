@@ -455,6 +455,7 @@ class AcceptResult:
     accepted_counts: tuple[int, ...]
     accepted_tokens: tuple[tuple[int, ...], ...]
     transaction_id: int | None = None
+    selected_candidate_rows: tuple[int | None, ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.request_ids:
@@ -462,6 +463,11 @@ class AcceptResult:
         _validate_unique_request_ids(self.request_ids)
         if self.transaction_id is not None and self.transaction_id < 0:
             raise ValueError("transaction_id must be non-negative")
+        if self.selected_candidate_rows is not None:
+            if len(self.selected_candidate_rows) != len(self.request_ids):
+                raise ValueError("selected_candidate_rows must align with request_ids")
+            if any(row is not None and row < 0 for row in self.selected_candidate_rows):
+                raise ValueError("selected_candidate_rows must be non-negative")
         if len(self.accepted_counts) != len(self.request_ids) or len(self.accepted_tokens) != len(self.request_ids):
             raise ValueError("accepted counts/tokens must align with request_ids")
         if any(count < 0 for count in self.accepted_counts):
@@ -547,9 +553,16 @@ class TargetAcceptSummary:
     ) -> "TargetAcceptSummary":
         if tuple(result.request_ids) != target.request_ids:
             raise ValueError("accept result request_ids must match target batch request_ids")
+        result_selected_rows = None if result.selected_candidate_rows is None else tuple(result.selected_candidate_rows)
+        if selected_candidate_rows is None:
+            selected_rows = result_selected_rows
+        else:
+            selected_rows = tuple(selected_candidate_rows)
+            if result_selected_rows is not None and result_selected_rows != selected_rows:
+                raise ValueError("selected_candidate_rows must match accept result")
         selection = target.select_commit_rows(
             result.accepted_counts,
-            selected_candidate_rows=selected_candidate_rows,
+            selected_candidate_rows=selected_rows,
         )
         accepted_tokens = tuple(tuple(int(token) for token in tokens) for tokens in result.accepted_tokens)
         expected_tokens = tuple(

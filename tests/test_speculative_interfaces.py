@@ -39,6 +39,10 @@ def test_speculative_request_ids_must_be_unique() -> None:
         AcceptResult(request_ids=(1, 1), accepted_counts=(1, 0), accepted_tokens=((10,), ()))
     with pytest.raises(ValueError, match="transaction_id"):
         AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), transaction_id=-1)
+    with pytest.raises(ValueError, match="selected_candidate_rows"):
+        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), selected_candidate_rows=(-1,))
+    with pytest.raises(ValueError, match="selected_candidate_rows"):
+        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), selected_candidate_rows=(1, 2))
     with pytest.raises(ValueError, match="unique"):
         TargetVerifyBatch(
             request_ids=(1, 1),
@@ -77,6 +81,7 @@ def test_draft_batch_and_accept_result_validate_row_metadata() -> None:
 
     result = AcceptResult(request_ids=(1, 2), accepted_counts=(2, 1), accepted_tokens=((10, 11), (20,)))
     assert result.accepted_tokens == ((10, 11), (20,))
+    assert result.selected_candidate_rows is None
 
     with pytest.raises(ValueError, match="align"):
         DraftBatch(
@@ -512,15 +517,21 @@ def test_target_verify_batch_requires_selected_rows_for_ambiguous_tree_depth() -
     selected = target.select_commit_rows((1,), selected_candidate_rows=(2,))
     assert selected.selected_rows == (2,)
     assert selected.selected_tokens == (11,)
-    summary = TargetAcceptSummary.from_accept_result(
-        target,
-        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((11,),)),
+    result = AcceptResult(
+        request_ids=(1,),
+        accepted_counts=(1,),
+        accepted_tokens=((11,),),
         selected_candidate_rows=(2,),
     )
+    summary = TargetAcceptSummary.from_accept_result(target, result)
     assert summary.commit_rows == (2,)
     assert summary.accepted_tokens == ((11,),)
+    with pytest.raises(ValueError, match="selected_candidate_rows"):
+        TargetAcceptSummary.from_accept_result(target, result, selected_candidate_rows=(1,))
     with pytest.raises(ValueError, match="candidate row"):
         target.select_commit_rows((1,), selected_candidate_rows=(0,))
+    with pytest.raises(ValueError, match="candidate row"):
+        TargetAcceptSummary.from_accept_result(target, replace(result, selected_candidate_rows=(0,)))
 
 
 def test_target_verify_batch_validates_native_row_layout() -> None:
@@ -669,6 +680,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_transaction_role_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_commit_plan_candidate_budget_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_accept_summary_transaction_id_checked"]
+    assert payload["implementation_status"]["interfaces_present"]["accept_result_selected_rows_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_accept_summary_topology_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_transaction_id_checked"]
     assert payload["implementation_status"]["interfaces_present"]["target_verify_buffers_candidate_counts_checked"]
@@ -688,6 +700,7 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["kv_transaction_target_verify"]["target_verify_rows"] == 5
     assert payload["implementation_status"]["kv_transaction_target_verify"]["candidate_counts"] == [2, 1]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["commit_selection_rows"] == [3, 4]
+    assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_result"]["selected_candidate_rows"] == [3, 4]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["commit_rows"] == [3, 4]
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["transaction_id"] == 0
     assert payload["implementation_status"]["kv_transaction_target_verify"]["accept_summary"]["accepted_tokens"] == [[10, 11], [20]]

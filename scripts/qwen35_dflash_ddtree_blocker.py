@@ -178,6 +178,35 @@ def _target_accept_summary_transaction_id_checked() -> bool:
     return False
 
 
+def _accept_result_selected_rows_checked() -> bool:
+    try:
+        AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((10,),), selected_candidate_rows=(-1,))
+    except ValueError as exc:
+        negative_rejected = "selected_candidate_rows" in str(exc)
+    else:
+        negative_rejected = False
+    draft = DraftBatch(
+        request_ids=(1,),
+        candidate_tokens=(10, 11),
+        parent_positions=(5, 5),
+        draft_depths=(1, 1),
+        row_to_request=(1, 1),
+        mode="verify_tree",
+        tree_parents=(-1, -1),
+    )
+    target = TargetVerifyBatch.from_draft(draft, root_tokens=(100,), root_positions=(5,))
+    try:
+        TargetAcceptSummary.from_accept_result(
+            target,
+            AcceptResult(request_ids=(1,), accepted_counts=(1,), accepted_tokens=((11,),), selected_candidate_rows=(2,)),
+        )
+    except ValueError:
+        resolved_ambiguous_row = False
+    else:
+        resolved_ambiguous_row = True
+    return negative_rejected and resolved_ambiguous_row
+
+
 def _target_accept_summary_topology_checked() -> bool:
     summary = _sample_tree_accept_summary()
     try:
@@ -293,6 +322,7 @@ def _interface_status() -> dict[str, Any]:
         "target_commit_plan_transaction_role_checked": _target_commit_plan_transaction_role_checked(),
         "target_commit_plan_candidate_budget_checked": _target_commit_plan_candidate_budget_checked(),
         "target_accept_summary_transaction_id_checked": _target_accept_summary_transaction_id_checked(),
+        "accept_result_selected_rows_checked": _accept_result_selected_rows_checked(),
         "target_accept_summary_topology_checked": _target_accept_summary_topology_checked(),
         "target_verify_buffers_transaction_id_checked": _target_verify_buffers_transaction_id_checked(),
         "target_verify_buffers_candidate_counts_checked": _target_verify_buffers_candidate_counts_checked(),
@@ -488,6 +518,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         accepted_counts=(2, 1),
         accepted_tokens=((10, 11), (20,)),
         transaction_id=txn.transaction_id,
+        selected_candidate_rows=(3, 4),
     )
     summary = TargetAcceptSummary.from_accept_result(target, accept)
     plan = TargetCommitPlan.from_summary(summary, txn)
@@ -589,6 +620,10 @@ def _kv_transaction_status() -> dict[str, Any]:
         "root_rows_excluded_from_journal": txn.draft_rows == target.candidate_count,
         "commit_selection_rows": list(selection.selected_rows),
         "commit_selection_positions": list(selection.selected_positions),
+        "accept_result": {
+            "transaction_id": accept.transaction_id,
+            "selected_candidate_rows": [] if accept.selected_candidate_rows is None else list(accept.selected_candidate_rows),
+        },
         "accept_summary": {
             "transaction_id": summary.transaction_id,
             "accepted_counts": list(summary.accepted_counts),

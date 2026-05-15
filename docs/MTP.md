@@ -37,7 +37,7 @@ hipENGINE already has the right abstract contracts:
 | `hipengine.speculative.DraftBatch` | Carries candidate draft rows, depths, request ids, and optional tree parents. MTP emits chain candidates; it does **not** include the already-committed root row. |
 | `hipengine.speculative.DraftModel` | MTP head/plugin implements `propose(...)`. It is model-attached, not an external draft model. |
 | `hipengine.speculative.Verifier` | Shared target verifier verifies a `DraftBatch` by internally materializing `[root, candidates...]`. |
-| `hipengine.speculative.AcceptResult` | Stores accepted counts/tokens per request; should be extended later with correction/bonus ids and compact device-summary provenance. |
+| `hipengine.speculative.AcceptResult` | Stores accepted counts/tokens plus optional transaction and selected-row provenance per request; should be extended later with correction/bonus ids and compact device-summary provenance. |
 | `KVLiveSpans(span_role="verify_chain")` | Full-attention verify rows write into scratch/journal spans, not canonical KV. |
 | `KVPolicy.begin_transaction/commit/rollback` | Accepted prefix commit and rejected suffix discard. |
 | Graph bucket key `(mode, draft/tree shape, C, context bucket, ...)` | MTP fixed-depth buckets such as B=1/2/3/5. |

@@ -8383,3 +8383,51 @@ python3 -m compileall -q hipengine tests scripts && \
 Result: pytest exit code `0` (`81 passed`).
 
 Robust active TaskList count remains `1` (#15). This iteration narrows speculative accept-summary transaction binding only; no performance claim or kernel change was made.
+
+---
+
+## 2026-05-15 — Accept-result selected row provenance
+
+### Scope
+
+- Added optional `selected_candidate_rows` metadata to `AcceptResult`.
+- `TargetAcceptSummary.from_accept_result(...)` now consumes accept-result row hints by default and rejects conflicting explicit row hints.
+- Ambiguous tree-depth accept results can now carry the exact target row selected by a GPU/host accept-summary producer before commit planning consumes the summary.
+
+### Evidence
+
+```bash
+python3 -m compileall -q hipengine/speculative hipengine/generation scripts/qwen35_dflash_ddtree_blocker.py tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py && \
+  python3 -m pytest tests/test_speculative_interfaces.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: `22 passed`.
+
+Updated blocker artifact:
+
+```bash
+python3 scripts/qwen35_dflash_ddtree_blocker.py \
+  --json benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json
+```
+
+Artifact now records:
+
+- `implementation_status.interfaces_present.accept_result_selected_rows_checked=true`
+- `implementation_status.kv_transaction_target_verify.accept_result.selected_candidate_rows=[3,4]`
+- `implementation_status.kv_transaction_target_verify.accept_summary.commit_rows=[3,4]`
+- `implementation_status.kv_transaction_target_verify.commit_plan.commit_rows=[3,4]`
+- `implementation_status.resident_api.native_target_verify_ready=false`
+- `implementation_status.resident_api.throughput_claim_eligible=false`
+
+Interpretation: accept-result metadata can now disambiguate tree rows with identical accepted depths and preserves the selected target rows into accept summaries and commit plans. Native verifier execution, GPU accept summaries, and verified state/KV copy kernels remain unimplemented.
+
+### Validation
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+  python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py tests/test_loading_materialize.py tests/test_generation_qwen35_paro.py tests/test_runtime_workspace.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py -q
+```
+
+Result: pytest exit code `0` (`81 passed`).
+
+Robust active TaskList count remains `1` (#15). This iteration narrows speculative accept-result selected-row provenance only; no performance claim or kernel change was made.
