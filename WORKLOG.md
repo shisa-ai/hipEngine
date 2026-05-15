@@ -8812,3 +8812,41 @@ PY
 ```
 
 Result: `docs/PREFILL.md ok 714 lines`.
+
+## 2026-05-15 — PREFILL plan switched to final-only implementation
+
+Incorporated follow-up direction to skip throwaway intermediate prefill paths.
+The earlier docs/PREFILL.md correction had specified a layer-major row-loop
+full-attention fallback before the native causal kernel; that is now superseded.
+The plan now targets the final implementation directly: native full-attention
+prefill, grouped/compact MoE, generation wiring, and compact c>N slabs, with
+serial/row-loop/c1-MoE paths kept only as correctness oracles and artifact
+reproduction helpers.
+
+Important spec decisions now recorded in `docs/PREFILL.md`:
+- no retained perf artifacts for layer-major full-attention row loops,
+  c1 selected-row MoE prefill, or per-request c>N packed fallback;
+- first native full-attention kernel uses append-then-attend from BF16 paged KV
+  cache, post-gate FP16 output, and the existing GQA gate-fused decode shape;
+- `full_attn_prefill` needs a torch-free CPU-reference oracle before the gfx1100
+  retained kernel key lands;
+- compact c>N final path buckets slab rows by common block-table length unless a
+  varlen block-table writer is ported;
+- `PrefillConfig.require_full_native` defaults to true, with explicit per-call
+  override semantics.
+
+Validation (docs/process only; no GPU run required):
+
+```bash
+git diff --check -- docs/PREFILL.md
+python3 - <<'PY'
+from pathlib import Path
+text=Path('docs/PREFILL.md').read_text()
+assert text.count('```') % 2 == 0, 'unbalanced fences'
+assert 'D1' not in text and 'D2' not in text, 'stale D1/D2 terminology'
+assert '## Phased implementation plan' not in text, 'stale phased plan'
+print('docs/PREFILL.md final-spec ok', text.count('\n') + 1, 'lines')
+PY
+```
+
+Result: `docs/PREFILL.md final-spec ok 453 lines`.
