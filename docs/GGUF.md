@@ -20,7 +20,9 @@ runtime path. Qwen3.5 GGUF tensor-name mapping now validates the local 0.8B
 Q4_K_M inventory and classifies all 24 layers into 18 linear-attention and 6
 full-attention blocks. The resident materialization plan covers all 320 tensors:
 98 Q4_K weights use lossless pack8 records, 89 Q5_K/Q6_K/Q8_0 weights keep raw
-GGUF block bytes, and 133 F32 tensors stay dense F32.
+GGUF block bytes, and 133 F32 tensors stay dense F32. A native Q6_K embedding
+lookup kernel now dequantizes selected `token_embd.weight` rows directly to BF16
+hidden states, avoiding full dense embedding-table fallback.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 

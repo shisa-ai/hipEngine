@@ -17,6 +17,12 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     plan_gguf_k_gemv_build,
     register_gguf_k_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
+    build_gguf_q6_k_embedding,
+    gguf_q6_k_embedding_bf16_out,
+    plan_gguf_q6_k_embedding_build,
+    register_gguf_q6_k_embedding_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
     gguf_q4_k_gemv_bf16_bf16_out,
@@ -86,6 +92,7 @@ __all__ = [
     "awq_fusedw4_prefill_strided_fp16",
     "build_gguf_k_gemv",
     "build_gguf_q4_k_gemv",
+    "build_gguf_q6_k_embedding",
     "build_paro_awq_gemv",
     "build_paro_marlin_k",
     "build_w8a16_linear",
@@ -114,6 +121,7 @@ __all__ = [
     "gguf_q5_k_gemv_bf16_f32_out",
     "gguf_q5_k_gemv_f32_f32_out",
     "gguf_q5_k_gemv_fp16_f32_out",
+    "gguf_q6_k_embedding_bf16_out",
     "gguf_q6_k_gemv_bf16_bf16_out",
     "gguf_q6_k_gemv_bf16_f32_out",
     "gguf_q6_k_gemv_f32_f32_out",
@@ -133,11 +141,13 @@ __all__ = [
     "marlin_k_default_threads",
     "plan_gguf_k_gemv_build",
     "plan_gguf_q4_k_gemv_build",
+    "plan_gguf_q6_k_embedding_build",
     "plan_paro_awq_gemv_build",
     "plan_paro_marlin_k_build",
     "plan_w8a16_linear_build",
     "register_gguf_k_gemv_kernels",
     "register_gguf_q4_k_gemv_kernels",
+    "register_gguf_q6_k_embedding_kernels",
     "register_paro_awq_gemv_kernels",
     "register_paro_marlin_k_kernels",
     "register_w8a16_linear_kernels",

@@ -15415,3 +15415,48 @@ python3 -m pytest tests/test_qwen35_gguf_mapping.py tests/test_qwen35_gguf_mater
 ```
 
 Next blocker: native Q6_K token embedding lookup for `token_embd.weight`; the materializer can keep the raw token table resident, but the runtime still needs a device kernel to dequantize selected token rows into BF16 hidden state.
+
+## 2026-05-16 GGUF Q6_K embedding lookup
+
+Added native token embedding lookup for raw GGUF Q6_K token tables:
+
+- CPU oracle: `gguf_q6_k_embedding(token_ids, qweight)` selects rows and dequantizes `block_q6_K` to FP32.
+- HIP kernel: `hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.hip` dequantizes selected rows to BF16 bits.
+- Registry key: `(hip_gfx1100, embedding, gguf_q6_k, lookup_bf16_out)`.
+- Smoke: `scripts/gguf_q6_k_embedding_smoke.py` covers a synthetic Q6_K fixture and local `token_embd.weight` selected tokens.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py \
+  hipengine/kernels/hip_gfx1100/quant/__init__.py \
+  hipengine/kernels/cpu_reference/ops.py hipengine/kernels/cpu_reference/__init__.py \
+  scripts/gguf_q6_k_embedding_smoke.py tests/test_gguf_q6_k_embedding.py
+python3 -m pytest tests/test_gguf_q6_k_embedding.py tests/test_gguf_k_gemv.py \
+  tests/test_model_quant_and_imports.py -q
+# 18 passed
+python3 scripts/gguf_q6_k_embedding_smoke.py
+# synthetic_q6_k_embedding rows=4 hidden_size=512 max_abs=0.0
+# real_q6_k_token_embd rows=4 hidden_size=1024 max_abs=0.0
+# worst_max_abs=0.0
+```
+
+Cached profiler smoke (prebuilt `.so`, `--require-cached-build`):
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import build_gguf_q6_k_embedding
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+build_gguf_q6_k_embedding(load=False, compiler_version=version)
+PY
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-q6-embed-rocprof.A53kp5 -- \
+  python3 scripts/gguf_q6_k_embedding_smoke.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# synthetic + real smokes pass, worst_max_abs=0.0
+# gguf_q6_k_embedding_bf16_out_kernel DurationNs=5359, Workgroup_Size_X=256, Grid_Size_X=512, Grid_Size_Y=4
+# gguf_q6_k_embedding_bf16_out_kernel DurationNs=8200, Workgroup_Size_X=256, Grid_Size_X=1024, Grid_Size_Y=4
+```
+
+This removes the GGUF token-embedding blocker without full dense embedding-table dequantization. Next step: GGUF linear dispatch adapter over the resident records.
