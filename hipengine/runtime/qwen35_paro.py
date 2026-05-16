@@ -8,7 +8,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
-    aotriton_attn_fwd_compact_varlen_gqa_per_q_head,
+    aotriton_attn_fwd_compact_varlen,
     aotriton_gate_mul_bf16_to_fp16,
     qwen35_full_attn_decode_context_bf16,
     qwen35_full_attn_gate_mul_bf16,
@@ -1929,7 +1929,7 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         aotriton_library = _library_for(library, "aotriton")
-        aotriton_attn_fwd_compact_varlen_gqa_per_q_head(
+        aotriton_attn_fwd_compact_varlen(
             aotriton_tensor4(q_bf16.ptr, (1, q_heads, rows, head_dim), (q_width * rows, head_dim, q_width, 1), DType.BF16),
             aotriton_tensor4(k_bf16.ptr, (1, kv_heads, rows, head_dim), (kv_width * rows, head_dim, kv_width, 1), DType.BF16),
             aotriton_tensor4(v_bf16.ptr, (1, kv_heads, rows, head_dim), (kv_width * rows, head_dim, kv_width, 1), DType.BF16),

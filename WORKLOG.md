@@ -12496,3 +12496,79 @@ Main conclusions documented:
 - Keep GGUF as a first-class loader/quant family and preserve hipENGINE invariants: torch-free runtime, plugin registry keys, raw-pointer kernels, CPU-reference correctness gates, and benchmark artifact policy.
 
 Validation: docs-only change. Re-read `docs/GGUF.md` and ran `git diff --check -- docs/GGUF.md WORKLOG.md`. No GPU run; no new performance claim.
+
+## 2026-05-16 — V2 direct-GQA AOTriton shortcut replaces per-Q-head fanout
+
+Before migrating to the AOTriton V3 params ABI, tested the suggested V2 shortcut:
+call `v2::flash::attn_fwd_compact_varlen` once with true GQA-shaped tensors
+instead of slicing to one Q head at a time.  The harness allocated BF16 compact
+varlen tensors with Q shape `(1, 16, rows, 256)`, K/V shape `(1, 2, rows, 256)`,
+`cu_seqlens=[0, rows]`, and compared the direct V2 call against the existing
+`aotriton_attn_fwd_compact_varlen_gqa_per_q_head` wrapper output.
+
+```bash
+python3 - <<'PY'
+# one-off harness: random BF16 Q/K/V, rows in (64, 512), call
+# aotriton_attn_fwd_compact_varlen(...) directly with Q heads=16, K/V heads=2,
+# then call aotriton_attn_fwd_compact_varlen_gqa_per_q_head(...) on the same
+# buffers and compare BF16 output bits.
+PY
+# {'rows': 64, 'bits_equal': True, 'max_abs': 0.0, 'mismatch': 0,
+#  'nonzero_direct': 262144, 'nonzero_fan': 262144}
+# {'rows': 512, 'bits_equal': True, 'max_abs': 0.0, 'mismatch': 0,
+#  'nonzero_direct': 2097152, 'nonzero_fan': 2097152}
+```
+
+Result: the installed 0.11.2b V2 binary already handles GQA-shaped BF16
+compact-varlen inputs, even though the V2 header documents a single `num_heads`.
+Made the smallest runtime change: the opt-in Qwen3.5/PARO AOTriton prefill path
+now calls `aotriton_attn_fwd_compact_varlen` directly with Q heads=16 and K/V
+heads=2, preserving the committed BF16 Q/K/V/Out + BF16-to-FP16 gate semantics.
+The per-Q-head shim stays available for tests/debugging but is no longer on the
+runtime prefill path.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py
+# ok
+
+python3 -m pytest tests/test_qwen35_paro_marlin_k.py tests/test_aotriton_discovery.py \
+  tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_decode_state.py -q
+# passed (73 targeted tests, exit 0)
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --attn-aotriton-min-tokens 512 --json /tmp/task11-v2-direct-gqa-fixture-aotriton.json
+# passed=true, generated_match=true, expected_match=true,
+# max_kl=0.0395688706, top1=1.0
+```
+
+Smoke performance on W7900/gfx1100, Qwen3.5-35B-A3B-PARO w4_paro, max_layers=40,
+repeated token id 9707, no graph replay, AOTriton opt-in threshold 512:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/task11-v2-direct-gqa-aotriton-512-128.json
+# prefill=2164.732 tok/s, decode=101.604 tok/s
+# previous BF16 per-Q-head AOTriton 512/128 smoke: 1836.089 tok/s
+# previous BF16 native fallback 512/128 smoke: 2045.535 tok/s
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/task11-v2-direct-gqa-aotriton-4k-128.json
+# prefill=2374.341 tok/s, decode=102.127 tok/s
+# previous BF16 per-Q-head AOTriton 4K/128 smoke: 2185.173 tok/s
+# previous BF16 native fallback 4K/128 smoke: 662.630 tok/s
+```
+
+Conclusion: V3 is not required to remove the 16x per-Q-head launch fanout on the
+current pinned binary.  The V2 direct-GQA shortcut is correctness-clean and flips
+512-token AOTriton from slower than native to faster in this smoke.  Remaining
+follow-ups are now threshold sweep and optional V3/atomic-counter cleanup; keep
+default dispatch disabled (`attn_aotriton_min_tokens=0`) until the threshold
+sweep lands.
