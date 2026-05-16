@@ -11782,3 +11782,37 @@ Source/evidence reviewed:
 Main documented conclusion: porting is worth doing now, but first hipENGINE port should be narrow/conservative: standalone `paro_marlin_k.{hip,py}` + NumPy repack/oracle tests, rows==1 non-expert GEMV only, no rejected §12 experiments, and runtime promotion only after hipENGINE reproduces the parent hybrid memory story (Marlin-K rows==1, zero-copy pack8 view for fused paths, no duplicate large W4 qweight buffer).
 
 Validation: docs/process change only. Re-read `docs/MARLIN.md`; no Python compile step was applicable because no Python files changed. No GPU benchmark rerun; all speed/memory numbers are explicitly cited as parent `~/amd-gpu-tuning` evidence, not new hipENGINE measurements.
+
+## 2026-05-16 — PARO Marlin-K host repack helper
+
+Confirmed hipENGINE was runnable before touching PARO code:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+python3 -m pytest tests/test_build.py tests/test_smoke_add_plan.py tests/test_paro_awq_gemv_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode smoke-add-plan
+python3 scripts/smoke.py --mode smoke-add-hip --n 1024
+python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16
+```
+
+Smoke passed: `44 passed`, registry produced the expected missing-kernel plan diagnostic, smoke-add returned `max_abs=0.0`, and PARO pack8 GEMV returned `single_mismatch=0/0`, `dual_mismatch=0/0`, `max_abs=0.0`, plus FP16 parity `fp16_max_abs=0.0`.
+
+Then made the first scoped PARO edit toward the Marlin-K port: added torch-free host helpers in `hipengine/loading/qwen35_paro.py`:
+
+- `repack_paro_awq_to_marlin_k_host(qweight, qzeros, scales, bits=4, group_size=128)` converts checkpoint/PARO layout `qweight [K,N/8]`, `qzeros [K/128,N/8]`, `scales [K/128,N]` into parent Marlin-K v0 layout `qweight_mk [N/8,K/128,128]`, `qzeros_mk [N/8,K/128]`, `scales_mk [N/8,K/128,8]`.
+- `paro_marlin_k_pack8_decode_view(qweight_mk)` returns the zero-copy pack8 decode view over `qweight_mk`, documenting the ownership/aliasing caveat for later device materialization.
+- Exported both helpers from `hipengine.loading`.
+
+Added RED/GREEN coverage in `tests/test_qwen35_paro_marlin_k.py`: deterministic layout parity, zero-copy `np.shares_memory` pack8 view, and validation errors for unsupported/mismatched shapes. The initial RED failed on missing exports, then GREEN after implementation.
+
+Validation after the edit:
+
+```bash
+python3 -m compileall -q hipengine tests
+python3 -m pytest tests/test_qwen35_paro_marlin_k.py tests/test_qwen35_paro_layout.py tests/test_paro_awq_gemv_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16
+```
+
+Result: `54 passed`; registry and PARO pack8 smoke stayed green (`max_abs=0.0`, all mismatch counters `0/0`). No GPU Marlin-K performance claim yet: this is host layout plumbing only, preparing for the raw-pointer kernel port described in `docs/MARLIN.md`.

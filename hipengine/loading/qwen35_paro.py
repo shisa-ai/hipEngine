@@ -818,6 +818,87 @@ def _transpose_decode_qweight(array: object):
     return np.ascontiguousarray(np.swapaxes(array, 1, 2))
 
 
+def repack_paro_awq_to_marlin_k_host(
+    qweight: object,
+    qzeros: object,
+    scales: object,
+    *,
+    bits: int = 4,
+    group_size: int = 128,
+):
+    """Repack PARO/AWQ W4 tensors into the parent Marlin-K v0 host layout.
+
+    Input layout mirrors the checkpoint/PARO pack8 layout used elsewhere in
+    hipENGINE: ``qweight [K, N/8]``, ``qzeros [K/group_size, N/8]``, and
+    ``scales [K/group_size, N]``.  The returned layout matches the parent
+    ``nano-vllm-amd`` qweight-neutral Marlin-K path documented in
+    ``docs/MARLIN.md``:
+
+    - ``qweight_mk [N/8, K/128, 128]``
+    - ``qzeros_mk [N/8, K/128]``
+    - ``scales_mk [N/8, K/128, 8]``
+    """
+
+    import numpy as np
+
+    if bits != 4:
+        raise ValueError(f"Marlin-K v0 supports bits=4 only, got {bits}")
+    if group_size != 128:
+        raise ValueError(f"Marlin-K v0 supports group_size=128 only, got {group_size}")
+    qweight_arr = np.asarray(qweight)
+    qzeros_arr = np.asarray(qzeros)
+    scales_arr = np.asarray(scales)
+    if qweight_arr.dtype != np.int32:
+        raise ValueError(f"qweight dtype must be int32, got {qweight_arr.dtype}")
+    if qzeros_arr.dtype != np.int32:
+        raise ValueError(f"qzeros dtype must be int32, got {qzeros_arr.dtype}")
+    if qweight_arr.ndim != 2:
+        raise ValueError(f"qweight must be rank-2 [K, N/8], got shape {qweight_arr.shape}")
+    if qzeros_arr.ndim != 2:
+        raise ValueError(f"qzeros must be rank-2 [groups, N/8], got shape {qzeros_arr.shape}")
+    if scales_arr.ndim != 2:
+        raise ValueError(f"scales must be rank-2 [groups, N], got shape {scales_arr.shape}")
+    in_features, out_packed = qweight_arr.shape
+    if in_features % group_size != 0:
+        raise ValueError(f"qweight K dimension {in_features} must be a multiple of group_size {group_size}")
+    groups = in_features // group_size
+    expected_qzeros = (groups, out_packed)
+    if tuple(qzeros_arr.shape) != expected_qzeros:
+        raise ValueError(f"qzeros shape must be {expected_qzeros}, got {qzeros_arr.shape}")
+    expected_scales = (groups, out_packed * 8)
+    if tuple(scales_arr.shape) != expected_scales:
+        raise ValueError(f"scales shape must be {expected_scales}, got {scales_arr.shape}")
+    qweight_contig = np.ascontiguousarray(qweight_arr, dtype=np.int32)
+    qzeros_contig = np.ascontiguousarray(qzeros_arr, dtype=np.int32)
+    scales_contig = np.ascontiguousarray(scales_arr)
+    qweight_mk = np.ascontiguousarray(qweight_contig.reshape(groups, group_size, out_packed).transpose(2, 0, 1))
+    qzeros_mk = np.ascontiguousarray(qzeros_contig.T)
+    scales_mk = np.ascontiguousarray(scales_contig.reshape(groups, out_packed, 8).transpose(1, 0, 2))
+    return qweight_mk, qzeros_mk, scales_mk
+
+
+def paro_marlin_k_pack8_decode_view(qweight_mk: object):
+    """Return the zero-copy pack8 decode view over ``qweight_mk``.
+
+    The parent qweight-neutral path keeps one owning W4 buffer and exposes the
+    existing pack8/fused paths through this view.  hipENGINE runtime materialize
+    code must preserve the same ownership property when this helper is used for
+    device tensors.
+    """
+
+    import numpy as np
+
+    qweight_mk_arr = np.asarray(qweight_mk)
+    if qweight_mk_arr.dtype != np.int32:
+        raise ValueError(f"qweight_mk dtype must be int32, got {qweight_mk_arr.dtype}")
+    if qweight_mk_arr.ndim != 3 or qweight_mk_arr.shape[2] != 128:
+        raise ValueError(f"qweight_mk shape must be [N/8, groups, 128], got {qweight_mk_arr.shape}")
+    if not qweight_mk_arr.flags.c_contiguous:
+        raise ValueError("qweight_mk must be C-contiguous to expose a zero-copy pack8 view")
+    out_packed, groups, group_size = qweight_mk_arr.shape
+    return qweight_mk_arr.reshape(out_packed, groups * group_size)
+
+
 def _quantize_w8a16_host(weight: object):
     import numpy as np
 
