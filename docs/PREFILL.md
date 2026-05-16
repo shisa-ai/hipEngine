@@ -504,6 +504,398 @@ Any retained performance row also updates `benchmarks/README.md`,
 Correctness is non-negotiable: a faster prefill that fails the parent fixture is
 a regression, not a win.
 
+## Optimization diagnosis (2026-05-16): the 4K gap is one kernel
+
+This section captures the trace-driven diagnosis after the 49-iteration
+`prefill-perf` multiloop plateaued at 2039 tok/s @ 512/128, plus the
+standing-rule reasoning chain for the next optimization spike. It is
+standalone evidence: a future agent should be able to read this section and
+reproduce the decision without re-running the audit.
+
+### Where we stand
+
+Measured with the standard bench command on the parent 512/32 fixture and the
+4K/128 repeated-token diagnostic; both runs use `require_full_native=True`.
+
+| Shape          | hipENGINE | nano-vllm-amd (parent) | parent / hipENGINE |
+| -------------- | --------: | ---------------------: | -----------------: |
+| 512 prefill    | 2039 tok/s | 2589 tok/s              | +27 %              |
+| 4K prefill     |  659 tok/s | 1681 tok/s              | +155 %             |
+
+The 4K gap is the load-bearing one. At T=4K, hipENGINE spends 6.21 s in
+prefill vs the parent's ≈ 2.44 s. Multiloop iters 1–49 optimized only the 512
+metric and treated 4K as a no-regression guard; that left the long-context
+path structurally unexamined.
+
+### Trace comparison
+
+From `rocprofv3 --kernel-trace` on `qwen35_paro_bench.py` with
+`--prompt-length {512,4096} --decode-tokens 0 --max-layers 40` and matching
+flags from `~/amd-gpu-tuning/scripts/run_moe2_baselines.py::COMMON_ENV` on the
+parent side. Numbers are summed across the 40 layers.
+
+Top kernel buckets, hipENGINE 512 prefill (total kernel time 229.77 ms):
+
+| ms      | calls | avg us  | kernel                                                |
+| ------: | ----: | ------: | ----------------------------------------------------- |
+|   41.22 |    30 |  1373.9 | `qwen35_gdn_prefill_recurrent_k2_kernel`              |
+|   33.96 |    40 |   849.0 | `gemm_awq_selected_dual_pack8_wmma_compact_kernel`    |
+|   26.16 |    10 |  2615.8 | `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true>` |
+|   23.21 |    80 |   290.2 | `awq_fusedw4_prefill_fp16_kernel<32,32,true>`         |
+|   19.48 |    40 |   487.0 | `gemm_awq_selected_pack8_wmma_compact_kernel`         |
+|   16.05 |    40 |   401.2 | `w8a16_shared_down_combine_residual_fp16_kernel`      |
+|   15.56 |    40 |   389.0 | `w8a16_shared_gate_up_silu_fp16_kernel`               |
+|   14.81 |    50 |   296.2 | `awq_fusedw4_prefill_fp16_kernel<32,32,false>`        |
+|    9.24 |    80 |   115.5 | `paro_rotate1_kernel<_Float16>`                       |
+|    8.62 |    40 |   215.5 | `qwen35_router_logits_token_tile_kernel<_Float16,4>`  |
+
+Top kernel buckets, hipENGINE 4K prefill (total kernel time 6171.07 ms):
+
+| ms       | calls | avg us    | kernel                                                |
+| -------: | ----: | --------: | ----------------------------------------------------- |
+|  4572.38 |    10 |  457237.5 | `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<false>` |
+|   391.64 |    30 |   13054.8 | `qwen35_gdn_prefill_recurrent_k2_kernel`              |
+|   199.96 |    40 |    4999.0 | `gemm_awq_selected_dual_pack8_wmma_compact_kernel`    |
+|   170.16 |    80 |    2127.0 | `awq_fusedw4_prefill_fp16_kernel<32,32,true>`         |
+|   133.07 |    80 |    1663.4 | `paro_rotate1_kernel<_Float16>`                       |
+|   124.89 |    40 |    3122.3 | `w8a16_shared_down_combine_residual_fp16_kernel`      |
+|   117.35 |    40 |    2933.8 | `w8a16_shared_gate_up_silu_fp16_kernel`               |
+|   116.15 |    40 |    2903.8 | `gemm_awq_selected_pack8_wmma_compact_kernel`         |
+|    86.33 |    50 |    1726.7 | `awq_fusedw4_prefill_fp16_kernel<32,32,false>`        |
+|    65.39 |    40 |    1634.7 | `qwen35_router_logits_token_tile_kernel<_Float16,4>`  |
+
+Key observations:
+
+1. **The full-attention prefill kernel template flips between 512 and 4K.** At
+   T=512 the trace runs `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true>`
+   (split-K enabled, 26.16 ms / 10 layers); at T=4K it runs the same kernel as
+   `<false>` (split-K disabled, **4572.38 ms / 10 layers, 457 ms per layer**).
+   8× the tokens produces 175× the kernel time. That is super-quadratic; a
+   correctly-tiled Flash-Attention-style kernel scales as T² in compute but
+   stays HBM-bandwidth-bound and finishes ≈ 64× of the T=512 cost, not 175×.
+2. **`<false>` is 74 % of all 4K kernel time** (4572 / 6171 ms). Closing this
+   one bucket is worth more than every other optimization in the multiloop
+   combined.
+3. **`paro_rotate1` is also super-linear** (115 us → 1663 us, 14.4× growth for
+   8× tokens). Nano-vllm-amd's analogous `paroquant_rotate_kernel` is
+   near-linear (36 us → 240 us, 6.7×). This is a secondary but real RDNA3
+   tiling/occupancy issue, not the headline.
+4. **GDN recurrent prefill scales as ~9.5×** (41 → 392 ms) — roughly linear
+   for 8× tokens with mild overhead, and within 7 % of nano-vllm-amd parity.
+   Multiloop iters 36–37 were working against a real ceiling there; further
+   grinding on that bucket is unlikely to pay.
+5. **MoE compact-WMMA + W8A16 shared family scales ~6–8×** as expected for
+   linear MoE work. Combined hipENGINE MoE+shared kernel time is ≈ 1.27× the
+   nano-vllm-amd equivalent, because nano-vllm-amd silently opts OUT of compact
+   WMMA at long T and dispatches `hipBLASLt` HGEMM with per-shape autotuned
+   tiles (MT96×96×32, MT128×48×32, MT96×32×32 observed). Compact WMMA is a
+   correct prefill path but is not the W7900-optimal one at T ≥ 1K.
+
+### Why our kernel mis-scales
+
+The `<false>` branch of
+`qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel` is not a flash-attention
+descendant. It computes the full T×T attention score tile in scratch (or
+through repeated HBM reloads of K/V across the Q sweep), then softmax-reduces
+over the K dimension. The reason it isn't catastrophic at 512 — the `<true>`
+branch with split-K masks the scaling — is precisely the reason we did not
+catch it earlier: the metric the multiloop optimizes is 512/128, and the 4K
+guard is satisfied as long as the run does not OOM.
+
+A Flash-Attention-style fix is not a tuning change; it is an algorithmic
+rewrite: tile Q in registers, stream K/V chunks through LDS, maintain online
+softmax running statistics across the K loop, and apply causal masking inline.
+That is several thousand lines of HIP plus a few iterations of LDS bank-layout
+tuning. We are not going to get there inside the existing multiloop budget by
+turning knobs on the current kernel.
+
+### Options for fast prefill attention without `torch` in the hot path
+
+The four-axis registry and torch-free hot path invariants mean we cannot just
+clone nano-vllm-amd's call to `F.scaled_dot_product_attention`. The viable
+plugin keys all keep `import torch` out of the generation path.
+
+| Option                                          | Source on disk / API                                                                                                 | gfx1100 support | Effort  | Expected 4K result vs current |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------- | ------- | ----------------------------- |
+| AOTriton 0.8 standalone C++ ABI                 | `~/Downloads/aotriton/aotriton/{include,lib}/`; symbols `aotriton::v2::flash::attn_fwd{,_compact_varlen}` in `libaotriton_v2.so.0.8.0` | yes, 480 pretuned Navi3x variants | 2–3 days | ≈ 1700 tok/s (closes ~94 % of 4K gap) |
+| Hand-rolled HIP FA-2 with WMMA                  | new code under `kernels/hip_gfx1100/attention/`; oracle = AOTriton output                                            | yes (we write it) | 3–6 weeks | 1300–1900 tok/s depending on tuning |
+| Composable Kernel `ck_tile/01_fmha`             | `~/amd-gpu-tuning/reference/composable_kernel/example/ck_tile/01_fmha/`                                              | **no** — `known_fails_gfx{90a,942,950}.txt` only; CDNA-targeted | n/a | not applicable on W7900 |
+| vLLM-vendored CK FA (CK fork inside vLLM)       | `~/vllm/flash-attention/csrc/composable_kernel/CMakeLists.txt` builds for `gfx1100;gfx1101;gfx1102`                  | yes (claimed) | 1–2 weeks (build + wrap) | uncertain, likely 1400–1700 tok/s |
+| FlashAttention-2 (Dao-AILab upstream)           | wheels in `~/Downloads/`, CDNA-only HIP path                                                                          | no            | n/a     | not applicable on W7900 |
+| Patch the existing `<false>` branch in place    | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.{hip,py}`                                                  | yes (ours)    | unclear | uncapped; the path needs an FA rewrite, not a patch |
+
+AOTriton specifics worth recording so a future agent does not re-derive them:
+
+- `AOTRITON_NS::v2::flash::attn_fwd_compact_varlen` takes `cu_seqlens_q`,
+  `cu_seqlens_k`, `max_seqlen_q`, `max_seqlen_k`, `is_causal`, and a
+  `hipStream_t`-equivalent stream. This matches our existing
+  `CompactPromptSlab.cu_seqlens_q/k` ABI almost verbatim and the `KVLiveSpans`
+  prefill role; no scheduler changes are required.
+- The tensor type is `AOTRITON_NS::TensorView<N>` — a `(void* ptr, shape[N],
+  stride[N], dtype)` descriptor. There is no `torch::Tensor` anywhere in the
+  AOTriton public headers (`include/aotriton/{flash,runtime,util,dtypes,cpp_tune}.h`).
+- Disk footprint on gfx110x: `libaotriton_v2.so.0.8.0` = 29 MB,
+  `aotriton.images/amd-gfx110x/flash/` = 99 MB across the full {bf16, fp16,
+  fp32} × head_dim {16, 32, 64, 128, 256} × {causal, dropout, bias,
+  persistent} matrix. Pruning to the variants we actually call
+  (bf16/fp16 × head_dim 128 × causal=true × dropout=false × no-bias) reduces
+  the `attn_fwd/` directory to roughly 30 MB.
+- The 480 pretuned variants do per-shape kernel selection at call time; this
+  is the value we would lose by hand-rolling.
+
+### Why "surely native HIP beats Triton" is not a fast path
+
+Triton lowers to AMDGPU LLVM IR through MLIR and emits the same instruction
+class — `v_wmma_*`, `ds_read_b128`, `v_dual_*` — that a hand-written HIP
+kernel would. On gfx1100 the Triton tax over a perfectly-tuned hand kernel is
+typically 5–15 %, often less. The existing `<false>` branch is not slow
+because HIP cannot match Triton; it is slow because it does not implement the
+Flash-Attention algorithm. Catching up to AOTriton requires implementing FA-2
+correctly first; only then does the per-shape hand-tuning headroom open up.
+
+A hand-written FA-2 spike that lands in less than 30 days will almost
+certainly underperform AOTriton on gfx1100, because AOTriton already ships
+shape-specialized binaries and our spike will run one tile schedule. Using
+AOTriton as the perf oracle is what makes a later native port tractable.
+
+### Recommended phased plan
+
+**Phase 1 — AOTriton attention plugin** (next multiloop spike).
+
+- Add a new kernel-build module under `hipengine/kernels/hip_gfx1100/attention/`
+  that loads `libaotriton_v2.so` via `ctypes`/dlopen and exposes a thin C
+  wrapper for `attn_fwd_compact_varlen` (the varlen path matches
+  `CompactPromptSlab`).
+- Register `KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro",
+  "aotriton_attn_fwd")` alongside
+  `(... , "qwen35_causal_gqa_gate_fp16")`. No `if backend=="..."`,
+  no `if quant=="..."`; the model layer asks the registry for an attention
+  prefill key and gets one. The existing kernel stays registered as the
+  short-T variant.
+- Threshold via `PrefillConfig.attn_aotriton_min_tokens` (default 1024,
+  re-measured); decode and short prefill continue on the existing hand-rolled
+  kernel where it is fine.
+- Do not vendor the AOTriton binary into the hipengine git tree. Use the
+  fetch-on-install + pinned-manifest scheme described in "AOTriton distribution
+  and pinning strategy" below; resolve `libaotriton_v2.so` and the kernel
+  images via the documented lookup chain at module load.
+- Correctness gate: re-run `scripts/qwen35_native_prefill_fixture_gate.py` on
+  `fixtures/qwen35_paro/parent_512_32_seed1234.json` and the 4K repeated-token
+  diagnostic; require `passed=true`, `max_kl <= 0.05`, top-1 ≥ 90 %, and
+  generated IDs equal to the serial path with the AOTriton variant active.
+- Perf gate: 512/128 median prefill_tok_s ≥ current best (2039), 4K/128 ≥ 1500
+  before a row is retained; target band 4K/128 ≥ 1700 after one round of
+  threshold tuning.
+- Plugin-registry compliance is the load-bearing invariant here: AOTriton
+  enters as a new variant key, never as a branch in dispatch code.
+
+**Phase 2 — hipBLASLt for MoE projection at T ≥ 1K** (parallel, independent).
+
+- Wrap `hipblasLtMatmul` from `/opt/rocm/lib/libhipblaslt.so.1.2` for the
+  shared-expert W8A16 path and grouped-stacked MoE projection at T ≥ 1K, where
+  nano-vllm-amd's trace shows it dispatches HGEMM tiles instead of compact
+  WMMA. Register as `(hip_gfx1100, shared_expert | moe_prefill, w8a16 |
+  w4_paro, hipblaslt_hgemm)` variants; compact WMMA stays as the short-T
+  variant.
+- Expected delta: 5–10 % at 512, 15–25 % at 4K, on top of Phase 1.
+
+**Phase 3 — native HIP FA-2 port** (optional, only if AOTriton bundle is
+unacceptable or per-shape headroom is measurable).
+
+- Reference: vLLM-vendored CK FA on `gfx1100;gfx1101;gfx1102`, ck_tile/01_fmha
+  algorithm pattern. AOTriton output is the correctness and perf oracle.
+- 3–6 weeks. Expected per-shape gain over AOTriton: 0–15 % at our exact shape
+  (head_dim 128, kv_heads 2, num_q_heads 16, causal, BF16 paged cache,
+  post-gate FP16 output). The unique win is fusing the existing post-gate
+  semantics into the FA epilogue, which AOTriton cannot do for us.
+
+### AOTriton distribution and pinning strategy
+
+AOTriton (`https://github.com/ROCm/aotriton`) is under active development:
+ABI churn is real between minors, release artifacts are matrixed across ROCm
+minors, and the version PyTorch bundles is mangled (the conda installs on this
+host show `libaotriton_v2.so.torch` symlinks under `torch/lib/`). We need a
+scheme that gives us a deterministic build without inheriting any of that
+churn.
+
+#### What not to do
+
+- **Do not add AOTriton as a git submodule and build from source.** AOTriton's
+  source build compiles 480+ Triton kernel variants per architecture; it
+  requires a working AMDGPU Triton fork and several GiB of build output, and
+  takes hours on first run. Our CI does not need that surface, and AGENTS.md's
+  git rules forbid committing compiled `.so` / JIT caches anyway.
+- **Do not vendor the release tarball or extracted binaries into the
+  hipengine repo.** Pruned gfx110x is ≈30 MB; that bloats every clone and
+  every CI checkout, and bumping a pin would mean a 30 MB diff.
+- **Do not depend on PyTorch's bundled AOTriton.** The PyTorch installs we
+  found here ship under `torch/lib/libaotriton_v2.so{,.torch,.0.8.0}` with
+  PyTorch-specific symlinks. Reading from a PyTorch install couples our
+  runtime to a torch version we do not import. AGENTS.md says `import torch`
+  is forbidden on the hot path; reading from `torch/lib/` is the spiritual
+  cousin of that violation.
+- **Do not rely on `/opt/rocm/lib/libaotriton_v2.so`.** It is not shipped
+  there on this host (verified `ls /opt/rocm/lib/` 2026-05-16), and even when
+  a future ROCm release does ship it, the bundled version will lag.
+
+#### What to do: fetch-on-install with a pinned manifest
+
+Land a manifest file under
+`hipengine/kernels/hip_gfx1100/attention/aotriton_release.toml` recording the
+pin. Concrete recommended starting pin (matches the 0.8 binary already on this
+host and the symbols we inspected):
+
+```toml
+[aotriton]
+version = "0.8.2b"
+git_sha1 = "33fb6bd5290b2e9e9bc71dbcf91f92c6ba7689b1"  # from include/aotriton/config.h
+so_name = "libaotriton_v2.so.0.8.0"
+rocm_min = "6.2"
+rocm_max = "7.x"   # 0.8 needs libamdhip64.so.6 via ROCm ABI-compat shim
+
+[aotriton.archive]
+url = "https://github.com/ROCm/aotriton/releases/download/0.8.2b/aotriton-0.8.2b-manylinux_2_28_x86_64-rocm6.3-shared.tar.gz"
+sha256 = "<fill in on bump>"
+size_bytes = 374748255
+
+[aotriton.prune]
+# Keep only the kernel variants hipengine actually calls on gfx1100.
+architectures = ["amd-gfx110x"]
+flash_subdirs = ["attn_fwd"]   # forward only; we do not train
+dtypes = ["bf16", "fp16"]
+head_dims = [128]
+causal = [true]
+# 30 MB after pruning; suitable for ~/.cache placement.
+```
+
+Resolve at module load (mirror the dlopen pattern in `hipengine/core/hip.py`)
+with this lookup chain, in order:
+
+1. `HIPENGINE_AOTRITON_LIB` env var → use directly (developer override).
+2. `${HIPENGINE_AOTRITON_HOME:-~/.cache/hipengine/aotriton}/<version>/lib/libaotriton_v2.so`
+   → the fetch-on-install destination. Version-check the file's SONAME against
+   the manifest and the AOTriton `images/<arch>` directory layout.
+3. (Optional, gated) `/opt/rocm/lib/libaotriton_v2.so` → only when its SONAME
+   matches the manifest band; warn otherwise.
+4. Nothing found → emit one clear error pointing at
+   `scripts/fetch_aotriton.sh`, and fall the registry back to the existing
+   `qwen35_causal_gqa_gate_fp16` kernel for that prefill call so generation
+   still works (degraded long-T perf, but no crash).
+
+Ship a one-shot fetch helper as `scripts/fetch_aotriton.sh` (and a Python
+twin `hipengine.aotriton.ensure_installed()` for SDK use):
+
+```bash
+scripts/fetch_aotriton.sh
+  --manifest hipengine/kernels/hip_gfx1100/attention/aotriton_release.toml
+  --dest ~/.cache/hipengine/aotriton
+  [--prune]            # default true; strip non-gfx110x and non-causal binaries
+  [--no-verify-sha]    # opt-out for offline mirrors only
+  [--force]            # re-extract even if dest exists
+```
+
+It downloads to the manifest-listed URL, verifies SHA256, extracts to
+`<dest>/<version>/`, optionally prunes per the manifest, writes a
+`MANIFEST.local.json` recording (sha256, fetched_at, prune_state), and exits.
+This is *not* part of `pip install hipengine`; it is one explicit step in the
+bring-up checklist, recorded in `WORKLOG.md` per AGENTS.md.
+
+#### Why not just `pip install aotriton`
+
+There is no published PyPI wheel for AOTriton that ships the gfx110x tile
+database usefully on its own. The pip distribution channel is PyTorch's, which
+is the path we are explicitly avoiding. The tarball under
+`https://github.com/ROCm/aotriton/releases/` is the upstream-blessed standalone
+distribution; that is what we pin against.
+
+#### Stable-ABI shim, not raw dlopen
+
+The C++ symbol we want is mangled
+`_ZN8aotriton2v25flash23attn_fwd_compact_varlenENS_10TensorViewILi4EEES3_...`.
+Linking Python `ctypes` against that mangled name is fragile across AOTriton
+minors. The safer pattern, which the existing hipengine JIT pipeline already
+supports:
+
+1. Add `hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.{hip,cc,py}`.
+2. The `.cc` includes `<aotriton/flash.h>` from the resolved
+   `${HIPENGINE_AOTRITON_HOME}/<version>/include/` and links against the
+   matching `lib/libaotriton_v2.so`, exposing a small `extern "C"` surface:
+   `hipengine_aotriton_attn_fwd_compact_varlen(...)`.
+3. The `.py` does the dlopen of *our* wrapper .so (built by the same hipcc
+   JIT path that builds all other gfx1100 kernels), not AOTriton directly.
+4. Bumping AOTriton means: bump the manifest, re-run `fetch_aotriton.sh`,
+   re-JIT the wrapper (seconds), re-run the fixture gate.
+
+This isolates ABI churn to one ~50-line C++ file. If AOTriton 0.9 renames the
+entrypoint, only the wrapper needs to change; the hipengine kernel-registry
+key, the runtime call site, and the Python ABI stay unchanged.
+
+#### Concrete version on this host
+
+- Available locally now: `~/Downloads/aotriton/aotriton/` (extracted 0.8.0
+  build, `AOTRITON_VERSION_{MAJOR,MINOR,PATCH}=0,8,0`, `AOTRITON_GIT_SHA1
+  33fb6bd5290b2e9e9bc71dbcf91f92c6ba7689b1`), and the matching tarball
+  `~/Downloads/aotriton-0.8.2b-manylinux_2_28_x86_64-rocm6.3-shared.tar.gz`
+  (357 MB compressed, 374 MB uncompressed full matrix, ≈30 MB pruned to
+  gfx110x + causal + head_dim 128).
+- The shared library NEEDED list includes `libamdhip64.so.6`, `liblzma.so.5`,
+  `libstdc++.so.6`. System ROCm here is 7.2.2; ROCm ships an ABI compat
+  symlink for `libamdhip64.so.6 -> libamdhip64.so.7`, so 0.8 loads on 7.x in
+  practice. The manifest pin should record the ROCm-minor build target so a
+  future ROCm-9 install does not silently load an incompatible shim.
+- The single C-API entry we need (`attn_fwd_compact_varlen`) was introduced in
+  AOTriton 0.7.x and remains in 0.8.x. We are not chasing a moving target on
+  the surface area we actually consume, only on the surrounding ecosystem.
+
+### Explicit non-goals for the next spike
+
+- Do not patch the `<false>` branch of the existing prefill attention kernel.
+  The algorithmic gap is FA-vs-not-FA, not tile-tuning; patches there waste
+  iterations.
+- Do not write a from-scratch FA-2 before AOTriton is wrapped. Without an
+  oracle ceiling we cannot tell a good hand-rolled kernel from a mediocre one;
+  iters 1–49 demonstrate the cost of optimizing without one.
+- Do not introduce `import torch` in `hipengine/runtime/`,
+  `hipengine/generation/`, `hipengine/models/`, `hipengine/dispatch/`, or any
+  kernel module reached by `LLM.generate()`. AOTriton is loaded via dlopen and
+  called through `ctypes`; the existing dlopen pattern in
+  `hipengine/core/hip.py` is the template.
+- Do not branch on `backend == "..."` or `quant == "..."` in dispatch or model
+  code to route to AOTriton. Use the kernel registry; that is what the
+  four-axis design exists for.
+
+### Reproduction commands
+
+Trace comparison evidence above was produced with:
+
+```bash
+# hipENGINE 512/0 trace
+rocprofv3 --kernel-trace -d /tmp/iter50-shared-down-tile8-trace -o trace -- \
+  python3 scripts/qwen35_paro_bench.py --token-id 9707 \
+    --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 \
+    --max-layers 40 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build --json /tmp/iter50.json
+
+# hipENGINE 4K/0 trace
+rocprofv3 --kernel-trace -d /tmp/iter52-4k-profile-trace -o trace -- \
+  python3 scripts/qwen35_paro_bench.py --token-id 9707 \
+    --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 \
+    --max-layers 40 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build --json /tmp/iter52.json
+```
+
+Parent comparison numbers (2589 tok/s @ 512, 1681 tok/s @ 4K) are from a
+peer-system audit at the same git tree under
+`~/amd-gpu-tuning/scripts/bench_paro_native_engine.py --model-preset
+qwen35-a3b-paro --prompt-len {512,4096} --decode-len 0 --prefill-mode bulk
+--no-warmup` with the `COMMON_ENV` flags from
+`~/amd-gpu-tuning/scripts/run_moe2_baselines.py`. Re-running the parent profile
+on this host is blocked behind ongoing GPU contention; the numbers above are
+recorded against the parent audit transcript and treated as the comparison
+baseline until reproduced locally.
+
 ## References
 
 - `docs/PLAN.md` — architecture, phase roadmap, extensibility, KV ABI.

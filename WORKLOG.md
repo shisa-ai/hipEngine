@@ -11549,3 +11549,91 @@ confirmed the structural change: transposed fused-W4 Q/K and QKV/Z now launch
 `548.9 us` avg, `grid_x=12288`, `VGPR=120`, scratch `0`) instead of 80 single
 transposed fused-W4 launches totaling about `22.999-23.640 ms` in nearby retained
 traces; strided fused-W4 remains separate at 50 calls / `14.795 ms`.
+
+## 2026-05-16 — docs/PREFILL.md: AOTriton diagnosis + pinning strategy
+
+Added a standalone "Optimization diagnosis (2026-05-16): the 4K gap is one
+kernel" section to `docs/PREFILL.md` (between "Compact c>N prefill done" and
+"References"). Captures:
+
+- Where we stand: hipENGINE 2039 tok/s @ 512 / 659 tok/s @ 4K vs nano-vllm-amd
+  2589 / 1681 (+27 % / +155 %). 4K is the load-bearing gap.
+- Trace comparison: top-10 kernel buckets at hipENGINE 512/0 (229.77 ms total
+  kernel time) and 4K/0 (6171.07 ms total), summed across 40 layers. Headline:
+  `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<false>` is 4572 ms /
+  10 launches / 457 ms per layer at 4K, 74 % of all 4K kernel time. 8× tokens
+  → 175× the kernel time vs the `<true>` split-K branch at 512. Super-quadratic
+  scaling; this is missing Flash-Attention, not under-tuned.
+- Why the existing kernel mis-scales: `<false>` materializes the full T×T
+  score tile / reloads K/V per Q sweep; no online softmax, no LDS-tiled K/V
+  stream. The multiloop missed it because its primary metric is 512/128, where
+  the `<true>` branch masks the issue, and the 4K guard only requires
+  not-OOM.
+- Options matrix for fast prefill attention without `torch` on the hot path:
+  AOTriton 0.8 standalone C++ ABI (2–3 days, ≈ 1700 tok/s at 4K), hand-rolled
+  HIP FA-2 (3–6 weeks, 1300–1900 tok/s), CK ck_tile/01_fmha (no gfx11), vLLM
+  CK FA fork (builds gfx1100 but unproven), Dao-AILab FA-2 (CDNA-only),
+  patching `<false>` in place (rejected: it is an algorithmic gap, not a
+  tuning gap).
+- "Why surely native HIP beats Triton is not a fast path": Triton lowers to
+  AMDGPU LLVM IR through MLIR and emits the same instruction class (`v_wmma_*`,
+  `ds_read_b128`, `v_dual_*`); the 5–15 % Triton tax on gfx1100 is real but
+  small. The current kernel is slow because it is not FA, not because it is
+  HIP.
+- Recommended phased plan: Phase 1 wrap AOTriton as the long-T attention
+  prefill variant (registered, not branched); Phase 2 wrap hipBLASLt for MoE
+  projection at T ≥ 1K; Phase 3 optional native HIP FA-2 port with AOTriton as
+  the perf/correctness oracle.
+
+Also added an "AOTriton distribution and pinning strategy" subsection
+documenting concretely how to bring AOTriton in without taking on its ABI
+churn:
+
+- Pin a manifest (`hipengine/kernels/hip_gfx1100/attention/aotriton_release.toml`)
+  recording version `0.8.2b`, git SHA `33fb6bd5290b2e9e9bc71dbcf91f92c6ba7689b1`,
+  SONAME `libaotriton_v2.so.0.8.0`, ROCm-minor band, tarball URL, SHA256, and
+  prune rules (`amd-gfx110x` × `attn_fwd` × bf16/fp16 × head_dim 128 ×
+  causal=true). Pruned footprint ≈ 30 MB; the unpruned tarball is 374 MB.
+- Fetch-on-install via `scripts/fetch_aotriton.sh` (and Python twin
+  `hipengine.aotriton.ensure_installed()`) into
+  `~/.cache/hipengine/aotriton/<version>/`. Not run by `pip install`.
+- Lookup chain at module load: `HIPENGINE_AOTRITON_LIB` env override →
+  `~/.cache/hipengine/aotriton/<version>/` → optional `/opt/rocm/lib/` →
+  fallback to the existing hand-rolled kernel with a one-shot diagnostic so
+  generation never crashes.
+- No git submodule (build is hours, needs AMDGPU Triton fork, not in our
+  surface area), no vendored binary in the repo (AGENTS.md git rules + clone
+  bloat), no PyTorch-bundled AOTriton (couples us to a torch we explicitly do
+  not import).
+- Stable-ABI shim, not raw `ctypes` against mangled C++ symbols: build a
+  `hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.{cc,py}` that
+  includes `<aotriton/flash.h>`, links `libaotriton_v2.so` at JIT-build time,
+  and exposes a small `extern "C"` ABI we own. Bumping AOTriton then touches
+  one wrapper file plus the manifest; the kernel registry key, dispatch path,
+  and Python ABI stay unchanged.
+
+Evidence inspected during write-up:
+
+- `~/Downloads/aotriton/aotriton/include/aotriton/{flash,runtime,config}.h`
+  for ABI surface, namespace, `TensorView`, `Stream` typedef.
+- `nm -D --defined-only ~/Downloads/aotriton/aotriton/lib/libaotriton_v2.so |
+  grep flash` → confirmed `aotriton::v2::flash::attn_fwd`,
+  `attn_fwd_compact_varlen`, `_attn_fwd_common`, `autotune::Autotune_attn_fwd*`
+  symbols are exported; no torch include, no torch ABI.
+- `readelf -d` → SONAME `libaotriton_v2.so.0.8.0`, NEEDED `libamdhip64.so.6`.
+  System ROCm here is `/opt/rocm/.info/version = 7.2.2`; ROCm ships a
+  `libamdhip64.so.6 -> .so.7` ABI compat shim, so 0.8 loads on 7.x in
+  practice — manifest pin records the build-target ROCm minor explicitly.
+- `ls ~/Downloads/aotriton/aotriton/lib/aotriton.images/amd-gfx110x/flash/
+  attn_fwd/ | wc -l` → 480 pretuned binaries (Navi3x); 49 MB raw, ≈ 30 MB
+  after pruning to causal × bf16/fp16 × head_dim 128.
+- `/opt/rocm/lib/`: no `libaotriton_v2*` present — relying on system ROCm is
+  not viable, fetch-on-install is required.
+- `~/amd-gpu-tuning/reference/composable_kernel/example/ck_tile/01_fmha/
+  script/known_fails_*.txt` → only `gfx90a, gfx942, gfx950`. CK FMHA is CDNA;
+  not a fallback on W7900.
+
+Multiloop `prefill-perf/run-20260515-154601` is paused/detached pending the
+Phase 1 AOTriton spike. No measurements changed; this commit is docs-only.
+
+Files: `docs/PREFILL.md`, `WORKLOG.md`.
