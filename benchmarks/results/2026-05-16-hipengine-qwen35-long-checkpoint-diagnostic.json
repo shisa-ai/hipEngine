@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained_with_blocker",
+  "performance_claim": false,
+  "date": "2026-05-16",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "source_commit_before_artifact": "6688836",
+  "change": "Long-shape checkpoint for current hipENGINE opt-in AOTriton threshold-512 plus one-step decode graph replay: 4K/4K, 32K/128, and attempted 128K/128.",
+  "validation": {
+    "rocm_smoke": "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\" && rocminfo | grep -E 'Name:|gfx'",
+    "correctness_context": "No new long-context oracle fixture was run. This checkpoint inherits the threshold-512 gates from benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json: native prefill fixture max_kl=0.039568870612619614/top1=1.0 and decode graph final_kl=0.0 on the 512/32 fixture.",
+    "parent_4k4k_validation_caveat": "The local parent 4K/4K rerun reports decode_graph_replay_match=false with first mismatch 581 while graph-compatible replay matches; docs/OPTIMAL.md already warns 4K/4K graph-compatible decode diverges from eager at token 581, so the parent 4K/4K row is comparison context, not a promoted accepted target.",
+    "json_check": "python3 -m json.tool benchmarks/results/2026-05-16-hipengine-qwen35-long-checkpoint-diagnostic.json"
+  },
+  "measurements": [
+    {
+      "workload": "4K/4K",
+      "prompt_length": 4096,
+      "decode_tokens": 4096,
+      "hipengine_aotriton_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prompt-length 4096 --decode-tokens 4096 --json /tmp/task-long-checkpoint-4k-4k.json",
+        "prefill_tok_s": 2379.8179032672742,
+        "decode_tok_s": 108.92956595213786,
+        "prefill_seconds": 1.7211400899104774,
+        "decode_seconds": 37.602279640035704,
+        "decode_step_median_s": 0.009180244052743092,
+        "tracked_peak_allocated_gib": 20.52859987039119,
+        "tracked_current_before_close_gib": 18.86178217548877,
+        "hip_used_peak_sampled_gib": 19.130615234375,
+        "owned_session_peak_gib": 2.043208700604737,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "graph_replay": true,
+        "graph_steps_per_replay": 1
+      },
+      "parent_step_graph_local_rerun": {
+        "command": "cd /home/lhl/amd-gpu-tuning && <OPTIMAL short/mid env from docs/OPTIMAL.md> PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output python3 scripts/bench_paro_native_engine.py --prompt-len 4096 --decode-len 4096 --decode-use-step-graph-replay --output /tmp/task-long-checkpoint-parent-4k-4k.json --json",
+        "prefill_tok_s": 2728.3051856766833,
+        "decode_tok_s": 104.96287476633468,
+        "prefill_seconds": 1.501298323040828,
+        "decode_seconds": 39.02332142787054,
+        "peak_allocated_gib": 21.718660354614258,
+        "decode_graph_replay_match": false,
+        "decode_graph_replay_first_mismatch": 581,
+        "decode_graph_replay_graph_compatible_match": true,
+        "decode_graph_compatible_eager_match": false,
+        "decode_graph_compatible_eager_first_mismatch": 581,
+        "source_commit": "59195ed"
+      },
+      "deltas_vs_parent_local_rerun": {
+        "prefill_pct": -12.773031559626503,
+        "decode_pct": 3.7791373327318967,
+        "tracked_peak_allocated_gib_delta": -1.1900604842230678
+      }
+    },
+    {
+      "workload": "32K/128",
+      "prompt_length": 32768,
+      "decode_tokens": 128,
+      "hipengine_aotriton_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prompt-length 32768 --decode-tokens 128 --json /tmp/task-long-checkpoint-32k-128.json",
+        "prefill_tok_s": 1718.308311797655,
+        "decode_tok_s": 93.93296201170963,
+        "prefill_seconds": 19.06991881201975,
+        "decode_seconds": 1.3626739459577948,
+        "decode_step_median_s": 0.010645890202795272,
+        "tracked_peak_allocated_gib": 35.09976364392787,
+        "tracked_current_before_close_gib": 21.765495997853577,
+        "hip_used_peak_sampled_gib": 22.052490234375,
+        "owned_session_peak_gib": 4.946922522969544,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "graph_replay": true,
+        "graph_steps_per_replay": 1
+      },
+      "parent_docs_optimal": {
+        "prefill_tok_s": 1880.0,
+        "decode_tok_s": 98.8,
+        "peak_allocated_gib": 21.37,
+        "source": "~/amd-gpu-tuning/docs/OPTIMAL.md",
+        "source_commit": "59195ed"
+      },
+      "deltas_vs_parent_docs": {
+        "prefill_pct": -8.600621712890689,
+        "decode_pct": -4.926151810010493,
+        "tracked_peak_allocated_gib_delta": 13.729763643927871
+      }
+    }
+  ],
+  "blocked": [
+    {
+      "workload": "128K/128",
+      "prompt_length": 131072,
+      "decode_tokens": 128,
+      "status": "blocked_oom",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prompt-length 131072 --decode-tokens 128 --json /tmp/task-long-checkpoint-128k-128.json",
+      "error_tail": "ll_layers(tokens=len(tokens), stream=0)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/runtime/qwen35_paro_runner.py\", line 1783, in _run_native_prefill_layers\n    linear_scratch = self._ensure_linear_prefill_scratch(tokens=tokens)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/runtime/qwen35_paro_runner.py\", line 1740, in _ensure_linear_prefill_scratch\n    scratch = self._prefill_scratch_owner().reserve_linear_attention_scratch(\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/runtime/qwen35_paro.py\", line 693, in reserve_linear_attention_scratch\n    out_rot=self.workspace.reserve_tensor(\"linear_attn.out_rot\", (tokens, z_width), lowp),\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/runtime/workspace.py\", line 56, in reserve_tensor\n    buffer = malloc(nbytes, runtime=self.runtime)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/core/memory.py\", line 30, in malloc\n    ptr = runtime.malloc(nbytes)\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/core/hip.py\", line 50, in malloc\n    self.check(self.library.hipMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes)))\n  File \"/home/lhl/hipengine/hipengine/core/hip.py\", line 161, in check\n    raise HipError(int(code), self.error_string(int(code)))\nhipengine.core.hip.HipError: HIP error 2: out of memory\n",
+      "blocked_at": "reserve_linear_attention_scratch linear_attn.out_rot allocation during prefill",
+      "parent_docs_optimal": {
+        "prefill_tok_s": 914.0,
+        "decode_tok_s": 62.6,
+        "peak_allocated_gib": 27.42,
+        "source": "~/amd-gpu-tuning/docs/OPTIMAL.md",
+        "source_commit": "59195ed"
+      },
+      "note": "Parent long-context rows require chunking overrides; hipENGINE PrefillConfig exposes chunk-size fields but the current single-request path does not apply them, so the unchunked 128K prefill scratch exceeds W7900 VRAM."
+    }
+  ],
+  "decision": {
+    "summary": "hipENGINE is competitive at 4K/4K decode and trails parent docs by ~8.6% prefill / ~4.9% decode at 32K/128, but current unchunked prefill cannot run 128K/128 on W7900.",
+    "next_work": "Implement and wire long-context prefill chunking (linear, MoE, full-attn post/RoPE/query chunks) before using 128K as a hipENGINE checkpoint shape; then profile the remaining 32K prefill gap."
+  },
+  "notes": [
+    "All hipENGINE measured rows use --attn-aotriton-min-tokens 512 and --graph-replay-decode.",
+    "performance_claim=false: single runs, limited long-context correctness coverage, and one requested shape is blocked by OOM.",
+    "tracked_peak_allocated_gib is hipENGINE allocator high-water; hip_used_peak_sampled_gib is sampled at phase boundaries and can under-report transient prefill workspace peaks."
+  ]
+}

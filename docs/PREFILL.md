@@ -186,6 +186,26 @@ installed-AOTriton deployments should pass `--attn-aotriton-min-tokens 512`.
 | 512 / 128 | 2125.642 | 2270.750 | +6.8% | 109.225 | 109.123 | +0.039 |
 | 4096 / 128 | 662.873 | 2345.670 | +253.9% | 109.980 | 110.091 | +0.315 |
 
+#### Long-shape checkpoint (2026-05-16)
+
+Follow-up diagnostic checkpoint with the same installed-AOTriton policy
+(`--attn-aotriton-min-tokens 512`) and one-step decode graph replay:
+`benchmarks/results/2026-05-16-hipengine-qwen35-long-checkpoint-diagnostic.json`.
+No new long-context oracle fixture was run; this row inherits the threshold-512
+fixture gates above and is not a promoted performance claim.
+
+| Workload | hipENGINE prefill tok/s | hipENGINE decode tok/s | hipENGINE tracked peak GiB | Parent/source comparison | Notes |
+| --- | ---: | ---: | ---: | --- | --- |
+| 4K / 4K | 2379.818 | 108.930 | 20.529 | Local parent rerun: 2728.305 prefill / 104.963 decode / 21.719 GiB | hipENGINE prefill -12.8% vs parent, decode +3.8%; parent 4K/4K replay row has known graph/eager divergence at token 581, so it is comparison context only. |
+| 32K / 128 | 1718.308 | 93.933 | 35.100 | `~/amd-gpu-tuning/docs/OPTIMAL.md`: 1880 prefill / 98.8 decode / 21.37 GiB | hipENGINE -8.6% prefill, -4.9% decode, but much higher tracked peak because it lacks the parent's long-context chunking. |
+| 128K / 128 | blocked: OOM | — | — | `~/amd-gpu-tuning/docs/OPTIMAL.md`: 914 prefill / 62.6 decode / 27.42 GiB | Current hipENGINE single-request prefill reserves unchunked linear-attention scratch and fails at `linear_attn.out_rot`; wire long-context chunking before using 128K as a checkpoint shape. |
+
+Parent long-context rows use chunking overrides (`NANOVLLM_PARO_PREFILL_LINEAR_CHUNK_SIZE`,
+`NANOVLLM_PARO_MOE_CHUNK_SIZE`, and full-attention query/post/RoPE chunks).  hipENGINE's
+`PrefillConfig` has the corresponding fields but the current single-request path
+has not wired them, making long-context chunking the next blocker before 128K
+parity profiling.
+
 #### Parent vs hipENGINE prefill call structure
 
 | Stage | nano-vllm-amd OPTIMAL parent | hipENGINE AOTriton V3 path | Audit finding |

@@ -13032,3 +13032,41 @@ python3 scripts/qwen35_decode_graph_fixture_gate.py --fixture fixtures/qwen35_pa
 Decision: recommend `--attn-aotriton-min-tokens 512` for deployments with the pinned AOTriton runtime installed.  Keep `PrefillConfig.attn_aotriton_min_tokens=0` as the code default because AOTriton is an optional fetched runtime; flipping the default before an absent-runtime fallback exists would make baseline sessions fail.
 
 Retained artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json`.
+
+## 2026-05-16 — Long checkpoint: 4K/4K, 32K/128, attempted 128K/128
+
+Ran a long-shape checkpoint for the current hipENGINE Qwen3.5/PARO path: opt-in AOTriton threshold 512 plus one-step decode graph replay.  Hardware/env smoke stayed green (`libamdhip64.so` loads, W7900/gfx1100 visible).  These rows are diagnostic (`performance_claim=false`) because no new long-context oracle fixture was run; correctness context is inherited from the threshold-512 fixture gates in `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json`.
+
+hipENGINE commands/results:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 4096 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/task-long-checkpoint-4k-4k.json
+# prefill=2379.818 tok/s, decode=108.930 tok/s, tracked_peak=20.529 GiB, sampled_hip_peak=19.131 GiB
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 32768 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/task-long-checkpoint-32k-128.json
+# prefill=1718.308 tok/s, decode=93.933 tok/s, tracked_peak=35.100 GiB, sampled_hip_peak=22.052 GiB
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/task-long-checkpoint-128k-128.json
+# blocked: HIP error 2 out of memory while reserving reserve_linear_attention_scratch -> linear_attn.out_rot
+```
+
+Also reran the nano-vllm-amd parent at 4K/4K for comparison context using the short/mid OPTIMAL env from `~/amd-gpu-tuning/docs/OPTIMAL.md`:
+
+```bash
+cd /home/lhl/amd-gpu-tuning && <OPTIMAL env> PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output \
+  python3 scripts/bench_paro_native_engine.py --prompt-len 4096 --decode-len 4096 --decode-use-step-graph-replay --output /tmp/task-long-checkpoint-parent-4k-4k.json --json
+# prefill=2728.305 tok/s, decode=104.963 tok/s, peak_allocated=21.719 GiB
+# caveat: decode_graph_replay_match=false at token 581; graph-compatible replay matches. docs/OPTIMAL.md already records this 4K/4K divergence caveat.
+```
+
+Comparison:
+
+| Workload | hipENGINE prefill | hipENGINE decode | Parent/source | Gap / status |
+| --- | ---: | ---: | --- | --- |
+| 4K/4K | 2379.818 | 108.930 | local parent rerun 2728.305 / 104.963 | prefill -12.8%, decode +3.8%; parent 4K/4K has known graph/eager divergence caveat |
+| 32K/128 | 1718.308 | 93.933 | `~/amd-gpu-tuning/docs/OPTIMAL.md` 1880 / 98.8 | prefill -8.6%, decode -4.9%; hipENGINE tracked peak 35.10 GiB vs parent 21.37 GiB |
+| 128K/128 | blocked OOM | — | `~/amd-gpu-tuning/docs/OPTIMAL.md` 914 / 62.6 | hipENGINE lacks wired long-context chunking and reserves unchunked linear-attn scratch |
+
+Takeaway: the next long-context blocker is not AOTriton thresholding; it is wiring long-context prefill chunking.  Parent 32K/128 and 128K/128 rows add `NANOVLLM_PARO_PREFILL_LINEAR_CHUNK_SIZE=1024`, `NANOVLLM_PARO_MOE_CHUNK_SIZE=1024`, and full-attention post/RoPE/query chunk sizes.  hipENGINE `PrefillConfig` already has analogous fields, but the current single-request native prefill path does not apply them, so 128K cannot run on W7900 and 32K uses much higher peak memory than parent.
+
+Retained artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-long-checkpoint-diagnostic.json`.
