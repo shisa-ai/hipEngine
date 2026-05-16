@@ -787,6 +787,30 @@ def test_qwen35_decode_state_runs_linear_attention_prefill_state_chain(monkeypat
     assert calls[9][1] == (scratch.recurrent_out.ptr, scratch.z.ptr, 0xA300, scratch.recurrent_bf16.ptr, 1.0e-6, 4, 32, 128)
 
 
+def test_qwen35_decode_state_uses_rocblas_for_linear_ab_fp16_prefill(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    hidden = _tensor(0xC000, (4, 4096), "fp16")
+    scratch = state.reserve_linear_attention_scratch(tokens=4, activation_dtype="fp16")
+    calls = []
+
+    def fake_rocblas(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setenv("HIPENGINE_LINEAR_AB_PREFILL_ROCBLAS_MIN_TOKENS", "4")
+    monkeypatch.setattr(qwen_runtime, "rocblas_gemm_ex_rowmajor_nt_fp16_compute_f32", fake_rocblas)
+    monkeypatch.setattr(qwen_runtime, "dense_gemv_out_fp16", lambda *a, **k: pytest.fail("unexpected GEMV fallback"))
+
+    out = state.project_linear_attention_ab_fp16(hidden, scratch, tokens=4, stream=0x55)
+
+    assert out == (scratch.a, scratch.b)
+    assert len(calls) == 2
+    assert calls[0][0] == (hidden.ptr, 0x9D00, scratch.a.ptr)
+    assert calls[1][0] == (hidden.ptr, 0x9E00, scratch.b.ptr)
+    for _, kwargs in calls:
+        assert kwargs == {"rows": 4, "in_features": 4096, "out_features": 32, "stream": 0x55}
+
+
 def test_qwen35_decode_state_projects_linear_attention_prefill_out(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _linear_weights())

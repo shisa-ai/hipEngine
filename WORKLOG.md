@@ -14158,3 +14158,69 @@ Validation:
 python3 -m pytest -q --tb=short
 # 254 passed
 ```
+
+## 2026-05-17 — P1.1 rocBLAS A/B prefill prototype rejected
+
+Task #4 tested the highest-impact prefill hypothesis P1.1: replacing the
+multi-token linear-attention A/B row-GEMV pair in
+`project_linear_attention_ab_fp16(...)` with torch-free rocBLAS bulk GEMM. Added
+an env-off diagnostic path:
+
+- `hipengine/core/rocblas.py` lazy-loads `librocblas.so` and wraps row-major NT
+  FP16 GEMM as `rocblas_gemm_ex` with FP32 accumulation.
+- `HIPENGINE_LINEAR_AB_PREFILL_ROCBLAS_MIN_TOKENS=2` routes only `tokens > 1`
+  A/B prefill projections through rocBLAS. The `tokens == 1` decode path remains
+  `dense_dual_gemv_out_fp16`.
+
+Microcheck:
+
+```bash
+# 5x7 @ 3x7 row-major NT rocblas_gemm_ex FP16/F32-accum
+# max_abs=0 vs NumPy FP32 reference rounded to FP16
+```
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/core/rocblas.py hipengine/runtime/qwen35_paro.py scripts/qwen35_paro_bench.py
+python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short
+# 38 passed
+```
+
+Benchmark protocol on W7900/gfx1100, all rows used cache-only HIP builds:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-legacy-or-shisa-packed> \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p11-rocblas-ab-20260517/<label>.json
+# rocBLAS rows add env: HIPENGINE_LINEAR_AB_PREFILL_ROCBLAS_MIN_TOKENS=2
+```
+
+Primary `rocblas_gemm_ex` FP32-accum results (single run per row; diagnostic
+only, no KL/top-1 gate because performance regressed):
+
+| model | workload | default prefill | rocBLAS prefill | Δ | default decode | rocBLAS decode | Δ | peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab legacy | 512/128 | 2227.421 | 930.273 | -58.24% | 109.354 | 109.033 | -0.29% | 18.587 |
+| z-lab legacy | 4096/128 | 2391.477 | 1996.481 | -16.52% | 110.678 | 110.450 | -0.21% | 20.458 |
+| shisa packed | 512/128 | 2468.194 | 941.780 | -61.84% | 105.717 | 105.606 | -0.10% | 18.535 |
+| shisa packed | 4096/128 | 2677.951 | 2204.678 | -17.67% | 106.966 | 106.719 | -0.23% | 20.406 |
+
+Generated token IDs stayed `9707` for the first two sampled outputs, but logits
+differed from default due rocBLAS/Tensile reduction order. An earlier
+`rocblas_hgemm` pilot also regressed similarly and was less numerically close;
+the artifact keeps those rows as `pilot_hgemm_measurements`.
+
+Conclusion: reject P1.1 rocBLAS A/B. The linear-attention A/B dense shape is
+skinny (`out_features=32`), and on this W7900 stack the current custom row-GEMV
+kernels beat rocBLAS/Tensile for both 512 and 4K. Keep the env-off rocBLAS bridge
+only as a diagnostic/prototype surface for wider future shapes. Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p11-rocblas-ab-rejected.json`.

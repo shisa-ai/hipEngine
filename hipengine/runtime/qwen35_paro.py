@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.rocblas import rocblas_gemm_ex_rowmajor_nt_fp16_compute_f32
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
     aotriton_attn_fwd_v3_compact_varlen,
@@ -2838,30 +2840,50 @@ class Qwen35ParoDecodeState:
         else:
             # The dual GEMV writes row-major [a,b] per token.  Native prefill
             # GDN consumes contiguous [tokens,a] and [tokens,b] streams.
-            dense_gemv_out_fp16(
-                hidden.ptr,
-                a_weight.ptr,
-                scratch.a.ptr,
-                tokens,
-                self.config.hidden_size,
-                self.config.linear_num_value_heads,
-                threads=threads,
-                stream=stream,
-                library=dense_library,
-                runtime=self.runtime,
-            )
-            dense_gemv_out_fp16(
-                hidden.ptr,
-                b_weight.ptr,
-                scratch.b.ptr,
-                tokens,
-                self.config.hidden_size,
-                self.config.linear_num_value_heads,
-                threads=threads,
-                stream=stream,
-                library=dense_library,
-                runtime=self.runtime,
-            )
+            if _use_linear_ab_prefill_rocblas(tokens):
+                rocblas_gemm_ex_rowmajor_nt_fp16_compute_f32(
+                    hidden.ptr,
+                    a_weight.ptr,
+                    scratch.a.ptr,
+                    rows=tokens,
+                    in_features=self.config.hidden_size,
+                    out_features=self.config.linear_num_value_heads,
+                    stream=stream,
+                )
+                rocblas_gemm_ex_rowmajor_nt_fp16_compute_f32(
+                    hidden.ptr,
+                    b_weight.ptr,
+                    scratch.b.ptr,
+                    rows=tokens,
+                    in_features=self.config.hidden_size,
+                    out_features=self.config.linear_num_value_heads,
+                    stream=stream,
+                )
+            else:
+                dense_gemv_out_fp16(
+                    hidden.ptr,
+                    a_weight.ptr,
+                    scratch.a.ptr,
+                    tokens,
+                    self.config.hidden_size,
+                    self.config.linear_num_value_heads,
+                    threads=threads,
+                    stream=stream,
+                    library=dense_library,
+                    runtime=self.runtime,
+                )
+                dense_gemv_out_fp16(
+                    hidden.ptr,
+                    b_weight.ptr,
+                    scratch.b.ptr,
+                    tokens,
+                    self.config.hidden_size,
+                    self.config.linear_num_value_heads,
+                    threads=threads,
+                    stream=stream,
+                    library=dense_library,
+                    runtime=self.runtime,
+                )
         return scratch.a, scratch.b
 
     def run_linear_attention_conv_gdn_fp16(
@@ -5054,6 +5076,18 @@ class Qwen35ParoDecodeState:
         self.workspace.free()
         self.layer_weights.free(runtime=self.runtime)
 
+
+
+def _linear_ab_prefill_rocblas_min_tokens() -> int:
+    value = os.environ.get("HIPENGINE_LINEAR_AB_PREFILL_ROCBLAS_MIN_TOKENS")
+    if value is None or value.strip() == "":
+        return 0
+    return max(0, int(value))
+
+
+def _use_linear_ab_prefill_rocblas(tokens: int) -> bool:
+    threshold = _linear_ab_prefill_rocblas_min_tokens()
+    return threshold > 0 and tokens >= threshold
 
 
 def _library_for(library, family: str):
