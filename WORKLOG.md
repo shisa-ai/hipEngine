@@ -14302,3 +14302,44 @@ Single-run diagnostic probes on the shared/busy gfx1151 GPU (not retained as acc
 - 4K/4K: prefill `1897.360 tok/s`, decode `128.785 tok/s`, tracked peak `2.280 GiB`, hipMemGetInfo peak `1.736 GiB`.
 
 Exact retained post-commit artifact/rollup will follow as a separate benchmark evidence commit so the benchmark can record a clean `hipengine_commit`.
+
+## 2026-05-17 — Qwen3.5-0.8B-PARO gfx1151 diagnostic benchmark
+
+Ran post-commit dense 0.8B diagnostic benchmarks on clean commit `35e61cff95fe81e6f9aee39f5b18bb324aa9bd47`.
+
+### Environment
+
+- GPU: `AMD RYZEN AI MAX+ 395 w/ Radeon 8060S`, target `gfx1151` (`rocminfo` also exposes `amdgcn-amd-amdhsa--gfx11-generic`).
+- HIP compiler: `HIP version: 7.2.53211-e1a6bc5663`, ROCm SDK clang from `/home/lhl/mambaforge/lib/python3.11/site-packages/_rocm_sdk_core/lib/llvm/bin`.
+- Model: `/models/huggingface/hub/models--z-lab--Qwen3.5-0.8B-PARO/snapshots/da941f4fd3fa72763c398db6cb14b2bef1ee961f`.
+- Env used for benchmark commands: `HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151`.
+
+### Results
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-08b-gfx1151-dense-diagnostic.json`.
+
+These are **diagnostic only** (`performance_claim=false`): dense layout validation passed, `pytest -q` passed before the code commit, and generated logits were finite, but there is no committed KL/top-1 CPU-reference oracle for the dense 0.8B path yet. The gfx1151 GPU was shared/busy, so rows are single-run.
+
+| Workload | Decode mode | Prefill tok/s | Decode tok/s | Tracked peak | hipMemGetInfo sampled peak |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 512/128 | eager (`--no-graph-replay-decode`) | 703.238 | 122.141 | 1.322 GiB | 1.445 GiB |
+| 4K/128 | eager (`--no-graph-replay-decode`) | 1556.392 | 113.403 | 2.214 GiB | 1.665 GiB |
+| 4K/4K | eager (`--no-graph-replay-decode`) | 1969.160 | 105.103 | 2.280 GiB | 1.735 GiB |
+
+Exact command template:
+
+```bash
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/qwen35_paro_bench.py \
+    --model /models/huggingface/hub/models--z-lab--Qwen3.5-0.8B-PARO/snapshots/da941f4fd3fa72763c398db6cb14b2bef1ee961f \
+    --backend hip_gfx1151 --prompt-length {512|4096} --decode-tokens {128|4096} \
+    --warmup-decode-tokens 4 --attn-aotriton-min-tokens 512 --no-graph-replay-decode \
+    --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build \
+    --json /tmp/qwen35-08b-gfx1151-...json
+```
+
+### Graph replay note
+
+- 512/128 graph replay completed diagnostically but was slower under this shared-GPU run (`817.879` prefill / `103.403` decode tok/s).
+- 4K/1 graph replay smoke completed (`2029.344` prefill / `117.796` decode tok/s).
+- 4K/128 graph replay blocked/hung in two clean post-commit attempts (1200s/3600s timeouts, no JSON). Eager decode is the reported path until generic split-K graph replay is debugged.
