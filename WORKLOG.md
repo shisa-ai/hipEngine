@@ -10790,3 +10790,42 @@ Profiler evidence: `qwen35_gdn_prefill_recurrent_k2_kernel` ran 30 times with
 `40.993 ms` total / `1366.4 us` average, down from the prior retained trace's
 `45.089 ms` total. Decision: keep. Updated benchmark artifact/rollup and
 `docs/KERNELS.md`.
+
+## 2026-05-16 — Prefill multiloop iter 37: rejected GDN value2 tiling
+
+Tried to reduce the remaining GDN recurrent prefill bucket by processing two
+adjacent value columns per `qwen35_gdn_prefill_recurrent_k2_kernel` block. The
+trial changed the launch grid from `head_v_dim` value blocks to
+`ceil(head_v_dim / 2)` and kept separate `partial[0]+partial[1]` /
+`partial[2]+partial[3]` reductions so each value column's k2 accumulation order
+matched the retained kernel. Rationale: adjacent value columns reuse the same
+Q/K/decay/beta rows and have contiguous recurrent-state columns.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import build_qwen35_linear_attn_gdn
+lib = build_qwen35_linear_attn_gdn(load=True, require_cached=False)
+getattr(lib, 'hipengine_qwen35_gdn_prefill_recurrent_k2_f32')
+print('gdn k2 symbol loaded')
+PY
+python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter37-gdn-v2-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter37-gdn-v2-trace.json
+```
+
+Results: targeted tests passed (`37 passed`) and the linear-attention prefill
+smoke remained numerically equivalent (`gdn_k2_out_max_abs=9.31e-10`,
+`fp16_gdn_k2_out_max_abs=1.4e-09`). 512/128 samples were `1898.937`,
+`1905.544`, `1892.329`, and `1888.308` tok/s (median `1895.633`), below
+retained `1906.259`. Fixture gate still passed (`max_kl=0.03406`, top-1
+agreement `1.0`, `native_owned_device_bytes=1625645909`, native prefill
+`0.2702s`) and 4K/128 remained above guard at `662.689 tok/s`
+(`prefill_seconds=6.1809`). Profiler showed the tiled GDN kernel regressed to
+`43.842 ms` total / `1461.4 us` average across 30 launches versus retained
+`40.993 ms`. Decision: reject/revert. The reduced block count does not overcome
+extra registers/dual reductions in this kernel.
