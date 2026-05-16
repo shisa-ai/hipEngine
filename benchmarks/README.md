@@ -108,6 +108,19 @@ we do not lose exact commands, hardware/software context, correctness status,
 and blocker evidence for attempted shapes. Their timing fields are diagnostic
 only unless a future artifact has `status="accepted"` and `performance_claim=true`.
 
+Shared-expert format finding (2026-05-17): shisa's unstripped checkpoint can run
+with either packed PARO sidecars or the fp16 fallback shared expert. Packed
+sidecars are clearly better for prefill, but the restored legacy fp16→W8A16
+shared-expert path is ~7% faster for c=1 decode in the diagnostic below. Working
+hypothesis: packed sidecar decode currently pays per-token PARO rotation plus W4
+unpack/dequant overhead for gate/up/down, while legacy decode uses load-time
+W8A16-prepared shared-expert matrices and simpler GEMV kernels. If packed
+sidecars are the storage format moving forward, likely recovery paths are either
+(1) generate a decode-only W8A16 shadow from packed sidecars at load time
+(trading some HBM/load time for legacy-like decode speed), or (2) fuse/tune the
+true W4 PARO shared-expert decode kernels so the rotation/dequant chain no longer
+costs ~7% overall decode. Both require a shisa correctness gate before promotion.
+
 | Model | Quant | Workload | Path | Correctness / status | Diagnostic timing | Memory | Artifact | Last updated | Blocker / notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Qwen3.6-35B-A3B-PARO-full4096-e5 unstripped | w4_paro | forced shared-expert format check: 512/128 + 4K/128, max_layers=40 | AOTriton threshold 512 + decode graph replay; same unstripped shisa checkpoint forced to `packed_paro_w4` vs `legacy_fp16` | `status=diagnostic_retained`, `performance_claim=false`; layout/decode tests `57 passed`; no shisa KL/top-1 gate in this benchmark-only pass | 512/128 packed `2425.637` prefill / `101.717` decode vs legacy `2196.276` / `109.230`; 4K/128 packed `2653.477` / `103.041` vs legacy `2359.452` / `110.412` | tracked peak packed vs legacy: 512 `18.535 -> 18.587 GiB`, 4K `20.406 -> 20.458 GiB` | [`2026-05-17-hipengine-qwen36-shisa-force-legacy-diagnostic.json`](results/2026-05-17-hipengine-qwen36-shisa-force-legacy-diagnostic.json) | 2026-05-17 | Confirms the tradeoff: forced legacy lowers prefill by `-9.5%/-11.1%` but raises decode by `+7.4%/+7.2%` at 512/4K vs packed sidecars. |
