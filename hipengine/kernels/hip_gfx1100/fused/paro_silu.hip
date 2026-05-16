@@ -66,6 +66,22 @@ __global__ void silu_mul_dual_out_kernel(
   out[idx] = float_to_scalar<scalar_t>(gate * sig * up);
 }
 
+template <typename scalar_t>
+__global__ void silu_mul_separate_out_kernel(
+    const scalar_t* __restrict__ gate,
+    const scalar_t* __restrict__ up,
+    scalar_t* __restrict__ out,
+    int64_t rows,
+    int64_t features) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t total = rows * features;
+  if (idx >= total) return;
+  const float g = scalar_to_float(gate[idx]);
+  const float u = scalar_to_float(up[idx]);
+  const float sig = 1.0f / (1.0f + expf(-g));
+  out[idx] = float_to_scalar<scalar_t>(g * sig * u);
+}
+
 
 template <typename scalar_t>
 __global__ void silu_mul_dual_rotate_out_kernel(
@@ -229,6 +245,58 @@ extern "C" int hipengine_silu_mul_dual_out_fp16(
       0,
       stream,
       gate_up,
+      out,
+      rows,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_silu_mul_separate_out_bf16(
+    const uint16_t* gate,
+    const uint16_t* up,
+    uint16_t* out,
+    int64_t rows,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * features;
+  hipLaunchKernelGGL(
+      (silu_mul_separate_out_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>((total + threads - 1) / threads)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      gate,
+      up,
+      out,
+      rows,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_silu_mul_separate_out_fp16(
+    const half_t* gate,
+    const half_t* up,
+    half_t* out,
+    int64_t rows,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * features;
+  hipLaunchKernelGGL(
+      (silu_mul_separate_out_kernel<half_t>),
+      dim3(static_cast<unsigned int>((total + threads - 1) / threads)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      gate,
+      up,
       out,
       rows,
       features);

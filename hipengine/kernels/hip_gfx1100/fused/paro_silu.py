@@ -13,6 +13,8 @@ _SOURCE = Path(__file__).with_name("paro_silu.hip")
 _OUTPUT_NAME = "paro_silu.so"
 _SYMBOL_DUAL_OUT = "hipengine_silu_mul_dual_out_bf16"
 _SYMBOL_DUAL_OUT_FP16 = "hipengine_silu_mul_dual_out_fp16"
+_SYMBOL_SEPARATE_OUT = "hipengine_silu_mul_separate_out_bf16"
+_SYMBOL_SEPARATE_OUT_FP16 = "hipengine_silu_mul_separate_out_fp16"
 _SYMBOL_DUAL_ROTATE_OUT = "hipengine_silu_mul_dual_rotate_out_bf16"
 _SYMBOL_DUAL_ROTATE_OUT_FP16 = "hipengine_silu_mul_dual_rotate_out_fp16"
 _SYMBOL_PAIR_ROTATE_OUT = "hipengine_silu_mul_pair_rotate_out_bf16"
@@ -132,6 +134,62 @@ def silu_mul_dual_out_fp16(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def silu_mul_separate_out_bf16(
+    gate_ptr: int,
+    up_ptr: int,
+    out_ptr: int,
+    rows: int,
+    features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch SiLU(gate) * up where ``gate`` and ``up`` are separate ``[rows, features]`` buffers."""
+
+    _launch_separate(
+        _SYMBOL_SEPARATE_OUT,
+        gate_ptr,
+        up_ptr,
+        out_ptr,
+        rows,
+        features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def silu_mul_separate_out_fp16(
+    gate_ptr: int,
+    up_ptr: int,
+    out_ptr: int,
+    rows: int,
+    features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16 SiLU(gate) * up where ``gate`` and ``up`` are separate ``[rows, features]`` buffers."""
+
+    _launch_separate(
+        _SYMBOL_SEPARATE_OUT_FP16,
+        gate_ptr,
+        up_ptr,
+        out_ptr,
+        rows,
+        features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def silu_mul_dual_rotate_out_bf16(
@@ -285,6 +343,16 @@ def register_paro_silu_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
         register(
+            KernelKey("hip_gfx1100", "silu_mul_separate", quant, "out"),
+            silu_mul_separate_out_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "silu_mul_separate", quant, "out_fp16"),
+            silu_mul_separate_out_fp16,
+            replace=replace,
+        )
+        register(
             KernelKey("hip_gfx1100", "silu_mul_dual_rotate", quant, "out"),
             silu_mul_dual_rotate_out_bf16,
             replace=replace,
@@ -307,6 +375,11 @@ def register_paro_silu_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "silu_mul_dual", "fp16", "out"),
         silu_mul_dual_out_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "silu_mul_separate", "fp16", "out"),
+        silu_mul_separate_out_fp16,
         replace=replace,
     )
     register(
@@ -363,6 +436,46 @@ def _launch_rotate(
         ctypes.c_int64(features),
         ctypes.c_int64(group_size),
         ctypes.c_int64(krot),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_separate(
+    symbol: str,
+    gate_ptr: int,
+    up_ptr: int,
+    out_ptr: int,
+    rows: int,
+    features: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_activation_shape(rows, features)
+    _check_threads(threads)
+    library = library or build_paro_silu(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(up_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(features),
+        ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
