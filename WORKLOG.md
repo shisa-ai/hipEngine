@@ -14224,3 +14224,95 @@ skinny (`out_features=32`), and on this W7900 stack the current custom row-GEMV
 kernels beat rocBLAS/Tensile for both 512 and 4K. Keep the env-off rocBLAS bridge
 only as a diagnostic/prototype surface for wider future shapes. Artifact:
 `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p11-rocblas-ab-rejected.json`.
+
+## 2026-05-17 — P1.2 legacy W8A16 shared gate/up token tiling retained
+
+Task #5 prototyped a torch-free bulk-ish prefill replacement for the legacy
+W8A16 shared-expert gate/up+SiLU path without materializing fp16 shadow weights.
+Instead of rocBLAS/dense fp16 weights, the retained path groups adjacent prompt
+tokens inside the existing quantized dot-product kernel:
+
+- Added `w8a16_shared_gate_up_silu_fp16_token_tiled_kernel<2/4>` in
+  `hipengine/kernels/hip_gfx1100/quant/w8a16_linear.hip` plus ctypes wrappers.
+- Runtime default is conservative: legacy W8A16 shared gate/up uses
+  `token_tile=2` only when `tokens >= 1024`.
+- Existing `w8a16_shared_gate_up_silu_fp16(...)` remains fallback for smaller
+  prompts and opt-out (`HIPENGINE_SHARED_GATE_UP_PREFILL_TOKEN_TILE=0`).
+- Shisa packed sidecars are intentionally unaffected; they continue to use the
+  packed PARO W4 prefill kernels.
+
+Microcheck:
+
+```bash
+# random small shape tokens=5 hidden=32 intermediate=8
+# tile2 max_abs 0.0 vs original kernel
+# tile4 max_abs 0.0 vs original kernel
+```
+
+Validation / correctness:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/w8a16_linear.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short
+# 39 passed
+
+HIPENGINE_SHARED_GATE_UP_PREFILL_MIN_TOKENS=2 \
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p12-shared-gate-up-token-tile-20260517/p12_tile2_fixture_gate.json
+# passed=true, max_kl=0.0395688706, top1_agreement=1.0, generated IDs match fixture
+```
+
+Profiler smoke (cache-only build, one layer, prompt 1024) confirmed the new
+kernel launched:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-file /tmp/hipengine-p12-shared-gate-up-token-tile-20260517/rocprof/p12_tile2 -- \
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --token-id 9707 --prompt-length 1024 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --max-layers 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p12-shared-gate-up-token-tile-20260517/rocprof/p12_tile2_bench.json
+# trace includes void (anonymous namespace)::w8a16_shared_gate_up_silu_fp16_token_tiled_kernel<2>(...), DurationNs 737130
+```
+
+Benchmark protocol on W7900/gfx1100, all rows used cache-only HIP builds:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-legacy-or-shisa-packed> \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p12-shared-gate-up-token-tile-20260517/<label>.json
+# candidate rows set HIPENGINE_SHARED_GATE_UP_PREFILL_TOKEN_TILE=2 or 4
+```
+
+Two-run medians, `HIPENGINE_SHARED_GATE_UP_PREFILL_TOKEN_TILE=2` vs previous
+no-token-tile default:
+
+| model/path | workload | prefill Δ | decode Δ | peak GiB | generated/logit sanity |
+| --- | ---: | ---: | ---: | ---: | --- |
+| z-lab legacy W8A16 | 512/128 | +0.52% | -0.07% | 18.587 | first two generated IDs/logits match |
+| z-lab legacy W8A16 | 4096/128 | +2.16% | +0.15% | 20.458 | first two generated IDs/logits match |
+| shisa stripped packed | 512/128 | -0.10% | -0.06% | 18.535 | packed path unaffected/noise |
+| shisa stripped packed | 4096/128 | -0.19% | -0.07% | 20.406 | packed path unaffected/noise |
+
+Tile4 was rejected after a one-run probe: it regressed 512 and did not improve
+4K. A final no-env post-change pass showed the default policy is wired; 512
+continues to use the old fallback, while 4K uses tile2. Because this is still a
+resident-runner diagnostic rather than a promoted public `LLM.generate()` row,
+`performance_claim=false` in the artifact.
+
+Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p12-shared-gate-up-token-tile-diagnostic.json`.

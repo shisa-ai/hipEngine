@@ -82,6 +82,7 @@ from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
     w8a16_shared_down_combine_residual_fp16,
     w8a16_shared_gate_sigmoid_fp32,
     w8a16_shared_gate_up_silu_fp16,
+    w8a16_shared_gate_up_silu_fp16_token_tiled,
 )
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_count,
@@ -3710,19 +3711,37 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
-        w8a16_shared_gate_up_silu_fp16(
-            hidden.ptr,
-            self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
-            self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
-            scratch.shared_intermediate.ptr,
-            tokens,
-            self.config.hidden_size,
-            self.config.shared_expert_intermediate_size,
-            threads=threads,
-            stream=stream,
-            library=_library_for(library, "w8a16"),
-            runtime=self.runtime,
-        )
+        w8a16_library = _library_for(library, "w8a16")
+        token_tile = _use_shared_gate_up_prefill_token_tiled(tokens)
+        if token_tile:
+            w8a16_shared_gate_up_silu_fp16_token_tiled(
+                hidden.ptr,
+                self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
+                self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
+                scratch.shared_intermediate.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.shared_expert_intermediate_size,
+                token_tile=token_tile,
+                threads=threads,
+                stream=stream,
+                library=w8a16_library,
+                runtime=self.runtime,
+            )
+        else:
+            w8a16_shared_gate_up_silu_fp16(
+                hidden.ptr,
+                self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
+                self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
+                scratch.shared_intermediate.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.shared_expert_intermediate_size,
+                threads=threads,
+                stream=stream,
+                library=w8a16_library,
+                runtime=self.runtime,
+            )
         return scratch.shared_intermediate
 
     def shared_expert_down_combine_residual_fp16(
@@ -3783,19 +3802,36 @@ class Qwen35ParoDecodeState:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
         w8a16_library = _library_for(library, "w8a16")
         if tokens > 1:
-            w8a16_shared_gate_up_silu_fp16(
-                hidden.ptr,
-                self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
-                self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
-                scratch.shared_intermediate.ptr,
-                tokens,
-                self.config.hidden_size,
-                self.config.shared_expert_intermediate_size,
-                threads=threads,
-                stream=stream,
-                library=w8a16_library,
-                runtime=self.runtime,
-            )
+            token_tile = _use_shared_gate_up_prefill_token_tiled(tokens)
+            if token_tile:
+                w8a16_shared_gate_up_silu_fp16_token_tiled(
+                    hidden.ptr,
+                    self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
+                    self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
+                    scratch.shared_intermediate.ptr,
+                    tokens,
+                    self.config.hidden_size,
+                    self.config.shared_expert_intermediate_size,
+                    token_tile=token_tile,
+                    threads=threads,
+                    stream=stream,
+                    library=w8a16_library,
+                    runtime=self.runtime,
+                )
+            else:
+                w8a16_shared_gate_up_silu_fp16(
+                    hidden.ptr,
+                    self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
+                    self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
+                    scratch.shared_intermediate.ptr,
+                    tokens,
+                    self.config.hidden_size,
+                    self.config.shared_expert_intermediate_size,
+                    threads=threads,
+                    stream=stream,
+                    library=w8a16_library,
+                    runtime=self.runtime,
+                )
         else:
             w8a16_linear_fp16_lowp_out(
                 hidden.ptr,
@@ -5088,6 +5124,28 @@ def _linear_ab_prefill_rocblas_min_tokens() -> int:
 def _use_linear_ab_prefill_rocblas(tokens: int) -> bool:
     threshold = _linear_ab_prefill_rocblas_min_tokens()
     return threshold > 0 and tokens >= threshold
+
+
+def _shared_gate_up_prefill_token_tile() -> int:
+    value = os.environ.get("HIPENGINE_SHARED_GATE_UP_PREFILL_TOKEN_TILE")
+    if value is None or value.strip() == "":
+        return 2
+    tile = int(value)
+    if tile not in (0, 2, 4):
+        raise ValueError("HIPENGINE_SHARED_GATE_UP_PREFILL_TOKEN_TILE must be 0, 2, or 4")
+    return tile
+
+
+def _shared_gate_up_prefill_min_tokens() -> int:
+    value = os.environ.get("HIPENGINE_SHARED_GATE_UP_PREFILL_MIN_TOKENS")
+    if value is None or value.strip() == "":
+        return 1024
+    return max(2, int(value))
+
+
+def _use_shared_gate_up_prefill_token_tiled(tokens: int) -> int:
+    tile = _shared_gate_up_prefill_token_tile()
+    return tile if tile > 0 and tokens >= _shared_gate_up_prefill_min_tokens() else 0
 
 
 def _library_for(library, family: str):

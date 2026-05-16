@@ -1560,6 +1560,38 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine(m
     )
 
 
+def test_qwen35_decode_state_uses_token_tiled_legacy_shared_gate_up_prefill(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _legacy_prepared_moe_weights())
+    scratch = state.reserve_moe_grouped_prefill_scratch(tokens=4, activation_dtype="fp16")
+    hidden = _tensor(0xD000, (4, 4096), "fp16")
+    calls = []
+
+    def fake_tiled(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setenv("HIPENGINE_SHARED_GATE_UP_PREFILL_TOKEN_TILE", "4")
+    monkeypatch.setenv("HIPENGINE_SHARED_GATE_UP_PREFILL_MIN_TOKENS", "2")
+    monkeypatch.setattr(qwen_runtime, "w8a16_shared_gate_up_silu_fp16_token_tiled", fake_tiled)
+    monkeypatch.setattr(qwen_runtime, "w8a16_shared_gate_up_silu_fp16", lambda *a, **k: pytest.fail("unexpected fallback"))
+
+    out = state.shared_expert_gate_up_silu_fp16(hidden, scratch, tokens=4, stream=0x55)
+
+    assert out is scratch.shared_intermediate
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == (
+        hidden.ptr,
+        state.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16").ptr,
+        state.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale").ptr,
+        scratch.shared_intermediate.ptr,
+        4,
+        4096,
+        768,
+    )
+    assert kwargs == {"token_tile": 4, "threads": 64, "stream": 0x55, "library": None, "runtime": runtime}
+
+
 def test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_combine(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _legacy_prepared_moe_weights())
