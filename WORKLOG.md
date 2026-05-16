@@ -13692,3 +13692,56 @@ grep -c '^| ' docs/OPTIMIZE.md
 Next concrete step on the doc punchlist is M.3 (rocprofv3 --kernel-trace + ROCTX) on
 512/128, 4K/128, 32K/128 with the comparison-table flags, producing per-bucket Amdahl
 tables to replace the parent-borrowed §6 decode block. No GPU runs in this commit.
+
+## 2026-05-17 — Restore dual shared-expert format support for z-lab PARO
+
+Root cause review: the packed-PARO shared-expert series accidentally made the new
+packed sidecar representation exclusive. Commit `1eb9b42` replaced the original
+z-lab `mlp.shared_expert.{gate_proj,up_proj,down_proj}.weight` requirements with
+18 packed PARO tensors, and `a70929b` replaced the runtime shared-expert dispatch
+with the W4 PARO path only. That broke the public/original
+`z-lab/Qwen3.5-35B-A3B-PARO` checkpoint, which contains only:
+
+- `layers.0.mlp.shared_expert.gate_proj.weight`
+- `layers.0.mlp.shared_expert.up_proj.weight`
+- `layers.0.mlp.shared_expert.down_proj.weight`
+- `layers.0.mlp.shared_expert_gate.weight`
+
+Fix in progress/landed in the working tree: loader validation now detects the
+shared-expert family per layer. If all packed sidecars are present, it uses
+`packed_paro_w4`; otherwise, if the three fp16 `.weight` tensors are present, it
+uses `legacy_fp16`. Both required-name and runtime-prepared-name helpers accept a
+`shared_expert_format` selector. The legacy path restores host-side W8A16 prep
+(`gate_up_weight_w8a16{,_scale}`, `down_weight_w8a16{,_scale}`), while packed
+checkpoints keep the W4 `qweight_pack8_decode` prep.
+
+Runtime dispatch now checks the materialized tensor family: original z-lab
+checkpoints use the restored W8A16 shared-expert methods, and packed checkpoints
+use `shared_expert_paro_w4_{fp16,bf16}`. For the original fp16 grouped/prefill
+path, the fused `w8a16_shared_gate_up_silu_fp16` +
+`w8a16_shared_down_combine_residual_fp16` chain is restored, preserving the old
+kernel sequence and avoiding a performance regression for the existing format.
+
+CPU-only validation run while the GPU is reserved for profiling:
+
+```bash
+python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short
+# 55 passed
+
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.loading import load_weight_index
+from hipengine.loading.qwen35_paro import validate_qwen35_paro_linear_attention_moe_c1_layout
+p = Path('/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd')
+idx = load_weight_index(p)
+val = validate_qwen35_paro_linear_attention_moe_c1_layout(idx, layer_id=0)
+print(val.passed, val.shared_expert_format, len(val.missing), len(val.shape_errors))
+PY
+# True legacy_fp16 0 0
+```
+
+No GPU benchmark or end-to-end model run was attempted per the current profiling
+reservation. Next GPU step, once clear: run the original z-lab benchmark through
+`scripts/qwen35_paro_bench.py` and compare against the pre-packed baseline to
+confirm no legacy-format throughput regression; packed-format perf still requires
+a real packed checkpoint artifact.

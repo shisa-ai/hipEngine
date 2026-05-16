@@ -24,6 +24,9 @@ from hipengine.loading.materialize import (
 from hipengine.loading.safetensors import MissingTensorError, TensorInfo, WeightIndex
 
 ROOT_PREFIXES = ("model.language_model.", "language_model.", "model.")
+SHARED_EXPERT_FORMAT_LEGACY_FP16 = "legacy_fp16"
+SHARED_EXPERT_FORMAT_PACKED_PARO_W4 = "packed_paro_w4"
+_SHARED_EXPERT_FORMATS = {SHARED_EXPERT_FORMAT_LEGACY_FP16, SHARED_EXPERT_FORMAT_PACKED_PARO_W4}
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,7 @@ class Qwen35ParoLayoutValidation:
     present: tuple[str, ...]
     missing: tuple[str, ...]
     shape_errors: tuple[str, ...]
+    shared_expert_format: str = ""
 
     @property
     def passed(self) -> bool:
@@ -147,6 +151,101 @@ def qwen35_paro_config_from_hf(config: dict[str, Any]) -> Qwen35ParoConfig:
     )
 
 
+def _normalize_shared_expert_format(shared_expert_format: str) -> str:
+    if shared_expert_format not in _SHARED_EXPERT_FORMATS:
+        valid = ", ".join(sorted(_SHARED_EXPERT_FORMATS))
+        raise ValueError(f"unknown shared_expert_format {shared_expert_format!r}; expected one of: {valid}")
+    return shared_expert_format
+
+
+def _legacy_shared_expert_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    shared = f"layers.{layer_id}.mlp.shared_expert"
+    return tuple(f"{shared}.{proj}.weight" for proj in ("gate_proj", "up_proj", "down_proj"))
+
+
+def _packed_shared_expert_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    shared = f"layers.{layer_id}.mlp.shared_expert"
+    names: list[str] = []
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        base = f"{shared}.{proj}"
+        names.extend(
+            (
+                f"{base}.qweight",
+                f"{base}.qzeros",
+                f"{base}.scales",
+                f"{base}.theta",
+                f"{base}.pairs",
+                f"{base}.channel_scales",
+            )
+        )
+    return tuple(names)
+
+
+def _shared_expert_tensor_names(*, layer_id: int, shared_expert_format: str) -> tuple[str, ...]:
+    shared_expert_format = _normalize_shared_expert_format(shared_expert_format)
+    if shared_expert_format == SHARED_EXPERT_FORMAT_LEGACY_FP16:
+        return _legacy_shared_expert_tensor_names(layer_id=layer_id)
+    return _packed_shared_expert_tensor_names(layer_id=layer_id)
+
+
+def _detect_shared_expert_format(tensors: dict[str, Any], *, layer_id: int) -> str:
+    """Detect the dense shared-expert representation for one layer.
+
+    The public z-lab PARO checkpoint stores the dense shared expert as three
+    fp16 ``*.weight`` matrices.  hipENGINE's newer packed format stores the
+    same projections as PARO W4 sidecars.  When both are present, prefer the
+    packed sidecars so unstripped converter outputs exercise the new path.
+    """
+
+    packed = _packed_shared_expert_tensor_names(layer_id=layer_id)
+    legacy = _legacy_shared_expert_tensor_names(layer_id=layer_id)
+    if all(name in tensors for name in packed):
+        return SHARED_EXPERT_FORMAT_PACKED_PARO_W4
+    if all(name in tensors for name in legacy):
+        return SHARED_EXPERT_FORMAT_LEGACY_FP16
+    return ""
+
+
+def _shared_expert_validation_choice(tensors: dict[str, Any], *, layer_id: int) -> tuple[str, tuple[str, ...]]:
+    detected = _detect_shared_expert_format(tensors, layer_id=layer_id)
+    if detected:
+        names = _shared_expert_tensor_names(layer_id=layer_id, shared_expert_format=detected)
+        return detected, tuple(name for name in names if name not in tensors)
+    packed = _packed_shared_expert_tensor_names(layer_id=layer_id)
+    legacy = _legacy_shared_expert_tensor_names(layer_id=layer_id)
+    if any(name in tensors for name in packed):
+        chosen = SHARED_EXPERT_FORMAT_PACKED_PARO_W4
+        names = packed
+    else:
+        chosen = SHARED_EXPERT_FORMAT_LEGACY_FP16
+        names = legacy
+    return chosen, tuple(name for name in names if name not in tensors)
+
+
+def _resolve_shared_expert_format(
+    tensors: dict[str, Any],
+    *,
+    layer_id: int,
+    shared_expert_format: str | None = None,
+) -> str:
+    if shared_expert_format is not None:
+        shared_expert_format = _normalize_shared_expert_format(shared_expert_format)
+        names = _shared_expert_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format)
+        missing = tuple(name for name in names if name not in tensors)
+        if missing:
+            preview = ", ".join(missing[:8])
+            more = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+            raise MissingTensorError(f"missing tensors for {shared_expert_format} shared_expert: {preview}{more}")
+        return shared_expert_format
+    detected = _detect_shared_expert_format(tensors, layer_id=layer_id)
+    if detected:
+        return detected
+    chosen, missing = _shared_expert_validation_choice(tensors, layer_id=layer_id)
+    preview = ", ".join(missing[:8])
+    more = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+    raise MissingTensorError(f"missing tensors for {chosen} shared_expert: {preview}{more}")
+
+
 def required_full_attention_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
     prefix = f"layers.{layer_id}.self_attn"
     names = [
@@ -180,10 +279,16 @@ def required_full_attention_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]
     return tuple(names)
 
 
-def required_full_attention_moe_c1_tensor_names(*, layer_id: int, num_experts: int) -> tuple[str, ...]:
+def required_full_attention_moe_c1_tensor_names(
+    *,
+    layer_id: int,
+    num_experts: int,
+    shared_expert_format: str = SHARED_EXPERT_FORMAT_PACKED_PARO_W4,
+) -> tuple[str, ...]:
     return required_full_attention_c1_tensor_names(layer_id=layer_id) + required_moe_c1_tensor_names(
         layer_id=layer_id,
         num_experts=num_experts,
+        shared_expert_format=shared_expert_format,
     )
 
 
@@ -215,14 +320,24 @@ def required_linear_attention_c1_tensor_names(*, layer_id: int) -> tuple[str, ..
     return tuple(names)
 
 
-def required_linear_attention_moe_c1_tensor_names(*, layer_id: int, num_experts: int) -> tuple[str, ...]:
+def required_linear_attention_moe_c1_tensor_names(
+    *,
+    layer_id: int,
+    num_experts: int,
+    shared_expert_format: str = SHARED_EXPERT_FORMAT_PACKED_PARO_W4,
+) -> tuple[str, ...]:
     return required_linear_attention_c1_tensor_names(layer_id=layer_id) + required_moe_c1_tensor_names(
         layer_id=layer_id,
         num_experts=num_experts,
+        shared_expert_format=shared_expert_format,
     )
 
 
-def prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+def prepared_moe_c1_tensor_names(
+    *,
+    layer_id: int,
+    shared_expert_format: str = SHARED_EXPERT_FORMAT_PACKED_PARO_W4,
+) -> tuple[str, ...]:
     prefix = f"layers.{layer_id}.mlp"
     experts = f"{prefix}.experts"
     names = [f"{prefix}.router_shared_gate.weight"]
@@ -236,12 +351,27 @@ def prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
             )
         )
     shared = f"{prefix}.shared_expert"
-    for proj in ("gate_proj", "up_proj", "down_proj"):
-        names.append(f"{shared}.{proj}.qweight_pack8_decode")
+    shared_expert_format = _normalize_shared_expert_format(shared_expert_format)
+    if shared_expert_format == SHARED_EXPERT_FORMAT_LEGACY_FP16:
+        names.extend(
+            (
+                f"{shared}.gate_up_weight_w8a16",
+                f"{shared}.gate_up_weight_w8a16_scale",
+                f"{shared}.down_weight_w8a16",
+                f"{shared}.down_weight_w8a16_scale",
+            )
+        )
+    else:
+        for proj in ("gate_proj", "up_proj", "down_proj"):
+            names.append(f"{shared}.{proj}.qweight_pack8_decode")
     return tuple(names)
 
 
-def runtime_prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+def runtime_prepared_moe_c1_tensor_names(
+    *,
+    layer_id: int,
+    shared_expert_format: str = SHARED_EXPERT_FORMAT_PACKED_PARO_W4,
+) -> tuple[str, ...]:
     """Prepared MoE tensors actually consumed by the decode-state c=1 path."""
 
     prefix = f"layers.{layer_id}.mlp"
@@ -256,12 +386,27 @@ def runtime_prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
             )
         )
     shared = f"{prefix}.shared_expert"
-    for proj in ("gate_proj", "up_proj", "down_proj"):
-        names.append(f"{shared}.{proj}.qweight_pack8_decode")
+    shared_expert_format = _normalize_shared_expert_format(shared_expert_format)
+    if shared_expert_format == SHARED_EXPERT_FORMAT_LEGACY_FP16:
+        names.extend(
+            (
+                f"{shared}.gate_up_weight_w8a16",
+                f"{shared}.gate_up_weight_w8a16_scale",
+                f"{shared}.down_weight_w8a16",
+                f"{shared}.down_weight_w8a16_scale",
+            )
+        )
+    else:
+        for proj in ("gate_proj", "up_proj", "down_proj"):
+            names.append(f"{shared}.{proj}.qweight_pack8_decode")
     return tuple(names)
 
 
-def runtime_full_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+def runtime_full_attention_moe_c1_tensor_names(
+    *,
+    layer_id: int,
+    shared_expert_format: str = SHARED_EXPERT_FORMAT_PACKED_PARO_W4,
+) -> tuple[str, ...]:
     """Normalized tensors needed by the current real full-attention runtime path."""
 
     attn = f"layers.{layer_id}.self_attn"
@@ -306,11 +451,15 @@ def runtime_full_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, .
             f"{experts}.down_weight_channel_scales",
         )
     )
-    names.extend(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id))
+    names.extend(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format))
     return tuple(names)
 
 
-def runtime_linear_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+def runtime_linear_attention_moe_c1_tensor_names(
+    *,
+    layer_id: int,
+    shared_expert_format: str = SHARED_EXPERT_FORMAT_PACKED_PARO_W4,
+) -> tuple[str, ...]:
     """Normalized tensors needed by the current real linear-attention runtime path."""
 
     prefix = f"layers.{layer_id}.linear_attn"
@@ -347,11 +496,16 @@ def runtime_linear_attention_moe_c1_tensor_names(*, layer_id: int) -> tuple[str,
             f"{experts}.down_weight_channel_scales",
         )
     )
-    names.extend(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id))
+    names.extend(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format))
     return tuple(names)
 
 
-def required_moe_c1_tensor_names(*, layer_id: int, num_experts: int) -> tuple[str, ...]:
+def required_moe_c1_tensor_names(
+    *,
+    layer_id: int,
+    num_experts: int,
+    shared_expert_format: str = SHARED_EXPERT_FORMAT_PACKED_PARO_W4,
+) -> tuple[str, ...]:
     prefix = f"layers.{layer_id}.mlp"
     names = [
         f"layers.{layer_id}.post_attention_layernorm.weight",
@@ -364,24 +518,29 @@ def required_moe_c1_tensor_names(*, layer_id: int, num_experts: int) -> tuple[st
         f"{prefix}.experts.down_weight_pairs",
         f"{prefix}.experts.down_weight_channel_scales",
     ]
-    shared = f"{prefix}.shared_expert"
-    for proj in ("gate_proj", "up_proj", "down_proj"):
-        base = f"{shared}.{proj}"
-        names.extend(
-            (
-                f"{base}.qweight",
-                f"{base}.qzeros",
-                f"{base}.scales",
-                f"{base}.theta",
-                f"{base}.pairs",
-                f"{base}.channel_scales",
-            )
-        )
+    names.extend(_shared_expert_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format))
     for expert in range(num_experts):
         for proj in ("gate_proj", "up_proj", "down_proj"):
             base = f"{prefix}.experts.{expert}.{proj}"
             names.extend((f"{base}.qweight", f"{base}.qzeros", f"{base}.scales"))
     return tuple(names)
+
+
+def _required_moe_c1_tensor_names_for_layout(
+    tensors: dict[str, Any],
+    config: Qwen35ParoConfig,
+    *,
+    layer_id: int,
+) -> tuple[tuple[str, ...], str]:
+    shared_expert_format, _missing_shared = _shared_expert_validation_choice(tensors, layer_id=layer_id)
+    return (
+        required_moe_c1_tensor_names(
+            layer_id=layer_id,
+            num_experts=config.num_experts,
+            shared_expert_format=shared_expert_format,
+        ),
+        shared_expert_format,
+    )
 
 
 def validate_qwen35_paro_moe_c1_layout(
@@ -399,15 +558,21 @@ def validate_qwen35_paro_moe_c1_layout(
         raise ValueError("Qwen3.5 PARO MoE layout requires num_experts > 0")
 
     normalized = _normalized_tensor_map(index)
-    required = required_moe_c1_tensor_names(layer_id=layer_id, num_experts=config.num_experts)
+    required, shared_expert_format = _required_moe_c1_tensor_names_for_layout(normalized, config, layer_id=layer_id)
     present = tuple(name for name in required if name in normalized)
     missing = tuple(name for name in required if name not in normalized)
-    shape_errors = _validate_moe_c1_shapes(normalized, config, layer_id=layer_id)
+    shape_errors = _validate_moe_c1_shapes(
+        normalized,
+        config,
+        layer_id=layer_id,
+        shared_expert_format=shared_expert_format,
+    )
     result = Qwen35ParoLayoutValidation(
         config=config,
         present=present,
         missing=missing,
         shape_errors=shape_errors,
+        shared_expert_format=shared_expert_format,
     )
     if raise_on_error:
         result.raise_for_errors()
@@ -433,7 +598,11 @@ def materialize_qwen35_paro_moe_c1_layer(
     validation = validate_qwen35_paro_moe_c1_layout(index, layer_id=layer_id, raise_on_error=validate)
     if not validation.passed:
         validation.raise_for_errors()
-    required = required_moe_c1_tensor_names(layer_id=layer_id, num_experts=validation.config.num_experts)
+    required = required_moe_c1_tensor_names(
+        layer_id=layer_id,
+        num_experts=validation.config.num_experts,
+        shared_expert_format=validation.shared_expert_format,
+    )
     return _materialize_normalized_layer(index, validation.config, layer_id, required, device=device, runtime=runtime)
 
 
@@ -454,15 +623,27 @@ def validate_qwen35_paro_full_attention_moe_c1_layout(
         raise ValueError(f"expected quant_method='paroquant', got {config.quant_method!r}")
 
     normalized = _normalized_tensor_map(index)
-    required = required_full_attention_moe_c1_tensor_names(layer_id=layer_id, num_experts=config.num_experts)
+    _moe_required, shared_expert_format = _required_moe_c1_tensor_names_for_layout(normalized, config, layer_id=layer_id)
+    required = required_full_attention_moe_c1_tensor_names(
+        layer_id=layer_id,
+        num_experts=config.num_experts,
+        shared_expert_format=shared_expert_format,
+    )
     present = tuple(name for name in required if name in normalized)
     missing = tuple(name for name in required if name not in normalized)
     shape_errors = _validate_full_attention_shapes(normalized, config, layer_id=layer_id) + _validate_moe_c1_shapes(
         normalized,
         config,
         layer_id=layer_id,
+        shared_expert_format=shared_expert_format,
     )
-    result = Qwen35ParoLayoutValidation(config=config, present=present, missing=missing, shape_errors=shape_errors)
+    result = Qwen35ParoLayoutValidation(
+        config=config,
+        present=present,
+        missing=missing,
+        shape_errors=shape_errors,
+        shared_expert_format=shared_expert_format,
+    )
     if raise_on_error:
         result.raise_for_errors()
     return result
@@ -486,6 +667,7 @@ def materialize_qwen35_paro_full_attention_moe_c1_layer(
     required = required_full_attention_moe_c1_tensor_names(
         layer_id=layer_id,
         num_experts=validation.config.num_experts,
+        shared_expert_format=validation.shared_expert_format,
     )
     return _materialize_normalized_layer(index, validation.config, layer_id, required, device=device, runtime=runtime)
 
@@ -509,15 +691,27 @@ def validate_qwen35_paro_linear_attention_moe_c1_layout(
         raise ValueError(f"expected quant_method='paroquant', got {config.quant_method!r}")
 
     normalized = _normalized_tensor_map(index)
-    required = required_linear_attention_moe_c1_tensor_names(layer_id=layer_id, num_experts=config.num_experts)
+    _moe_required, shared_expert_format = _required_moe_c1_tensor_names_for_layout(normalized, config, layer_id=layer_id)
+    required = required_linear_attention_moe_c1_tensor_names(
+        layer_id=layer_id,
+        num_experts=config.num_experts,
+        shared_expert_format=shared_expert_format,
+    )
     present = tuple(name for name in required if name in normalized)
     missing = tuple(name for name in required if name not in normalized)
     shape_errors = _validate_linear_attention_shapes(normalized, config, layer_id=layer_id) + _validate_moe_c1_shapes(
         normalized,
         config,
         layer_id=layer_id,
+        shared_expert_format=shared_expert_format,
     )
-    result = Qwen35ParoLayoutValidation(config=config, present=present, missing=missing, shape_errors=shape_errors)
+    result = Qwen35ParoLayoutValidation(
+        config=config,
+        present=present,
+        missing=missing,
+        shape_errors=shape_errors,
+        shared_expert_format=shared_expert_format,
+    )
     if raise_on_error:
         result.raise_for_errors()
     return result
@@ -530,6 +724,7 @@ def prepare_qwen35_paro_moe_c1_host_tensors(
     normalized: dict[str, TensorInfo] | None = None,
     reader: "_NormalizedTensorReader | None" = None,
     progress: Callable[[dict[str, Any]], None] | None = None,
+    shared_expert_format: str | None = None,
 ) -> dict[str, object]:
     """Prepare parent-compatible MoE c=1 host layouts without torch.
 
@@ -541,6 +736,11 @@ def prepare_qwen35_paro_moe_c1_host_tensors(
 
     config = qwen35_paro_config_from_hf(index.config)
     normalized = normalized or _normalized_tensor_map(index)
+    shared_expert_format = _resolve_shared_expert_format(
+        normalized,
+        layer_id=layer_id,
+        shared_expert_format=shared_expert_format,
+    )
     owns_reader = reader is None
     reader = reader or _NormalizedTensorReader(normalized)
     try:
@@ -584,9 +784,20 @@ def prepare_qwen35_paro_moe_c1_host_tensors(
             )
         shared = f"{prefix}.shared_expert"
         _emit_progress(progress, "prepare_shared_expert_start", layer=layer_id)
-        for proj in ("gate_proj", "up_proj", "down_proj"):
-            qweight = _read_normalized_numpy_tensor(normalized, f"{shared}.{proj}.qweight", reader=reader)
-            prepared[f"{shared}.{proj}.qweight_pack8_decode"] = _transpose_generic_qweight(qweight)
+        if shared_expert_format == SHARED_EXPERT_FORMAT_LEGACY_FP16:
+            shared_gate = _read_normalized_numpy_tensor(normalized, f"{shared}.gate_proj.weight", reader=reader)
+            shared_up = _read_normalized_numpy_tensor(normalized, f"{shared}.up_proj.weight", reader=reader)
+            shared_down = _read_normalized_numpy_tensor(normalized, f"{shared}.down_proj.weight", reader=reader)
+            gate_up_q, gate_up_scale = _quantize_w8a16_host(_concat_rows((shared_gate, shared_up)))
+            down_q, down_scale = _quantize_w8a16_host(shared_down)
+            prepared[f"{shared}.gate_up_weight_w8a16"] = gate_up_q
+            prepared[f"{shared}.gate_up_weight_w8a16_scale"] = gate_up_scale
+            prepared[f"{shared}.down_weight_w8a16"] = down_q
+            prepared[f"{shared}.down_weight_w8a16_scale"] = down_scale
+        else:
+            for proj in ("gate_proj", "up_proj", "down_proj"):
+                qweight = _read_normalized_numpy_tensor(normalized, f"{shared}.{proj}.qweight", reader=reader)
+                prepared[f"{shared}.{proj}.qweight_pack8_decode"] = _transpose_generic_qweight(qweight)
         _emit_progress(progress, "prepare_shared_expert_done", layer=layer_id)
         return prepared
     finally:
@@ -612,11 +823,16 @@ def materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(
     required = required_full_attention_moe_c1_tensor_names(
         layer_id=layer_id,
         num_experts=validation.config.num_experts,
+        shared_expert_format=validation.shared_expert_format,
     )
     base = _materialize_normalized_layer(index, validation.config, layer_id, required, device=device, runtime=runtime)
     allocations = dict(base.weights.tensors)
     try:
-        for name, array in prepare_qwen35_paro_moe_c1_host_tensors(index, layer_id=layer_id).items():
+        for name, array in prepare_qwen35_paro_moe_c1_host_tensors(
+            index,
+            layer_id=layer_id,
+            shared_expert_format=validation.shared_expert_format,
+        ).items():
             allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
     except Exception:
         DeviceWeightMap(allocations).free(runtime=runtime)
@@ -635,6 +851,7 @@ def prepare_qwen35_paro_moe_c1_runtime_host_tensors(
     normalized: dict[str, TensorInfo] | None = None,
     reader: "_NormalizedTensorReader | None" = None,
     progress: Callable[[dict[str, Any]], None] | None = None,
+    shared_expert_format: str | None = None,
 ) -> dict[str, object]:
     """Prepare decode-runtime MoE tensors with BF16 bit buffers where required."""
 
@@ -645,9 +862,15 @@ def prepare_qwen35_paro_moe_c1_runtime_host_tensors(
         normalized=normalized,
         reader=reader,
         progress=progress,
+        shared_expert_format=shared_expert_format,
+    )
+    shared_expert_format = _resolve_shared_expert_format(
+        normalized or _normalized_tensor_map(index),
+        layer_id=layer_id,
+        shared_expert_format=shared_expert_format,
     )
     runtime_prepared: dict[str, object] = {}
-    for name in runtime_prepared_moe_c1_tensor_names(layer_id=layer_id):
+    for name in runtime_prepared_moe_c1_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format):
         array = prepared[name]
         _emit_progress(progress, "prepare_runtime_tensor_start", layer=layer_id, name=name)
         if _runtime_tensor_needs_bf16_bits(name):
@@ -685,10 +908,14 @@ def materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(
         index,
         validation.config,
         layer_id,
-        runtime_full_attention_moe_c1_tensor_names(layer_id=layer_id),
+        runtime_full_attention_moe_c1_tensor_names(
+            layer_id=layer_id,
+            shared_expert_format=validation.shared_expert_format,
+        ),
         device=device,
         runtime=runtime,
         progress=progress,
+        shared_expert_format=validation.shared_expert_format,
     )
 
 
@@ -714,10 +941,14 @@ def materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(
         index,
         validation.config,
         layer_id,
-        runtime_linear_attention_moe_c1_tensor_names(layer_id=layer_id),
+        runtime_linear_attention_moe_c1_tensor_names(
+            layer_id=layer_id,
+            shared_expert_format=validation.shared_expert_format,
+        ),
         device=device,
         runtime=runtime,
         progress=progress,
+        shared_expert_format=validation.shared_expert_format,
     )
 
 
@@ -891,6 +1122,16 @@ def paro_marlin_k_pack8_decode_view(qweight_mk: object):
     return qweight_mk_arr.reshape(out_packed, groups * group_size)
 
 
+def _quantize_w8a16_host(weight: object):
+    import numpy as np
+
+    weight_f32 = np.asarray(weight, dtype=np.float32)
+    scale = np.maximum(np.max(np.abs(weight_f32), axis=1), 1.0e-8).astype(np.float32) / np.float32(127.0)
+    quantized = np.rint(weight_f32 / scale[:, None])
+    quantized = np.clip(quantized, -127, 127).astype(np.int8)
+    return np.ascontiguousarray(quantized), np.ascontiguousarray(scale)
+
+
 def _transpose_generic_qweight(array: object):
     import numpy as np
 
@@ -1032,9 +1273,10 @@ def _materialize_runtime_layer(
     device: Device | None,
     runtime: HipRuntime | None,
     progress: Callable[[dict[str, Any]], None] | None = None,
+    shared_expert_format: str = SHARED_EXPERT_FORMAT_PACKED_PARO_W4,
 ) -> Qwen35ParoLayerDeviceWeights:
     normalized = _normalized_tensor_map(index)
-    prepared_names = set(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id))
+    prepared_names = set(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format))
     allocations: dict[str, DeviceTensorAllocation] = {}
     reader = _NormalizedTensorReader(normalized)
     try:
@@ -1151,6 +1393,7 @@ def _materialize_runtime_layer(
             normalized=normalized,
             reader=reader,
             progress=progress,
+            shared_expert_format=shared_expert_format,
         )
         for idx, (name, array) in enumerate(prepared.items(), start=1):
             _emit_progress(
@@ -1289,6 +1532,7 @@ def _validate_moe_c1_shapes(
     config: Qwen35ParoConfig,
     *,
     layer_id: int,
+    shared_expert_format: str = SHARED_EXPERT_FORMAT_PACKED_PARO_W4,
 ) -> tuple[str, ...]:
     prefix = f"layers.{layer_id}.mlp"
     expected: dict[str, tuple[int, ...]] = {
@@ -1296,6 +1540,15 @@ def _validate_moe_c1_shapes(
         f"{prefix}.gate.weight": (config.num_experts, config.hidden_size),
         f"{prefix}.shared_expert_gate.weight": (1, config.hidden_size),
     }
+    if shared_expert_format == SHARED_EXPERT_FORMAT_LEGACY_FP16:
+        shared = f"{prefix}.shared_expert"
+        expected.update(
+            {
+                f"{shared}.gate_proj.weight": (config.shared_expert_intermediate_size, config.hidden_size),
+                f"{shared}.up_proj.weight": (config.shared_expert_intermediate_size, config.hidden_size),
+                f"{shared}.down_proj.weight": (config.hidden_size, config.shared_expert_intermediate_size),
+            }
+        )
     # Packed shared-expert qweight/qzeros/scales/theta/pairs/channel_scales
     # mirror the attention dense-projection convention and are existence-only
     # validated (matching how routed-expert qweight/qzeros/scales are checked).

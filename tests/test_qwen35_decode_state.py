@@ -184,6 +184,29 @@ def _prepared_moe_weights() -> DeviceWeightMap:
     )
 
 
+def _legacy_prepared_moe_weights() -> DeviceWeightMap:
+    prefix = "layers.0.mlp"
+    tensors = {
+        name: allocation
+        for name, allocation in _prepared_moe_weights().tensors.items()
+        if not name.startswith(f"{prefix}.shared_expert.")
+    }
+    shared = f"{prefix}.shared_expert"
+    tensors.update(
+        {
+            f"{shared}.gate_up_weight_w8a16": _allocation(f"{shared}.gate_up_weight_w8a16", 0xBD00, (1536, 4096), "int8"),
+            f"{shared}.gate_up_weight_w8a16_scale": _allocation(
+                f"{shared}.gate_up_weight_w8a16_scale", 0xBD10, (1536,), "fp32"
+            ),
+            f"{shared}.down_weight_w8a16": _allocation(f"{shared}.down_weight_w8a16", 0xBE00, (4096, 768), "int8"),
+            f"{shared}.down_weight_w8a16_scale": _allocation(
+                f"{shared}.down_weight_w8a16_scale", 0xBE10, (4096,), "fp32"
+            ),
+        }
+    )
+    return DeviceWeightMap(tensors)
+
+
 def test_qwen35_decode_state_reserves_full_attention_split_k_scratch() -> None:
     runtime = FakeRuntime()
     state = _state(runtime)
@@ -1439,6 +1462,31 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_prefill_uses_fused_
     )
 
 
+def test_qwen35_decode_state_dispatches_legacy_shared_expert_w8a16_bf16(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _legacy_prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=1)
+    hidden = _tensor(0xCA00, (1, 4096), "bf16")
+    calls = []
+
+    def record(label):
+        def inner(*args, **kwargs):
+            calls.append((label, args, kwargs))
+        return inner
+
+    monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", record("w8a16_linear"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", record("silu"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("unexpected_w4"))
+
+    out = state.shared_expert_bf16(hidden, scratch)
+
+    assert out is scratch.shared_out
+    assert [kind for kind, _args, _kwargs in calls] == ["w8a16_linear", "silu", "w8a16_linear"]
+    assert calls[0][1][0] == hidden.ptr
+    assert calls[0][1][1] == state.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16").ptr
+    assert calls[2][1][1] == state.tensor("layers.0.mlp.shared_expert.down_weight_w8a16").ptr
+
+
 def test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
@@ -1494,6 +1542,57 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine(m
         2,
         4096,
         129,
+    )
+
+
+def test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_combine(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _legacy_prepared_moe_weights())
+    scratch = state.reserve_moe_grouped_prefill_scratch(tokens=2, activation_dtype="fp16")
+    hidden = _tensor(0xD000, (2, 4096), "fp16")
+    residual = _tensor(0xD100, (2, 4096), "fp16")
+    calls = []
+
+    monkeypatch.setattr(state, "_prepare_grouped_moe_prefill_metadata", lambda *args, **kwargs: 16)
+    for name, label in [
+        ("qwen35_router_topk_shared_out_fp16", "router"),
+        ("paro_rotate1_fp16", "rotate1"),
+        ("gemm_awq_selected_dual_pack8_wmma_compact_fp16", "gate_up_wmma"),
+        ("silu_mul_dual_rotate_out_fp16", "silu_rotate"),
+        ("gemm_awq_selected_pack8_wmma_compact_fp16", "down_wmma"),
+        ("weighted_lanes_sum_out_fp16_f32w", "weighted_lanes"),
+        ("w8a16_shared_gate_up_silu_fp16", "legacy_gate_up_silu"),
+        ("w8a16_shared_gate_sigmoid_fp32", "legacy_shared_gate_sigmoid"),
+        ("w8a16_shared_down_combine_residual_fp16", "legacy_down_combine"),
+        ("shared_gate_combine_residual_batch_out_fp16", "unexpected_split_combine"),
+        ("awq_fusedw4_prefill_dual_fp16", "unexpected_w4"),
+    ]:
+        monkeypatch.setattr(qwen_runtime, name, lambda *args, label=label, **kwargs: calls.append((label, args, kwargs)))
+
+    out = state.run_moe_grouped_compact_fp16(hidden, residual, scratch=scratch, tokens=2)
+
+    assert out is scratch.moe_out
+    assert [kind for kind, _args, _kwargs in calls] == [
+        "router",
+        "rotate1",
+        "gate_up_wmma",
+        "silu_rotate",
+        "down_wmma",
+        "weighted_lanes",
+        "legacy_gate_up_silu",
+        "legacy_shared_gate_sigmoid",
+        "legacy_down_combine",
+    ]
+    final_combine = calls[-1][1]
+    shared_gate_logits_ptr = scratch.router_logits.ptr + 128 * 4
+    assert final_combine[:7] == (
+        scratch.shared_intermediate.ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_weight_w8a16").ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_weight_w8a16_scale").ptr,
+        scratch.selected_out.ptr,
+        shared_gate_logits_ptr,
+        residual.ptr,
+        scratch.moe_out.ptr,
     )
 
 
@@ -1603,6 +1702,35 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
         "rotate1", "rotate1", "shared_dual_pack8", "shared_silu", "rotate1", "shared_single_pack8",
         "combine_batch",
     ]
+
+
+def test_qwen35_decode_state_runs_moe_c1_bf16_legacy_w8a16_chain(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _legacy_prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=1)
+    hidden = _tensor(0xCA00, (1, 4096), "bf16")
+    residual = _tensor(0xCC00, (1, 4096), "bf16")
+    order = []
+
+    monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_bf16", lambda *a, **k: order.append("router"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", lambda *a, **k: order.append("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", lambda *a, **k: order.append("gate_up"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", lambda *a, **k: order.append("silu_rotate"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", lambda *a, **k: order.append("down"))
+    monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", lambda *a, **k: order.append("shared_w8a16"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", lambda *a, **k: order.append("shared_silu"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", lambda *a, **k: order.append("unexpected_w4_dual"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_bf16", lambda *a, **k: order.append("unexpected_w4_single"))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "weighted_sum_shared_gate_combine_residual_out_bf16_f32w",
+        lambda *a, **k: order.append("combine"),
+    )
+
+    out = state.run_moe_c1_bf16(hidden, residual, scratch=scratch)
+
+    assert out is scratch.moe_out
+    assert order == ["router", "rotate1", "gate_up", "silu_rotate", "down", "shared_w8a16", "shared_silu", "shared_w8a16", "combine"]
 
 
 def test_qwen35_decode_state_validates_scratch_requests() -> None:

@@ -22,6 +22,7 @@ from hipengine.loading import (
     prepared_moe_c1_tensor_names,
     runtime_full_attention_moe_c1_tensor_names,
     runtime_linear_attention_moe_c1_tensor_names,
+    runtime_prepared_moe_c1_tensor_names,
     qwen35_paro_config_from_hf,
     required_full_attention_c1_tensor_names,
     required_full_attention_moe_c1_tensor_names,
@@ -165,6 +166,18 @@ def _valid_tensors() -> dict[str, np.ndarray]:
     return tensors
 
 
+def _legacy_shared_expert_tensors() -> dict[str, np.ndarray]:
+    tensors = _valid_tensors()
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        base = f"model.layers.0.mlp.shared_expert.{proj}"
+        for suffix in ("qweight", "qzeros", "scales", "theta", "pairs", "channel_scales"):
+            tensors.pop(f"{base}.{suffix}")
+    tensors["model.layers.0.mlp.shared_expert.gate_proj.weight"] = np.arange(12, dtype=np.float16).reshape(3, 4)
+    tensors["model.layers.0.mlp.shared_expert.up_proj.weight"] = (np.arange(12, dtype=np.float16).reshape(3, 4) + 20)
+    tensors["model.layers.0.mlp.shared_expert.down_proj.weight"] = (np.arange(12, dtype=np.float16).reshape(4, 3) + 40)
+    return tensors
+
+
 def test_qwen35_paro_config_and_weight_name_normalization() -> None:
     config = qwen35_paro_config_from_hf(
         {
@@ -201,15 +214,19 @@ def test_required_moe_c1_names_include_all_expert_triples_and_packed_shared_expe
     assert "layers.3.mlp.gate.weight" in names
     assert "layers.3.mlp.experts.gate_up_weight_theta" in names
     assert "layers.3.mlp.experts.1.down_proj.scales" in names
-    # Packed shared-expert PARO tensors for each of gate/up/down projections.
+    # Packed shared-expert PARO tensors are the default required-family because
+    # that is the new compact format.
     for proj in ("gate_proj", "up_proj", "down_proj"):
         for suffix in ("qweight", "qzeros", "scales", "theta", "pairs", "channel_scales"):
             assert f"layers.3.mlp.shared_expert.{proj}.{suffix}" in names
-    # Legacy fp16 shared-expert .weight tensors are no longer required.
-    for proj in ("gate_proj", "up_proj", "down_proj"):
         assert f"layers.3.mlp.shared_expert.{proj}.weight" not in names
     # 6 routed-expert qweight (2 experts × 3 projs) + 3 packed shared-expert qweight.
     assert sum(name.endswith(".qweight") for name in names) == 9
+
+    legacy = required_moe_c1_tensor_names(layer_id=3, num_experts=2, shared_expert_format="legacy_fp16")
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        assert f"layers.3.mlp.shared_expert.{proj}.weight" in legacy
+        assert f"layers.3.mlp.shared_expert.{proj}.qweight" not in legacy
 
 
 def test_required_full_attention_names_include_rotated_qkv_and_o_proj() -> None:
@@ -247,6 +264,20 @@ def test_validate_qwen35_paro_moe_c1_layout_passes(tmp_path) -> None:
 
     assert result.passed
     assert result.config.num_experts == 2
+    assert result.shared_expert_format == "packed_paro_w4"
+    assert not result.missing
+    assert not result.shape_errors
+
+
+def test_validate_qwen35_paro_moe_c1_layout_passes_for_legacy_shared_expert(tmp_path) -> None:
+    _write_config(tmp_path)
+    save_file(_legacy_shared_expert_tensors(), tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+
+    result = validate_qwen35_paro_moe_c1_layout(index)
+
+    assert result.passed
+    assert result.shared_expert_format == "legacy_fp16"
     assert not result.missing
     assert not result.shape_errors
 
@@ -344,6 +375,30 @@ def test_prepare_qwen35_paro_moe_c1_host_tensors_matches_parent_stacking(tmp_pat
         assert legacy not in prepared
 
 
+def test_prepare_qwen35_paro_moe_c1_host_tensors_supports_legacy_shared_expert_w8a16(tmp_path) -> None:
+    _write_config(tmp_path)
+    tensors = {**_valid_attention_tensors(), **_legacy_shared_expert_tensors()}
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+
+    prepared = prepare_qwen35_paro_moe_c1_host_tensors(index)
+
+    assert set(prepared_moe_c1_tensor_names(layer_id=0, shared_expert_format="legacy_fp16")) == set(prepared)
+    gate_up = prepared["layers.0.mlp.shared_expert.gate_up_weight_w8a16"]
+    gate_up_scale = prepared["layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale"]
+    down = prepared["layers.0.mlp.shared_expert.down_weight_w8a16"]
+    down_scale = prepared["layers.0.mlp.shared_expert.down_weight_w8a16_scale"]
+    assert gate_up.dtype == np.int8
+    assert gate_up.shape == (6, 4)
+    assert gate_up_scale.dtype == np.float32
+    assert gate_up_scale.shape == (6,)
+    assert down.dtype == np.int8
+    assert down.shape == (4, 3)
+    assert down_scale.dtype == np.float32
+    assert down_scale.shape == (4,)
+    assert "layers.0.mlp.shared_expert.gate_proj.qweight_pack8_decode" not in prepared
+
+
 def test_materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(tmp_path) -> None:
     _write_config(tmp_path)
     tensors = {**_valid_attention_tensors(), **_valid_tensors()}
@@ -397,6 +452,22 @@ def test_prepare_qwen35_paro_moe_c1_runtime_host_tensors_uses_parent_mixed_dtype
     for proj in ("gate_proj", "up_proj", "down_proj"):
         assert prepared[f"layers.0.mlp.shared_expert.{proj}.qweight_pack8_decode"].dtype == np.int32
     assert "layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale" not in prepared
+
+
+def test_prepare_qwen35_paro_moe_c1_runtime_host_tensors_supports_legacy_shared_expert(tmp_path) -> None:
+    _write_config(tmp_path)
+    tensors = {**_valid_attention_tensors(), **_legacy_shared_expert_tensors()}
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+
+    prepared = prepare_qwen35_paro_moe_c1_runtime_host_tensors(index)
+
+    assert set(runtime_prepared_moe_c1_tensor_names(layer_id=0, shared_expert_format="legacy_fp16")) == set(prepared)
+    assert prepared["layers.0.mlp.shared_expert.gate_up_weight_w8a16"].dtype == np.int8
+    assert prepared["layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale"].dtype == np.float32
+    assert prepared["layers.0.mlp.shared_expert.down_weight_w8a16"].dtype == np.int8
+    assert prepared["layers.0.mlp.shared_expert.down_weight_w8a16_scale"].dtype == np.float32
+    assert "layers.0.mlp.shared_expert.gate_proj.qweight_pack8_decode" not in prepared
 
 
 def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_parent_mixed_dtypes(tmp_path) -> None:
@@ -483,6 +554,35 @@ def test_materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer_uses_stat
     assert layer.tensor("layers.0.mlp.router_shared_gate.weight").dtype is DType.BF16
     conv = layer.allocation("layers.0.linear_attn.conv1d.weight")
     assert bytes(runtime.buffers[conv.buffer.ptr]) == tensors["model.layers.0.linear_attn.conv1d.weight"].astype(np.float32).tobytes()
+    layer.free(runtime=runtime)
+    assert len(runtime.freed) == len(expected_names)
+
+
+def test_materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer_supports_legacy_shared_expert(tmp_path) -> None:
+    _write_config(tmp_path, layer_types=["linear_attention"])
+    tensors = {**_valid_linear_attention_tensors(), **_legacy_shared_expert_tensors()}
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+    runtime = FakeRuntime()
+
+    validation = validate_qwen35_paro_linear_attention_moe_c1_layout(index)
+    layer = materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(index, runtime=runtime)
+
+    assert validation.passed
+    assert validation.shared_expert_format == "legacy_fp16"
+    expected_names = set(runtime_linear_attention_moe_c1_tensor_names(layer_id=0, shared_expert_format="legacy_fp16"))
+    expected_names.update(
+        {
+            "layers.0.linear_attn.in_proj_qkv.qweight_pack8_decode",
+            "layers.0.linear_attn.in_proj_z.qweight_pack8_decode",
+        }
+    )
+    assert set(layer.weights.tensors) == expected_names
+    assert layer.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16").dtype is DType.INT8
+    assert layer.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale").dtype is DType.FP32
+    assert layer.tensor("layers.0.mlp.shared_expert.down_weight_w8a16").dtype is DType.INT8
+    assert layer.tensor("layers.0.mlp.shared_expert.down_weight_w8a16_scale").dtype is DType.FP32
+    assert "layers.0.mlp.shared_expert.gate_proj.qweight_pack8_decode" not in layer.weights.tensors
     layer.free(runtime=runtime)
     assert len(runtime.freed) == len(expected_names)
 
