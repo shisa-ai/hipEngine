@@ -10608,3 +10608,31 @@ ran 40 times (`18.913 ms` total, avg `472.832 us`) and
 replacing the previous W8A16 down plus separate shared-combine path. Decision:
 keep. Remaining high buckets are now full-attention prefill GQA, GDN recurrent
 prefill, selected MoE WMMA, and W4 prompt projections.
+
+## 2026-05-16 — Prefill multiloop iter 32: rejected 128-thread W8A16 shared reducers
+
+Tried a narrow W8A16 thread-count retune: grouped multi-token FP16 MoE prefill
+called `w8a16_shared_gate_up_silu_fp16` and
+`w8a16_shared_down_combine_residual_fp16` with `threads=128` instead of the
+retained 64-thread default. The idea was to speed the 4096/768 reduction-heavy
+shared expert helpers while leaving c=1/decode and non-grouped fallbacks
+unchanged.
+
+Validation commands:
+
+```bash
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_w8a16_linear_plan.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+```
+
+Results: targeted tests passed (`37 passed`) and fixture gate passed
+(`max_kl=0.03121`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.3036s`). However the
+primary 512/128 prefill sample regressed to `1699.782 tok/s` versus retained
+median `1796.282`. The 4K/128 guard remained runnable but lower than retained at
+`567.685 tok/s` (`prefill_seconds=7.2153`, decode `102.910 tok/s`). Decision:
+reject/revert. The 64-thread retained setting is better for the composed prefill
+path despite the larger reduction size; avoid retuning these W8A16 shared helpers
+without direct kernel-trace evidence of a positive end-to-end signal.
