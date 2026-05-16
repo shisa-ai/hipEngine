@@ -10,34 +10,32 @@
   "path": "native_prefill_c1_multiloop",
   "max_layers": 40,
   "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
-  "change": "Split Qwen3.5 single-request prefill attention into a short block_size=256 template that preloads the first two KV page-table entries for <=512-token rows, while routing longer rows to a separate generic template to avoid 4K codegen regression.",
-  "source_lineage": "hipENGINE local optimization of the ported nano-vllm-amd@59195ed paged full-attention prefill kernel; preserves KVLiveSpans ABI and exact BF16 KV math.",
+  "change": "Tile Qwen3.5 router/shared-gate logits across four adjacent prefill tokens per expert block, reusing BF16 router weight loads for tokens>=4 while leaving decode tokens=1 on the original one-token kernel.",
+  "source_lineage": "hipENGINE local optimization of the ported nano-vllm-amd@59195ed router/shared-gate kernel; preserves logits/selected/routing ABI and the existing block-parallel router_select path.",
   "workloads": {
     "512_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json",
       "prefill_tok_s_samples": [
-        1979.9855485021315,
-        1970.6320550436608,
-        1978.6739602127013,
-        1959.8511471024703
+        2037.1190132834188,
+        2036.5642202735198,
+        2027.0024600166219,
+        2019.8560919209795
       ],
-      "prefill_tok_s_median": 1974.653007628181,
-      "previous_retained_prefill_tok_s": 1923.273767828474,
-      "delta_percent": 2.6714470222155784,
-      "representative_prefill_seconds": 0.25858774594962597,
-      "representative_decode_tok_s": 101.59513053684813
+      "prefill_tok_s_median": 2031.7833401450707,
+      "previous_retained_prefill_tok_s": 1974.653007628181,
+      "delta_percent": 2.893183374303865,
+      "representative_prefill_seconds": 0.2513353400863707,
+      "representative_decode_tok_s": 101.55420982859128
     },
     "4096_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json",
-      "prefill_tok_s": 649.9967210600794,
-      "previous_retained_prefill_tok_s": 672.650185664201,
-      "delta_percent": -3.3677928122108125,
-      "prefill_seconds": 6.3015702499542385,
-      "decode_tok_s": 102.50275802414936,
+      "prefill_tok_s": 656.9500176103202,
+      "previous_retained_prefill_tok_s": 649.9967210600794,
+      "delta_percent": 1.0697433190197745,
+      "prefill_seconds": 6.234873110894114,
+      "decode_tok_s": 102.40365548785024,
       "guard_floor_prefill_tok_s": 639.0176763809909,
-      "guard_passed": true,
-      "prefill_tok_s_rerun": 650.0057169440007,
-      "prefill_seconds_rerun": 6.301483038114384
+      "guard_passed": true
     }
   },
   "correctness_gate": {
@@ -50,7 +48,7 @@
     "max_kl": 0.034058458922996276,
     "top1_agreement": 1.0,
     "native_owned_device_bytes": 1625645909,
-    "native_prefill_seconds": 0.26073740306310356
+    "native_prefill_seconds": 0.25187351694330573
   },
   "additional_gates": [
     {
@@ -58,20 +56,25 @@
       "passed": true
     },
     {
-      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY' ... build_qwen35_paged_attn_decode(load=True, require_cached=False) ... PY",
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY' ... build_qwen35_router(load=True, require_cached=False) ... PY",
       "passed": true,
-      "evidence": "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans symbol loaded"
+      "evidence": "hipengine_qwen35_router_logits_fp16 and hipengine_qwen35_router_topk_shared_out_fp16 symbols loaded"
     },
     {
-      "command": "python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py -q",
+      "command": "python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py -q",
       "passed": true,
       "evidence": "37 passed"
     },
     {
-      "command": "rocprofv3 --kernel-trace -d /tmp/iter41-attn-short-split-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter41-attn-short-split-trace.json",
+      "command": "python3 scripts/smoke.py --mode qwen35-router-hip --rows 8 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
       "passed": true,
-      "evidence": "qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true> ran 10 times, total 26.362 ms, avg 2636.2 us; previous retained generic trace was 36.361 ms total"
+      "evidence": "selected_match=True, fp16_selected_match=True, BF16 logits max_abs=0.0, FP16 logits max_abs=2.38e-07"
+    },
+    {
+      "command": "rocprofv3 --kernel-trace -d /tmp/iter43-router-tile4-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter43-router-tile4-trace.json",
+      "passed": true,
+      "evidence": "qwen35_router_logits_token_tile_kernel<_Float16,4> ran 40 times, total 8.683 ms / avg 217.1 us; prior retained one-token router logits was 15.429 ms total / avg 385.7 us"
     }
   ],
-  "worklog": "2026-05-16 \u2014 Prefill multiloop iter 41: split short prefill-attention block-table preload"
+  "worklog": "2026-05-16 \u2014 Prefill multiloop iter 43: token-tiled router logits"
 }
