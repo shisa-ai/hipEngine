@@ -43,6 +43,12 @@ def main() -> int:
     parser.add_argument("--decode-tokens", type=int, default=8)
     parser.add_argument("--warmup-decode-tokens", type=int, default=1)
     parser.add_argument("--max-layers", type=int, default=0, help="Debug limit; 0 means all layers")
+    parser.add_argument(
+        "--shared-expert-format",
+        choices=("auto", "legacy_fp16", "packed_paro_w4"),
+        default="auto",
+        help="Diagnostic override for checkpoints that contain both legacy fp16 and packed shared-expert tensors.",
+    )
     parser.add_argument("--progress", action="store_true")
     parser.add_argument("--roctx", action="store_true", help="Emit ROCTX ranges for profiler correlation")
     parser.add_argument(
@@ -130,7 +136,8 @@ def main() -> int:
 
     progress = _emit_progress if args.progress else None
     roctx = _Roctx(enabled=args.roctx or args.rocprof_selected_region != "none")
-    runner = Qwen35ParoNextTokenRunner(model)
+    shared_expert_format = None if args.shared_expert_format == "auto" else args.shared_expert_format
+    runner = Qwen35ParoNextTokenRunner(model, shared_expert_format=shared_expert_format)
     reset_memory_stats()
     memory_snapshots: dict[str, Any] = {
         "before_load": _memory_snapshot("before_load", runner.runtime),
@@ -249,6 +256,7 @@ def main() -> int:
         "decode_tokens": args.decode_tokens,
         "warmup_decode_tokens": args.warmup_decode_tokens,
         "max_layers": args.max_layers or runner.config.num_hidden_layers,
+        "shared_expert_format": args.shared_expert_format,
         "tokens_per_step": 1,
         "native_batched_prefill": not bool(args.serial_prefill_diagnostic),
         "native_prefill_execution": native_prefill_execution,

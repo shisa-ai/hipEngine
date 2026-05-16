@@ -561,8 +561,12 @@ def _required_moe_c1_tensor_names_for_layout(
     config: Qwen35ParoConfig,
     *,
     layer_id: int,
+    shared_expert_format: str | None = None,
 ) -> tuple[tuple[str, ...], str]:
-    shared_expert_format, _missing_shared = _shared_expert_validation_choice(tensors, layer_id=layer_id)
+    if shared_expert_format is None:
+        shared_expert_format, _missing_shared = _shared_expert_validation_choice(tensors, layer_id=layer_id)
+    else:
+        shared_expert_format = _normalize_shared_expert_format(shared_expert_format)
     return (
         required_moe_c1_tensor_names(
             layer_id=layer_id,
@@ -578,6 +582,7 @@ def validate_qwen35_paro_moe_c1_layout(
     *,
     layer_id: int = 0,
     raise_on_error: bool = False,
+    shared_expert_format: str | None = None,
 ) -> Qwen35ParoLayoutValidation:
     config = qwen35_paro_config_from_hf(index.config)
     if layer_id < 0 or layer_id >= config.num_hidden_layers:
@@ -588,7 +593,12 @@ def validate_qwen35_paro_moe_c1_layout(
         raise ValueError("Qwen3.5 PARO MoE layout requires num_experts > 0")
 
     normalized = _normalized_tensor_map(index)
-    required, shared_expert_format = _required_moe_c1_tensor_names_for_layout(normalized, config, layer_id=layer_id)
+    required, shared_expert_format = _required_moe_c1_tensor_names_for_layout(
+        normalized,
+        config,
+        layer_id=layer_id,
+        shared_expert_format=shared_expert_format,
+    )
     present = tuple(name for name in required if name in normalized)
     missing = tuple(name for name in required if name not in normalized)
     shape_errors = _validate_moe_c1_shapes(
@@ -616,6 +626,7 @@ def materialize_qwen35_paro_moe_c1_layer(
     device: Device | None = None,
     runtime: HipRuntime | None = None,
     validate: bool = True,
+    shared_expert_format: str | None = None,
 ) -> Qwen35ParoLayerDeviceWeights:
     """Materialize the validated MoE c=1 layer slice using normalized names.
 
@@ -625,7 +636,12 @@ def materialize_qwen35_paro_moe_c1_layer(
     the original ``TensorInfo`` source on each allocation for diagnostics.
     """
 
-    validation = validate_qwen35_paro_moe_c1_layout(index, layer_id=layer_id, raise_on_error=validate)
+    validation = validate_qwen35_paro_moe_c1_layout(
+        index,
+        layer_id=layer_id,
+        raise_on_error=validate,
+        shared_expert_format=shared_expert_format,
+    )
     if not validation.passed:
         validation.raise_for_errors()
     required = required_moe_c1_tensor_names(
@@ -641,6 +657,7 @@ def validate_qwen35_paro_full_attention_moe_c1_layout(
     *,
     layer_id: int = 0,
     raise_on_error: bool = False,
+    shared_expert_format: str | None = None,
 ) -> Qwen35ParoLayoutValidation:
     config = qwen35_paro_config_from_hf(index.config)
     if layer_id < 0 or layer_id >= config.num_hidden_layers:
@@ -653,7 +670,12 @@ def validate_qwen35_paro_full_attention_moe_c1_layout(
         raise ValueError(f"expected quant_method='paroquant', got {config.quant_method!r}")
 
     normalized = _normalized_tensor_map(index)
-    _moe_required, shared_expert_format = _required_moe_c1_tensor_names_for_layout(normalized, config, layer_id=layer_id)
+    _moe_required, shared_expert_format = _required_moe_c1_tensor_names_for_layout(
+        normalized,
+        config,
+        layer_id=layer_id,
+        shared_expert_format=shared_expert_format,
+    )
     required = required_full_attention_moe_c1_tensor_names(
         layer_id=layer_id,
         num_experts=config.num_experts,
@@ -686,11 +708,13 @@ def materialize_qwen35_paro_full_attention_moe_c1_layer(
     device: Device | None = None,
     runtime: HipRuntime | None = None,
     validate: bool = True,
+    shared_expert_format: str | None = None,
 ) -> Qwen35ParoLayerDeviceWeights:
     validation = validate_qwen35_paro_full_attention_moe_c1_layout(
         index,
         layer_id=layer_id,
         raise_on_error=validate,
+        shared_expert_format=shared_expert_format,
     )
     if not validation.passed:
         validation.raise_for_errors()
@@ -707,6 +731,7 @@ def validate_qwen35_paro_linear_attention_moe_c1_layout(
     *,
     layer_id: int = 0,
     raise_on_error: bool = False,
+    shared_expert_format: str | None = None,
 ) -> Qwen35ParoLayoutValidation:
     config = qwen35_paro_config_from_hf(index.config)
     if layer_id < 0 or layer_id >= config.num_hidden_layers:
@@ -721,7 +746,12 @@ def validate_qwen35_paro_linear_attention_moe_c1_layout(
         raise ValueError(f"expected quant_method='paroquant', got {config.quant_method!r}")
 
     normalized = _normalized_tensor_map(index)
-    _moe_required, shared_expert_format = _required_moe_c1_tensor_names_for_layout(normalized, config, layer_id=layer_id)
+    _moe_required, shared_expert_format = _required_moe_c1_tensor_names_for_layout(
+        normalized,
+        config,
+        layer_id=layer_id,
+        shared_expert_format=shared_expert_format,
+    )
     required = required_linear_attention_moe_c1_tensor_names(
         layer_id=layer_id,
         num_experts=config.num_experts,
@@ -924,6 +954,7 @@ def materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(
     runtime: HipRuntime | None = None,
     validate: bool = True,
     progress: Callable[[dict[str, Any]], None] | None = None,
+    shared_expert_format: str | None = None,
 ) -> Qwen35ParoLayerDeviceWeights:
     """Materialize the current real full-attention decode-state layer path."""
 
@@ -931,6 +962,7 @@ def materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(
         index,
         layer_id=layer_id,
         raise_on_error=validate,
+        shared_expert_format=shared_expert_format,
     )
     if not validation.passed:
         validation.raise_for_errors()
@@ -957,6 +989,7 @@ def materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(
     runtime: HipRuntime | None = None,
     validate: bool = True,
     progress: Callable[[dict[str, Any]], None] | None = None,
+    shared_expert_format: str | None = None,
 ) -> Qwen35ParoLayerDeviceWeights:
     """Materialize the current real linear-attention decode-state layer path."""
 
@@ -964,6 +997,7 @@ def materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(
         index,
         layer_id=layer_id,
         raise_on_error=validate,
+        shared_expert_format=shared_expert_format,
     )
     if not validation.passed:
         validation.raise_for_errors()

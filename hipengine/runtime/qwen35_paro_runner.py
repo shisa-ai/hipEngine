@@ -126,12 +126,14 @@ class Qwen35ParoNextTokenRunner:
         *,
         index: WeightIndex | None = None,
         runtime: HipRuntime | None = None,
+        shared_expert_format: str | None = None,
     ) -> None:
         self.model = Path(model)
         self.index = index or load_weight_index(self.model)
         self.config = qwen35_paro_config_from_hf(self.index.config)
         self.normalized_infos = _normalized_infos(self.index)
         self.runtime = runtime or get_hip_runtime()
+        self.shared_expert_format = shared_expert_format
 
     def run_next_token(
         self,
@@ -490,6 +492,7 @@ class Qwen35ParoNextTokenRunner:
             layer_id=layer_id,
             runtime=self.runtime,
             progress=progress,
+            shared_expert_format=self.shared_expert_format,
         )
         return Qwen35ParoDecodeState(
             layer_weights=weights,
@@ -508,6 +511,7 @@ class Qwen35ParoNextTokenRunner:
             layer_id=layer_id,
             runtime=self.runtime,
             progress=progress,
+            shared_expert_format=self.shared_expert_format,
         )
         return Qwen35ParoDecodeState(
             layer_weights=weights,

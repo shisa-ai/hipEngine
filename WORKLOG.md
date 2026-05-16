@@ -13926,3 +13926,46 @@ Takeaways:
 Committed compact artifact:
 `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-paro-dual-format-diagnostic.json`.
 Rollup/changelog updated as diagnostic retained, `performance_claim=false`.
+
+## 2026-05-17 — shisa unstripped forced legacy shared-expert diagnostic
+
+Added a diagnostic-only `--shared-expert-format {auto,legacy_fp16,packed_paro_w4}`
+override to `scripts/qwen35_paro_bench.py` and threaded it through validation and
+runtime materialization. Default remains `auto`; checkpoints with both formats
+still prefer `packed_paro_w4`. CPU-only validation before/after the GPU run:
+
+```bash
+python3 -m py_compile hipengine/loading/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py
+python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short
+# 57 passed
+```
+
+Benchmark protocol on W7900/gfx1100, same checkpoint for every row:
+`/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4`.
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <shisa-unstripped> \
+  --shared-expert-format {packed_paro_w4,legacy_fp16} \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-shisa-force-legacy-20260517/<label>.json
+```
+
+Results (single run per workload/format, no shisa KL/top-1 gate, diagnostic only):
+
+| workload | packed prefill | forced legacy prefill | delta | packed decode | forced legacy decode | delta | tracked peak packed -> legacy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 2425.637 | 2196.276 | -9.46% | 101.717 | 109.230 | +7.39% | 18.535 -> 18.587 GiB |
+| 4096/128 | 2653.477 | 2359.452 | -11.08% | 103.041 | 110.412 | +7.15% | 20.406 -> 20.458 GiB |
+
+Conclusion: yes, on the shisa unstripped checkpoint the forced legacy shared
+expert path has lower prefill but higher decode than the packed shared-expert
+sidecar path. Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen36-shisa-force-legacy-diagnostic.json`.

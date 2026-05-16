@@ -282,6 +282,28 @@ def test_validate_qwen35_paro_moe_c1_layout_passes_for_legacy_shared_expert(tmp_
     assert not result.shape_errors
 
 
+def test_validate_qwen35_paro_moe_c1_layout_can_force_legacy_when_both_formats_exist(tmp_path) -> None:
+    _write_config(tmp_path)
+    tensors = _valid_tensors()
+    legacy = _legacy_shared_expert_tensors()
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        key = f"model.layers.0.mlp.shared_expert.{proj}.weight"
+        tensors[key] = legacy[key]
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+
+    auto = validate_qwen35_paro_moe_c1_layout(index)
+    forced_legacy = validate_qwen35_paro_moe_c1_layout(index, shared_expert_format="legacy_fp16")
+    forced_packed = validate_qwen35_paro_moe_c1_layout(index, shared_expert_format="packed_paro_w4")
+
+    assert auto.passed
+    assert auto.shared_expert_format == "packed_paro_w4"
+    assert forced_legacy.passed
+    assert forced_legacy.shared_expert_format == "legacy_fp16"
+    assert forced_packed.passed
+    assert forced_packed.shared_expert_format == "packed_paro_w4"
+
+
 def test_materialize_qwen35_paro_moe_c1_layer_uses_normalized_device_names(tmp_path) -> None:
     _write_config(tmp_path)
     tensors = _valid_tensors()
@@ -591,6 +613,43 @@ def test_materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer_supports_
     assert layer.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale").dtype is DType.FP32
     assert layer.tensor("layers.0.mlp.shared_expert.down_weight_w8a16").dtype is DType.INT8
     assert layer.tensor("layers.0.mlp.shared_expert.down_weight_w8a16_scale").dtype is DType.FP32
+    assert "layers.0.mlp.shared_expert.gate_proj.qweight_pack8_decode" not in layer.weights.tensors
+    layer.free(runtime=runtime)
+    assert len(runtime.freed) == len(expected_names)
+
+
+def test_materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer_can_force_legacy_shared_expert(tmp_path) -> None:
+    _write_config(tmp_path, layer_types=["linear_attention"])
+    tensors = {**_valid_linear_attention_tensors(), **_valid_tensors()}
+    legacy = _legacy_shared_expert_tensors()
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        key = f"model.layers.0.mlp.shared_expert.{proj}.weight"
+        tensors[key] = legacy[key]
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+    runtime = FakeRuntime()
+
+    auto = validate_qwen35_paro_linear_attention_moe_c1_layout(index)
+    forced = validate_qwen35_paro_linear_attention_moe_c1_layout(index, shared_expert_format="legacy_fp16")
+    layer = materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(
+        index,
+        runtime=runtime,
+        shared_expert_format="legacy_fp16",
+    )
+
+    assert auto.passed
+    assert auto.shared_expert_format == "packed_paro_w4"
+    assert forced.passed
+    assert forced.shared_expert_format == "legacy_fp16"
+    expected_names = set(runtime_linear_attention_moe_c1_tensor_names(layer_id=0, shared_expert_format="legacy_fp16"))
+    expected_names.update(
+        {
+            "layers.0.linear_attn.in_proj_qkv.qweight_pack8_decode",
+            "layers.0.linear_attn.in_proj_z.qweight_pack8_decode",
+        }
+    )
+    assert set(layer.weights.tensors) == expected_names
+    assert layer.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16").dtype is DType.INT8
     assert "layers.0.mlp.shared_expert.gate_proj.qweight_pack8_decode" not in layer.weights.tensors
     layer.free(runtime=runtime)
     assert len(runtime.freed) == len(expected_names)

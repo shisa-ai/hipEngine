@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "reason_not_promoted": "Forced-format diagnostic only: no shisa KL/top-1 correctness gate and single runs per workload/format. Intended to answer whether unstripped shisa legacy_fp16 shared expert trades prefill for decode versus packed sidecars.",
+  "date": "2026-05-17",
+  "git_head_at_run": "1be1c56b5d296c324b79c835e18e0f7cb6e7a2df",
+  "working_tree_at_run": "uncommitted diagnostic --shared-expert-format override in loading/runtime/bench plus tests",
+  "working_tree_diffstat_at_artifact_write": "hipengine/loading/qwen35_paro.py        | 44 +++++++++++++++++++++---\n hipengine/runtime/qwen35_paro_runner.py |  4 +++\n scripts/qwen35_paro_bench.py            | 10 +++++-\n tests/test_qwen35_paro_layout.py        | 59 +++++++++++++++++++++++++++++++++\n 4 files changed, 111 insertions(+), 6 deletions(-)",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "software": {
+    "python": "3.12.9",
+    "hipcc_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "hipcc_version_text": "HIP version: 7.2.53211-d40244d\nAMD clang version 22.0.0git (/startdir/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n"
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5",
+    "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+    "format_note": "Unstripped checkpoint contains both legacy fp16 shared_expert.*.weight tensors and packed PARO sidecars; auto mode prefers packed, this diagnostic forces each format explicitly."
+  },
+  "common_args": "--token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode(default)",
+  "validation": {
+    "layout_probe": "validate_qwen35_paro_linear_attention_moe_c1_layout(layer_id=0): auto/packed/legacy all pass on the unstripped checkpoint; auto resolves to packed_paro_w4.",
+    "unit_tests": "python3 -m py_compile hipengine/loading/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py && python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short -> 57 passed",
+    "correctness_gate": "not rerun for shisa in this diagnostic pass"
+  },
+  "measurements": [
+    {
+      "label": "packed_512_128",
+      "format": "packed_paro_w4",
+      "workload": "512/128",
+      "source_json_tmp": "/tmp/hipengine-shisa-force-legacy-20260517/shisa-unstripped-packed-512-128.json",
+      "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa-force-legacy-20260517/shisa-unstripped-packed-512-128.json",
+      "prefill_tok_s": 2425.6366842361795,
+      "decode_tok_s": 101.71728530150499,
+      "prefill_seconds": 0.21107860188931227,
+      "decode_seconds": 1.2583898559678346,
+      "load_seconds": 24.04597895499319,
+      "tracked_peak_gib": 18.53460101503879,
+      "hip_used_peak_sampled_gib": 18.55115509033203,
+      "owned_session_peak_gib": 1.5545694949105382,
+      "native_prefill_execution": "single_request_native_full",
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512
+      },
+      "graph_replay": true,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.44217872619629
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.18210792541504
+        }
+      ]
+    },
+    {
+      "label": "legacy_512_128",
+      "format": "legacy_fp16",
+      "workload": "512/128",
+      "source_json_tmp": "/tmp/hipengine-shisa-force-legacy-20260517/shisa-unstripped-legacy-512-128.json",
+      "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format legacy_fp16 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa-force-legacy-20260517/shisa-unstripped-legacy-512-128.json",
+      "prefill_tok_s": 2196.2760436627846,
+      "decode_tok_s": 109.22953377751429,
+      "prefill_seconds": 0.23312187986448407,
+      "decode_seconds": 1.171844240045175,
+      "load_seconds": 24.9264631269034,
+      "tracked_peak_gib": 18.586900514550507,
+      "hip_used_peak_sampled_gib": 18.60388946533203,
+      "owned_session_peak_gib": 1.5545694949105382,
+      "native_prefill_execution": "single_request_native_full",
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512
+      },
+      "graph_replay": true,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.87755012512207
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.62662696838379
+        }
+      ]
+    },
+    {
+      "label": "packed_4096_128",
+      "format": "packed_paro_w4",
+      "workload": "4096/128",
+      "source_json_tmp": "/tmp/hipengine-shisa-force-legacy-20260517/shisa-unstripped-packed-4k-128.json",
+      "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa-force-legacy-20260517/shisa-unstripped-packed-4k-128.json",
+      "prefill_tok_s": 2653.4765610698505,
+      "decode_tok_s": 103.04052555050683,
+      "prefill_seconds": 1.543635267065838,
+      "decode_seconds": 1.24222968891263,
+      "load_seconds": 24.28001359384507,
+      "tracked_peak_gib": 20.40610929299146,
+      "hip_used_peak_sampled_gib": 18.958740234375,
+      "owned_session_peak_gib": 1.9300488727167249,
+      "native_prefill_execution": "single_request_native_full",
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 4096,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512
+      },
+      "graph_replay": true,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.685245513916016
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.736207962036133
+        }
+      ]
+    },
+    {
+      "label": "legacy_4096_128",
+      "format": "legacy_fp16",
+      "workload": "4096/128",
+      "source_json_tmp": "/tmp/hipengine-shisa-force-legacy-20260517/shisa-unstripped-legacy-4k-128.json",
+      "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format legacy_fp16 --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa-force-legacy-20260517/shisa-unstripped-legacy-4k-128.json",
+      "prefill_tok_s": 2359.4518430435155,
+      "decode_tok_s": 110.41171481648838,
+      "prefill_seconds": 1.7359964400529861,
+      "decode_seconds": 1.1592972739599645,
+      "load_seconds": 24.752825513016433,
+      "tracked_peak_gib": 20.458408792503178,
+      "hip_used_peak_sampled_gib": 19.013427734375,
+      "owned_session_peak_gib": 1.9300488727167249,
+      "native_prefill_execution": "single_request_native_full",
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 4096,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512
+      },
+      "graph_replay": true,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.435157775878906
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.51628875732422
+        }
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "workload": "512/128",
+      "packed_format": "packed_paro_w4",
+      "legacy_format": "legacy_fp16",
+      "prefill_tok_s_packed": 2425.6366842361795,
+      "prefill_tok_s_legacy": 2196.2760436627846,
+      "prefill_delta_legacy_vs_packed_pct": -9.455688152474462,
+      "decode_tok_s_packed": 101.71728530150499,
+      "decode_tok_s_legacy": 109.22953377751429,
+      "decode_delta_legacy_vs_packed_pct": 7.385419748218691,
+      "tracked_peak_gib_packed": 18.53460101503879,
+      "tracked_peak_gib_legacy": 18.586900514550507,
+      "tracked_peak_delta_legacy_vs_packed_gib": 0.05229949951171875
+    },
+    {
+      "workload": "4096/128",
+      "packed_format": "packed_paro_w4",
+      "legacy_format": "legacy_fp16",
+      "prefill_tok_s_packed": 2653.4765610698505,
+      "prefill_tok_s_legacy": 2359.4518430435155,
+      "prefill_delta_legacy_vs_packed_pct": -11.080735452503399,
+      "decode_tok_s_packed": 103.04052555050683,
+      "decode_tok_s_legacy": 110.41171481648838,
+      "decode_delta_legacy_vs_packed_pct": 7.1536798037471705,
+      "tracked_peak_gib_packed": 20.40610929299146,
+      "tracked_peak_gib_legacy": 20.458408792503178,
+      "tracked_peak_delta_legacy_vs_packed_gib": 0.05229949951171875
+    }
+  ],
+  "conclusion": "Yes: forcing legacy_fp16 on shisa unstripped lowers prefill by ~9.5% at 512 and ~11.1% at 4K, while decode rises by ~7.4% and ~7.2% versus packed_paro_w4."
+}
