@@ -12762,3 +12762,64 @@ Retained diagnostic artifact/rollup update:
   peak and sampled HIP used memory.
 - Added a `benchmarks/CHANGELOG.md` one-liner.  Still no current-fastest row;
   AOTriton remains opt-in until the threshold sweep/full protocol lands.
+
+## 2026-05-16 — Task #16 parent prefill gap audit
+
+Audited the current `nano-vllm-amd` Qwen3.5/PARO parent prefill source against
+hipENGINE's AOTriton V3 path and documented the prioritized residual-gap table in
+`docs/PREFILL.md`.
+
+Read-only source/evidence commands:
+
+```bash
+git status -sb && git log --oneline -4
+# ## main...origin/main [ahead 1]
+# a00c244 feat: report hipENGINE memory peaks
+# 3252b93 perf: move AOTriton prefill to V3 params
+# 454d684 perf: use direct AOTriton GQA prefill
+# c7e3bc1 docs: add gguf intake plan
+
+python3 - <<'PY'
+from pathlib import Path
+from collections import Counter
+from hipengine.loading.safetensors import load_weight_index
+from hipengine.loading.qwen35_paro import qwen35_paro_config_from_hf
+p = Path('/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd')
+cfg = qwen35_paro_config_from_hf(load_weight_index(p).config)
+print(cfg.num_hidden_layers, Counter(cfg.layer_types))
+print('hidden', cfg.hidden_size, 'heads', cfg.num_attention_heads, cfg.num_key_value_heads, 'head_dim', cfg.head_dim)
+print('linear heads', cfg.linear_num_key_heads, cfg.linear_num_value_heads, cfg.linear_key_head_dim, cfg.linear_value_head_dim, 'conv', cfg.linear_conv_kernel_dim)
+PY
+# 40 Counter({'linear_attention': 30, 'full_attention': 10})
+# hidden 2048 heads 16 2 head_dim 256
+# linear heads 16 32 128 128 conv 4
+```
+
+Parent files audited:
+
+- `/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md`
+- `/home/lhl/amd-gpu-tuning/scripts/bench_paro_native_engine.py`
+- `/home/lhl/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant.py`
+- Parent artifacts: `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json`,
+  `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json`
+- hipENGINE artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-memory-diagnostic.json`
+
+Main finding:
+
+- AOTriton V3 closed the old 4K full-attention cliff; residual prefill gap is now
+  nearly shape-invariant: 512/128 is `2333.4` vs parent `2696.4` tok/s (-13.5%),
+  and 4K/128 is `2379.7` vs parent `2741.5` tok/s (-13.2%).
+- That shape signature points away from the quadratic attention core and toward
+  per-layer bulk projection / shared-expert work plus AOTriton dtype/post-pass
+  glue.
+- Highest-priority gap: parent multi-row prefill uses `F.linear(...)`/rocBLAS-like
+  bulk GEMM for `ParoQuantDenseLinear` and `ParoQuantSharedExpert` (parent ledgers
+  show `native_aux_dense_linear_calls=280`, `native_shared_expert_dense_calls=80`),
+  while hipENGINE uses row-wise `dense_gemv_out_fp16(...)` for linear-attention
+  A/B and custom scalar W8A16 shared-expert kernels for all `tokens > 1`.
+- Next likely prefill lever: avoid/fuse AOTriton-side Q/K/V casts and the BF16
+  attention-output gate post-pass.
+
+No GPU benchmark was run for this audit; it is a source/ledger comparison.  The
+first follow-up before invasive kernel work should be a matched ROCTX +
+`rocprofv3` profile to confirm dense/shared kernels dominate the residual gap.
