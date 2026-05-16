@@ -204,8 +204,23 @@ Parent long-context rows use chunking overrides (`NANOVLLM_PARO_PREFILL_LINEAR_C
 `NANOVLLM_PARO_MOE_CHUNK_SIZE`, and full-attention query/post/RoPE chunks).  hipENGINE's
 `PrefillConfig` now exposes and wires matching knobs in the single-request path:
 linear layers run as contiguous chunks, full-attention chunks append KV then run
-bottom-right-aligned causal AOTriton over the cached prefix, and the next retained
-checkpoint should replace the blocked 128K row with measured chunked tables.
+bottom-right-aligned causal AOTriton over the cached prefix.
+
+Retained chunking checkpoint:
+`benchmarks/results/2026-05-16-hipengine-qwen35-prefill-chunking-diagnostic.json`.
+All rows use `--attn-aotriton-min-tokens 512 --graph-replay-decode`; the chunked
+policy mirrors parent long-context knobs: linear/MoE/post/RoPE chunks `1024`,
+full-attention query chunk `4096`.
+
+| Workload | Unchunked prefill tok/s | Chunked prefill tok/s | Prefill delta | Unchunked decode tok/s | Chunked decode tok/s | Tracked peak GiB | Parent OPTIMAL | Chunked vs parent |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| 4K / 128 | 2370.229 | 2504.959 | +5.7% | 110.168 | 110.117 | 20.415 → 19.875 | 2703.0 prefill / 112.0 decode / 21.64 GiB | prefill -7.3%, decode -1.7%, peak -1.77 GiB |
+| 32K / 128 | 1731.976 | 1886.344 | +8.9% | 93.867 | 93.923 | 35.100 → 20.688 | 1880.0 prefill / 98.8 decode / 21.37 GiB | prefill +0.3%, decode -4.9%, peak -0.68 GiB |
+| 128K / 128 | blocked: OOM | 1002.409 | unblocked | — | 61.051 | OOM → 23.656 | 914.0 prefill / 62.6 decode / 27.42 GiB | prefill +9.7%, decode -2.5%, peak -3.76 GiB |
+
+Takeaway: chunking fixes the 128K scratch OOM and removes the 32K memory cliff.
+Long-context prefill is now at/above the parent long-context rows in this
+resident-runner diagnostic, while decode remains slightly behind parent.
 
 #### Parent vs hipENGINE prefill call structure
 

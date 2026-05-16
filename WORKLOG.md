@@ -13120,3 +13120,42 @@ python3 scripts/qwen35_decode_graph_fixture_gate.py --max-layers 40 --attn-aotri
 ```
 
 Default behavior remains unchanged for short/no-op chunk prompts: all chunk sizes default to 0 in `PrefillConfig`, and the 512-token fixture with parent long-context chunk sizes larger than the prompt produced the same native top-1 sequence and KL gate as the default unchunked/no-AOT run.
+
+## 2026-05-16 — Task 28: retained chunking benchmark artifact
+
+Recorded the task 27 chunked-vs-unchunked long-context benchmark as a retained diagnostic artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-prefill-chunking-diagnostic.json`.  Hardware: W7900/gfx1100.  Model: Qwen3.5-35B-A3B-PARO `w4_paro`.  Common hipENGINE policy: `--attn-aotriton-min-tokens 512 --graph-replay-decode --warmup-decode-tokens 1 --max-layers 40 --require-cached-build`.  Chunked policy mirrors parent long-context knobs: linear/MoE/post/RoPE chunks `1024`, full-attn query chunk `4096`.  Correctness context comes from task 26: default unchunked fixture gate passed (`max_kl=0.04520468681522189`, top-1 `1.0`), chunked 128-row+AOTriton fixture gate passed (`max_kl=0.039568870612619614`, top-1 `1.0`), and chunked prefill + decode graph fixture passed (`final_kl=0.0`, generated IDs match eager/fixture).  `performance_claim=false`: these are single-run resident-session diagnostics, not public `LLM.generate()` accepted rows.
+
+Exact commands:
+
+```bash
+COMMON="--token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode"
+CHUNK="--prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024"
+python3 scripts/qwen35_paro_bench.py $COMMON --prompt-length 4096 --json /tmp/task27-4k128-unchunked.json
+python3 scripts/qwen35_paro_bench.py $COMMON $CHUNK --prompt-length 4096 --json /tmp/task27-4k128-chunked.json
+python3 scripts/qwen35_paro_bench.py $COMMON --prompt-length 32768 --json /tmp/task27-32k128-unchunked.json
+python3 scripts/qwen35_paro_bench.py $COMMON $CHUNK --prompt-length 32768 --json /tmp/task27-32k128-chunked.json
+python3 scripts/qwen35_paro_bench.py $COMMON $CHUNK --prompt-length 131072 --json /tmp/task27-128k128-chunked.json
+python3 scripts/qwen35_paro_bench.py $COMMON --prompt-length 131072 --json /tmp/task27-128k128-unchunked.json
+# unchunked 128K exits 1 with HIP error 2 OOM while reserving linear_attn.out_rot
+```
+
+Measured hipENGINE rows:
+
+| Workload | Unchunk prefill | Chunk prefill | Delta | Unchunk decode | Chunk decode | Tracked peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4K/128 | 2370.229 | 2504.959 | +5.7% | 110.168 | 110.117 | 20.415 → 19.875 |
+| 32K/128 | 1731.976 | 1886.344 | +8.9% | 93.867 | 93.923 | 35.100 → 20.688 |
+| 128K/128 | OOM | 1002.409 | unblocked | — | 61.051 | OOM → 23.656 |
+
+Chunked hipENGINE vs parent `~/amd-gpu-tuning/docs/OPTIMAL.md` rows:
+
+| Workload | hipENGINE chunked | Parent | Delta |
+| --- | ---: | ---: | ---: |
+| 4K/128 prefill | 2504.959 | 2703.0 | -7.3% |
+| 4K/128 decode | 110.117 | 112.0 | -1.7% |
+| 32K/128 prefill | 1886.344 | 1880.0 | +0.3% |
+| 32K/128 decode | 93.923 | 98.8 | -4.9% |
+| 128K/128 prefill | 1002.409 | 914.0 | +9.7% |
+| 128K/128 decode | 61.051 | 62.6 | -2.5% |
+
+Takeaway: chunking fixes the 128K OOM and removes the 32K memory cliff.  Long-context prefill is now at/above parent docs for 32K/128 and 128K/128 in this resident-runner diagnostic; decode remains slightly behind parent.

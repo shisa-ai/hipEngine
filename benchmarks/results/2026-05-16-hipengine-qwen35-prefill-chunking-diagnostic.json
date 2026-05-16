@@ -1,0 +1,239 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-05-16",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "source_commit_before_artifact": "62ae907",
+  "change": "Long-context chunking checkpoint for Qwen3.5/PARO single-request native prefill after wiring PrefillConfig chunk sizes. Compares unchunked vs parent-style chunked rows for 4K/128, 32K/128, and 128K/128.",
+  "chunk_policy": {
+    "linear_chunk_size": 1024,
+    "moe_chunk_size": 1024,
+    "full_attn_query_chunk_size": 4096,
+    "full_attn_post_chunk_size": 1024,
+    "full_attn_rope_chunk_size": 1024,
+    "source": "mirrors parent long-context knobs in ~/amd-gpu-tuning/docs/OPTIMAL.md"
+  },
+  "common_policy": {
+    "attn_aotriton_min_tokens": 512,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "max_layers": 40,
+    "token_id": 9707,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "require_cached_build": true
+  },
+  "validation": {
+    "rocm_smoke": "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\"",
+    "correctness_context": "Task 26 validation: py_compile and tests/test_qwen35_resident_batch_layout.py passed; default unchunked fixture passed max_kl=0.04520468681522189/top1=1.0; chunked 128-row fixture with AOTriton passed max_kl=0.039568870612619614/top1=1.0; chunked prefill + decode graph fixture passed final_kl=0.0 and generated IDs matched eager/fixture.",
+    "json_check": "python3 -m json.tool benchmarks/results/2026-05-16-hipengine-qwen35-prefill-chunking-diagnostic.json"
+  },
+  "measurements": [
+    {
+      "workload": "4K/128",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "parent_docs_optimal": {
+        "prefill_tok_s": 2703.0,
+        "decode_tok_s": 112.0,
+        "peak_allocated_gib": 21.64,
+        "source": "~/amd-gpu-tuning/docs/OPTIMAL.md",
+        "source_commit": "59195ed"
+      },
+      "hipengine_unchunked_aotriton_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prompt-length 4096 --json /tmp/task27-4k128-unchunked.json",
+        "prefill_tok_s": 2370.228967082876,
+        "decode_tok_s": 110.16773456437929,
+        "prefill_seconds": 1.728103089146316,
+        "decode_seconds": 1.1618646830320358,
+        "decode_step_median_s": 0.00907706783618778,
+        "tracked_peak_allocated_gib": 20.41502042580396,
+        "tracked_current_before_close_gib": 18.74820273090154,
+        "hip_used_peak_sampled_gib": 19.011474609375,
+        "owned_session_peak_gib": 1.9296292560175061,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "graph_replay": true,
+        "graph_steps_per_replay": 1,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full"
+      },
+      "hipengine_chunked_aotriton_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --prompt-length 4096 --json /tmp/task27-4k128-chunked.json",
+        "prefill_tok_s": 2504.9588019093976,
+        "decode_tok_s": 110.11704165763152,
+        "prefill_seconds": 1.6351566328667104,
+        "decode_seconds": 1.162399552995339,
+        "decode_step_median_s": 0.009081246507776086,
+        "tracked_peak_allocated_gib": 19.87485929299146,
+        "tracked_current_before_close_gib": 18.74820273090154,
+        "hip_used_peak_sampled_gib": 19.011474609375,
+        "owned_session_peak_gib": 1.9296292560175061,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "graph_replay": true,
+        "graph_steps_per_replay": 1,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "native_prefill_execution": "single_request_native_full"
+      },
+      "chunked_vs_unchunked": {
+        "prefill_pct": 5.6842539981417195,
+        "decode_pct": -0.04601429533630519,
+        "tracked_peak_allocated_gib_delta": -0.5401611328125,
+        "hip_used_peak_sampled_gib_delta": 0.0
+      },
+      "chunked_vs_parent_docs": {
+        "prefill_pct": -7.326718390329356,
+        "decode_pct": -1.6812128056861497,
+        "tracked_peak_allocated_gib_delta": -1.7651407070085412
+      }
+    },
+    {
+      "workload": "32K/128",
+      "prompt_length": 32768,
+      "decode_tokens": 128,
+      "parent_docs_optimal": {
+        "prefill_tok_s": 1880.0,
+        "decode_tok_s": 98.8,
+        "peak_allocated_gib": 21.37,
+        "source": "~/amd-gpu-tuning/docs/OPTIMAL.md",
+        "source_commit": "59195ed"
+      },
+      "hipengine_unchunked_aotriton_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prompt-length 32768 --json /tmp/task27-32k128-unchunked.json",
+        "prefill_tok_s": 1731.9758526401447,
+        "decode_tok_s": 93.86691879578602,
+        "prefill_seconds": 18.91943236393854,
+        "decode_seconds": 1.3636327008716762,
+        "decode_step_median_s": 0.01065338047555997,
+        "tracked_peak_allocated_gib": 35.09976365137845,
+        "tracked_current_before_close_gib": 21.765496005304158,
+        "hip_used_peak_sampled_gib": 22.052490234375,
+        "owned_session_peak_gib": 4.9469225304201245,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "graph_replay": true,
+        "graph_steps_per_replay": 1,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full"
+      },
+      "hipengine_chunked_aotriton_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --prompt-length 32768 --json /tmp/task27-32k128-chunked.json",
+        "prefill_tok_s": 1886.3439462934302,
+        "decode_tok_s": 93.92342247685892,
+        "prefill_seconds": 17.371169273974374,
+        "decode_seconds": 1.3628123488742858,
+        "decode_step_median_s": 0.010646971475580358,
+        "tracked_peak_allocated_gib": 20.687562723644078,
+        "tracked_current_before_close_gib": 19.560906161554158,
+        "hip_used_peak_sampled_gib": 19.851318359375,
+        "owned_session_peak_gib": 2.7423326866701245,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "graph_replay": true,
+        "graph_steps_per_replay": 1,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "native_prefill_execution": "single_request_native_full"
+      },
+      "chunked_vs_unchunked": {
+        "prefill_pct": 8.912831747508143,
+        "decode_pct": 0.06019552127392025,
+        "tracked_peak_allocated_gib_delta": -14.412200927734375,
+        "hip_used_peak_sampled_gib_delta": -2.201171875
+      },
+      "chunked_vs_parent_docs": {
+        "prefill_pct": 0.33744395177819353,
+        "decode_pct": -4.935807209656962,
+        "tracked_peak_allocated_gib_delta": -0.6824372763559232
+      }
+    },
+    {
+      "workload": "128K/128",
+      "prompt_length": 131072,
+      "decode_tokens": 128,
+      "parent_docs_optimal": {
+        "prefill_tok_s": 914.0,
+        "decode_tok_s": 62.6,
+        "peak_allocated_gib": 27.42,
+        "source": "~/amd-gpu-tuning/docs/OPTIMAL.md",
+        "source_commit": "59195ed"
+      },
+      "hipengine_unchunked_aotriton_graph": {
+        "status": "blocked_oom",
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prompt-length 131072 --json /tmp/task27-128k128-unchunked.json",
+        "blocked_at": "reserve_linear_attention_scratch linear_attn.out_rot allocation during prefill",
+        "error_tail": "                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/runtime/qwen35_paro_runner.py\", line 1785, in _ensure_linear_prefill_scratch\n    scratch = self._prefill_scratch_owner().reserve_linear_attention_scratch(\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/runtime/qwen35_paro.py\", line 693, in reserve_linear_attention_scratch\n    out_rot=self.workspace.reserve_tensor(\"linear_attn.out_rot\", (tokens, z_width), lowp),\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/runtime/workspace.py\", line 56, in reserve_tensor\n    buffer = malloc(nbytes, runtime=self.runtime)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/core/memory.py\", line 30, in malloc\n    ptr = runtime.malloc(nbytes)\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/lhl/hipengine/hipengine/core/hip.py\", line 50, in malloc\n    self.check(self.library.hipMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes)))\n  File \"/home/lhl/hipengine/hipengine/core/hip.py\", line 161, in check\n    raise HipError(int(code), self.error_string(int(code)))\nhipengine.core.hip.HipError: HIP error 2: out of memory"
+      },
+      "hipengine_chunked_aotriton_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --prompt-length 131072 --json /tmp/task27-128k128-chunked.json",
+        "prefill_tok_s": 1002.4088240351065,
+        "decode_tok_s": 61.05120512104215,
+        "prefill_seconds": 130.7570293250028,
+        "decode_seconds": 2.0966007099486887,
+        "decode_step_median_s": 0.01637969304647413,
+        "tracked_peak_allocated_gib": 23.655615110881627,
+        "tracked_current_before_close_gib": 22.528958548791707,
+        "hip_used_peak_sampled_gib": 22.818115234375,
+        "owned_session_peak_gib": 5.710385073907673,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512,
+        "graph_replay": true,
+        "graph_steps_per_replay": 1,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "native_prefill_execution": "single_request_native_full"
+      },
+      "chunked_vs_unchunked": {
+        "status": "chunked_unblocks_oom"
+      },
+      "chunked_vs_parent_docs": {
+        "prefill_pct": 9.672737859420844,
+        "decode_pct": -2.474113225172281,
+        "tracked_peak_allocated_gib_delta": -3.764384889118375
+      }
+    }
+  ],
+  "decision": {
+    "summary": "Chunking fixes the 128K/128 OOM and removes most long-context memory overhead. 32K/128 chunked prefill is essentially at parent (+0.3%) while decode remains -4.9%; 128K/128 chunked prefill is +9.7% vs parent docs while decode is -2.5%.",
+    "next_work": "Use these rows as the long-context baseline for the next profiler attribution pass; remaining gap is decode and short/mid prefill residual, not 128K scratch OOM."
+  },
+  "notes": [
+    "All hipENGINE rows are single-run diagnostics through scripts/qwen35_paro_bench.py resident-session path, not accepted public LLM.generate throughput rows.",
+    "tracked_peak_allocated_gib is hipENGINE allocator high-water; hip_used_peak_sampled_gib is sampled at phase boundaries and can under-report transient workspace peaks.",
+    "Parent comparison values come from ~/amd-gpu-tuning/docs/OPTIMAL.md and use nano-vllm-amd parent commit 59195ed with graph/step true rows."
+  ]
+}
