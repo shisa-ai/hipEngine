@@ -15514,3 +15514,34 @@ python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispat
 `tests/test_qwen35_gguf_runner.py` runs token id `760` twice through the probe and checks exact BF16 determinism, shape `(1, 1024)`, finite decoded FP32 values, and nonzero output.
 
 Next step: expose a GGUF model path through `hipengine.LLM.generate()` and then replace/extend the probe with the full Qwen layer chain (conv/SSM or full attention, residuals, FFN, final norm, lm-head).
+
+## 2026-05-16 GGUF public `LLM.generate()` route
+
+Wired GGUF model detection into `hipengine.LLM.generate()` metadata loading:
+
+- `.gguf` files/directories now use `discover_gguf_files()` + `load_gguf_index()` instead of safetensors `config.json` lookup.
+- Added a `qwen35` model plugin named `qwen3_5_gguf` with default quant `gguf_q4_k_m`.
+- Built-in generation registration now includes `hipengine.generation.qwen35_gguf`.
+- Added `Qwen35GGUFBringupGenerator`, which routes the public API to `Qwen35GGUFOneLayerProbe` for the acceptance prompt token and then intentionally stops before lm-head/sampling.
+
+This moves the RED E2E gate from a loader/config failure to the next real blocker:
+
+```bash
+python3 scripts/qwen35_gguf_e2e_correctness.py --skip-tokenize-check >/tmp/gguf_e2e_gate_red2.json
+# exit 1 as expected:
+# NotImplementedError: Qwen3.5 GGUF public path reached native GGUF kernels; lm-head logits and token sampling are not wired yet
+# torch_loaded_by_generate=False
+```
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/llm.py hipengine/models/qwen35.py hipengine/models/__init__.py \
+  hipengine/generation/__init__.py hipengine/generation/qwen35_gguf.py \
+  tests/test_llm_gguf_generate_path.py
+python3 -m pytest tests/test_llm_gguf_generate_path.py tests/test_llm_generate.py \
+  tests/test_model_quant_and_imports.py -q
+# 12 passed
+```
+
+Next blocker: implement the GGUF lm-head logits path and deterministic sampling so the public API can return real generated text instead of stopping after native-kernel route proof.

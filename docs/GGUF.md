@@ -27,7 +27,10 @@ runtime adapter selects the GGUF linear variants for BF16 hidden projections and
 FP32 lm-head logits from resident weight metadata. A first resident one-layer
 projection probe now starts at Q6_K token embedding and runs layer-0 RMSNorm,
 Q4_K `attn_gate`, and Q5_K `ssm_out` through native GGUF kernels to produce a
-finite deterministic BF16 hidden-size output.
+finite deterministic BF16 hidden-size output. `hipengine.LLM.generate()` now detects
+GGUF files, resolves the `qwen35` model plugin, and routes the target quant key
+through the native GGUF bring-up generator; it intentionally stops at the
+not-yet-wired lm-head/sampling stage.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 

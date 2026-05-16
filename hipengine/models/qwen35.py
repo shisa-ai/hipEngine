@@ -89,4 +89,30 @@ class Qwen35ParoMoeModel:
         )
 
 
+@dataclass(frozen=True)
+class Qwen35GGUFModel:
+    """Qwen3.5 GGUF model plugin metadata."""
+
+    name: str = "qwen3_5_gguf"
+    architectures: tuple[str, ...] = ("qwen35",)
+    default_quant: str = "gguf_q4_k_m"
+    default_backend: str = "hip_gfx1100"
+    weight_name_templates: tuple[str, ...] = (
+        "token_embd.weight",
+        "output_norm.weight",
+        "blk.{layer}.attn_norm.weight",
+        "blk.{layer}.post_attention_norm.weight",
+        "blk.{layer}.attn_gate.weight",
+        "blk.{layer}.attn_qkv.weight",
+        "blk.{layer}.attn_q.weight",
+        "blk.{layer}.attn_k.weight",
+        "blk.{layer}.attn_v.weight",
+        "blk.{layer}.attn_output.weight",
+        "blk.{layer}.ffn_gate.weight",
+        "blk.{layer}.ffn_up.weight",
+        "blk.{layer}.ffn_down.weight",
+    )
+
+
 QWEN35_PARO_MOE = register_model(Qwen35ParoMoeModel())
+QWEN35_GGUF = register_model(Qwen35GGUFModel())
