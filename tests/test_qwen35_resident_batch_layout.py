@@ -559,8 +559,13 @@ class _FakePrefillState:
             down_input=tensor,
             down_out=tensor,
             selected_out=tensor,
+            shared_gate_input=tensor,
+            shared_up_input=tensor,
+            shared_gate_out=tensor,
+            shared_up_out=tensor,
             shared_up=tensor,
             shared_intermediate=tensor,
+            shared_down_input=tensor,
             shared_out=tensor,
             moe_out=tensor,
         )

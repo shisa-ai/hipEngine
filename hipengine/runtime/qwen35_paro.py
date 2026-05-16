@@ -42,6 +42,8 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
     silu_mul_dual_out_fp16,
     silu_mul_dual_rotate_out_bf16,
     silu_mul_dual_rotate_out_fp16,
+    silu_mul_separate_out_bf16,
+    silu_mul_separate_out_fp16,
 )
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_dual_gemv_out_bf16,
@@ -75,9 +77,6 @@ from hipengine.kernels.hip_gfx1100.norm import (
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
     w8a16_linear_bf16_lowp_out,
     w8a16_linear_fp16_lowp_out,
-    w8a16_shared_down_combine_residual_fp16,
-    w8a16_shared_gate_sigmoid_fp32,
-    w8a16_shared_gate_up_silu_fp16,
 )
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_count,
@@ -187,8 +186,13 @@ class Qwen35ParoMoeScratch:
     gate_up: Tensor
     down_input: Tensor
     down_out: Tensor
+    shared_gate_input: Tensor
+    shared_up_input: Tensor
+    shared_gate_out: Tensor
+    shared_up_out: Tensor
     shared_up: Tensor
     shared_intermediate: Tensor
+    shared_down_input: Tensor
     shared_out: Tensor
     moe_out: Tensor
 
@@ -218,8 +222,13 @@ class Qwen35ParoGroupedMoeScratch:
     down_input: Tensor
     down_out: Tensor
     selected_out: Tensor
+    shared_gate_input: Tensor
+    shared_up_input: Tensor
+    shared_gate_out: Tensor
+    shared_up_out: Tensor
     shared_up: Tensor
     shared_intermediate: Tensor
+    shared_down_input: Tensor
     shared_out: Tensor
     moe_out: Tensor
 
@@ -3654,139 +3663,175 @@ class Qwen35ParoDecodeState:
         )
         return scratch.down_out
 
-    def shared_expert_gate_up_silu_fp16(
+    def shared_expert_paro_w4_fp16(
         self,
         hidden: Tensor,
         scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch,
         *,
         tokens: int = 1,
-        threads: int = 64,
+        group_size: int = 128,
+        threads: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        """Run the W4 PARO dense shared expert on ``hidden``.
+
+        The shared expert uses three independent dense PARO linears
+        (gate_proj, up_proj, down_proj) with their own rotation params; for
+        tokens=1/small batches we use the dual GEMV with separate inputs +
+        packed gate||up output, then silu_mul_dual_out. For larger batches
+        we use the fused W4 prefill kernel which writes gate/up to separate
+        buffers and pair them via silu_mul_separate_out.
+        """
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
-        w8a16_shared_gate_up_silu_fp16(
+        cfg = self.config
+        gate_base = f"{prefix}.gate_proj"
+        up_base = f"{prefix}.up_proj"
+        down_base = f"{prefix}.down_proj"
+
+        gate_pairs = self.tensor(f"{gate_base}.pairs")
+        up_pairs = self.tensor(f"{up_base}.pairs")
+        down_pairs = self.tensor(f"{down_base}.pairs")
+
+        paro_rotate1_fp16(
             hidden.ptr,
-            self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
-            self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
-            scratch.shared_intermediate.ptr,
+            scratch.shared_gate_input.ptr,
+            gate_pairs.ptr,
+            self.tensor(f"{gate_base}.theta").ptr,
+            self.tensor(f"{gate_base}.channel_scales").ptr,
             tokens,
-            self.config.hidden_size,
-            self.config.shared_expert_intermediate_size,
-            threads=threads,
+            cfg.hidden_size,
+            group_size,
+            _rotation_krot(gate_pairs),
             stream=stream,
-            library=_library_for(library, "w8a16"),
+            library=_library_for(library, "rotate"),
             runtime=self.runtime,
         )
-        return scratch.shared_intermediate
+        paro_rotate1_fp16(
+            hidden.ptr,
+            scratch.shared_up_input.ptr,
+            up_pairs.ptr,
+            self.tensor(f"{up_base}.theta").ptr,
+            self.tensor(f"{up_base}.channel_scales").ptr,
+            tokens,
+            cfg.hidden_size,
+            group_size,
+            _rotation_krot(up_pairs),
+            stream=stream,
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
 
-    def shared_expert_down_combine_residual_fp16(
-        self,
-        scratch: Qwen35ParoGroupedMoeScratch,
-        residual: Tensor,
-        *,
-        tokens: int = 1,
-        threads: int = 64,
-        library=None,
-        stream: int = 0,
-    ) -> Tensor:
-        prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
-        w8a16_library = _library_for(library, "w8a16")
-        shared_gate_logits_ptr = scratch.router_logits.ptr + self.config.num_experts * DType.FP32.itemsize
-        # Overwrite the shared-gate logit column in place with sigmoid(logit).
-        # Router top-k/weights have already been materialized, and this avoids
-        # recomputing the same expf once per hidden row tile below.
-        w8a16_shared_gate_sigmoid_fp32(
-            shared_gate_logits_ptr,
-            shared_gate_logits_ptr,
-            tokens,
-            self.config.num_experts + 1,
-            threads=128,
-            stream=stream,
-            library=w8a16_library,
-            runtime=self.runtime,
-        )
-        w8a16_shared_down_combine_residual_fp16(
-            scratch.shared_intermediate.ptr,
-            self.tensor(f"{prefix}.down_weight_w8a16").ptr,
-            self.tensor(f"{prefix}.down_weight_w8a16_scale").ptr,
-            scratch.selected_out.ptr,
-            shared_gate_logits_ptr,
-            residual.ptr,
-            scratch.moe_out.ptr,
-            tokens,
-            self.config.hidden_size,
-            self.config.shared_expert_intermediate_size,
-            self.config.num_experts + 1,
-            threads=threads,
-            stream=stream,
-            library=w8a16_library,
-            runtime=self.runtime,
-        )
-        return scratch.moe_out
-
-    def shared_expert_w8a16_fp16(
-        self,
-        hidden: Tensor,
-        scratch: Qwen35ParoMoeScratch,
-        *,
-        tokens: int = 1,
-        threads: int = 64,
-        library=None,
-        stream: int = 0,
-    ) -> Tensor:
-        prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
-        w8a16_library = _library_for(library, "w8a16")
-        if tokens > 1:
-            w8a16_shared_gate_up_silu_fp16(
-                hidden.ptr,
-                self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
-                self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
-                scratch.shared_intermediate.ptr,
-                tokens,
-                self.config.hidden_size,
-                self.config.shared_expert_intermediate_size,
-                threads=threads,
-                stream=stream,
-                library=w8a16_library,
-                runtime=self.runtime,
-            )
-        else:
-            w8a16_linear_fp16_lowp_out(
-                hidden.ptr,
-                self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
-                self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
+        gate_qweight = self.tensor(f"{gate_base}.qweight_pack8_decode")
+        up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
+        if tokens == 1:
+            gemv_awq_dual_pack8_transposed_fp16(
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_qweight.ptr,
+                self.tensor(f"{gate_base}.qzeros").ptr,
+                self.tensor(f"{gate_base}.scales").ptr,
+                up_qweight.ptr,
+                self.tensor(f"{up_base}.qzeros").ptr,
+                self.tensor(f"{up_base}.scales").ptr,
                 scratch.shared_up.ptr,
                 tokens,
-                self.config.hidden_size,
-                2 * self.config.shared_expert_intermediate_size,
+                cfg.hidden_size,
+                _out_packed_from_generic_transposed_qweight(gate_qweight),
+                _out_packed_from_generic_transposed_qweight(up_qweight),
+                group_size,
                 threads=threads,
                 stream=stream,
-                library=w8a16_library,
+                library=_library_for(library, "awq"),
                 runtime=self.runtime,
             )
             silu_mul_dual_out_fp16(
                 scratch.shared_up.ptr,
                 scratch.shared_intermediate.ptr,
                 tokens,
-                self.config.shared_expert_intermediate_size,
+                cfg.shared_expert_intermediate_size,
                 stream=stream,
                 library=_library_for(library, "silu"),
                 runtime=self.runtime,
             )
-        w8a16_linear_fp16_lowp_out(
+        else:
+            awq_fusedw4_prefill_dual_fp16(
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_qweight.ptr,
+                self.tensor(f"{gate_base}.qzeros").ptr,
+                self.tensor(f"{gate_base}.scales").ptr,
+                up_qweight.ptr,
+                self.tensor(f"{up_base}.qzeros").ptr,
+                self.tensor(f"{up_base}.scales").ptr,
+                scratch.shared_gate_out.ptr,
+                scratch.shared_up_out.ptr,
+                tokens,
+                cfg.hidden_size,
+                _out_packed_from_generic_transposed_qweight(gate_qweight),
+                _out_packed_from_generic_transposed_qweight(up_qweight),
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+            silu_mul_separate_out_fp16(
+                scratch.shared_gate_out.ptr,
+                scratch.shared_up_out.ptr,
+                scratch.shared_intermediate.ptr,
+                tokens,
+                cfg.shared_expert_intermediate_size,
+                stream=stream,
+                library=_library_for(library, "silu"),
+                runtime=self.runtime,
+            )
+
+        paro_rotate1_fp16(
             scratch.shared_intermediate.ptr,
-            self.tensor(f"{prefix}.down_weight_w8a16").ptr,
-            self.tensor(f"{prefix}.down_weight_w8a16_scale").ptr,
-            scratch.shared_out.ptr,
+            scratch.shared_down_input.ptr,
+            down_pairs.ptr,
+            self.tensor(f"{down_base}.theta").ptr,
+            self.tensor(f"{down_base}.channel_scales").ptr,
             tokens,
-            self.config.shared_expert_intermediate_size,
-            self.config.hidden_size,
-            threads=threads,
+            cfg.shared_expert_intermediate_size,
+            group_size,
+            _rotation_krot(down_pairs),
             stream=stream,
-            library=w8a16_library,
+            library=_library_for(library, "rotate"),
             runtime=self.runtime,
         )
+        down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
+        if tokens == 1:
+            gemv_awq_pack8_transposed_fp16(
+                scratch.shared_down_input.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{down_base}.qzeros").ptr,
+                self.tensor(f"{down_base}.scales").ptr,
+                scratch.shared_out.ptr,
+                tokens,
+                cfg.shared_expert_intermediate_size,
+                _out_packed_from_generic_transposed_qweight(down_qweight),
+                group_size,
+                threads=threads,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            awq_fusedw4_prefill_fp16(
+                scratch.shared_down_input.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{down_base}.qzeros").ptr,
+                self.tensor(f"{down_base}.scales").ptr,
+                scratch.shared_out.ptr,
+                tokens,
+                cfg.shared_expert_intermediate_size,
+                _out_packed_from_generic_transposed_qweight(down_qweight),
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
         return scratch.shared_out
 
     def combine_moe_c1_shared_residual_fp16(
@@ -4019,14 +4064,22 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "combine"),
             runtime=self.runtime,
         )
-        self.shared_expert_gate_up_silu_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
-        return self.shared_expert_down_combine_residual_fp16(
-            scratch,
-            residual,
-            tokens=tokens,
-            library=library,
+        shared = self.shared_expert_paro_w4_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+        shared_gate_logits_ptr = scratch.router_logits.ptr + cfg.num_experts * DType.FP32.itemsize
+        shared_gate_combine_residual_batch_out_fp16(
+            scratch.selected_out.ptr,
+            shared.ptr,
+            shared_gate_logits_ptr,
+            residual.ptr,
+            scratch.moe_out.ptr,
+            tokens,
+            cfg.hidden_size,
+            cfg.num_experts + 1,
             stream=stream,
+            library=_library_for(library, "combine"),
+            runtime=self.runtime,
         )
+        return scratch.moe_out
 
     def run_moe_c1_fp16(
         self,
@@ -4044,7 +4097,7 @@ class Qwen35ParoDecodeState:
         self.selected_moe_gate_up_pack8_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         self.activate_rotate_moe_down_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         self.selected_moe_down_pack8_fp16(scratch.down_input, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-        shared = self.shared_expert_w8a16_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        shared = self.shared_expert_paro_w4_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         return self.combine_moe_c1_shared_residual_fp16(
             scratch,
             shared=shared,
@@ -4206,54 +4259,124 @@ class Qwen35ParoDecodeState:
         )
         return scratch.down_out
 
-    def shared_expert_w8a16_bf16(
+    def shared_expert_paro_w4_bf16(
         self,
         hidden: Tensor,
-        scratch: Qwen35ParoMoeScratch,
+        scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch,
         *,
         tokens: int = 1,
-        threads: int = 64,
+        group_size: int = 128,
+        threads: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        """BF16 W4 PARO dense shared expert path.
+
+        Mirrors :meth:`shared_expert_paro_w4_fp16`, but BF16 has no fused
+        prefill kernel, so the same dual GEMV (which accepts ``rows`` > 1)
+        is used for every ``tokens`` value. Suboptimal for large prefill
+        batches relative to a hypothetical BF16 fused W4 prefill kernel
+        but functionally correct.
+        """
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
-        gate_up_weight = self.tensor(f"{prefix}.gate_up_weight_w8a16")
-        gate_up_scale = self.tensor(f"{prefix}.gate_up_weight_w8a16_scale")
-        down_weight = self.tensor(f"{prefix}.down_weight_w8a16")
-        down_scale = self.tensor(f"{prefix}.down_weight_w8a16_scale")
-        w8a16_linear_bf16_lowp_out(
+        cfg = self.config
+        gate_base = f"{prefix}.gate_proj"
+        up_base = f"{prefix}.up_proj"
+        down_base = f"{prefix}.down_proj"
+
+        gate_pairs = self.tensor(f"{gate_base}.pairs")
+        up_pairs = self.tensor(f"{up_base}.pairs")
+        down_pairs = self.tensor(f"{down_base}.pairs")
+
+        paro_rotate1_bf16(
             hidden.ptr,
-            gate_up_weight.ptr,
-            gate_up_scale.ptr,
+            scratch.shared_gate_input.ptr,
+            gate_pairs.ptr,
+            self.tensor(f"{gate_base}.theta").ptr,
+            self.tensor(f"{gate_base}.channel_scales").ptr,
+            tokens,
+            cfg.hidden_size,
+            group_size,
+            _rotation_krot(gate_pairs),
+            stream=stream,
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+        paro_rotate1_bf16(
+            hidden.ptr,
+            scratch.shared_up_input.ptr,
+            up_pairs.ptr,
+            self.tensor(f"{up_base}.theta").ptr,
+            self.tensor(f"{up_base}.channel_scales").ptr,
+            tokens,
+            cfg.hidden_size,
+            group_size,
+            _rotation_krot(up_pairs),
+            stream=stream,
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+
+        gate_qweight = self.tensor(f"{gate_base}.qweight_pack8_decode")
+        up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
+        gemv_awq_dual_pack8_transposed_bf16(
+            scratch.shared_gate_input.ptr,
+            scratch.shared_up_input.ptr,
+            gate_qweight.ptr,
+            self.tensor(f"{gate_base}.qzeros").ptr,
+            self.tensor(f"{gate_base}.scales").ptr,
+            up_qweight.ptr,
+            self.tensor(f"{up_base}.qzeros").ptr,
+            self.tensor(f"{up_base}.scales").ptr,
             scratch.shared_up.ptr,
             tokens,
-            self.config.hidden_size,
-            2 * self.config.shared_expert_intermediate_size,
+            cfg.hidden_size,
+            _out_packed_from_generic_transposed_qweight(gate_qweight),
+            _out_packed_from_generic_transposed_qweight(up_qweight),
+            group_size,
             threads=threads,
             stream=stream,
-            library=_library_for(library, "w8a16"),
+            library=_library_for(library, "awq"),
             runtime=self.runtime,
         )
         silu_mul_dual_out_bf16(
             scratch.shared_up.ptr,
             scratch.shared_intermediate.ptr,
             tokens,
-            self.config.shared_expert_intermediate_size,
+            cfg.shared_expert_intermediate_size,
             stream=stream,
             library=_library_for(library, "silu"),
             runtime=self.runtime,
         )
-        w8a16_linear_bf16_lowp_out(
+
+        paro_rotate1_bf16(
             scratch.shared_intermediate.ptr,
-            down_weight.ptr,
-            down_scale.ptr,
+            scratch.shared_down_input.ptr,
+            down_pairs.ptr,
+            self.tensor(f"{down_base}.theta").ptr,
+            self.tensor(f"{down_base}.channel_scales").ptr,
+            tokens,
+            cfg.shared_expert_intermediate_size,
+            group_size,
+            _rotation_krot(down_pairs),
+            stream=stream,
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+        down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
+        gemv_awq_pack8_transposed_bf16(
+            scratch.shared_down_input.ptr,
+            down_qweight.ptr,
+            self.tensor(f"{down_base}.qzeros").ptr,
+            self.tensor(f"{down_base}.scales").ptr,
             scratch.shared_out.ptr,
             tokens,
-            self.config.shared_expert_intermediate_size,
-            self.config.hidden_size,
+            cfg.shared_expert_intermediate_size,
+            _out_packed_from_generic_transposed_qweight(down_qweight),
+            group_size,
             threads=threads,
             stream=stream,
-            library=_library_for(library, "w8a16"),
+            library=_library_for(library, "awq"),
             runtime=self.runtime,
         )
         return scratch.shared_out
@@ -4422,7 +4545,7 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "combine"),
             runtime=self.runtime,
         )
-        shared = self.shared_expert_w8a16_bf16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        shared = self.shared_expert_paro_w4_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         shared_gate_logits_ptr = scratch.router_logits.ptr + cfg.num_experts * DType.FP32.itemsize
         shared_gate_combine_residual_batch_out_bf16(
             scratch.selected_out.ptr,
@@ -4455,7 +4578,7 @@ class Qwen35ParoDecodeState:
         self.selected_moe_gate_up_pack8_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         self.activate_rotate_moe_down_bf16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         self.selected_moe_down_pack8_bf16(scratch.down_input, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-        shared = self.shared_expert_w8a16_bf16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        shared = self.shared_expert_paro_w4_bf16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         return self.combine_moe_c1_shared_residual_bf16(
             scratch,
             shared=shared,
@@ -4514,6 +4637,26 @@ class Qwen35ParoDecodeState:
             down_input=self.workspace.reserve_tensor("moe.grouped.down_input", (total_lanes, cfg.moe_intermediate_size), lowp),
             down_out=self.workspace.reserve_tensor("moe.grouped.down_out", (total_lanes, cfg.hidden_size), lowp),
             selected_out=self.workspace.reserve_tensor("moe.grouped.selected_out", (tokens, cfg.hidden_size), lowp),
+            shared_gate_input=self.workspace.reserve_tensor(
+                "moe.grouped.shared_gate_input",
+                (tokens, cfg.hidden_size),
+                lowp,
+            ),
+            shared_up_input=self.workspace.reserve_tensor(
+                "moe.grouped.shared_up_input",
+                (tokens, cfg.hidden_size),
+                lowp,
+            ),
+            shared_gate_out=self.workspace.reserve_tensor(
+                "moe.grouped.shared_gate_out",
+                (tokens, cfg.shared_expert_intermediate_size),
+                lowp,
+            ),
+            shared_up_out=self.workspace.reserve_tensor(
+                "moe.grouped.shared_up_out",
+                (tokens, cfg.shared_expert_intermediate_size),
+                lowp,
+            ),
             shared_up=self.workspace.reserve_tensor(
                 "moe.grouped.shared_up",
                 (tokens, 2 * cfg.shared_expert_intermediate_size),
@@ -4521,6 +4664,11 @@ class Qwen35ParoDecodeState:
             ),
             shared_intermediate=self.workspace.reserve_tensor(
                 "moe.grouped.shared_intermediate",
+                (tokens, cfg.shared_expert_intermediate_size),
+                lowp,
+            ),
+            shared_down_input=self.workspace.reserve_tensor(
+                "moe.grouped.shared_down_input",
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),
@@ -4557,6 +4705,26 @@ class Qwen35ParoDecodeState:
             ),
             down_input=self.workspace.reserve_tensor("moe.down_input", (tokens, top_k, cfg.moe_intermediate_size), lowp),
             down_out=self.workspace.reserve_tensor("moe.down_out", (tokens, top_k, cfg.hidden_size), lowp),
+            shared_gate_input=self.workspace.reserve_tensor(
+                "moe.shared_gate_input",
+                (tokens, cfg.hidden_size),
+                lowp,
+            ),
+            shared_up_input=self.workspace.reserve_tensor(
+                "moe.shared_up_input",
+                (tokens, cfg.hidden_size),
+                lowp,
+            ),
+            shared_gate_out=self.workspace.reserve_tensor(
+                "moe.shared_gate_out",
+                (tokens, cfg.shared_expert_intermediate_size),
+                lowp,
+            ),
+            shared_up_out=self.workspace.reserve_tensor(
+                "moe.shared_up_out",
+                (tokens, cfg.shared_expert_intermediate_size),
+                lowp,
+            ),
             shared_up=self.workspace.reserve_tensor(
                 "moe.shared_up",
                 (tokens, 2 * cfg.shared_expert_intermediate_size),
@@ -4564,6 +4732,11 @@ class Qwen35ParoDecodeState:
             ),
             shared_intermediate=self.workspace.reserve_tensor(
                 "moe.shared_intermediate",
+                (tokens, cfg.shared_expert_intermediate_size),
+                lowp,
+            ),
+            shared_down_input=self.workspace.reserve_tensor(
+                "moe.shared_down_input",
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),

@@ -115,17 +115,70 @@ def _prepared_moe_weights() -> DeviceWeightMap:
             f"{experts}.down_weight_channel_scales": _allocation(
                 f"{experts}.down_weight_channel_scales", 0xBC00, (768,), "fp16"
             ),
-            f"{prefix}.shared_expert.gate_up_weight_w8a16": _allocation(
-                f"{prefix}.shared_expert.gate_up_weight_w8a16", 0xBD00, (1536, 4096), "int8"
+            # Packed W4 PARO shared-expert tensors (gate_proj/up_proj into
+            # hidden=4096, shared_int=768; down_proj reverse).
+            f"{prefix}.shared_expert.gate_proj.qweight": _allocation(
+                f"{prefix}.shared_expert.gate_proj.qweight", 0xBD00, (4096, 96), "int32"
             ),
-            f"{prefix}.shared_expert.gate_up_weight_w8a16_scale": _allocation(
-                f"{prefix}.shared_expert.gate_up_weight_w8a16_scale", 0xBE00, (1536,), "fp32"
+            f"{prefix}.shared_expert.gate_proj.qweight_pack8_decode": _allocation(
+                f"{prefix}.shared_expert.gate_proj.qweight_pack8_decode", 0xBD10, (96, 4096), "int32"
             ),
-            f"{prefix}.shared_expert.down_weight_w8a16": _allocation(
-                f"{prefix}.shared_expert.down_weight_w8a16", 0xBF00, (4096, 768), "int8"
+            f"{prefix}.shared_expert.gate_proj.qzeros": _allocation(
+                f"{prefix}.shared_expert.gate_proj.qzeros", 0xBD20, (32, 96), "int32"
             ),
-            f"{prefix}.shared_expert.down_weight_w8a16_scale": _allocation(
-                f"{prefix}.shared_expert.down_weight_w8a16_scale", 0xC000, (4096,), "fp32"
+            f"{prefix}.shared_expert.gate_proj.scales": _allocation(
+                f"{prefix}.shared_expert.gate_proj.scales", 0xBD30, (32, 768), "fp16"
+            ),
+            f"{prefix}.shared_expert.gate_proj.theta": _allocation(
+                f"{prefix}.shared_expert.gate_proj.theta", 0xBD40, (32, 64), "fp16"
+            ),
+            f"{prefix}.shared_expert.gate_proj.pairs": _allocation(
+                f"{prefix}.shared_expert.gate_proj.pairs", 0xBD50, (32, 128), "int16"
+            ),
+            f"{prefix}.shared_expert.gate_proj.channel_scales": _allocation(
+                f"{prefix}.shared_expert.gate_proj.channel_scales", 0xBD60, (4096,), "fp16"
+            ),
+            f"{prefix}.shared_expert.up_proj.qweight": _allocation(
+                f"{prefix}.shared_expert.up_proj.qweight", 0xBE00, (4096, 96), "int32"
+            ),
+            f"{prefix}.shared_expert.up_proj.qweight_pack8_decode": _allocation(
+                f"{prefix}.shared_expert.up_proj.qweight_pack8_decode", 0xBE10, (96, 4096), "int32"
+            ),
+            f"{prefix}.shared_expert.up_proj.qzeros": _allocation(
+                f"{prefix}.shared_expert.up_proj.qzeros", 0xBE20, (32, 96), "int32"
+            ),
+            f"{prefix}.shared_expert.up_proj.scales": _allocation(
+                f"{prefix}.shared_expert.up_proj.scales", 0xBE30, (32, 768), "fp16"
+            ),
+            f"{prefix}.shared_expert.up_proj.theta": _allocation(
+                f"{prefix}.shared_expert.up_proj.theta", 0xBE40, (32, 64), "fp16"
+            ),
+            f"{prefix}.shared_expert.up_proj.pairs": _allocation(
+                f"{prefix}.shared_expert.up_proj.pairs", 0xBE50, (32, 128), "int16"
+            ),
+            f"{prefix}.shared_expert.up_proj.channel_scales": _allocation(
+                f"{prefix}.shared_expert.up_proj.channel_scales", 0xBE60, (4096,), "fp16"
+            ),
+            f"{prefix}.shared_expert.down_proj.qweight": _allocation(
+                f"{prefix}.shared_expert.down_proj.qweight", 0xBF00, (768, 512), "int32"
+            ),
+            f"{prefix}.shared_expert.down_proj.qweight_pack8_decode": _allocation(
+                f"{prefix}.shared_expert.down_proj.qweight_pack8_decode", 0xBF10, (512, 768), "int32"
+            ),
+            f"{prefix}.shared_expert.down_proj.qzeros": _allocation(
+                f"{prefix}.shared_expert.down_proj.qzeros", 0xBF20, (6, 512), "int32"
+            ),
+            f"{prefix}.shared_expert.down_proj.scales": _allocation(
+                f"{prefix}.shared_expert.down_proj.scales", 0xBF30, (6, 4096), "fp16"
+            ),
+            f"{prefix}.shared_expert.down_proj.theta": _allocation(
+                f"{prefix}.shared_expert.down_proj.theta", 0xBF40, (6, 64), "fp16"
+            ),
+            f"{prefix}.shared_expert.down_proj.pairs": _allocation(
+                f"{prefix}.shared_expert.down_proj.pairs", 0xBF50, (6, 128), "int16"
+            ),
+            f"{prefix}.shared_expert.down_proj.channel_scales": _allocation(
+                f"{prefix}.shared_expert.down_proj.channel_scales", 0xBF60, (768,), "fp16"
             ),
         }
     )
@@ -888,7 +941,6 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", record("silu_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", record("down"))
     monkeypatch.setattr(qwen_runtime, "gemm_awq_selected_pack8_wmma_compact_bf16", record("down_wmma"))
-    monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", record("w8a16"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", record("shared_silu"))
     monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_out_bf16_f32w", record("combine"))
     monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w", record("combine_batch"))
@@ -924,9 +976,14 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "gate_up",
         "silu_rotate",
         "down",
-        "w8a16",
+        # Shared expert W4 PARO: rotate gate, rotate up, dual GEMV (packed gate||up),
+        # silu*mul, rotate down, single GEMV.
+        "rotate1",
+        "rotate1",
+        "dual_pack8",
         "shared_silu",
-        "w8a16",
+        "rotate1",
+        "single_pack8",
         "combine",
     ]
     assert calls[0][1] == (hidden.ptr, 0x9010, linear_scratch.attn_input.ptr, 1, 4096, 1.0e-6)
@@ -979,9 +1036,14 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "silu_rotate",
         "down_wmma",
         "weighted_lanes",
-        "w8a16",
+        # Shared expert W4 PARO (BF16 prefill: no fused W4 prefill kernel exists,
+        # falls back to the batched dual/single GEMV path).
+        "rotate1",
+        "rotate1",
+        "dual_pack8",
         "shared_silu",
-        "w8a16",
+        "rotate1",
+        "single_pack8",
         "shared_batch",
     ]
 
@@ -1009,6 +1071,7 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
     monkeypatch.setattr(qwen_runtime, "paro_rotate3_bf16", record("rotate3"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_bf16", record("single_pack8"))
     monkeypatch.setattr(qwen_runtime, "qwen35_split_qgate_bf16", record("split_qgate"))
     monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("bf16_to_f32"))
     monkeypatch.setattr(qwen_runtime, "qwen35_head_rmsnorm_partial_rotary_position_f32_bf16", record("head_rotary"))
@@ -1023,7 +1086,6 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", record("gate_up"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", record("silu_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", record("down"))
-    monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", record("w8a16"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", record("shared_silu"))
     monkeypatch.setattr(qwen_runtime, "weighted_sum_shared_gate_combine_residual_out_bf16_f32w", record("combine"))
 
@@ -1061,9 +1123,13 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
         "gate_up",
         "silu_rotate",
         "down",
-        "w8a16",
+        # Shared expert W4 PARO.
+        "rotate1",
+        "rotate1",
+        "dual_pack8",
         "shared_silu",
-        "w8a16",
+        "rotate1",
+        "single_pack8",
         "combine",
     ]
     assert calls[1][1][:4] == (attn.attn_input.ptr, attn.q_rot.ptr, attn.k_rot.ptr, attn.v_rot.ptr)
@@ -1271,68 +1337,109 @@ def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
     assert down_kwargs == {"threads": 128, "stream": 0, "library": None, "runtime": runtime}
 
 
-def test_qwen35_decode_state_runs_shared_expert_w8a16(monkeypatch) -> None:
+def test_qwen35_decode_state_runs_shared_expert_paro_w4_bf16(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
     scratch = state.reserve_moe_c1_scratch(tokens=1)
     hidden = _tensor(0xCA00, (1, 4096), "bf16")
-    linear_calls = []
-    silu_calls = []
+    calls = []
 
-    def fake_linear(*args, **kwargs):
-        linear_calls.append((args, kwargs))
+    def record(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+        return fake
 
-    def fake_silu(*args, **kwargs):
-        silu_calls.append((args, kwargs))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", record("rotate"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_bf16", record("single_pack8"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", record("silu"))
 
-    monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", fake_linear)
-    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", fake_silu)
-
-    out = state.shared_expert_w8a16_bf16(hidden, scratch)
+    out = state.shared_expert_paro_w4_bf16(hidden, scratch)
 
     assert out is scratch.shared_out
-    assert linear_calls[0][0] == (hidden.ptr, 0xBD00, 0xBE00, scratch.shared_up.ptr, 1, 4096, 1536)
-    assert linear_calls[0][1] == {"threads": 64, "stream": 0, "library": None, "runtime": runtime}
-    assert silu_calls[0][0] == (scratch.shared_up.ptr, scratch.shared_intermediate.ptr, 1, 768)
-    assert silu_calls[0][1] == {"stream": 0, "library": None, "runtime": runtime}
-    assert linear_calls[1][0] == (scratch.shared_intermediate.ptr, 0xBF00, 0xC000, scratch.shared_out.ptr, 1, 768, 4096)
-    assert linear_calls[1][1] == {"threads": 64, "stream": 0, "library": None, "runtime": runtime}
+    assert [label for label, _a, _k in calls] == [
+        "rotate",  # gate_proj input rotation
+        "rotate",  # up_proj input rotation
+        "dual_pack8",  # gate_proj + up_proj GEMV with separate inputs, packed gate||up output
+        "silu",  # silu(gate) * up -> shared_intermediate
+        "rotate",  # down_proj input rotation
+        "single_pack8",  # down_proj GEMV -> shared_out
+    ]
+    # gate rotation reads hidden, writes shared_gate_input, uses gate_proj.pairs/theta/channel_scales.
+    gate_rot_args = calls[0][1]
+    assert gate_rot_args[0] == hidden.ptr
+    assert gate_rot_args[1] == scratch.shared_gate_input.ptr
+    # up rotation reads same hidden, writes shared_up_input.
+    up_rot_args = calls[1][1]
+    assert up_rot_args[0] == hidden.ptr
+    assert up_rot_args[1] == scratch.shared_up_input.ptr
+    # dual GEMV consumes both rotated inputs, writes the packed shared_up buffer.
+    dual_args = calls[2][1]
+    assert dual_args[0] == scratch.shared_gate_input.ptr
+    assert dual_args[1] == scratch.shared_up_input.ptr
+    assert dual_args[8] == scratch.shared_up.ptr
+    # silu_mul packs shared_up -> shared_intermediate.
+    silu_args = calls[3][1]
+    assert silu_args == (scratch.shared_up.ptr, scratch.shared_intermediate.ptr, 1, 768)
+    # down rotation reads shared_intermediate, writes shared_down_input.
+    down_rot_args = calls[4][1]
+    assert down_rot_args[0] == scratch.shared_intermediate.ptr
+    assert down_rot_args[1] == scratch.shared_down_input.ptr
+    # down GEMV reads shared_down_input, writes shared_out.
+    down_args = calls[5][1]
+    assert down_args[0] == scratch.shared_down_input.ptr
+    assert down_args[4] == scratch.shared_out.ptr
 
 
-def test_qwen35_decode_state_runs_shared_expert_w8a16_fp16_prefill_fused_gate_up(monkeypatch) -> None:
+def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_prefill_uses_fused_w4(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
     scratch = state.reserve_moe_c1_scratch(tokens=2, activation_dtype="fp16")
     hidden = _tensor(0xCA00, (2, 4096), "fp16")
     calls = []
 
-    monkeypatch.setattr(
-        qwen_runtime,
-        "w8a16_shared_gate_up_silu_fp16",
-        lambda *args, **kwargs: calls.append(("fused_gate_up", args, kwargs)),
-    )
-    monkeypatch.setattr(
-        qwen_runtime,
-        "w8a16_linear_fp16_lowp_out",
-        lambda *args, **kwargs: calls.append(("down", args, kwargs)),
-    )
-    monkeypatch.setattr(
-        qwen_runtime,
-        "silu_mul_dual_out_fp16",
-        lambda *args, **kwargs: calls.append(("unfused_silu", args, kwargs)),
-    )
+    def record(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+        return fake
 
-    out = state.shared_expert_w8a16_fp16(hidden, scratch, tokens=2)
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", record("rotate"))
+    monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_dual_fp16", record("fusedw4_dual"))
+    monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_fp16", record("fusedw4_single"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_separate_out_fp16", record("silu_separate"))
+    # tokens=1 path symbols must NOT be called for prefill.
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_fp16", record("unexpected_dual_gemv"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_fp16", record("unexpected_single_gemv"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_fp16", record("unexpected_silu_dual"))
+
+    out = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=2)
 
     assert out is scratch.shared_out
-    assert [kind for kind, _args, _kwargs in calls] == ["fused_gate_up", "down"]
-    assert calls[0][1] == (hidden.ptr, 0xBD00, 0xBE00, scratch.shared_intermediate.ptr, 2, 4096, 768)
-    assert calls[0][2] == {"threads": 64, "stream": 0, "library": None, "runtime": runtime}
-    assert calls[1][1] == (scratch.shared_intermediate.ptr, 0xBF00, 0xC000, scratch.shared_out.ptr, 2, 768, 4096)
-    assert calls[1][2] == {"threads": 64, "stream": 0, "library": None, "runtime": runtime}
+    labels = [label for label, _a, _k in calls]
+    assert labels == [
+        "rotate",  # gate input rotation
+        "rotate",  # up input rotation
+        "fusedw4_dual",  # fused W4 prefill dual (separate inputs, separate outputs)
+        "silu_separate",  # silu(gate) * up from two separate buffers
+        "rotate",  # down input rotation
+        "fusedw4_single",  # fused W4 prefill single down
+    ]
+    fused_dual = calls[2][1]
+    assert fused_dual[0] == scratch.shared_gate_input.ptr
+    assert fused_dual[1] == scratch.shared_up_input.ptr
+    assert fused_dual[8] == scratch.shared_gate_out.ptr
+    assert fused_dual[9] == scratch.shared_up_out.ptr
+    silu_args = calls[3][1]
+    assert silu_args == (
+        scratch.shared_gate_out.ptr,
+        scratch.shared_up_out.ptr,
+        scratch.shared_intermediate.ptr,
+        2,
+        768,
+    )
 
 
-def test_qwen35_decode_state_runs_grouped_moe_fp16_fused_shared_down_combine(monkeypatch) -> None:
+def test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
     scratch = state.reserve_moe_grouped_prefill_scratch(tokens=2, activation_dtype="fp16")
@@ -1348,51 +1455,44 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_fused_shared_down_combine(mon
         ("silu_mul_dual_rotate_out_fp16", "silu_rotate"),
         ("gemm_awq_selected_pack8_wmma_compact_fp16", "down_wmma"),
         ("weighted_lanes_sum_out_fp16_f32w", "weighted_lanes"),
-        ("w8a16_shared_gate_up_silu_fp16", "shared_gate_up"),
-        ("w8a16_shared_gate_sigmoid_fp32", "shared_gate_sigmoid"),
-        ("w8a16_shared_down_combine_residual_fp16", "shared_down_combine"),
+        # Shared expert W4 PARO prefill: fused W4 dual + silu_separate + fused W4 single.
+        ("awq_fusedw4_prefill_dual_fp16", "shared_fusedw4_dual"),
+        ("silu_mul_separate_out_fp16", "shared_silu_separate"),
+        ("awq_fusedw4_prefill_fp16", "shared_fusedw4_single"),
+        # Split combine (no fused W8A16+combine).
+        ("shared_gate_combine_residual_batch_out_fp16", "shared_combine_batch"),
     ]:
         monkeypatch.setattr(qwen_runtime, name, lambda *args, label=label, **kwargs: calls.append((label, args, kwargs)))
-    monkeypatch.setattr(
-        qwen_runtime,
-        "w8a16_linear_fp16_lowp_out",
-        lambda *args, **kwargs: calls.append(("unexpected_w8a16_linear", args, kwargs)),
-    )
-    monkeypatch.setattr(
-        qwen_runtime,
-        "shared_gate_combine_residual_batch_out_fp16",
-        lambda *args, **kwargs: calls.append(("unexpected_shared_combine", args, kwargs)),
-    )
 
     out = state.run_moe_grouped_compact_fp16(hidden, residual, scratch=scratch, tokens=2)
 
     assert out is scratch.moe_out
     assert [kind for kind, _args, _kwargs in calls] == [
         "router",
-        "rotate1",
+        "rotate1",  # routed gate_up rotate
         "gate_up_wmma",
         "silu_rotate",
         "down_wmma",
         "weighted_lanes",
-        "shared_gate_up",
-        "shared_gate_sigmoid",
-        "shared_down_combine",
+        # Shared expert W4 PARO chain (prefill uses fused W4 + silu_separate).
+        "rotate1",  # shared_expert.gate_proj input rotation
+        "rotate1",  # shared_expert.up_proj input rotation
+        "shared_fusedw4_dual",
+        "shared_silu_separate",
+        "rotate1",  # shared_expert.down_proj input rotation
+        "shared_fusedw4_single",
+        "shared_combine_batch",
     ]
-    assert calls[-3][1] == (hidden.ptr, 0xBD00, 0xBE00, scratch.shared_intermediate.ptr, 2, 4096, 768)
     shared_gate_logits_ptr = scratch.router_logits.ptr + 128 * 4
-    assert calls[-2][1] == (shared_gate_logits_ptr, shared_gate_logits_ptr, 2, 129)
-    assert calls[-2][2] == {"threads": 128, "stream": 0, "library": None, "runtime": runtime}
-    assert calls[-1][1] == (
-        scratch.shared_intermediate.ptr,
-        0xBF00,
-        0xC000,
+    final_combine = calls[-1][1]
+    assert final_combine == (
         scratch.selected_out.ptr,
+        scratch.shared_out.ptr,
         shared_gate_logits_ptr,
         residual.ptr,
         scratch.moe_out.ptr,
         2,
         4096,
-        768,
         129,
     )
 
@@ -1462,11 +1562,12 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
     order = []
 
     monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_bf16", lambda *a, **k: order.append("router"))
-    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", lambda *a, **k: order.append("gate_up_rotate"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", lambda *a, **k: order.append("rotate1"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", lambda *a, **k: order.append("gate_up"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", lambda *a, **k: order.append("silu_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", lambda *a, **k: order.append("down"))
-    monkeypatch.setattr(qwen_runtime, "w8a16_linear_bf16_lowp_out", lambda *a, **k: order.append("w8a16"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", lambda *a, **k: order.append("shared_dual_pack8"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_bf16", lambda *a, **k: order.append("shared_single_pack8"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", lambda *a, **k: order.append("shared_silu"))
     monkeypatch.setattr(
         qwen_runtime,
@@ -1482,7 +1583,14 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
     out = state.run_moe_c1_bf16(hidden, residual, scratch=scratch)
 
     assert out is scratch.moe_out
-    assert order == ["router", "gate_up_rotate", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine"]
+    # routed: router + (rotate + dual GEMV + silu_rotate + single GEMV)
+    # shared: rotate gate + rotate up + dual GEMV (packed) + silu*mul + rotate down + single GEMV
+    # combine
+    assert order == [
+        "router", "rotate1", "gate_up", "silu_rotate", "down",
+        "rotate1", "rotate1", "shared_dual_pack8", "shared_silu", "rotate1", "shared_single_pack8",
+        "combine",
+    ]
 
     batch_scratch = state.reserve_moe_c1_scratch(tokens=2)
     batch_hidden = _tensor(0xD000, (2, 4096), "bf16")
@@ -1490,7 +1598,11 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
     order.clear()
     batch_out = state.run_moe_c1_bf16(batch_hidden, batch_residual, scratch=batch_scratch, tokens=2)
     assert batch_out is batch_scratch.moe_out
-    assert order == ["router", "gate_up_rotate", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine_batch"]
+    assert order == [
+        "router", "rotate1", "gate_up", "silu_rotate", "down",
+        "rotate1", "rotate1", "shared_dual_pack8", "shared_silu", "rotate1", "shared_single_pack8",
+        "combine_batch",
+    ]
 
 
 def test_qwen35_decode_state_validates_scratch_requests() -> None:
@@ -1515,7 +1627,10 @@ def test_qwen35_decode_state_free_releases_workspace() -> None:
     state.free()
 
     assert runtime.allocations == {}
-    assert len(runtime.freed) == 31
+    # 31 attention/moe scratch tensors + 5 new shared-expert scratch tensors
+    # (shared_gate_input, shared_up_input, shared_gate_out, shared_up_out,
+    # shared_down_input) introduced by the W4 PARO shared-expert path.
+    assert len(runtime.freed) == 36
 
 
 def test_qwen35_decode_state_reserves_parent_mixed_fp16_scratch() -> None:
@@ -1577,11 +1692,12 @@ def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch)
     order = []
 
     monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_fp16", lambda *a, **k: order.append("router"))
-    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", lambda *a, **k: order.append("gate_up_rotate"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", lambda *a, **k: order.append("rotate1"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_fp16", lambda *a, **k: order.append("gate_up"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_fp16", lambda *a, **k: order.append("silu_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_fp16", lambda *a, **k: order.append("down"))
-    monkeypatch.setattr(qwen_runtime, "w8a16_linear_fp16_lowp_out", lambda *a, **k: order.append("w8a16"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_fp16", lambda *a, **k: order.append("shared_dual_pack8"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_fp16", lambda *a, **k: order.append("shared_single_pack8"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_fp16", lambda *a, **k: order.append("shared_silu"))
     monkeypatch.setattr(
         qwen_runtime,
@@ -1597,7 +1713,11 @@ def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch)
     out = state.run_moe_c1_fp16(hidden, residual, scratch=scratch)
 
     assert out is scratch.moe_out
-    assert order == ["router", "gate_up_rotate", "gate_up", "silu_rotate", "down", "w8a16", "shared_silu", "w8a16", "combine"]
+    assert order == [
+        "router", "rotate1", "gate_up", "silu_rotate", "down",
+        "rotate1", "rotate1", "shared_dual_pack8", "shared_silu", "rotate1", "shared_single_pack8",
+        "combine",
+    ]
 
 
 def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch) -> None:
@@ -1631,7 +1751,7 @@ def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch)
         ("gemv_awq_selected_dual_pack8_transposed_fp16", "gate_up"),
         ("silu_mul_dual_rotate_out_fp16", "silu_rotate"),
         ("gemv_awq_selected_pack8_transposed_fp16", "down"),
-        ("w8a16_linear_fp16_lowp_out", "w8a16"),
+        ("gemv_awq_pack8_transposed_fp16", "shared_single_pack8"),
         ("silu_mul_dual_out_fp16", "shared_silu"),
         ("weighted_sum_shared_gate_combine_residual_out_fp16_f32w", "combine"),
     ]:
@@ -1655,7 +1775,7 @@ def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch)
     assert order == [
         "input_norm",
         "rotate3",
-        "dual_pack8",
+        "dual_pack8",  # attention QKV
         "pack8",
         "split_qgate",
         "fp16_to_f32",
@@ -1671,8 +1791,14 @@ def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch)
         "gate_up",
         "silu_rotate",
         "down",
-        "w8a16",
+        # Shared expert W4 PARO chain. "dual_pack8" here is the same kernel as
+        # the attention QKV dual GEMV; the runtime reuses gemv_awq_dual_pack8_
+        # transposed_fp16 for the dense shared expert gate||up.
+        "rotate1",
+        "rotate1",
+        "dual_pack8",
         "shared_silu",
-        "w8a16",
+        "rotate1",
+        "shared_single_pack8",
         "combine",
     ]
