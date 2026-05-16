@@ -95,6 +95,14 @@ class HipRuntime:
             )
         )
 
+    def mem_get_info(self) -> tuple[int, int]:
+        """Return ``(free_bytes, total_bytes)`` from ``hipMemGetInfo``."""
+
+        free_bytes = ctypes.c_size_t()
+        total_bytes = ctypes.c_size_t()
+        self.check(self.library.hipMemGetInfo(ctypes.byref(free_bytes), ctypes.byref(total_bytes)))
+        return int(free_bytes.value), int(total_bytes.value)
+
     def stream_create(self, *, nonblocking: bool = True) -> int:
         stream = ctypes.c_void_p()
         flags = 0x01 if nonblocking else 0x00
@@ -176,6 +184,8 @@ class HipRuntime:
         self.library.hipMemset.restype = ctypes.c_int
         self.library.hipMemsetAsync.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t, ctypes.c_void_p]
         self.library.hipMemsetAsync.restype = ctypes.c_int
+        self.library.hipMemGetInfo.argtypes = [ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_size_t)]
+        self.library.hipMemGetInfo.restype = ctypes.c_int
         self.library.hipStreamCreateWithFlags.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_uint]
         self.library.hipStreamCreateWithFlags.restype = ctypes.c_int
         self.library.hipStreamDestroy.argtypes = [ctypes.c_void_p]

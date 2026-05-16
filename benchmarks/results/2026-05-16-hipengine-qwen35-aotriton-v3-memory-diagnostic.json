@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-05-16",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "change": "Add real hipENGINE memory reporting to qwen35_paro_bench.py using tracked hipengine.core.memory high-water counters plus hipMemGetInfo phase snapshots.",
+  "validation": {
+    "unit_tests": "python3 -m pytest tests/test_memory_stats.py tests/test_qwen35_resident_batch_layout.py -q # 25 passed",
+    "py_compile": "python3 -m py_compile hipengine/core/hip.py hipengine/core/memory.py scripts/qwen35_paro_bench.py # ok",
+    "smoke": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task15-memory-smoke.json # emitted memory + memory_snapshots; tracked after_close=0"
+  },
+  "measurements": [
+    {
+      "workload": "512/128",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task15-memory-aotriton-512-128.json",
+      "hipengine": {
+        "prefill_tok_s": 2333.4351596797464,
+        "decode_tok_s": 101.30175823309803,
+        "tracked_peak_allocated_gib": 18.629937921650708,
+        "tracked_current_before_close_gib": 18.421551470644772,
+        "hip_used_peak_sampled_gib": 18.65076446533203,
+        "owned_session_peak_gib": 1.6029779957607388
+      },
+      "parent": {
+        "prefill_tok_s": 2696.4422279659416,
+        "decode_tok_s": 116.04961191700822,
+        "peak_allocated_gib": 18.79712200164795,
+        "peak_reserved_gib": 18.8359375
+      },
+      "deltas_vs_parent": {
+        "prefill_pct": -13.462445607819651,
+        "decode_pct": -12.708231798704317,
+        "tracked_peak_allocated_gib_delta": -0.1671840799972415,
+        "tracked_peak_allocated_pct": -0.8894131770947888
+      },
+      "memory_summary": {
+        "tracked_peak_allocated_bytes": 20003743525,
+        "tracked_peak_allocated_gib": 18.629937921650708,
+        "tracked_current_allocated_bytes_before_close": 19779990277,
+        "tracked_current_allocated_gib_before_close": 18.421551470644772,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 1721184517,
+        "owned_session_peak_gib": 1.6029779957607388,
+        "hip_used_peak_sampled_bytes": 20026105856,
+        "hip_used_peak_sampled_gib": 18.65076446533203,
+        "notes": [
+          "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+        ]
+      }
+    },
+    {
+      "workload": "4K/128",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task15-memory-aotriton-4k-128.json",
+      "hipengine": {
+        "prefill_tok_s": 2379.676328719247,
+        "decode_tok_s": 102.4070406032208,
+        "tracked_peak_allocated_gib": 20.80564541835338,
+        "tracked_current_before_close_gib": 19.13882772345096,
+        "hip_used_peak_sampled_gib": 19.402099609375,
+        "owned_session_peak_gib": 2.3202542485669255
+      },
+      "parent": {
+        "prefill_tok_s": 2741.4888496031463,
+        "decode_tok_s": 113.04910466336666,
+        "peak_allocated_gib": 21.64404582977295,
+        "peak_reserved_gib": 21.708984375
+      },
+      "deltas_vs_parent": {
+        "prefill_pct": -13.197665237131083,
+        "decode_pct": -9.413665054522447,
+        "tracked_peak_allocated_gib_delta": -0.8384004114195704,
+        "tracked_peak_allocated_pct": -3.873584532270258
+      },
+      "memory_summary": {
+        "tracked_peak_allocated_bytes": 22339891661,
+        "tracked_peak_allocated_gib": 20.80564541835338,
+        "tracked_current_allocated_bytes_before_close": 20550159789,
+        "tracked_current_allocated_gib_before_close": 19.13882772345096,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 2491354029,
+        "owned_session_peak_gib": 2.3202542485669255,
+        "hip_used_peak_sampled_bytes": 20832845824,
+        "hip_used_peak_sampled_gib": 19.402099609375,
+        "notes": [
+          "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+        ]
+      }
+    }
+  ],
+  "notes": [
+    "tracked_peak_allocated_gib is the hipENGINE-owned allocation high-water mark through hipengine.core.memory.malloc; it is the closest analogue to parent torch peak_allocated_gib.",
+    "hip_used_peak_sampled_gib is sampled at phase boundaries via hipMemGetInfo and is not a continuous device-wide peak.",
+    "AOTriton remains opt-in with --attn-aotriton-min-tokens 512; default dispatch remains native until threshold sweep lands."
+  ]
+}

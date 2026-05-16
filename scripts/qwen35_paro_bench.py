@@ -24,6 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 
@@ -102,6 +103,10 @@ def main() -> int:
     progress = _emit_progress if args.progress else None
     roctx = _Roctx(enabled=args.roctx)
     runner = Qwen35ParoNextTokenRunner(model)
+    reset_memory_stats()
+    memory_snapshots: dict[str, Any] = {
+        "before_load": _memory_snapshot("before_load", runner.runtime),
+    }
 
     load_start = time.perf_counter()
     with roctx.range("hipengine:resident_build"):
@@ -115,6 +120,7 @@ def main() -> int:
             prefill_config=PrefillConfig(attn_aotriton_min_tokens=args.attn_aotriton_min_tokens),
         )
     load_seconds = time.perf_counter() - load_start
+    memory_snapshots["after_load"] = _memory_snapshot("after_load", session.runtime, session)
 
     native_prefill_plan = session.native_prefill_plan()
     native_prefill_execution = (
@@ -138,6 +144,7 @@ def main() -> int:
         prefill_seconds = time.perf_counter() - prefill_start
         if next_result is None:
             raise RuntimeError("prefill did not produce next-token logits")
+        memory_snapshots["after_prefill"] = _memory_snapshot("after_prefill", session.runtime, session)
         next_token = next_result.token_id
         generated.append(next_result.to_json_dict())
 
@@ -150,6 +157,7 @@ def main() -> int:
                     raise RuntimeError("decode warmup did not produce a token")
                 next_token = result.token_id
         warmup_seconds = time.perf_counter() - warmup_start
+        memory_snapshots["after_warmup_decode"] = _memory_snapshot("after_warmup_decode", session.runtime, session)
 
         decode_start_pos = len(prompt_tokens) + args.warmup_decode_tokens
         if args.graph_replay_decode and args.decode_tokens:
@@ -184,8 +192,11 @@ def main() -> int:
                     next_token = result.token_id
                     generated.append(result.to_json_dict())
             decode_seconds = time.perf_counter() - decode_start
+        memory_snapshots["after_decode"] = _memory_snapshot("after_decode", session.runtime, session)
     finally:
+        memory_snapshots["before_close"] = _memory_snapshot("before_close", session.runtime, session)
         session.close()
+        memory_snapshots["after_close"] = _memory_snapshot("after_close", runner.runtime)
 
     output = {
         "schema": 1,
@@ -226,6 +237,8 @@ def main() -> int:
             "warmed_decode_tok_s": args.decode_tokens / decode_seconds if decode_seconds > 0 and args.decode_tokens else None,
             "warmed_decode_step_median_s": statistics.median(decode_samples) if decode_samples else None,
         },
+        "memory": _memory_summary(memory_snapshots),
+        "memory_snapshots": memory_snapshots,
         "generated_preview": generated[:16],
         "notes": [
             (
@@ -313,6 +326,104 @@ def _prompt_tokens(model: Path, prompt: str, token_id: int | None, prompt_length
     while len(out) < prompt_length:
         out.extend(ids)
     return out[:prompt_length]
+
+
+def _owned_device_bytes(session: Qwen35ParoResidentSession) -> int:
+    allocation_bytes = sum(int(allocation.buffer.nbytes) for allocation in session.allocations)
+    buffer_bytes = sum(int(buffer.nbytes) for buffer in session.buffers)
+    state_workspace_bytes = sum(
+        int(state.workspace.allocation(name).buffer.nbytes)
+        for state in session.states
+        for name in state.workspace.names
+    )
+    prefill_workspace = getattr(session, "prefill_workspace", None)
+    prefill_workspace_bytes = 0
+    if prefill_workspace is not None:
+        prefill_workspace_bytes = sum(
+            int(prefill_workspace.allocation(name).buffer.nbytes)
+            for name in prefill_workspace.names
+        )
+    return allocation_bytes + buffer_bytes + state_workspace_bytes + prefill_workspace_bytes
+
+
+def _memory_snapshot(
+    label: str,
+    runtime,
+    session: Qwen35ParoResidentSession | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "label": label,
+        "tracked": memory_stats(),
+        "hip": _hip_memory_info(runtime),
+    }
+    if session is not None:
+        payload["owned_session_bytes"] = _owned_device_bytes(session)
+        payload["owned_session_gib"] = _bytes_to_gib(payload["owned_session_bytes"])
+    return payload
+
+
+def _hip_memory_info(runtime) -> dict[str, Any]:
+    try:
+        free_bytes, total_bytes = runtime.mem_get_info()
+    except Exception as exc:  # pragma: no cover - exercised only on HIP runtime failures
+        return {"available": False, "error": str(exc)}
+    used_bytes = total_bytes - free_bytes
+    return {
+        "available": True,
+        "free_bytes": free_bytes,
+        "total_bytes": total_bytes,
+        "used_bytes": used_bytes,
+        "free_gib": _bytes_to_gib(free_bytes),
+        "total_gib": _bytes_to_gib(total_bytes),
+        "used_gib": _bytes_to_gib(used_bytes),
+    }
+
+
+def _memory_summary(snapshots: dict[str, Any]) -> dict[str, Any]:
+    tracked_peak = max(
+        int(snapshot.get("tracked", {}).get("peak_allocated_bytes", 0))
+        for snapshot in snapshots.values()
+    ) if snapshots else 0
+    tracked_current_before_close = int(
+        snapshots.get("before_close", {}).get("tracked", {}).get("current_allocated_bytes", 0)
+    )
+    tracked_current_after_close = int(
+        snapshots.get("after_close", {}).get("tracked", {}).get("current_allocated_bytes", 0)
+    )
+    owned_peak = max(
+        int(snapshot.get("owned_session_bytes", 0))
+        for snapshot in snapshots.values()
+    ) if snapshots else 0
+    hip_used_values = [
+        int(snapshot.get("hip", {}).get("used_bytes", 0))
+        for snapshot in snapshots.values()
+        if snapshot.get("hip", {}).get("available")
+    ]
+    hip_used_peak = max(hip_used_values) if hip_used_values else None
+    summary = {
+        "tracked_peak_allocated_bytes": tracked_peak,
+        "tracked_peak_allocated_gib": _bytes_to_gib(tracked_peak),
+        "tracked_current_allocated_bytes_before_close": tracked_current_before_close,
+        "tracked_current_allocated_gib_before_close": _bytes_to_gib(tracked_current_before_close),
+        "tracked_current_allocated_bytes_after_close": tracked_current_after_close,
+        "tracked_current_allocated_gib_after_close": _bytes_to_gib(tracked_current_after_close),
+        "owned_session_peak_bytes": owned_peak,
+        "owned_session_peak_gib": _bytes_to_gib(owned_peak),
+        "hip_used_peak_sampled_bytes": hip_used_peak,
+        "hip_used_peak_sampled_gib": _bytes_to_gib(hip_used_peak) if hip_used_peak is not None else None,
+        "notes": [
+            "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations.",
+        ],
+    }
+    return summary
+
+
+def _bytes_to_gib(value: int | None) -> float | None:
+    if value is None:
+        return None
+    return float(value) / float(1 << 30)
 
 
 def _emit_progress(payload: dict[str, Any]) -> None:

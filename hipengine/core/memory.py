@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ctypes
 from dataclasses import dataclass
+from threading import Lock
 
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 
@@ -26,12 +27,16 @@ class DeviceBuffer:
 
 def malloc(nbytes: int, *, runtime: HipRuntime | None = None) -> DeviceBuffer:
     runtime = runtime or get_hip_runtime()
-    return DeviceBuffer(ptr=runtime.malloc(nbytes), nbytes=nbytes)
+    ptr = runtime.malloc(nbytes)
+    buffer = DeviceBuffer(ptr=ptr, nbytes=nbytes)
+    _MEMORY_STATS.record_malloc(buffer)
+    return buffer
 
 
 def free(buffer: DeviceBuffer, *, runtime: HipRuntime | None = None) -> None:
     runtime = runtime or get_hip_runtime()
     runtime.free(buffer.ptr)
+    _MEMORY_STATS.record_free(buffer)
 
 
 def copy_host_to_device(
@@ -75,6 +80,95 @@ def host_array_ptr(array: object) -> int:
 
 def host_buffer_ptr(buffer: ctypes.Array) -> int:
     return int(ctypes.addressof(buffer))
+
+
+def memory_stats() -> dict[str, int]:
+    """Return process-local hipENGINE device allocation counters.
+
+    The counters cover allocations made through :func:`malloc`, which is the
+    torch-free path used by hipENGINE runtime/model buffers.  They do not include
+    allocations made internally by HIP/AOTriton libraries, but they do preserve a
+    real high-water mark for hipENGINE-owned buffers even after temporary
+    workspaces are released.
+    """
+
+    return _MEMORY_STATS.snapshot()
+
+
+def reset_memory_stats() -> None:
+    """Reset counters while preserving currently live tracked allocations."""
+
+    _MEMORY_STATS.reset()
+
+
+@dataclass
+class _MemoryStats:
+    current_allocated_bytes: int = 0
+    peak_allocated_bytes: int = 0
+    total_allocated_bytes: int = 0
+    total_freed_bytes: int = 0
+    active_allocations: int = 0
+    peak_allocations: int = 0
+
+
+class _MemoryStatsTracker:
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._live: dict[int, int] = {}
+        self._stats = _MemoryStats()
+
+    def record_malloc(self, buffer: DeviceBuffer) -> None:
+        if buffer.ptr == 0 or buffer.nbytes <= 0:
+            return
+        with self._lock:
+            old_nbytes = self._live.get(buffer.ptr)
+            if old_nbytes is not None:
+                self._stats.current_allocated_bytes -= old_nbytes
+                self._stats.active_allocations -= 1
+            self._live[buffer.ptr] = int(buffer.nbytes)
+            self._stats.current_allocated_bytes += int(buffer.nbytes)
+            self._stats.total_allocated_bytes += int(buffer.nbytes)
+            self._stats.active_allocations += 1
+            self._stats.peak_allocated_bytes = max(
+                self._stats.peak_allocated_bytes,
+                self._stats.current_allocated_bytes,
+            )
+            self._stats.peak_allocations = max(self._stats.peak_allocations, self._stats.active_allocations)
+
+    def record_free(self, buffer: DeviceBuffer) -> None:
+        if buffer.ptr == 0:
+            return
+        with self._lock:
+            nbytes = self._live.pop(buffer.ptr, None)
+            if nbytes is None:
+                return
+            self._stats.current_allocated_bytes -= nbytes
+            self._stats.total_freed_bytes += nbytes
+            self._stats.active_allocations -= 1
+            if self._stats.current_allocated_bytes < 0 or self._stats.active_allocations < 0:
+                # Defensive clamp; this should not happen with tracked pointers.
+                self._stats.current_allocated_bytes = max(0, self._stats.current_allocated_bytes)
+                self._stats.active_allocations = max(0, self._stats.active_allocations)
+
+    def reset(self) -> None:
+        with self._lock:
+            current = sum(self._live.values())
+            active = len(self._live)
+            self._stats = _MemoryStats(
+                current_allocated_bytes=current,
+                peak_allocated_bytes=current,
+                total_allocated_bytes=0,
+                total_freed_bytes=0,
+                active_allocations=active,
+                peak_allocations=active,
+            )
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return dict(self._stats.__dict__)
+
+
+_MEMORY_STATS = _MemoryStatsTracker()
 
 
 def _check_copy_size(nbytes: int, capacity: int) -> None:

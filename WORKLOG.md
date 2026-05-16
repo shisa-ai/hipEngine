@@ -12686,3 +12686,79 @@ Conclusion: V3 is correctness-equivalent to the V2 direct-GQA shortcut and now
 puts hipENGINE on the richer long-term AOTriton API with a reusable persistent
 atomic counter.  The next useful step is a threshold sweep; default remains
 `attn_aotriton_min_tokens=0` until that lands.
+
+## 2026-05-16 — Task #15 real hipENGINE memory reporting
+
+Added process-local hipENGINE device allocation high-water tracking and benchmark
+memory snapshots so Qwen3.5/PARO smokes can report comparable memory numbers.
+
+Implementation details:
+
+- `hipengine.core.memory.malloc/free` now update tracked allocation counters:
+  current bytes, peak bytes, total allocated/freed bytes, active allocation
+  count, and peak allocation count.  `reset_memory_stats()` preserves currently
+  live tracked allocations while resetting high-water counters.
+- `HipRuntime.mem_get_info()` wraps `hipMemGetInfo` for phase-bound sampled HIP
+  free/total/used bytes.
+- `scripts/qwen35_paro_bench.py` now emits:
+  - `memory`: summary with tracked high-water, before/after close current bytes,
+    sampled HIP used peak, and session-owned peak.
+  - `memory_snapshots`: before-load, after-load, after-prefill,
+    after-warmup-decode, after-decode, before-close, and after-close snapshots.
+- Caveat documented in JSON: tracked high-water covers hipENGINE-owned allocations
+  made through `hipengine.core.memory.malloc`; sampled HIP used is not a
+  continuous device-wide peak.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/core/hip.py hipengine/core/memory.py scripts/qwen35_paro_bench.py
+# ok
+
+python3 -m pytest tests/test_memory_stats.py tests/test_qwen35_resident_batch_layout.py -q
+# 25 passed
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 8 --decode-tokens 1 \
+  --warmup-decode-tokens 0 --max-layers 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/task15-memory-smoke.json
+# emitted memory + memory_snapshots; tracked_peak_allocated_gib=1.8499,
+# tracked_current_allocated_bytes_after_close=0, sampled HIP used peak=2.0625 GiB
+```
+
+AOTriton V3 diagnostic reruns with memory reporting on W7900/gfx1100,
+Qwen3.5-35B-A3B-PARO w4_paro, max_layers=40, repeated token id 9707,
+no graph replay, `--attn-aotriton-min-tokens 512`:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/task15-memory-aotriton-512-128.json
+# prefill=2333.435 tok/s, decode=101.302 tok/s
+# tracked_peak_allocated=18.6299 GiB, tracked_current_before_close=18.4216 GiB,
+# sampled_hip_used_peak=18.6508 GiB, after_close_tracked=0
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/task15-memory-aotriton-4k-128.json
+# prefill=2379.676 tok/s, decode=102.407 tok/s
+# tracked_peak_allocated=20.8056 GiB, tracked_current_before_close=19.1388 GiB,
+# sampled_hip_used_peak=19.4021 GiB, after_close_tracked=0
+```
+
+Parent comparison using tracked peak allocated as the closest analogue to parent
+Torch `peak_allocated_gib`:
+
+| Workload | hipENGINE tracked peak | parent peak allocated | Delta |
+| --- | ---: | ---: | ---: |
+| 512/128 | 18.63 GiB | 18.80 GiB | -0.17 GiB (-0.9%) |
+| 4K/128 | 20.81 GiB | 21.64 GiB | -0.84 GiB (-3.9%) |
+
+Retained diagnostic artifact/rollup update:
+
+- `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-memory-diagnostic.json`
+- Updated the AOTriton V3 diagnostic row in `benchmarks/README.md` with tracked
+  peak and sampled HIP used memory.
+- Added a `benchmarks/CHANGELOG.md` one-liner.  Still no current-fastest row;
+  AOTriton remains opt-in until the threshold sweep/full protocol lands.
