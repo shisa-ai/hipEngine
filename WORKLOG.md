@@ -14750,3 +14750,65 @@ without atomics or a graph-level fusion that removes the dispatch without
 changing selected-down GEMV layout.
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d14-selected-moe-postop-fold-rejected.json`.
+
+## 2026-05-17 — D1.5 router cooperative fold rejected
+
+Task #12 prototyped an opt-in decode-only router cooperative fold behind
+`HIPENGINE_PARO_ROUTER_TOPK_COOP=1`:
+
+- `qwen35_router_topk_shared_coop_out_kernel` keeps the one-block-per-router-row
+  logits producer grid (`num_experts + shared_gate` blocks) and uses a global
+  atomic counter so the last producer block runs the existing block-parallel
+  top-k/softmax tail.
+- The default remains the separate `qwen35_router_logits_*` +
+  `qwen35_router_select_kernel` path. The cooperative wrapper must reset the
+  counter with `hipMemsetAsync` before each decode launch, so graph replay sees
+  a memset node plus the folded kernel rather than a pure launch removal.
+
+Validation / probes:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/moe/router.py hipengine/runtime/qwen35_paro.py scripts/smoke.py tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py
+python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py -q --tb=short
+python3 scripts/smoke.py --mode qwen35-router-hip --rows 1 --hidden-size 256 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+HIPENGINE_PARO_ROUTER_TOPK_COOP=1 python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --max-new-tokens 16 --json /tmp/hipengine-d15/graph-fixture-coop.json
+PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d15-router-probe --output-file router_probe -- python3 /tmp/d15_router_probe.py --reps 80 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/512x128-default-1.json
+HIPENGINE_PARO_ROUTER_TOPK_COOP=1 python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/512x128-coop-1.json
+python3 scripts/qwen35_paro_bench.py --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/4k128-default-1.json
+HIPENGINE_PARO_ROUTER_TOPK_COOP=1 python3 scripts/qwen35_paro_bench.py --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/4k128-coop-1.json
+python3 scripts/check_lineage.py --kind kernel --diff stat  # known parent drift in qwen35_expert/smoke/paroquant kernels
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d15-router-coop-fold-rejected.json >/tmp/d15-json-check.json
+git diff --check
+```
+
+Correctness passed: router smoke reported BF16/FP16 `selected_match=True` and
+cooperative `coop_selected_match=True`; graph fixture matched generated tokens
+and logits (`final_kl=0`, expected/generated match true); unit tests passed
+`48/48`.
+
+Micro-profile at the target router shape (`hidden=2048`, `num_rows=257`,
+`top_k=8`, `threads=512`) showed the kernel-only fold was real but too small:
+
+- Default logits kernel median `3080 ns` (`VGPR=24`, no LDS) plus select median
+  `5080 ns` (`VGPR=40`, `LDS=512`) = `8160 ns` kernel-only.
+- Cooperative producer median `7080 ns` (`VGPR=40`, `LDS=512`) while preserving
+  the 257-row producer grid; this excludes the required counter memset.
+
+End-to-end graph replay regressed, so reject as a default:
+
+- 512/128 default: prefill `2274.284 tok/s`, decode `115.931 tok/s`, peak
+  `18.176 GiB`.
+- 512/128 coop: prefill `2236.431 tok/s`, decode `114.856 tok/s`, peak
+  `18.176 GiB` (`-0.93%` decode).
+- 4K/128 default: prefill `2491.236 tok/s`, decode `116.887 tok/s`, peak
+  `20.047 GiB`.
+- 4K/128 coop: prefill `2490.971 tok/s`, decode `116.106 tok/s`, peak
+  `20.047 GiB` (`-0.67%` decode).
+
+Decision: keep the cooperative path only as an opt-in diagnostic. Reopen D1.5 /
+D5.3 only for a graph-level fusion or persistent initialized counter design that
+removes the extra memset node without racing; the naive one-block collapse remains
+invalid because it abandons the router producer occupancy.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d15-router-coop-fold-rejected.json`.

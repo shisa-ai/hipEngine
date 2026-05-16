@@ -91,7 +91,12 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_scatter_gather_lowp,
     qwen35_moe_wmma_tile_map,
 )
-from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16, qwen35_router_topk_shared_out_fp16
+from hipengine.kernels.hip_gfx1100.moe.router import (
+    qwen35_router_topk_shared_coop_out_bf16,
+    qwen35_router_topk_shared_coop_out_fp16,
+    qwen35_router_topk_shared_out_bf16,
+    qwen35_router_topk_shared_out_fp16,
+)
 from hipengine.kernels.hip_gfx1100.quant.paro_marlin_k import gemv_paro_marlin_k_fma_fp16, marlin_k_default_threads
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     awq_fusedw4_prefill_dual_fp16,
@@ -3840,7 +3845,13 @@ class Qwen35ParoDecodeState:
         cfg = self.config
         combined = self.tensor(f"layers.{self.layer_weights.layer_id}.mlp.router_shared_gate.weight")
         prefill_threads = 256 if tokens > 1 else threads
-        qwen35_router_topk_shared_out_fp16(
+        router_library = _library_for(library, "router")
+        router_fn = (
+            qwen35_router_topk_shared_coop_out_fp16
+            if tokens == 1 and _router_topk_coop_enabled()
+            else qwen35_router_topk_shared_out_fp16
+        )
+        router_fn(
             hidden.ptr,
             combined.ptr,
             scratch.router_logits.ptr,
@@ -3853,7 +3864,7 @@ class Qwen35ParoDecodeState:
             cfg.num_experts_per_tok,
             threads=prefill_threads,
             stream=stream,
-            library=_library_for(library, "router"),
+            library=router_library,
             runtime=self.runtime,
         )
         return scratch.selected_experts, scratch.routing_weights
@@ -4681,7 +4692,13 @@ class Qwen35ParoDecodeState:
     ) -> tuple[Tensor, Tensor]:
         cfg = self.config
         combined = self.tensor(f"layers.{self.layer_weights.layer_id}.mlp.router_shared_gate.weight")
-        qwen35_router_topk_shared_out_bf16(
+        router_library = _library_for(library, "router")
+        router_fn = (
+            qwen35_router_topk_shared_coop_out_bf16
+            if tokens == 1 and _router_topk_coop_enabled()
+            else qwen35_router_topk_shared_out_bf16
+        )
+        router_fn(
             hidden.ptr,
             combined.ptr,
             scratch.router_logits.ptr,
@@ -4694,7 +4711,7 @@ class Qwen35ParoDecodeState:
             cfg.num_experts_per_tok,
             threads=threads,
             stream=stream,
-            library=_library_for(library, "router"),
+            library=router_library,
             runtime=self.runtime,
         )
         return scratch.selected_experts, scratch.routing_weights
@@ -5409,6 +5426,14 @@ class Qwen35ParoDecodeState:
 
 def _rotate_dual_pack8_fused_enabled() -> bool:
     value = os.environ.get("HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED")
+    if value is None or value.strip() == "":
+        return False
+    return value.strip().lower() not in {"0", "false", "off", "no"}
+
+
+
+def _router_topk_coop_enabled() -> bool:
+    value = os.environ.get("HIPENGINE_PARO_ROUTER_TOPK_COOP")
     if value is None or value.strip() == "":
         return False
     return value.strip().lower() not in {"0", "false", "off", "no"}

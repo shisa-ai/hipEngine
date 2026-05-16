@@ -4040,6 +4040,8 @@ def qwen35_router_hip_smoke(
     )
     from hipengine.kernels.hip_gfx1100.moe import (
         build_qwen35_router,
+        qwen35_router_topk_shared_coop_out_bf16,
+        qwen35_router_topk_shared_coop_out_fp16,
         qwen35_router_topk_shared_out_bf16,
         qwen35_router_topk_shared_out_fp16,
     )
@@ -4070,6 +4072,12 @@ def qwen35_router_hip_smoke(
     logits_fp16 = np.empty_like(logits)
     selected_fp16 = np.empty_like(selected)
     routing_fp16 = np.empty_like(routing)
+    coop_logits = np.empty_like(logits)
+    coop_selected = np.empty_like(selected)
+    coop_routing = np.empty_like(routing)
+    coop_logits_fp16 = np.empty_like(logits)
+    coop_selected_fp16 = np.empty_like(selected)
+    coop_routing_fp16 = np.empty_like(routing)
 
     x_bf32 = _bf16_bits_to_float32(x_bits)
     weight_bf32 = _bf16_bits_to_float32(weight_bits)
@@ -4102,6 +4110,8 @@ def qwen35_router_hip_smoke(
     )
     x_dev = x_fp16_dev = weight_dev = logits_dev = selected_dev = routing_dev = None
     logits_fp16_dev = selected_fp16_dev = routing_fp16_dev = None
+    coop_logits_dev = coop_selected_dev = coop_routing_dev = None
+    coop_logits_fp16_dev = coop_selected_fp16_dev = coop_routing_fp16_dev = None
     try:
         x_dev = malloc(x_bits.nbytes, runtime=runtime)
         x_fp16_dev = malloc(x_fp16.nbytes, runtime=runtime)
@@ -4112,6 +4122,13 @@ def qwen35_router_hip_smoke(
         logits_fp16_dev = malloc(logits_fp16.nbytes, runtime=runtime)
         selected_fp16_dev = malloc(selected_fp16.nbytes, runtime=runtime)
         routing_fp16_dev = malloc(routing_fp16.nbytes, runtime=runtime)
+        if rows == 1:
+            coop_logits_dev = malloc(coop_logits.nbytes, runtime=runtime)
+            coop_selected_dev = malloc(coop_selected.nbytes, runtime=runtime)
+            coop_routing_dev = malloc(coop_routing.nbytes, runtime=runtime)
+            coop_logits_fp16_dev = malloc(coop_logits_fp16.nbytes, runtime=runtime)
+            coop_selected_fp16_dev = malloc(coop_selected_fp16.nbytes, runtime=runtime)
+            coop_routing_fp16_dev = malloc(coop_routing_fp16.nbytes, runtime=runtime)
         copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
         copy_host_to_device(x_fp16_dev, host_array_ptr(x_fp16), runtime=runtime)
         copy_host_to_device(weight_dev, host_array_ptr(weight_bits), runtime=runtime)
@@ -4145,6 +4162,37 @@ def qwen35_router_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        if rows == 1:
+            qwen35_router_topk_shared_coop_out_bf16(
+                x_dev.ptr,
+                weight_dev.ptr,
+                coop_logits_dev.ptr,
+                coop_selected_dev.ptr,
+                coop_routing_dev.ptr,
+                rows,
+                hidden_size,
+                num_rows,
+                num_experts,
+                top_k,
+                threads=threads,
+                library=library,
+                runtime=runtime,
+            )
+            qwen35_router_topk_shared_coop_out_fp16(
+                x_fp16_dev.ptr,
+                weight_dev.ptr,
+                coop_logits_fp16_dev.ptr,
+                coop_selected_fp16_dev.ptr,
+                coop_routing_fp16_dev.ptr,
+                rows,
+                hidden_size,
+                num_rows,
+                num_experts,
+                top_k,
+                threads=threads,
+                library=library,
+                runtime=runtime,
+            )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(logits), logits_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(selected), selected_dev, runtime=runtime)
@@ -4152,8 +4200,21 @@ def qwen35_router_hip_smoke(
         copy_device_to_host(host_array_ptr(logits_fp16), logits_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(selected_fp16), selected_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(routing_fp16), routing_fp16_dev, runtime=runtime)
+        if rows == 1:
+            copy_device_to_host(host_array_ptr(coop_logits), coop_logits_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(coop_selected), coop_selected_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(coop_routing), coop_routing_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(coop_logits_fp16), coop_logits_fp16_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(coop_selected_fp16), coop_selected_fp16_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(coop_routing_fp16), coop_routing_fp16_dev, runtime=runtime)
     finally:
         for buffer in (
+            coop_routing_fp16_dev,
+            coop_selected_fp16_dev,
+            coop_logits_fp16_dev,
+            coop_routing_dev,
+            coop_selected_dev,
+            coop_logits_dev,
             routing_fp16_dev,
             selected_fp16_dev,
             logits_fp16_dev,
@@ -4173,11 +4234,36 @@ def qwen35_router_hip_smoke(
     fp16_logits_max_abs = float(np.max(np.abs(logits_fp16 - expected_logits_fp16)))
     fp16_routing_max_abs = float(np.max(np.abs(routing_fp16 - expected_routing_fp16)))
     fp16_selected_match = bool(np.array_equal(selected_fp16, expected_selected_fp16))
+    coop_ok = True
+    coop_summary = ""
+    if rows == 1:
+        coop_logits_max_abs = float(np.max(np.abs(coop_logits - expected_logits)))
+        coop_routing_max_abs = float(np.max(np.abs(coop_routing - expected_routing)))
+        coop_selected_match = bool(np.array_equal(coop_selected, expected_selected))
+        coop_fp16_logits_max_abs = float(np.max(np.abs(coop_logits_fp16 - expected_logits_fp16)))
+        coop_fp16_routing_max_abs = float(np.max(np.abs(coop_routing_fp16 - expected_routing_fp16)))
+        coop_fp16_selected_match = bool(np.array_equal(coop_selected_fp16, expected_selected_fp16))
+        coop_ok = (
+            coop_selected_match
+            and coop_logits_max_abs <= 2e-5
+            and coop_routing_max_abs <= 2e-5
+            and coop_fp16_selected_match
+            and coop_fp16_logits_max_abs <= 2e-5
+            and coop_fp16_routing_max_abs <= 2e-5
+        )
+        coop_summary = (
+            f" coop_logits_max_abs={coop_logits_max_abs} coop_routing_max_abs={coop_routing_max_abs} "
+            f"coop_selected_match={coop_selected_match} "
+            f"coop_fp16_logits_max_abs={coop_fp16_logits_max_abs} "
+            f"coop_fp16_routing_max_abs={coop_fp16_routing_max_abs} "
+            f"coop_fp16_selected_match={coop_fp16_selected_match}"
+        )
     print(
         f"rows={rows} hidden_size={hidden_size} num_experts={num_experts} top_k={top_k} "
         f"logits_max_abs={logits_max_abs} routing_max_abs={routing_max_abs} "
         f"selected_match={selected_match} fp16_logits_max_abs={fp16_logits_max_abs} "
         f"fp16_routing_max_abs={fp16_routing_max_abs} fp16_selected_match={fp16_selected_match}"
+        f"{coop_summary}"
     )
     print("selected0=", selected[0].tolist())
     print("routing0=", routing[0].tolist())
@@ -4188,6 +4274,7 @@ def qwen35_router_hip_smoke(
         and fp16_selected_match
         and fp16_logits_max_abs <= 2e-5
         and fp16_routing_max_abs <= 2e-5
+        and coop_ok
     ) else 1
 
 

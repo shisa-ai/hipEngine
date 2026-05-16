@@ -1446,6 +1446,47 @@ def test_qwen35_decode_state_routes_moe_topk_shared(monkeypatch) -> None:
     assert kwargs == {"threads": 512, "stream": 0, "library": None, "runtime": runtime}
 
 
+def test_qwen35_decode_state_routes_moe_topk_shared_coop_when_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_PARO_ROUTER_TOPK_COOP", "1")
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=1)
+    hidden = _tensor(0xCA00, (1, 4096), "bf16")
+    calls = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_router_topk_shared_out_bf16",
+        lambda *args, **kwargs: calls.append(("unexpected", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_router_topk_shared_coop_out_bf16",
+        lambda *args, **kwargs: calls.append(("coop", args, kwargs)),
+    )
+
+    selected, weights = state.route_moe_topk_shared_bf16(hidden, scratch)
+
+    assert selected is scratch.selected_experts
+    assert weights is scratch.routing_weights
+    assert [kind for kind, _args, _kwargs in calls] == ["coop"]
+    args, kwargs = calls[0][1], calls[0][2]
+    assert args == (
+        hidden.ptr,
+        0xB000,
+        scratch.router_logits.ptr,
+        scratch.selected_experts.ptr,
+        scratch.routing_weights.ptr,
+        1,
+        4096,
+        129,
+        128,
+        8,
+    )
+    assert kwargs == {"threads": 512, "stream": 0, "library": None, "runtime": runtime}
+
+
+
 def test_qwen35_decode_state_activates_and_rotates_moe_down(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
