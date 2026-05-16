@@ -838,6 +838,8 @@ No engine, dispatch, or quant changes.
 
 ### KV Cache Plugin (sub-plugin of engine)
 
+Detailed INT8-KV and FastDMS-derived compact-DMS delivery plan: [docs/KVCACHE.md](KVCACHE.md).
+
 KV cache has **two orthogonal axes**, plus the standard block-manager concerns. Designing for both from day 0 is the specific lesson from `~/FastDMS` — integrating DMS into vLLM is "major surgery" ([FastDMS README](/home/lhl/FastDMS/README.md)) precisely because vLLM's KV pool assumes fixed-page uniform-per-sequence blocks. hipENGINE avoids that trap by designing the interface around per-(seq, layer, head) live spans from the start, even if the default policy has uniform spans.
 
 | Axis | What varies | Examples |
@@ -977,6 +979,8 @@ The `KVPolicy.kvtc_offload()` plugin manages:
 hipENGINE defaults to **RadixCache** for better prefix sharing in multi-turn chat and API serving. vLLM-style is available as `KVPolicy.prefix_lru()`.
 
 ### DMS Support Plan (and why it shapes Phase-0 design)
+
+See [docs/KVCACHE.md](KVCACHE.md) for the staged delivery order: dense paged INT8 KV with no BF16 shadowing first, then FastDMS-derived compact DMS over the same `KVLiveSpans` ABI.
 
 Dynamic Memory Sparsification (DMS) trains per-head learned KV token eviction via logit distillation. Compact DMS saves real allocator memory (5–8× vs BF16 KV at 8K context, up to 49× at max context per `~/FastDMS` benchmarks) while maintaining or improving decode speed. The reference open implementation is `~/FastDMS` (shisa-ai). Validated checkpoints: `shisa-ai/Llama-3.2-1B-DMS-8x`, `nvidia/Qwen3-8B-DMS-8x`.
 

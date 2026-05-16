@@ -14031,3 +14031,42 @@ Conclusion: W.1 is neutral/noisy across both local legacy and packed paths. Keep
 the current default unroll-600 flag, but remove it from the active optimization
 queue. Artifact:
 `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-w1-unroll600-ablation-diagnostic.json`.
+
+## 2026-05-17 — KV cache roadmap: INT8 no-shadow then FastDMS-derived DMS
+
+User asked for a focused KV-cache plan covering dense INT8 KV first and a
+FastDMS-derived compact-DMS variant second. Added `docs/KVCACHE.md` as the
+source plan for this lane.
+
+Key decisions recorded:
+
+- Dense paged INT8 KV is the immediate 256K capacity path. For Qwen3.5/PARO,
+  BF16 KV is ~20 KiB/token across the 10 full-attention layers, so 256K INT8
+  has roughly the same raw KV footprint as 128K BF16. This only counts if there
+  is no persistent BF16 shadow/staging arena.
+- INT8 KV is treated as a capacity feature first, not a guaranteed speed win;
+  parent evidence remains neutral/negative at 32K and marginal at 128K.
+- Compact DMS follows after INT8 and should reuse the `KVLiveSpans` ABI plus
+  storage-dtype plumbing. The implementation map points at `~/FastDMS` files
+  for DMS metadata extraction, compact allocator/admission, streaming prefill
+  pack, fused decode preprocess, and compact grouped split-K attention.
+- DMS quality claims require a DMS-retrofitted checkpoint; no silent DMS on an
+  arbitrary checkpoint. HIGGS/AQUA remain research-only because FastDMS serving
+  speed did not justify HIGGS as a current RDNA3 target.
+
+Updated `docs/PLAN.md` and `docs/OPTIMIZE.md` with links/guardrails pointing to
+`docs/KVCACHE.md`.
+
+Validation:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+for p in ['docs/KVCACHE.md','docs/PLAN.md','docs/OPTIMIZE.md']:
+    text=Path(p).read_text()
+    assert '\\t' not in text
+    assert 'TODO' not in text
+print('markdown sanity ok')
+PY
+# markdown sanity ok
+```
