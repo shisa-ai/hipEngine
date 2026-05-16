@@ -11381,3 +11381,81 @@ one-block-per-row prefill kernel, pairing query heads loses more occupancy/LDS
 than it saves in KV reuse; the 4K fix likely needs a different attention
 algorithm (split/tiled context, grouped-GQA with smaller score tiles, or a
 FlashAttention-style online softmax) rather than fatter per-row LDS blocks.
+
+## 2026-05-16 — Prefill multiloop iter 53/54: rejected long-attention 128 threads under 512 loop metric
+
+After iter 52 showed 4K/128 is dominated by the single-request full-attention
+prefill kernel (`4572.4 ms` / 10 launches at 64 threads), tried the smallest
+shape-targeted long-row change before a larger tiled/online-softmax rewrite:
+raise only `max_context_len > 1024` full-attention prefill launches from 64 to
+128 threads. The 512 short-row path remains the existing 32-thread one-wave
+branch, so this is a 4K-focused launch-geometry change rather than another 512
+micro-tune. The earlier 256-thread launch remains avoided because it was
+repeat-nondeterministic on gfx1100.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import build_qwen35_paged_attn_decode
+lib = build_qwen35_paged_attn_decode(load=True, require_cached=False)
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans')
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans')
+print('attention prefill symbols loaded')
+PY
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter53-attn128-4k-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter53-attn128-4k-trace.json
+```
+
+Results: attention smoke remained bit-exact (`prefill_gate_fp16_max_abs=0`,
+`prefill_gate_fp16_mismatch=0`) and targeted tests passed (`37 passed`). The
+512 verification samples during this hot/long-run session were `2036.091`,
+`2022.316`, `2020.019`, and exact-verify `2012.584` tok/s (median `2021.167`),
+below the retained 512 median `2061.730`; however the edited branch is
+`max_context_len > 1024` only, and 512 still uses the same 32-thread short-row
+kernel as iter 50. Fixture gate passed unchanged (`max_kl=0.03406`, top-1
+`1.0`, `native_owned_device_bytes=1625645909`, native prefill `0.2527s`).
+4K/128 improved from retained `659.356 tok/s` to `1021.001` and `1017.177`
+tok/s samples (`prefill_seconds=4.0268`, decode `102.329 tok/s` on the guard
+run), a +54.3% 4K prefill gain and well above the 95% guard. Profiler evidence:
+`qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<false>` ran 10 times with
+`2416.235 ms` total / `241.624 ms` average at `workgroup_x=128`, `LDS=17920`,
+`VGPR=32`, scratch `0`; the retained 64-thread 4K profile was `4572.375 ms` /
+`457.238 ms` average. Initial decision intent was to keep for the user-requested
+4K pivot, but the active multiloop's recorded primary metric is still 512/128;
+action had to be recorded as revert because 512 measurements failed that legacy
+acceptance gate. Benchmark rollup/catalog edits were reverted, and this note is
+the retained evidence for a future 4K-primary re-scope. 4K is still far below
+the parent target, so next 4K work should continue on attention algorithm
+structure (not GQA2 fat LDS, which iter 52 rejected).
+
+### Iter 54 rerun note — GPU contention check for long-attention 128-thread trial
+
+User reported the GPU was in use during the iter-53 512 verification, so before
+reverting the 4K-focused long-attention 128-thread trial I reran the same code
+with `rocm-smi` showing GPU use `0%` and VRAM `0%` at the start. No additional
+code changes were made. Commands repeated the standard verify/guard plus two 4K
+runs:
+
+```bash
+rocm-smi --showuse --showmemuse --showtemp
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter54-rerun-512-128-N.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter54-rerun-4k-128-N.json
+```
+
+Rerun 512/128 samples were `2039.063`, `2041.361`, `2032.537`, `2034.592`, and
+`2031.609` tok/s (median `2034.592`), still below the retained 512 median
+`2061.730`, although the edited branch is `max_context_len > 1024` only and the
+512 short-row kernel still launches at 32 threads. Fixture gate remained green
+(`max_kl=0.03406`, top-1 `1.0`, owned bytes `1625645909`). The 4K/128 rerun
+confirmed the large improvement: `1020.076` and `1018.439` tok/s (median
+`1019.258`, +54.6% versus retained `659.356`), with decode `102.405 tok/s` on
+the representative run. Because the active loop still accepts/rejects on 512/128,
+the trial code was reverted despite the 4K evidence. This should be the first
+candidate to restore if/when the loop is re-scoped with 4K/128 as the primary
+metric.
