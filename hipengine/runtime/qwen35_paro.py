@@ -2486,8 +2486,12 @@ class Qwen35ParoDecodeState:
             activation_dtype=DType.FP16,
             gated_dtype=DType.FP16,
         )
-        if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
-            moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        use_grouped_moe = _use_moe_grouped_compact_prefill(tokens)
+        if use_grouped_moe:
+            if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+                moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+            moe_scratch = self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         self.input_rmsnorm_fp16(hidden, attention_scratch.attn_input, tokens=tokens, library=library, stream=stream)
         self.rotate_full_attention_inputs_fp16(
             attention_scratch.attn_input,
@@ -2595,7 +2599,17 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        return self.run_moe_grouped_compact_fp16(
+        if use_grouped_moe:
+            return self.run_moe_grouped_compact_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return self.run_moe_c1_fp16(
             mlp_input,
             residual,
             scratch=moe_scratch,
@@ -3448,8 +3462,10 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        if tokens == 1:
-            moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        use_grouped_moe = _use_moe_grouped_compact_prefill(tokens)
+        if not use_grouped_moe:
+            if not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+                moe_scratch = self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
             moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         self.input_rmsnorm_fp16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
@@ -3483,7 +3499,7 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        if tokens == 1:
+        if not use_grouped_moe:
             return self.run_moe_c1_fp16(
                 mlp_input,
                 residual,
@@ -5134,6 +5150,17 @@ class Qwen35ParoDecodeState:
         self.workspace.free()
         self.layer_weights.free(runtime=self.runtime)
 
+
+
+def _moe_prefill_compact_wmma_min_tokens() -> int:
+    value = os.environ.get("HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS")
+    if value is None or value.strip() == "":
+        return 2
+    return max(2, int(value))
+
+
+def _use_moe_grouped_compact_prefill(tokens: int) -> bool:
+    return tokens > 1 and tokens >= _moe_prefill_compact_wmma_min_tokens()
 
 
 def _linear_ab_prefill_rocblas_min_tokens() -> int:

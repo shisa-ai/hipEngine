@@ -331,7 +331,7 @@ Correctness hierarchy for these rows: HF PARO oracle for model correctness; scal
 `OPTIMAL.md` lists 23 base environment flags. hipENGINE should preserve the same routing decisions as registry/plugin configuration rather than copying env-var checks into engine code:
 
 - **MoE dispatch:** compact stacked layout, in-place selected-MoE repack replacement, GPU expert gather, grouped-stacked max tokens `4096`, native weighted lanes, grouped-stacked SiLU+rotate fusion, decode selected-MoE SiLU/down-rotate fusion, native router.
-- **GEMV / WMMA:** PARO vec8 GEMV, pack8 qweight replacement, transposed pack8 disabled on W7900, WMMA GEMM enabled for prefill MoE, compact WMMA buffers, `WMMA_MIN_TOKENS=64` (crossover vs GEMV is ~48 tokens).
+- **GEMV / WMMA:** PARO vec8 GEMV, pack8 qweight replacement, transposed pack8 disabled on W7900, WMMA GEMM enabled for prefill MoE, compact WMMA buffers, parent `WMMA_MIN_TOKENS=64` (crossover vs GEMV ~48 tokens); hipENGINE P1.4 retains compact WMMA for all multi-token single-request prefill (`HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS=2`) after GEMV fallback lost at 128/256/512/4096 prompts.
 - **Attention:** full-attention gate fusion, full-attention Q/K pack8 fusion, grouped-GQA paged context attention, paged max splits `512`.
 - **Linear/projections:** W8A16 `lm_head`, W8A16 shared expert dense branch, fused linear-attention A/B projection, pack8 fused linear-attention QKV+Z projection.
 - **Routing threshold:** native router prefill path begins at `512` tokens.
@@ -373,7 +373,7 @@ The checklist below is the active port map for reproducing the parent compact-WM
 | Activation + down rotation | `silu_mul_dual_rotate_out_kernel` | **Landed / reused for grouped packed lanes** | `NANOVLLM_PARO_MOE_GROUPED_STACKED_SILU_ROTATE_FUSED=1` default; current grouped prefill calls the existing fused rotate over sorted lanes. |
 | Down compact WMMA | `gemm_awq_selected_pack8_wmma_compact_kernel` | **Landed for BF16 and FP16** | Paired with compact tile map and compact buffers; `paro-awq-wmma-compact-hip` validates compact dual/single kernels on a tiny fixture. |
 | Weighted lane accumulation | `weighted_lanes_sum_out_kernel` | **Landed for BF16 and FP16** | `paro-combine-hip` validates `weighted_lanes_sum_out_{bf16,fp16}` and batched shared-gate residual combine; `rocprofv3` shows the weighted-lane kernels and batch combine on W7900. |
-| GEMV fallback/comparison | `gemv_awq_selected_dual_pack8*`, `gemv_awq_selected_pack8*` | **Available as fallback/comparison** | Multi-token prefill layer orchestration now uses grouped metadata + compact WMMA, not c1 selected-row order; selected GEMV remains useful below the WMMA crossover and for regression comparison. |
+| GEMV fallback/comparison | `gemv_awq_selected_dual_pack8*`, `gemv_awq_selected_pack8*` | **Available as fallback/comparison** | Single-request multi-token prefill layer orchestration defaults to grouped metadata + compact WMMA for `tokens >= 2` (`HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS`, large value forces c1 GEMV diagnostics); P1.4 found no useful GEMV crossover at 128/256/512/4096 prompts. |
 
 #### Full-inference dependencies outside MoE
 

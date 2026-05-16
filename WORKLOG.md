@@ -14408,3 +14408,73 @@ Because this remains a resident-runner diagnostic rather than a promoted public
 
 Artifact:
 `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p13-shared-down-combine-token-tile-diagnostic.json`.
+
+## 2026-05-17 — P1.4 selected-MoE compact WMMA threshold retained
+
+Task #7 swept selected-MoE multi-token prefill routing after the P1.1-P1.3
+prototypes. Added an env-controlled token-count threshold without backend/quant
+branches in the hot layer dispatch:
+
+- `HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS` defaults to `2`.
+- `tokens == 1` keeps the c1 GEMV/decode path.
+- single-request FP16 prefill chunks with `tokens >= threshold` use grouped
+  compact WMMA; chunks below threshold use the existing `run_moe_c1_fp16` GEMV
+  fallback.
+- A large diagnostic threshold (tested with `999999`) forces the GEMV fallback.
+- Packed cN/varlen prefill remains grouped compact WMMA.
+- Runner scratch selection now follows the same token-count helper, avoiding a
+  grouped scratch allocation when the diagnostic c1 fallback is forced.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py
+python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short
+# 41 passed
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p14-moe-threshold-sweep-20260517/p14_default_fixture_gate.json
+# passed=true, max_kl=0.0395688706, top1_agreement=1.0, generated IDs match fixture
+```
+
+Benchmark protocol on W7900/gfx1100, all rows used cache-only HIP builds:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-legacy-or-shisa-packed> \
+  --token-id 9707 \
+  --prompt-length {128,256,512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p14-moe-threshold-sweep-20260517/<label>.json
+# forced fallback rows add HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS=999999
+```
+
+Required 512/128 and 4K/128 rows, retained default compact WMMA vs forced GEMV
+fallback:
+
+| model/path | workload | compact WMMA prefill | forced GEMV prefill | compact Δ | decode Δ | peak GiB default/fallback |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab legacy | 512/128 | 2210.372 | 811.378 | +172.4% | -0.15% | 18.587 / 18.556 |
+| z-lab legacy | 4096/128 | 2452.941 | 813.924 | +201.4% | +0.14% | 20.458 / 20.208 |
+| shisa packed | 512/128 | 2403.645 | 850.397 | +182.6% | -0.13% | 18.535 / 18.503 |
+| shisa packed | 4096/128 | 2664.070 | 849.221 | +213.7% | -0.24% | 20.406 / 20.155 |
+
+Small z-lab probes also favored compact WMMA: 128/128 `1453.816` vs `703.792`
+(+106.6%) and 256/128 `1897.076` vs `767.725` (+147.1%). Forced GEMV previews
+kept the first generated token IDs but logits differed due the different
+selected-MoE ordering/reduction; the retained default fixture gate above is the
+correctness gate for the policy. The GEMV fallback uses slightly less scratch
+(+0.008 to +0.251 GiB for compact WMMA), but the prefill regression is too large.
+
+Conclusion: retain `HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS=2`; no useful
+GEMV crossover above decode token count one. P1.1-P1.4 are now closed. Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p14-moe-wmma-threshold-diagnostic.json`.
