@@ -712,9 +712,11 @@ AOTriton as the perf oracle is what makes a later native port tractable.
 **Phase 1 — AOTriton attention plugin** (next multiloop spike).
 
 - Add a new kernel-build module under `hipengine/kernels/hip_gfx1100/attention/`
-  that loads `libaotriton_v2.so` via `ctypes`/dlopen and exposes a thin C
-  wrapper for `attn_fwd_compact_varlen` (the varlen path matches
-  `CompactPromptSlab`).
+  (`aotriton_wrap.{cc,py}`) that links against the manifest-pinned
+  `libaotriton_v2.so` and exposes a stable `extern "C"` surface around
+  `attn_fwd_compact_varlen` (the varlen path matches `CompactPromptSlab`).
+  `ctypes` dlopens hipENGINE's own wrapper `.so`, not AOTriton directly; see
+  "Stable-ABI shim, not raw dlopen" below.
 - Register `KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro",
   "aotriton_attn_fwd")` alongside
   `(... , "qwen35_causal_gqa_gate_fp16")`. No `if backend=="..."`,
@@ -732,10 +734,11 @@ AOTriton as the perf oracle is what makes a later native port tractable.
   num_q_heads=16. Reuse the existing decode-side gate kernel pattern at
   `paged_attn_decode.hip:316,329` for the math; only the launch shape
   changes.
-- Do not vendor the AOTriton binary into the hipengine git tree. Use the
-  fetch-on-install + pinned-manifest scheme described in "AOTriton distribution
-  and pinning strategy" below; resolve `libaotriton_v2.so` and the kernel
-  images via the documented lookup chain at module load.
+- Use the fetch-on-install + pinned-manifest scheme described in "AOTriton
+  distribution and pinning strategy" below: pin in
+  `aotriton_release.toml`, install with `scripts/fetch_aotriton.sh`, resolve
+  via `aotriton_runtime_tree()`. Do not vendor the AOTriton binary in git;
+  do not add a submodule; do not depend on PyTorch's bundled copy.
 - Correctness gate: re-run `scripts/qwen35_native_prefill_fixture_gate.py` on
   `fixtures/qwen35_paro/parent_512_32_seed1234.json` and the 4K repeated-token
   diagnostic; require `passed=true`, `max_kl <= 0.05`, top-1 ≥ 90 %, and
@@ -771,172 +774,207 @@ unacceptable or per-shape headroom is measurable).
 AOTriton (`https://github.com/ROCm/aotriton`) is under active development:
 ABI churn is real between minors, release artifacts are matrixed across ROCm
 minors, and the version PyTorch bundles is mangled (the conda installs on this
-host show `libaotriton_v2.so.torch` symlinks under `torch/lib/`). We need a
-scheme that gives us a deterministic build without inheriting any of that
-churn.
+host show `libaotriton_v2.so.torch` symlinks under `torch/lib/`). hipENGINE
+pins one upstream release in `aotriton_release.toml` and fetches it on demand
+into the user cache. There is exactly one supported install path. No
+submodule. No vendored binary. No PyTorch dependency.
 
-#### What not to do
+#### Pinned version: 0.11.2b
 
-- **Do not add AOTriton as a git submodule and build from source.** AOTriton's
-  source build compiles 480+ Triton kernel variants per architecture; it
-  requires a working AMDGPU Triton fork and several GiB of build output, and
-  takes hours on first run. Our CI does not need that surface, and AGENTS.md's
-  git rules forbid committing compiled `.so` / JIT caches anyway.
-- **Do not vendor the release tarball or extracted binaries into the
-  hipengine repo.** AGENTS.md git rules forbid committing compiled `.so` and
-  prebuilt kernel images. Binary blobs in-tree also make pin bumps unreviewable
-  (a routine version bump becomes a multi-MB binary diff that no one can read
-  in PR), and they couple repo state to a specific ROCm-minor build target.
-  Footprint itself is not the issue — 76 MB inference-only or 31 MB pruned is
-  a rounding error next to model weights — but committing binaries breaks the
-  review and provenance contract.
-- **Do not depend on PyTorch's bundled AOTriton.** The PyTorch installs we
-  found here ship under `torch/lib/libaotriton_v2.so{,.torch,.0.8.0}` with
-  PyTorch-specific symlinks. Reading from a PyTorch install couples our
-  runtime to a torch version we do not import. AGENTS.md says `import torch`
-  is forbidden on the hot path; reading from `torch/lib/` is the spiritual
-  cousin of that violation.
-- **Do not rely on `/opt/rocm/lib/libaotriton_v2.so`.** It is not shipped
-  there on this host (verified `ls /opt/rocm/lib/` 2026-05-16), and even when
-  a future ROCm release does ship it, the bundled version will lag.
+We pin AOTriton 0.11.2b (released 2026-01-28). Rationale:
 
-#### What to do: fetch-on-install with a pinned manifest
+- The 0.11.x release line ships a `manylinux_2_28_x86_64-rocm7.0-shared`
+  build whose `libaotriton_v2.so.0.11.2` NEEDs `libamdhip64.so.7` directly.
+  Our host ROCm is 7.2.2; no `libamdhip64.so.6` compat shim is required.
+- The V2 API we depend on (`attn_fwd_compact_varlen`) is present and
+  signature-stable in 0.11.x (`include/aotriton/v2/flash.h`). V3 is the new
+  default but V2 is "frozen for backward compatibility", not removed; our
+  wrapper continues to call V2.
+- The 0.11b release notes warn that gfx1100 is "experimental" due to
+  "massive accuracy problems". That warning is **training-only**:
+  `test/adiffs/gfx1100.txt` in 0.11.2b lists 436 failing tests, 100% of which
+  are in `test_backward.py` (backward/training kernels). Zero forward-pass
+  failures are listed. hipENGINE is inference-only, so the warning does not
+  apply. As an additional sanity check, 0.11.1b restored Navi31 support via
+  an alternative wheel mechanism and 0.11.2b shipped an updated `gfx11xx`
+  image tarball; the gfx11xx images tarball has 60k+ downloads.
 
-Land a manifest file under
-`hipengine/kernels/hip_gfx1100/attention/aotriton_release.toml` recording the
-pin. Concrete recommended starting pin (matches the 0.8 binary already on this
-host and the symbols we inspected):
+Non-targets:
+
+- 0.11.210b is a gfx942-only ASAN debug build.
+- 0.11.52b is a gfx1250-only tech preview.
+- 0.10b and earlier ship a single combined tarball but only against ROCm
+  ≤7.0 (the rocm7.0-shared assets for 0.10b would technically still work,
+  but we gain nothing by staying older).
+- 0.8.x requires `libamdhip64.so.6`. We deliberately do not support that
+  path now that ROCm 7 is the deployed runtime.
+
+#### Two-tarball release layout (changed in 0.11.x)
+
+0.11.x split runtime and GPU images into separate tarballs. For gfx1100 we
+need both:
+
+| Asset | URL fragment | Size | Contents |
+| --- | --- | ---: | --- |
+| Runtime | `aotriton-0.11.2b-manylinux_2_28_x86_64-rocm7.0-shared.tar.gz` | 4.9 MB | `lib/libaotriton_v2.so*`, `include/aotriton/{flash,runtime,util,v2}.h` |
+| GPU images (gfx11xx) | `aotriton-0.11.2b-images-amd-gfx11xx.tar.gz` | 475 MB | `lib/aotriton.images/amd-gfx11xx/flash/{attn_fwd,bwd_*,debug_*}/*.aks2` |
+
+Both share the same top-level `aotriton/` directory and merge cleanly into
+one cache tree. After pruning to `flash/attn_fwd` (the only kernel family
+hipENGINE invokes; everything else is training/debug), the on-disk footprint
+is ~123 MB.
+
+#### Manifest schema
+
+`hipengine/kernels/hip_gfx1100/attention/aotriton_release.toml` is the
+source of truth for the pin. Schema (see the file for the live values):
 
 ```toml
 [aotriton]
-version = "0.8.2b"
-git_sha1 = "33fb6bd5290b2e9e9bc71dbcf91f92c6ba7689b1"  # from include/aotriton/config.h
-so_name = "libaotriton_v2.so.0.8.0"
-rocm_min = "6.2"
-rocm_max = "7.x"   # 0.8 needs libamdhip64.so.6 via ROCm ABI-compat shim
+version = "0.11.2b"
+so_name = "libaotriton_v2.so.0.11.2"
+rocm_min = "7.0"
+rocm_max = "7.x"
 
-[aotriton.archive]
-url = "https://github.com/ROCm/aotriton/releases/download/0.8.2b/aotriton-0.8.2b-manylinux_2_28_x86_64-rocm6.3-shared.tar.gz"
-sha256 = "<fill in on bump>"
-size_bytes = 374748255
+[[aotriton.archives]]
+kind = "runtime"
+url = "...rocm7.0-shared.tar.gz"
+sha256 = "5501a0a3..."
+size_bytes = 4884827
+
+[[aotriton.archives]]
+kind = "images"
+arch = "amd-gfx11xx"
+url = "...images-amd-gfx11xx.tar.gz"
+sha256 = "83929963..."
+size_bytes = 475390993
 
 [aotriton.prune]
-# Keep only the kernel variants hipengine actually calls on gfx1100.
-architectures = ["amd-gfx110x"]
-flash_subdirs = ["attn_fwd"]   # forward only; we do not train
-dtypes = ["bf16", "fp16"]
-head_dims = [128]
-causal = [true]
-# 30 MB after pruning; suitable for ~/.cache placement.
+keep_flash_subdirs = ["attn_fwd"]
+keep_archs = ["amd-gfx11xx"]
 ```
 
-Resolve at module load (mirror the dlopen pattern in `hipengine/core/hip.py`)
-with this lookup chain, in order:
+#### Lookup chain at module load
 
-1. `HIPENGINE_AOTRITON_LIB` env var → use directly (developer override).
-2. `${HIPENGINE_AOTRITON_HOME:-~/.cache/hipengine/aotriton}/<version>/lib/libaotriton_v2.so`
-   → the fetch-on-install destination. Version-check the file's SONAME against
-   the manifest and the AOTriton `images/<arch>` directory layout.
-3. (Optional, gated) `/opt/rocm/lib/libaotriton_v2.so` → only when its SONAME
-   matches the manifest band; warn otherwise.
-4. Nothing found → emit one clear error pointing at
-   `scripts/fetch_aotriton.sh`, and fall the registry back to the existing
-   `qwen35_causal_gqa_gate_fp16` kernel for that prefill call so generation
-   still works (degraded long-T perf, but no crash).
+`hipengine/kernels/hip_gfx1100/attention/aotriton.py:aotriton_runtime_tree()`
+resolves the runtime in this order. First hit wins; nothing else is
+consulted.
 
-Ship a one-shot fetch helper as `scripts/fetch_aotriton.sh` (and a Python
-twin `hipengine.aotriton.ensure_installed()` for SDK use):
+1. **`HIPENGINE_AOTRITON_LIB`** — explicit path to `libaotriton_v2.so`.
+   The matching `include/` and `aotriton.images/` trees must live at the
+   standard sibling paths. Developer override; not for production.
+2. **`${HIPENGINE_AOTRITON_HOME:-~/.cache/hipengine/aotriton}/<version>/`**
+   — the fetch-on-install destination. `<version>` is read from
+   `aotriton_release.toml`; mismatched cache directories are ignored.
+3. **`/opt/rocm/lib/libaotriton_v2.so`** — only when its SONAME matches the
+   manifest's pinned `so_name`. Not shipped by ROCm 7.2.2 today; reserved
+   for future ROCm releases that begin bundling AOTriton.
+4. Nothing found → `AotritonNotInstalledError` pointing at
+   `scripts/fetch_aotriton.sh`. Generation falls back to the hand-rolled
+   `qwen35_causal_gqa_gate_fp16` kernel for that call so a baseline install
+   is still correct, just slower at long T.
+
+There are no other env vars. `HIPENGINE_AOTRITON_SOURCE_ROOT` and
+`HIPENGINE_AOTRITON_RUNTIME_ROOT` (used during the 0.8.x spike) have been
+removed; if you find them in docs or commit messages, they predate the
+0.11.2b cleanup.
+
+#### Bring-up checklist
+
+One-time, per host:
 
 ```bash
 scripts/fetch_aotriton.sh
-  --manifest hipengine/kernels/hip_gfx1100/attention/aotriton_release.toml
-  --dest ~/.cache/hipengine/aotriton
-  [--prune]            # default true; strip non-gfx110x and non-causal binaries
-  [--no-verify-sha]    # opt-out for offline mirrors only
-  [--force]            # re-extract even if dest exists
+  [--dest ~/.cache/hipengine/aotriton]   # default; override if cache lives elsewhere
+  [--no-prune]                           # default prunes to flash/attn_fwd; --no-prune keeps everything
+  [--local-tarball-dir PATH]             # reuse already-downloaded tarballs by filename
+  [--no-verify-sha]                      # opt-out for offline mirrors only
+  [--force]                              # re-extract on top of an existing version directory
+  [--dry-run]                            # print the plan as JSON without downloading
 ```
 
-It downloads to the manifest-listed URL, verifies SHA256, extracts to
-`<dest>/<version>/`, optionally prunes per the manifest, writes a
-`MANIFEST.local.json` recording (sha256, fetched_at, prune_state), and exits.
-This is *not* part of `pip install hipengine`; it is one explicit step in the
-bring-up checklist, recorded in `WORKLOG.md` per AGENTS.md.
+The helper downloads both pinned tarballs (~480 MB total), verifies SHA256
+against the manifest, extracts into `~/.cache/hipengine/aotriton/<version>/`,
+prunes per the manifest, and writes `MANIFEST.local.json` recording
+provenance.
+
+`pip install hipengine` does **not** invoke the fetcher. Long-T attention
+falls back to the hand-rolled kernel when AOTriton is absent; that path is
+correct but slower above ~1K prompt tokens. The fetcher is one explicit
+bring-up step, recorded in `WORKLOG.md` per AGENTS.md.
 
 #### Why not just `pip install aotriton`
 
-There is no published PyPI wheel for AOTriton that ships the gfx110x tile
-database usefully on its own. The pip distribution channel is PyTorch's, which
-is the path we are explicitly avoiding. The tarball under
-`https://github.com/ROCm/aotriton/releases/` is the upstream-blessed standalone
-distribution; that is what we pin against.
+There is no standalone PyPI wheel that ships the gfx11xx tile database
+usefully. The pip distribution channel is PyTorch's; relying on it couples
+hipENGINE to a torch version we explicitly do not import. The standalone
+tarballs at `https://github.com/ROCm/aotriton/releases/` are the
+upstream-blessed distribution; that is what we pin.
 
 #### Stable-ABI shim, not raw dlopen
 
-The C++ symbol we want is mangled
-`_ZN8aotriton2v25flash23attn_fwd_compact_varlenENS_10TensorViewILi4EEES3_...`.
-Linking Python `ctypes` against that mangled name is fragile across AOTriton
-minors. The safer pattern, which the existing hipengine JIT pipeline already
-supports:
+The C++ entry we want is
+`AOTRITON_NS::v2::flash::attn_fwd_compact_varlen(...)`. Mangled, the symbol
+is ~120 characters and varies across AOTriton minors. Linking Python
+`ctypes` against that directly would break on every upstream rebuild.
+Instead:
 
-1. Add `hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.{hip,cc,py}`.
-2. The `.cc` includes `<aotriton/flash.h>` from the resolved
-   `${HIPENGINE_AOTRITON_HOME}/<version>/include/` and links against the
-   matching `lib/libaotriton_v2.so`, exposing a small `extern "C"` surface:
-   `hipengine_aotriton_attn_fwd_compact_varlen(...)`.
-3. The `.py` does the dlopen of *our* wrapper .so (built by the same hipcc
-   JIT path that builds all other gfx1100 kernels), not AOTriton directly.
-4. Bumping AOTriton means: bump the manifest, re-run `fetch_aotriton.sh`,
-   re-JIT the wrapper (seconds), re-run the fixture gate.
+1. `hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.cc` includes
+   `<aotriton/v2/flash.h>` from the resolved cache and links against
+   `lib/libaotriton_v2.so`, exposing a small `extern "C"` surface
+   (`hipengine_aotriton_attn_fwd_compact_varlen`,
+   `hipengine_aotriton_attn_fwd_compact_varlen_gqa_per_q_head`,
+   `hipengine_aotriton_gate_mul_fp16_inplace`,
+   `hipengine_aotriton_check_gpu`).
+2. `aotriton_wrap.py` dlopens *our* wrapper .so (built by the same hipcc JIT
+   path that builds all other gfx1100 kernels), not AOTriton directly.
+3. Bumping AOTriton: edit `aotriton_release.toml`, re-run
+   `scripts/fetch_aotriton.sh`, re-build the wrapper (seconds via JIT cache),
+   re-run the fixture gate.
 
-This isolates ABI churn to one ~50-line C++ file. If AOTriton 0.9 renames the
-entrypoint, only the wrapper needs to change; the hipengine kernel-registry
-key, the runtime call site, and the Python ABI stay unchanged.
+If AOTriton 0.12 renames the entrypoint, only `aotriton_wrap.cc` changes;
+the registry key, runtime call site, and Python ABI remain stable.
 
-#### Concrete version on this host
+PyTorch dispatch policy is unrelated: `pytorch/pytorch#166397` (Nov 2025)
+marked gfx1100 as "experimental" in PyTorch's SDPA backend matrix. That is
+a PyTorch QA policy decision, not a statement about AOTriton kernel
+correctness on gfx1100. hipENGINE calls AOTriton directly via its C++ ABI
+and is unaffected.
 
-- Available locally now: `~/Downloads/aotriton/aotriton/` (extracted 0.8.0
-  build, `AOTRITON_VERSION_{MAJOR,MINOR,PATCH}=0,8,0`, `AOTRITON_GIT_SHA1
-  33fb6bd5290b2e9e9bc71dbcf91f92c6ba7689b1`), and the matching tarball
-  `~/Downloads/aotriton-0.8.2b-manylinux_2_28_x86_64-rocm6.3-shared.tar.gz`
-  (357 MB compressed, 374 MB uncompressed full matrix, ≈30 MB pruned to
-  gfx110x + causal + head_dim 128).
-- The shared library NEEDED list includes `libamdhip64.so.6`, `liblzma.so.5`,
-  `libstdc++.so.6`. System ROCm here is 7.2.2; ROCm ships an ABI compat
-  symlink for `libamdhip64.so.6 -> libamdhip64.so.7`, so 0.8 loads on 7.x in
-  practice. The manifest pin should record the ROCm-minor build target so a
-  future ROCm-9 install does not silently load an incompatible shim.
-- The single C-API entry we need (`attn_fwd_compact_varlen`) was introduced in
-  AOTriton 0.7.x and remains in 0.8.x. We are not chasing a moving target on
-  the surface area we actually consume, only on the surrounding ecosystem.
-- Side note: `pytorch/pytorch#166397` (Nov 2025) marked gfx1100 as
-  "experimental" in PyTorch's SDPA backend matrix. That is a PyTorch QA
-  policy decision about which backends ship as production-grade defaults,
-  *not* a statement about AOTriton kernel correctness on gfx1100; AOTriton's
-  own gfx110x images continue to be released and tested. hipengine calls
-  AOTriton directly via its C++ ABI and is unaffected by the PyTorch
-  dispatch policy.
+#### Future work: per-GPU kernel streaming (not implemented)
 
-#### Production decision (2026-05-16)
+The gfx11xx images tarball is 475 MB compressed because it bundles every
+shape variant across gfx1100/1101/1102/1103 plus the full forward + backward
++ debug surface. hipENGINE only invokes the forward `attn_fwd` family on one
+physical GPU at a time, and even within `attn_fwd` only calls a handful of
+shape variants for the model in use. There is an obvious opportunity to
+stream only the necessary kernels per detected GPU and per
+manifest-declared shape signature.
 
-Production target is the fetch-on-install + pinned-manifest scheme above
-("What to do"). The in-flight Phase 1 spike may use any pattern that lands
-working AOTriton-backed attention quickly — including a temporary submodule
-or system-library probe — but the cleanup pass must converge on:
+Sketch of the eventual design (do **not** implement as part of the 0.11.2b
+landing; recorded here so a future iteration can pick it up):
 
-- A pinned `aotriton_release.toml` manifest in-tree.
-- `scripts/fetch_aotriton.sh` (+ `hipengine.aotriton.ensure_installed()`) as
-  the install path.
-- Lookup chain at module load with graceful fallback to the existing
-  hand-rolled kernel when AOTriton is absent (so `pip install hipengine`
-  alone produces a usable, correct, slower-at-long-T install).
-- A stable-ABI C++ wrapper (`aotriton_wrap.cc`) that hipengine owns; no
-  raw-`ctypes`-against-mangled-C++-symbols dlopen on the hot path.
-- No git submodule retained, no AOTriton binary tracked in git.
+- Detect the host GPU at module load (`rocminfo` or HIP runtime device
+  properties; we already do something similar for backend selection).
+- The manifest grows a `[[aotriton.shapes]]` table declaring the
+  (`dtype`, `head_dim`, `causal`, `BLOCK_M`, ...) tuples hipENGINE actually
+  invokes for each registered model. Filename pattern
+  `FONLY__＊<dtype>@<BLOCK_M>_<head_dim>_<causal>_<...>___gfx11xx.aks2` is
+  decodable (verified in `aotriton-0.11.2b-images-amd-gfx11xx.tar.gz`).
+- Fetcher resolves the cross product to a small file list and downloads only
+  those .aks2 + their .json metadata, either by HTTP range over the upstream
+  tarball or by mirroring the pruned set on a hipENGINE-controlled location
+  (GitHub release of a `hipengine-aotriton-shapes-gfx1100` artifact, S3,
+  etc.). A 32-file pruned set is ~3 MB.
+- Cache invalidation: keyed on (manifest version, GPU arch string, shape
+  signature hash). New shapes trigger an incremental pull.
+- Graceful degradation: if the AOTriton selector requests a variant not in
+  the pruned cache, fall back to the hand-rolled kernel for that call and
+  emit one diagnostic so the manifest can grow.
 
-If the spike commits a submodule or vendored binary, that lands behind
-`?? .gitmodules` / `?? third_party/aotriton` etc. only as a transient state;
-the follow-up cleanup PR removes them and replaces with the manifest +
-fetcher.
+This would close the last footprint complaint about the AOTriton dependency
+("why is `pip install hipengine && fetch_aotriton.sh` ~500 MB?"). Until it
+lands, the default prune to `flash/attn_fwd` is the only mitigation.
 
 ### Explicit non-goals for the next spike
 

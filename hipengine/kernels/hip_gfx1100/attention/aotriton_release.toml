@@ -1,21 +1,49 @@
-[aotriton]
-version = "0.8.2b"
-source_ref = "0.8.2b"
-source_commit = "b24f43a9771622faa157155568b9a200c3b49e41"
-# The generated config.h inside the extracted runtime reports this build SHA.
-runtime_git_sha1 = "33fb6bd5290b2e9e9bc71dbcf91f92c6ba7689b1"
-so_name = "libaotriton_v2.so.0.8.0"
+# Manifest pin for the AOTriton flash-attention runtime used by the gfx1100
+# attention wrapper.  hipENGINE does not vendor AOTriton binaries; the fetch
+# helper at scripts/fetch_aotriton.sh downloads the pinned archives into the
+# user cache (default ~/.cache/hipengine/aotriton/<version>/).  See
+# docs/PREFILL.md "AOTriton distribution and pinning strategy" for the
+# rationale and lookup chain.
+#
+# Bumping version: update [aotriton].version, update both [[aotriton.archives]]
+# urls + sha256 + size_bytes, refresh so_name from `readelf -d` of the new .so,
+# adjust rocm_min/rocm_max to the release's supported band, re-run the fetcher,
+# re-build the wrapper, re-run the fixture gate.
 
-[aotriton.archive]
-rocm = "6.3"
-url = "https://github.com/ROCm/aotriton/releases/download/0.8.2b/aotriton-0.8.2b-manylinux_2_28_x86_64-rocm6.3-shared.tar.gz"
-sha256 = "16356dc1813cf3e60da23eb2f29440cb35eedd3a2fbf81e6093a0bc42056ad08"
-size_bytes = 374748255
+[aotriton]
+version = "0.11.2b"
+source_ref = "0.11.2b"
+# SONAME emitted by readelf -d libaotriton_v2.so.0.11.2 (0.11.2b runtime,
+# rocm7.0 build).  The unversioned libaotriton_v2.so symlink resolves here.
+so_name = "libaotriton_v2.so.0.11.2"
+# 0.11.2b "rocm7.0-shared" build NEEDS libamdhip64.so.7 directly; no compat
+# shim required when the host ROCm is 7.x.
+rocm_min = "7.0"
+rocm_max = "7.x"
+
+# Two-tarball release layout (changed from 0.8.x): one small runtime tarball
+# (lib + headers) plus a per-arch GPU-image tarball.  Both extract to the same
+# `aotriton/` root and merge cleanly.
+
+[[aotriton.archives]]
+kind = "runtime"
+url = "https://github.com/ROCm/aotriton/releases/download/0.11.2b/aotriton-0.11.2b-manylinux_2_28_x86_64-rocm7.0-shared.tar.gz"
+sha256 = "5501a0a3b300890001b6625f2a3539a7bad60f386f0a061ebe7d4ed5ca0fafb9"
+size_bytes = 4884827
+
+[[aotriton.archives]]
+kind = "images"
+arch = "amd-gfx11xx"
+url = "https://github.com/ROCm/aotriton/releases/download/0.11.2b/aotriton-0.11.2b-images-amd-gfx11xx.tar.gz"
+sha256 = "839299637fccb13fbe3e7823d57d1b2dcd0e0bed78abbcb7005ea5f4fd82b928"
+size_bytes = 475390993
 
 [aotriton.prune]
-# The fetch helper's default pruning keeps the gfx110x forward-attention image
-# tree and removes other architectures/backward/debug image directories.  Do
-# not prune individual attn_fwd .aks2 files until the wrapper has exercised the
-# AOTriton selector for all target shapes.
-architectures = ["amd-gfx110x"]
-flash_subdirs = ["attn_fwd"]
+# Keep only the forward-attention kernel images.  AOTriton ships forward
+# kernels (attn_fwd), backward/training kernels (bwd_*), and debug helpers in
+# the gfx11xx image tarball; hipENGINE is inference-only.  After pruning the
+# cache footprint drops from ~700 MB to ~123 MB.
+keep_flash_subdirs = ["attn_fwd"]
+# Restrict to the gfx11xx image tree.  AOTriton 0.11.x ships one image tarball
+# per architecture family; future fetches may add more.
+keep_archs = ["amd-gfx11xx"]

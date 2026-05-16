@@ -12008,3 +12008,141 @@ recorded as default-path variance rather than an active-path regression.
 Fixture gate passed unchanged (`max_kl=0.0340584589`, top-1 `1.0`,
 `native_owned_device_bytes=1625645909`). 4K/128 remained runnable at
 `661.201 tok/s` (`prefill_seconds=6.19479`, decode `101.998 tok/s`).
+
+## 2026-05-16 — AOTriton cleanup: pin to 0.11.2b, drop submodule, fix discovery
+
+Foundational cleanup before the next prefill-perf multiloop iteration.  The
+previous iterations (58/59/60) committed the AOTriton wrapper and a
+submodule simultaneously and used `HIPENGINE_AOTRITON_RUNTIME_ROOT=
+/home/lhl/Downloads/aotriton/aotriton` + `LD_LIBRARY_PATH=
+/home/lhl/framework-cluster/lhl/therock/rocm-6.4/lib` to load a hand-staged
+0.8.2b binary on this ROCm-7.2.2 host.  That worked but was non-reproducible
+on a fresh checkout; `docs/PREFILL.md` "Production decision" prescribed a
+fetch-on-install + pinned-manifest scheme.  This commit lands that scheme
+and bumps the pin to the latest stable AOTriton release.
+
+Version bump rationale (recorded so the next agent does not re-derive it):
+
+- 0.11.2b ships `aotriton-0.11.2b-manylinux_2_28_x86_64-rocm7.0-shared.tar.gz`
+  (4.9 MB runtime tarball) plus a separate `aotriton-0.11.2b-images-amd-
+  gfx11xx.tar.gz` (475 MB compressed kernel images).  The runtime tarball is
+  the only ROCm 7.0 build in the current release matrix.  Both tarballs share
+  the same top-level `aotriton/` directory and merge cleanly into one cache
+  tree.
+- `readelf -d libaotriton_v2.so.0.11.2` shows NEEDED `libamdhip64.so.7`
+  directly.  The host has `/opt/rocm/lib/libamdhip64.so.7` (ROCm 7.2.2).  The
+  iter-58 `libamdhip64.so.6` workaround is gone.
+- The 0.11b release notes warned that gfx1100 is "experimental" with
+  "massive accuracy problems".  Verified that warning is **training-only**:
+  `test/adiffs/gfx1100.txt` in 0.11.2b lists 436 failing tests, 100% of
+  which are in `test_backward.py` (`awk -F'::' '{print $1}' | sort -u`
+  returns only `test/test_backward.py`).  Zero forward-pass failures are
+  listed.  hipENGINE is inference-only.  0.11.1b restored Navi31 support and
+  0.11.2b updated the gfx11xx image tarball; gfx11xx images have 60k+
+  downloads on GitHub.
+- The V2 API (`attn_fwd_compact_varlen`) is still present in 0.11.x, but the
+  signature shifted: in 0.8.x, the `bias` T4 came after `cu_seqlens_k`; in
+  0.11.x it moved between `v` and `cu_seqlens_q`, and a new `atomic_for_causal`
+  T0 parameter was added before the stream.  `aotriton_wrap.cc` updated to
+  match.  Verified by reading
+  `https://raw.githubusercontent.com/ROCm/aotriton/0.11.2b/include/aotriton/v2/flash.h`.
+- The new `atomic_for_causal` parameter is the "Persistent Dynamic for Causal"
+  dispatch atomic introduced in AOTriton 0.9b.  For `is_causal=true` it must
+  point at a zero-initialized 1-element int32 device buffer; null returns
+  `hipErrorInvalidValue`.  The shim allocates+zeros+frees per call (~5 us
+  overhead, negligible against the attention launch itself).
+- Non-targets:
+  - 0.11.210b is a gfx942-only ASAN debug build.
+  - 0.11.52b is a gfx1250-only tech preview.
+  - 0.10b has a rocm7.0 build available but offers no advantage over 0.11.2b
+    for our forward-only use case.
+  - 0.8.x requires `libamdhip64.so.6` and is now unsupported on this host.
+
+Changes (one logical commit unit):
+
+- `hipengine/kernels/hip_gfx1100/attention/aotriton_release.toml`: bump to
+  0.11.2b, two `[[aotriton.archives]]` entries (runtime + gfx11xx images),
+  recorded sha256s, set so_name to `libaotriton_v2.so.0.11.2`, rocm_min=7.0.
+- `scripts/fetch_aotriton.sh`: iterate manifest archives, download both
+  tarballs, verify SHA256 against the manifest, extract merged into
+  `~/.cache/hipengine/aotriton/<version>/`, prune to `flash/attn_fwd`
+  (159 MB pruned vs ~700 MB unpruned), write `MANIFEST.local.json`.
+- `hipengine/kernels/hip_gfx1100/attention/aotriton.py`: rewrite discovery
+  to the PREFILL-spec'd lookup chain:
+  1. `HIPENGINE_AOTRITON_LIB` (developer override)
+  2. `${HIPENGINE_AOTRITON_HOME:-~/.cache/hipengine/aotriton}/<version>/`
+  3. `/opt/rocm/lib/libaotriton_v2.so` (SONAME-gated)
+  4. `AotritonNotInstalledError` pointing at `scripts/fetch_aotriton.sh`
+  Drop `HIPENGINE_AOTRITON_SOURCE_ROOT` / `HIPENGINE_AOTRITON_RUNTIME_ROOT`
+  env vars and the `aotriton_source_tree()` helper.  Reads `<version>`
+  from the manifest.
+- `hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.{cc,py}`: update
+  the V2 call signature for 0.11.x (bias position + atomic_for_causal),
+  rename `runtime_root` kwarg to `home_root` to match the new env var name.
+- Generic AOTriton gate post-pass: `hipengine_aotriton_gate_mul_fp16_inplace`
+  is a small HIP kernel that applies `out *= sigmoid(gate)` over an FP16
+  buffer.  AOTriton's `attn_fwd*` API has no gate input; any caller using
+  AOTriton attention needs this post-pass to preserve Qwen3.5-style gate
+  semantics.  Lives in `aotriton_wrap.cc` next to the AOTriton extern "C"
+  surface, exposed via `aotriton_gate_mul_fp16_inplace` in `aotriton_wrap.py`,
+  exported from `__init__.py`.  No caller wires it yet; that lands with the
+  runtime wiring.
+- `tests/test_aotriton_discovery.py`: replace submodule-fallback tests with
+  HIPENGINE_AOTRITON_HOME + HIPENGINE_AOTRITON_LIB tests, add
+  AotritonNotInstalledError assertion, add manifest-pin assertion.
+- `.gitmodules`, `third_party/aotriton`: removed.
+- `.gitignore`: add `third_party/`.
+- `docs/PREFILL.md`: replace "AOTriton distribution and pinning strategy"
+  section to reflect 0.11.2b reality (the V2 ABI shift, the two-tarball
+  layout, the new discovery chain, the gfx1100 "training-only" caveat,
+  removal of all submodule language).  Drop the libamdhip64.so.6 / ROCm
+  6→7 compat-shim discussion (gone with rocm7.0-shared build).  Add a
+  clearly-scoped FUTURE-WORK stub for per-GPU kernel streaming/caching
+  (do NOT implement: just write down the idea so a future iteration can
+  pick it up).
+
+Validation:
+
+```bash
+# Manifest + fetcher dry run
+bash scripts/fetch_aotriton.sh --dry-run
+
+# Install pinned 0.11.2b into the cache
+scripts/fetch_aotriton.sh
+# Output: Installed AOTriton 0.11.2b at /home/lhl/.cache/hipengine/aotriton/0.11.2b
+#         (159 MB after default prune to flash/attn_fwd)
+
+# Wrapper builds, NEEDED list verified
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 -c 'from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap; print(build_aotriton_wrap(load=False).output_path)'
+readelf -d ~/.cache/hipengine/build/aotriton_wrap-*/hipengine_aotriton_wrap.so | grep -E 'NEEDED|RUNPATH'
+# NEEDED libaotriton_v2.so.0.11.2
+# NEEDED libamdhip64.so.7   <-- present on host, no LD_LIBRARY_PATH workaround
+# RUNPATH /home/lhl/.cache/hipengine/aotriton/0.11.2b/lib
+
+# GPU smokes (all PASS)
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 <<'PY'
+# H=1 causal (out == v):           PASS
+# GQA per-Q-head, H_q=2, H_kv=1:   PASS (both heads match v)
+# T=4 causal multi-row:            PASS (row 0 = v[0]; later rows are causal mix)
+PY
+
+# Unit tests
+python3 -m pytest tests/test_aotriton_discovery.py \
+  tests/test_qwen35_paged_attn_decode_plan.py \
+  tests/test_qwen35_resident_batch_layout.py -q
+# 36 passed
+```
+
+Pre-existing test failures (`test_hip_runtime.py`, `test_llm_generate.py`)
+are unrelated to AOTriton; verified by `git stash` + re-run on `main`.
+
+Next:
+
+- Land the in-flight AOTriton runtime wiring (`hipengine/runtime/prefill.py`,
+  `qwen35_paro.py`, `qwen35_paro_runner.py`, `scripts/qwen35_paro_bench.py`,
+  `tests/test_qwen35_resident_batch_layout.py`) as a separate commit.  Those
+  files are intentionally left modified in the working tree.
+- Re-run the prefill-perf multiloop on the cleaned foundation.  Target: 4K
+  attention via the AOTriton per-Q-head variant, threshold-tuned to beat the
+  hand-rolled kernel.

@@ -1,3 +1,0 @@
-[submodule "third_party/aotriton"]
-	path = third_party/aotriton
-	url = https://github.com/ROCm/aotriton.git

@@ -20,6 +20,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("aotriton_wrap.cc")
 _OUTPUT_NAME = "hipengine_aotriton_wrap.so"
 _SYMBOL_CHECK_GPU = "hipengine_aotriton_check_gpu"
+_SYMBOL_GATE_MUL_FP16_INPLACE = "hipengine_aotriton_gate_mul_fp16_inplace"
 _SYMBOL_ATTN_FWD_COMPACT_VARLEN = "hipengine_aotriton_attn_fwd_compact_varlen"
 _SYMBOL_ATTN_FWD_COMPACT_VARLEN_GQA_PER_Q_HEAD = "hipengine_aotriton_attn_fwd_compact_varlen_gqa_per_q_head"
 
@@ -67,12 +68,12 @@ class AotritonTensor4(ctypes.Structure):
 
 def plan_aotriton_wrap_build(
     *,
-    runtime_root: str | Path | None = None,
+    home_root: str | Path | None = None,
     cache_root: str | Path | None = None,
     compiler_version: str | None = None,
     profile: ProfileName = "prefill",
 ) -> BuildArtifact:
-    runtime = aotriton_runtime_tree(runtime_root)
+    runtime = aotriton_runtime_tree(home_root)
     return plan_hip_build(
         sources=[_SOURCE],
         family="aotriton_wrap",
@@ -87,7 +88,7 @@ def plan_aotriton_wrap_build(
 
 def build_aotriton_wrap(
     *,
-    runtime_root: str | Path | None = None,
+    home_root: str | Path | None = None,
     cache_root: str | Path | None = None,
     compiler_version: str | None = None,
     profile: ProfileName = "prefill",
@@ -95,7 +96,7 @@ def build_aotriton_wrap(
     load: bool = True,
     require_cached: bool = False,
 ) -> ctypes.CDLL | BuildArtifact:
-    runtime = aotriton_runtime_tree(runtime_root)
+    runtime = aotriton_runtime_tree(home_root)
     return build_hip(
         sources=[_SOURCE],
         family="aotriton_wrap",
@@ -127,13 +128,13 @@ def aotriton_attn_fwd_compact_varlen(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
-    runtime_root: str | Path | None = None,
+    home_root: str | Path | None = None,
 ) -> None:
     """Launch AOTriton compact-varlen forward attention through the C shim."""
 
     if max_seqlen_q <= 0 or max_seqlen_k <= 0:
         raise ValueError("max_seqlen_q and max_seqlen_k must be positive")
-    library = library or build_aotriton_wrap(runtime_root=runtime_root, load=True)
+    library = library or build_aotriton_wrap(home_root=home_root, load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_ATTN_FWD_COMPACT_VARLEN)
     fn.argtypes = [
@@ -184,13 +185,13 @@ def aotriton_attn_fwd_compact_varlen_gqa_per_q_head(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
-    runtime_root: str | Path | None = None,
+    home_root: str | Path | None = None,
 ) -> None:
     """Launch GQA by issuing one H=1 AOTriton compact-varlen call per Q head."""
 
     if max_seqlen_q <= 0 or max_seqlen_k <= 0:
         raise ValueError("max_seqlen_q and max_seqlen_k must be positive")
-    library = library or build_aotriton_wrap(runtime_root=runtime_root, load=True)
+    library = library or build_aotriton_wrap(home_root=home_root, load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_ATTN_FWD_COMPACT_VARLEN_GQA_PER_Q_HEAD)
     fn.argtypes = [
@@ -225,16 +226,41 @@ def aotriton_attn_fwd_compact_varlen_gqa_per_q_head(
     _check_hip(runtime, err)
 
 
+def aotriton_gate_mul_fp16_inplace(
+    attn_out_ptr: int,
+    gate_ptr: int,
+    total: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    home_root: str | Path | None = None,
+) -> None:
+    """Apply the Qwen3.5 sigmoid gate in-place to FP16 AOTriton output."""
+
+    if total <= 0:
+        raise ValueError("total must be positive")
+    library = library or build_aotriton_wrap(home_root=home_root, load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GATE_MUL_FP16_INPLACE)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    _check_hip(
+        runtime,
+        fn(ctypes.c_void_p(attn_out_ptr), ctypes.c_void_p(gate_ptr), ctypes.c_int64(total), ctypes.c_void_p(stream)),
+    )
+
+
 def aotriton_check_gpu(
     *,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
-    runtime_root: str | Path | None = None,
+    home_root: str | Path | None = None,
 ) -> None:
     """Run AOTriton's stream/GPU compatibility check through the shim."""
 
-    library = library or build_aotriton_wrap(runtime_root=runtime_root, load=True)
+    library = library or build_aotriton_wrap(home_root=home_root, load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_CHECK_GPU)
     fn.argtypes = [ctypes.c_void_p]

@@ -12,6 +12,8 @@
 #include <aotriton/util.h>
 #include <hip/hip_runtime.h>
 
+using half_t = _Float16;
+
 extern "C" {
 
 struct HipengineAotritonTensor1 {
@@ -44,6 +46,19 @@ using AOTRITON_NS::Stream;
 using AOTRITON_NS::TensorView;
 
 constexpr hipError_t kInvalidValue = hipErrorInvalidValue;
+
+__device__ inline float sigmoid_f32(float value) {
+  return 1.0f / (1.0f + expf(-value));
+}
+
+__global__ void gate_mul_fp16_inplace_kernel(half_t* attn_out, const half_t* gate, int64_t total) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const float gated = static_cast<float>(attn_out[idx]) * sigmoid_f32(static_cast<float>(gate[idx]));
+    attn_out[idx] = static_cast<half_t>(gated);
+  }
+}
 
 bool dtype_from_code(int32_t code, DType* out) {
   switch (code) {
@@ -184,6 +199,29 @@ extern "C" int hipengine_aotriton_check_gpu(void* stream) {
   return static_cast<int>(AOTRITON_NS::v2::flash::check_gpu(Stream(reinterpret_cast<hipStream_t>(stream))));
 }
 
+extern "C" int hipengine_aotriton_gate_mul_fp16_inplace(
+    void* attn_out,
+    const void* gate,
+    int64_t total,
+    void* stream) {
+  if (attn_out == nullptr || gate == nullptr || total <= 0) {
+    return static_cast<int>(kInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t blocks64 = (total + threads - 1) / threads;
+  const int blocks = static_cast<int>(blocks64 > 65535 ? 65535 : blocks64);
+  hipLaunchKernelGGL(
+      gate_mul_fp16_inplace_kernel,
+      dim3(blocks),
+      dim3(threads),
+      0,
+      reinterpret_cast<hipStream_t>(stream),
+      reinterpret_cast<half_t*>(attn_out),
+      reinterpret_cast<const half_t*>(gate),
+      total);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_aotriton_attn_fwd_compact_varlen(
     const HipengineAotritonTensor4* q,
     const HipengineAotritonTensor4* k,
@@ -214,21 +252,55 @@ extern "C" int hipengine_aotriton_attn_fwd_compact_varlen(
     return static_cast<int>(kInvalidValue);
   }
 
+  // AOTriton 0.11.x v2::flash::attn_fwd_compact_varlen signature:
+  //   (T4 q, T4 k, T4 v, T4 b, T1 cu_seqlens_q, T1 cu_seqlens_k,
+  //    int32 max_seqlen_q, int32 max_seqlen_k,
+  //    float sm_scale, T2 softmax_lse, T4 Out,
+  //    float dropout_p,
+  //    T0 philox_seed, T0 philox_offset1, int64 philox_offset2,
+  //    T0 philox_seed_output, T0 philox_offset_output,
+  //    T4 encoded_softmax,
+  //    bool is_causal,
+  //    T0 atomic_for_causal,
+  //    Stream stream, FwdExtraArguments* extargs = nullptr);
+  // 0.8.x had b after cu_seqlens_k and no atomic_for_causal; both changed in 0.11.x.
+  //
+  // When is_causal=true, AOTriton uses an in-kernel atomic to dispatch causal
+  // blocks dynamically (added in 0.9b: "Persistent Dynamic for Causal").  The
+  // atomic_for_causal tensor must point at a zero-initialized 1-element int32
+  // device buffer; passing a null TensorView<0> returns hipErrorInvalidValue.
+  // We allocate+zero+free per call; cost is ~5 us, negligible against the
+  // attention launch itself.
   const DType scratch_dtype = AOTRITON_NS::kFloat32;
   TensorView<4> null_bias = TensorView<4>::get_null_tensor(scratch_dtype);
   TensorView<4> null_encoded_softmax = TensorView<4>::get_null_tensor(scratch_dtype);
   TensorView<0> null_seed(0, AOTRITON_NS::kInt64);
   TensorView<0> null_offset(0, AOTRITON_NS::kInt64);
 
-  return static_cast<int>(AOTRITON_NS::v2::flash::attn_fwd_compact_varlen(
+  void* atomic_buf = nullptr;
+  hipStream_t hip_stream = reinterpret_cast<hipStream_t>(stream);
+  if (is_causal != 0) {
+    if (hipError_t err = hipMalloc(&atomic_buf, sizeof(int32_t)); err != hipSuccess) {
+      return static_cast<int>(err);
+    }
+    if (hipError_t err = hipMemsetAsync(atomic_buf, 0, sizeof(int32_t), hip_stream); err != hipSuccess) {
+      (void)hipFree(atomic_buf);
+      return static_cast<int>(err);
+    }
+  }
+  TensorView<0> atomic_view = is_causal != 0
+      ? TensorView<0>(reinterpret_cast<intptr_t>(atomic_buf), AOTRITON_NS::kInt32)
+      : TensorView<0>(0, AOTRITON_NS::kInt32);
+
+  hipError_t aot_err = AOTRITON_NS::v2::flash::attn_fwd_compact_varlen(
       q_view,
       k_view,
       v_view,
+      null_bias,
       cu_q_view,
       cu_k_view,
       max_seqlen_q,
       max_seqlen_k,
-      null_bias,
       sm_scale,
       lse_view,
       out_view,
@@ -240,8 +312,13 @@ extern "C" int hipengine_aotriton_attn_fwd_compact_varlen(
       null_offset,
       null_encoded_softmax,
       is_causal != 0,
-      Stream(reinterpret_cast<hipStream_t>(stream)),
-      nullptr));
+      atomic_view,
+      Stream(hip_stream),
+      nullptr);
+  if (atomic_buf != nullptr) {
+    (void)hipFree(atomic_buf);
+  }
+  return static_cast<int>(aot_err);
 }
 
 extern "C" int hipengine_aotriton_attn_fwd_compact_varlen_gqa_per_q_head(

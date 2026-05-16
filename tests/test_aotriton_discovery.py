@@ -1,9 +1,22 @@
+"""Tests for the AOTriton discovery + wrapper-build plan.
+
+These tests are torch-free.  They construct fake AOTriton cache trees on disk
+and verify that the lookup chain documented in ``aotriton.py`` and
+``docs/PREFILL.md`` finds them.  No real AOTriton binary is required.
+"""
+
 from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 
 from hipengine.core.dtype import DType
-from hipengine.kernels.hip_gfx1100.attention.aotriton import aotriton_runtime_tree, aotriton_source_tree
+from hipengine.kernels.hip_gfx1100.attention.aotriton import (
+    AotritonNotInstalledError,
+    aotriton_runtime_tree,
+    load_manifest,
+)
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
     AOTRITON_DTYPE_FP32,
     aotriton_attn_fwd_compact_varlen,
@@ -15,67 +28,109 @@ from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
 from hipengine.kernels.registry import resolve
 
 
-def test_aotriton_source_tree_uses_env_root(monkeypatch, tmp_path) -> None:
-    root = tmp_path / "aotriton"
-    header = root / "include" / "aotriton" / "flash.h"
-    header.parent.mkdir(parents=True)
-    header.write_text("// fake flash header\n")
-    monkeypatch.setenv("HIPENGINE_AOTRITON_SOURCE_ROOT", str(root))
+def _make_fake_tree(root: Path, version: str, so_name: str) -> Path:
+    """Lay out a minimal AOTriton cache tree mirroring the release tarball."""
 
-    tree = aotriton_source_tree()
+    version_dir = root / version
+    lib_dir = version_dir / "lib"
+    include_dir = version_dir / "include"
+    images_dir = lib_dir / "aotriton.images" / "amd-gfx11xx" / "flash" / "attn_fwd"
+    images_dir.mkdir(parents=True)
+    flash_header = include_dir / "aotriton" / "flash.h"
+    flash_header.parent.mkdir(parents=True)
+    flash_header.write_text("// fake flash header\n")
+    library = lib_dir / so_name
+    # Embed the SONAME string literal so _read_soname succeeds.
+    library.write_bytes(b"fake elf header\x00" + so_name.encode("ascii") + b"\x00")
+    unversioned = lib_dir / "libaotriton_v2.so"
+    unversioned.symlink_to(library.name)
+    return version_dir
 
-    assert tree.root == root.resolve()
-    assert tree.include_dir == (root / "include").resolve()
-    assert tree.flash_header == header.resolve()
+
+def test_manifest_pins_version_and_soname() -> None:
+    pin = load_manifest()
+    assert pin.version, "manifest must record an AOTriton version"
+    assert pin.so_name.startswith("libaotriton_v2.so")
 
 
-def test_aotriton_runtime_tree_uses_env_root(monkeypatch, tmp_path) -> None:
-    root = tmp_path / "aotriton"
-    header = root / "include" / "aotriton" / "flash.h"
-    images = root / "lib" / "aotriton.images"
-    lib = root / "lib" / "libaotriton_v2.so.0.8.0"
-    header.parent.mkdir(parents=True)
-    images.mkdir(parents=True)
-    header.write_text("// fake flash header\n")
-    lib.write_bytes(b"fake so\n")
-    monkeypatch.setenv("HIPENGINE_AOTRITON_RUNTIME_ROOT", str(root))
+def test_discovery_finds_cache_under_home_root(monkeypatch, tmp_path) -> None:
+    pin = load_manifest()
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    _make_fake_tree(cache_root, pin.version, pin.so_name)
+    monkeypatch.delenv("HIPENGINE_AOTRITON_LIB", raising=False)
+    monkeypatch.setenv("HIPENGINE_AOTRITON_HOME", str(cache_root))
 
     tree = aotriton_runtime_tree()
 
-    assert tree.root == root.resolve()
-    assert tree.include_dir == (root / "include").resolve()
-    assert tree.flash_header == header.resolve()
-    assert tree.library == lib.resolve()
-    assert tree.images_dir == images.resolve()
+    assert tree.manifest == pin
+    assert tree.library.parent == (cache_root / pin.version / "lib").resolve()
+    assert tree.include_dir == (cache_root / pin.version / "include").resolve()
+    assert tree.images_dir == (cache_root / pin.version / "lib" / "aotriton.images").resolve()
+    assert tree.source == str(cache_root.resolve())
 
 
-def test_aotriton_runtime_tree_requires_built_library(monkeypatch, tmp_path) -> None:
-    root = tmp_path / "aotriton"
-    (root / "lib").mkdir(parents=True)
-    monkeypatch.setenv("HIPENGINE_AOTRITON_RUNTIME_ROOT", str(root))
+def test_discovery_developer_root_override(monkeypatch, tmp_path) -> None:
+    pin = load_manifest()
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    _make_fake_tree(cache_root, pin.version, pin.so_name)
+    monkeypatch.delenv("HIPENGINE_AOTRITON_LIB", raising=False)
+    monkeypatch.delenv("HIPENGINE_AOTRITON_HOME", raising=False)
 
-    with pytest.raises(FileNotFoundError, match="runtime library"):
+    tree = aotriton_runtime_tree(cache_root)
+
+    assert tree.library.parent == (cache_root / pin.version / "lib").resolve()
+
+
+def test_discovery_lib_env_takes_precedence(monkeypatch, tmp_path) -> None:
+    pin = load_manifest()
+    override_root = tmp_path / "override"
+    override_root.mkdir()
+    version_dir = _make_fake_tree(override_root, pin.version, pin.so_name)
+    library = version_dir / "lib" / pin.so_name
+    decoy_root = tmp_path / "decoy"
+    decoy_root.mkdir()
+    monkeypatch.setenv("HIPENGINE_AOTRITON_LIB", str(library))
+    monkeypatch.setenv("HIPENGINE_AOTRITON_HOME", str(decoy_root))
+
+    tree = aotriton_runtime_tree()
+
+    assert tree.library == library.resolve()
+    assert tree.source == "HIPENGINE_AOTRITON_LIB"
+
+
+def test_discovery_lib_env_must_exist(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("HIPENGINE_AOTRITON_LIB", str(tmp_path / "does-not-exist.so"))
+    monkeypatch.delenv("HIPENGINE_AOTRITON_HOME", raising=False)
+
+    with pytest.raises(FileNotFoundError, match="HIPENGINE_AOTRITON_LIB"):
         aotriton_runtime_tree()
 
 
-def test_aotriton_wrap_build_plan_links_runtime(monkeypatch, tmp_path) -> None:
-    root = tmp_path / "aotriton"
-    header = root / "include" / "aotriton" / "flash.h"
-    images = root / "lib" / "aotriton.images"
-    lib = root / "lib" / "libaotriton_v2.so"
-    header.parent.mkdir(parents=True)
-    images.mkdir(parents=True)
-    header.write_text("// fake flash header\n")
-    lib.write_bytes(b"fake so\n")
-    monkeypatch.setenv("HIPENGINE_AOTRITON_RUNTIME_ROOT", str(root))
+def test_discovery_missing_raises_with_install_hint(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("HIPENGINE_AOTRITON_LIB", raising=False)
+    monkeypatch.setenv("HIPENGINE_AOTRITON_HOME", str(tmp_path / "empty"))
+
+    with pytest.raises(AotritonNotInstalledError, match="scripts/fetch_aotriton.sh"):
+        aotriton_runtime_tree()
+
+
+def test_wrap_build_plan_links_cache_library(monkeypatch, tmp_path) -> None:
+    pin = load_manifest()
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    version_dir = _make_fake_tree(cache_root, pin.version, pin.so_name)
+    monkeypatch.delenv("HIPENGINE_AOTRITON_LIB", raising=False)
+    monkeypatch.setenv("HIPENGINE_AOTRITON_HOME", str(cache_root))
 
     artifact = plan_aotriton_wrap_build(cache_root=tmp_path / "build", compiler_version="hipcc-test")
 
     assert artifact.family == "aotriton_wrap"
-    assert f"-I{root / 'include'}" in artifact.flags
-    assert f"-L{root / 'lib'}" in artifact.flags
+    assert f"-I{version_dir / 'include'}" in artifact.flags
+    assert f"-L{version_dir / 'lib'}" in artifact.flags
     assert "-laotriton_v2" in artifact.flags
-    assert f"-Wl,-rpath,{root / 'lib'}" in artifact.flags
+    assert f"-Wl,-rpath,{version_dir / 'lib'}" in artifact.flags
     assert artifact.output_path.name == "hipengine_aotriton_wrap.so"
 
 
