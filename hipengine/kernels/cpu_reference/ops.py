@@ -12,6 +12,7 @@ import numpy as np
 
 from hipengine.kernels.registry import KernelKey, register
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+from hipengine.quant.gguf_q4_k import GGUF_Q4_K_PACK, awq_pack8_shift_for_lane
 
 ArrayLike = Any
 
@@ -56,6 +57,42 @@ def gguf_q4_k_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
         raise ValueError("qweight must dequantize to [out_features, in_features]")
     if x_arr.shape[1] != weight.shape[1]:
         raise ValueError("x.shape[1] must match qweight in_features")
+    return np.matmul(x_arr, weight.T).astype(np.float32)
+
+
+def gguf_q4_k_pack8_gemv(
+    x: ArrayLike,
+    qweight: ArrayLike,
+    scales: ArrayLike,
+    mins: ArrayLike,
+) -> np.ndarray:
+    """Reference GEMV over the lossless GGUF Q4_K pack8 layout."""
+
+    x_arr = np.asarray(x, dtype=np.float32)
+    qweight_arr = np.asarray(qweight).view(np.uint32)
+    scales_arr = np.asarray(scales, dtype=np.float32)
+    mins_arr = np.asarray(mins, dtype=np.float32)
+    if x_arr.ndim != 2:
+        raise ValueError("x must have shape [rows, in_features]")
+    if qweight_arr.ndim != 2:
+        raise ValueError("qweight must have shape [out_features / 8, in_features]")
+    if scales_arr.shape != mins_arr.shape:
+        raise ValueError("scales and mins must have the same shape")
+    out_packed, in_features = qweight_arr.shape
+    out_features = out_packed * GGUF_Q4_K_PACK
+    if x_arr.shape[1] != in_features:
+        raise ValueError("x.shape[1] must match qweight in_features")
+    if scales_arr.shape != (in_features // 32, out_features):
+        raise ValueError("scales/mins must have shape [in_features / 32, out_features]")
+
+    q_values = np.empty((out_features, in_features), dtype=np.float32)
+    for lane in range(GGUF_Q4_K_PACK):
+        out_cols = np.arange(out_packed) * GGUF_Q4_K_PACK + lane
+        q_values[out_cols] = (
+            (qweight_arr >> np.uint32(awq_pack8_shift_for_lane(lane))) & np.uint32(0x0F)
+        ).astype(np.float32)
+    group_for_k = np.arange(in_features, dtype=np.int64) // 32
+    weight = q_values * scales_arr[group_for_k].T - mins_arr[group_for_k].T
     return np.matmul(x_arr, weight.T).astype(np.float32)
 
 
@@ -456,6 +493,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "linear": linear,
         "qkv_proj": qkv_proj,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
+        "gguf_q4_k_pack8_gemv": gguf_q4_k_pack8_gemv,
         "rotate": rotate,
         "attention_decode": attention_decode,
         "full_attn_prefill": full_attn_prefill,
@@ -475,6 +513,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "linear", "gguf_q4_k", "gemv_f32_f32_out"),
         gguf_q4_k_gemv,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "linear", "gguf_q4_k", "pack8_f32_f32_out"),
+        gguf_q4_k_pack8_gemv,
         replace=replace,
     )
 

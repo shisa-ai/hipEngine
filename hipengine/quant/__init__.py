@@ -19,8 +19,19 @@ from hipengine.quant.gguf import (
     quant_layout,
     quant_shape_from_byte_shape,
     quant_shape_to_byte_shape,
+    unpack_q4_k_scale_min,
 )
-from hipengine.quant.gguf_q4_k import GGUF_Q4_K, GGUFQ4KQuant
+from hipengine.quant.gguf_q4_k import (
+    GGUF_Q4_K,
+    GGUF_Q4_K_BLOCK_BYTES,
+    GGUF_Q4_K_PACK,
+    GGUF_Q4_K_SUBBLOCK,
+    GGUF_Q4_K_SUBBLOCKS,
+    GGUFQ4KPack8,
+    GGUFQ4KQuant,
+    awq_pack8_shift_for_lane,
+    repack_gguf_q4_k_pack8,
+)
 from hipengine.quant.w4_paro import W4_PARO, W4ParoQuant
 from hipengine.quant.registry import (
     DuplicateQuantError,
@@ -37,16 +48,22 @@ __all__ = [
     "FP16",
     "FP16Quant",
     "GGMLQuantizationType",
+    "GGUFQ4KPack8",
     "GGUFQ4KQuant",
     "GGUFQuantLayout",
     "GGUFValueType",
     "GGUF_QUANT_LAYOUTS",
     "GGUF_Q4_K",
+    "GGUF_Q4_K_BLOCK_BYTES",
+    "GGUF_Q4_K_PACK",
+    "GGUF_Q4_K_SUBBLOCK",
+    "GGUF_Q4_K_SUBBLOCKS",
     "MissingQuantError",
     "QuantPlugin",
     "QK_K",
     "W4ParoQuant",
     "W4_PARO",
+    "awq_pack8_shift_for_lane",
     "bf16_to_float32",
     "dequantization_supported",
     "dequantize_gguf_data",
@@ -58,6 +75,8 @@ __all__ = [
     "quant_shape_from_byte_shape",
     "quant_shape_to_byte_shape",
     "register_quant",
+    "repack_gguf_q4_k_pack8",
     "registered_quants",
     "resolve_quant",
+    "unpack_q4_k_scale_min",
 ]

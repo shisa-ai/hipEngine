@@ -11,10 +11,10 @@ Implementation status as of 2026-05-16: the first intake slice has landed in
 `scripts/inspect_gguf.py`. hipENGINE can now scan local GGUF v3 files, expose
 lazy raw tensor views, and CPU-dequantize tiny fallback samples for the target
 local tensor types (`BF16`, `Q8_0`, `Q4_1`, `Q4_K`, `Q5_K`, `Q6_K`, `IQ4_XS`,
-`MXFP4`, plus dense `F16/F32`). A native `gguf_q4_k` GEMV correctness spike now
-consumes raw `block_q4_K` bytes on gfx1100 and preserves GGML Q4_K math. Full
-Qwen GGUF model materialization and optimized/repacked GGUF kernels remain next
-steps.
+`MXFP4`, plus dense `F16/F32`). Native `gguf_q4_k` GEMV correctness spikes now
+cover both raw `block_q4_K` bytes and a lossless PARO-style pack8 repack on
+gfx1100 while preserving GGML Q4_K math. Full Qwen GGUF model materialization,
+lowp output, and deeper Marlin/WMMA tuning remain next steps.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 

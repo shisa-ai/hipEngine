@@ -516,13 +516,24 @@ def _dequant_q8_0_blocks(blocks: np.ndarray) -> np.ndarray:
     return x * d
 
 
-def _q4_k_scale_min(scales: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def unpack_q4_k_scale_min(scales: object) -> tuple[np.ndarray, np.ndarray]:
+    """Unpack GGUF Q4_K 12-byte scale/min fields to uint8 arrays.
+
+    Returns ``(scales, mins)`` with shape ``[blocks, 8]``.  The eight columns
+    correspond to the 32-value subblocks inside each 256-value GGUF Q4_K block.
+    """
+
+    scales = np.asarray(scales, dtype=np.uint8)
     n_blocks = scales.shape[0]
-    scales = scales.view(np.uint8).reshape((n_blocks, 3, 4))
+    scales = scales.reshape((n_blocks, 3, 4))
     d, m, m_d = np.split(scales, 3, axis=-2)
     sc = np.concatenate([d & 0x3F, (m_d & 0x0F) | ((d >> 2) & 0x30)], axis=-1)
     minv = np.concatenate([m & 0x3F, (m_d >> 4) | ((m >> 2) & 0x30)], axis=-1)
     return sc.reshape((n_blocks, 8)), minv.reshape((n_blocks, 8))
+
+
+def _q4_k_scale_min(scales: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    return unpack_q4_k_scale_min(scales)
 
 
 def _dequant_q4_k_blocks(blocks: np.ndarray) -> np.ndarray:
@@ -663,4 +674,5 @@ __all__ = [
     "quant_layout",
     "quant_shape_from_byte_shape",
     "quant_shape_to_byte_shape",
+    "unpack_q4_k_scale_min",
 ]

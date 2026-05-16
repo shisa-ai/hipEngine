@@ -15063,3 +15063,86 @@ Representative run (3 reruns were stable within ~0.1%):
 | 4096/128 | 3.44 us | 6.65 us | 9.49 us | 1.43x time (GGUF ~43% slower) | 2.76x time (GGUF ~176% slower) |
 
 Interpretation: the correctness-first raw GGUF Q4_K kernel is launch/overhead bound at 512/128 and roughly tied with existing paths there. At 4096/128, raw Q4_K metadata/nibble decode dominates; it is substantially slower than PARO pack8 and dense BF16 for this narrow output shape. This supports the next-step plan: repack GGUF Q4_K into a Marlin/PARO-like internal layout and/or add lowp output instead of treating the raw-byte spike as the final fast path.
+
+## 2026-05-16 GGUF Q4_K lossless pack8 repack spike
+
+Implemented a faster GGUF Q4_K path without converting to PARO/AWQ semantics:
+
+- `hipengine/quant/gguf_q4_k.py`: `repack_gguf_q4_k_pack8(...)` turns raw GGUF `block_q4_K` bytes into a lossless pack8 layout:
+  - `qweight[int32]` shape `[out_features / 8, in_features]`, packing the 4-bit q values for eight adjacent output channels.
+  - `scales[float32]` and `mins[float32]` shape `[in_features / 32, out_features]`, precomputing GGUF's `d * scale[subblock]` and `dmin * min[subblock]` terms.
+- `hipengine/kernels/cpu_reference/ops.py`: `gguf_q4_k_pack8_gemv` CPU oracle.
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.{hip,py}`: `gguf_q4_k_pack8_gemv_{f32,fp16,bf16}_f32_out` wrappers/kernels. Pack8 wrappers auto-select 64 threads for `in_features <= 1024` and 128 threads otherwise; 256-thread pack8 launches are rejected, following parent PARO pack8 gotcha lineage.
+- `scripts/smoke.py --mode gguf-q4-k-pack8-gemv-hip`: synthetic repacked correctness smoke.
+
+Pre-work lineage check:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# existing parent DRIFT remains in qwen35_expert.hip, smoke.hip,
+# paroquant_kernels.py, and paroquant_fusedw4.py; this GGUF pack8 path is new
+# hipENGINE code and not a direct parent port.
+```
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/quant/gguf.py hipengine/quant/gguf_q4_k.py \
+  hipengine/kernels/cpu_reference/ops.py \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py \
+  scripts/smoke.py tests/test_gguf_q4_k_gemv.py
+# ok
+python3 -m pytest tests/test_gguf_reader.py tests/test_gguf_quant_layout.py \
+  tests/test_gguf_q4_k_gemv.py tests/test_model_quant_and_imports.py \
+  tests/test_build.py tests/test_smoke_add_plan.py -q
+# 27 passed
+python3 scripts/smoke.py --mode gguf-q4-k-gemv-hip --rows 2 --hidden-size 512
+# raw f32/fp16/bf16 max_abs=0.0
+python3 scripts/smoke.py --mode gguf-q4-k-pack8-gemv-hip --rows 2 --hidden-size 512
+# pack8 f32/fp16/bf16 max_abs=0.0
+```
+
+Real local GGUF tensor smoke:
+
+```bash
+# /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf tensor blk.0.attn_gate.weight
+# shape=(2048, 1024), one FP32 activation row
+# CPU pack8 vs raw max_abs=0.0
+# GPU pack8 vs CPU pack8 max_abs=1.7881393432617188e-07
+# GPU pack8 vs CPU pack8 mean_abs=2.7773694455390796e-08
+```
+
+Cached profiler smoke (prebuilt `.so`, `--require-cached-build`):
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import build_gguf_q4_k_gemv
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+build_gguf_q4_k_gemv(load=False, compiler_version=version)
+PY
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-q4k-pack8-rocprof.NKGQen -- \
+  python3 scripts/smoke.py --mode gguf-q4-k-pack8-gemv-hip --rows 2 --hidden-size 512 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# smoke: f32/fp16/bf16 max_abs=0.0
+# rocpd dispatches:
+# gguf_q4_k_pack8_gemv_f32_out_kernel<float>          DurationNs=6439, Workgroup_Size_X=64
+# gguf_q4_k_pack8_gemv_f32_out_kernel<_Float16>       DurationNs=13318, Workgroup_Size_X=64
+# gguf_q4_k_pack8_gemv_f32_out_kernel<unsigned short> DurationNs=5439, Workgroup_Size_X=64
+```
+
+Diagnostic GEMV timing, not an accepted `LLM.generate()` throughput row. Hardware: gfx1100 / AMD Radeon RX 7900 XTX, HIP 7.13.60940. BF16 activations for all paths; dense/PARO write BF16, GGUF raw/pack8 write FP32. HIP events around graph execution with 500 launches captured per graph.
+
+```bash
+PYTHONPATH=. python3 /tmp/bench_gemv_compare_pack8.py | tee /tmp/hipengine-gguf-q4k-pack8-bench.json
+```
+
+| Shape rows=1 K/N | BF16 dense | PARO AWQ pack8 BF16 | GGUF Q4_K raw BF16→FP32 | GGUF Q4_K pack8 BF16→FP32 | Pack8 vs raw | Pack8 vs PARO | Pack8 vs dense |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 3.325 us | 3.814 us | 3.494 us | 3.033 us | 0.868x time | 0.795x time | 0.912x time |
+| 4096/128 | 3.434 us | 6.654 us | 9.490 us | 4.262 us | 0.449x time | 0.640x time | 1.241x time |
+
+Three reruns were stable. Diagnostic artifact retained at `benchmarks/results/2026-05-16-hipengine-gguf-q4k-pack8-gemv-diagnostic.json`; benchmark rollup notes this is a kernel microbench, not a promoted throughput row.
+
+Next GGUF speed steps: BF16/FP16 output to reduce stores and integrate pack8 materialization into GGUF model loading; then evaluate whether FP16 scale/min storage or Marlin/WMMA staging improves the 4K path further without violating correctness gates.

@@ -64,6 +64,7 @@ def main() -> int:
             "paro-combine-hip",
             "paro-awq-wmma-compact-hip",
             "gguf-q4-k-gemv-hip",
+            "gguf-q4-k-pack8-gemv-hip",
             "dense-gemv-hip",
             "lm-head-hip",
             "w8a16-linear-hip",
@@ -285,6 +286,13 @@ def main() -> int:
         )
     if args.mode == "gguf-q4-k-gemv-hip":
         return gguf_q4_k_gemv_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "gguf-q4-k-pack8-gemv-hip":
+        return gguf_q4_k_pack8_gemv_hip_smoke(
             args.rows,
             args.hidden_size,
             compiler_version=compiler_version,
@@ -5481,6 +5489,148 @@ def gguf_q4_k_gemv_hip_smoke(
         f"fp16_max_abs={fp16_max_abs} bf16_max_abs={bf16_max_abs}"
     )
     print("f32_row0=", out_f32[0, : min(8, out_features)].tolist())
+    return 0 if f32_max_abs <= 1e-5 and fp16_max_abs <= 1e-5 and bf16_max_abs <= 1e-5 else 1
+
+
+def gguf_q4_k_pack8_gemv_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.cpu_reference import gguf_q4_k_pack8_gemv
+    from hipengine.kernels.hip_gfx1100.quant import (
+        build_gguf_q4_k_gemv,
+        gguf_q4_k_pack8_gemv_bf16_f32_out,
+        gguf_q4_k_pack8_gemv_f32_f32_out,
+        gguf_q4_k_pack8_gemv_fp16_f32_out,
+    )
+    from hipengine.quant.gguf import bf16_to_float32
+    from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 1:
+        raise ValueError("--hidden-size must be >= 1")
+
+    in_features = max(256, ((hidden_size + 255) // 256) * 256)
+    out_features = 16
+    threads = 64
+    x_f32 = (
+        (np.arange(rows * in_features, dtype=np.float32).reshape(rows, in_features) % 19) - 9
+    ) / 16.0
+    x_fp16 = x_f32.astype(np.float16)
+    x_bf16 = _float32_to_bf16_bits(x_f32)
+    packed = repack_gguf_q4_k_pack8(_make_smoke_q4_k_weight(out_features, in_features))
+    expected_f32 = gguf_q4_k_pack8_gemv(x_f32, packed.qweight, packed.scales, packed.mins)
+    expected_fp16 = gguf_q4_k_pack8_gemv(
+        x_fp16.astype(np.float32), packed.qweight, packed.scales, packed.mins
+    )
+    expected_bf16 = gguf_q4_k_pack8_gemv(
+        bf16_to_float32(x_bf16), packed.qweight, packed.scales, packed.mins
+    )
+    out_f32 = np.empty((rows, out_features), dtype=np.float32)
+    out_fp16 = np.empty((rows, out_features), dtype=np.float32)
+    out_bf16 = np.empty((rows, out_features), dtype=np.float32)
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_gemv(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        contiguous = np.ascontiguousarray(array)
+        buffer = malloc(contiguous.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(contiguous), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_f32_dev = dev(x_f32)
+        x_fp16_dev = dev(x_fp16)
+        x_bf16_dev = dev(x_bf16)
+        qweight_dev = dev(packed.qweight)
+        scales_dev = dev(packed.scales)
+        mins_dev = dev(packed.mins)
+        out_f32_dev = out_dev(out_f32)
+        out_fp16_dev = out_dev(out_fp16)
+        out_bf16_dev = out_dev(out_bf16)
+        gguf_q4_k_pack8_gemv_f32_f32_out(
+            x_f32_dev.ptr,
+            qweight_dev.ptr,
+            scales_dev.ptr,
+            mins_dev.ptr,
+            out_f32_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_pack8_gemv_fp16_f32_out(
+            x_fp16_dev.ptr,
+            qweight_dev.ptr,
+            scales_dev.ptr,
+            mins_dev.ptr,
+            out_fp16_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_pack8_gemv_bf16_f32_out(
+            x_bf16_dev.ptr,
+            qweight_dev.ptr,
+            scales_dev.ptr,
+            mins_dev.ptr,
+            out_bf16_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_f32), out_f32_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_fp16), out_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_bf16), out_bf16_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    f32_max_abs = float(np.max(np.abs(out_f32 - expected_f32)))
+    fp16_max_abs = float(np.max(np.abs(out_fp16 - expected_fp16)))
+    bf16_max_abs = float(np.max(np.abs(out_bf16 - expected_bf16)))
+    print(
+        f"pack8 rows={rows} requested_hidden_size={hidden_size} "
+        f"in_features={in_features} out_features={out_features} "
+        f"f32_max_abs={f32_max_abs} fp16_max_abs={fp16_max_abs} "
+        f"bf16_max_abs={bf16_max_abs}"
+    )
+    print("pack8_f32_row0=", out_f32[0, : min(8, out_features)].tolist())
     return 0 if f32_max_abs <= 1e-5 and fp16_max_abs <= 1e-5 and bf16_max_abs <= 1e-5 else 1
 
 

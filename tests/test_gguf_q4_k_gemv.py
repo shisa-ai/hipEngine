@@ -3,16 +3,20 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from hipengine.kernels.cpu_reference import gguf_q4_k_gemv
+from hipengine.kernels.cpu_reference import gguf_q4_k_gemv, gguf_q4_k_pack8_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
     gguf_q4_k_gemv_bf16_f32_out,
     gguf_q4_k_gemv_f32_f32_out,
     gguf_q4_k_gemv_fp16_f32_out,
+    gguf_q4_k_pack8_gemv_bf16_f32_out,
+    gguf_q4_k_pack8_gemv_f32_f32_out,
+    gguf_q4_k_pack8_gemv_fp16_f32_out,
     plan_gguf_q4_k_gemv_build,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
 
 QK_K = 256
 Q4_K_BLOCK_BYTES = 144
@@ -76,6 +80,26 @@ def test_cpu_reference_gguf_q4_k_gemv_matches_dequantized_matmul() -> None:
     np.testing.assert_allclose(out, expected, rtol=0.0, atol=1e-6)
 
 
+def test_repacked_q4_k_pack8_matches_raw_reference() -> None:
+    x = (np.arange(2 * 512, dtype=np.float32).reshape(2, 512) % 13 - 6) / 8.0
+    qweight = make_q4_k_weight(out_features=16, in_features=512)
+
+    packed = repack_gguf_q4_k_pack8(qweight)
+    out = gguf_q4_k_pack8_gemv(x, packed.qweight, packed.scales, packed.mins)
+    expected = gguf_q4_k_gemv(x, qweight)
+
+    assert packed.qweight.shape == (2, 512)
+    assert packed.scales.shape == (16, 16)
+    assert packed.mins.shape == (16, 16)
+    assert out.dtype == np.float32
+    np.testing.assert_allclose(out, expected, rtol=0.0, atol=1e-6)
+
+
+def test_repacked_q4_k_pack8_validates_shape() -> None:
+    with pytest.raises(ValueError, match="divisible by 8"):
+        repack_gguf_q4_k_pack8(make_q4_k_weight(out_features=5, in_features=256))
+
+
 def test_gguf_q4_k_gemv_registry_and_build_plan() -> None:
     assert resolve(
         backend="hip_gfx1100",
@@ -96,11 +120,35 @@ def test_gguf_q4_k_gemv_registry_and_build_plan() -> None:
         variant="gemv_bf16_f32_out",
     ) is gguf_q4_k_gemv_bf16_f32_out
     assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k",
+        variant="pack8_f32_f32_out",
+    ) is gguf_q4_k_pack8_gemv_f32_f32_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k",
+        variant="pack8_fp16_f32_out",
+    ) is gguf_q4_k_pack8_gemv_fp16_f32_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k",
+        variant="pack8_bf16_f32_out",
+    ) is gguf_q4_k_pack8_gemv_bf16_f32_out
+    assert resolve(
         backend="cpu_reference",
         layer="linear",
         quant="gguf_q4_k",
         variant="gemv_f32_f32_out",
     ) is gguf_q4_k_gemv
+    assert resolve(
+        backend="cpu_reference",
+        layer="linear",
+        quant="gguf_q4_k",
+        variant="pack8_f32_f32_out",
+    ) is gguf_q4_k_pack8_gemv
 
     artifact = plan_gguf_q4_k_gemv_build(compiler_version="test-compiler")
     assert artifact.output_path.name == "gguf_q4_k_gemv.so"
@@ -118,4 +166,14 @@ def test_gguf_q4_k_wrapper_validates_kernel_contract() -> None:
     with pytest.raises(ValueError, match="threads"):
         gguf_q4_k_gemv_f32_f32_out(
             1, 2, 3, rows=1, in_features=256, out_features=1, threads=96
+        )
+
+    with pytest.raises(ValueError, match="divisible by 8"):
+        gguf_q4_k_pack8_gemv_f32_f32_out(
+            1, 2, 3, 4, 5, rows=1, in_features=256, out_features=7
+        )
+
+    with pytest.raises(ValueError, match="threads"):
+        gguf_q4_k_pack8_gemv_f32_f32_out(
+            1, 2, 3, 4, 5, rows=1, in_features=256, out_features=8, threads=256
         )
