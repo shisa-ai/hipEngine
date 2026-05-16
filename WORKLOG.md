@@ -12904,3 +12904,17 @@ Lineage hygiene:
 python3 scripts/check_lineage.py --kind kernel --diff stat
 # DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9; no parent kernel code was copied for this task. The new rotate gate helper is a hipENGINE-only fusion of existing gate and rotate semantics.
 ```
+
+## 2026-05-16 — Task 19 easy prefill fusion source audit
+
+Reviewed hipENGINE and nano-vllm-amd Qwen3.5/PARO prefill call structure for small launch/materialization fusions after the AOTriton cast and gate+rotate cleanups.  No GPU benchmark was run; this is a source/call-graph audit only.  Added a ranked candidate table to `docs/PREFILL.md`.
+
+Top candidates identified:
+
+1. Linear-attention output tail: fuse `qwen35_gdn_prefill_rmsnorm_gate_fp16(...)` with `paro_rotate1_fp16(...)` for the linear-attention out projection.  This should remove one launch and `recurrent_bf16` materialization on 30 linear-attention layers when `head_v_dim == group_size` (Qwen3.5/PARO natural 128-wide groups).
+2. MoE shared gate: add a prefill-only router variant that writes `sigmoid(shared_gate_logit)` in the shared-gate column after top-k selection, allowing grouped prefill to skip `w8a16_shared_gate_sigmoid_fp32(...)`.  Keep c=1 unchanged because its combine kernel expects raw logits.
+3. Full-attention prelude: AOTriton-first fused Q/gate split + K cast + head RMSNorm/RoPE kernel reading FP16 q_proj/K projection directly and writing gate FP16, BF16 Q, and FP32/BF16 K outputs.
+4. Packed c>N linear-attention: add a lowp-input segment conv to remove the `fp16_to_f32(qkv)` cast before `qwen35_linear_attn_conv_prefill_segments_f32(...)`.
+5. MoE metadata: combine small group-prefix/tile-map/metadata-zero launches if profiler shows they matter.
+
+Deferred as not easy: input RMSNorm+PARO input rotation, rotate fused into generic W4 WMMA projections, and folding sorted-lane selected-output accumulation into shared down combine.

@@ -164,6 +164,33 @@ per-layer non-attention bulk work and launch/cast glue.
 | P2 | Decode graph replay parity. | Parent rows use step graph replay; current hipENGINE rows do not. | Decode delta is separate from prefill, but it affects end-to-end comparison tables. | Implement/validate the queued decode graph replay task after the prefill threshold sweep. |
 | P3 | Matched profiler attribution. | This audit is source/ledger based; no matched hipENGINE-vs-parent prefill kernel-time table exists yet. | Prevents tuning the wrong family if dense/shared kernels are not the top residual. | Retain compact 512/128 and 4K/128 profiler summaries with ROCTX ranges before landing invasive kernel work. |
 
+#### Additional low-risk prefill fusion audit (2026-05-16)
+
+Source audit only; no new GPU measurement in this pass.  The goal was to find
+small launch/materialization cleanups left after the AOTriton Q/K/V cast and
+gate+rotate work, not to replace the P0 bulk dense/shared-expert gap.
+
+| Rank | Area | Current hipENGINE prefill sequence | Parent/source comparison | Candidate | Risk / why not already done |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Linear-attention output tail | `qwen35_gdn_prefill_rmsnorm_gate_fp16(...) -> paro_rotate1_fp16(...) -> awq_fusedw4_prefill_strided_fp16(...)` in `run_linear_attention_prefill_*_fp16`. | Parent computes `hidden_outputs = rmsnorm(recurrent) * silu(z)` then calls PARO `out_proj`; hipENGINE already owns both lowp GDN gate and PARO rotate kernels. | Add a FP16 `gdn_prefill_rmsnorm_gate_rotate` kernel that computes per-value-head RMSNorm+SiLU gate into LDS, applies the PARO rotate1 group, and writes `out_rot` directly. Removes one launch and the `recurrent_bf16` materialization on all 30 linear-attention layers. | Low/medium. Safe when `head_v_dim == group_size` (Qwen3.5/PARO uses the natural 128-wide groups); keep the existing two-kernel path as fallback for other shapes. |
+| 2 | MoE shared gate | `route_moe_topk_shared_fp16(...)` writes the shared-gate logit, then grouped prefill launches `w8a16_shared_gate_sigmoid_fp32(...)`, then `w8a16_shared_down_combine_residual_fp16(...)` consumes the sigmoid. | Parent's c=1 fused shared-gate combine computes sigmoid inside combine; hipENGINE precomputes it once to avoid recomputing `expf` per hidden tile. | Add a prefill-only router variant (or select-kernel flag) that overwrites the shared-gate column with `sigmoid(logit)` after top-k selection. Then grouped prefill can skip `w8a16_shared_gate_sigmoid_fp32(...)` without recomputing sigmoid inside shared down. | Low. Must not change the c=1 route because `weighted_sum_shared_gate_combine_residual_*` expects raw shared-gate logits and applies sigmoid itself. |
+| 3 | Full-attention Q/gate + K prelude | `qwen35_split_qgate_fp16(...)`, `fp16_to_f32(key)`, then `qwen35_head_rmsnorm_partial_rotary_positions_*` for Q/K head norm + RoPE. | Parent's torch graph views/chunks Q and normalizes/rotates Q/K; hipENGINE has explicit split/cast launch glue because the raw-pointer ABI needs materialized FP32 Q/K inputs. | Add an AOTriton-first fused prelude that reads FP16 `q_proj` (`Q|gate`) and FP16 K projection directly, writes gate FP16, BF16 Q, and FP32 K (or BF16 K if appending directly) while doing head RMSNorm + vector-position RoPE. Removes split and key-cast launches plus `query_raw`/`key_raw` scratch for the AOTriton path. | Medium. More pointer/stride plumbing than math risk; keep native non-AOTriton path unchanged until the AOTriton fixture is green. |
+| 4 | Packed linear-attention segment conv | Compact c>N path casts `qkv` FP16 to `qkv_f32` before `qwen35_linear_attn_conv_prefill_segments_f32(...)`; single-request prefill already has the lowp-input `qwen35_linear_attn_conv_prefill_fp16(...)`. | Parent segment path is newer than the original c=1 prefill and does not expose this exact torch-free split. | Add a templated/FP16-input segment conv wrapper to remove the `fp16_to_f32(...)` cast and `qkv_f32` scratch in packed prefill. | Low, but affects compact c>N more than the current c=1 benchmark, so schedule after c=1 launch cleanups. |
+| 5 | MoE metadata fanout | `_prepare_grouped_moe_prefill_metadata(...)` uses memset/count/prefix/tile-map/memset/scatter launches before expert WMMA. | Parent uses torch-side grouping plus native compact WMMA; hipENGINE's explicit metadata kernels are correct but launch-heavy. | Combine `group_prefix` + `wmma_tile_map` and initialize `scatter_offsets`/`tile_expert` in the same small metadata kernel. | Low math risk but small payoff; do after profiler confirms metadata is visible. |
+
+Defer for now: fusing input RMSNorm with PARO input rotation (requires a
+row-wide reduction before group-local rotations), fusing rotate into generic W4
+WMMA projection kernels (larger AWQ kernel rewrite), and folding
+`weighted_lanes_sum` into shared down combine (sorted lanes make the selected
+sum non-local unless the down kernel grows atomics or a different output
+layout).  These are not "easy" launch fusions.
+
+Recommended order if continuing launch-cleanup work: (1) GDN RMSNorm/gate +
+linear-out rotate, (2) prefill-only router shared-gate sigmoid, (3) AOTriton
+Q/gate+K prelude fusion.  Re-run the 512/32 fixture gate after each and keep
+512/128 + 4K/128 rows diagnostic-only unless repeated runs show a real
+throughput improvement.
+
 ## Current hipENGINE inventory
 
 `docs/KERNELS.md` is authoritative for exact landed kernels and gates. If this
