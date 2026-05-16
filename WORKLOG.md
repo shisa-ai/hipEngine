@@ -11089,3 +11089,31 @@ router-logits kernel did improve (`qwen35_router_logits_token_tile_kernel<_Float
 `7.279 ms` total versus tile4's retained `8.683 ms` total), but the primary
 metric delta is below run noise and the wider kernel is not a real active-path
 win. Decision: reject/revert; keep iter 43 tile4.
+
+## 2026-05-16 — Prefill multiloop iter 45: rejected 128-thread shared-expert prefill
+
+Tried routing only the grouped FP16 prefill shared-expert helpers through
+128-thread W8A16 reductions while leaving c=1/decode helper defaults at 64
+threads. The target was the ~35 ms retained shared-expert prefill bucket
+(`w8a16_shared_gate_up_silu_fp16_kernel` +
+`w8a16_shared_down_combine_residual_fp16_kernel`) seen in iter 43 traces.
+
+Validation commands:
+
+```bash
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter45-w8a16-shared128-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter45-w8a16-shared128-trace.json
+```
+
+Results: targeted tests passed (`58 passed`) and fixture gate passed
+(`max_kl=0.03121`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2669s`). 4K/128 was
+runnable and above guard at `644.420 tok/s`. 512/128 samples were `1924.802`,
+`1926.749`, and `1915.650` tok/s (median `1924.802`), a -5.3% regression versus
+retained `2031.783`. Profiler confirmed the source of the regression: shared
+expert down-combine worsened from retained `19.543 ms` total to `33.283 ms`, and
+shared gate/up worsened from `15.633 ms` to `17.540 ms`. Decision:
+reject/revert; keep the 64-thread grouped shared-expert helper launches.
