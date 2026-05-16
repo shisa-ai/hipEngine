@@ -10,32 +10,34 @@
   "path": "native_prefill_c1_multiloop",
   "max_layers": 40,
   "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
-  "change": "Fast-path the Qwen3.5 prefill attention address arithmetic for the runtime-enforced block_size=256, replacing dynamic token/block_size divisions with shift/mask in the score and value loops.",
+  "change": "Split Qwen3.5 single-request prefill attention into a short block_size=256 template that preloads the first two KV page-table entries for <=512-token rows, while routing longer rows to a separate generic template to avoid 4K codegen regression.",
   "source_lineage": "hipENGINE local optimization of the ported nano-vllm-amd@59195ed paged full-attention prefill kernel; preserves KVLiveSpans ABI and exact BF16 KV math.",
   "workloads": {
     "512_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json",
       "prefill_tok_s_samples": [
-        1929.4987677815063,
-        1931.1270255262118,
-        1917.0487678754419,
-        1910.7122449975004
+        1979.9855485021315,
+        1970.6320550436608,
+        1978.6739602127013,
+        1959.8511471024703
       ],
-      "prefill_tok_s_median": 1923.273767828474,
-      "previous_retained_prefill_tok_s": 1906.2586737112003,
-      "delta_percent": 0.8925910398166481,
-      "representative_prefill_seconds": 0.2653538880404085,
-      "representative_decode_tok_s": 102.07263462144535
+      "prefill_tok_s_median": 1974.653007628181,
+      "previous_retained_prefill_tok_s": 1923.273767828474,
+      "delta_percent": 2.6714470222155784,
+      "representative_prefill_seconds": 0.25858774594962597,
+      "representative_decode_tok_s": 101.59513053684813
     },
     "4096_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json",
-      "prefill_tok_s": 672.650185664201,
-      "previous_retained_prefill_tok_s": 661.5061316822375,
-      "delta_percent": 1.6846486295786445,
-      "prefill_seconds": 6.089346420019865,
-      "decode_tok_s": 102.53729201920743,
-      "guard_floor_prefill_tok_s": 628.4308250981256,
-      "guard_passed": true
+      "prefill_tok_s": 649.9967210600794,
+      "previous_retained_prefill_tok_s": 672.650185664201,
+      "delta_percent": -3.3677928122108125,
+      "prefill_seconds": 6.3015702499542385,
+      "decode_tok_s": 102.50275802414936,
+      "guard_floor_prefill_tok_s": 639.0176763809909,
+      "guard_passed": true,
+      "prefill_tok_s_rerun": 650.0057169440007,
+      "prefill_seconds_rerun": 6.301483038114384
     }
   },
   "correctness_gate": {
@@ -48,7 +50,7 @@
     "max_kl": 0.034058458922996276,
     "top1_agreement": 1.0,
     "native_owned_device_bytes": 1625645909,
-    "native_prefill_seconds": 0.2662449369672686
+    "native_prefill_seconds": 0.26073740306310356
   },
   "additional_gates": [
     {
@@ -66,10 +68,10 @@
       "evidence": "37 passed"
     },
     {
-      "command": "rocprofv3 --kernel-trace -d /tmp/iter39-attn-block256-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter39-attn-block256-trace.json",
+      "command": "rocprofv3 --kernel-trace -d /tmp/iter41-attn-short-split-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter41-attn-short-split-trace.json",
       "passed": true,
-      "evidence": "qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel ran 10 times, total 36.361 ms, avg 3636.1 us; previous retained trace was 40.102 ms total"
+      "evidence": "qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true> ran 10 times, total 26.362 ms, avg 2636.2 us; previous retained generic trace was 36.361 ms total"
     }
   ],
-  "worklog": "2026-05-16 \u2014 Prefill multiloop iter 39: block_size=256 prefill-attention address fast path"
+  "worklog": "2026-05-16 \u2014 Prefill multiloop iter 41: split short prefill-attention block-table preload"
 }

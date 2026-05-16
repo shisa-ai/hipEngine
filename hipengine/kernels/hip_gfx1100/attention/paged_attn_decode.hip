@@ -1035,6 +1035,7 @@ __global__ void qwen35_paged_full_attn_decode_split_k_reduce_kernel(
 }
 
 
+template <bool SHORT_BLOCK256>
 __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
     const float* __restrict__ query,       // [rows, num_q_heads, head_dim]
     const uint16_t* __restrict__ key_cache,
@@ -1083,6 +1084,12 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   const float* q = query + (row * num_q_heads + q_head) * head_dim;
   const int32_t* row_table = block_tables + row * block_table_len;
   const bool block_size_256 = block_size == 256;
+  int64_t short_physical_block0 = -1;
+  int64_t short_physical_block1 = -1;
+  if constexpr (SHORT_BLOCK256) {
+    short_physical_block0 = block_table_len > 0 ? static_cast<int64_t>(row_table[0]) : -1;
+    short_physical_block1 = block_table_len > 1 ? static_cast<int64_t>(row_table[1]) : -1;
+  }
 
   for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
     q_shared[dim] = q[dim];
@@ -1091,13 +1098,21 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
 
   float local_max = -3.4028234663852886e38f;
   for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
-    const int64_t logical_block = block_size_256 ? (token >> 8) : (token / block_size);
-    if (logical_block >= block_table_len) {
-      scores[token] = -3.4028234663852886e38f;
-      continue;
+    int64_t block_offset;
+    int64_t physical_block;
+    if constexpr (SHORT_BLOCK256) {
+      const int64_t logical_block = token >> 8;
+      block_offset = token & 255;
+      physical_block = (logical_block == 0) ? short_physical_block0 : short_physical_block1;
+    } else {
+      const int64_t logical_block = block_size_256 ? (token >> 8) : (token / block_size);
+      if (logical_block >= block_table_len) {
+        scores[token] = -3.4028234663852886e38f;
+        continue;
+      }
+      block_offset = block_size_256 ? (token & 255) : (token - logical_block * block_size);
+      physical_block = static_cast<int64_t>(row_table[logical_block]);
     }
-    const int64_t block_offset = block_size_256 ? (token & 255) : (token - logical_block * block_size);
-    const int64_t physical_block = static_cast<int64_t>(row_table[logical_block]);
     if (physical_block < 0) {
       scores[token] = -3.4028234663852886e38f;
       continue;
@@ -1151,12 +1166,20 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
     float acc = 0.0f;
     for (int64_t token = 0; token < visible_len; ++token) {
-      const int64_t logical_block = block_size_256 ? (token >> 8) : (token / block_size);
-      if (logical_block >= block_table_len) {
-        continue;
+      int64_t block_offset;
+      int64_t physical_block;
+      if constexpr (SHORT_BLOCK256) {
+        const int64_t logical_block = token >> 8;
+        block_offset = token & 255;
+        physical_block = (logical_block == 0) ? short_physical_block0 : short_physical_block1;
+      } else {
+        const int64_t logical_block = block_size_256 ? (token >> 8) : (token / block_size);
+        if (logical_block >= block_table_len) {
+          continue;
+        }
+        block_offset = block_size_256 ? (token & 255) : (token - logical_block * block_size);
+        physical_block = static_cast<int64_t>(row_table[logical_block]);
       }
-      const int64_t block_offset = block_size_256 ? (token & 255) : (token - logical_block * block_size);
-      const int64_t physical_block = static_cast<int64_t>(row_table[logical_block]);
       if (physical_block < 0) {
         continue;
       }
@@ -1698,30 +1721,38 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
   // reserve score slots, one reduction slot per thread, and one cached query head.
   const int threads = max_context_len <= 1024 ? 32 : 64;
   const size_t shared = static_cast<size_t>(max_context_len + threads + head_dim) * sizeof(float);
-  hipLaunchKernelGGL(
-      qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel,
-      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
-      dim3(threads),
-      shared,
-      stream,
-      query,
-      key_cache,
-      value_cache,
-      gate,
-      out,
-      block_tables,
-      context_counts,
-      row_positions,
-      rows,
-      max_context_len,
-      block_size,
-      block_table_len,
-      num_q_heads,
-      num_kv_heads,
-      head_dim,
-      gate_stride1,
-      gate_stride2,
-      scale);
+  const bool use_short_block256 = block_size == 256 && max_context_len <= 512;
+#define HIPENGINE_LAUNCH_PREFILL_GQA(SHORT) \
+  hipLaunchKernelGGL( \
+      (qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<SHORT>), \
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)), \
+      dim3(threads), \
+      shared, \
+      stream, \
+      query, \
+      key_cache, \
+      value_cache, \
+      gate, \
+      out, \
+      block_tables, \
+      context_counts, \
+      row_positions, \
+      rows, \
+      max_context_len, \
+      block_size, \
+      block_table_len, \
+      num_q_heads, \
+      num_kv_heads, \
+      head_dim, \
+      gate_stride1, \
+      gate_stride2, \
+      scale)
+  if (use_short_block256) {
+    HIPENGINE_LAUNCH_PREFILL_GQA(true);
+  } else {
+    HIPENGINE_LAUNCH_PREFILL_GQA(false);
+  }
+#undef HIPENGINE_LAUNCH_PREFILL_GQA
   return static_cast<int>(hipGetLastError());
 }
 
