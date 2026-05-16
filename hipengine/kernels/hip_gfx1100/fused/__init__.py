@@ -1,5 +1,14 @@
 """gfx1100 fused kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
+    build_gguf_ops,
+    gguf_add_rmsnorm_bf16_f32_weight,
+    gguf_bf16_add,
+    gguf_gate_repeat_value_bf16,
+    gguf_rmsnorm_bf16_f32_weight,
+    plan_gguf_ops_build,
+    register_gguf_ops,
+)
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     build_paro_combine,
     plan_paro_combine_build,
@@ -34,10 +43,17 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
 )
 
 __all__ = [
+    "build_gguf_ops",
     "build_paro_combine",
     "build_paro_silu",
+    "gguf_add_rmsnorm_bf16_f32_weight",
+    "gguf_bf16_add",
+    "gguf_gate_repeat_value_bf16",
+    "gguf_rmsnorm_bf16_f32_weight",
+    "plan_gguf_ops_build",
     "plan_paro_combine_build",
     "plan_paro_silu_build",
+    "register_gguf_ops",
     "register_paro_combine_kernels",
     "register_paro_silu_kernels",
     "shared_gate_combine_out_bf16",

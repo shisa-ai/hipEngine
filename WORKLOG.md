@@ -15635,3 +15635,69 @@ python3 scripts/qwen35_gguf_e2e_correctness.py --skip-tokenize-check >/tmp/gguf_
 ```
 
 Task #33 is complete; remaining true E2E blockers are #34 full Qwen3.5 GGUF layer chain and #35 final logits/text generation over that full layer chain.
+
+## 2026-05-16 Qwen3.5 GGUF full-stack hidden runner
+
+Replaced the one-layer GGUF projection-probe limitation with `Qwen35GGUFFullStackRunner`, a one-token decode bring-up path over resident native GGUF weights. The runner materializes the validated GGUF map once, then executes all 24 mapped layers for the fixture prompt's last token with zeroed decode state:
+
+```text
+Q6_K token_embd lookup -> BF16 hidden
+for each layer:
+  F32-weight GGUF RMSNorm
+  linear_attention layers: Q5_K attn_qkv + Q4_K attn_gate + Q8_0 alpha/beta + F32 conv/GDN + Q5_K ssm_out
+  full_attention layers: Q4_K attn_q + Q4_K attn_k + Q6_K attn_v + c=1 gate/value repeat + Q4_K attn_output
+  residual + F32-weight GGUF add-RMSNorm
+  dense FFN: Q4_K/Q6_K gate/up/down + BF16 SiLU(gate)*up
+  residual add
+final F32-weight GGUF RMSNorm
+```
+
+Added `hipengine/kernels/hip_gfx1100/fused/gguf_ops.{hip,py}` because GGUF norm weights are F32 scale tensors. New helpers:
+
+- `gguf_rmsnorm_bf16_f32_weight(...)`
+- `gguf_add_rmsnorm_bf16_f32_weight(...)`
+- `gguf_bf16_add(...)`
+- `gguf_gate_repeat_value_bf16(...)` for c=1 full-attention value repeat + query-gate sigmoid.
+
+Important scope note: this is still a one-token decode bring-up path, not llama.cpp-parity prefill. Recurrent and KV state are zeroed for the selected token; task #35 must connect text generation over this full-stack path and task #31 remains the hard oracle gate.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/fused/gguf_ops.py \
+  hipengine/runtime/qwen35_gguf_runner.py hipengine/generation/qwen35_gguf.py \
+  tests/test_gguf_ops.py tests/test_qwen35_gguf_runner.py tests/test_llm_gguf_generate_path.py
+python3 -m pytest tests/test_gguf_ops.py -q
+# 2 passed
+python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_llm_gguf_generate_path.py -q
+# 4 passed
+python3 -m pytest tests/test_gguf_ops.py tests/test_qwen35_gguf_runner.py \
+  tests/test_llm_gguf_generate_path.py -q
+# 6 passed
+```
+
+Full-stack hidden determinism smoke:
+
+```bash
+python3 - <<'PY'
+import numpy as np
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+from hipengine.quant.gguf import bf16_to_float32
+with Qwen35GGUFFullStackRunner('/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf') as r:
+    h = r.run_prompt_hidden([760, 4087, 369])
+    f = bf16_to_float32(h)
+    print(h.shape, h.dtype, np.isfinite(f).all(), float(f.min()), float(f.max()))
+PY
+# (1, 1024) uint16 True -18.25 20.5
+```
+
+The public GGUF generator now reaches the full native GGUF layer stack and then stops at the next explicit blocker:
+
+```bash
+python3 scripts/qwen35_gguf_e2e_correctness.py --skip-tokenize-check >/tmp/gguf_e2e_task34_red.json
+# exit 1 as expected:
+# NotImplementedError: Qwen3.5 GGUF public path reached full native GGUF layer stack (token_id=220, text=' ', logit=11.3518); returning generated text is not wired yet
+# torch_loaded_by_generate=False
+```
+
+Task #34 is complete. Next task #35 should return generated text/tokens over this full-stack path and then task #31 must compare against the llama.cpp oracle fixture.

@@ -18,14 +18,14 @@ def test_qwen35_gguf_model_plugin_resolves_architecture() -> None:
     assert plugin.default_quant == "gguf_q4_k_m"
 
 
-def test_llm_generate_gguf_path_reaches_native_probe(monkeypatch) -> None:
+def test_llm_generate_gguf_path_reaches_full_stack_runner(monkeypatch) -> None:
     import hipengine.generation.qwen35_gguf as qwen35_gguf
 
     calls = []
 
-    class FakeProbe:
-        def __init__(self, model_path, *, layer_id=0):
-            calls.append(("init", str(model_path), layer_id))
+    class FakeRunner:
+        def __init__(self, model_path):
+            calls.append(("init", str(model_path)))
 
         def __enter__(self):
             calls.append(("enter",))
@@ -34,19 +34,19 @@ def test_llm_generate_gguf_path_reaches_native_probe(monkeypatch) -> None:
         def __exit__(self, exc_type, exc, tb):
             calls.append(("exit", exc_type is None))
 
-        def sample_next_token(self, token_id: int):
-            calls.append(("sample_next_token", int(token_id)))
+        def sample_next_token(self, token_ids):
+            calls.append(("sample_next_token", tuple(int(token) for token in token_ids)))
             return type("Result", (), {"token_id": 123, "logit": 4.5})()
 
-    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFOneLayerProbe", FakeProbe)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeRunner)
 
     llm = LLM(str(MODEL), backend="hip_gfx1100", quant="gguf_q4_k_m")
-    with pytest.raises(NotImplementedError, match="full layer chain"):
+    with pytest.raises(NotImplementedError, match="returning generated text"):
         llm.generate("The answer is", SamplingParams(max_tokens=1))
 
     assert calls == [
-        ("init", str(MODEL.resolve()), 0),
+        ("init", str(MODEL.resolve())),
         ("enter",),
-        ("sample_next_token", 369),
+        ("sample_next_token", (760, 4087, 369)),
         ("exit", True),
     ]

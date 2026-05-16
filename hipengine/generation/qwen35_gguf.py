@@ -8,7 +8,7 @@ from typing import Any
 
 from hipengine.generation.registry import GenerationRequest, register_text_generator
 from hipengine.loading.gguf import GGUFModelInfo
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFOneLayerProbe
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
 
@@ -35,13 +35,13 @@ class Qwen35GGUFBringupGenerator:
             prompt_ids = self.tokenizer.encode(prompt)
             if not prompt_ids:
                 raise ValueError("GGUF prompt tokenization produced no token IDs")
-            with Qwen35GGUFOneLayerProbe(self.model_path, layer_id=0) as probe:
-                result = probe.sample_next_token(prompt_ids[-1])
+            with Qwen35GGUFFullStackRunner(self.model_path) as runner:
+                result = runner.sample_next_token(prompt_ids)
         decoded = self.tokenizer.decode([result.token_id])
         raise NotImplementedError(
-            "Qwen3.5 GGUF public path reached native GGUF lm-head sampling "
-            f"(probe token_id={result.token_id}, text={decoded!r}, logit={result.logit:.6g}); "
-            "full layer chain is not wired yet"
+            "Qwen3.5 GGUF public path reached full native GGUF layer stack "
+            f"(token_id={result.token_id}, text={decoded!r}, logit={result.logit:.6g}); "
+            "returning generated text is not wired yet"
         )
 
 
