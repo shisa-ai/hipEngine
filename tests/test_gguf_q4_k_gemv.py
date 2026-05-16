@@ -6,9 +6,11 @@ import pytest
 from hipengine.kernels.cpu_reference import gguf_q4_k_gemv, gguf_q4_k_pack8_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
+    gguf_q4_k_gemv_bf16_bf16_out,
     gguf_q4_k_gemv_bf16_f32_out,
     gguf_q4_k_gemv_f32_f32_out,
     gguf_q4_k_gemv_fp16_f32_out,
+    gguf_q4_k_pack8_gemv_bf16_bf16_out,
     gguf_q4_k_pack8_gemv_bf16_f32_out,
     gguf_q4_k_pack8_gemv_f32_f32_out,
     gguf_q4_k_pack8_gemv_fp16_f32_out,
@@ -123,6 +125,12 @@ def test_gguf_q4_k_gemv_registry_and_build_plan() -> None:
         backend="hip_gfx1100",
         layer="linear",
         quant="gguf_q4_k",
+        variant="gemv_bf16_bf16_out",
+    ) is gguf_q4_k_gemv_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k",
         variant="pack8_f32_f32_out",
     ) is gguf_q4_k_pack8_gemv_f32_f32_out
     assert resolve(
@@ -137,6 +145,12 @@ def test_gguf_q4_k_gemv_registry_and_build_plan() -> None:
         quant="gguf_q4_k",
         variant="pack8_bf16_f32_out",
     ) is gguf_q4_k_pack8_gemv_bf16_f32_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k",
+        variant="pack8_bf16_bf16_out",
+    ) is gguf_q4_k_pack8_gemv_bf16_bf16_out
     assert resolve(
         backend="cpu_reference",
         layer="linear",

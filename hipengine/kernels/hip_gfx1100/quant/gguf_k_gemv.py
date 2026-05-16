@@ -65,6 +65,10 @@ def gguf_q8_0_gemv_bf16_f32_out(*args, **kwargs) -> None:
     _launch("gguf_q8_0", "hipengine_gguf_q8_0_gemv_bf16_f32_out", *args, **kwargs)
 
 
+def gguf_q8_0_gemv_bf16_bf16_out(*args, **kwargs) -> None:
+    _launch("gguf_q8_0", "hipengine_gguf_q8_0_gemv_bf16_bf16_out", *args, **kwargs)
+
+
 def gguf_q5_k_gemv_f32_f32_out(*args, **kwargs) -> None:
     _launch("gguf_q5_k", "hipengine_gguf_q5_k_gemv_f32_f32_out", *args, **kwargs)
 
@@ -77,6 +81,10 @@ def gguf_q5_k_gemv_bf16_f32_out(*args, **kwargs) -> None:
     _launch("gguf_q5_k", "hipengine_gguf_q5_k_gemv_bf16_f32_out", *args, **kwargs)
 
 
+def gguf_q5_k_gemv_bf16_bf16_out(*args, **kwargs) -> None:
+    _launch("gguf_q5_k", "hipengine_gguf_q5_k_gemv_bf16_bf16_out", *args, **kwargs)
+
+
 def gguf_q6_k_gemv_f32_f32_out(*args, **kwargs) -> None:
     _launch("gguf_q6_k", "hipengine_gguf_q6_k_gemv_f32_f32_out", *args, **kwargs)
 
@@ -87,6 +95,10 @@ def gguf_q6_k_gemv_fp16_f32_out(*args, **kwargs) -> None:
 
 def gguf_q6_k_gemv_bf16_f32_out(*args, **kwargs) -> None:
     _launch("gguf_q6_k", "hipengine_gguf_q6_k_gemv_bf16_f32_out", *args, **kwargs)
+
+
+def gguf_q6_k_gemv_bf16_bf16_out(*args, **kwargs) -> None:
+    _launch("gguf_q6_k", "hipengine_gguf_q6_k_gemv_bf16_bf16_out", *args, **kwargs)
 
 
 def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
@@ -163,16 +175,19 @@ _WRAPPERS = {
         "gemv_f32_f32_out": gguf_q8_0_gemv_f32_f32_out,
         "gemv_fp16_f32_out": gguf_q8_0_gemv_fp16_f32_out,
         "gemv_bf16_f32_out": gguf_q8_0_gemv_bf16_f32_out,
+        "gemv_bf16_bf16_out": gguf_q8_0_gemv_bf16_bf16_out,
     },
     "gguf_q5_k": {
         "gemv_f32_f32_out": gguf_q5_k_gemv_f32_f32_out,
         "gemv_fp16_f32_out": gguf_q5_k_gemv_fp16_f32_out,
         "gemv_bf16_f32_out": gguf_q5_k_gemv_bf16_f32_out,
+        "gemv_bf16_bf16_out": gguf_q5_k_gemv_bf16_bf16_out,
     },
     "gguf_q6_k": {
         "gemv_f32_f32_out": gguf_q6_k_gemv_f32_f32_out,
         "gemv_fp16_f32_out": gguf_q6_k_gemv_fp16_f32_out,
         "gemv_bf16_f32_out": gguf_q6_k_gemv_bf16_f32_out,
+        "gemv_bf16_bf16_out": gguf_q6_k_gemv_bf16_bf16_out,
     },
 }
 
@@ -181,12 +196,15 @@ register_gguf_k_gemv_kernels()
 
 __all__ = [
     "build_gguf_k_gemv",
+    "gguf_q5_k_gemv_bf16_bf16_out",
     "gguf_q5_k_gemv_bf16_f32_out",
     "gguf_q5_k_gemv_f32_f32_out",
     "gguf_q5_k_gemv_fp16_f32_out",
+    "gguf_q6_k_gemv_bf16_bf16_out",
     "gguf_q6_k_gemv_bf16_f32_out",
     "gguf_q6_k_gemv_f32_f32_out",
     "gguf_q6_k_gemv_fp16_f32_out",
+    "gguf_q8_0_gemv_bf16_bf16_out",
     "gguf_q8_0_gemv_bf16_f32_out",
     "gguf_q8_0_gemv_f32_f32_out",
     "gguf_q8_0_gemv_fp16_f32_out",

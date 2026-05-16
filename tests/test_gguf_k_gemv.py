@@ -6,12 +6,15 @@ import pytest
 from hipengine.kernels.cpu_reference import gguf_q5_k_gemv, gguf_q6_k_gemv, gguf_q8_0_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
+    gguf_q5_k_gemv_bf16_bf16_out,
     gguf_q5_k_gemv_bf16_f32_out,
     gguf_q5_k_gemv_f32_f32_out,
     gguf_q5_k_gemv_fp16_f32_out,
+    gguf_q6_k_gemv_bf16_bf16_out,
     gguf_q6_k_gemv_bf16_f32_out,
     gguf_q6_k_gemv_f32_f32_out,
     gguf_q6_k_gemv_fp16_f32_out,
+    gguf_q8_0_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_f32_out,
     gguf_q8_0_gemv_f32_f32_out,
     gguf_q8_0_gemv_fp16_f32_out,
@@ -178,22 +181,25 @@ def test_gguf_k_gemv_registry_and_build_plan() -> None:
             gguf_q8_0_gemv_f32_f32_out,
             gguf_q8_0_gemv_fp16_f32_out,
             gguf_q8_0_gemv_bf16_f32_out,
+            gguf_q8_0_gemv_bf16_bf16_out,
             gguf_q8_0_gemv,
         ),
         "gguf_q5_k": (
             gguf_q5_k_gemv_f32_f32_out,
             gguf_q5_k_gemv_fp16_f32_out,
             gguf_q5_k_gemv_bf16_f32_out,
+            gguf_q5_k_gemv_bf16_bf16_out,
             gguf_q5_k_gemv,
         ),
         "gguf_q6_k": (
             gguf_q6_k_gemv_f32_f32_out,
             gguf_q6_k_gemv_fp16_f32_out,
             gguf_q6_k_gemv_bf16_f32_out,
+            gguf_q6_k_gemv_bf16_bf16_out,
             gguf_q6_k_gemv,
         ),
     }
-    for quant, (f32_fn, fp16_fn, bf16_fn, cpu_fn) in expected.items():
+    for quant, (f32_fn, fp16_fn, bf16_fn, bf16_out_fn, cpu_fn) in expected.items():
         assert resolve(
             backend="hip_gfx1100", layer="linear", quant=quant, variant="gemv_f32_f32_out"
         ) is f32_fn
@@ -203,6 +209,9 @@ def test_gguf_k_gemv_registry_and_build_plan() -> None:
         assert resolve(
             backend="hip_gfx1100", layer="linear", quant=quant, variant="gemv_bf16_f32_out"
         ) is bf16_fn
+        assert resolve(
+            backend="hip_gfx1100", layer="linear", quant=quant, variant="gemv_bf16_bf16_out"
+        ) is bf16_out_fn
         assert resolve(
             backend="cpu_reference", layer="linear", quant=quant, variant="gemv_f32_f32_out"
         ) is cpu_fn

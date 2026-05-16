@@ -15218,3 +15218,84 @@ rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-k-rocprof.qQ3JIP
 ```
 
 This gives native projection coverage for the Q8_0/Q5_K/Q6_K tensor types in the local 0.8B Q4_K_M GGUF. The next E2E blocker is output dtype/runtime wiring: current GGUF GEMVs emit FP32, so a model runner either needs BF16 output variants or explicit F32→BF16 casts between existing BF16 kernels.
+
+## 2026-05-16 GGUF GEMV BF16 output variants
+
+Added direct BF16-output variants so the GGUF runtime path does not need a separate FP32→BF16 cast after every projection:
+
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.{hip,py}`:
+  - raw `gguf_q4_k_gemv_bf16_bf16_out`
+  - pack8 `gguf_q4_k_pack8_gemv_bf16_bf16_out`
+- `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.{hip,py}`:
+  - `gguf_q8_0_gemv_bf16_bf16_out`
+  - `gguf_q5_k_gemv_bf16_bf16_out`
+  - `gguf_q6_k_gemv_bf16_bf16_out`
+- Registry entries added under variants `gemv_bf16_bf16_out` and `pack8_bf16_bf16_out`.
+- Smokes now compare direct BF16 output against CPU reference rounded to BF16.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_gguf_reader.py tests/test_gguf_quant_layout.py \
+  tests/test_gguf_q4_k_gemv.py tests/test_gguf_k_gemv.py \
+  tests/test_model_quant_and_imports.py tests/test_build.py \
+  tests/test_smoke_add_plan.py -q
+# 33 passed
+python3 scripts/smoke.py --mode gguf-q4-k-gemv-hip --rows 2 --hidden-size 512
+# raw Q4_K f32/fp16/bf16 max_abs=0.0; bf16_out_max_abs=0.0; bf16_out_bit_mismatch=0
+python3 scripts/smoke.py --mode gguf-q4-k-pack8-gemv-hip --rows 2 --hidden-size 512
+# pack8 f32/fp16/bf16 max_abs=0.0; bf16_out_max_abs=0.0; bf16_out_bit_mismatch=0
+python3 scripts/gguf_k_gemv_smoke.py --rows 2 --out-features 7
+# Q8_0/Q5_K/Q6_K f32/fp16/bf16 max_abs=0.0;
+# Q8_0/Q5_K/Q6_K bf16_out_max_abs=0.0; bf16_out_bit_mismatch=0; worst_max_abs=0.0
+```
+
+Real local GGUF tensor BF16-output smokes against CPU references rounded to BF16:
+
+```bash
+# /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf, one BF16 activation row
+# Q4_K_PACK8 blk.0.attn_gate.weight shape=(2048, 1024): bf16_out_max_abs=1.220703125e-04, mean_abs=5.960464477539063e-08, bit_mismatch=1
+# Q8_0 blk.0.ssm_alpha.weight shape=(16, 1024): bf16_out_max_abs=0.0, bit_mismatch=0
+# Q5_K blk.0.attn_qkv.weight shape=(6144, 1024): bf16_out_max_abs=0.0, bit_mismatch=0
+# Q6_K token_embd.weight shape=(248320, 1024): bf16_out_max_abs=0.001953125, mean_abs=3.6398073888221916e-08, bit_mismatch=28
+```
+
+Cached profiler smoke (prebuilt `.so`, `--require-cached-build`):
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import build_gguf_q4_k_gemv
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+build_gguf_q4_k_gemv(load=False, compiler_version=version)
+build_gguf_k_gemv(load=False, compiler_version=version)
+PY
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-bf16out-rocprof.2oC3rt -- \
+  python3 scripts/smoke.py --mode gguf-q4-k-pack8-gemv-hip --rows 2 --hidden-size 512 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-bf16out-rocprof.2oC3rt -- \
+  python3 scripts/gguf_k_gemv_smoke.py --rows 2 --out-features 7 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# BF16-output dispatches observed:
+# gguf_q4_k_pack8_gemv_out_kernel<unsigned short, unsigned short> DurationNs=5640, Workgroup_Size_X=64
+# gguf_k_gemv_out_kernel<unsigned short, unsigned short, 8> DurationNs=3079, Workgroup_Size_X=128
+# gguf_k_gemv_out_kernel<unsigned short, unsigned short, 5> DurationNs=4920, Workgroup_Size_X=128
+# gguf_k_gemv_out_kernel<unsigned short, unsigned short, 6> DurationNs=4719, Workgroup_Size_X=128
+```
+
+Diagnostic timing, no accepted `LLM.generate()` throughput claim. Hardware: gfx1100 / AMD Radeon RX 7900 XTX, HIP 7.13.60940. BF16 activations, Q4_K lossless pack8, HIP events around graph execution with 500 launches per graph:
+
+```bash
+PYTHONPATH=. python3 /tmp/bench_gguf_bf16_out.py
+```
+
+| Shape rows=1 K/N | pack8 BF16→FP32 | pack8 BF16→BF16 | pack8 BF16→FP32 + cast | Direct BF16 vs FP32+cast |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 3.038 us | 3.033 us | 5.821 us | 0.521x time |
+| 4096/128 | 4.273 us | 4.400 us | 7.046 us | 0.624x time |
+
+Interpretation: direct BF16 output is roughly tied with FP32 output alone for 512/128 and ~3% slower for 4096/128 due to BF16 conversion in-kernel, but it is much faster than emitting FP32 and launching a separate cast kernel. Diagnostic artifact retained at `benchmarks/results/2026-05-16-hipengine-gguf-q4k-pack8-bf16out-diagnostic.json`.
+
+Next GGUF E2E step: materialize GGUF weights into resident records that choose Q4_K pack8 BF16 output and Q8_0/Q5_K/Q6_K BF16-output GEMVs, then wire the Qwen layer runner.

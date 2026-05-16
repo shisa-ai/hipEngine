@@ -20,6 +20,17 @@ __device__ inline float bf16_bits_to_float(uint16_t value) {
   return out.f32;
 }
 
+__device__ inline uint16_t float_to_bf16_bits(float value) {
+  union {
+    float f32;
+    uint32_t u32;
+  } in;
+  in.f32 = value;
+  const uint32_t lsb = (in.u32 >> 16) & 1U;
+  in.u32 += 0x7FFFU + lsb;
+  return static_cast<uint16_t>(in.u32 >> 16);
+}
+
 __device__ inline float fp16_bytes_to_float(const uint8_t* ptr) {
   const uint16_t bits = static_cast<uint16_t>(ptr[0]) |
                         (static_cast<uint16_t>(ptr[1]) << 8);
@@ -39,6 +50,16 @@ __device__ inline float scalar_to_float(scalar_t value) {
 template <>
 __device__ inline float scalar_to_float<uint16_t>(uint16_t value) {
   return bf16_bits_to_float(value);
+}
+
+template <typename out_t>
+__device__ inline void store_output(out_t* out, int64_t idx, float value) {
+  out[idx] = static_cast<out_t>(value);
+}
+
+template <>
+__device__ inline void store_output<uint16_t>(uint16_t* out, int64_t idx, float value) {
+  out[idx] = float_to_bf16_bits(value);
 }
 
 __device__ inline uint8_t gguf_q4_k_scale(const uint8_t* scales, int subblock) {
@@ -149,12 +170,12 @@ __device__ inline int pack8_shift_for_lane(int lane) {
     } \
   }
 
-template <typename scalar_t>
+template <typename scalar_t, typename out_t>
 __launch_bounds__(256, 2)
-__global__ void gguf_q4_k_gemv_f32_out_kernel(
+__global__ void gguf_q4_k_gemv_out_kernel(
     const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ qweight,
-    float* __restrict__ out,
+    out_t* __restrict__ out,
     int rows,
     int in_features,
     int out_features) {
@@ -176,15 +197,15 @@ __global__ void gguf_q4_k_gemv_f32_out_kernel(
   }
   const float total = reduce_block_sum(acc);
   if (threadIdx.x == 0) {
-    out[static_cast<int64_t>(row) * out_features + out_col] = total;
+    store_output<out_t>(out, static_cast<int64_t>(row) * out_features + out_col, total);
   }
 }
 
-template <typename scalar_t>
-int launch_gguf_q4_k_gemv_f32_out(
+template <typename scalar_t, typename out_t>
+int launch_gguf_q4_k_gemv_out(
     const scalar_t* x,
     const uint8_t* qweight,
-    float* out,
+    out_t* out,
     int64_t rows,
     int64_t in_features,
     int64_t out_features,
@@ -197,7 +218,7 @@ int launch_gguf_q4_k_gemv_f32_out(
   }
   const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows));
-  gguf_q4_k_gemv_f32_out_kernel<scalar_t><<<grid, block, 0, stream>>>(
+  gguf_q4_k_gemv_out_kernel<scalar_t, out_t><<<grid, block, 0, stream>>>(
       x,
       qweight,
       out,
@@ -207,14 +228,14 @@ int launch_gguf_q4_k_gemv_f32_out(
   return static_cast<int>(hipGetLastError());
 }
 
-template <typename scalar_t>
+template <typename scalar_t, typename out_t>
 __launch_bounds__(128, 4)
-__global__ void gguf_q4_k_pack8_gemv_f32_out_kernel(
+__global__ void gguf_q4_k_pack8_gemv_out_kernel(
     const scalar_t* __restrict__ x,
     const int32_t* __restrict__ qweight,
     const float* __restrict__ scales,
     const float* __restrict__ mins,
-    float* __restrict__ out,
+    out_t* __restrict__ out,
     int rows,
     int in_features,
     int out_features,
@@ -303,25 +324,25 @@ __global__ void gguf_q4_k_pack8_gemv_f32_out_kernel(
   GGUF_Q4K_PACK8_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7,
                         r0, r1, r2, r3, r4, r5, r6, r7);
   if (tid == 0) {
-    float* __restrict__ out_ptr = out + row * static_cast<int64_t>(out_features) + out_col;
-    out_ptr[0] = r0;
-    out_ptr[1] = r1;
-    out_ptr[2] = r2;
-    out_ptr[3] = r3;
-    out_ptr[4] = r4;
-    out_ptr[5] = r5;
-    out_ptr[6] = r6;
-    out_ptr[7] = r7;
+    const int64_t out_base = row * static_cast<int64_t>(out_features) + out_col;
+    store_output<out_t>(out, out_base + 0, r0);
+    store_output<out_t>(out, out_base + 1, r1);
+    store_output<out_t>(out, out_base + 2, r2);
+    store_output<out_t>(out, out_base + 3, r3);
+    store_output<out_t>(out, out_base + 4, r4);
+    store_output<out_t>(out, out_base + 5, r5);
+    store_output<out_t>(out, out_base + 6, r6);
+    store_output<out_t>(out, out_base + 7, r7);
   }
 }
 
-template <typename scalar_t>
-int launch_gguf_q4_k_pack8_gemv_f32_out(
+template <typename scalar_t, typename out_t>
+int launch_gguf_q4_k_pack8_gemv_out(
     const scalar_t* x,
     const int32_t* qweight,
     const float* scales,
     const float* mins,
-    float* out,
+    out_t* out,
     int64_t rows,
     int64_t in_features,
     int64_t out_features,
@@ -336,7 +357,7 @@ int launch_gguf_q4_k_pack8_gemv_f32_out(
   const int64_t out_packed = out_features >> 3;
   const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>(out_packed), static_cast<unsigned int>(rows));
-  gguf_q4_k_pack8_gemv_f32_out_kernel<scalar_t><<<grid, block, 0, stream>>>(
+  gguf_q4_k_pack8_gemv_out_kernel<scalar_t, out_t><<<grid, block, 0, stream>>>(
       x,
       qweight,
       scales,
@@ -360,7 +381,7 @@ extern "C" int hipengine_gguf_q4_k_gemv_f32_f32_out(
     int64_t out_features,
     int64_t threads,
     hipStream_t stream) {
-  return launch_gguf_q4_k_gemv_f32_out<float>(
+  return launch_gguf_q4_k_gemv_out<float, float>(
       x, qweight, out, rows, in_features, out_features, threads, stream);
 }
 
@@ -373,7 +394,7 @@ extern "C" int hipengine_gguf_q4_k_gemv_fp16_f32_out(
     int64_t out_features,
     int64_t threads,
     hipStream_t stream) {
-  return launch_gguf_q4_k_gemv_f32_out<half_t>(
+  return launch_gguf_q4_k_gemv_out<half_t, float>(
       x, qweight, out, rows, in_features, out_features, threads, stream);
 }
 
@@ -386,7 +407,20 @@ extern "C" int hipengine_gguf_q4_k_gemv_bf16_f32_out(
     int64_t out_features,
     int64_t threads,
     hipStream_t stream) {
-  return launch_gguf_q4_k_gemv_f32_out<uint16_t>(
+  return launch_gguf_q4_k_gemv_out<uint16_t, float>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_gemv_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_gemv_out<uint16_t, uint16_t>(
       x, qweight, out, rows, in_features, out_features, threads, stream);
 }
 
@@ -401,7 +435,7 @@ extern "C" int hipengine_gguf_q4_k_pack8_gemv_f32_f32_out(
     int64_t out_features,
     int64_t threads,
     hipStream_t stream) {
-  return launch_gguf_q4_k_pack8_gemv_f32_out<float>(
+  return launch_gguf_q4_k_pack8_gemv_out<float, float>(
       x, qweight, scales, mins, out, rows, in_features, out_features, threads, stream);
 }
 
@@ -416,7 +450,7 @@ extern "C" int hipengine_gguf_q4_k_pack8_gemv_fp16_f32_out(
     int64_t out_features,
     int64_t threads,
     hipStream_t stream) {
-  return launch_gguf_q4_k_pack8_gemv_f32_out<half_t>(
+  return launch_gguf_q4_k_pack8_gemv_out<half_t, float>(
       x, qweight, scales, mins, out, rows, in_features, out_features, threads, stream);
 }
 
@@ -431,6 +465,21 @@ extern "C" int hipengine_gguf_q4_k_pack8_gemv_bf16_f32_out(
     int64_t out_features,
     int64_t threads,
     hipStream_t stream) {
-  return launch_gguf_q4_k_pack8_gemv_f32_out<uint16_t>(
+  return launch_gguf_q4_k_pack8_gemv_out<uint16_t, float>(
+      x, qweight, scales, mins, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_pack8_gemv_bf16_bf16_out(
+    const uint16_t* x,
+    const int32_t* qweight,
+    const float* scales,
+    const float* mins,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_pack8_gemv_out<uint16_t, uint16_t>(
       x, qweight, scales, mins, out, rows, in_features, out_features, threads, stream);
 }

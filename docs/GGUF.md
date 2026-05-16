@@ -14,8 +14,9 @@ local tensor types (`BF16`, `Q8_0`, `Q4_1`, `Q4_K`, `Q5_K`, `Q6_K`, `IQ4_XS`,
 `MXFP4`, plus dense `F16/F32`). Native GGUF GEMV correctness spikes now cover
 `Q8_0`, `Q5_K`, `Q6_K`, and `Q4_K` raw bytes, plus a lossless PARO-style pack8
 repack for `Q4_K`, on gfx1100 while preserving GGML quant math. Full Qwen GGUF
-model materialization, lowp output, and deeper Marlin/WMMA tuning remain next
-steps.
+model materialization and deeper Marlin/WMMA tuning remain next steps. BF16
+output variants are available for the GGUF GEMV kernels used by the planned
+runtime path.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 

@@ -25,12 +25,15 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_q5_k_gemv, gguf_q6_k_gemv, gguf_q8_0_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
+    gguf_q5_k_gemv_bf16_bf16_out,
     gguf_q5_k_gemv_bf16_f32_out,
     gguf_q5_k_gemv_f32_f32_out,
     gguf_q5_k_gemv_fp16_f32_out,
+    gguf_q6_k_gemv_bf16_bf16_out,
     gguf_q6_k_gemv_bf16_f32_out,
     gguf_q6_k_gemv_f32_f32_out,
     gguf_q6_k_gemv_fp16_f32_out,
+    gguf_q8_0_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_f32_out,
     gguf_q8_0_gemv_f32_f32_out,
     gguf_q8_0_gemv_fp16_f32_out,
@@ -170,14 +173,15 @@ def run_case(
     x_fp16 = x_f32.astype(np.float16)
     x_bf16 = float_array_to_bf16_bits(x_f32)
     inputs = {
-        "f32": (x_f32, x_f32, launches["f32"]),
-        "fp16": (x_fp16, x_fp16.astype(np.float32), launches["fp16"]),
-        "bf16": (x_bf16, bf16_to_float32(x_bf16), launches["bf16"]),
+        "f32": (x_f32, x_f32, launches["f32"], np.float32),
+        "fp16": (x_fp16, x_fp16.astype(np.float32), launches["fp16"], np.float32),
+        "bf16": (x_bf16, bf16_to_float32(x_bf16), launches["bf16"], np.float32),
+        "bf16_out": (x_bf16, bf16_to_float32(x_bf16), launches["bf16_out"], np.uint16),
     }
     results: dict[str, float] = {}
-    for mode, (host_x, ref_x, launch) in inputs.items():
+    for mode, (host_x, ref_x, launch, out_dtype) in inputs.items():
         expected = reference(ref_x, qweight)
-        out = np.empty((rows, out_features), dtype=np.float32)
+        out = np.empty((rows, out_features), dtype=out_dtype)
         buffers = []
         try:
             x_dev = malloc(host_x.nbytes, runtime=runtime)
@@ -208,9 +212,18 @@ def run_case(
         finally:
             for buffer in reversed(buffers):
                 free(buffer, runtime=runtime)
-        max_abs = float(np.max(np.abs(out - expected)))
-        results[mode] = max_abs
-        print(f"{name} {mode}_max_abs={max_abs}")
+        if out_dtype == np.uint16:
+            expected_bits = float_array_to_bf16_bits(expected)
+            max_abs = float(np.max(np.abs(bf16_to_float32(out) - bf16_to_float32(expected_bits))))
+            bit_mismatch = int(np.count_nonzero(out != expected_bits))
+            results[mode] = max_abs
+            print(f"{name} {mode}_max_abs={max_abs} {mode}_bit_mismatch={bit_mismatch}")
+            if bit_mismatch:
+                results[mode] = float("inf")
+        else:
+            max_abs = float(np.max(np.abs(out - expected)))
+            results[mode] = max_abs
+            print(f"{name} {mode}_max_abs={max_abs}")
     return results
 
 
@@ -239,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
                 "f32": gguf_q8_0_gemv_f32_f32_out,
                 "fp16": gguf_q8_0_gemv_fp16_f32_out,
                 "bf16": gguf_q8_0_gemv_bf16_f32_out,
+                "bf16_out": gguf_q8_0_gemv_bf16_bf16_out,
             },
             64,
         ),
@@ -250,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
                 "f32": gguf_q5_k_gemv_f32_f32_out,
                 "fp16": gguf_q5_k_gemv_fp16_f32_out,
                 "bf16": gguf_q5_k_gemv_bf16_f32_out,
+                "bf16_out": gguf_q5_k_gemv_bf16_bf16_out,
             },
             512,
         ),
@@ -261,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
                 "f32": gguf_q6_k_gemv_f32_f32_out,
                 "fp16": gguf_q6_k_gemv_fp16_f32_out,
                 "bf16": gguf_q6_k_gemv_bf16_f32_out,
+                "bf16_out": gguf_q6_k_gemv_bf16_bf16_out,
             },
             512,
         ),

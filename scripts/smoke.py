@@ -5384,6 +5384,7 @@ def gguf_q4_k_gemv_hip_smoke(
     from hipengine.kernels.cpu_reference import gguf_q4_k_gemv
     from hipengine.kernels.hip_gfx1100.quant import (
         build_gguf_q4_k_gemv,
+        gguf_q4_k_gemv_bf16_bf16_out,
         gguf_q4_k_gemv_bf16_f32_out,
         gguf_q4_k_gemv_f32_f32_out,
         gguf_q4_k_gemv_fp16_f32_out,
@@ -5410,6 +5411,7 @@ def gguf_q4_k_gemv_hip_smoke(
     out_f32 = np.empty((rows, out_features), dtype=np.float32)
     out_fp16 = np.empty((rows, out_features), dtype=np.float32)
     out_bf16 = np.empty((rows, out_features), dtype=np.float32)
+    out_bf16_lowp = np.empty((rows, out_features), dtype=np.uint16)
 
     runtime = get_hip_runtime()
     library = build_gguf_q4_k_gemv(
@@ -5439,6 +5441,7 @@ def gguf_q4_k_gemv_hip_smoke(
         out_f32_dev = out_dev(out_f32)
         out_fp16_dev = out_dev(out_fp16)
         out_bf16_dev = out_dev(out_bf16)
+        out_bf16_lowp_dev = out_dev(out_bf16_lowp)
         gguf_q4_k_gemv_f32_f32_out(
             x_f32_dev.ptr,
             qweight_dev.ptr,
@@ -5472,24 +5475,52 @@ def gguf_q4_k_gemv_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        gguf_q4_k_gemv_bf16_bf16_out(
+            x_bf16_dev.ptr,
+            qweight_dev.ptr,
+            out_bf16_lowp_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(out_f32), out_f32_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(out_fp16), out_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(out_bf16), out_bf16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_bf16_lowp), out_bf16_lowp_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
+    expected_bf16_bits = _float32_to_bf16_bits(expected_bf16)
     f32_max_abs = float(np.max(np.abs(out_f32 - expected_f32)))
     fp16_max_abs = float(np.max(np.abs(out_fp16 - expected_fp16)))
     bf16_max_abs = float(np.max(np.abs(out_bf16 - expected_bf16)))
+    bf16_out_max_abs = float(
+        np.max(
+            np.abs(
+                _bf16_bits_to_float32(out_bf16_lowp) - _bf16_bits_to_float32(expected_bf16_bits)
+            )
+        )
+    )
+    bf16_out_bit_mismatch = int(np.count_nonzero(out_bf16_lowp != expected_bf16_bits))
     print(
         f"rows={rows} requested_hidden_size={hidden_size} in_features={in_features} "
         f"out_features={out_features} f32_max_abs={f32_max_abs} "
-        f"fp16_max_abs={fp16_max_abs} bf16_max_abs={bf16_max_abs}"
+        f"fp16_max_abs={fp16_max_abs} bf16_max_abs={bf16_max_abs} "
+        f"bf16_out_max_abs={bf16_out_max_abs} "
+        f"bf16_out_bit_mismatch={bf16_out_bit_mismatch}"
     )
     print("f32_row0=", out_f32[0, : min(8, out_features)].tolist())
-    return 0 if f32_max_abs <= 1e-5 and fp16_max_abs <= 1e-5 and bf16_max_abs <= 1e-5 else 1
+    return 0 if (
+        f32_max_abs <= 1e-5
+        and fp16_max_abs <= 1e-5
+        and bf16_max_abs <= 1e-5
+        and bf16_out_bit_mismatch == 0
+    ) else 1
 
 
 def gguf_q4_k_pack8_gemv_hip_smoke(
@@ -5512,6 +5543,7 @@ def gguf_q4_k_pack8_gemv_hip_smoke(
     from hipengine.kernels.cpu_reference import gguf_q4_k_pack8_gemv
     from hipengine.kernels.hip_gfx1100.quant import (
         build_gguf_q4_k_gemv,
+        gguf_q4_k_pack8_gemv_bf16_bf16_out,
         gguf_q4_k_pack8_gemv_bf16_f32_out,
         gguf_q4_k_pack8_gemv_f32_f32_out,
         gguf_q4_k_pack8_gemv_fp16_f32_out,
@@ -5543,6 +5575,7 @@ def gguf_q4_k_pack8_gemv_hip_smoke(
     out_f32 = np.empty((rows, out_features), dtype=np.float32)
     out_fp16 = np.empty((rows, out_features), dtype=np.float32)
     out_bf16 = np.empty((rows, out_features), dtype=np.float32)
+    out_bf16_lowp = np.empty((rows, out_features), dtype=np.uint16)
 
     runtime = get_hip_runtime()
     library = build_gguf_q4_k_gemv(
@@ -5574,6 +5607,7 @@ def gguf_q4_k_pack8_gemv_hip_smoke(
         out_f32_dev = out_dev(out_f32)
         out_fp16_dev = out_dev(out_fp16)
         out_bf16_dev = out_dev(out_bf16)
+        out_bf16_lowp_dev = out_dev(out_bf16_lowp)
         gguf_q4_k_pack8_gemv_f32_f32_out(
             x_f32_dev.ptr,
             qweight_dev.ptr,
@@ -5613,25 +5647,54 @@ def gguf_q4_k_pack8_gemv_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        gguf_q4_k_pack8_gemv_bf16_bf16_out(
+            x_bf16_dev.ptr,
+            qweight_dev.ptr,
+            scales_dev.ptr,
+            mins_dev.ptr,
+            out_bf16_lowp_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(out_f32), out_f32_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(out_fp16), out_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(out_bf16), out_bf16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_bf16_lowp), out_bf16_lowp_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
+    expected_bf16_bits = _float32_to_bf16_bits(expected_bf16)
     f32_max_abs = float(np.max(np.abs(out_f32 - expected_f32)))
     fp16_max_abs = float(np.max(np.abs(out_fp16 - expected_fp16)))
     bf16_max_abs = float(np.max(np.abs(out_bf16 - expected_bf16)))
+    bf16_out_max_abs = float(
+        np.max(
+            np.abs(
+                _bf16_bits_to_float32(out_bf16_lowp) - _bf16_bits_to_float32(expected_bf16_bits)
+            )
+        )
+    )
+    bf16_out_bit_mismatch = int(np.count_nonzero(out_bf16_lowp != expected_bf16_bits))
     print(
         f"pack8 rows={rows} requested_hidden_size={hidden_size} "
         f"in_features={in_features} out_features={out_features} "
         f"f32_max_abs={f32_max_abs} fp16_max_abs={fp16_max_abs} "
-        f"bf16_max_abs={bf16_max_abs}"
+        f"bf16_max_abs={bf16_max_abs} bf16_out_max_abs={bf16_out_max_abs} "
+        f"bf16_out_bit_mismatch={bf16_out_bit_mismatch}"
     )
     print("pack8_f32_row0=", out_f32[0, : min(8, out_features)].tolist())
-    return 0 if f32_max_abs <= 1e-5 and fp16_max_abs <= 1e-5 and bf16_max_abs <= 1e-5 else 1
+    return 0 if (
+        f32_max_abs <= 1e-5
+        and fp16_max_abs <= 1e-5
+        and bf16_max_abs <= 1e-5
+        and bf16_out_bit_mismatch == 0
+    ) else 1
 
 
 def _make_smoke_q4_k_weight(out_features: int, in_features: int):

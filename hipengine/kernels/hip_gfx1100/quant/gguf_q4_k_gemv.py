@@ -14,9 +14,11 @@ _OUTPUT_NAME = "gguf_q4_k_gemv.so"
 _SYMBOL_F32_F32_OUT = "hipengine_gguf_q4_k_gemv_f32_f32_out"
 _SYMBOL_FP16_F32_OUT = "hipengine_gguf_q4_k_gemv_fp16_f32_out"
 _SYMBOL_BF16_F32_OUT = "hipengine_gguf_q4_k_gemv_bf16_f32_out"
+_SYMBOL_BF16_BF16_OUT = "hipengine_gguf_q4_k_gemv_bf16_bf16_out"
 _SYMBOL_PACK8_F32_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_f32_f32_out"
 _SYMBOL_PACK8_FP16_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_fp16_f32_out"
 _SYMBOL_PACK8_BF16_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_f32_out"
+_SYMBOL_PACK8_BF16_BF16_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_bf16_out"
 _ALLOWED_THREADS = {64, 128, 256}
 _Q4_K_BLOCK = 256
 
@@ -149,6 +151,36 @@ def gguf_q4_k_gemv_bf16_f32_out(
     )
 
 
+def gguf_q4_k_gemv_bf16_bf16_out(
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch GGUF Q4_K GEMV with BF16-bit activation and BF16 output."""
+
+    _launch(
+        _SYMBOL_BF16_BF16_OUT,
+        x_ptr,
+        qweight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_pack8_gemv_f32_f32_out(
     x_ptr: int,
     qweight_ptr: int,
@@ -251,6 +283,40 @@ def gguf_q4_k_pack8_gemv_bf16_f32_out(
     )
 
 
+def gguf_q4_k_pack8_gemv_bf16_bf16_out(
+    x_ptr: int,
+    qweight_ptr: int,
+    scales_ptr: int,
+    mins_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch repacked GGUF Q4_K GEMV with BF16-bit activation and BF16 output."""
+
+    _launch_pack8(
+        _SYMBOL_PACK8_BF16_BF16_OUT,
+        x_ptr,
+        qweight_ptr,
+        scales_ptr,
+        mins_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_gguf_q4_k_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_f32_f32_out"),
@@ -268,6 +334,11 @@ def register_gguf_q4_k_gemv_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_bf16_bf16_out"),
+        gguf_q4_k_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_f32_f32_out"),
         gguf_q4_k_pack8_gemv_f32_f32_out,
         replace=replace,
@@ -280,6 +351,11 @@ def register_gguf_q4_k_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_f32_out"),
         gguf_q4_k_pack8_gemv_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_bf16_out"),
+        gguf_q4_k_pack8_gemv_bf16_bf16_out,
         replace=replace,
     )
 
@@ -415,9 +491,11 @@ register_gguf_q4_k_gemv_kernels()
 
 __all__ = [
     "build_gguf_q4_k_gemv",
+    "gguf_q4_k_gemv_bf16_bf16_out",
     "gguf_q4_k_gemv_bf16_f32_out",
     "gguf_q4_k_gemv_f32_f32_out",
     "gguf_q4_k_gemv_fp16_f32_out",
+    "gguf_q4_k_pack8_gemv_bf16_bf16_out",
     "gguf_q4_k_pack8_gemv_bf16_f32_out",
     "gguf_q4_k_pack8_gemv_f32_f32_out",
     "gguf_q4_k_pack8_gemv_fp16_f32_out",
