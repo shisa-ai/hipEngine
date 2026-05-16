@@ -1151,6 +1151,10 @@ hipengine/
 │   └── smoke.py
 ├── docs/
 │   ├── PLAN.md                  # This file
+│   ├── OPTIMIZE.md              # Current Qwen3.5/PARO perf grind plan
+│   ├── BENCHMARK.md             # Evidence policy and benchmark procedures
+│   ├── KERNELS.md               # Kernel catalog and port playbook
+│   ├── PREFILL.md               # Native bulk prefill plan/evidence
 │   ├── ROOFLINE.md
 │   ├── LESSONS-LEARNED.md
 │   └── API.md

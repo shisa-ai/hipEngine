@@ -13208,3 +13208,20 @@ PY
 
 git diff --check
 ```
+
+## 2026-05-16 — Optimization plan doc for beating parent/llama.cpp
+
+Reviewed the current hipENGINE docs and benchmark rollup plus parent references under `~/amd-gpu-tuning/` to create `docs/OPTIMIZE.md`, the batch-1 Qwen3.5/PARO grind plan.
+
+Inputs reviewed included:
+
+- hipENGINE: `docs/PREFILL.md`, `docs/KERNELS.md`, `docs/ROOFLINE.md`, `docs/BENCHMARK.md`, `docs/IMPLEMENTATION.md`, `docs/MARLIN.md`, `docs/GGUF.md`, `docs/DFLASH.md`, `docs/MTP.md`, `benchmarks/README.md`, and the comparison-table artifact/script.
+- Parent workspace: `docs/OPTIMAL.md`, `PLAN-PAROQUANT.md`, `PLAN-PAROQUANT2.md`, `PLAN-LONGCONTEXT.md`, `docs/LLAMACPP-VULKAN.md`, `PR_COMMENT-llamacpp-hip-unroll600.md`, `LESSONS-LEARNED.md`, and recent Marlin-K WORKLOG entries.
+
+Current board captured in the new plan:
+
+- vs `nano-vllm-amd`: memory already wins all rows; prefill needs +15.4% at 512/128 and +7.9% at 4K/128; decode needs +6.0%, +1.7%, +5.2%, +2.5% at 512/4K/32K/128K.
+- vs llama.cpp HIP: only 512/128 prefill is behind, needing about +9.9%; decode already wins the retained split rows.
+- vs llama.cpp Vulkan: prefill already wins all retained split rows; decode needs +16.9%, +9.1%, +4.4%, +5.6% at 512/4K/32K/128K.
+
+Plan decision: do an audit-first grind rather than another blind kernel loop.  Lane 0 is benchmark/protocol promotion; Lane 1 is matched ROCTX/rocprof profiles; Lane 2 attacks short/mid prefill through bulk dense/shared-expert GEMM-shaped paths; Lane 3 attacks decode through replay-only dispatch/rotation/W4/profile-driven attention work; Lane 4 preserves the memory advantage; Lane 5 defers c>N decode until batch-1 board closure.  `docs/PLAN.md` project-structure docs list now points at `docs/OPTIMIZE.md`.
