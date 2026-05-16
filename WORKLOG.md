@@ -11157,3 +11157,40 @@ bucket improvement — shared down-combine `19.543 -> 18.989 ms` and shared gate
 sample spread overlaps retained noise. Decision: reject/revert; keep precise
 `expf` in the default path unless a later fused/shared-expert change turns this
 into a clear end-to-end win.
+
+## 2026-05-16 — Prefill multiloop iter 47: rejected compact WMMA launch_bounds 32x4
+
+After three consecutive rejected helper/fast-math micro-tunes, switched to the
+next large profiler bucket: compact WMMA selected-MoE gate/up+down. Tried raising
+both compact WMMA kernels from `__launch_bounds__(32, 2)` to
+`__launch_bounds__(32, 4)` to test whether stronger occupancy guidance improved
+W7900 residency without changing math, ABI, or dispatch.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.wmma.paro_awq_wmma import build_paro_awq_wmma
+lib = build_paro_awq_wmma(load=True, require_cached=False)
+for name in ['hipengine_gemm_awq_selected_dual_pack8_wmma_compact_fp16', 'hipengine_gemm_awq_selected_pack8_wmma_compact_fp16']:
+    getattr(lib, name)
+print('wmma compact symbols loaded')
+PY
+python3 -m pytest tests/test_qwen35_moe_group_scatter_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/smoke.py --mode paro-awq-wmma-compact-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter47-wmma-lb32x4-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter47-wmma-lb32x4-trace.json
+```
+
+Results: targeted tests passed (`37 passed`) and compact WMMA smoke remained
+correct (`dual_mismatch=0`, `single_mismatch=0`, FP16 mismatches `0`). Fixture
+gate passed (`max_kl=0.03406`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2531s`). 4K/128 was
+runnable and above guard at `655.964 tok/s`. 512/128 samples were `2036.300`,
+`2017.026`, `1998.419`, `2009.627`, and `2002.845` tok/s (median `2009.627`),
+-1.1% versus retained `2031.783`. Profiler showed no meaningful WMMA bucket win:
+dual compact WMMA `34.245 -> 33.827 ms`, single compact WMMA `19.404 -> 19.346`
+ms, while whole-prefill timing regressed. Decision: reject/revert; keep
+`__launch_bounds__(32, 2)`.
