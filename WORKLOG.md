@@ -14906,3 +14906,62 @@ python3 -m pytest \
   tests/test_qwen35_resident_batch_layout.py -q --tb=short
 # 76 passed
 ```
+
+## 2026-05-16 GGUF scanner and CPU dequant smoke
+
+Implemented the first GGUF intake slice from `docs/GGUF.md`:
+
+- `hipengine/loading/gguf.py`: torch-free GGUF v2/v3 metadata/tensor scanner plus lazy NumPy memmap reader.
+- `hipengine/quant/gguf.py`: GGML tensor layout table and CPU fallback dequant helpers for the local target tensor types: `F32`, `F16`, `BF16`, `Q8_0`, `Q4_1`, `Q4_K`, `Q5_K`, `Q6_K`, `IQ4_XS`, and `MXFP4`.
+- `scripts/inspect_gguf.py`: deterministic GGUF census and tiny per-type dequant smoke.
+
+Local model validation, no performance claim:
+
+```bash
+python3 scripts/inspect_gguf.py --check-dequant --fail-on-unsupported-dequant \
+  /models/gguf/Qwen3.5-0.8B-BF16.gguf \
+  /models/gguf/Qwen3.5-0.8B-Q8_0.gguf \
+  /models/gguf/Qwen3.5-0.8B-Q4_1.gguf \
+  /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf \
+  /models/gguf/Qwen3.5-0.8B-UD-Q4_K_XL.gguf \
+  /models/gguf/Qwen3.6-35B-A3B-MXFP4_MOE.gguf
+# all parsed; unsupported_dequant_types=[] for every file
+# key type coverage:
+# BF16 file: BF16=187, F32=133
+# Q8_0 file: Q8_0=187, F32=133
+# Q4_1 file: Q4_1=132, Q5_K=18, Q6_K=1, Q8_0=36, F32=133
+# Q4_K_M file: Q4_K=98, Q5_K=36, Q6_K=17, Q8_0=36, F32=133
+# UD-Q4_K_XL file: Q4_K=48, Q5_K=57, Q6_K=18, Q8_0=18, IQ4_XS=10, F16=36, F32=133
+# MXFP4_MOE file: MXFP4=78, Q8_0=252, Q5_K=38, Q6_K=4, F32=361
+```
+
+Cross-checks against local llama.cpp `gguf-py`:
+
+```bash
+PYTHONPATH=/home/lhl/llama.cpp/llama.cpp-hip-therock/gguf-py:. python3 - <<'PY'
+# Compared hipENGINE scan version/alignment/tensor count/type histogram and first 8 tensor records
+# against gguf.GGUFReader for the six files above.
+PY
+# every file: True True True True True
+
+PYTHONPATH=/home/lhl/llama.cpp/llama.cpp-hip-therock/gguf-py:. python3 - <<'PY'
+# Compared one-row dequant samples for first tensor of each present supported type
+# against gguf.quants.dequantize for the six files above.
+PY
+# every sampled type max_abs=0.0, including BF16, Q8_0, Q4_1, Q4_K, Q5_K,
+# Q6_K, IQ4_XS, MXFP4, F16, and F32.
+```
+
+Targeted tests:
+
+```bash
+python3 -m py_compile hipengine/quant/gguf.py hipengine/loading/gguf.py \
+  scripts/inspect_gguf.py tests/test_gguf_reader.py tests/test_gguf_quant_layout.py
+# ok
+python3 -m pytest tests/test_gguf_reader.py tests/test_gguf_quant_layout.py \
+  tests/test_loading_safetensors.py tests/test_loading_materialize.py \
+  tests/test_model_quant_and_imports.py -q
+# 25 passed
+```
+
+Next GGUF step: wire Qwen GGUF tensor names into a model/fallback materialization path; native GGUF kernels remain future work.

@@ -6,6 +6,14 @@ Primary references: local llama.cpp checkouts under `~/llama.cpp/` and parent ev
 
 ## Executive summary
 
+Implementation status as of 2026-05-16: the first intake slice has landed in
+`hipengine/loading/gguf.py`, `hipengine/quant/gguf.py`, and
+`scripts/inspect_gguf.py`. hipENGINE can now scan local GGUF v3 files, expose
+lazy raw tensor views, and CPU-dequantize tiny fallback samples for the target
+local tensor types (`BF16`, `Q8_0`, `Q4_1`, `Q4_K`, `Q5_K`, `Q6_K`, `IQ4_XS`,
+`MXFP4`, plus dense `F16/F32`). Full Qwen GGUF model materialization and native
+GGUF kernels remain next steps.
+
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
 - **GGUF file intake / metadata scanning is easy.** GGUF is a well-documented tensor container with a mature Python reader in llama.cpp's `gguf-py`.

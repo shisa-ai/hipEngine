@@ -1,5 +1,15 @@
 """Torch-free model loading helpers."""
 
+from hipengine.loading.gguf import (
+    GGUFFormatError,
+    GGUFModelInfo,
+    GGUFReader,
+    GGUFTensorInfo,
+    MissingGGUFTensorError,
+    discover_gguf_files,
+    load_gguf_index,
+    scan_gguf,
+)
 from hipengine.loading.materialize import (
     DeviceTensorAllocation,
     DeviceWeightMap,
@@ -53,6 +63,11 @@ from hipengine.loading.safetensors import (
 __all__ = [
     "MissingConfigError",
     "MissingTensorError",
+    "GGUFFormatError",
+    "GGUFModelInfo",
+    "GGUFReader",
+    "GGUFTensorInfo",
+    "MissingGGUFTensorError",
     "DeviceTensorAllocation",
     "DeviceWeightMap",
     "MissingWeightsError",
@@ -61,6 +76,7 @@ __all__ = [
     "Qwen35ParoLayoutValidation",
     "TensorInfo",
     "WeightIndex",
+    "discover_gguf_files",
     "discover_safetensor_shards",
     "dtype_from_safetensors",
     "materialize_qwen35_paro_full_attention_moe_c1_prepared_layer",
@@ -83,8 +99,10 @@ __all__ = [
     "load_tensor_info_to_device",
     "load_tensor_to_device",
     "load_tensors_to_device",
+    "load_gguf_index",
     "load_weight_index",
     "read_config",
+    "scan_gguf",
     "required_full_attention_c1_tensor_names",
     "required_full_attention_moe_c1_tensor_names",
     "required_linear_attention_c1_tensor_names",
