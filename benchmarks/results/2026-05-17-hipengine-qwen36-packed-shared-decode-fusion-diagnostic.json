@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "reason_not_promoted": "Packed-sidecar decode optimization diagnostic only: no shisa KL/top-1 correctness gate; two runs per workload but benchmark remains resident-runner diagnostic rather than accepted LLM.generate row.",
+  "date": "2026-05-17",
+  "git_head_at_run": "20d9ef9fdcb77f546bf414b6f2cac8a6f09d6411",
+  "working_tree_at_run": "uncommitted packed shared-expert W4 decode optimization in hipengine/runtime/qwen35_paro.py plus decode-state tests",
+  "working_tree_diffstat_at_artifact_write": "WORKLOG.md                        |  62 +++++++++++\n benchmarks/CHANGELOG.md           |   1 +\n benchmarks/README.md              |  19 ++--\n hipengine/runtime/qwen35_paro.py  | 219 ++++++++++++++++++++++----------------\n tests/test_qwen35_decode_state.py | 103 +++++++++---------\n 5 files changed, 251 insertions(+), 153 deletions(-)",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "software": {
+    "python": "3.12.9",
+    "hipcc_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "hipcc_version_text": "HIP version: 7.2.53211-d40244d\nAMD clang version 22.0.0git (/startdir/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n"
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5",
+    "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4"
+  },
+  "change": {
+    "summary": "Keep packed PARO sidecars but fuse decode: use paro_rotate2 for shared gate/up rotations and silu_mul_dual_rotate for c=1 SiLU+down rotation. Keep the original 128-thread W4 GEMV reduction order to preserve repeated-prompt preview logits versus the prior packed diagnostic.",
+    "no_w8a16_shadow": true
+  },
+  "validation": {
+    "unit_tests": "python3 -m py_compile hipengine/runtime/qwen35_paro.py && python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short -> 57 passed",
+    "kernel_smoke": "python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build -> dual/dual_rotate/pair_rotate BF16+FP16 mismatches 0; python3 scripts/smoke.py --mode paro-rotate-hip --rows 2 --hidden-size 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build -> mismatches 0",
+    "trace_smoke": "rocprofv3 --kernel-trace d4 diagnostic shows packed path now launches paro_rotate2_kernel and silu_mul_dual_rotate_out_kernel in the decode tail.",
+    "correctness_gate": "not rerun for shisa; generated preview token/logit pairs match the previous packed diagnostic for the measured repeated-token prompt."
+  },
+  "measurements": [
+    {
+      "label": "optimized_512_128",
+      "workload": "512/128",
+      "format": "packed_paro_w4",
+      "runs": [
+        {
+          "source_json_tmp": "/tmp/hipengine-packed-shared-rotate2-silurotate-20260517/shisa-packed-rotate2-silurotate-512-128.json",
+          "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-packed-shared-rotate2-silurotate-20260517/shisa-packed-rotate2-silurotate-512-128.json",
+          "prefill_tok_s": 2459.0931530363937,
+          "decode_tok_s": 105.61553107759859,
+          "prefill_seconds": 0.20820683403871953,
+          "decode_seconds": 1.2119429660961032,
+          "load_seconds": 23.992277784040198,
+          "tracked_peak_gib": 18.53460101503879,
+          "hip_used_peak_sampled_gib": 18.55115509033203,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.44217872619629
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.18210792541504
+            }
+          ]
+        },
+        {
+          "source_json_tmp": "/tmp/hipengine-packed-shared-rotate2-silurotate-20260517/shisa-packed-rotate2-silurotate-512-128-r2.json",
+          "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-packed-shared-rotate2-silurotate-20260517/shisa-packed-rotate2-silurotate-512-128-r2.json",
+          "prefill_tok_s": 2443.333805601023,
+          "decode_tok_s": 105.65552349629206,
+          "prefill_seconds": 0.20954975485801697,
+          "decode_seconds": 1.2114842250011861,
+          "load_seconds": 23.821733593009412,
+          "tracked_peak_gib": 18.53460101503879,
+          "hip_used_peak_sampled_gib": 18.55115509033203,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.44217872619629
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.18210792541504
+            }
+          ]
+        }
+      ],
+      "median_prefill_tok_s": 2451.2134793187083,
+      "median_decode_tok_s": 105.63552728694532,
+      "tracked_peak_gib": 18.53460101503879
+    },
+    {
+      "label": "optimized_4096_128",
+      "workload": "4096/128",
+      "format": "packed_paro_w4",
+      "runs": [
+        {
+          "source_json_tmp": "/tmp/hipengine-packed-shared-rotate2-silurotate-20260517/shisa-packed-rotate2-silurotate-4096-128.json",
+          "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-packed-shared-rotate2-silurotate-20260517/shisa-packed-rotate2-silurotate-4096-128.json",
+          "prefill_tok_s": 2665.4483052951473,
+          "decode_tok_s": 106.59799153971431,
+          "prefill_seconds": 1.536702096927911,
+          "decode_seconds": 1.200773092918098,
+          "load_seconds": 24.159983725985512,
+          "tracked_peak_gib": 20.40610929299146,
+          "hip_used_peak_sampled_gib": 18.958740234375,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.685245513916016
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.736207962036133
+            }
+          ]
+        },
+        {
+          "source_json_tmp": "/tmp/hipengine-packed-shared-rotate2-silurotate-20260517/shisa-packed-rotate2-silurotate-4096-128-r2.json",
+          "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-packed-shared-rotate2-silurotate-20260517/shisa-packed-rotate2-silurotate-4096-128-r2.json",
+          "prefill_tok_s": 2668.0375048259602,
+          "decode_tok_s": 106.95521927424146,
+          "prefill_seconds": 1.5352108029183,
+          "decode_seconds": 1.1967625410761684,
+          "load_seconds": 24.08940377086401,
+          "tracked_peak_gib": 20.40610929299146,
+          "hip_used_peak_sampled_gib": 18.958740234375,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.685245513916016
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.736207962036133
+            }
+          ]
+        }
+      ],
+      "median_prefill_tok_s": 2666.7429050605538,
+      "median_decode_tok_s": 106.7766054069779,
+      "tracked_peak_gib": 20.40610929299146
+    }
+  ],
+  "comparisons": [
+    {
+      "workload": "512/128",
+      "baseline_packed_prefill_tok_s": 2425.6366842361795,
+      "optimized_packed_prefill_tok_s": 2451.2134793187083,
+      "optimized_vs_baseline_prefill_pct": 1.0544363568026682,
+      "baseline_packed_decode_tok_s": 101.71728530150499,
+      "optimized_packed_decode_tok_s": 105.63552728694532,
+      "optimized_vs_baseline_decode_pct": 3.8520905997698307,
+      "legacy_decode_tok_s": 109.22953377751429,
+      "remaining_gap_vs_legacy_pct": -3.2903248473892366,
+      "gap_recovered_pct_points": 3.8520905997698307
+    },
+    {
+      "workload": "4096/128",
+      "baseline_packed_prefill_tok_s": 2653.4765610698505,
+      "optimized_packed_prefill_tok_s": 2666.7429050605538,
+      "optimized_vs_baseline_prefill_pct": 0.4999608508075237,
+      "baseline_packed_decode_tok_s": 103.04052555050683,
+      "optimized_packed_decode_tok_s": 106.7766054069779,
+      "optimized_vs_baseline_decode_pct": 3.625835404575617,
+      "legacy_decode_tok_s": 110.41171481648838,
+      "remaining_gap_vs_legacy_pct": -3.2923222101497895,
+      "gap_recovered_pct_points": 3.625835404575617
+    }
+  ],
+  "conclusion": "Packed-sidecar decode improved from 101.717 to 105.636 tok/s at 512/128 (+3.9%) and from 103.041 to 106.777 tok/s at 4K/128 (+3.6%), recovering about half the forced-legacy decode gap while preserving packed-sidecar prefill/memory behavior and repeated-prompt preview logits."
+}

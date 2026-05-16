@@ -999,13 +999,11 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "gate_up",
         "silu_rotate",
         "down",
-        # Shared expert W4 PARO: rotate gate, rotate up, dual GEMV (packed gate||up),
-        # silu*mul, rotate down, single GEMV.
-        "rotate1",
-        "rotate1",
+        # Shared expert W4 PARO: fused rotate2 for gate/up, dual GEMV (packed gate||up),
+        # fused silu*mul+down-rotate, single GEMV.
+        "rotate2",
         "dual_pack8",
-        "shared_silu",
-        "rotate1",
+        "silu_rotate",
         "single_pack8",
         "combine",
     ]
@@ -1060,12 +1058,10 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
         "down_wmma",
         "weighted_lanes",
         # Shared expert W4 PARO (BF16 prefill: no fused W4 prefill kernel exists,
-        # falls back to the batched dual/single GEMV path).
-        "rotate1",
-        "rotate1",
+        # falls back to the batched dual/single GEMV path, with fused rotate2 and silu+rotate).
+        "rotate2",
         "dual_pack8",
-        "shared_silu",
-        "rotate1",
+        "silu_rotate",
         "single_pack8",
         "shared_batch",
     ]
@@ -1092,6 +1088,7 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
 
     monkeypatch.setattr(qwen_runtime, "paro_rmsnorm_out_bf16", record("input_norm"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate3_bf16", record("rotate3"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", record("rotate2"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_bf16", record("single_pack8"))
@@ -1147,11 +1144,9 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
         "silu_rotate",
         "down",
         # Shared expert W4 PARO.
-        "rotate1",
-        "rotate1",
+        "rotate2",
         "dual_pack8",
-        "shared_silu",
-        "rotate1",
+        "silu_rotate",
         "single_pack8",
         "combine",
     ]
@@ -1372,44 +1367,40 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_bf16(monkeypatch) -> Non
             calls.append((label, args, kwargs))
         return fake
 
-    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", record("rotate"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", record("unexpected_rotate1"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", record("rotate2"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_bf16", record("single_pack8"))
-    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_bf16", record("silu"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", record("silu_rotate"))
 
     out = state.shared_expert_paro_w4_bf16(hidden, scratch)
 
     assert out is scratch.shared_out
     assert [label for label, _a, _k in calls] == [
-        "rotate",  # gate_proj input rotation
-        "rotate",  # up_proj input rotation
+        "rotate2",  # gate_proj + up_proj input rotations in one launch
         "dual_pack8",  # gate_proj + up_proj GEMV with separate inputs, packed gate||up output
-        "silu",  # silu(gate) * up -> shared_intermediate
-        "rotate",  # down_proj input rotation
+        "silu_rotate",  # fused silu(gate) * up + down_proj input rotation
         "single_pack8",  # down_proj GEMV -> shared_out
     ]
-    # gate rotation reads hidden, writes shared_gate_input, uses gate_proj.pairs/theta/channel_scales.
-    gate_rot_args = calls[0][1]
-    assert gate_rot_args[0] == hidden.ptr
-    assert gate_rot_args[1] == scratch.shared_gate_input.ptr
-    # up rotation reads same hidden, writes shared_up_input.
-    up_rot_args = calls[1][1]
-    assert up_rot_args[0] == hidden.ptr
-    assert up_rot_args[1] == scratch.shared_up_input.ptr
+    # rotate2 reads hidden, writes shared gate/up inputs, and uses both projection parameter sets.
+    rotate_args = calls[0][1]
+    assert rotate_args[:3] == (hidden.ptr, scratch.shared_gate_input.ptr, scratch.shared_up_input.ptr)
     # dual GEMV consumes both rotated inputs, writes the packed shared_up buffer.
-    dual_args = calls[2][1]
+    dual_args = calls[1][1]
     assert dual_args[0] == scratch.shared_gate_input.ptr
     assert dual_args[1] == scratch.shared_up_input.ptr
     assert dual_args[8] == scratch.shared_up.ptr
-    # silu_mul packs shared_up -> shared_intermediate.
-    silu_args = calls[3][1]
-    assert silu_args == (scratch.shared_up.ptr, scratch.shared_intermediate.ptr, 1, 768)
-    # down rotation reads shared_intermediate, writes shared_down_input.
-    down_rot_args = calls[4][1]
-    assert down_rot_args[0] == scratch.shared_intermediate.ptr
-    assert down_rot_args[1] == scratch.shared_down_input.ptr
+    # fused silu+rotate reads packed shared_up and writes shared_down_input.
+    silu_args = calls[2][1]
+    assert silu_args[:5] == (
+        scratch.shared_up.ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_proj.pairs").ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_proj.theta").ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_proj.channel_scales").ptr,
+        scratch.shared_down_input.ptr,
+    )
     # down GEMV reads shared_down_input, writes shared_out.
-    down_args = calls[5][1]
+    down_args = calls[3][1]
     assert down_args[0] == scratch.shared_down_input.ptr
     assert down_args[4] == scratch.shared_out.ptr
 
@@ -1426,7 +1417,8 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_prefill_uses_fused_
             calls.append((label, args, kwargs))
         return fake
 
-    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", record("rotate"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", record("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_fp16", record("rotate2"))
     monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_dual_fp16", record("fusedw4_dual"))
     monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_fp16", record("fusedw4_single"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_separate_out_fp16", record("silu_separate"))
@@ -1440,19 +1432,18 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_prefill_uses_fused_
     assert out is scratch.shared_out
     labels = [label for label, _a, _k in calls]
     assert labels == [
-        "rotate",  # gate input rotation
-        "rotate",  # up input rotation
+        "rotate2",  # gate/up input rotations
         "fusedw4_dual",  # fused W4 prefill dual (separate inputs, separate outputs)
         "silu_separate",  # silu(gate) * up from two separate buffers
-        "rotate",  # down input rotation
+        "rotate1",  # down input rotation still uses rotate1 for FP16 prefill
         "fusedw4_single",  # fused W4 prefill single down
     ]
-    fused_dual = calls[2][1]
+    fused_dual = calls[1][1]
     assert fused_dual[0] == scratch.shared_gate_input.ptr
     assert fused_dual[1] == scratch.shared_up_input.ptr
     assert fused_dual[8] == scratch.shared_gate_out.ptr
     assert fused_dual[9] == scratch.shared_up_out.ptr
-    silu_args = calls[3][1]
+    silu_args = calls[2][1]
     assert silu_args == (
         scratch.shared_gate_out.ptr,
         scratch.shared_up_out.ptr,
@@ -1499,6 +1490,7 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine(m
     for name, label in [
         ("qwen35_router_topk_shared_out_fp16", "router"),
         ("paro_rotate1_fp16", "rotate1"),
+        ("paro_rotate2_fp16", "rotate2"),
         ("gemm_awq_selected_dual_pack8_wmma_compact_fp16", "gate_up_wmma"),
         ("silu_mul_dual_rotate_out_fp16", "silu_rotate"),
         ("gemm_awq_selected_pack8_wmma_compact_fp16", "down_wmma"),
@@ -1523,8 +1515,7 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine(m
         "down_wmma",
         "weighted_lanes",
         # Shared expert W4 PARO chain (prefill uses fused W4 + silu_separate).
-        "rotate1",  # shared_expert.gate_proj input rotation
-        "rotate1",  # shared_expert.up_proj input rotation
+        "rotate2",  # shared_expert gate/up input rotations
         "shared_fusedw4_dual",
         "shared_silu_separate",
         "rotate1",  # shared_expert.down_proj input rotation
@@ -1662,6 +1653,7 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
 
     monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_bf16", lambda *a, **k: order.append("router"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", lambda *a, **k: order.append("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", lambda *a, **k: order.append("rotate2"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", lambda *a, **k: order.append("gate_up"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", lambda *a, **k: order.append("silu_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", lambda *a, **k: order.append("down"))
@@ -1683,11 +1675,11 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
 
     assert out is scratch.moe_out
     # routed: router + (rotate + dual GEMV + silu_rotate + single GEMV)
-    # shared: rotate gate + rotate up + dual GEMV (packed) + silu*mul + rotate down + single GEMV
+    # shared: rotate2 gate/up + dual GEMV (packed) + fused silu*mul/down-rotate + single GEMV
     # combine
     assert order == [
         "router", "rotate1", "gate_up", "silu_rotate", "down",
-        "rotate1", "rotate1", "shared_dual_pack8", "shared_silu", "rotate1", "shared_single_pack8",
+        "rotate2", "shared_dual_pack8", "silu_rotate", "shared_single_pack8",
         "combine",
     ]
 
@@ -1699,7 +1691,7 @@ def test_qwen35_decode_state_runs_moe_c1_chain_in_parent_order(monkeypatch) -> N
     assert batch_out is batch_scratch.moe_out
     assert order == [
         "router", "rotate1", "gate_up", "silu_rotate", "down",
-        "rotate1", "rotate1", "shared_dual_pack8", "shared_silu", "rotate1", "shared_single_pack8",
+        "rotate2", "shared_dual_pack8", "silu_rotate", "shared_single_pack8",
         "combine_batch",
     ]
 
@@ -1714,6 +1706,7 @@ def test_qwen35_decode_state_runs_moe_c1_bf16_legacy_w8a16_chain(monkeypatch) ->
 
     monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_bf16", lambda *a, **k: order.append("router"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate1_bf16", lambda *a, **k: order.append("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", lambda *a, **k: order.append("rotate2"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_bf16", lambda *a, **k: order.append("gate_up"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_bf16", lambda *a, **k: order.append("silu_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_bf16", lambda *a, **k: order.append("down"))
@@ -1821,12 +1814,13 @@ def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch)
 
     monkeypatch.setattr(qwen_runtime, "qwen35_router_topk_shared_out_fp16", lambda *a, **k: order.append("router"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", lambda *a, **k: order.append("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_fp16", lambda *a, **k: order.append("rotate2"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_fp16", lambda *a, **k: order.append("gate_up"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_fp16", lambda *a, **k: order.append("silu_rotate"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_fp16", lambda *a, **k: order.append("down"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_fp16", lambda *a, **k: order.append("shared_dual_pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_fp16", lambda *a, **k: order.append("shared_single_pack8"))
-    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_fp16", lambda *a, **k: order.append("shared_silu"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_fp16", lambda *a, **k: order.append("unexpected_shared_silu"))
     monkeypatch.setattr(
         qwen_runtime,
         "weighted_sum_shared_gate_combine_residual_out_fp16_f32w",
@@ -1843,7 +1837,7 @@ def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch)
     assert out is scratch.moe_out
     assert order == [
         "router", "rotate1", "gate_up", "silu_rotate", "down",
-        "rotate1", "rotate1", "shared_dual_pack8", "shared_silu", "rotate1", "shared_single_pack8",
+        "rotate2", "shared_dual_pack8", "silu_rotate", "shared_single_pack8",
         "combine",
     ]
 
@@ -1874,6 +1868,7 @@ def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch)
         ("qwen35_full_attn_decode_context_bf16", "dense_attention_context"),
         ("qwen35_full_attn_gate_mul_fp16", "attention_gate"),
         ("paro_rotate1_fp16", "rotate1"),
+        ("paro_rotate2_fp16", "rotate2"),
         ("paro_add_rmsnorm_out_fp16", "post_norm"),
         ("qwen35_router_topk_shared_out_fp16", "router"),
         ("gemv_awq_selected_dual_pack8_transposed_fp16", "gate_up"),
@@ -1922,11 +1917,9 @@ def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch)
         # Shared expert W4 PARO chain. "dual_pack8" here is the same kernel as
         # the attention QKV dual GEMV; the runtime reuses gemv_awq_dual_pack8_
         # transposed_fp16 for the dense shared expert gate||up.
-        "rotate1",
-        "rotate1",
+        "rotate2",
         "dual_pack8",
-        "shared_silu",
-        "rotate1",
+        "silu_rotate",
         "shared_single_pack8",
         "combine",
     ]

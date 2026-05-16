@@ -14070,3 +14070,67 @@ print('markdown sanity ok')
 PY
 # markdown sanity ok
 ```
+
+## 2026-05-17 packed shared-expert W4 decode recovery
+
+Worked on the true packed-sidecar recovery path for the shisa Qwen3.6
+shared-expert decode gap. Profiling the packed d4 decode tail showed the shared
+path still paid separate gate rotate, up rotate, SiLU, down rotate, and W4 GEMV
+launches per MoE layer. Implemented the low-risk packed-W4 fusions already in the
+kernel catalog:
+
+- use `paro_rotate2_{fp16,bf16}` for shared `gate_proj` + `up_proj` input
+  rotations when their `krot` matches (fallback remains two `rotate1` calls),
+- use `silu_mul_dual_rotate_out_{fp16,bf16}` for packed shared c=1 SiLU +
+  down-input rotation.
+
+This keeps packed sidecars as the runtime format and does not materialize a
+W8A16 shadow.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short
+# 57 passed
+python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 128 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# dual/dual_rotate/pair_rotate BF16+FP16 mismatches 0
+python3 scripts/smoke.py --mode paro-rotate-hip --rows 2 --hidden-size 128 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# BF16/FP16 rotate mismatches 0
+```
+
+Benchmark command shape (two runs per workload; W7900/gfx1100, cached builds,
+AOTriton threshold 512):
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 \
+  --shared-expert-format packed_paro_w4 \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512
+```
+
+Two-run medians vs the previous shisa packed/forced-legacy diagnostic:
+
+| workload | packed before | packed after | packed delta | forced legacy | remaining packed gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 decode | 101.717 tok/s | 105.636 tok/s | +3.9% | 109.230 tok/s | -3.3% |
+| 4096/128 decode | 103.041 tok/s | 106.777 tok/s | +3.6% | 110.412 tok/s | -3.3% |
+| 512/128 prefill | 2425.637 tok/s | 2451.213 tok/s | +1.1% | 2196.276 tok/s | n/a |
+| 4096/128 prefill | 2653.477 tok/s | 2666.743 tok/s | +0.5% | 2359.452 tok/s | n/a |
+
+Tracked peak stayed unchanged at 18.535 GiB (512) and 20.406 GiB (4K). This
+recovers about half of the decode gap while keeping packed sidecars. Remaining
+likely levers are deeper packed down-W4+combine fusion or precomputed rotation
+sin/cos; still diagnostic only until shisa KL/top-1 gate exists.
+
+Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen36-packed-shared-decode-fusion-diagnostic.json`.

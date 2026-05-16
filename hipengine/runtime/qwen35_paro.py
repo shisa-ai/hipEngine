@@ -3827,10 +3827,11 @@ class Qwen35ParoDecodeState:
 
         The shared expert uses three independent dense PARO linears
         (gate_proj, up_proj, down_proj) with their own rotation params; for
-        tokens=1/small batches we use the dual GEMV with separate inputs +
-        packed gate||up output, then silu_mul_dual_out. For larger batches
-        we use the fused W4 prefill kernel which writes gate/up to separate
-        buffers and pair them via silu_mul_separate_out.
+        tokens=1/small batches we use a fused gate/up rotate2, the dual GEMV
+        with separate inputs + packed gate||up output, then fused SiLU +
+        down-rotation. For larger batches we use the fused W4 prefill kernel
+        which writes gate/up to separate buffers and pair them via
+        silu_mul_separate_out.
         """
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
         cfg = self.config
@@ -3842,34 +3843,56 @@ class Qwen35ParoDecodeState:
         up_pairs = self.tensor(f"{up_base}.pairs")
         down_pairs = self.tensor(f"{down_base}.pairs")
 
-        paro_rotate1_fp16(
-            hidden.ptr,
-            scratch.shared_gate_input.ptr,
-            gate_pairs.ptr,
-            self.tensor(f"{gate_base}.theta").ptr,
-            self.tensor(f"{gate_base}.channel_scales").ptr,
-            tokens,
-            cfg.hidden_size,
-            group_size,
-            _rotation_krot(gate_pairs),
-            stream=stream,
-            library=_library_for(library, "rotate"),
-            runtime=self.runtime,
-        )
-        paro_rotate1_fp16(
-            hidden.ptr,
-            scratch.shared_up_input.ptr,
-            up_pairs.ptr,
-            self.tensor(f"{up_base}.theta").ptr,
-            self.tensor(f"{up_base}.channel_scales").ptr,
-            tokens,
-            cfg.hidden_size,
-            group_size,
-            _rotation_krot(up_pairs),
-            stream=stream,
-            library=_library_for(library, "rotate"),
-            runtime=self.runtime,
-        )
+        gate_krot = _rotation_krot(gate_pairs)
+        up_krot = _rotation_krot(up_pairs)
+        if gate_krot == up_krot:
+            paro_rotate2_fp16(
+                hidden.ptr,
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_pairs.ptr,
+                up_pairs.ptr,
+                self.tensor(f"{gate_base}.theta").ptr,
+                self.tensor(f"{up_base}.theta").ptr,
+                self.tensor(f"{gate_base}.channel_scales").ptr,
+                self.tensor(f"{up_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                gate_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+        else:
+            paro_rotate1_fp16(
+                hidden.ptr,
+                scratch.shared_gate_input.ptr,
+                gate_pairs.ptr,
+                self.tensor(f"{gate_base}.theta").ptr,
+                self.tensor(f"{gate_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                gate_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+            paro_rotate1_fp16(
+                hidden.ptr,
+                scratch.shared_up_input.ptr,
+                up_pairs.ptr,
+                self.tensor(f"{up_base}.theta").ptr,
+                self.tensor(f"{up_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                up_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
 
         gate_qweight = self.tensor(f"{gate_base}.qweight_pack8_decode")
         up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
@@ -3894,11 +3917,16 @@ class Qwen35ParoDecodeState:
                 library=_library_for(library, "awq"),
                 runtime=self.runtime,
             )
-            silu_mul_dual_out_fp16(
+            silu_mul_dual_rotate_out_fp16(
                 scratch.shared_up.ptr,
-                scratch.shared_intermediate.ptr,
+                down_pairs.ptr,
+                self.tensor(f"{down_base}.theta").ptr,
+                self.tensor(f"{down_base}.channel_scales").ptr,
+                scratch.shared_down_input.ptr,
                 tokens,
                 cfg.shared_expert_intermediate_size,
+                group_size,
+                _rotation_krot(down_pairs),
                 stream=stream,
                 library=_library_for(library, "silu"),
                 runtime=self.runtime,
@@ -3935,20 +3963,21 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
 
-        paro_rotate1_fp16(
-            scratch.shared_intermediate.ptr,
-            scratch.shared_down_input.ptr,
-            down_pairs.ptr,
-            self.tensor(f"{down_base}.theta").ptr,
-            self.tensor(f"{down_base}.channel_scales").ptr,
-            tokens,
-            cfg.shared_expert_intermediate_size,
-            group_size,
-            _rotation_krot(down_pairs),
-            stream=stream,
-            library=_library_for(library, "rotate"),
-            runtime=self.runtime,
-        )
+        if tokens != 1:
+            paro_rotate1_fp16(
+                scratch.shared_intermediate.ptr,
+                scratch.shared_down_input.ptr,
+                down_pairs.ptr,
+                self.tensor(f"{down_base}.theta").ptr,
+                self.tensor(f"{down_base}.channel_scales").ptr,
+                tokens,
+                cfg.shared_expert_intermediate_size,
+                group_size,
+                _rotation_krot(down_pairs),
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
         down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
         if tokens == 1:
             gemv_awq_pack8_transposed_fp16(
@@ -4522,34 +4551,56 @@ class Qwen35ParoDecodeState:
         up_pairs = self.tensor(f"{up_base}.pairs")
         down_pairs = self.tensor(f"{down_base}.pairs")
 
-        paro_rotate1_bf16(
-            hidden.ptr,
-            scratch.shared_gate_input.ptr,
-            gate_pairs.ptr,
-            self.tensor(f"{gate_base}.theta").ptr,
-            self.tensor(f"{gate_base}.channel_scales").ptr,
-            tokens,
-            cfg.hidden_size,
-            group_size,
-            _rotation_krot(gate_pairs),
-            stream=stream,
-            library=_library_for(library, "rotate"),
-            runtime=self.runtime,
-        )
-        paro_rotate1_bf16(
-            hidden.ptr,
-            scratch.shared_up_input.ptr,
-            up_pairs.ptr,
-            self.tensor(f"{up_base}.theta").ptr,
-            self.tensor(f"{up_base}.channel_scales").ptr,
-            tokens,
-            cfg.hidden_size,
-            group_size,
-            _rotation_krot(up_pairs),
-            stream=stream,
-            library=_library_for(library, "rotate"),
-            runtime=self.runtime,
-        )
+        gate_krot = _rotation_krot(gate_pairs)
+        up_krot = _rotation_krot(up_pairs)
+        if gate_krot == up_krot:
+            paro_rotate2_bf16(
+                hidden.ptr,
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_pairs.ptr,
+                up_pairs.ptr,
+                self.tensor(f"{gate_base}.theta").ptr,
+                self.tensor(f"{up_base}.theta").ptr,
+                self.tensor(f"{gate_base}.channel_scales").ptr,
+                self.tensor(f"{up_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                gate_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+        else:
+            paro_rotate1_bf16(
+                hidden.ptr,
+                scratch.shared_gate_input.ptr,
+                gate_pairs.ptr,
+                self.tensor(f"{gate_base}.theta").ptr,
+                self.tensor(f"{gate_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                gate_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+            paro_rotate1_bf16(
+                hidden.ptr,
+                scratch.shared_up_input.ptr,
+                up_pairs.ptr,
+                self.tensor(f"{up_base}.theta").ptr,
+                self.tensor(f"{up_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                up_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
 
         gate_qweight = self.tensor(f"{gate_base}.qweight_pack8_decode")
         up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
@@ -4573,28 +4624,18 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "awq"),
             runtime=self.runtime,
         )
-        silu_mul_dual_out_bf16(
+        silu_mul_dual_rotate_out_bf16(
             scratch.shared_up.ptr,
-            scratch.shared_intermediate.ptr,
-            tokens,
-            cfg.shared_expert_intermediate_size,
-            stream=stream,
-            library=_library_for(library, "silu"),
-            runtime=self.runtime,
-        )
-
-        paro_rotate1_bf16(
-            scratch.shared_intermediate.ptr,
-            scratch.shared_down_input.ptr,
             down_pairs.ptr,
             self.tensor(f"{down_base}.theta").ptr,
             self.tensor(f"{down_base}.channel_scales").ptr,
+            scratch.shared_down_input.ptr,
             tokens,
             cfg.shared_expert_intermediate_size,
             group_size,
             _rotation_krot(down_pairs),
             stream=stream,
-            library=_library_for(library, "rotate"),
+            library=_library_for(library, "silu"),
             runtime=self.runtime,
         )
         down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
