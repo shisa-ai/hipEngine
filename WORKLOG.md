@@ -11322,3 +11322,62 @@ with `16.047 ms` total / `401.2 us` avg, down from the retained tile4 trace's
 `18.768 ms` total / `469.2 us`; grid_x halved `32768 -> 16384`, LDS doubled
 `1024 -> 2048 B`, VGPR stayed `32`, scratch stayed `0`. Decision: keep. Updated
 benchmark artifact/rollup and `docs/KERNELS.md`.
+
+## 2026-05-16 — Prefill multiloop iter 52: 4K profile pivot and rejected GQA2 prefill attention
+
+Pivoted from the planned iter-51 full-attention `__expf` micro-tune after user
+feedback correctly pointed at the much larger 4K/128 gap. First profiled the
+current retained code at 4K prefill (no code changes):
+
+```bash
+rocprofv3 --kernel-trace -d /tmp/iter52-4k-profile-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter52-4k-profile-trace.json
+sqlite3 -header -csv /tmp/iter52-4k-profile-trace/trace_results.db "select name, vgpr_count, scratch_size, lds_size, grid_x, grid_y, workgroup_x, count(*) n, sum(duration)/1e6 total_ms, avg(duration)/1e3 avg_us, max(duration)/1e3 max_us from kernels group by name order by sum(duration) desc limit 30;"
+```
+
+The profile confirmed the 4K problem is dominated by full-attention prefill, not
+launch overhead or MoE: total traced kernel time was `6171.1 ms` and
+`qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<false>` alone consumed
+`4572.4 ms` across 10 launches (`457.2 ms/layer`, `grid=(1024,4096)`, 64
+threads, `LDS=17664`). The current 512 trace has the same bucket at only
+`26.158 ms`, so attention scaled ~175x when prompt length scaled 8x; that
+accounts for most of the 4K/128 gap. Other buckets scaled roughly linearly or
+sub-quadratically: GDN `41.217 -> 391.644 ms`, compact WMMA dual `33.959 ->
+199.959 ms`, fused W4 true `23.213 -> 170.159 ms`, shared down `16.047 ->
+124.891 ms`.
+
+Tried a structural GQA-pair prefill-attention kernel for the long 4K path:
+compute two adjacent query heads sharing one KV head in a block, with two score
+arrays in LDS, to reuse K/V reads and halve the q-head grid. The first build was
+mistakenly guarded for `head_dim==128` and did not launch; after correcting the
+Qwen full-attn head dim to `256`, the new kernel did launch.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import build_qwen35_paged_attn_decode
+lib = build_qwen35_paged_attn_decode(load=True, require_cached=False)
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans')
+print('attention prefill symbol loaded')
+PY
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+rocprofv3 --kernel-trace -d /tmp/iter52-gqa2h256-4k-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter52-gqa2h256-4k-trace.json
+```
+
+Results: attention smoke remained bit-exact for the short fixture
+(`prefill_gate_fp16_max_abs=0`, mismatch `0`) and the 512 fixture gate passed
+(`max_kl=0.03406`, top-1 `1.0`, owned bytes `1625645909`). However the GQA2
+long path regressed badly: 4K/128 prefill fell to `505.058 tok/s`
+(`prefill_seconds=8.1100`) versus retained `659.356`, violating the 95% 4K
+no-regression guard. The profiler explains why: the new
+`qwen35_paged_full_attn_prefill_gqa2_gate_fp16_kernel<false>` did halve the
+q-head grid to `(512,4096)` and ran with no scratch, but VGPR rose `32 -> 48`,
+LDS doubled `17664 -> 35328`, and the attention bucket worsened to `6431.6 ms`
+from `4572.4 ms`. Decision: reject/revert the GQA2 kernel. Lesson: for this
+one-block-per-row prefill kernel, pairing query heads loses more occupancy/LDS
+than it saves in KV reuse; the 4K fix likely needs a different attention
+algorithm (split/tiled context, grouped-GQA with smaller score tiles, or a
+FlashAttention-style online softmax) rather than fatter per-row LDS blocks.
