@@ -10829,3 +10829,32 @@ agreement `1.0`, `native_owned_device_bytes=1625645909`, native prefill
 `43.842 ms` total / `1461.4 us` average across 30 launches versus retained
 `40.993 ms`. Decision: reject/revert. The reduced block count does not overcome
 extra registers/dual reductions in this kernel.
+
+## 2026-05-16 — Prefill multiloop iter 38: rejected fused W4 tile_m=64 default
+
+Tried increasing the default fused W4 prefill output tile from `tile_m=32` to
+`tile_m=64` for large projections while keeping `tile_n=32`. The goal was to
+halve output-tile block count for Qwen projection shapes without changing math,
+public ABI, or call sites. The HIP kernel already has a `<64,32>` instantiation,
+so the trial only changed the Python wrapper's default tile selection.
+
+Validation commands:
+
+```bash
+python3 -m pytest tests/test_paro_awq_gemv_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter38-fusedw4-tile64-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter38-fusedw4-tile64-trace.json
+```
+
+Results: targeted tests passed (`37 passed`). 512/128 samples were `1806.684`,
+`1792.522`, `1785.408`, and `1781.828` tok/s (median `1788.965`), -6.2% below
+retained `1906.259`. Fixture gate passed (`max_kl=0.03406`, top-1 agreement
+`1.0`, `native_owned_device_bytes=1625645909`, native prefill `0.2877s`).
+4K/128 stayed runnable and above guard at `659.614 tok/s`
+(`prefill_seconds=6.2097`). Profiler showed the fused W4 kernels switched to
+`<64,32>` but regressed badly: transposed total `31.160 ms` and strided total
+`26.200 ms` (combined `57.36 ms`) versus retained `<32,32>` combined about
+`37.39 ms`. Decision: reject/revert; the larger output tile increases per-block
+register/WMMA work enough to overwhelm the reduced grid count.
