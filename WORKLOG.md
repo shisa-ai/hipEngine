@@ -10716,3 +10716,38 @@ trace's `56.377 ms` total. Decision: keep. Updated benchmark artifact/rollup and
 `docs/KERNELS.md`; still below the parent OPTIMAL target, with current top
 buckets now GDN recurrent prefill, compact WMMA selected MoE, and W4 prompt
 projections.
+
+## 2026-05-16 — Prefill multiloop iter 35: rejected full-attn token-offset cache
+
+Tried extending the iter-34 full-attention GQA prefill query-cache win by caching
+per-token physical KV offsets in LDS for short rows (`max_context_len <= 1024`)
+and using a contiguous-block fast path before the value loop. The goal was to
+avoid recomputing logical block/block offset and rereading the row block table
+for every output dimension. The first all-context version improved a 512 sample
+but regressed 4K/128 badly (`343.696 tok/s`), so the trial was shape-gated to
+short rows only before final measurement.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import build_qwen35_paged_attn_decode
+lib = build_qwen35_paged_attn_decode(load=True, require_cached=False)
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans')
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans')
+print('paged attention prefill symbols loaded')
+PY
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+```
+
+Results after short-row gating: targeted tests passed (`37 passed`) and fixture
+gate passed (`max_kl=0.03406`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2742s`). 512/128
+samples were `1878.021`, `1848.587`, `1867.779`, and `1876.125` tok/s (median
+`1871.952`), a regression versus retained `1883.940`. 4K/128 recovered above
+the guard at `655.091 tok/s` (`prefill_seconds=6.2526`, decode `102.522 tok/s`)
+but was slightly below retained `658.418`. Decision: reject/revert. The extra
+short-row LDS/branching does not beat the simpler iter-34 query-cache path.
