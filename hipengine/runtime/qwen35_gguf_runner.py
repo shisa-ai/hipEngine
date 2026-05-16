@@ -13,13 +13,14 @@ from hipengine.kernels.hip_gfx1100.convert import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused import (
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_bf16_add,
-    gguf_gate_repeat_value_bf16,
     gguf_rmsnorm_bf16_f32_weight,
     silu_mul_dual_out_bf16,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import qwen35_linear_attn_conv_decode_bf16
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import gguf_q6_k_embedding_bf16_out
+from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
 from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFResidentWeights,
@@ -218,10 +219,22 @@ class Qwen35GGUFFullStackRunner:
     model_path: str | Path
     runtime: HipRuntime | None = None
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
+    _full_attn_q_norm: dict[int, np.ndarray] = field(default_factory=dict, init=False)
+    _full_attn_k_norm: dict[int, np.ndarray] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
         self.weights = materialize_qwen35_gguf_weights(self.model_path, runtime=self.runtime)
+        reader = GGUFReader(self.model_path)
+        assert self.weights is not None
+        for layer_id, layer_type in enumerate(self.weights.config.layer_types):
+            if layer_type == FULL_ATTENTION:
+                self._full_attn_q_norm[layer_id] = np.asarray(
+                    reader.tensor_data(f"blk.{layer_id}.attn_q_norm.weight"), dtype=np.float32
+                )
+                self._full_attn_k_norm[layer_id] = np.asarray(
+                    reader.tensor_data(f"blk.{layer_id}.attn_k_norm.weight"), dtype=np.float32
+                )
 
     @property
     def hidden_size(self) -> int:
@@ -265,47 +278,49 @@ class Qwen35GGUFFullStackRunner:
         *,
         layer_limit: int | None = None,
     ) -> np.ndarray:
+        """Run prompt tokens sequentially and return final BF16 hidden bits."""
+
         if not token_ids:
             raise ValueError("token_ids must be non-empty")
-        return self.run_token_hidden(int(token_ids[-1]), layer_limit=layer_limit)
-
-    def run_token_hidden(self, token_id: int, *, layer_limit: int | None = None) -> np.ndarray:
-        """Run all layers plus final norm and return BF16 hidden bits on host."""
-
         assert self.weights is not None
         runtime = self.runtime or get_hip_runtime()
-        token_ids = np.asarray([int(token_id)], dtype=np.int64)
+        layer_count = self.weights.config.block_count if layer_limit is None else int(layer_limit)
+        if layer_count < 0 or layer_count > self.weights.config.block_count:
+            raise ValueError("layer_limit must be between 0 and block_count")
         hidden_bits = np.empty((1, self.hidden_size), dtype=np.uint16)
+        token_arr = np.empty((1,), dtype=np.int64)
         buffers = []
         try:
-            token_buf = malloc(token_ids.nbytes, runtime=runtime)
+            token_buf = malloc(token_arr.nbytes, runtime=runtime)
             hidden_a = malloc(hidden_bits.nbytes, runtime=runtime)
             hidden_b = malloc(hidden_bits.nbytes, runtime=runtime)
             scratch = _FullStackScratch.allocate(self, runtime=runtime)
             buffers.extend((token_buf, hidden_a, hidden_b, *scratch.buffers))
-            copy_host_to_device(token_buf, host_array_ptr(token_ids), runtime=runtime)
-            gguf_q6_k_embedding_bf16_out(
-                token_buf.ptr,
-                self.weights.root("token_embedding").allocation().tensor.ptr,
-                hidden_a.ptr,
-                rows=1,
-                hidden_size=self.hidden_size,
-                vocab_size=self.vocab_size,
-                runtime=runtime,
-            )
+            scratch.zero_states(runtime)
             src = hidden_a
             dst = hidden_b
-            layer_count = self.weights.config.block_count if layer_limit is None else int(layer_limit)
-            if layer_count < 0 or layer_count > self.weights.config.block_count:
-                raise ValueError("layer_limit must be between 0 and block_count")
-            for layer_id, layer_type in enumerate(self.weights.config.layer_types[:layer_count]):
-                if layer_type == LINEAR_ATTENTION:
-                    self._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, scratch)
-                elif layer_type == FULL_ATTENTION:
-                    self._run_full_attention_layer(layer_id, src.ptr, dst.ptr, scratch)
-                else:
-                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-                src, dst = dst, src
+            for position, token_id in enumerate(token_ids):
+                token_arr[0] = int(token_id)
+                copy_host_to_device(token_buf, host_array_ptr(token_arr), runtime=runtime)
+                gguf_q6_k_embedding_bf16_out(
+                    token_buf.ptr,
+                    self.weights.root("token_embedding").allocation().tensor.ptr,
+                    hidden_a.ptr,
+                    rows=1,
+                    hidden_size=self.hidden_size,
+                    vocab_size=self.vocab_size,
+                    runtime=runtime,
+                )
+                src = hidden_a
+                dst = hidden_b
+                for layer_id, layer_type in enumerate(self.weights.config.layer_types[:layer_count]):
+                    if layer_type == LINEAR_ATTENTION:
+                        self._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, scratch)
+                    elif layer_type == FULL_ATTENTION:
+                        self._run_full_attention_layer(layer_id, src.ptr, dst.ptr, scratch, position=position)
+                    else:
+                        raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                    src, dst = dst, src
             gguf_rmsnorm_bf16_f32_weight(
                 src.ptr,
                 self.weights.root("output_norm").allocation().tensor.ptr,
@@ -321,6 +336,11 @@ class Qwen35GGUFFullStackRunner:
             for buffer in reversed(buffers):
                 free(buffer, runtime=runtime)
         return hidden_bits
+
+    def run_token_hidden(self, token_id: int, *, layer_limit: int | None = None) -> np.ndarray:
+        """Run all layers for one token and return BF16 hidden bits on host."""
+
+        return self.run_prompt_hidden([int(token_id)], layer_limit=layer_limit)
 
     def logits_from_hidden_bits(self, hidden_bits: np.ndarray) -> np.ndarray:
         assert self.weights is not None
@@ -369,8 +389,10 @@ class Qwen35GGUFFullStackRunner:
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
         runtime = self.runtime or get_hip_runtime()
-        _zero(runtime, scratch.conv_state, scratch.conv_zero)
-        _zero(runtime, scratch.recurrent_state, scratch.recurrent_zero)
+        conv_state = scratch.layer_conv_states[layer_id]
+        recurrent_state = scratch.layer_recurrent_states[layer_id]
+        if conv_state is None or recurrent_state is None:
+            raise ValueError(f"layer {layer_id} has no linear-attention state")
         gguf_rmsnorm_bf16_f32_weight(
             hidden_ptr,
             layer.weight("attn_norm").allocation().tensor.ptr,
@@ -418,7 +440,7 @@ class Qwen35GGUFFullStackRunner:
         )
         qwen35_linear_attn_conv_decode_bf16(
             scratch.linear_qkv.ptr,
-            scratch.conv_state.ptr,
+            conv_state.ptr,
             layer.weight("ssm_conv1d").allocation().tensor.ptr,
             scratch.conv_out.ptr,
             self.linear_qkv_width,
@@ -433,7 +455,7 @@ class Qwen35GGUFFullStackRunner:
             layer.weight("ssm_dt_bias").allocation().tensor.ptr,
             layer.weight("ssm_a").allocation().tensor.ptr,
             layer.weight("ssm_norm").allocation().tensor.ptr,
-            scratch.recurrent_state.ptr,
+            recurrent_state.ptr,
             scratch.recurrent_out.ptr,
             cfg.rms_norm_eps,
             cfg.ssm_group_count,
@@ -459,7 +481,15 @@ class Qwen35GGUFFullStackRunner:
         )
         self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch)
 
-    def _run_full_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch) -> None:
+    def _run_full_attention_layer(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        position: int,
+    ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
@@ -500,17 +530,13 @@ class Qwen35GGUFFullStackRunner:
             out_features=self.kv_width,
             runtime=runtime,
         )
-        # K is computed to exercise the projection path; this one-token decode
-        # stack uses V directly because a length-1 attention softmax is 1.0.
-        gguf_gate_repeat_value_bf16(
-            scratch.full_q.ptr + self.q_width * 2,
-            scratch.full_v.ptr,
-            scratch.full_gated.ptr,
-            cfg.head_count,
-            cfg.head_count_kv,
-            cfg.value_length,
-            runtime=runtime,
-        )
+        runtime.device_synchronize()
+        q_full = _copy_bf16_device_to_f32(scratch.full_q, 2 * self.q_width, runtime=runtime)
+        key = _copy_bf16_device_to_f32(scratch.full_k, self.kv_width, runtime=runtime)
+        value = _copy_bf16_device_to_f32(scratch.full_v, self.kv_width, runtime=runtime)
+        context = self._host_full_attention(layer_id, q_full, key, value, scratch, position=position)
+        context_bits = float_array_to_bf16_bits(context.reshape(1, self.q_width))
+        copy_host_to_device(scratch.full_gated, host_array_ptr(context_bits), runtime=runtime)
         launch_gguf_linear(
             layer.weight("attn_output"),
             scratch.full_gated.ptr,
@@ -521,6 +547,47 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch)
+
+    def _host_full_attention(
+        self,
+        layer_id: int,
+        q_full: np.ndarray,
+        key: np.ndarray,
+        value: np.ndarray,
+        scratch,
+        *,
+        position: int,
+    ) -> np.ndarray:
+        assert self.weights is not None
+        cfg = self.weights.config
+        head_dim = cfg.key_length
+        q_full = q_full.reshape(cfg.head_count, 2 * head_dim)
+        query = _rmsnorm_host(q_full[:, :head_dim], 1.0 + self._full_attn_q_norm[layer_id], cfg.rms_norm_eps)
+        gate = q_full[:, head_dim:]
+        key = _rmsnorm_host(
+            key.reshape(cfg.head_count_kv, head_dim),
+            1.0 + self._full_attn_k_norm[layer_id],
+            cfg.rms_norm_eps,
+        )
+        value = value.reshape(cfg.head_count_kv, cfg.value_length)
+        query = _apply_rope_host(query, position, cfg.rope_dimension_count, cfg.rope_freq_base)
+        key = _apply_rope_host(key, position, cfg.rope_dimension_count, cfg.rope_freq_base)
+        scratch.full_k_history[layer_id].append(key.copy())
+        scratch.full_v_history[layer_id].append(value.copy())
+        keys = np.stack(scratch.full_k_history[layer_id], axis=0)
+        values = np.stack(scratch.full_v_history[layer_id], axis=0)
+        out = np.empty((cfg.head_count, cfg.value_length), dtype=np.float32)
+        group = cfg.head_count // cfg.head_count_kv
+        scale = 1.0 / np.sqrt(float(head_dim))
+        for head in range(cfg.head_count):
+            kv_head = head // group
+            scores = keys[:, kv_head, :] @ query[head]
+            scores = scores.astype(np.float32) * scale
+            scores = scores - np.max(scores)
+            probs = np.exp(scores).astype(np.float32)
+            probs /= np.sum(probs)
+            out[head] = probs @ values[:, kv_head, :]
+        return out * _sigmoid_host(gate)
 
     def _run_post_attention_ffn(self, layer_id: int, hidden_ptr: int, attn_out_ptr: int, out_ptr: int, scratch) -> None:
         assert self.weights is not None
@@ -598,14 +665,16 @@ class _FullStackScratch:
     conv_out: object
     recurrent_out: object
     recurrent_bf16: object
-    conv_state: object
-    recurrent_state: object
+    layer_conv_states: tuple[object | None, ...]
+    layer_recurrent_states: tuple[object | None, ...]
     conv_zero: np.ndarray
     recurrent_zero: np.ndarray
     full_q: object
     full_k: object
     full_v: object
     full_gated: object
+    full_k_history: tuple[list[np.ndarray], ...]
+    full_v_history: tuple[list[np.ndarray], ...]
     ffn_gate_up: object
     ffn_intermediate: object
     ffn_down: object
@@ -635,6 +704,23 @@ class _FullStackScratch:
             ),
             dtype=np.float32,
         )
+        layer_conv_states: list[object | None] = []
+        layer_recurrent_states: list[object | None] = []
+        state_buffers: list[object] = []
+        full_k_history: list[list[np.ndarray]] = []
+        full_v_history: list[list[np.ndarray]] = []
+        for layer_type in runner.weights.config.layer_types:
+            if layer_type == LINEAR_ATTENTION:
+                conv_state = buf(conv_zero.nbytes)
+                recurrent_state = buf(recurrent_zero.nbytes)
+                state_buffers.extend((conv_state, recurrent_state))
+                layer_conv_states.append(conv_state)
+                layer_recurrent_states.append(recurrent_state)
+            else:
+                layer_conv_states.append(None)
+                layer_recurrent_states.append(None)
+            full_k_history.append([])
+            full_v_history.append([])
         fields = {
             "norm": buf(hidden_bytes),
             "post_norm": buf(hidden_bytes),
@@ -647,8 +733,6 @@ class _FullStackScratch:
             "conv_out": buf(runner.linear_qkv_width * 4),
             "recurrent_out": buf(runner.weights.config.ssm_inner_size * 4),
             "recurrent_bf16": buf(ssm_inner_bytes),
-            "conv_state": buf(conv_zero.nbytes),
-            "recurrent_state": buf(recurrent_zero.nbytes),
             "full_q": buf(q_bytes),
             "full_k": buf(kv_bytes),
             "full_v": buf(kv_bytes),
@@ -659,14 +743,66 @@ class _FullStackScratch:
         }
         return cls(
             **fields,
+            full_k_history=tuple(full_k_history),
+            full_v_history=tuple(full_v_history),
+            layer_conv_states=tuple(layer_conv_states),
+            layer_recurrent_states=tuple(layer_recurrent_states),
             conv_zero=conv_zero,
             recurrent_zero=recurrent_zero,
-            buffers=tuple(fields.values()),
+            buffers=tuple(fields.values()) + tuple(state_buffers),
         )
+
+    def zero_states(self, runtime: HipRuntime) -> None:
+        for conv_state, recurrent_state in zip(self.layer_conv_states, self.layer_recurrent_states, strict=True):
+            if conv_state is not None:
+                _zero(runtime, conv_state, self.conv_zero)
+            if recurrent_state is not None:
+                _zero(runtime, recurrent_state, self.recurrent_zero)
+        for history in (*self.full_k_history, *self.full_v_history):
+            history.clear()
 
 
 def _zero(runtime: HipRuntime, buffer, zeros: np.ndarray) -> None:
     copy_host_to_device(buffer, host_array_ptr(zeros), runtime=runtime)
+
+
+def _copy_bf16_device_to_f32(buffer, elements: int, *, runtime: HipRuntime) -> np.ndarray:
+    bits = np.empty((elements,), dtype=np.uint16)
+    copy_device_to_host(host_array_ptr(bits), buffer, runtime=runtime)
+    return bf16_to_float32(bits)
+
+
+def _rmsnorm_host(x: np.ndarray, weight: np.ndarray, eps: float) -> np.ndarray:
+    x32 = np.asarray(x, dtype=np.float32)
+    mean_square = np.mean(x32 * x32, axis=-1, keepdims=True)
+    return x32 * (1.0 / np.sqrt(mean_square + np.float32(eps))) * weight.astype(np.float32)
+
+
+def _apply_rope_host(x: np.ndarray, position: int, rotary_dim: int, freq_base: float) -> np.ndarray:
+    out = np.array(x, dtype=np.float32, copy=True)
+    if rotary_dim <= 0:
+        return out
+    half = rotary_dim // 2
+    dims = np.arange(half, dtype=np.float32)
+    inv_freq = np.power(np.float32(freq_base), -dims / np.float32(half))
+    angles = np.float32(position) * inv_freq
+    cos = np.cos(angles).astype(np.float32)
+    sin = np.sin(angles).astype(np.float32)
+    first = out[..., :half].copy()
+    second = out[..., half:rotary_dim].copy()
+    out[..., :half] = first * cos - second * sin
+    out[..., half:rotary_dim] = second * cos + first * sin
+    return out
+
+
+def _sigmoid_host(x: np.ndarray) -> np.ndarray:
+    x32 = np.asarray(x, dtype=np.float32)
+    positive = x32 >= 0
+    out = np.empty_like(x32)
+    out[positive] = 1.0 / (1.0 + np.exp(-x32[positive]))
+    exp_x = np.exp(x32[~positive])
+    out[~positive] = exp_x / (1.0 + exp_x)
+    return out
 
 
 __all__ = [

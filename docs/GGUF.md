@@ -33,13 +33,12 @@ through the native GGUF bring-up generator. The bring-up path now also runs the
 tied Q6_K `token_embd.weight` lm-head GEMV to produce FP32 logits and a
 deterministic argmax token. The GGUF tokenizer/detokenizer now parses Qwen3.5
 byte-BPE metadata without torch or llama.cpp subprocesses on the hot path. The
-GGUF full-stack runner now executes all 24 mapped layers for a one-token decode
-state with native GGUF projections, residuals, dense FFN, and final RMSNorm,
-producing finite deterministic BF16 hidden states for the fixture prompt. The
-public generator now runs full-stack lm-head argmax repeatedly, detokenizes the
-generated IDs, and returns text through `LLM.generate()`. The hard gate reaches
-text/token comparison, but still fails oracle parity because the one-token decode
-state currently emits four spaces instead of the llama.cpp fixture completion.
+GGUF full-stack runner now executes all 24 mapped layers with native GGUF
+projections, linear-attention state carry-over, CPU-hosted small-context full
+attention, residuals, dense FFN, and final RMSNorm. The public generator runs
+full-stack lm-head argmax repeatedly, detokenizes the generated IDs, and returns
+text through `LLM.generate()`. The hard gate now passes the llama.cpp oracle
+fixture exactly for the target prompt.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
@@ -115,8 +114,9 @@ Definition of done for GGUF E2E:
 7. `WORKLOG.md` records the exact command output and any benchmark artifact only
    after correctness passes.
 
-Until that command passes, hipENGINE has GGUF parsing and kernel coverage but does
-**not** claim true GGUF `LLM.generate()` E2E support.
+As of 2026-05-16, this command passes for the fixed target fixture. Broader
+prompts, batched prefill, all-GPU full-attention prefill, and throughput claims
+remain future work.
 
 ## Why GGUF is attractive for hipENGINE
 

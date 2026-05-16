@@ -15768,3 +15768,33 @@ ctx=[760,4087,369,220,16,13] -> top1 11 ',' logit=13.6971 (expected token 271 '\
 ```
 
 Interpretation: the first generated token happens to match the oracle, but subsequent tokens fail because `Qwen35GGUFFullStackRunner.run_prompt_hidden()` still evaluates only the final token in a zeroed decode state. True parity requires prompt/state carry-over: linear-attention conv+GDN recurrent state per linear-attention layer and full-attention KV/RoPE history for full-attention layers. Task #31 stays open; do not mark true GGUF `LLM.generate()` E2E complete until that stateful prompt path matches the llama.cpp fixture.
+
+## 2026-05-16 GGUF E2E oracle parity fix
+
+Fixed the task #31 parity blocker. The public GGUF generator now matches the llama.cpp oracle fixture exactly.
+
+Root causes found during debug:
+
+1. `Qwen35GGUFFullStackRunner.run_prompt_hidden()` evaluated only the final token with zeroed decode state. It now processes context tokens sequentially, zeroing state once per prompt evaluation and carrying linear-attention convolution/GDN recurrent state per linear-attention layer.
+2. Full-attention layers used a c=1 shortcut. The runner now keeps small per-layer K/V histories on host for the prompt context, applies Q/K RMSNorm + RoPE, computes causal GQA attention for the current token, applies the Qwen gate, then returns to native GGUF `attn_output` projection. This is a small-context CPU attention bridge for correctness bring-up, not the final all-GPU prefill path.
+3. Q/K head-norm weights need the same `(1 + weight)` interpretation as the preserved Qwen3.5 head-RMSNorm rotary kernel lineage; using the raw GGUF scale left token 198 (`'\n'`) slightly above token 271 (`'\n\n'`) after `" 1."`. With `(1 + weight)`, the fixture selects token 271.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_gguf_ops.py tests/test_qwen35_gguf_runner.py \
+  tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_tokenizer.py \
+  tests/test_gguf_e2e_acceptance.py tests/test_llm_generate.py \
+  tests/test_model_quant_and_imports.py -q
+# 21 passed
+python3 scripts/qwen35_gguf_e2e_correctness.py >/tmp/gguf_e2e_pass_final.json
+# passed=True
+# outputs=[' 1.\n\n', ' 1.\n\n']
+# generated_token_ids=[220, 16, 13, 271]
+# deterministic=True
+# expected_text_match=True
+# expected_token_ids_match=True
+# torch_loaded_by_generate=False
+```
+
+Scope caveat: this is true `hipengine.LLM.generate()` E2E correctness for the fixed Qwen3.5-0.8B-Q4_K_M GGUF fixture. The full-attention context path currently uses a CPU-hosted small-context attention bridge after native GGUF projections; task #32 should record profiler evidence for the native kernels that still execute, and future work should replace the bridge with all-GPU prefill/KV history.
