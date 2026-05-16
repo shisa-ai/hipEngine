@@ -11239,3 +11239,44 @@ total, while `w8a16_shared_down_combine_residual_fp16_kernel` ran 40 times for
 `18.768 ms` total / `469.2 us` avg versus the prior retained bucket orientation
 around `19.5 ms`. Decision: keep. Updated the benchmark diagnostic artifact,
 rollup, changelog, and kernel catalog.
+
+## 2026-05-16 — Prefill multiloop iter 49: rejected fused-W4 launch_bounds 32x16
+
+Tried the parent/hipfire-inspired RDNA3 occupancy lever on the fused W4->WMMA
+prefill projection bucket. The hot `awq_fusedw4_prefill_fp16_kernel<32,32,*>()`
+reported `VGPR=120` with `__launch_bounds__(32, 8)`, so the trial raised only
+that kernel to `__launch_bounds__(32, 16)` to see whether stronger residency
+pressure improved the ~37 ms fused-W4 bucket without changing math, ABI, tile
+shape, or call sites.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv
+lib = build_paro_awq_gemv(load=True, require_cached=False)
+for name in ['hipengine_awq_fusedw4_prefill_fp16', 'hipengine_awq_fusedw4_prefill_strided_fp16']:
+    getattr(lib, name)
+print('awq fusedw4 symbols loaded')
+PY
+python3 -m pytest tests/test_paro_awq_gemv_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter49-fusedw4-lb32x16-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter49-fusedw4-lb32x16-trace.json
+```
+
+Results: targeted tests passed (`37 passed`) and pack8 smoke stayed bit-exact
+(`single_mismatch=0/0`, `dual_mismatch=0/0`, FP16 mismatches `0/0`). Fixture
+gate passed (`max_kl=0.03406`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2753s`) and 4K/128 was
+still above guard at `652.284 tok/s`. However 512/128 regressed badly:
+`1872.188`, `1853.464`, and `1829.515` tok/s (median `1853.464`), -9.1% versus
+retained `2039.177`. Profiler explained the regression: forcing `(32,16)`
+lowered fused-W4 VGPR to `96` but introduced scratch (`20 B`) in the transposed
+kernel and made the strided `<32,32,false>` bucket explode to `37.590 ms` versus
+retained `14.616 ms`; the transposed bucket also worsened to `28.006 ms` versus
+`22.999 ms`. Decision: reject/revert; keep `__launch_bounds__(32, 8)` for fused
+W4 prefill and do not revisit a stricter occupancy bound without a parent-side
+kernel rewrite that avoids spills.
