@@ -11459,3 +11459,47 @@ the representative run. Because the active loop still accepts/rejects on 512/128
 the trial code was reverted despite the 4K evidence. This should be the first
 candidate to restore if/when the loop is re-scoped with 4K/128 as the primary
 metric.
+
+## 2026-05-16 — Prefill multiloop iter 55: rejected shared-down tile16
+
+After three attention-focused failures under the still-512-primary loop, returned
+to a 512-visible bucket with the same structural idea as iter 50. The retained
+W8A16 shared down+combine tile8 kernel still cost `16.047 ms` across 40 launches
+at 512 and `~125 ms` at 4K. Changed the fused FP16 shared down+combine tile from
+8 to 16 hidden rows per block using a `ROW_TILE` constexpr, halving the
+hidden-row grid again while preserving the precomputed shared gate, grouped-MoE
+ABI, and exact per-row FP32 accumulation order. This doubles partial LDS from
+`2048 -> 4096 B` at 64 threads and increases accumulator pressure, so profiler
+checks were required.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
+lib = build_w8a16_linear(load=True, require_cached=False)
+getattr(lib, 'hipengine_w8a16_shared_down_combine_residual_fp16')
+print('w8a16 shared down symbol loaded')
+PY
+python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 -m pytest tests/test_w8a16_linear_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter55-tile16-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter55-tile16-trace.json
+```
+
+Results: W8A16 smoke stayed green (`bf16_f32_max_abs=0.0`, `f32_f32_max_abs=4.77e-07`,
+`lowp_mismatch=0`, `fp16_lowp_mismatch=0`) and targeted tests passed
+(`37 passed`). 512/128 samples were `2089.537`, `2072.115`, `2059.141`,
+`2074.663`, and `2052.684` tok/s (median `2072.115`), +0.50% over retained
+`2061.730` but smaller than run-to-run variance (`MAD=12.974`). Fixture gate
+passed unchanged (`max_kl=0.03406`, top-1 `1.0`, `native_owned_device_bytes=1625645909`).
+4K/128 remained above guard at `660.088 tok/s` (`prefill_seconds=6.2052`, decode
+`102.411 tok/s`). Profiler evidence: `w8a16_shared_down_combine_residual_fp16_kernel`
+ran 40 times with `14.742 ms` total / `368.6 us` average, down from tile8
+`16.047 ms` / `401.2 us`; grid_x halved `16384 -> 8192`, LDS doubled
+`2048 -> 4096 B`, VGPR rose `32 -> 40`, scratch stayed `0`. Decision: reject/revert
+because the active loop judged the median gain insufficient relative to variance;
+retain tile8 and do not revisit tile16 unless a broader 4K/attention re-scope
+needs the local shared-down improvement.
