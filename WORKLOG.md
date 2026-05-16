@@ -13278,3 +13278,69 @@ grep -E "^### " docs/OPTIMIZE.md
 No code, kernel, or benchmark changes in this commit; the doc rewrite is the logical unit.
 Unrelated untracked `hipengine/util/__init__.py` is owned by another agent per AGENTS.md
 coordination rules and is left alone.
+
+## 2026-05-17 — Tool: llama.cpp peak VRAM via amdgpu sysfs sampler
+
+The `qwen35_compare_tables` rows for `llama.cpp-hip` and `llama.cpp-vulkan` currently carry
+`peak_gib = null` because `llama-bench` does not log peak GPU memory anywhere — its `-o json`
+emits only tok/s. The user requested an external watcher we can configure in milliseconds and
+run in `-r 1` sweep mode where token-rate perturbation is acceptable.
+
+Chosen mechanism: poll `/sys/class/drm/card*/device/mem_info_vram_used` from a background
+thread. Reads take a few microseconds, the amdgpu kernel driver byte-accurately accounts for
+VRAM committed by **any** userspace backend (HIP, Vulkan, OpenCL), so the same code captures
+both llama.cpp HIP and llama.cpp Vulkan on a single scale. No HIP context, no `hipMemGetInfo`,
+no `rocm-smi` subprocess churn, and no llama.cpp patch.
+
+Added:
+
+- `hipengine/util/__init__.py` — package marker. (The pre-existing untracked stub from the
+  previous logical unit had no content referenced anywhere; the docstring now matches the
+  module-style we use elsewhere.)
+- `hipengine/util/amdgpu_vram.py` — `list_amdgpu_cards()`, `select_card()`, `read_vram_used()`,
+  `VramSampler` (context-manager, configurable `interval_ms`, optional full-trace capture),
+  `VramSamples` result struct. Standalone `python3 -m hipengine.util.amdgpu_vram --list /
+  --poll/--duration/--json` CLI for sanity checks.
+- `scripts/llamacpp_bench_with_peak.py` — wraps `llama-bench` per workload, splits each
+  `<prompt>/<gen>` token (e.g. `512/128 4K/128 32K/128 128K/128`) into two invocations using
+  the canonical PLAN-LONGCONTEXT split protocol (`-p P -n 0 -d 0` for prefill, `-p 0 -n N
+  -d P` for decode-at-offset). Polls VRAM during each invocation, parses llama-bench JSON for
+  tok/s, parses stderr `*_buffer size = X MiB` lines as a sanity cross-check, emits a
+  benchmarks/results-shaped JSON artifact, and prints a Markdown table. Defaults to `-r 1`,
+  `-fa 1`, `f16` KV, `-ngl 99`, `--poll 50` (ms). `--backend auto` detects HIP vs Vulkan from
+  the llama-bench stderr banner.
+
+Smoke validation (W7900, this host):
+
+```bash
+python3 -m py_compile hipengine/util/amdgpu_vram.py scripts/llamacpp_bench_with_peak.py
+python3 -m hipengine.util.amdgpu_vram --list
+# card1\tpci=0000:c3:00.0\ttotal=44.984 GiB
+
+python3 -m hipengine.util.amdgpu_vram --poll 5 --duration 1 --json
+# baseline_gib=0.026, peak_gib=0.026, samples_count=203, interval=5 ms (idle)
+
+python3 scripts/llamacpp_bench_with_peak.py \
+  --llama-bench /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
+  --model /models/gguf/llama-2-7b.Q4_0.gguf \
+  --workloads 512/32 --poll 10 --backend hip
+# row peak 4.331 GiB, prefill 3411 tok/s, decode 105 tok/s — sane for Llama-2-7B Q4_0.
+
+python3 scripts/llamacpp_bench_with_peak.py \
+  --llama-bench /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
+  --model /models/gguf/llama-2-7b.Q4_0.gguf \
+  --workloads 512/32 --poll 10 --backend vulkan
+# row peak 4.106 GiB, prefill 884 tok/s, decode 130 tok/s — sane for Llama-2-7B Q4_0 Vulkan.
+
+python3 scripts/llamacpp_bench_with_peak.py \
+  --llama-bench /home/lhl/amd-gpu-tuning/llama.cpp/build/bin/llama-bench \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --workloads 512/128 --poll 10 --backend hip
+# row peak 21.125 GiB, prefill 2388 tok/s, decode 88 tok/s — matches PLAN-LONGCONTEXT split
+# rows (2436.049 / 85.487) within run variance and confirms the peak measurement works on
+# the Qwen3.6 GGUF llama.cpp was built against.
+```
+
+Next step (separate logical unit): run the full 4-workload sweep on both backends with
+`--poll 10`, retain the artifacts under `benchmarks/results/`, and wire the result into
+`scripts/qwen35_compare_tables.py` so the `Memory / peak GiB` table fills its blanks.
