@@ -593,19 +593,60 @@ Key observations:
 
 ### Why our kernel mis-scales
 
-The `<false>` branch of
-`qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel` is not a flash-attention
-descendant. It computes the full T×T attention score tile in scratch (or
-through repeated HBM reloads of K/V across the Q sweep), then softmax-reduces
-over the K dimension. The reason it isn't catastrophic at 512 — the `<true>`
-branch with split-K masks the scaling — is precisely the reason we did not
-catch it earlier: the metric the multiloop optimizes is 512/128, and the 4K
-guard is satisfied as long as the run does not OOM.
+Direct read of
+`hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip:1039–1193`
+(`qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel`) shows four
+structural problems, all visible in the source:
 
-A Flash-Attention-style fix is not a tuning change; it is an algorithmic
-rewrite: tile Q in registers, stream K/V chunks through LDS, maintain online
-softmax running statistics across the K loop, and apply causal masking inline.
-That is several thousand lines of HIP plus a few iterations of LDS bank-layout
+1. **LDS scratch scales with `max_context_len`.** Line 1083:
+   `extern __shared__ float shared[]; float* scores = shared; float* partial =
+   scores + max_context_len; float* q_shared = partial + blockDim.x;`. The
+   `scores` buffer is `max_context_len * 4 B` per block: 2 KiB at T=512,
+   16 KiB at T=4K, ~128 KiB at T=32K. RDNA3 ships ~64 KiB LDS per CU, so block
+   residency drops from ≥8 blocks/CU at 512 to ≤3 blocks/CU at 4K to
+   single-block-per-CU at 32K. Occupancy collapse compounds the T² cost.
+2. **The V@scores epilogue is a fully serial T-deep inner loop, per output
+   dim.** Line 1170:
+   `for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+   float acc = 0.0f; for (int64_t token = 0; token < visible_len; ++token)
+   { ... acc += scores[token] * value_cache[v_offset]; } }`. Each thread
+   walks the full T axis sequentially, fetching every V row from HBM with no
+   LDS staging. At T=4K that is 4096 serial multiply-accumulates per
+   `(thread, output_dim)` pair, with one HBM load each.
+3. **GQA KV sharing is missing.** Line 1084: `kv_head = q_head / kv_group`,
+   computed independently per block. With 16 Q-heads and 2 KV-heads, each of
+   the 8 Q-heads in a KV group has its own block that re-streams the same
+   K/V cache through HBM. That is 8× redundant K/V bandwidth.
+4. **The `<true>` / `<false>` template flip is a red herring.** It toggles
+   `SHORT_BLOCK256` for short-context block-table inlining (line 1090–1097);
+   it does not change the inner attention algorithm. Both branches share the
+   serial V-loop above. T=512 looks acceptable only because all three issues
+   are small at that length.
+
+Observed 512→4K scaling is 178× for 8× length. A correctly-tiled Flash-Attention
+implementation is O(T²) in compute but stays bandwidth-bound and runs in
+≈64× the T=512 cost; the extra ≈3× is exactly issues (1) + (2) + (3)
+compounding. The `<false>` branch is not a one-off bug; the entire kernel
+family is pre-Flash-Attention.
+
+**The kernel does carry one piece of fused logic we have to preserve.** Lines
+1191, 1350, 1410:
+`out[...] = static_cast<half_t>(acc * sigmoid_f32(gate_v))`. The attention
+epilogue multiplies the per-`(row, q_head, dim)` output by
+`sigmoid(gate[row, q_head, dim])`, where `gate` is a separate FP16 tensor
+produced by the upstream QKV projection split. AOTriton's `attn_fwd*` API
+has no gate input; any AOTriton-based replacement must add a trivial
+elementwise post-pass kernel (`out *= sigmoid(gate)`) immediately after the
+attention call to maintain model semantics. At T=4K, head_dim=128,
+num_q_heads=16 the post-pass is one HBM-bandwidth-bound pass over
+≈ 4096 × 16 × 128 = 8.4 M FP16 elements per layer — expected cost ≤ 0.2 ms
+per layer, well inside noise.
+
+A Flash-Attention-style fix to the existing kernel is not a tuning change; it
+is an algorithmic rewrite: tile Q in registers, stream K/V chunks through LDS,
+maintain online softmax running statistics across the K loop, share K/V
+fetches across the GQA group, and apply causal masking inline. That is
+several thousand lines of HIP plus several iterations of LDS bank-layout
 tuning. We are not going to get there inside the existing multiloop budget by
 turning knobs on the current kernel.
 
@@ -634,14 +675,22 @@ AOTriton specifics worth recording so a future agent does not re-derive them:
 - The tensor type is `AOTRITON_NS::TensorView<N>` — a `(void* ptr, shape[N],
   stride[N], dtype)` descriptor. There is no `torch::Tensor` anywhere in the
   AOTriton public headers (`include/aotriton/{flash,runtime,util,dtypes,cpp_tune}.h`).
-- Disk footprint on gfx110x: `libaotriton_v2.so.0.8.0` = 29 MB,
-  `aotriton.images/amd-gfx110x/flash/` = 99 MB across the full {bf16, fp16,
-  fp32} × head_dim {16, 32, 64, 128, 256} × {causal, dropout, bias,
-  persistent} matrix. Pruning to the variants we actually call
-  (bf16/fp16 × head_dim 128 × causal=true × dropout=false × no-bias) reduces
-  the `attn_fwd/` directory to roughly 30 MB.
+- Disk footprint on gfx110x, verified on this host
+  (`du -sh ~/Downloads/aotriton/aotriton/lib/aotriton.images/amd-gfx110x/flash/*`):
+    - `libaotriton_v2.so.0.8.0` = 28 MB.
+    - `flash/attn_fwd/` = 49 MB across 480 forward variants.
+    - `flash/bwd_kernel_dk_dv/` = 26 MB, `flash/bwd_kernel_dq/` = 24 MB,
+      backward-preprocess + debug ≈ 0.4 MB. We are inference-only; drop all
+      `bwd_*` and `debug_*` subdirs.
+    - Inference-only ship (`.so` + `attn_fwd/` full): **76 MB**.
+    - Aggressive prune to the variants we actually call
+      (bf16/fp16 × head_dim 128 × causal=true × dropout=false × no-bias):
+      32 `.aks2` binaries totalling ≈ 3 MB images + 28 MB `.so` = **31 MB**.
+      `ls FONLY__^{bf16,fp16}@16,False,128,*.aks2 | wc -l` confirmed 32.
 - The 480 pretuned variants do per-shape kernel selection at call time; this
-  is the value we would lose by hand-rolling.
+  is the value we would lose by hand-rolling. The aggressive prune is safe
+  because hipengine's attention shape set is fixed at model-load time and
+  small (one head_dim, causal-only).
 
 ### Why "surely native HIP beats Triton" is not a fast path
 
@@ -675,6 +724,14 @@ AOTriton as the perf oracle is what makes a later native port tractable.
 - Threshold via `PrefillConfig.attn_aotriton_min_tokens` (default 1024,
   re-measured); decode and short prefill continue on the existing hand-rolled
   kernel where it is fine.
+- Add a tiny **gate-fusion post-pass kernel** in the same module:
+  `out[row, q_head, dim] *= sigmoid(gate[row, q_head, dim])` over the
+  AOTriton output. The existing prefill kernel fuses this inside its
+  epilogue (`paged_attn_decode.hip:1191`) and we must preserve the
+  semantics. Single elementwise pass; ≤ 0.2 ms at T=4K, head_dim=128,
+  num_q_heads=16. Reuse the existing decode-side gate kernel pattern at
+  `paged_attn_decode.hip:316,329` for the math; only the launch shape
+  changes.
 - Do not vendor the AOTriton binary into the hipengine git tree. Use the
   fetch-on-install + pinned-manifest scheme described in "AOTriton distribution
   and pinning strategy" below; resolve `libaotriton_v2.so` and the kernel
@@ -726,8 +783,13 @@ churn.
   takes hours on first run. Our CI does not need that surface, and AGENTS.md's
   git rules forbid committing compiled `.so` / JIT caches anyway.
 - **Do not vendor the release tarball or extracted binaries into the
-  hipengine repo.** Pruned gfx110x is ≈30 MB; that bloats every clone and
-  every CI checkout, and bumping a pin would mean a 30 MB diff.
+  hipengine repo.** AGENTS.md git rules forbid committing compiled `.so` and
+  prebuilt kernel images. Binary blobs in-tree also make pin bumps unreviewable
+  (a routine version bump becomes a multi-MB binary diff that no one can read
+  in PR), and they couple repo state to a specific ROCm-minor build target.
+  Footprint itself is not the issue — 76 MB inference-only or 31 MB pruned is
+  a rounding error next to model weights — but committing binaries breaks the
+  review and provenance contract.
 - **Do not depend on PyTorch's bundled AOTriton.** The PyTorch installs we
   found here ship under `torch/lib/libaotriton_v2.so{,.torch,.0.8.0}` with
   PyTorch-specific symlinks. Reading from a PyTorch install couples our
@@ -846,6 +908,35 @@ key, the runtime call site, and the Python ABI stay unchanged.
 - The single C-API entry we need (`attn_fwd_compact_varlen`) was introduced in
   AOTriton 0.7.x and remains in 0.8.x. We are not chasing a moving target on
   the surface area we actually consume, only on the surrounding ecosystem.
+- Side note: `pytorch/pytorch#166397` (Nov 2025) marked gfx1100 as
+  "experimental" in PyTorch's SDPA backend matrix. That is a PyTorch QA
+  policy decision about which backends ship as production-grade defaults,
+  *not* a statement about AOTriton kernel correctness on gfx1100; AOTriton's
+  own gfx110x images continue to be released and tested. hipengine calls
+  AOTriton directly via its C++ ABI and is unaffected by the PyTorch
+  dispatch policy.
+
+#### Production decision (2026-05-16)
+
+Production target is the fetch-on-install + pinned-manifest scheme above
+("What to do"). The in-flight Phase 1 spike may use any pattern that lands
+working AOTriton-backed attention quickly — including a temporary submodule
+or system-library probe — but the cleanup pass must converge on:
+
+- A pinned `aotriton_release.toml` manifest in-tree.
+- `scripts/fetch_aotriton.sh` (+ `hipengine.aotriton.ensure_installed()`) as
+  the install path.
+- Lookup chain at module load with graceful fallback to the existing
+  hand-rolled kernel when AOTriton is absent (so `pip install hipengine`
+  alone produces a usable, correct, slower-at-long-T install).
+- A stable-ABI C++ wrapper (`aotriton_wrap.cc`) that hipengine owns; no
+  raw-`ctypes`-against-mangled-C++-symbols dlopen on the hot path.
+- No git submodule retained, no AOTriton binary tracked in git.
+
+If the spike commits a submodule or vendored binary, that lands behind
+`?? .gitmodules` / `?? third_party/aotriton` etc. only as a transient state;
+the follow-up cleanup PR removes them and replaces with the manifest +
+fetcher.
 
 ### Explicit non-goals for the next spike
 

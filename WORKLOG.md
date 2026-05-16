@@ -11637,3 +11637,124 @@ Multiloop `prefill-perf/run-20260515-154601` is paused/detached pending the
 Phase 1 AOTriton spike. No measurements changed; this commit is docs-only.
 
 Files: `docs/PREFILL.md`, `WORKLOG.md`.
+
+## 2026-05-16 — Prefill multiloop iter 57: AOTriton submodule scaffold
+
+User flagged that the local `~/Downloads/aotriton` 0.8 dump may be stale and
+recommended a recent checkout as a submodule before wrapping attention. Added
+`third_party/aotriton` as a git submodule tracking ROCm/aotriton `main`, pinned
+at `5dbebd9c3bb19de0d63167a02e4ba3a4b16daa64`. The nested AOTriton Triton
+submodule is not initialized yet (`third_party/aotriton/third_party/triton` is
+shown with a leading `-`); initialize recursively only when building AOTriton.
+
+Also added a torch-free discovery scaffold at
+`hipengine/kernels/hip_gfx1100/attention/aotriton.py`. It resolves current
+source headers from `HIPENGINE_AOTRITON_SOURCE_ROOT` or the pinned submodule,
+and separately resolves a built runtime from `HIPENGINE_AOTRITON_RUNTIME_ROOT`
+or an in-place submodule build. It intentionally does **not** fall back to the
+older `~/Downloads` runtime, so the next wrapper does not accidentally use 0.8.
+The current upstream header is the v3 API (`include/aotriton/flash.h` includes
+`v2/flash.h` but exposes `aotriton::v3::flash::attn_fwd(params, ...)` with
+`attn_fwd_params`, `CausalType`, and `VarlenType`); the next wrapper should use
+that v3 params struct unless a built release forces v2 compatibility.
+
+Validation commands:
+
+```bash
+git submodule status --recursive
+python3 -m py_compile hipengine/kernels/hip_gfx1100/attention/aotriton.py
+python3 -m pytest tests/test_aotriton_discovery.py -q
+python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.aotriton import aotriton_source_tree
+p = aotriton_source_tree()
+print('aotriton_source_root', p.root)
+print('flash_header', p.flash_header)
+PY
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: discovery tests passed (`2 passed`) and resolved the source root to
+`/home/lhl/hipengine/third_party/aotriton` with header
+`third_party/aotriton/include/aotriton/flash.h`. The default hot path is
+unchanged: 512/128 exact verify was `2082.303 tok/s`; fixture gate passed
+unchanged (`max_kl=0.03406`, top-1 `1.0`, `native_owned_device_bytes=1625645909`);
+4K/128 stayed above guard at `661.233 tok/s` (`prefill_seconds=6.1945`, decode
+`102.172 tok/s`). This iteration is setup/log-only for the AOTriton attention
+plugin, not a retained performance optimization. Note: `docs/PREFILL.md` was
+already modified in the worktree by another actor when this setup landed; left
+that high-conflict file unstaged.
+
+## 2026-05-16 — docs/PREFILL.md: kernel-source verification + production decision
+
+Folded a peer-agent confirming analysis into the PREFILL.md AOTriton section
+after reading the existing kernel source directly to verify every claim.
+
+What I verified from `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip`:
+
+- Line 1083 — LDS `scores` buffer is `max_context_len * 4 B` per block.
+  2 KiB at T=512, 16 KiB at T=4K, ~128 KiB at T=32K. RDNA3 CU has ~64 KiB
+  LDS, so resident blocks/CU collapse from 8+ at 512 to ≤3 at 4K to
+  single-block-per-CU at 32K. Occupancy collapse compounds the T² cost.
+- Line 1170 — V@scores epilogue is a fully serial T-deep loop per output dim;
+  no LDS V staging, no GQA KV sharing. 4096 sequential FMAs + HBM loads per
+  (thread, dim) at T=4K.
+- Line 1084 — `kv_head = q_head / kv_group` computed per block; 16 Q-heads /
+  2 KV-heads = 8× redundant K/V re-streaming from HBM across the GQA group.
+- Lines 1191, 1350, 1410 — kernel epilogue is
+  `out[...] = static_cast<half_t>(acc * sigmoid_f32(gate_v))`. The attention
+  output is multiplied by `sigmoid(gate)` in-kernel; AOTriton has no gate
+  input so a Phase 1 AOTriton wrapper must add a trivial post-pass
+  `out *= sigmoid(gate)` elementwise kernel to preserve semantics. Expected
+  cost ≤ 0.2 ms at T=4K, head_dim=128, num_q_heads=16.
+- The `<true>` / `<false>` template flip toggles `SHORT_BLOCK256` for
+  short-context block-table inlining (line 1090–1097); both branches share
+  the same inner attention algorithm. The split-K story for `<true>` was
+  the wrong mental model; both branches are pre-Flash-Attention.
+
+What I verified on-disk for AOTriton 0.8 (recorded as reference, not as a
+decision lever):
+
+- `libaotriton_v2.so.0.8.0` = 28 MB.
+- `aotriton.images/amd-gfx110x/flash/attn_fwd/` = 49 MB across 480 forward
+  variants.
+- Backward + debug subdirs total ~50 MB (drop for inference).
+- Inference-only ship: 76 MB.
+- Aggressive prune to causal × {bf16,fp16} × head_dim 128 only: 32 binaries,
+  3 MB images + 28 MB .so = 31 MB. `ls FONLY__^{bf16,fp16}@16,False,128,*.aks2
+  | wc -l` confirmed 32.
+
+Edits to `docs/PREFILL.md`:
+
+- "Why our kernel mis-scales" — replaced the previous summary with a
+  source-line-referenced enumeration of the four structural issues
+  (LDS-scales-with-T, serial V loop, missing GQA KV sharing, `<true>/<false>`
+  is a red herring) and an explicit "preserve gate fusion" callout.
+- Phase 1 plan — added a gate-fusion post-pass kernel as an explicit substep
+  with the line references for the math source.
+- "Concrete version on this host" — replaced the earlier approximate footprint
+  numbers with the verified `du`/`ls` figures and added the inference-only
+  vs aggressive-prune breakdown.
+- "What not to do" — rewrote the "do not vendor binaries" bullet so it stands
+  on AGENTS.md git rules + binary-diff review friction; footprint is recorded
+  as fact, not as the argument.
+- Added a `pytorch/pytorch#166397` (Nov 2025) side note clarifying that
+  PyTorch marking gfx1100 SDPA "experimental" is a PyTorch QA policy and not
+  a kernel correctness statement; hipengine calls AOTriton directly and is
+  unaffected.
+- Added a "Production decision (2026-05-16)" subsection: the fetch-on-install
+  + pinned-manifest scheme is the production target; the in-flight spike may
+  use any pattern (submodule, vendored binary, etc.) but cleanup must
+  converge on the manifest + fetcher + stable-ABI wrapper, with graceful
+  fallback to the existing hand-rolled kernel when AOTriton is absent.
+
+Coordination context: a parallel spike has staged a git-submodule approach
+(`?? .gitmodules`, `?? third_party/aotriton`, `?? hipengine/kernels/hip_gfx1100/
+attention/aotriton.py`, `?? tests/test_aotriton_discovery.py`). Their working
+state is untouched; this commit unstages only what I did not create. The
+"Production decision" subsection makes the convergence target explicit for
+the eventual cleanup PR.
+
+Files: `docs/PREFILL.md`, `WORKLOG.md`. Docs-only; no code or measurement
+change.
