@@ -276,18 +276,27 @@ __global__ void w8a16_shared_down_combine_residual_fp16_kernel(
     int64_t intermediate_size,
     int64_t gate_stride) {
   extern __shared__ float partial[];
-  float* partials[4] = {partial, partial + blockDim.x, partial + 2 * blockDim.x, partial + 3 * blockDim.x};
-  const int64_t row_base = static_cast<int64_t>(blockIdx.x) * 4;
+  float* partials[8] = {
+      partial,
+      partial + blockDim.x,
+      partial + 2 * blockDim.x,
+      partial + 3 * blockDim.x,
+      partial + 4 * blockDim.x,
+      partial + 5 * blockDim.x,
+      partial + 6 * blockDim.x,
+      partial + 7 * blockDim.x,
+  };
+  const int64_t row_base = static_cast<int64_t>(blockIdx.x) * 8;
   const int64_t token = blockIdx.y;
   if (row_base >= hidden_size) {
     return;
   }
 
-  bool active[4];
-  int64_t down_rows[4];
-  float acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  bool active[8];
+  int64_t down_rows[8];
+  float acc[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 #pragma unroll
-  for (int slot = 0; slot < 4; ++slot) {
+  for (int slot = 0; slot < 8; ++slot) {
     const int64_t row = row_base + slot;
     active[slot] = row < hidden_size;
     down_rows[slot] = row * intermediate_size;
@@ -306,7 +315,7 @@ __global__ void w8a16_shared_down_combine_residual_fp16_kernel(
     const float m6 = static_cast<float>(shared_intermediate[m_off + 6]);
     const float m7 = static_cast<float>(shared_intermediate[m_off + 7]);
 #pragma unroll
-    for (int slot = 0; slot < 4; ++slot) {
+    for (int slot = 0; slot < 8; ++slot) {
       if (active[slot]) {
         const int64_t w_off = down_rows[slot] + j;
         acc[slot] += m0 * static_cast<float>(static_cast<int>(down_weight[w_off + 0]));
@@ -323,14 +332,14 @@ __global__ void w8a16_shared_down_combine_residual_fp16_kernel(
   for (int64_t j = (intermediate_size & ~7) + threadIdx.x; j < intermediate_size; j += blockDim.x) {
     const float mid = static_cast<float>(shared_intermediate[mid_offset + j]);
 #pragma unroll
-    for (int slot = 0; slot < 4; ++slot) {
+    for (int slot = 0; slot < 8; ++slot) {
       if (active[slot]) {
         acc[slot] += mid * static_cast<float>(static_cast<int>(down_weight[down_rows[slot] + j]));
       }
     }
   }
 #pragma unroll
-  for (int slot = 0; slot < 4; ++slot) {
+  for (int slot = 0; slot < 8; ++slot) {
     partials[slot][threadIdx.x] = acc[slot];
   }
   __syncthreads();
@@ -338,7 +347,7 @@ __global__ void w8a16_shared_down_combine_residual_fp16_kernel(
   for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
     if (threadIdx.x < stride) {
 #pragma unroll
-      for (int slot = 0; slot < 4; ++slot) {
+      for (int slot = 0; slot < 8; ++slot) {
         partials[slot][threadIdx.x] += partials[slot][threadIdx.x + stride];
       }
     }
@@ -349,7 +358,7 @@ __global__ void w8a16_shared_down_combine_residual_fp16_kernel(
     const float gate = shared_gate[token * gate_stride];
     const int64_t out_offset = token * hidden_size;
 #pragma unroll
-    for (int slot = 0; slot < 4; ++slot) {
+    for (int slot = 0; slot < 8; ++slot) {
       if (active[slot]) {
         const int64_t row = row_base + slot;
         const int64_t idx = out_offset + row;
@@ -569,9 +578,9 @@ extern "C" int hipengine_w8a16_shared_down_combine_residual_fp16(
   }
   hipLaunchKernelGGL(
       w8a16_shared_down_combine_residual_fp16_kernel,
-      dim3(static_cast<unsigned int>((hidden_size + 3) / 4), static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>((hidden_size + 7) / 8), static_cast<unsigned int>(tokens)),
       dim3(static_cast<unsigned int>(threads)),
-      static_cast<size_t>(4 * threads) * sizeof(float),
+      static_cast<size_t>(8 * threads) * sizeof(float),
       stream,
       shared_intermediate,
       down_weight,

@@ -11280,3 +11280,45 @@ retained `14.616 ms`; the transposed bucket also worsened to `28.006 ms` versus
 `22.999 ms`. Decision: reject/revert; keep `__launch_bounds__(32, 8)` for fused
 W4 prefill and do not revisit a stricter occupancy bound without a parent-side
 kernel rewrite that avoids spills.
+
+## 2026-05-16 — Prefill multiloop iter 50: retained shared-down tile8
+
+Retuned the grouped FP16 W8A16 shared down+combine kernel after the retained
+shared-gate sigmoid precompute. The kernel still spent ~18.8 ms per 512 prefill
+trace computing four hidden output rows per block. Changed only the fused shared
+down+combine tile from 4 to 8 hidden rows per block, doubling the per-block
+partials/LDS (`1024 -> 2048 B` at 64 threads) but halving the hidden-row grid
+and reusing each `shared_intermediate` load across eight output rows. The
+precomputed shared gate and per-row FP32 accumulation order are unchanged.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
+lib = build_w8a16_linear(load=True, require_cached=False)
+for name in ['hipengine_w8a16_shared_gate_sigmoid_fp32', 'hipengine_w8a16_shared_down_combine_residual_fp16']:
+    getattr(lib, name)
+print('w8a16 shared symbols loaded')
+PY
+python3 -m pytest tests/test_w8a16_linear_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter50-shared-down-tile8-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter50-shared-down-tile8-trace.json
+```
+
+Results: targeted tests passed (`37 passed`) and W8A16 smoke stayed green
+(`bf16_f32_max_abs=0.0`, `f32_f32_max_abs=4.77e-07`, `lowp_mismatch=0`,
+`fp16_lowp_mismatch=0`). 512/128 samples were `2063.545`, `2077.639`,
+`2061.730`, `2055.635`, and `2048.585` tok/s (median `2061.730`), +1.1% over
+retained `2039.177`. Fixture gate passed (`max_kl=0.03406`, top-1 agreement
+`1.0`, `native_owned_device_bytes=1625645909`, native prefill `0.2511s`).
+4K/128 remained runnable and slightly improved to `659.356 tok/s`
+(`prefill_seconds=6.2121`, decode `102.647 tok/s`), above the 95% guard.
+Profiler evidence: `w8a16_shared_down_combine_residual_fp16_kernel` ran 40 times
+with `16.047 ms` total / `401.2 us` avg, down from the retained tile4 trace's
+`18.768 ms` total / `469.2 us`; grid_x halved `32768 -> 16384`, LDS doubled
+`1024 -> 2048 B`, VGPR stayed `32`, scratch stayed `0`. Decision: keep. Updated
+benchmark artifact/rollup and `docs/KERNELS.md`.

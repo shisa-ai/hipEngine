@@ -10,34 +10,32 @@
   "path": "native_prefill_c1_multiloop",
   "max_layers": 40,
   "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
-  "change": "Precompute each token's shared-expert sigmoid gate once in the W8A16 library and let fused shared down+residual combine consume the cached FP32 gate instead of recomputing expf for every hidden-row tile.",
-  "source_lineage": "hipENGINE local optimization of the ported nano-vllm-amd@59195ed W8A16 shared-expert path; preserves grouped-MoE ABI, reuses the existing router shared-gate column in place, and adds no persistent scratch allocation.",
+  "change": "Expand the grouped-prefill FP16 W8A16 shared down+residual combine tile from four to eight hidden rows per block, reusing shared_intermediate loads across more output rows while keeping the precomputed shared gate and exact per-row accumulation order.",
+  "source_lineage": "hipENGINE local optimization of the ported nano-vllm-amd@59195ed W8A16 shared-expert path; preserves grouped-MoE ABI and shared-gate precompute, changing only the active shared-down/combine tile width.",
   "workloads": {
     "512_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json",
       "prefill_tok_s_samples": [
-        2061.287688578985,
-        2040.5976417195154,
-        2037.803157697264,
-        2042.0098527967066,
-        2038.1492171727284,
-        2039.176914251775,
-        2025.89396352077
+        2063.5446895256387,
+        2077.6389394957528,
+        2061.7299993847314,
+        2055.6351801662777,
+        2048.584912411424
       ],
-      "prefill_tok_s_median": 2039.176914251775,
-      "previous_retained_prefill_tok_s": 2031.7833401450707,
-      "delta_percent": 0.36389579344500156,
-      "representative_prefill_seconds": 0.25108169694431126,
-      "representative_decode_tok_s": 101.71489459624055
+      "prefill_tok_s_median": 2061.7299993847314,
+      "previous_retained_prefill_tok_s": 2039.176914251775,
+      "delta_percent": 1.1059896262719082,
+      "representative_prefill_seconds": 0.24833513610064983,
+      "representative_decode_tok_s": 101.49640318237809
     },
     "4096_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json",
-      "prefill_tok_s": 656.6303801871952,
-      "previous_retained_prefill_tok_s": 656.9500176103202,
-      "delta_percent": -0.048654755241139824,
-      "prefill_seconds": 6.237908149836585,
-      "decode_tok_s": 101.85853729377834,
-      "guard_floor_prefill_tok_s": 624.1025167298042,
+      "prefill_tok_s": 659.3555736730632,
+      "previous_retained_prefill_tok_s": 656.6303801871952,
+      "delta_percent": 0.4150270179535509,
+      "prefill_seconds": 6.212126147933304,
+      "decode_tok_s": 102.64691714412098,
+      "guard_floor_prefill_tok_s": 623.7988611778354,
       "guard_passed": true
     }
   },
@@ -51,7 +49,7 @@
     "max_kl": 0.034058458922996276,
     "top1_agreement": 1.0,
     "native_owned_device_bytes": 1625645909,
-    "native_prefill_seconds": 0.25186545797623694
+    "native_prefill_seconds": 0.251054922118783
   },
   "additional_gates": [
     {
@@ -59,8 +57,9 @@
       "passed": true
     },
     {
-      "command": "python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/w8a16_linear.py hipengine/runtime/qwen35_paro.py",
-      "passed": true
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY' ... build_w8a16_linear(load=True, require_cached=False) ... PY",
+      "passed": true,
+      "evidence": "hipengine_w8a16_shared_gate_sigmoid_fp32 and hipengine_w8a16_shared_down_combine_residual_fp16 symbols loaded"
     },
     {
       "command": "python3 -m pytest tests/test_w8a16_linear_plan.py tests/test_qwen35_decode_state.py -q",
@@ -68,20 +67,15 @@
       "evidence": "37 passed"
     },
     {
-      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY' ... build_w8a16_linear(load=True, require_cached=False) ... PY",
-      "passed": true,
-      "evidence": "hipengine_w8a16_shared_gate_up_silu_fp16, hipengine_w8a16_shared_gate_sigmoid_fp32, and hipengine_w8a16_shared_down_combine_residual_fp16 symbols loaded"
-    },
-    {
       "command": "python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
       "passed": true,
       "evidence": "bf16_f32_max_abs=0.0, f32_f32_max_abs=4.77e-07, lowp_mismatch=0, fp16_lowp_mismatch=0"
     },
     {
-      "command": "rocprofv3 --kernel-trace -d /tmp/iter48-shared-gate-sigmoid-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter48-shared-gate-sigmoid-trace.json",
+      "command": "rocprofv3 --kernel-trace -d /tmp/iter50-shared-down-tile8-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter50-shared-down-tile8-trace.json",
       "passed": true,
-      "evidence": "shared_gate_sigmoid_fp32_kernel ran 40 times for 0.091 ms total; shared down-combine total was 18.768 ms vs prior retained 19.526 ms in the same bucket orientation."
+      "evidence": "w8a16_shared_down_combine_residual_fp16_kernel ran 40 times for 16.047 ms total / 401.2 us avg with grid_x=16384 and LDS=2048, versus prior retained 18.768 ms / 469.2 us with grid_x=32768 and LDS=1024."
     }
   ],
-  "worklog": "2026-05-16 \u2014 Prefill multiloop iter 48: precomputed shared gate sigmoid"
+  "worklog": "2026-05-16 \u2014 Prefill multiloop iter 50: tile8 shared down combine"
 }
