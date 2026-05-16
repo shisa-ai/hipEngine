@@ -11816,3 +11816,78 @@ python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16
 ```
 
 Result: `54 passed`; registry and PARO pack8 smoke stayed green (`max_abs=0.0`, all mismatch counters `0/0`). No GPU Marlin-K performance claim yet: this is host layout plumbing only, preparing for the raw-pointer kernel port described in `docs/MARLIN.md`.
+
+## 2026-05-16 — Prefill multiloop iter 58: AOTriton stable C-ABI wrapper
+
+Implemented the next AOTriton vertical slice without changing the default
+prefill dispatch path. Added `hipengine/kernels/hip_gfx1100/attention/
+aotriton_wrap.cc` as a torch-free C++ shim around
+`aotriton::v2::flash::attn_fwd_compact_varlen(...)`, exposing two stable
+`extern "C"` symbols:
+
+- `hipengine_aotriton_check_gpu(void* stream)`
+- `hipengine_aotriton_attn_fwd_compact_varlen(...)`
+
+Added `aotriton_wrap.py` with ctypes tensor descriptors, dtype mapping,
+`plan_aotriton_wrap_build`, `build_aotriton_wrap`, and a registered but
+unselected plugin variant:
+`KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro", "aotriton_attn_fwd")`.
+The existing `qwen35_causal_gqa_gate_fp16`/varlen kernels remain the active
+runtime path; this iteration only provides the wrapper/oracle path for the next
+dispatch spike.
+
+Important build/load finding: compiling the shim with `hipcc` initially pulled
+`libamdhip64.so.7` into the wrapper while the 0.8.2b AOTriton library needs
+`libamdhip64.so.6`, which caused mixed-ROCm load failures. The final link flags
+bracket only `-laotriton_v2` with `--no-as-needed` and restore `--as-needed`
+before hipcc's implicit runtime libraries. `readelf -d` now shows the wrapper
+NEEDED list contains only `libaotriton_v2.so.0.8.0` plus system C++ libs, not
+`libamdhip64.so.7`; the AOTriton runtime supplies the HIP dependency. For the
+local smoke I used an explicit ROCm 6.4 compat path in `LD_LIBRARY_PATH` because
+this host's `/opt/rocm/lib` has `libamdhip64.so.7` but no `libamdhip64.so.6`.
+
+Validation commands run so far:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/attention/aotriton.py hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.py
+python3 -m pytest tests/test_aotriton_discovery.py tests/test_qwen35_paged_attn_decode_plan.py -q
+HIPENGINE_AOTRITON_RUNTIME_ROOT=/home/lhl/Downloads/aotriton/aotriton HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
+artifact = build_aotriton_wrap(load=False)
+print(artifact.output_path)
+PY
+readelf -d /home/lhl/.cache/hipengine/build/aotriton_wrap-6fe002e375d8db33/hipengine_aotriton_wrap.so | grep -E 'NEEDED|RUNPATH'
+LD_LIBRARY_PATH=/home/lhl/framework-cluster/lhl/therock/rocm-6.4/lib:${LD_LIBRARY_PATH:-} HIPENGINE_AOTRITON_RUNTIME_ROOT=/home/lhl/Downloads/aotriton/aotriton HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+# allocates a 1x1x1x16 fp32 compact-varlen attention problem and checks output
+# equals V for the single causal row
+PY
+```
+
+Results: unit tests passed (`9 passed`); wrapper build artifact was
+`/home/lhl/.cache/hipengine/build/aotriton_wrap-6fe002e375d8db33/
+hipengine_aotriton_wrap.so`; `readelf` showed RUNPATH to the explicit AOTriton
+lib directory and NEEDED `libaotriton_v2.so.0.8.0`; the GPU smoke returned
+`aotriton_wrap_smoke_out8=[0,1,2,3,4,5,6,7]`. The smoke also confirmed that
+AOTriton compact-varlen wants `cu_seqlens` as `int32` in practice, matching our
+current `CompactPromptSlab` tensors, despite the 0.8 header comment saying
+`i64`.
+
+Next step after loop verification: add the runtime dispatch adapter that lays
+out Q/K/V/out descriptors for real Qwen3.5 full-attention prefill, allocates
+softmax_lse, calls this wrapper for T >= 1024, then applies the existing gate
+post-pass semantics.
+
+Loop verify/guard after the wrapper change:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: 512/128 exact verify `2100.627 tok/s`; fixture gate passed unchanged
+(`max_kl=0.0340584589`, top-1 `1.0`, `native_owned_device_bytes=1625645909`);
+4K/128 guard remained runnable at `661.341 tok/s` (`prefill_seconds=6.19347`,
+decode `102.103 tok/s`). Default hot path remains the hand-rolled prefill
+kernel; the AOTriton wrapper is registered only under the explicit
+`aotriton_attn_fwd` variant.

@@ -20,6 +20,12 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_split_k_warp_bf16_spans,
     register_qwen35_paged_attn_decode_kernels,
 )
+from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
+    aotriton_attn_fwd_compact_varlen,
+    build_aotriton_wrap,
+    plan_aotriton_wrap_build,
+    register_aotriton_wrap_kernels,
+)
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     build_qwen35_paged_kv_write,
     plan_qwen35_paged_kv_write_build,
@@ -34,7 +40,10 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
 
 __all__ = [
     "build_qwen35_paged_attn_decode",
+    "aotriton_attn_fwd_compact_varlen",
+    "build_aotriton_wrap",
     "build_qwen35_paged_kv_write",
+    "plan_aotriton_wrap_build",
     "plan_qwen35_paged_attn_decode_build",
     "plan_qwen35_paged_kv_write_build",
     "qwen35_full_attn_decode_context_bf16",
@@ -58,6 +67,7 @@ __all__ = [
     "qwen35_write_paged_kv_mixed_value_fp16_batch_spans",
     "qwen35_write_paged_kv_mixed_value_fp16_prompt_spans",
     "qwen35_write_paged_kv_mixed_value_fp16_spans",
+    "register_aotriton_wrap_kernels",
     "register_qwen35_paged_attn_decode_kernels",
     "register_qwen35_paged_kv_write_kernels",
 ]
