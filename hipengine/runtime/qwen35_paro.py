@@ -14,6 +14,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_fp16,
     qwen35_paged_full_attn_decode_context_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gate_fp16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
@@ -197,6 +198,25 @@ class Qwen35ParoMoeScratch:
     shared_intermediate: Tensor
     shared_down_input: Tensor
     shared_out: Tensor
+    moe_out: Tensor
+
+
+@dataclass(frozen=True)
+class Qwen35ParoDenseMlpScratch:
+    """Scratch for dense Qwen3.5 PARO MLP gate/up/down projections."""
+
+    normed: Tensor
+    residual: Tensor
+    shared_gate_input: Tensor
+    shared_up_input: Tensor
+    shared_gate_out: Tensor
+    shared_up_out: Tensor
+    shared_up: Tensor
+    shared_intermediate: Tensor
+    shared_down_input: Tensor
+    shared_out: Tensor
+    shared_zero: Tensor
+    gate_logits: Tensor
     moe_out: Tensor
 
 
@@ -2208,7 +2228,17 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         gate_tensor = scratch.gate if gate is None else gate
-        qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans(
+        split_kernel = (
+            qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans
+            if (
+                block_size == 256
+                and self.config.num_attention_heads == 16
+                and self.config.num_key_value_heads == 2
+                and self.config.head_dim == 256
+            )
+            else qwen35_paged_full_attn_decode_split_k_gate_fp16_spans
+        )
+        split_kernel(
             scratch.query.ptr,
             key_cache.ptr,
             value_cache.ptr,
@@ -2338,7 +2368,7 @@ class Qwen35ParoDecodeState:
         position: Tensor,
         max_positions: int,
         attention_scratch: Qwen35ParoAttentionScratch | None = None,
-        moe_scratch: Qwen35ParoMoeScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
         tokens: int = 1,
         group_size: int = 128,
         block_size: int = 256,
@@ -2355,7 +2385,12 @@ class Qwen35ParoDecodeState:
             activation_dtype=DType.FP16,
             gated_dtype=DType.FP16,
         )
-        moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
+        if dense_mlp:
+            if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
+                moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        else:
+            moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         self.input_rmsnorm_fp16(hidden, attention_scratch.attn_input, tokens=tokens, library=library, stream=stream)
         self.rotate_full_attention_inputs_fp16(
             attention_scratch.attn_input,
@@ -2431,6 +2466,16 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if dense_mlp:
+            return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         return self.run_moe_c1_fp16(
             mlp_input,
             residual,
@@ -2454,7 +2499,7 @@ class Qwen35ParoDecodeState:
         positions: Tensor,
         max_positions: int,
         attention_scratch: Qwen35ParoAttentionScratch | None = None,
-        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
         cu_seqlens_q: Tensor | None = None,
         cu_seqlens_k: Tensor | None = None,
         aotriton_attention: bool = False,
@@ -2482,7 +2527,11 @@ class Qwen35ParoDecodeState:
             activation_dtype=DType.FP16,
             gated_dtype=DType.FP16,
         )
-        if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+        dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
+        if dense_mlp:
+            if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
+                moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
             moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         self.input_rmsnorm_fp16(hidden, attention_scratch.attn_input, tokens=tokens, library=library, stream=stream)
         self.rotate_full_attention_inputs_fp16(
@@ -2591,6 +2640,16 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if dense_mlp:
+            return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         return self.run_moe_grouped_compact_fp16(
             mlp_input,
             residual,
@@ -3417,14 +3476,18 @@ class Qwen35ParoDecodeState:
         conv_state: Tensor,
         recurrent_state: Tensor,
         linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
-        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
         tokens: int = 1,
         group_size: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
         linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        if tokens == 1:
+        dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
+        if dense_mlp:
+            if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
+                moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif tokens == 1:
             moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
             moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
@@ -3459,6 +3522,16 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if dense_mlp:
+            return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         if tokens == 1:
             return self.run_moe_c1_fp16(
                 mlp_input,
@@ -4011,6 +4084,237 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         return scratch.shared_out
+
+    def dense_mlp_paro_w4_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoDenseMlpScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        threads: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run dense Qwen3.5 PARO MLP gate/up/down without the residual add."""
+
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp"
+        cfg = self.config
+        intermediate = cfg.moe_intermediate_size
+        gate_base = f"{prefix}.gate_proj"
+        up_base = f"{prefix}.up_proj"
+        down_base = f"{prefix}.down_proj"
+
+        gate_pairs = self.tensor(f"{gate_base}.pairs")
+        up_pairs = self.tensor(f"{up_base}.pairs")
+        down_pairs = self.tensor(f"{down_base}.pairs")
+
+        gate_krot = _rotation_krot(gate_pairs)
+        up_krot = _rotation_krot(up_pairs)
+        if gate_krot == up_krot:
+            paro_rotate2_fp16(
+                hidden.ptr,
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_pairs.ptr,
+                up_pairs.ptr,
+                self.tensor(f"{gate_base}.theta").ptr,
+                self.tensor(f"{up_base}.theta").ptr,
+                self.tensor(f"{gate_base}.channel_scales").ptr,
+                self.tensor(f"{up_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                gate_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+        else:
+            paro_rotate1_fp16(
+                hidden.ptr,
+                scratch.shared_gate_input.ptr,
+                gate_pairs.ptr,
+                self.tensor(f"{gate_base}.theta").ptr,
+                self.tensor(f"{gate_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                gate_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+            paro_rotate1_fp16(
+                hidden.ptr,
+                scratch.shared_up_input.ptr,
+                up_pairs.ptr,
+                self.tensor(f"{up_base}.theta").ptr,
+                self.tensor(f"{up_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                up_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+
+        gate_qweight = self.tensor(f"{gate_base}.qweight_pack8_decode")
+        up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
+        if tokens == 1:
+            gemv_awq_dual_pack8_transposed_fp16(
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_qweight.ptr,
+                self.tensor(f"{gate_base}.qzeros").ptr,
+                self.tensor(f"{gate_base}.scales").ptr,
+                up_qweight.ptr,
+                self.tensor(f"{up_base}.qzeros").ptr,
+                self.tensor(f"{up_base}.scales").ptr,
+                scratch.shared_up.ptr,
+                tokens,
+                cfg.hidden_size,
+                _out_packed_from_generic_transposed_qweight(gate_qweight),
+                _out_packed_from_generic_transposed_qweight(up_qweight),
+                group_size,
+                threads=threads,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+            silu_mul_dual_rotate_out_fp16(
+                scratch.shared_up.ptr,
+                down_pairs.ptr,
+                self.tensor(f"{down_base}.theta").ptr,
+                self.tensor(f"{down_base}.channel_scales").ptr,
+                scratch.shared_down_input.ptr,
+                tokens,
+                intermediate,
+                group_size,
+                _rotation_krot(down_pairs),
+                stream=stream,
+                library=_library_for(library, "silu"),
+                runtime=self.runtime,
+            )
+        else:
+            awq_fusedw4_prefill_dual_fp16(
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_qweight.ptr,
+                self.tensor(f"{gate_base}.qzeros").ptr,
+                self.tensor(f"{gate_base}.scales").ptr,
+                up_qweight.ptr,
+                self.tensor(f"{up_base}.qzeros").ptr,
+                self.tensor(f"{up_base}.scales").ptr,
+                scratch.shared_gate_out.ptr,
+                scratch.shared_up_out.ptr,
+                tokens,
+                cfg.hidden_size,
+                _out_packed_from_generic_transposed_qweight(gate_qweight),
+                _out_packed_from_generic_transposed_qweight(up_qweight),
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+            silu_mul_separate_out_fp16(
+                scratch.shared_gate_out.ptr,
+                scratch.shared_up_out.ptr,
+                scratch.shared_intermediate.ptr,
+                tokens,
+                intermediate,
+                stream=stream,
+                library=_library_for(library, "silu"),
+                runtime=self.runtime,
+            )
+
+        if tokens != 1:
+            paro_rotate1_fp16(
+                scratch.shared_intermediate.ptr,
+                scratch.shared_down_input.ptr,
+                down_pairs.ptr,
+                self.tensor(f"{down_base}.theta").ptr,
+                self.tensor(f"{down_base}.channel_scales").ptr,
+                tokens,
+                intermediate,
+                group_size,
+                _rotation_krot(down_pairs),
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+        down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
+        if tokens == 1:
+            gemv_awq_pack8_transposed_fp16(
+                scratch.shared_down_input.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{down_base}.qzeros").ptr,
+                self.tensor(f"{down_base}.scales").ptr,
+                scratch.shared_out.ptr,
+                tokens,
+                intermediate,
+                _out_packed_from_generic_transposed_qweight(down_qweight),
+                group_size,
+                threads=threads,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        else:
+            awq_fusedw4_prefill_fp16(
+                scratch.shared_down_input.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{down_base}.qzeros").ptr,
+                self.tensor(f"{down_base}.scales").ptr,
+                scratch.shared_out.ptr,
+                tokens,
+                intermediate,
+                _out_packed_from_generic_transposed_qweight(down_qweight),
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        return scratch.shared_out
+
+    def run_dense_mlp_residual_fp16(
+        self,
+        hidden: Tensor,
+        residual: Tensor,
+        *,
+        scratch: Qwen35ParoDenseMlpScratch | None = None,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        scratch = scratch or self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        dense_out = self.dense_mlp_paro_w4_fp16(
+            hidden,
+            scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        runtime = self.runtime or get_hip_runtime()
+        self._memset_tensor(scratch.shared_zero, stream=stream, runtime=runtime)
+        self._memset_tensor(scratch.gate_logits, stream=stream, runtime=runtime)
+        shared_gate_combine_residual_batch_out_fp16(
+            dense_out.ptr,
+            scratch.shared_zero.ptr,
+            scratch.gate_logits.ptr,
+            residual.ptr,
+            scratch.moe_out.ptr,
+            tokens,
+            self.config.hidden_size,
+            1,
+            stream=stream,
+            library=_library_for(library, "combine"),
+            runtime=self.runtime,
+        )
+        return scratch.moe_out
 
     def shared_expert_fp16(
         self,
@@ -4885,6 +5189,37 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             library=library,
             stream=stream,
+        )
+
+    def reserve_dense_mlp_scratch(
+        self,
+        *,
+        tokens: int = 1,
+        activation_dtype: str | DType = DType.FP16,
+    ) -> Qwen35ParoDenseMlpScratch:
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        lowp = DType.parse(activation_dtype)
+        if lowp not in {DType.BF16, DType.FP16}:
+            raise ValueError("activation_dtype must be bf16 or fp16")
+        cfg = self.config
+        intermediate = cfg.moe_intermediate_size
+        if intermediate <= 0:
+            raise ValueError("config.moe_intermediate_size must be positive for dense MLP")
+        return Qwen35ParoDenseMlpScratch(
+            normed=self.workspace.reserve_tensor("dense_mlp.normed", (tokens, cfg.hidden_size), lowp),
+            residual=self.workspace.reserve_tensor("dense_mlp.residual", (tokens, cfg.hidden_size), lowp),
+            shared_gate_input=self.workspace.reserve_tensor("dense_mlp.gate_input", (tokens, cfg.hidden_size), lowp),
+            shared_up_input=self.workspace.reserve_tensor("dense_mlp.up_input", (tokens, cfg.hidden_size), lowp),
+            shared_gate_out=self.workspace.reserve_tensor("dense_mlp.gate_out", (tokens, intermediate), lowp),
+            shared_up_out=self.workspace.reserve_tensor("dense_mlp.up_out", (tokens, intermediate), lowp),
+            shared_up=self.workspace.reserve_tensor("dense_mlp.gate_up", (tokens, 2 * intermediate), lowp),
+            shared_intermediate=self.workspace.reserve_tensor("dense_mlp.intermediate", (tokens, intermediate), lowp),
+            shared_down_input=self.workspace.reserve_tensor("dense_mlp.down_input", (tokens, intermediate), lowp),
+            shared_out=self.workspace.reserve_tensor("dense_mlp.out", (tokens, cfg.hidden_size), lowp),
+            shared_zero=self.workspace.reserve_tensor("dense_mlp.zero", (tokens, cfg.hidden_size), lowp),
+            gate_logits=self.workspace.reserve_tensor("dense_mlp.gate_logits", (tokens, 1), DType.FP32),
+            moe_out=self.workspace.reserve_tensor("dense_mlp.residual_out", (tokens, cfg.hidden_size), lowp),
         )
 
     def reserve_moe_grouped_prefill_scratch(

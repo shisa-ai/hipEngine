@@ -53,7 +53,9 @@ from hipengine.loading import (
     WeightIndex,
     float_array_to_bf16_bits,
     load_weight_index,
+    materialize_qwen35_paro_full_attention_dense_c1_runtime_layer,
     materialize_qwen35_paro_full_attention_moe_c1_runtime_layer,
+    materialize_qwen35_paro_linear_attention_dense_c1_runtime_layer,
     materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer,
     normalize_qwen35_weight_name,
     qwen35_paro_config_from_hf,
@@ -67,6 +69,7 @@ from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_paro import (
     Qwen35ParoAttentionScratch,
     Qwen35ParoDecodeState,
+    Qwen35ParoDenseMlpScratch,
     Qwen35ParoGroupedMoeScratch,
     Qwen35ParoLinearAttentionScratch,
 )
@@ -451,7 +454,8 @@ class Qwen35ParoNextTokenRunner:
         allocations: list[DeviceTensorAllocation],
         buffers: list[DeviceBuffer],
     ) -> tuple[int, float]:
-        info = self.normalized_infos["lm_head.weight"]
+        head_key = "lm_head.weight" if "lm_head.weight" in self.normalized_infos else "language_model.embed_tokens.weight"
+        info = self.normalized_infos[normalize_qwen35_weight_name(head_key)]
         lm_head_weight = load_tensor_info_to_device(info, runtime=self.runtime)
         allocations.append(lm_head_weight)
         vocab_size, hidden_size = lm_head_weight.tensor.shape
@@ -491,13 +495,21 @@ class Qwen35ParoNextTokenRunner:
         *,
         progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> Qwen35ParoDecodeState:
-        weights = materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(
-            self.index,
-            layer_id=layer_id,
-            runtime=self.runtime,
-            progress=progress,
-            shared_expert_format=self.shared_expert_format,
-        )
+        if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
+            weights = materialize_qwen35_paro_linear_attention_dense_c1_runtime_layer(
+                self.index,
+                layer_id=layer_id,
+                runtime=self.runtime,
+                progress=progress,
+            )
+        else:
+            weights = materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer(
+                self.index,
+                layer_id=layer_id,
+                runtime=self.runtime,
+                progress=progress,
+                shared_expert_format=self.shared_expert_format,
+            )
         return Qwen35ParoDecodeState(
             layer_weights=weights,
             workspace=RuntimeWorkspace(runtime=self.runtime),
@@ -510,13 +522,21 @@ class Qwen35ParoNextTokenRunner:
         *,
         progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> Qwen35ParoDecodeState:
-        weights = materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(
-            self.index,
-            layer_id=layer_id,
-            runtime=self.runtime,
-            progress=progress,
-            shared_expert_format=self.shared_expert_format,
-        )
+        if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
+            weights = materialize_qwen35_paro_full_attention_dense_c1_runtime_layer(
+                self.index,
+                layer_id=layer_id,
+                runtime=self.runtime,
+                progress=progress,
+            )
+        else:
+            weights = materialize_qwen35_paro_full_attention_moe_c1_runtime_layer(
+                self.index,
+                layer_id=layer_id,
+                runtime=self.runtime,
+                progress=progress,
+                shared_expert_format=self.shared_expert_format,
+            )
         return Qwen35ParoDecodeState(
             layer_weights=weights,
             workspace=RuntimeWorkspace(runtime=self.runtime),
@@ -1812,9 +1832,25 @@ class Qwen35ParoResidentSession:
         self.prefill_full_scratch = scratch
         return scratch
 
-    def _ensure_grouped_moe_prefill_scratch(self, layer_id: int | None = None, *, tokens: int) -> Qwen35ParoGroupedMoeScratch:
+    def _reserve_mlp_scratch(self, state: Qwen35ParoDecodeState, *, tokens: int):
+        if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
+            return state.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        if tokens == 1:
+            return state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        return state.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+
+    def _ensure_grouped_moe_prefill_scratch(self, layer_id: int | None = None, *, tokens: int):
         _ = layer_id
         scratch = getattr(self, "prefill_moe_scratch", None)
+        if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
+            if isinstance(scratch, Qwen35ParoDenseMlpScratch) and scratch.normed.shape[0] >= tokens:
+                return scratch
+            scratch = self._prefill_scratch_owner().reserve_dense_mlp_scratch(
+                tokens=tokens,
+                activation_dtype=DType.FP16,
+            )
+            self.prefill_moe_scratch = scratch
+            return scratch
         if isinstance(scratch, Qwen35ParoGroupedMoeScratch) and scratch.normed.shape[0] >= tokens:
             return scratch
         scratch = self._prefill_scratch_owner().reserve_moe_grouped_prefill_scratch(
@@ -1983,7 +2019,7 @@ class Qwen35ParoResidentSession:
             else:
                 moe_scratch = self.moe_scratch[layer_id]
                 if moe_scratch.normed.shape[0] < tokens:
-                    moe_scratch = state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+                    moe_scratch = self._reserve_mlp_scratch(state, tokens=tokens)
                     self.moe_scratch[layer_id] = moe_scratch
             out = state.run_linear_attention_moe_c1_layer_fp16(
                 hidden,
@@ -2075,7 +2111,7 @@ class Qwen35ParoResidentSession:
     def _restore_decode_scratch_after_prefill(self) -> None:
         self._release_prefill_workspace()
         for layer_id, state in enumerate(self.states):
-            self.moe_scratch[layer_id] = state.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16)
+            self.moe_scratch[layer_id] = self._reserve_mlp_scratch(state, tokens=1)
             if self.config.layer_types[layer_id] == "linear_attention":
                 self.linear_scratch[layer_id] = state.reserve_linear_attention_scratch(tokens=1, activation_dtype=DType.FP16)
             elif self.config.layer_types[layer_id] == "full_attention":
@@ -2238,8 +2274,9 @@ class Qwen35ParoResidentSession:
         )
         self.allocations.append(self.norm_weight)
         self._emit("load_final_norm_done")
-        self._emit("load_lm_head_start", mode="w8a16")
-        head = _read_tensor(self.runner.normalized_infos, "lm_head.weight")
+        head_key = "lm_head.weight" if "lm_head.weight" in self.runner.normalized_infos else "language_model.embed_tokens.weight"
+        self._emit("load_lm_head_start", mode="w8a16", source=head_key)
+        head = _read_tensor(self.runner.normalized_infos, head_key)
         head_vocab, head_hidden = head.shape
         if int(head_hidden) != self.config.hidden_size:
             raise ValueError(f"lm_head hidden size {head_hidden} does not match {self.config.hidden_size}")
@@ -2388,7 +2425,7 @@ class Qwen35ParoResidentSession:
         )
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
-            self.moe_scratch[layer_id] = state.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16)
+            self.moe_scratch[layer_id] = self._reserve_mlp_scratch(state, tokens=1)
             if layer_type == "linear_attention":
                 conv_zero = np.zeros(
                     (self.max_batch_size, qkv_width, self.config.linear_conv_kernel_dim),
@@ -2854,7 +2891,8 @@ def _lm_head_argmax(
     *,
     chunk_size: int,
 ) -> tuple[int, float]:
-    info = normalized["lm_head.weight"]
+    head_key = "lm_head.weight" if "lm_head.weight" in normalized else "language_model.embed_tokens.weight"
+    info = normalized[normalize_qwen35_weight_name(head_key)]
     best_id = -1
     best_logit = -float("inf")
     hidden_f32 = hidden.astype(np.float32, copy=False)

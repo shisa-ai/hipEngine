@@ -11,8 +11,10 @@ from hipengine.loading import (
     MissingTensorError,
     float_array_to_bf16_bits,
     load_weight_index,
+    materialize_qwen35_paro_full_attention_dense_c1_runtime_layer,
     materialize_qwen35_paro_full_attention_moe_c1_prepared_layer,
     materialize_qwen35_paro_full_attention_moe_c1_runtime_layer,
+    materialize_qwen35_paro_linear_attention_dense_c1_runtime_layer,
     materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer,
     materialize_qwen35_paro_full_attention_moe_c1_layer,
     materialize_qwen35_paro_moe_c1_layer,
@@ -20,7 +22,9 @@ from hipengine.loading import (
     prepare_qwen35_paro_moe_c1_host_tensors,
     prepare_qwen35_paro_moe_c1_runtime_host_tensors,
     prepared_moe_c1_tensor_names,
+    runtime_full_attention_dense_c1_tensor_names,
     runtime_full_attention_moe_c1_tensor_names,
+    runtime_linear_attention_dense_c1_tensor_names,
     runtime_linear_attention_moe_c1_tensor_names,
     runtime_prepared_moe_c1_tensor_names,
     qwen35_paro_config_from_hf,
@@ -29,7 +33,9 @@ from hipengine.loading import (
     required_linear_attention_c1_tensor_names,
     required_linear_attention_moe_c1_tensor_names,
     required_moe_c1_tensor_names,
+    validate_qwen35_paro_full_attention_dense_c1_layout,
     validate_qwen35_paro_full_attention_moe_c1_layout,
+    validate_qwen35_paro_linear_attention_dense_c1_layout,
     validate_qwen35_paro_linear_attention_moe_c1_layout,
     validate_qwen35_paro_moe_c1_layout,
 )
@@ -85,6 +91,34 @@ def _write_config(path, *, quant_method: str = "paroquant", layer_types: list[st
                 "rms_norm_eps": 1.0e-6,
                 "layer_types": layer_types or ["full_attention"],
                 "quantization_config": {"quant_method": quant_method},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_dense_config(path, *, layer_types: list[str] | None = None) -> None:
+    (path / "config.json").write_text(
+        json.dumps(
+            {
+                "architectures": ["Qwen3_5ForConditionalGeneration"],
+                "model_type": "qwen3_5_text",
+                "num_hidden_layers": 1,
+                "hidden_size": 4,
+                "num_attention_heads": 2,
+                "num_key_value_heads": 1,
+                "head_dim": 2,
+                "intermediate_size": 3,
+                "linear_num_key_heads": 1,
+                "linear_num_value_heads": 1,
+                "linear_key_head_dim": 2,
+                "linear_value_head_dim": 4,
+                "linear_conv_kernel_dim": 4,
+                "rope_parameters": {"rope_theta": 10000000.0, "partial_rotary_factor": 0.5},
+                "vocab_size": 16,
+                "rms_norm_eps": 1.0e-6,
+                "layer_types": layer_types or ["linear_attention"],
+                "quantization_config": {"quant_method": "paroquant"},
             }
         ),
         encoding="utf-8",
@@ -163,6 +197,21 @@ def _valid_tensors() -> dict[str, np.ndarray]:
             tensors[f"{base}.qweight"] = np.zeros((4, 1), dtype=np.int32)
             tensors[f"{base}.qzeros"] = np.zeros((1, 1), dtype=np.int32)
             tensors[f"{base}.scales"] = np.zeros((1, 8), dtype=np.float16)
+    return tensors
+
+
+def _valid_dense_mlp_tensors() -> dict[str, np.ndarray]:
+    tensors: dict[str, np.ndarray] = {
+        "model.layers.0.post_attention_layernorm.weight": np.zeros((4,), dtype=np.float16),
+    }
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        base = f"model.layers.0.mlp.{proj}"
+        tensors[f"{base}.qweight"] = np.zeros((4, 1), dtype=np.int32)
+        tensors[f"{base}.qzeros"] = np.zeros((1, 1), dtype=np.int32)
+        tensors[f"{base}.scales"] = np.zeros((1, 8), dtype=np.float16)
+        tensors[f"{base}.theta"] = np.zeros((1, 2), dtype=np.float16)
+        tensors[f"{base}.pairs"] = np.zeros((1, 4), dtype=np.int16)
+        tensors[f"{base}.channel_scales"] = np.zeros((4,), dtype=np.float16)
     return tensors
 
 
@@ -253,6 +302,52 @@ def test_required_linear_attention_names_include_rotated_projections_and_state()
     assert "layers.0.linear_attn.conv1d.weight" in names
     assert "layers.0.linear_attn.A_log" in names
     assert "layers.0.mlp.experts.1.up_proj.qweight" in combined
+
+
+def test_runtime_dense_attention_names_include_dense_mlp_sidecars() -> None:
+    linear = runtime_linear_attention_dense_c1_tensor_names(layer_id=0)
+    full = runtime_full_attention_dense_c1_tensor_names(layer_id=3)
+
+    assert "layers.0.linear_attn.in_proj_qkv.qweight" in linear
+    assert "layers.0.mlp.gate_proj.theta" in linear
+    assert "layers.0.mlp.up_proj.qweight" in linear
+    assert "layers.3.self_attn.q_proj.qweight" in full
+    assert "layers.3.mlp.down_proj.channel_scales" in full
+    assert all("shared_expert" not in name and ".experts." not in name for name in linear + full)
+
+
+def test_validate_and_materialize_dense_linear_attention_runtime_layer(tmp_path) -> None:
+    _write_dense_config(tmp_path, layer_types=["linear_attention"])
+    tensors = {**_valid_linear_attention_tensors(), **_valid_dense_mlp_tensors()}
+    tensors["model.layers.0.mlp.gate_proj.qweight"] = np.arange(4, dtype=np.int32).reshape(4, 1)
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+    runtime = FakeRuntime()
+
+    validation = validate_qwen35_paro_linear_attention_dense_c1_layout(index)
+    layer = materialize_qwen35_paro_linear_attention_dense_c1_runtime_layer(index, runtime=runtime)
+
+    assert validation.passed
+    assert validation.config.num_experts == 0
+    assert layer.tensor("layers.0.mlp.gate_proj.qweight_pack8_decode").shape == (1, 4)
+    assert layer.tensor("layers.0.mlp.gate_proj.qweight_pack8_decode").dtype is DType.INT32
+    layer.free(runtime=runtime)
+
+
+def test_validate_and_materialize_dense_full_attention_runtime_layer(tmp_path) -> None:
+    _write_dense_config(tmp_path, layer_types=["full_attention"])
+    tensors = {**_valid_attention_tensors(), **_valid_dense_mlp_tensors()}
+    save_file(tensors, tmp_path / "model.safetensors")
+    index = load_weight_index(tmp_path)
+    runtime = FakeRuntime()
+
+    validation = validate_qwen35_paro_full_attention_dense_c1_layout(index)
+    layer = materialize_qwen35_paro_full_attention_dense_c1_runtime_layer(index, runtime=runtime)
+
+    assert validation.passed
+    assert layer.tensor("layers.0.self_attn.q_proj.qweight_pack8_decode").shape == (1, 4)
+    assert layer.tensor("layers.0.mlp.down_proj.qweight_pack8_decode").shape == (1, 4)
+    layer.free(runtime=runtime)
 
 
 def test_validate_qwen35_paro_moe_c1_layout_passes(tmp_path) -> None:

@@ -14247,3 +14247,58 @@ python3 -m pytest -q --tb=short
 
 - First raw build without a ROCm device-lib path failed with `cannot find ROCm device library`; building with a mismatched mambaforge device-lib path produced a smoke-launch segfault. Retained validation uses `/opt/rocm/amdgcn/bitcode`, and the build cache now keys explicit `--rocm-device-lib-path` so these artifacts do not collide.
 - No throughput benchmark was run or claimed in this entry; this is an initial correctness/build/backend port.
+
+## 2026-05-17 — Dense Qwen3.5 0.8B PARO bring-up on gfx1151
+
+Added the missing dense-text PARO path needed by `z-lab/Qwen3.5-0.8B-PARO` (`qwen3_5_text`, `num_experts=0`, hidden 1024, 24 layers) so the gfx1151 backend can run the model instead of requiring the 35B MoE layout.
+
+### Implementation
+
+- Added dense Qwen3.5/PARO layout/runtime materialization helpers for linear-attention and full-attention layers:
+  - `runtime_linear_attention_dense_c1_tensor_names`
+  - `runtime_full_attention_dense_c1_tensor_names`
+  - dense validators and runtime materializers
+  - dense MLP `gate_proj`/`up_proj`/`down_proj` `qweight_pack8_decode` preparation.
+- Added resident runtime dense MLP scratch and FP16 dense PARO MLP execution by reusing the existing PARO rotate/AWQ/SwiGLU kernels, then residual-adds the MLP output with the existing combine kernel using a zero shared branch.
+- Resident runner now dispatches dense MLP when `num_experts <= 0` and MoE otherwise.
+- Added tied-lm-head fallback: if `lm_head.weight` is absent, resident and one-token paths use `embed_tokens.weight` for the output head. This is required by the 0.8B snapshot.
+- Full-attention decode now uses the generic split-K gated kernel when the parent Qwen3.5 GQA specialization shape (`16q/2kv/head256`) does not match; this unblocks 0.8B (`8q/2kv/head256`) at 4K+ decode lengths.
+
+### Validation
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.loading import load_weight_index
+from hipengine.loading.qwen35_paro import validate_qwen35_paro_linear_attention_dense_c1_layout, validate_qwen35_paro_full_attention_dense_c1_layout
+model=Path('/models/huggingface/hub/models--z-lab--Qwen3.5-0.8B-PARO/snapshots/da941f4fd3fa72763c398db6cb14b2bef1ee961f')
+idx=load_weight_index(model)
+print(validate_qwen35_paro_linear_attention_dense_c1_layout(idx, layer_id=0).passed)
+print(validate_qwen35_paro_full_attention_dense_c1_layout(idx, layer_id=3).passed)
+PY
+# True / True
+
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/qwen35_paro_bench.py \
+    --model /models/huggingface/hub/models--z-lab--Qwen3.5-0.8B-PARO/snapshots/da941f4fd3fa72763c398db6cb14b2bef1ee961f \
+    --backend hip_gfx1151 --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 \
+    --max-layers 1 --attn-aotriton-min-tokens 512 \
+    --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt \
+    --json /tmp/qwen35-08b-gfx1151-smoke.json
+# max_layers=1 smoke completed with finite generated_preview logits.
+
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_prefill_restores_decode_scratch_token1 tests/test_qwen35_paro_layout.py -q --tb=short
+# 24 passed
+python3 -m pytest -q --tb=short
+# 262 passed
+```
+
+### Diagnostic timing probes before commit
+
+Single-run diagnostic probes on the shared/busy gfx1151 GPU (not retained as accepted perf claims; no KL/top-1 CPU oracle yet):
+
+- 512/128: prefill `1172.036 tok/s`, decode `135.650 tok/s`, tracked peak `1.322 GiB`, hipMemGetInfo peak `1.445 GiB`.
+- 4K/128: prefill `1929.462 tok/s`, decode `135.915 tok/s`, tracked peak `2.214 GiB`, hipMemGetInfo peak `1.665 GiB`.
+- 4K/4K: prefill `1897.360 tok/s`, decode `128.785 tok/s`, tracked peak `2.280 GiB`, hipMemGetInfo peak `1.736 GiB`.
+
+Exact retained post-commit artifact/rollup will follow as a separate benchmark evidence commit so the benchmark can record a clean `hipengine_commit`.

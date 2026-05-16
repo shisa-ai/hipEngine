@@ -530,6 +530,91 @@ def runtime_linear_attention_moe_c1_tensor_names(
     return tuple(names)
 
 
+def _dense_mlp_paro_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    prefix = f"layers.{layer_id}.mlp"
+    names = [f"layers.{layer_id}.post_attention_layernorm.weight"]
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        base = f"{prefix}.{proj}"
+        names.extend(
+            (
+                f"{base}.qweight",
+                f"{base}.qzeros",
+                f"{base}.scales",
+                f"{base}.theta",
+                f"{base}.pairs",
+                f"{base}.channel_scales",
+            )
+        )
+    return tuple(names)
+
+
+def runtime_full_attention_dense_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    """Normalized tensors needed by the Qwen3.5 dense-text full-attention path."""
+
+    attn = f"layers.{layer_id}.self_attn"
+    names = [
+        f"layers.{layer_id}.input_layernorm.weight",
+        f"{attn}.q_norm.weight",
+        f"{attn}.k_norm.weight",
+    ]
+    for proj in ("q_proj", "k_proj", "v_proj"):
+        base = f"{attn}.{proj}"
+        names.extend(
+            (
+                f"{base}.qweight",
+                f"{base}.qzeros",
+                f"{base}.scales",
+                f"{base}.theta",
+                f"{base}.pairs",
+                f"{base}.channel_scales",
+            )
+        )
+    base = f"{attn}.o_proj"
+    names.extend(
+        (
+            f"{base}.qweight",
+            f"{base}.qzeros",
+            f"{base}.scales",
+            f"{base}.theta",
+            f"{base}.pairs",
+            f"{base}.channel_scales",
+        )
+    )
+    names.extend(_dense_mlp_paro_tensor_names(layer_id=layer_id))
+    return tuple(names)
+
+
+def runtime_linear_attention_dense_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
+    """Normalized tensors needed by the Qwen3.5 dense-text linear-attention path."""
+
+    prefix = f"layers.{layer_id}.linear_attn"
+    names = [f"layers.{layer_id}.input_layernorm.weight"]
+    for proj in ("in_proj_qkv", "in_proj_z", "out_proj"):
+        base = f"{prefix}.{proj}"
+        names.extend(
+            (
+                f"{base}.qweight",
+                f"{base}.qzeros",
+                f"{base}.scales",
+                f"{base}.theta",
+                f"{base}.pairs",
+                f"{base}.channel_scales",
+            )
+        )
+    names.extend(
+        (
+            f"{prefix}.in_proj_a.weight",
+            f"{prefix}.in_proj_b.weight",
+            f"{prefix}.conv1d.weight",
+            f"{prefix}.A_log",
+            f"{prefix}.dt_bias",
+            f"{prefix}.norm.weight",
+        )
+    )
+    names.extend(_dense_mlp_paro_tensor_names(layer_id=layer_id))
+    return tuple(names)
+
+
 def required_moe_c1_tensor_names(
     *,
     layer_id: int,
@@ -775,6 +860,161 @@ def validate_qwen35_paro_linear_attention_moe_c1_layout(
     if raise_on_error:
         result.raise_for_errors()
     return result
+
+
+def _validate_dense_mlp_shapes(
+    tensors: dict[str, TensorInfo],
+    config: Qwen35ParoConfig,
+    *,
+    layer_id: int,
+) -> tuple[str, ...]:
+    prefix = f"layers.{layer_id}.mlp"
+    expected: dict[str, tuple[int, ...]] = {
+        f"layers.{layer_id}.post_attention_layernorm.weight": (config.hidden_size,),
+    }
+    errors: list[str] = []
+    for name, shape in expected.items():
+        info = tensors.get(name)
+        if info is not None and info.shape != shape:
+            errors.append(f"{name}: expected {shape}, got {info.shape}")
+    # Dense PARO gate/up/down sidecars follow the same qweight/qzeros/scales
+    # convention as attention projections.  Their exact packed width depends on
+    # quantization metadata, so validate existence here and rely on kernel
+    # wrappers for shape-specific launch checks.
+    _ = prefix
+    return tuple(errors)
+
+
+def validate_qwen35_paro_full_attention_dense_c1_layout(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    raise_on_error: bool = False,
+) -> Qwen35ParoLayoutValidation:
+    config = qwen35_paro_config_from_hf(index.config)
+    if layer_id < 0 or layer_id >= config.num_hidden_layers:
+        raise ValueError(f"layer_id {layer_id} outside [0, {config.num_hidden_layers})")
+    if config.layer_types[layer_id] != "full_attention":
+        raise ValueError(f"layer {layer_id} is {config.layer_types[layer_id]!r}, expected 'full_attention'")
+    if config.num_attention_heads <= 0 or config.num_key_value_heads <= 0 or config.head_dim <= 0:
+        raise ValueError("full-attention layout requires num_attention_heads, num_key_value_heads, and head_dim")
+    if config.quant_method and config.quant_method != "paroquant":
+        raise ValueError(f"expected quant_method='paroquant', got {config.quant_method!r}")
+
+    normalized = _normalized_tensor_map(index)
+    required = runtime_full_attention_dense_c1_tensor_names(layer_id=layer_id)
+    present = tuple(name for name in required if name in normalized)
+    missing = tuple(name for name in required if name not in normalized)
+    shape_errors = _validate_full_attention_shapes(normalized, config, layer_id=layer_id) + _validate_dense_mlp_shapes(
+        normalized,
+        config,
+        layer_id=layer_id,
+    )
+    result = Qwen35ParoLayoutValidation(
+        config=config,
+        present=present,
+        missing=missing,
+        shape_errors=shape_errors,
+        shared_expert_format="dense_paro_w4",
+    )
+    if raise_on_error:
+        result.raise_for_errors()
+    return result
+
+
+def validate_qwen35_paro_linear_attention_dense_c1_layout(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    raise_on_error: bool = False,
+) -> Qwen35ParoLayoutValidation:
+    config = qwen35_paro_config_from_hf(index.config)
+    if layer_id < 0 or layer_id >= config.num_hidden_layers:
+        raise ValueError(f"layer_id {layer_id} outside [0, {config.num_hidden_layers})")
+    if config.layer_types[layer_id] != "linear_attention":
+        raise ValueError(f"layer {layer_id} is {config.layer_types[layer_id]!r}, expected 'linear_attention'")
+    if config.linear_num_key_heads <= 0 or config.linear_num_value_heads <= 0:
+        raise ValueError("linear-attention layout requires linear_num_key_heads and linear_num_value_heads")
+    if config.linear_key_head_dim <= 0 or config.linear_value_head_dim <= 0 or config.linear_conv_kernel_dim <= 0:
+        raise ValueError("linear-attention layout requires key/value head dims and conv kernel dim")
+    if config.quant_method and config.quant_method != "paroquant":
+        raise ValueError(f"expected quant_method='paroquant', got {config.quant_method!r}")
+
+    normalized = _normalized_tensor_map(index)
+    required = runtime_linear_attention_dense_c1_tensor_names(layer_id=layer_id)
+    present = tuple(name for name in required if name in normalized)
+    missing = tuple(name for name in required if name not in normalized)
+    shape_errors = _validate_linear_attention_shapes(normalized, config, layer_id=layer_id) + _validate_dense_mlp_shapes(
+        normalized,
+        config,
+        layer_id=layer_id,
+    )
+    result = Qwen35ParoLayoutValidation(
+        config=config,
+        present=present,
+        missing=missing,
+        shape_errors=shape_errors,
+        shared_expert_format="dense_paro_w4",
+    )
+    if raise_on_error:
+        result.raise_for_errors()
+    return result
+
+
+def materialize_qwen35_paro_full_attention_dense_c1_runtime_layer(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    validate: bool = True,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> Qwen35ParoLayerDeviceWeights:
+    validation = validate_qwen35_paro_full_attention_dense_c1_layout(
+        index,
+        layer_id=layer_id,
+        raise_on_error=validate,
+    )
+    if not validation.passed:
+        validation.raise_for_errors()
+    return _materialize_runtime_layer(
+        index,
+        validation.config,
+        layer_id,
+        runtime_full_attention_dense_c1_tensor_names(layer_id=layer_id),
+        device=device,
+        runtime=runtime,
+        progress=progress,
+        prepare_moe=False,
+    )
+
+
+def materialize_qwen35_paro_linear_attention_dense_c1_runtime_layer(
+    index: WeightIndex,
+    *,
+    layer_id: int = 0,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    validate: bool = True,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> Qwen35ParoLayerDeviceWeights:
+    validation = validate_qwen35_paro_linear_attention_dense_c1_layout(
+        index,
+        layer_id=layer_id,
+        raise_on_error=validate,
+    )
+    if not validation.passed:
+        validation.raise_for_errors()
+    return _materialize_runtime_layer(
+        index,
+        validation.config,
+        layer_id,
+        runtime_linear_attention_dense_c1_tensor_names(layer_id=layer_id),
+        device=device,
+        runtime=runtime,
+        progress=progress,
+        prepare_moe=False,
+    )
 
 
 def prepare_qwen35_paro_moe_c1_host_tensors(
@@ -1328,6 +1568,32 @@ def _prepare_full_attention_qk_pack8_runtime_tensors(
     return prepared
 
 
+def _prepare_dense_mlp_pack8_runtime_tensors(
+    normalized: dict[str, Any],
+    *,
+    names: tuple[str, ...],
+    reader: _NormalizedTensorReader,
+    layer_id: int,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, object]:
+    """Prepare transposed generic qweights for dense PARO MLP decode/prefill."""
+
+    import numpy as np
+
+    prefix = f"layers.{layer_id}.mlp"
+    prepared: dict[str, object] = {}
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        source = f"{prefix}.{proj}.qweight"
+        if source not in names:
+            continue
+        target = source.removesuffix(".qweight") + ".qweight_pack8_decode"
+        _emit_progress(progress, "prepare_runtime_tensor_start", layer=layer_id, name=target)
+        qweight = np.asarray(_read_normalized_numpy_tensor(normalized, source, reader=reader), dtype=np.int32)
+        prepared[target] = np.ascontiguousarray(qweight.T)
+        _emit_progress(progress, "prepare_runtime_tensor_done", layer=layer_id, name=target, shape=tuple(prepared[target].shape))
+    return prepared
+
+
 def _materialize_runtime_layer(
     index: WeightIndex,
     config: Qwen35ParoConfig,
@@ -1338,9 +1604,14 @@ def _materialize_runtime_layer(
     runtime: HipRuntime | None,
     progress: Callable[[dict[str, Any]], None] | None = None,
     shared_expert_format: str = SHARED_EXPERT_FORMAT_PACKED_PARO_W4,
+    prepare_moe: bool = True,
 ) -> Qwen35ParoLayerDeviceWeights:
     normalized = _normalized_tensor_map(index)
-    prepared_names = set(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format))
+    prepared_names = (
+        set(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format))
+        if prepare_moe
+        else set()
+    )
     allocations: dict[str, DeviceTensorAllocation] = {}
     reader = _NormalizedTensorReader(normalized)
     try:
@@ -1433,6 +1704,15 @@ def _materialize_runtime_layer(
                 progress=progress,
             )
         )
+        linear_pack8.update(
+            _prepare_dense_mlp_pack8_runtime_tensors(
+                normalized,
+                names=names,
+                reader=reader,
+                layer_id=layer_id,
+                progress=progress,
+            )
+        )
         for idx, (name, array) in enumerate(linear_pack8.items(), start=1):
             _emit_progress(
                 progress,
@@ -1451,49 +1731,50 @@ def _materialize_runtime_layer(
                 index=idx,
                 total=len(linear_pack8),
             )
-        prepared = prepare_qwen35_paro_moe_c1_runtime_host_tensors(
-            index,
-            layer_id=layer_id,
-            normalized=normalized,
-            reader=reader,
-            progress=progress,
-            shared_expert_format=shared_expert_format,
-        )
-        for idx, (name, array) in enumerate(prepared.items(), start=1):
-            _emit_progress(
-                progress,
-                "materialize_prepared_tensor_start",
-                layer=layer_id,
-                name=name,
-                index=idx,
-                total=len(prepared),
+        if prepare_moe:
+            prepared = prepare_qwen35_paro_moe_c1_runtime_host_tensors(
+                index,
+                layer_id=layer_id,
+                normalized=normalized,
+                reader=reader,
+                progress=progress,
+                shared_expert_format=shared_expert_format,
             )
-            if _runtime_tensor_needs_bf16_bits(name):
-                allocations[name] = load_host_array_to_device_as_dtype(
-                    name,
-                    array,
-                    DType.BF16,
-                    device=device,
-                    runtime=runtime,
+            for idx, (name, array) in enumerate(prepared.items(), start=1):
+                _emit_progress(
+                    progress,
+                    "materialize_prepared_tensor_start",
+                    layer=layer_id,
+                    name=name,
+                    index=idx,
+                    total=len(prepared),
                 )
-            elif _runtime_tensor_needs_fp16(name):
-                allocations[name] = load_host_array_to_device_as_dtype(
-                    name,
-                    array,
-                    DType.FP16,
-                    device=device,
-                    runtime=runtime,
+                if _runtime_tensor_needs_bf16_bits(name):
+                    allocations[name] = load_host_array_to_device_as_dtype(
+                        name,
+                        array,
+                        DType.BF16,
+                        device=device,
+                        runtime=runtime,
+                    )
+                elif _runtime_tensor_needs_fp16(name):
+                    allocations[name] = load_host_array_to_device_as_dtype(
+                        name,
+                        array,
+                        DType.FP16,
+                        device=device,
+                        runtime=runtime,
+                    )
+                else:
+                    allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
+                _emit_progress(
+                    progress,
+                    "materialize_prepared_tensor_done",
+                    layer=layer_id,
+                    name=name,
+                    index=idx,
+                    total=len(prepared),
                 )
-            else:
-                allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
-            _emit_progress(
-                progress,
-                "materialize_prepared_tensor_done",
-                layer=layer_id,
-                name=name,
-                index=idx,
-                total=len(prepared),
-            )
     except Exception:
         DeviceWeightMap(allocations).free(runtime=runtime)
         raise
