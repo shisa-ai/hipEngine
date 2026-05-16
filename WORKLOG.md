@@ -15701,3 +15701,46 @@ python3 scripts/qwen35_gguf_e2e_correctness.py --skip-tokenize-check >/tmp/gguf_
 ```
 
 Task #34 is complete. Next task #35 should return generated text/tokens over this full-stack path and then task #31 must compare against the llama.cpp oracle fixture.
+
+## 2026-05-16 GGUF full-stack text return
+
+Connected the full-stack GGUF runner to public `LLM.generate()` text output for task #35. `Qwen35GGUFBringupGenerator.generate()` now:
+
+1. tokenizes each prompt with the torch-free GGUF byte-BPE tokenizer;
+2. keeps one `Qwen35GGUFFullStackRunner` alive for the request;
+3. repeatedly calls `sample_next_token(context_ids)` for `max_tokens` greedy steps;
+4. appends generated token IDs, stops on EOS unless `ignore_eos=True`, detokenizes the generated IDs, and returns generated text.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_llm_gguf_generate_path.py
+python3 -m pytest tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_runner.py \
+  tests/test_qwen35_gguf_tokenizer.py -q
+# 8 passed
+```
+
+Hard E2E gate now reaches text/token comparison instead of stopping at the previous `NotImplementedError`:
+
+```bash
+python3 scripts/qwen35_gguf_e2e_correctness.py >/tmp/gguf_e2e_task35.json
+# exit 1 (expected until task #31 parity is fixed)
+```
+
+Structured result excerpt:
+
+```json
+{
+  "passed": false,
+  "errors": [],
+  "outputs": ["    ", "    "],
+  "deterministic": true,
+  "expected_text_match": false,
+  "generated_token_ids": [257],
+  "expected_token_ids_match": false,
+  "tokenization_error": null,
+  "torch_loaded_by_generate": false
+}
+```
+
+Interpretation: task #35 acceptance is met (public API returns text and the gate reaches text/token comparison), but true E2E correctness task #31 still fails oracle parity. Current generated completion is four spaces, tokenized by llama.cpp as `[257]`, while the fixture expects `" 1.\n\n"` / `[220, 16, 13, 271]`. Remaining #31 work is model-parity work, most likely stateful prompt prefill / recurrent+KV state carry-over rather than the previous public-output plumbing.

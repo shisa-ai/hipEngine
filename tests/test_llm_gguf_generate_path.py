@@ -26,6 +26,7 @@ def test_llm_generate_gguf_path_reaches_full_stack_runner(monkeypatch) -> None:
     class FakeRunner:
         def __init__(self, model_path):
             calls.append(("init", str(model_path)))
+            self.tokens = iter([220, 16])
 
         def __enter__(self):
             calls.append(("enter",))
@@ -36,17 +37,17 @@ def test_llm_generate_gguf_path_reaches_full_stack_runner(monkeypatch) -> None:
 
         def sample_next_token(self, token_ids):
             calls.append(("sample_next_token", tuple(int(token) for token in token_ids)))
-            return type("Result", (), {"token_id": 123, "logit": 4.5})()
+            return type("Result", (), {"token_id": next(self.tokens), "logit": 4.5})()
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeRunner)
 
     llm = LLM(str(MODEL), backend="hip_gfx1100", quant="gguf_q4_k_m")
-    with pytest.raises(NotImplementedError, match="returning generated text"):
-        llm.generate("The answer is", SamplingParams(max_tokens=1))
+    assert llm.generate("The answer is", SamplingParams(max_tokens=2)) == [" 1"]
 
     assert calls == [
         ("init", str(MODEL.resolve())),
         ("enter",),
         ("sample_next_token", (760, 4087, 369)),
+        ("sample_next_token", (760, 4087, 369, 220)),
         ("exit", True),
     ]

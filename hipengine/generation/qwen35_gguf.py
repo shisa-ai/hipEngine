@@ -1,4 +1,4 @@
-"""Qwen3.5 GGUF generation bring-up path."""
+"""Qwen3.5 GGUF generation path."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
 @dataclass
 class Qwen35GGUFBringupGenerator:
-    """Public API GGUF route until the full lm-head sampler lands."""
+    """Public API GGUF greedy generator over the native full-stack runner."""
 
     model_path: str | Path
     weight_index: GGUFModelInfo
@@ -31,18 +31,22 @@ class Qwen35GGUFBringupGenerator:
             raise NotImplementedError("Qwen3.5 GGUF generator currently supports greedy sampling only")
         if request.max_tokens == 0:
             return ["" for _ in request.prompts]
-        for prompt in request.prompts:
-            prompt_ids = self.tokenizer.encode(prompt)
-            if not prompt_ids:
-                raise ValueError("GGUF prompt tokenization produced no token IDs")
-            with Qwen35GGUFFullStackRunner(self.model_path) as runner:
-                result = runner.sample_next_token(prompt_ids)
-        decoded = self.tokenizer.decode([result.token_id])
-        raise NotImplementedError(
-            "Qwen3.5 GGUF public path reached full native GGUF layer stack "
-            f"(token_id={result.token_id}, text={decoded!r}, logit={result.logit:.6g}); "
-            "returning generated text is not wired yet"
-        )
+        outputs: list[str] = []
+        with Qwen35GGUFFullStackRunner(self.model_path) as runner:
+            for prompt in request.prompts:
+                prompt_ids = self.tokenizer.encode(prompt)
+                if not prompt_ids:
+                    raise ValueError("GGUF prompt tokenization produced no token IDs")
+                generated_ids: list[int] = []
+                context_ids = list(prompt_ids)
+                for _ in range(request.max_tokens):
+                    result = runner.sample_next_token(context_ids)
+                    generated_ids.append(result.token_id)
+                    context_ids.append(result.token_id)
+                    if not request.ignore_eos and result.token_id == self.tokenizer.eos_token_id:
+                        break
+                outputs.append(self.tokenizer.decode(generated_ids))
+        return outputs
 
 
 def make_qwen35_gguf_bringup_generator(

@@ -36,8 +36,10 @@ byte-BPE metadata without torch or llama.cpp subprocesses on the hot path. The
 GGUF full-stack runner now executes all 24 mapped layers for a one-token decode
 state with native GGUF projections, residuals, dense FFN, and final RMSNorm,
 producing finite deterministic BF16 hidden states for the fixture prompt. The
-public generator intentionally stops after full-stack lm-head sampling because
-returning generated text over the full stack is still the next wiring step.
+public generator now runs full-stack lm-head argmax repeatedly, detokenizes the
+generated IDs, and returns text through `LLM.generate()`. The hard gate reaches
+text/token comparison, but still fails oracle parity because the one-token decode
+state currently emits four spaces instead of the llama.cpp fixture completion.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
