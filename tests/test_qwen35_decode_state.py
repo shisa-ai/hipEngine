@@ -1327,6 +1327,66 @@ def test_qwen35_decode_state_runs_shared_expert_w8a16_fp16_prefill_fused_gate_up
     assert calls[1][2] == {"threads": 64, "stream": 0, "library": None, "runtime": runtime}
 
 
+def test_qwen35_decode_state_runs_grouped_moe_fp16_fused_shared_down_combine(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_grouped_prefill_scratch(tokens=2, activation_dtype="fp16")
+    hidden = _tensor(0xD000, (2, 4096), "fp16")
+    residual = _tensor(0xD100, (2, 4096), "fp16")
+    calls = []
+
+    monkeypatch.setattr(state, "_prepare_grouped_moe_prefill_metadata", lambda *args, **kwargs: 16)
+    for name, label in [
+        ("qwen35_router_topk_shared_out_fp16", "router"),
+        ("paro_rotate1_fp16", "rotate1"),
+        ("gemm_awq_selected_dual_pack8_wmma_compact_fp16", "gate_up_wmma"),
+        ("silu_mul_dual_rotate_out_fp16", "silu_rotate"),
+        ("gemm_awq_selected_pack8_wmma_compact_fp16", "down_wmma"),
+        ("weighted_lanes_sum_out_fp16_f32w", "weighted_lanes"),
+        ("w8a16_shared_gate_up_silu_fp16", "shared_gate_up"),
+        ("w8a16_shared_down_combine_residual_fp16", "shared_down_combine"),
+    ]:
+        monkeypatch.setattr(qwen_runtime, name, lambda *args, label=label, **kwargs: calls.append((label, args, kwargs)))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "w8a16_linear_fp16_lowp_out",
+        lambda *args, **kwargs: calls.append(("unexpected_w8a16_linear", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "shared_gate_combine_residual_batch_out_fp16",
+        lambda *args, **kwargs: calls.append(("unexpected_shared_combine", args, kwargs)),
+    )
+
+    out = state.run_moe_grouped_compact_fp16(hidden, residual, scratch=scratch, tokens=2)
+
+    assert out is scratch.moe_out
+    assert [kind for kind, _args, _kwargs in calls] == [
+        "router",
+        "rotate1",
+        "gate_up_wmma",
+        "silu_rotate",
+        "down_wmma",
+        "weighted_lanes",
+        "shared_gate_up",
+        "shared_down_combine",
+    ]
+    assert calls[-2][1] == (hidden.ptr, 0xBD00, 0xBE00, scratch.shared_intermediate.ptr, 2, 4096, 768)
+    assert calls[-1][1] == (
+        scratch.shared_intermediate.ptr,
+        0xBF00,
+        0xC000,
+        scratch.selected_out.ptr,
+        scratch.router_logits.ptr + 128 * 4,
+        residual.ptr,
+        scratch.moe_out.ptr,
+        2,
+        4096,
+        768,
+        129,
+    )
+
+
 def test_qwen35_decode_state_combines_moe_shared_residual(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())

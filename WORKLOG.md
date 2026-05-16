@@ -10561,3 +10561,50 @@ times (`25.714 ms` total), replacing the previous 80 generic W8A16 launches plus
 standalone shared SiLU launches. Decision: keep. The remaining top buckets in
 the 512 prefill trace are now full-attention prefill GQA, GDN recurrent prefill,
 selected MoE WMMA, W4 prompt projections, and W8A16 down.
+
+## 2026-05-15 — Prefill multiloop iter 31: fused W8A16 shared down combine kept
+
+After iter 30, the W8A16 shared gate/up+SiLU bucket was fused, but the grouped
+multi-token MoE path still launched a generic shared down projection plus a
+separate shared-gate/residual combine. Added
+`hipengine_w8a16_shared_down_combine_residual_fp16`, a raw-pointer FP16 helper
+that computes four hidden columns per block, rounds the shared down value to FP16
+to match the previous `w8a16_linear_fp16_lowp_out` staging, then combines the
+existing rounded `selected_out`, shared gate, and residual in the same kernel.
+`run_moe_grouped_compact_fp16` now uses shared gate/up+SiLU followed by this
+fused down/combine helper for `tokens > 1`; c=1 and non-grouped paths keep the
+unfused fallback.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/w8a16_linear.py hipengine/kernels/hip_gfx1100/quant/__init__.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_w8a16_linear_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
+lib = build_w8a16_linear(load=True, require_cached=False)
+for name in ('hipengine_w8a16_shared_gate_up_silu_fp16','hipengine_w8a16_shared_down_combine_residual_fp16'):
+    getattr(lib, name)
+print('w8a16 fused shared symbols loaded')
+PY
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+for i in 1 2 3; do python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter31-512-run${i}.json >/tmp/iter31-512-run${i}.stdout; done
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter31-w8-down-combine-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter31-w8-down-combine-trace.json
+sqlite3 -header -csv /tmp/iter31-w8-down-combine-trace/trace_results.db "select name, count(*) n, sum(duration)/1e6 total_ms, avg(duration)/1e3 avg_us, max(duration)/1e3 max_us from kernels where name like '%w8a16%' or name like '%shared_gate_combine%' group by name order by sum(duration) desc;"
+```
+
+Results: tests passed (`61 passed`) and the W8A16 library rebuilt with both fused
+shared symbols. 512/128 samples were `1811.035`, `1797.715`, `1791.571`, and
+`1794.850` tok/s (median `1796.282`), +2.5% over retained `1752.674`. Fixture
+gate passed (`max_kl=0.03406`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2874s`), so the owned
+memory accounting is unchanged. 4K/128 stayed runnable and improved to
+`578.288 tok/s` (`prefill_seconds=7.0830`, decode `102.490 tok/s`), above the
+95% guard. Profiler evidence: `w8a16_shared_down_combine_residual_fp16_kernel`
+ran 40 times (`18.913 ms` total, avg `472.832 us`) and
+`w8a16_shared_gate_up_silu_fp16_kernel` ran 40 times (`15.129 ms` total),
+replacing the previous W8A16 down plus separate shared-combine path. Decision:
+keep. Remaining high buckets are now full-attention prefill GQA, GDN recurrent
+prefill, selected MoE WMMA, and W4 prompt projections.

@@ -15,6 +15,7 @@ _SYMBOL_BF16_F32 = "hipengine_w8a16_linear_bf16_f32_out"
 _SYMBOL_BF16_LOWP = "hipengine_w8a16_linear_bf16_lowp_out"
 _SYMBOL_FP16_LOWP = "hipengine_w8a16_linear_fp16_lowp_out"
 _SYMBOL_SHARED_GATE_UP_SILU_FP16 = "hipengine_w8a16_shared_gate_up_silu_fp16"
+_SYMBOL_SHARED_DOWN_COMBINE_RESIDUAL_FP16 = "hipengine_w8a16_shared_down_combine_residual_fp16"
 _SYMBOL_F32_F32 = "hipengine_w8a16_linear_f32_f32_out"
 _ALLOWED_THREADS = {64, 128, 256, 512}
 
@@ -185,6 +186,46 @@ def w8a16_shared_gate_up_silu_fp16(
     )
 
 
+def w8a16_shared_down_combine_residual_fp16(
+    shared_intermediate_ptr: int,
+    down_weight_ptr: int,
+    down_scale_ptr: int,
+    selected_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    intermediate_size: int,
+    gate_stride: int,
+    *,
+    threads: int = 64,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch fused FP16 W8A16 shared down + shared gate/residual combine."""
+
+    _launch_shared_down_combine_residual(
+        _SYMBOL_SHARED_DOWN_COMBINE_RESIDUAL_FP16,
+        shared_intermediate_ptr,
+        down_weight_ptr,
+        down_scale_ptr,
+        selected_ptr,
+        gate_logits_ptr,
+        residual_ptr,
+        out_ptr,
+        tokens,
+        hidden_size,
+        intermediate_size,
+        gate_stride,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def w8a16_linear_f32_f32_out(
     hidden_ptr: int,
     weight_ptr: int,
@@ -240,6 +281,11 @@ def register_w8a16_linear_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
         register(
+            KernelKey("hip_gfx1100", "w8a16_linear", quant, "shared_down_combine_residual_fp16"),
+            w8a16_shared_down_combine_residual_fp16,
+            replace=replace,
+        )
+        register(
             KernelKey("hip_gfx1100", "w8a16_linear", quant, "f32_f32_out"),
             w8a16_linear_f32_f32_out,
             replace=replace,
@@ -285,6 +331,64 @@ def _launch(
         ctypes.c_int64(tokens),
         ctypes.c_int64(hidden_size),
         ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_shared_down_combine_residual(
+    symbol: str,
+    shared_intermediate_ptr: int,
+    down_weight_ptr: int,
+    down_scale_ptr: int,
+    selected_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    intermediate_size: int,
+    gate_stride: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_shape(tokens, hidden_size, intermediate_size, threads)
+    _check_positive(gate_stride, "gate_stride")
+    library = library or build_w8a16_linear(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(shared_intermediate_ptr),
+        ctypes.c_void_p(down_weight_ptr),
+        ctypes.c_void_p(down_scale_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(gate_logits_ptr),
+        ctypes.c_void_p(residual_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(intermediate_size),
+        ctypes.c_int64(gate_stride),
         ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )

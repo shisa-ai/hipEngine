@@ -70,6 +70,7 @@ from hipengine.kernels.hip_gfx1100.norm import (
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
     w8a16_linear_bf16_lowp_out,
     w8a16_linear_fp16_lowp_out,
+    w8a16_shared_down_combine_residual_fp16,
     w8a16_shared_gate_up_silu_fp16,
 )
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
@@ -3349,6 +3350,63 @@ class Qwen35ParoDecodeState:
         )
         return scratch.down_out
 
+    def shared_expert_gate_up_silu_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch,
+        *,
+        tokens: int = 1,
+        threads: int = 64,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
+        w8a16_shared_gate_up_silu_fp16(
+            hidden.ptr,
+            self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
+            self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
+            scratch.shared_intermediate.ptr,
+            tokens,
+            self.config.hidden_size,
+            self.config.shared_expert_intermediate_size,
+            threads=threads,
+            stream=stream,
+            library=_library_for(library, "w8a16"),
+            runtime=self.runtime,
+        )
+        return scratch.shared_intermediate
+
+    def shared_expert_down_combine_residual_fp16(
+        self,
+        scratch: Qwen35ParoGroupedMoeScratch,
+        residual: Tensor,
+        *,
+        tokens: int = 1,
+        threads: int = 64,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
+        shared_gate_logits_ptr = scratch.router_logits.ptr + self.config.num_experts * DType.FP32.itemsize
+        w8a16_shared_down_combine_residual_fp16(
+            scratch.shared_intermediate.ptr,
+            self.tensor(f"{prefix}.down_weight_w8a16").ptr,
+            self.tensor(f"{prefix}.down_weight_w8a16_scale").ptr,
+            scratch.selected_out.ptr,
+            shared_gate_logits_ptr,
+            residual.ptr,
+            scratch.moe_out.ptr,
+            tokens,
+            self.config.hidden_size,
+            self.config.shared_expert_intermediate_size,
+            self.config.num_experts + 1,
+            threads=threads,
+            stream=stream,
+            library=_library_for(library, "w8a16"),
+            runtime=self.runtime,
+        )
+        return scratch.moe_out
+
     def shared_expert_w8a16_fp16(
         self,
         hidden: Tensor,
@@ -3643,22 +3701,14 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "combine"),
             runtime=self.runtime,
         )
-        shared = self.shared_expert_w8a16_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
-        shared_gate_logits_ptr = scratch.router_logits.ptr + cfg.num_experts * DType.FP32.itemsize
-        shared_gate_combine_residual_batch_out_fp16(
-            scratch.selected_out.ptr,
-            shared.ptr,
-            shared_gate_logits_ptr,
-            residual.ptr,
-            scratch.moe_out.ptr,
-            tokens,
-            cfg.hidden_size,
-            cfg.num_experts + 1,
+        self.shared_expert_gate_up_silu_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        return self.shared_expert_down_combine_residual_fp16(
+            scratch,
+            residual,
+            tokens=tokens,
+            library=library,
             stream=stream,
-            library=_library_for(library, "combine"),
-            runtime=self.runtime,
         )
-        return scratch.moe_out
 
     def run_moe_c1_fp16(
         self,

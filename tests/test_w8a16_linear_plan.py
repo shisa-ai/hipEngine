@@ -9,6 +9,7 @@ from hipengine.kernels.hip_gfx1100.quant import (
     w8a16_linear_bf16_lowp_out,
     w8a16_linear_f32_f32_out,
     w8a16_linear_fp16_lowp_out,
+    w8a16_shared_down_combine_residual_fp16,
     w8a16_shared_gate_up_silu_fp16,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
@@ -63,6 +64,15 @@ def test_w8a16_linear_registers_w8a16_and_w4_paro_variants() -> None:
                 backend="hip_gfx1100",
                 layer="w8a16_linear",
                 quant=quant,
+                variant="shared_down_combine_residual_fp16",
+            )
+            is w8a16_shared_down_combine_residual_fp16
+        )
+        assert (
+            resolve(
+                backend="hip_gfx1100",
+                layer="w8a16_linear",
+                quant=quant,
                 variant="f32_f32_out",
             )
             is w8a16_linear_f32_f32_out
@@ -99,3 +109,5 @@ def test_w8a16_linear_wrappers_validate_before_gpu_load() -> None:
         w8a16_linear_fp16_lowp_out(0, 0, 0, 0, 0, 16, 8)
     with pytest.raises(ValueError, match="out_features must be positive"):
         w8a16_shared_gate_up_silu_fp16(0, 0, 0, 0, 1, 16, 0)
+    with pytest.raises(ValueError, match="gate_stride must be positive"):
+        w8a16_shared_down_combine_residual_fp16(0, 0, 0, 0, 0, 0, 0, 1, 16, 8, 0)
