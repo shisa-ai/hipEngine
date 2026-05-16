@@ -1,0 +1,404 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained_stop_condition",
+  "performance_claim": false,
+  "date": "2026-05-17",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "rocm": "HIP version 7.2.53211-d40244d; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+  "task": "D5.2 W8A16 decode kernel tile/occupancy audit",
+  "model_context": {
+    "model": "Qwen3.5-35B-A3B-PARO",
+    "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+    "quant": "w4_paro with legacy_fp16 shared expert materialized to W8A16 and W8A16 lm_head",
+    "amdahl_source": "benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json"
+  },
+  "m4_decode_bucket_evidence": {
+    "method": "rocprofv3 --kernel-trace --selected-regions measured_decode_graph; 16 one-step graph replays",
+    "512_128": {
+      "w8a16_share": 0.1566988943319095,
+      "w8a16_ms_per_token": 1.138421375,
+      "lm_head_ms_per_token": 0.69378175,
+      "shared_lowp_ms_per_token": 0.444639625,
+      "w8a16_calls_per_token": 81.0
+    },
+    "4096_128": {
+      "w8a16_share": 0.15723685225640513,
+      "w8a16_ms_per_token": 1.1362416875,
+      "lm_head_ms_per_token": 0.69368725,
+      "shared_lowp_ms_per_token": 0.4425544375,
+      "w8a16_calls_per_token": 81.0
+    },
+    "32768_128": {
+      "w8a16_share": 0.1335822946276008,
+      "w8a16_ms_per_token": 1.149214375,
+      "lm_head_ms_per_token": 0.690816375,
+      "shared_lowp_ms_per_token": 0.458398,
+      "w8a16_calls_per_token": 81.0
+    }
+  },
+  "isa_resource_metadata": {
+    "artifact": "/home/lhl/.cache/hipengine/build/w8a16_linear-033698c919656936/w8a16_linear.so",
+    "extract_command": "llvm-objdump --offloading /home/lhl/.cache/hipengine/build/w8a16_linear-033698c919656936/w8a16_linear.so",
+    "metadata_command": "llvm-readelf --notes /home/lhl/.cache/hipengine/build/w8a16_linear-033698c919656936/w8a16_linear.so.0.hipv4-amdgcn-amd-amdhsa--gfx1100",
+    "kernels": {
+      "w8a16_linear_kernel": {
+        "sgpr_count": 32,
+        "vgpr_count": 23,
+        "sgpr_spill_count": 0,
+        "vgpr_spill_count": 0,
+        "private_segment_fixed_size": 0,
+        "group_segment_fixed_size": 0,
+        "wavefront_size": 32,
+        "dynamic_lds_bytes": "threads * sizeof(float)"
+      },
+      "w8a16_linear_lowp_out_kernel<hip_bfloat16>": {
+        "sgpr_count": 32,
+        "vgpr_count": 23,
+        "sgpr_spill_count": 0,
+        "vgpr_spill_count": 0,
+        "private_segment_fixed_size": 0,
+        "group_segment_fixed_size": 0,
+        "wavefront_size": 32,
+        "dynamic_lds_bytes": "threads * sizeof(float)"
+      },
+      "w8a16_linear_lowp_out_kernel<_Float16>": {
+        "sgpr_count": 32,
+        "vgpr_count": 20,
+        "sgpr_spill_count": 0,
+        "vgpr_spill_count": 0,
+        "private_segment_fixed_size": 0,
+        "group_segment_fixed_size": 0,
+        "wavefront_size": 32,
+        "dynamic_lds_bytes": "threads * sizeof(float)"
+      }
+    },
+    "static_disassembly_counts": {
+      "w8a16_linear_kernel": {
+        "instructions": 217,
+        "global_load": 4,
+        "global_store": 1,
+        "ds_ops": 5,
+        "v_fma_or_fmac": 9,
+        "v_cvt": 9,
+        "s_waitcnt": 10,
+        "s_barrier": 2
+      },
+      "w8a16_linear_lowp_out_kernel<hip_bfloat16>": {
+        "instructions": 236,
+        "global_load": 4,
+        "global_store": 1,
+        "ds_ops": 5,
+        "v_fma_or_fmac": 9,
+        "v_cvt": 9,
+        "s_waitcnt": 10,
+        "s_barrier": 2
+      },
+      "w8a16_linear_lowp_out_kernel<_Float16>": {
+        "instructions": 198,
+        "global_load": 4,
+        "global_store": 1,
+        "ds_ops": 5,
+        "v_fma_or_fmac": 10,
+        "v_cvt": 9,
+        "s_waitcnt": 10,
+        "s_barrier": 2
+      }
+    }
+  },
+  "rocprof_thread_probe": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d52-w8a16-probe-repo --output-file w8a16_decode_probe -- python3 scripts/w8a16_decode_probe.py --threads 64,128,256,512 --lm-reps 5 --shared-reps 40 --include-fused-shared --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "raw_csv": "/tmp/hipengine-d52-w8a16-probe-repo/w8a16_decode_probe_kernel_trace.csv",
+    "stdout": "/tmp/hipengine-d52-w8a16-probe-repo/probe.stdout",
+    "warmup_rows_dropped": 16,
+    "summary": [
+      {
+        "case": "lm_head_bf16_f32",
+        "threads": 64,
+        "blocks_x": 248320,
+        "samples": 5,
+        "median_us": 688.765,
+        "mean_us": 688.9888000000001,
+        "min_us": 687.925,
+        "max_us": 691.164,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "lm_head_bf16_f32",
+        "threads": 128,
+        "blocks_x": 248320,
+        "samples": 5,
+        "median_us": 674.285,
+        "mean_us": 674.3968000000001,
+        "min_us": 673.564,
+        "max_us": 675.685,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "lm_head_bf16_f32",
+        "threads": 256,
+        "blocks_x": 248320,
+        "samples": 5,
+        "median_us": 913.247,
+        "mean_us": 920.7665999999999,
+        "min_us": 894.566,
+        "max_us": 974.247,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "lm_head_bf16_f32",
+        "threads": 512,
+        "blocks_x": 248320,
+        "samples": 5,
+        "median_us": 1753.732,
+        "mean_us": 1779.861,
+        "min_us": 1751.013,
+        "max_us": 1882.334,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_down_fp16_lowp",
+        "threads": 64,
+        "blocks_x": 2048,
+        "samples": 40,
+        "median_us": 3.44,
+        "mean_us": 3.51505,
+        "min_us": 3.36,
+        "max_us": 4.52,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_down_fp16_lowp",
+        "threads": 128,
+        "blocks_x": 2048,
+        "samples": 40,
+        "median_us": 4.24,
+        "mean_us": 4.319,
+        "min_us": 4.16,
+        "max_us": 5.28,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_down_fp16_lowp",
+        "threads": 256,
+        "blocks_x": 2048,
+        "samples": 40,
+        "median_us": 7.4,
+        "mean_us": 7.482075,
+        "min_us": 7.32,
+        "max_us": 8.881,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_down_fp16_lowp",
+        "threads": 512,
+        "blocks_x": 2048,
+        "samples": 40,
+        "median_us": 12.32,
+        "mean_us": 12.4191,
+        "min_us": 12.24,
+        "max_us": 15.36,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_gate_up_fp16_lowp",
+        "threads": 64,
+        "blocks_x": 1024,
+        "samples": 40,
+        "median_us": 3.22,
+        "mean_us": 3.3760250000000003,
+        "min_us": 3.04,
+        "max_us": 8.6,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_gate_up_fp16_lowp",
+        "threads": 128,
+        "blocks_x": 1024,
+        "samples": 40,
+        "median_us": 3.64,
+        "mean_us": 3.738025,
+        "min_us": 3.52,
+        "max_us": 6.48,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_gate_up_fp16_lowp",
+        "threads": 256,
+        "blocks_x": 1024,
+        "samples": 40,
+        "median_us": 4.76,
+        "mean_us": 4.8,
+        "min_us": 4.52,
+        "max_us": 6.16,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_gate_up_fp16_lowp",
+        "threads": 512,
+        "blocks_x": 1024,
+        "samples": 40,
+        "median_us": 7.3405,
+        "mean_us": 7.43505,
+        "min_us": 7.24,
+        "max_us": 9.24,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_gate_up_silu_fp16",
+        "threads": 64,
+        "blocks_x": 128,
+        "samples": 40,
+        "median_us": 6.4,
+        "mean_us": 6.426075,
+        "min_us": 6.32,
+        "max_us": 6.64,
+        "vgpr": 40,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_gate_up_silu_fp16",
+        "threads": 128,
+        "blocks_x": 128,
+        "samples": 40,
+        "median_us": 5.28,
+        "mean_us": 5.306,
+        "min_us": 5.08,
+        "max_us": 5.72,
+        "vgpr": 40,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_gate_up_silu_fp16",
+        "threads": 256,
+        "blocks_x": 128,
+        "samples": 40,
+        "median_us": 5.28,
+        "mean_us": 5.333024999999999,
+        "min_us": 5.2,
+        "max_us": 5.64,
+        "vgpr": 40,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      {
+        "case": "shared_gate_up_silu_fp16",
+        "threads": 512,
+        "blocks_x": 128,
+        "samples": 40,
+        "median_us": 5.04,
+        "mean_us": 5.051,
+        "min_us": 4.92,
+        "max_us": 5.32,
+        "vgpr": 40,
+        "sgpr": 128,
+        "lds_block_size": 0
+      }
+    ],
+    "winners": {
+      "lm_head_bf16_f32": {
+        "case": "lm_head_bf16_f32",
+        "threads": 128,
+        "blocks_x": 248320,
+        "samples": 5,
+        "median_us": 674.285,
+        "mean_us": 674.3968000000001,
+        "min_us": 673.564,
+        "max_us": 675.685,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      "shared_gate_up_fp16_lowp": {
+        "case": "shared_gate_up_fp16_lowp",
+        "threads": 64,
+        "blocks_x": 1024,
+        "samples": 40,
+        "median_us": 3.22,
+        "mean_us": 3.3760250000000003,
+        "min_us": 3.04,
+        "max_us": 8.6,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      "shared_down_fp16_lowp": {
+        "case": "shared_down_fp16_lowp",
+        "threads": 64,
+        "blocks_x": 2048,
+        "samples": 40,
+        "median_us": 3.44,
+        "mean_us": 3.51505,
+        "min_us": 3.36,
+        "max_us": 4.52,
+        "vgpr": 24,
+        "sgpr": 128,
+        "lds_block_size": 0
+      },
+      "shared_gate_up_silu_fp16_probe_only": {
+        "case": "shared_gate_up_silu_fp16",
+        "threads": 512,
+        "blocks_x": 128,
+        "samples": 40,
+        "median_us": 5.04,
+        "mean_us": 5.051,
+        "min_us": 4.92,
+        "max_us": 5.32,
+        "vgpr": 40,
+        "sgpr": 128,
+        "lds_block_size": 0
+      }
+    }
+  },
+  "interpretation": [
+    "The current lm-head W8A16 launch already uses the fastest probed workgroup size: 128 threads. 64 is ~2.1% slower on the isolated kernel; 256 and 512 are much worse from reduction/wave overhead.",
+    "The current legacy shared-expert lowp W8A16 launches already use the fastest probed workgroup size: 64 threads. Larger workgroups regress both gate/up and down shapes.",
+    "The existing fused shared gate/up+SiLU helper was probed as a decode-shape tile/fusion alternative; its best isolated median (~5.04 us at 512 threads) is slower than generic lowp gate/up at 64 threads plus the measured graph shared SiLU (~3.22 us + ~1.28 us), so it is not a c=1 decode replacement.",
+    "Resource metadata shows no scratch, no SGPR/VGPR spills, low VGPR pressure, wave32, and tiny dynamic LDS reductions; the remaining lm-head cost is dominated by the unavoidable ~509 MB int8 weight stream per token, while the small shared linears are already launch/reduction efficient."
+  ],
+  "legacy_vs_packed_shared_expert_tradeoff": {
+    "source_artifacts": [
+      "benchmarks/results/2026-05-17-hipengine-qwen36-shisa-force-legacy-diagnostic.json",
+      "benchmarks/results/2026-05-17-hipengine-qwen36-packed-shared-decode-fusion-diagnostic.json"
+    ],
+    "summary": "Forced legacy W8A16 shared expert is faster for shisa c=1 decode but worse for prefill and memory. Before packed-path tuning it improved decode by +7.4%/+7.2% at 512/4K while lowering prefill by -9.5%/-11.1%; after packed W4 decode recovery the remaining packed-vs-legacy decode gap is about -3.3% at both shapes. D5.2 found no W8A16 tile/occupancy win that changes this policy tradeoff; keep packed sidecars for packed checkpoints and legacy W8A16 only for legacy checkpoints."
+  },
+  "decision": {
+    "action": "stop_no_code_change",
+    "retained_defaults": {
+      "HIPENGINE_QWEN35_LM_HEAD_THREADS": 128,
+      "w8a16_linear_lowp_out shared-expert threads": 64
+    },
+    "rejected_probe_options": [
+      "lm_head threads 64/256/512",
+      "shared lowp threads 128/256/512",
+      "c=1 shared_gate_up_silu replacement"
+    ],
+    "reason": "Target kernels are already occupancy/tile tuned for the decode shapes; remaining W8A16 time is dominated by bandwidth for lm_head and by graph launch/reduction floor for small shared linears."
+  }
+}

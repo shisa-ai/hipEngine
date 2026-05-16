@@ -14584,3 +14584,79 @@ resident-runner diagnostic row (`performance_claim=false`) because public
 kernel is visible under rocprof, and peak memory remains below the 24 GiB guardrail
 while dropping by ~0.411 GiB. Artifact:
 `benchmarks/results/2026-05-17-hipengine-qwen35-d21-marlin-k-qweight-neutral-diagnostic.json`.
+
+## 2026-05-17 — D5.2 W8A16 decode kernel audit stop condition
+
+Task #9 audited the W8A16 decode family called out by the M.4 Amdahl profile:
+`w8a16_linear_kernel` for lm-head BF16→FP32 and
+`w8a16_linear_lowp_out_kernel<_Float16>` for the legacy shared-expert gate/up
+and down projections. No fused lm-head/argmax work was attempted.
+
+M.4 source evidence (`benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`):
+
+- 512/128 decode graph window: W8A16 `15.67%`, `1.138 ms/token`, `81` calls/token.
+- 4K/128: W8A16 `15.72%`, `1.136 ms/token`.
+- 32K/128: W8A16 `13.36%`, `1.149 ms/token`.
+- Split at 512/128: lm-head W8A16 `0.694 ms/token`, shared lowp W8A16 `0.445 ms/token`; argmax is only `0.0069 ms/token`.
+
+ISA/resource audit on the cached decode build (`w8a16_linear-033698c919656936`):
+
+- `w8a16_linear_kernel`: SGPR 32, VGPR 23, no SGPR/VGPR spills, private segment 0, fixed LDS 0, wave32; dynamic LDS is `threads * sizeof(float)` for the reduction.
+- `w8a16_linear_lowp_out_kernel<hip_bfloat16>`: SGPR 32, VGPR 23, no spills/scratch.
+- `w8a16_linear_lowp_out_kernel<_Float16>`: SGPR 32, VGPR 20, no spills/scratch.
+- Static disassembly is the expected vec8 loop plus LDS reduction (`global_load`, `v_cvt`, `v_fma_mix`/`v_fmac`, `ds_*`, `s_barrier`); no scratch path appeared.
+
+Added `scripts/w8a16_decode_probe.py`, a synthetic decode-shape profiler helper,
+and ran it under rocprof:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/hipengine-d52-w8a16-probe-repo \
+  --output-file w8a16_decode_probe -- \
+  python3 scripts/w8a16_decode_probe.py \
+    --threads 64,128,256,512 \
+    --lm-reps 5 \
+    --shared-reps 40 \
+    --include-fused-shared \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Profiler medians after dropping warmup rows:
+
+| case | best / current | probes |
+| --- | --- | --- |
+| lm-head `w8a16_linear_kernel`, 2048→248320 | 128 threads, `674.285 us` | 64 `688.765`, 256 `913.247`, 512 `1753.732` us |
+| shared gate/up `w8a16_linear_lowp_out_kernel<_Float16>`, 2048→1024 | 64 threads, `3.220 us` | 128 `3.640`, 256 `4.760`, 512 `7.340` us |
+| shared down `w8a16_linear_lowp_out_kernel<_Float16>`, 512→2048 | 64 threads, `3.440 us` | 128 `4.240`, 256 `7.400`, 512 `12.320` us |
+| existing fused shared gate/up+SiLU helper, c=1 probe | rejected | best `~5.040 us`, slower than generic lowp gate/up plus measured graph shared SiLU (~`3.22 + 1.28 us`) |
+
+Conclusion / stop condition:
+
+- Keep `HIPENGINE_QWEN35_LM_HEAD_THREADS=128` and the shared lowp W8A16 default
+  at 64 threads. Larger workgroups lose to reduction/wave overhead; 64 is not
+  better for lm-head.
+- No code-path change retained. The remaining W8A16 lm-head cost is dominated by
+  the unavoidable 248320×2048 int8 weight stream (~509 MB/token before cache and
+  output/scales), while the shared-expert W8A16 linears are already low-VGPR,
+  no-spill, and best at the existing small workgroup.
+- Legacy-vs-packed shared-expert decode tradeoff remains a policy/format issue,
+  not a W8A16 occupancy bug: forced legacy W8A16 was faster for shisa decode but
+  worse for prefill/memory, and after packed-W4 recovery the remaining packed
+  decode gap is ~3.3%; D5.2 found no W8A16 micro-tune that changes the packed
+  checkpoint default.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/w8a16_decode_probe.py
+python3 -m pytest tests/test_w8a16_linear_plan.py -q --tb=short
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d52-w8a16-decode-audit.json >/tmp/d52-json-check.json
+# validation ok
+```
+
+Recorded artifact and rollup:
+
+- `benchmarks/results/2026-05-17-hipengine-qwen35-d52-w8a16-decode-audit.json`
+- `docs/OPTIMIZE.md` D5.2 marked accepted(stop)
+- `benchmarks/README.md` diagnostic row + `benchmarks/CHANGELOG.md` one-liner
