@@ -313,12 +313,14 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
     int64_t num_v_heads,
     int64_t head_k_dim,
     int64_t head_v_dim) {
-  __shared__ float partial[64];
+  __shared__ float partial[2];
   const int64_t v_head = blockIdx.x;
   const int64_t value_idx = blockIdx.y;
-  const int lane_id = threadIdx.x % warpSize;
-  const int warp_id = threadIdx.x / warpSize;
-  const int num_warps = (blockDim.x + warpSize - 1) / warpSize;
+  // Wrapper validates head_k_dim == 128 and launches 64 threads, so this k2
+  // specialization is always two wave32 warps. Keep the same partial[0] +
+  // partial[1] accumulation order while avoiding the per-token num_warps loop.
+  const int lane_id = threadIdx.x & (warpSize - 1);
+  const int warp_id = threadIdx.x >> 5;
   const int64_t k_base = static_cast<int64_t>(threadIdx.x) * 2;
   if (v_head >= num_v_heads || value_idx >= head_v_dim || k_base + 1 >= head_k_dim) {
     return;
@@ -346,11 +348,7 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
     }
     __syncthreads();
     if (threadIdx.x == 0) {
-      float total = 0.0f;
-      for (int warp = 0; warp < num_warps; ++warp) {
-        total += partial[warp];
-      }
-      partial[0] = total;
+      partial[0] += partial[1];
     }
     __syncthreads();
     const float delta =
@@ -368,11 +366,7 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
     }
     __syncthreads();
     if (threadIdx.x == 0) {
-      float total = 0.0f;
-      for (int warp = 0; warp < num_warps; ++warp) {
-        total += partial[warp];
-      }
-      out[head_offset * head_v_dim + value_idx] = total;
+      out[head_offset * head_v_dim + value_idx] = partial[0] + partial[1];
     }
     __syncthreads();
   }

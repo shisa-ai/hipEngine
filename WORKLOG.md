@@ -10751,3 +10751,42 @@ samples were `1878.021`, `1848.587`, `1867.779`, and `1876.125` tok/s (median
 the guard at `655.091 tok/s` (`prefill_seconds=6.2526`, decode `102.522 tok/s`)
 but was slightly below retained `658.418`. Decision: reject/revert. The extra
 short-row LDS/branching does not beat the simpler iter-34 query-cache path.
+
+## 2026-05-16 — Prefill multiloop iter 36: two-wave GDN k2 reduction specialization
+
+After iter 34 made full-attention prefill faster, the current 512/0 trace showed
+`qwen35_gdn_prefill_recurrent_k2_kernel` as the largest remaining bucket
+(`45.089 ms` across 30 launches). The wrapper validates `head_k_dim == 128` and
+launches `head_k_dim / 2 == 64` threads, i.e. exactly two wave32 warps. Specialized
+the k2 kernel's per-token cross-warp reductions from a runtime `num_warps` loop
+over `partial[]` to direct `partial[0] + partial[1]`, preserving the accumulation
+order while reducing scalar loop overhead. Did not port parent-discarded k4 or
+value-tiled variants.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import build_qwen35_linear_attn_gdn
+lib = build_qwen35_linear_attn_gdn(load=True, require_cached=False)
+getattr(lib, 'hipengine_qwen35_gdn_prefill_recurrent_k2_f32')
+print('gdn k2 symbol loaded')
+PY
+python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter36-gdn-twowarp-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter36-gdn-twowarp-trace.json
+sqlite3 -header -csv /tmp/iter36-gdn-twowarp-trace/trace_results.db "select name, count(*) n, sum(duration)/1e6 total_ms, avg(duration)/1e3 avg_us, max(duration)/1e3 max_us from kernels where name like '%gdn_prefill_recurrent%' or name like '%prefill_gqa_gate%' or name like '%awq_fusedw4%' group by name order by sum(duration) desc limit 20;"
+```
+
+Results: targeted tests passed (`37 passed`). 512/128 samples were `1916.075`,
+`1910.982`, `1901.536`, and `1893.917` tok/s (median `1906.259`), +1.2% over
+retained `1883.940`. Fixture gate passed (`max_kl=0.03406`, top-1 agreement
+`1.0`, `native_owned_device_bytes=1625645909`, native prefill `0.2710s`).
+4K/128 remained runnable and slightly improved to `661.506 tok/s`
+(`prefill_seconds=6.1919`, decode `101.966 tok/s`), above the 95% guard.
+Profiler evidence: `qwen35_gdn_prefill_recurrent_k2_kernel` ran 30 times with
+`40.993 ms` total / `1366.4 us` average, down from the prior retained trace's
+`45.089 ms` total. Decision: keep. Updated benchmark artifact/rollup and
+`docs/KERNELS.md`.
