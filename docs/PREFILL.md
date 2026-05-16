@@ -208,19 +208,26 @@ bottom-right-aligned causal AOTriton over the cached prefix.
 
 Retained chunking checkpoint:
 `benchmarks/results/2026-05-16-hipengine-qwen35-prefill-chunking-diagnostic.json`.
-All rows use `--attn-aotriton-min-tokens 512 --graph-replay-decode`; the chunked
-policy mirrors parent long-context knobs: linear/MoE/post/RoPE chunks `1024`,
-full-attention query chunk `4096`.
+Companion quick-table artifact:
+`benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json`.
+Run `python3 scripts/qwen35_compare_tables.py {nano-vllm-amd,llama.cpp-hip,llama.cpp-vulkan,all}`
+to print separate prefill/decode/memory comparison tables.  All hipENGINE rows use
+`--attn-aotriton-min-tokens 512 --graph-replay-decode`; the chunked policy mirrors
+parent long-context knobs: linear/MoE/post/RoPE chunks `1024`, full-attention query
+chunk `4096`.
 
-| Workload | Unchunked prefill tok/s | Chunked prefill tok/s | Prefill delta | Unchunked decode tok/s | Chunked decode tok/s | Tracked peak GiB | Parent OPTIMAL | Chunked vs parent |
+| Workload | Unchunked prefill tok/s | Chunked prefill tok/s | Prefill delta | Unchunked decode tok/s | Chunked decode tok/s | Tracked peak GiB | Parent OPTIMAL | Chunked/current vs parent |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| 512 / 128 | not rerun (chunk sizes exceed prompt) | 2216.487 | no-op policy | — | 109.105 | 18.581 | 2557.0 prefill / 115.7 decode / 18.86 GiB | prefill -13.3%, decode -5.7%, peak -0.28 GiB |
 | 4K / 128 | 2370.229 | 2504.959 | +5.7% | 110.168 | 110.117 | 20.415 → 19.875 | 2703.0 prefill / 112.0 decode / 21.64 GiB | prefill -7.3%, decode -1.7%, peak -1.77 GiB |
 | 32K / 128 | 1731.976 | 1886.344 | +8.9% | 93.867 | 93.923 | 35.100 → 20.688 | 1880.0 prefill / 98.8 decode / 21.37 GiB | prefill +0.3%, decode -4.9%, peak -0.68 GiB |
 | 128K / 128 | blocked: OOM | 1002.409 | unblocked | — | 61.051 | OOM → 23.656 | 914.0 prefill / 62.6 decode / 27.42 GiB | prefill +9.7%, decode -2.5%, peak -3.76 GiB |
 
 Takeaway: chunking fixes the 128K scratch OOM and removes the 32K memory cliff.
 Long-context prefill is now at/above the parent long-context rows in this
-resident-runner diagnostic, while decode remains slightly behind parent.
+resident-runner diagnostic, while decode remains slightly behind parent.  The
+512/128 no-op-chunk row remains a short-context prefill gap and is included so
+the quick comparison script covers the same context set for every baseline.
 
 #### Parent vs hipENGINE prefill call structure
 

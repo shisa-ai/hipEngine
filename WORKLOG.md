@@ -13159,3 +13159,52 @@ Chunked hipENGINE vs parent `~/amd-gpu-tuning/docs/OPTIMAL.md` rows:
 | 128K/128 decode | 61.051 | 62.6 | -2.5% |
 
 Takeaway: chunking fixes the 128K OOM and removes the 32K memory cliff.  Long-context prefill is now at/above parent docs for 32K/128 and 128K/128 in this resident-runner diagnostic; decode remains slightly behind parent.
+
+## 2026-05-16 — Qwen3.5 comparison table script + 512/128 row
+
+Added a retained comparison-table snapshot and `scripts/qwen35_compare_tables.py` so the current hipENGINE resident-runner rows can be printed as separate prefill/decode/memory tables against `nano-vllm-amd`, llama.cpp HIP, or llama.cpp Vulkan.  The script is hardcoded on purpose; it is not a benchmark runner.
+
+New 512/128 current row, using the same installed-AOTriton + decode-graph + parent-style chunk policy as the chunking checkpoint (chunk sizes exceed the 512 prompt, so this is a no-op chunk row):
+
+```bash
+COMMON="--token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode"
+CHUNK="--prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024"
+python3 scripts/qwen35_paro_bench.py $COMMON $CHUNK --prompt-length 512 --json /tmp/task29-512k128-chunked.json
+# prefill=2216.487043410022 tok/s, decode=109.10539462615208 tok/s, tracked_peak=18.58110980410129 GiB, hip_used_peak_sampled=18.60193634033203 GiB
+```
+
+Retained artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json`.
+
+Primary script commands:
+
+```bash
+python3 scripts/qwen35_compare_tables.py nano-vllm-amd
+python3 scripts/qwen35_compare_tables.py 'llama.cpp HIP'
+python3 scripts/qwen35_compare_tables.py vulkan
+python3 scripts/qwen35_compare_tables.py all
+```
+
+Current `nano-vllm-amd` view:
+
+| Workload | hipENGINE prefill | nano parent prefill | Prefill delta | hipENGINE decode | nano parent decode | Decode delta | hipENGINE peak | nano parent peak | Peak delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 2216.487 | 2557.000 | -13.3% | 109.105 | 115.700 | -5.7% | 18.581 | 18.860 | -0.28 GiB |
+| 4K/128 | 2504.959 | 2703.000 | -7.3% | 110.117 | 112.000 | -1.7% | 19.875 | 21.640 | -1.77 GiB |
+| 32K/128 | 1886.344 | 1880.000 | +0.3% | 93.923 | 98.800 | -4.9% | 20.688 | 21.370 | -0.68 GiB |
+| 128K/128 | 1002.409 | 914.000 | +9.7% | 61.051 | 62.600 | -2.5% | 23.656 | 27.420 | -3.76 GiB |
+
+llama.cpp HIP and Vulkan script views use the split rows from `~/amd-gpu-tuning/PLAN-LONGCONTEXT.md`; those rows do not have retained memory values, so the memory tables intentionally print `—` for baseline and delta.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/qwen35_compare_tables.py
+python3 -m json.tool benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json >/tmp/task31-comparison-artifact.pretty.json
+python3 scripts/qwen35_compare_tables.py all >/tmp/task31-comparison-all.md
+python3 - <<'PY'
+# imported the script and asserted hardcoded rows match the retained artifact
+PY
+# artifact/script data match
+
+git diff --check
+```
