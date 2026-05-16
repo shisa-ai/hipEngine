@@ -17,6 +17,9 @@ _SYMBOL_PARTIAL = "hipengine_qwen35_partial_rotary_f32"
 _SYMBOL_HEAD_RMS = "hipengine_qwen35_head_rmsnorm_partial_rotary_f32_bf16"
 _SYMBOL_HEAD_RMS_POSITION = "hipengine_qwen35_head_rmsnorm_partial_rotary_position_f32_bf16"
 _SYMBOL_HEAD_RMS_POSITIONS = "hipengine_qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16"
+_SYMBOL_HEAD_RMS_POSITIONS_Q_BF16 = (
+    "hipengine_qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32"
+)
 
 
 def plan_qwen35_rotary_build(
@@ -317,6 +320,54 @@ def qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16(
     )
 
 
+def qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32(
+    query_ptr: int,
+    key_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    cos_table_ptr: int,
+    sin_table_ptr: int,
+    positions_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    eps: float,
+    tokens: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch fused head RMSNorm + RoPE with BF16 query output and FP32 key output."""
+
+    _launch_head_rmsnorm_partial_rotary_positions(
+        _SYMBOL_HEAD_RMS_POSITIONS_Q_BF16,
+        query_ptr,
+        key_ptr,
+        q_weight_ptr,
+        k_weight_ptr,
+        cos_table_ptr,
+        sin_table_ptr,
+        positions_ptr,
+        query_out_ptr,
+        key_out_ptr,
+        eps,
+        tokens,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        rotary_dim,
+        max_positions,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_qwen35_rotary_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "split_qgate", "w4_paro", "qwen35_bf16"),
@@ -356,6 +407,16 @@ def register_qwen35_rotary_kernels(*, replace: bool = True) -> None:
             "qwen35_positions_f32_bf16",
         ),
         qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "head_rmsnorm+partial_rotary",
+            "w4_paro",
+            "qwen35_positions_q_bf16_key_f32",
+        ),
+        qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32,
         replace=replace,
     )
 

@@ -12823,3 +12823,48 @@ Main finding:
 No GPU benchmark was run for this audit; it is a source/ledger comparison.  The
 first follow-up before invasive kernel work should be a matched ROCTX +
 `rocprofv3` profile to confirm dense/shared kernels dominate the residual gap.
+
+## 2026-05-16 - Task #17 AOTriton prefill cast-glue reduction
+
+Goal: reduce the explicit Q/K/V cast kernels around opt-in AOTriton prefill while preserving BF16 Q/K/V/Out semantics and fixture correctness.
+
+Implementation:
+
+- Added `hipengine_qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32`, a prefill-only head-RMSNorm/RoPE variant that writes BF16 query rows directly and keeps key rows as FP32 for the existing paged-KV append.
+- Updated the single-request AOTriton prefill path to pass that BF16 Q tensor directly to AOTriton.
+- Reused the already-appended BF16 paged KV cache as AOTriton K/V, so the old scratch K F32→BF16 and V FP16→BF16 casts are skipped on the cache-contiguous c=1 prompt path.
+- Left fallback scratch casts in `prefill_full_attention_aotriton_varlen_gqa_gate_fp16(...)` for callers that do not provide cache tensors.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/rotary/qwen35_rotary.py hipengine/kernels/hip_gfx1100/rotary/__init__.py hipengine/runtime/qwen35_paro.py tests/test_qwen35_rotary_plan.py
+python3 -m pytest tests/test_qwen35_rotary_plan.py -q
+# 3 passed
+python3 -m pytest tests/test_aotriton_discovery.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+# 67 passed
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/task17-fused-qkv-fixture-aotriton.json
+# passed=true, expected_match=true, max_kl=0.039568870612619614, top1_agreement=1.0
+```
+
+Note: running `tests/test_qwen35_rotary_plan.py` immediately before `tests/test_aotriton_discovery.py` in one pytest process still leaves the global registry cleared by the pre-existing rotary test setup; the targeted tests above were run as separate pytest processes.
+
+Diagnostic benchmark commands (performance_claim=false; AOTriton still opt-in at threshold 512):
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task17-fused-qkv-512-128.json
+# prefill=2317.387 tok/s, decode=100.998 tok/s, tracked_peak=18.620 GiB
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task17-fused-qkv-4k-128.json
+# prefill=2378.627 tok/s, decode=102.020 tok/s, tracked_peak=20.728 GiB
+```
+
+Compared with `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-memory-diagnostic.json`, throughput is neutral/noisy (512 -0.7%, 4K ~0.0%) while tracked peak memory drops by ~0.010 GiB at 512 and ~0.078 GiB at 4K.  This suggests cast glue is worth keeping cleaned up but is not the main residual prefill gap; P0 bulk dense/shared-expert work remains the likely next win.
+
+Retained artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-cast-glue-diagnostic.json`.
+
+Lineage hygiene for the kernel touch:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9; no code copied from the drifted parent for this task. qwen35_rotary.hip change is a hipENGINE-only BF16-Q output specialization of the already-ported vector-position prelude.
+```

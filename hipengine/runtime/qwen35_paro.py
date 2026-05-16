@@ -118,6 +118,7 @@ from hipengine.kernels.hip_gfx1100.wmma import (
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
     qwen35_head_rmsnorm_partial_rotary_position_f32_bf16,
     qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16,
+    qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32,
     qwen35_split_qgate_bf16,
     qwen35_split_qgate_fp16,
 )
@@ -1689,6 +1690,7 @@ class Qwen35ParoDecodeState:
         position: Tensor,
         max_positions: int,
         tokens: int = 1,
+        query_bf16_out: Tensor | None = None,
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
@@ -1713,6 +1715,9 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "cast"),
             runtime=self.runtime,
         )
+        if query_bf16_out is not None:
+            if query_bf16_out.dtype is not DType.BF16 or query_bf16_out.shape != scratch.query.shape:
+                raise ValueError("AOTriton query BF16 output must match full-attention query shape")
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
         qwen_rotary_library = _library_for(library, "qwen_rotary")
         if tokens == 1:
@@ -1727,6 +1732,28 @@ class Qwen35ParoDecodeState:
                 scratch.query.ptr,
                 scratch.key.ptr,
                 self.config.rms_norm_eps,
+                cfg.num_attention_heads,
+                cfg.num_key_value_heads,
+                cfg.head_dim,
+                cfg.rotary_dim or cfg.head_dim,
+                max_positions,
+                stream=stream,
+                library=qwen_rotary_library,
+                runtime=self.runtime,
+            )
+        elif query_bf16_out is not None:
+            qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32(
+                scratch.query_raw.ptr,
+                scratch.key_raw.ptr,
+                self.tensor(f"{prefix}.q_norm.weight").ptr,
+                self.tensor(f"{prefix}.k_norm.weight").ptr,
+                cos_table.ptr,
+                sin_table.ptr,
+                position.ptr,
+                query_bf16_out.ptr,
+                scratch.key.ptr,
+                self.config.rms_norm_eps,
+                tokens,
                 cfg.num_attention_heads,
                 cfg.num_key_value_heads,
                 cfg.head_dim,
@@ -1758,7 +1785,8 @@ class Qwen35ParoDecodeState:
                 library=qwen_rotary_library,
                 runtime=self.runtime,
             )
-        return scratch.query, scratch.key, scratch.value, scratch.gate
+        query_out = query_bf16_out if query_bf16_out is not None else scratch.query
+        return query_out, scratch.key, scratch.value, scratch.gate
 
     def append_full_attention_kv_fp16(
         self,
@@ -1874,6 +1902,9 @@ class Qwen35ParoDecodeState:
         rows: int,
         segments: int,
         gate: Tensor | None = None,
+        query_bf16: Tensor | None = None,
+        key_cache: Tensor | None = None,
+        value_cache: Tensor | None = None,
         scale: float | None = None,
         library=None,
         stream: int = 0,
@@ -1899,41 +1930,87 @@ class Qwen35ParoDecodeState:
         head_dim = self.config.head_dim
         q_width = q_heads * head_dim
         kv_width = kv_heads * head_dim
-        q_bf16 = self.workspace.reserve_tensor("attn.aotriton_q_bf16", scratch.query.shape, DType.BF16)
-        k_bf16 = self.workspace.reserve_tensor("attn.aotriton_k_bf16", scratch.key.shape, DType.BF16)
-        v_bf16 = self.workspace.reserve_tensor("attn.aotriton_v_bf16", scratch.value.shape, DType.BF16)
+        if query_bf16 is None:
+            q_bf16 = self.workspace.reserve_tensor("attn.aotriton_q_bf16", scratch.query.shape, DType.BF16)
+        else:
+            if query_bf16.dtype is not DType.BF16 or query_bf16.shape != scratch.query.shape:
+                raise ValueError("AOTriton query BF16 tensor must match full-attention query shape")
+            q_bf16 = query_bf16
         attn_bf16 = self.workspace.reserve_tensor("attn.aotriton_out_bf16", scratch.query.shape, DType.BF16)
         atomic_counter = self.workspace.reserve_tensor("attn.aotriton_atomic", (1,), DType.INT32)
         cast_library = _library_for(library, "cast")
-        f32_to_bf16(
-            scratch.query.ptr,
-            q_bf16.ptr,
-            rows * q_width,
-            stream=stream,
-            library=cast_library,
-            runtime=self.runtime,
-        )
-        f32_to_bf16(
-            scratch.key.ptr,
-            k_bf16.ptr,
-            rows * kv_width,
-            stream=stream,
-            library=cast_library,
-            runtime=self.runtime,
-        )
-        fp16_to_bf16(
-            scratch.value.ptr,
-            v_bf16.ptr,
-            rows * kv_width,
-            stream=stream,
-            library=cast_library,
-            runtime=self.runtime,
-        )
+        if query_bf16 is None:
+            f32_to_bf16(
+                scratch.query.ptr,
+                q_bf16.ptr,
+                rows * q_width,
+                stream=stream,
+                library=cast_library,
+                runtime=self.runtime,
+            )
+        if key_cache is None or value_cache is None:
+            k_bf16 = self.workspace.reserve_tensor("attn.aotriton_k_bf16", scratch.key.shape, DType.BF16)
+            v_bf16 = self.workspace.reserve_tensor("attn.aotriton_v_bf16", scratch.value.shape, DType.BF16)
+            f32_to_bf16(
+                scratch.key.ptr,
+                k_bf16.ptr,
+                rows * kv_width,
+                stream=stream,
+                library=cast_library,
+                runtime=self.runtime,
+            )
+            fp16_to_bf16(
+                scratch.value.ptr,
+                v_bf16.ptr,
+                rows * kv_width,
+                stream=stream,
+                library=cast_library,
+                runtime=self.runtime,
+            )
+            k_tensor = aotriton_tensor4(
+                k_bf16.ptr,
+                (1, kv_heads, rows, head_dim),
+                (kv_width * rows, head_dim, kv_width, 1),
+                DType.BF16,
+            )
+            v_tensor = aotriton_tensor4(
+                v_bf16.ptr,
+                (1, kv_heads, rows, head_dim),
+                (kv_width * rows, head_dim, kv_width, 1),
+                DType.BF16,
+            )
+        else:
+            if key_cache.dtype is not DType.BF16 or value_cache.dtype is not DType.BF16:
+                raise ValueError("AOTriton cache-backed K/V expects BF16 KV cache tensors")
+            if len(key_cache.shape) != 4 or len(value_cache.shape) != 4:
+                raise ValueError("AOTriton cache-backed K/V expects [blocks, block, kv_heads, head_dim] tensors")
+            if key_cache.shape != value_cache.shape:
+                raise ValueError("AOTriton key/value cache shapes must match")
+            if int(key_cache.shape[2]) != kv_heads or int(key_cache.shape[3]) != head_dim:
+                raise ValueError("AOTriton KV cache shape does not match attention head layout")
+            cache_rows = int(key_cache.shape[0]) * int(key_cache.shape[1])
+            if rows > cache_rows:
+                raise ValueError("AOTriton KV cache is too small for prefill rows")
+            # The single-request prompt path appends K/V into an identity block table before
+            # AOTriton runs.  That BF16 cache image is bit-identical to the prior
+            # scratch-to-BF16 casts, so reuse it and skip two full-row cast kernels.
+            k_tensor = aotriton_tensor4(
+                key_cache.ptr,
+                (1, kv_heads, rows, head_dim),
+                (kv_width * rows, head_dim, kv_width, 1),
+                DType.BF16,
+            )
+            v_tensor = aotriton_tensor4(
+                value_cache.ptr,
+                (1, kv_heads, rows, head_dim),
+                (kv_width * rows, head_dim, kv_width, 1),
+                DType.BF16,
+            )
         aotriton_library = _library_for(library, "aotriton")
         aotriton_attn_fwd_v3_compact_varlen(
             aotriton_tensor4(q_bf16.ptr, (1, q_heads, rows, head_dim), (q_width * rows, head_dim, q_width, 1), DType.BF16),
-            aotriton_tensor4(k_bf16.ptr, (1, kv_heads, rows, head_dim), (kv_width * rows, head_dim, kv_width, 1), DType.BF16),
-            aotriton_tensor4(v_bf16.ptr, (1, kv_heads, rows, head_dim), (kv_width * rows, head_dim, kv_width, 1), DType.BF16),
+            k_tensor,
+            v_tensor,
             aotriton_tensor1(cu_seqlens_q.ptr, (segments + 1,), (1,), DType.INT32),
             aotriton_tensor1(cu_seqlens_k.ptr, (segments + 1,), (1,), DType.INT32),
             aotriton_tensor2(lse.ptr, (q_heads, rows), (rows, 1), DType.FP32),
@@ -2300,6 +2377,13 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        aotriton_query_bf16 = None
+        if aotriton_attention:
+            aotriton_query_bf16 = self.workspace.reserve_tensor(
+                "attn.aotriton_q_bf16",
+                attention_scratch.query.shape,
+                DType.BF16,
+            )
         _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16(
             attention_scratch,
             cos_table=cos_table,
@@ -2307,6 +2391,7 @@ class Qwen35ParoDecodeState:
             position=positions,
             max_positions=max_positions,
             tokens=tokens,
+            query_bf16_out=aotriton_query_bf16,
             library=library,
             stream=stream,
         )
@@ -2330,6 +2415,9 @@ class Qwen35ParoDecodeState:
                 rows=tokens,
                 segments=1,
                 gate=gate,
+                query_bf16=aotriton_query_bf16,
+                key_cache=key_cache,
+                value_cache=value_cache,
                 library=library,
                 stream=stream,
             )

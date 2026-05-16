@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-05-16",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "change": "Reduce AOTriton prefill cast glue by writing BF16 Q directly from the head-RMSNorm/RoPE prelude and reusing the already-appended BF16 paged KV cache as AOTriton K/V instead of scratch K/V casts.",
+  "validation": {
+    "unit_tests": "python3 -m pytest tests/test_qwen35_rotary_plan.py -q && python3 -m pytest tests/test_aotriton_discovery.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q # 3 passed + 67 passed",
+    "py_compile": "python3 -m py_compile hipengine/kernels/hip_gfx1100/rotary/qwen35_rotary.py hipengine/kernels/hip_gfx1100/rotary/__init__.py hipengine/runtime/qwen35_paro.py tests/test_qwen35_rotary_plan.py # ok",
+    "fixture_gate": "python3 scripts/qwen35_native_prefill_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/task17-fused-qkv-fixture-aotriton.json # passed=True max_kl=0.039568870612619614 top1=1.0",
+    "combined_pytest_note": "Running test_qwen35_rotary_plan.py immediately before test_aotriton_discovery.py in one pytest process leaves the global registry cleared by the pre-existing rotary test setup; tests were run as separate processes to avoid that unrelated ordering artifact."
+  },
+  "correctness": {
+    "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+    "passed": true,
+    "expected_match": true,
+    "max_kl": 0.039568870612619614,
+    "top1_agreement": 1.0
+  },
+  "measurements": [
+    {
+      "workload": "512/128",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task17-fused-qkv-512-128.json",
+      "hipengine": {
+        "prefill_tok_s": 2317.3872897756114,
+        "decode_tok_s": 100.9976099616168,
+        "tracked_peak_allocated_gib": 18.620172296650708,
+        "tracked_current_before_close_gib": 18.411785845644772,
+        "hip_used_peak_sampled_gib": 18.64099884033203,
+        "owned_session_peak_gib": 1.5932123707607388
+      },
+      "previous_aotriton_v3_memory_diagnostic": {
+        "prefill_tok_s": 2333.4351596797464,
+        "decode_tok_s": 101.30175823309803,
+        "tracked_peak_allocated_gib": 18.629937921650708,
+        "tracked_current_before_close_gib": 18.421551470644772,
+        "hip_used_peak_sampled_gib": 18.65076446533203,
+        "owned_session_peak_gib": 1.6029779957607388
+      },
+      "parent": {
+        "prefill_tok_s": 2696.4422279659416,
+        "decode_tok_s": 116.04961191700822,
+        "peak_allocated_gib": 18.79712200164795,
+        "peak_reserved_gib": 18.8359375
+      },
+      "deltas_vs_previous": {
+        "prefill_pct": -0.6877358403366785,
+        "decode_pct": -0.3002398741997814,
+        "tracked_peak_allocated_gib_delta": -0.009765625,
+        "owned_session_peak_gib_delta": -0.009765625
+      },
+      "deltas_vs_parent": {
+        "prefill_pct": -14.057595384725518,
+        "decode_pct": -12.970316493738654,
+        "tracked_peak_allocated_gib_delta": -0.1769497049972415,
+        "tracked_peak_allocated_pct": -0.9413659441148914
+      },
+      "memory_summary": {
+        "tracked_peak_allocated_bytes": 19993257765,
+        "tracked_peak_allocated_gib": 18.620172296650708,
+        "tracked_current_allocated_bytes_before_close": 19769504517,
+        "tracked_current_allocated_gib_before_close": 18.411785845644772,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 1710698757,
+        "owned_session_peak_gib": 1.5932123707607388,
+        "hip_used_peak_sampled_bytes": 20015620096,
+        "hip_used_peak_sampled_gib": 18.64099884033203,
+        "notes": [
+          "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+        ]
+      }
+    },
+    {
+      "workload": "4K/128",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task17-fused-qkv-4k-128.json",
+      "hipengine": {
+        "prefill_tok_s": 2378.627160754759,
+        "decode_tok_s": 102.02017465317716,
+        "tracked_peak_allocated_gib": 20.72752041835338,
+        "tracked_current_before_close_gib": 19.06070272345096,
+        "hip_used_peak_sampled_gib": 19.323974609375,
+        "owned_session_peak_gib": 2.2421292485669255
+      },
+      "previous_aotriton_v3_memory_diagnostic": {
+        "prefill_tok_s": 2379.676328719247,
+        "decode_tok_s": 102.4070406032208,
+        "tracked_peak_allocated_gib": 20.80564541835338,
+        "tracked_current_before_close_gib": 19.13882772345096,
+        "hip_used_peak_sampled_gib": 19.402099609375,
+        "owned_session_peak_gib": 2.3202542485669255
+      },
+      "parent": {
+        "prefill_tok_s": 2741.4888496031463,
+        "decode_tok_s": 113.04910466336666,
+        "peak_allocated_gib": 21.64404582977295,
+        "peak_reserved_gib": 21.708984375
+      },
+      "deltas_vs_previous": {
+        "prefill_pct": -0.0440886834829568,
+        "decode_pct": -0.3777728052337448,
+        "tracked_peak_allocated_gib_delta": -0.078125,
+        "owned_session_peak_gib_delta": -0.078125
+      },
+      "deltas_vs_parent": {
+        "prefill_pct": -13.2359352437605,
+        "decode_pct": -9.755875593204411,
+        "tracked_peak_allocated_gib_delta": -0.9165254114195704,
+        "tracked_peak_allocated_pct": -4.2345383050280905
+      },
+      "memory_summary": {
+        "tracked_peak_allocated_bytes": 22256005581,
+        "tracked_peak_allocated_gib": 20.72752041835338,
+        "tracked_current_allocated_bytes_before_close": 20466273709,
+        "tracked_current_allocated_gib_before_close": 19.06070272345096,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 2407467949,
+        "owned_session_peak_gib": 2.2421292485669255,
+        "hip_used_peak_sampled_bytes": 20748959744,
+        "hip_used_peak_sampled_gib": 19.323974609375,
+        "notes": [
+          "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+        ]
+      }
+    }
+  ],
+  "notes": [
+    "AOTriton remains opt-in with --attn-aotriton-min-tokens 512; default dispatch remains native until threshold sweep lands.",
+    "This removes the explicit Q, K, and V cast launches on the single-request AOTriton prefill path. Q is rounded to BF16 in the rotary prelude; K/V reuse the BF16 cache written for decode.",
+    "Throughput movement is within single-run noise versus the prior AOTriton V3 memory diagnostic; the clear retained effect is lower workspace/owned memory from dropping temporary K/V BF16 scratch."
+  ]
+}
