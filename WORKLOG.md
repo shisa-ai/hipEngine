@@ -13467,3 +13467,110 @@ python3 scripts/qwen35_compare_tables.py llama.cpp-vulkan >/tmp/task32-vulkan.md
 
 Unrelated untracked `scripts/strip_paro_safetensors.py` is owned by another agent per AGENTS.md
 coordination rules and is left alone.
+
+---
+
+## 2026-05-17 — Packed PARO shared-expert format end-to-end (commits b46339c..a70929b + bench driver)
+
+Single canonical artifact for hipENGINE-consumable PARO checkpoints is now the **packed**
+format. All three dense shared-expert projections ship the same six-tensor PARO
+suite (`qweight/qzeros/scales/theta/pairs/channel_scales`) that the dense attention
+projections already use; the duplicate fp16 `mlp.shared_expert.*.weight` fallback path is
+gone from the loader and runtime.
+
+Commits in order:
+
+- `b46339c` — `scripts/strip_paro_safetensors.py`: packed-only mode. Drops `--mode` and
+  the hipengine-compat branch. Always removes every `.weight` whose module prefix also
+  has a `.qweight`, including `mlp.shared_expert.*` when paroquant has quantized it. Dry
+  run against upstream `z-lab/Qwen3.5-35B-A3B-PARO` returns 0 duplicates because that
+  checkpoint never packed the shared expert.
+- `1eb9b42` — loader: `required_moe_c1_tensor_names` now requires the 18 packed
+  shared-expert tensor names per layer (6 per projection × 3 projections); shape
+  validation drops the legacy fp16 shared-expert entries. `prepare_qwen35_paro_moe_c1_host_tensors`
+  emits only the three `shared_expert.{proj}.qweight_pack8_decode` transposed views;
+  raw qweight/qzeros/scales/theta/pairs/channel_scales are loaded direct by the runtime
+  materializer. `_quantize_w8a16_host` removed from the loader (runner keeps its own
+  copy for LM head). Existing layout tests rewritten; 14/14 pass.
+- `7cd2e17` — new `silu_mul_separate_out_{fp16,bf16}` kernel variant in
+  `kernels/hip_gfx1100/fused/paro_silu.hip`. Takes two separate `[rows, features]`
+  pointers and writes `silu(gate) * up` to a third buffer. Needed because the W4 PARO
+  prefill kernel `awq_fusedw4_prefill_dual_fp16` writes gate and up to *separate*
+  output pointers, while the existing `silu_mul_dual_out_kernel` expects a packed
+  `[rows, 2*features]` layout. Registered for `bf16/fp16/w4_paro`; plan tests updated;
+  GPU smoke against existing `silu_mul_dual_out_fp16` shows `max_abs_diff = 0.0` on
+  synthetic `[3, 16]` fp16 data (bit-exact).
+- `a70929b` — runtime: replaced `shared_expert_w8a16_{fp16,bf16}` and the fused
+  `shared_expert_gate_up_silu_fp16` / `shared_expert_down_combine_residual_fp16` with
+  `shared_expert_paro_w4_{fp16,bf16}`. Decode (`tokens=1`) uses the existing
+  `gemv_awq_dual_pack8_transposed_*` (separate inputs, packed gate||up output) feeding
+  `silu_mul_dual_out_*`. FP16 prefill (`tokens>1`) uses `awq_fusedw4_prefill_dual_fp16`
+  (separate inputs, separate outputs) feeding the new `silu_mul_separate_out_fp16`. BF16
+  prefill falls back to the same dual GEMV used for decode (no fused W4 prefill kernel
+  exists for bf16; documented as known suboptimal for large BF16 prefill batches).
+  `run_moe_grouped_compact_fp16` now uses the split shared-expert + combine pattern that
+  the bf16 grouped path already used; the fused W8A16+sigmoid+combine kernel is gone.
+  Scratch dataclasses gained `shared_gate_input` / `shared_up_input` / `shared_gate_out`
+  / `shared_up_out` / `shared_down_input` fields. 34/34 decode-state tests pass; full
+  suite still has 6 pre-existing failures (test_cpu_reference fixture-format drift,
+  test_hip_runtime FakeRuntime attribute differences, test_llm_generate WeightIndex.model_path
+  attribute) — all present on main before this work.
+
+Discovered while planning, recorded so it's not lost again:
+
+- **Paroquant treats the shared expert as three independent `nn.Linear` modules** (it
+  goes through `get_named_linears` → `_quantize_layer`), not as a fused `gate_up_proj`
+  like routed experts. Consequence: gate/up have *separate* rotation parameters
+  (`shared_expert.gate_proj.{theta,pairs,channel_scales}` ≠ `shared_expert.up_proj.{...}`),
+  so the routed-expert "single rotated input → dual GEMV" pattern does not apply. The
+  dense shared expert needs two rotates and a dual GEMV that consumes two distinct
+  inputs.
+- **The existing `gemv_awq_dual_pack8_transposed_{fp16,bf16}` already supports separate
+  inputs with a packed `[rows, out_packed_a + out_packed_b]` output** (template
+  `<scalar_t, qweight_transposed=true, separate_inputs=true>`). Decode and small batches
+  use this directly into `scratch.shared_up` followed by `silu_mul_dual_out_*`. Only the
+  fused-W4 prefill path needed the new separate-output silu_mul.
+
+Limitations and gaps:
+
+- **No packed-shared-expert checkpoint exists yet.** The upstream
+  `z-lab/Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd`
+  ships only fp16 `mlp.shared_expert.{gate,up,down}_proj.weight` for the shared expert
+  (`shared_expert_intermediate_size=512`, `hidden_size=2048` per the config); none of
+  the 18 packed PARO tensors per layer are present. Probing it with
+  `validate_qwen35_paro_linear_attention_moe_c1_layout(layer_id=0)` reports
+  `Missing count: 18`, all of them in the `mlp.shared_expert.*` family.
+- **Correctness gate not yet run on real data.** All validation so far is unit-level
+  (call-ordering tests with monkeypatched kernels, layout fixtures, plan tests, one
+  bit-exact GPU smoke for `silu_mul_separate_out_fp16`). The AGENTS.md gate
+  (KL ≤ 0.05, top-1 ≥ 90% vs `kernels/cpu_reference/`) for the dense shared-expert
+  PARO chain has *not* been added; it is the next thing to land once a packed checkpoint
+  is available.
+- **No perf comparison run.** Decode-tps / prefill-tps / peak-VRAM all unmeasured for
+  the new path. `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and `benchmarks/results/`
+  intentionally not updated by this work — there is no retained measurement to record.
+
+To unblock the gate + benchmark:
+
+1. Regenerate paroquant outputs against the base Qwen3.5 MoE *without* `mlp.shared_expert`
+   in `--skipped-modules` (the script `~/amd-gpu-tuning/paroquant/experiments/optimize/4bit_moe.sh`
+   already excludes only `mlp.gate`, `mlp.shared_expert_gate`, and the linear-attn input
+   projections — i.e. it already permits packing the shared expert; just re-run it).
+2. `python -m paroquant.cli.convert --mode real ...` to merge the resulting per-module
+   `.pt` files into a packed safetensors checkpoint.
+3. `python scripts/strip_paro_safetensors.py --input-dir <packed> --output-dir <stripped>`
+   to drop the now-duplicate fp16 fallbacks.
+4. Add a CPU-reference fixture for the dense shared-expert W4 PARO chain
+   (rotate → gemv_awq → silu*mul → rotate → gemv_awq), run the correctness gate.
+5. Run `python scripts/qwen35_paro_packed_bench.py --checkpoint packed=<stripped> --baseline packed`
+   for a single-row baseline; once a second variant exists (e.g. a hypothetical fp16
+   shared-expert reconstruction, or a different paroquant configuration), the same
+   driver does the comparison.
+
+New tool committed alongside this WORKLOG entry: `scripts/qwen35_paro_packed_bench.py`,
+a thin wrapper around the existing `qwen35_paro_bench.py` that validates packed-shared-expert
+presence up-front, runs the bench across N checkpoints with identical settings, and
+emits a side-by-side markdown + JSON comparison. `--how-to-pack` prints the paroquant
+runbook. Smoke-tested by pointing it at the upstream z-lab checkpoint: it correctly
+flags `missing packed shared-expert tensors` for all 18 names and exits without
+launching the bench.
