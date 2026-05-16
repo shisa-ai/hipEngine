@@ -11891,3 +11891,67 @@ Results: 512/128 exact verify `2100.627 tok/s`; fixture gate passed unchanged
 decode `102.103 tok/s`). Default hot path remains the hand-rolled prefill
 kernel; the AOTriton wrapper is registered only under the explicit
 `aotriton_attn_fwd` variant.
+
+## 2026-05-16 — Prefill multiloop iter 59: AOTriton GQA adapter blocked
+
+Started wiring the real Qwen3.5 AOTriton prefill adapter, but stopped before
+changing runtime dispatch after a minimal GPU semantic probe showed AOTriton
+0.8.2b `attn_fwd_compact_varlen` does **not** handle our GQA shape the way the
+planning note assumed.
+
+Probe setup: Q heads = 2, KV heads = 1, T = 1, D = 16, q/k FP32, v/out FP16,
+`cu_seqlens=[0,1]` int32, causal. With descriptor shapes
+`q=(1,2,1,16)`, `k=(1,1,1,16)`, `v=(1,1,1,16)`, AOTriton returned the correct
+V vector for q-head 0 but all zeros for q-head 1. Repeating the same physical
+K/V head with a zero head-stride and shape `(1,2,1,16)` also left q-head 1 zero.
+The H=1 smoke from iter 58 remains correct, so the wrapper itself is viable;
+the missing piece is GQA fanout.
+
+Exact probes run (with the local ROCm 6.4 compat library path because the
+standalone AOTriton 0.8.2b library needs `libamdhip64.so.6`):
+
+```bash
+LD_LIBRARY_PATH=/home/lhl/framework-cluster/lhl/therock/rocm-6.4/lib:$LD_LIBRARY_PATH \
+HIPENGINE_AOTRITON_RUNTIME_ROOT=/home/lhl/Downloads/aotriton/aotriton \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+python3 - <<'PY'
+# q=(1,2,1,16), k/v=(1,1,1,16) -> q-head 0 OK, q-head 1 zero
+PY
+
+LD_LIBRARY_PATH=/home/lhl/framework-cluster/lhl/therock/rocm-6.4/lib:$LD_LIBRARY_PATH \
+HIPENGINE_AOTRITON_RUNTIME_ROOT=/home/lhl/Downloads/aotriton/aotriton \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+python3 - <<'PY'
+# q=(1,2,1,16), k/v=(1,2,1,16) with stride_head=0 -> q-head 0 OK, q-head 1 zero
+PY
+```
+
+Observed output for both GQA probes began:
+`[0,1,2,3,4,5,6,7,...,15,0,0,0,0,...]`. Conclusion: a direct single-call
+Qwen3.5 adapter cannot be retained yet. Viable next options are:
+
+1. Call AOTriton per q-head (16 launches/layer) using H=1 descriptors. This
+   avoids K/V expansion and should be measured; launch overhead may still be
+   tolerable at T=4K.
+2. Expand K/V to Q-head count in a small HIP fanout kernel, then call AOTriton
+   once with Hq==Hkv==16. This trades memory/bandwidth for fewer launches.
+3. Check whether a newer AOTriton API/build has explicit GQA support before
+   carrying either workaround forward.
+
+No runtime code was changed in this iteration; default prefill remains on the
+hand-rolled kernel.
+
+Loop verify/guard after the blocked adapter probe:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: 512/128 `2084.676 tok/s` (no code-path change; variance below the
+iter-58 retained sample), fixture gate passed unchanged (`max_kl=0.0340584589`,
+top-1 `1.0`, `native_owned_device_bytes=1625645909`), and 4K/128 remained
+runnable at `661.442 tok/s` (`prefill_seconds=6.19253`, decode `102.300 tok/s`).
+Iteration outcome: blocked/log-only; do not route Qwen3.5 to AOTriton in a
+single compact-varlen call until the GQA fanout strategy is chosen and proven.
