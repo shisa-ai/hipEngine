@@ -11763,3 +11763,22 @@ the eventual cleanup PR.
 
 Files: `docs/PREFILL.md`, `WORKLOG.md`. Docs-only; no code or measurement
 change.
+
+## 2026-05-16 — Marlin-K port analysis doc
+
+Wrote `docs/MARLIN.md` as the hipENGINE intake analysis for the parent Marlin-K/qweight-neutral work from `~/amd-gpu-tuning`.
+
+Source/evidence reviewed:
+
+- `python3 scripts/check_lineage.py --file '*paroquant*' --diff stat` from hipENGINE: parent `nano-vllm-amd` branch `gfx1100-qwen3.5`, HEAD `1522293`, with Marlin-related drift in `paroquant.py` and `paroquant_kernels.py` since the current hipENGINE lineage baseline `22405a9`.
+- Parent source anchors:
+  - `/home/lhl/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant.py` (`_repack_awq_to_marlin_k_v0`, qweight-neutral buffer/view setup, rows==1 dispatch).
+  - `/home/lhl/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` (`_MARLIN_K_FMA_SRC`, `gemv_paro_marlin_k_fma_kernel`, wrapper shape checks/thread selection).
+- Parent docs/worklog:
+  - `/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md` latest retained implementation update.
+  - `/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md` §11.11 and §12.
+  - `/home/lhl/amd-gpu-tuning/WORKLOG.md` entries `2026-05-15 20:10 UTC — Marlin-K qweight-neutral replacement`, `2026-05-15 20:45 UTC — §12 Marlin-K roadmap reconciliation after qweight-neutral work`, and `2026-05-16 05:15 UTC — OPTIMAL.md refreshed for qweight-neutral Marlin-K`.
+
+Main documented conclusion: porting is worth doing now, but first hipENGINE port should be narrow/conservative: standalone `paro_marlin_k.{hip,py}` + NumPy repack/oracle tests, rows==1 non-expert GEMV only, no rejected §12 experiments, and runtime promotion only after hipENGINE reproduces the parent hybrid memory story (Marlin-K rows==1, zero-copy pack8 view for fused paths, no duplicate large W4 qweight buffer).
+
+Validation: docs/process change only. Re-read `docs/MARLIN.md`; no Python compile step was applicable because no Python files changed. No GPU benchmark rerun; all speed/memory numbers are explicitly cited as parent `~/amd-gpu-tuning` evidence, not new hipENGINE measurements.
