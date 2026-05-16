@@ -658,7 +658,7 @@ plugin keys all keep `import torch` out of the generation path.
 
 | Option                                          | Source on disk / API                                                                                                 | gfx1100 support | Effort  | Expected 4K result vs current |
 | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------- | ------- | ----------------------------- |
-| AOTriton 0.8 standalone C++ ABI                 | `~/Downloads/aotriton/aotriton/{include,lib}/`; symbols `aotriton::v2::flash::attn_fwd{,_compact_varlen}` in `libaotriton_v2.so.0.8.0` | yes, 480 pretuned Navi3x variants | 2–3 days | ≈ 1700 tok/s (closes ~94 % of 4K gap) |
+| AOTriton 0.11.2b standalone C++ ABI             | `~/.cache/hipengine/aotriton/0.11.2b/{include,lib}/` after `scripts/fetch_aotriton.sh`; symbols `aotriton::v2::flash::attn_fwd{,_compact_varlen}` in `libaotriton_v2.so.0.11.2`; pinned in `aotriton_release.toml`. | yes, 396 pretuned gfx11xx forward variants | 2–3 days | ≈ 1700 tok/s (closes ~94 % of 4K gap) |
 | Hand-rolled HIP FA-2 with WMMA                  | new code under `kernels/hip_gfx1100/attention/`; oracle = AOTriton output                                            | yes (we write it) | 3–6 weeks | 1300–1900 tok/s depending on tuning |
 | Composable Kernel `ck_tile/01_fmha`             | `~/amd-gpu-tuning/reference/composable_kernel/example/ck_tile/01_fmha/`                                              | **no** — `known_fails_gfx{90a,942,950}.txt` only; CDNA-targeted | n/a | not applicable on W7900 |
 | vLLM-vendored CK FA (CK fork inside vLLM)       | `~/vllm/flash-attention/csrc/composable_kernel/CMakeLists.txt` builds for `gfx1100;gfx1101;gfx1102`                  | yes (claimed) | 1–2 weeks (build + wrap) | uncertain, likely 1400–1700 tok/s |
@@ -675,22 +675,21 @@ AOTriton specifics worth recording so a future agent does not re-derive them:
 - The tensor type is `AOTRITON_NS::TensorView<N>` — a `(void* ptr, shape[N],
   stride[N], dtype)` descriptor. There is no `torch::Tensor` anywhere in the
   AOTriton public headers (`include/aotriton/{flash,runtime,util,dtypes,cpp_tune}.h`).
-- Disk footprint on gfx110x, verified on this host
-  (`du -sh ~/Downloads/aotriton/aotriton/lib/aotriton.images/amd-gfx110x/flash/*`):
-    - `libaotriton_v2.so.0.8.0` = 28 MB.
-    - `flash/attn_fwd/` = 49 MB across 480 forward variants.
-    - `flash/bwd_kernel_dk_dv/` = 26 MB, `flash/bwd_kernel_dq/` = 24 MB,
-      backward-preprocess + debug ≈ 0.4 MB. We are inference-only; drop all
-      `bwd_*` and `debug_*` subdirs.
-    - Inference-only ship (`.so` + `attn_fwd/` full): **76 MB**.
-    - Aggressive prune to the variants we actually call
-      (bf16/fp16 × head_dim 128 × causal=true × dropout=false × no-bias):
-      32 `.aks2` binaries totalling ≈ 3 MB images + 28 MB `.so` = **31 MB**.
-      `ls FONLY__^{bf16,fp16}@16,False,128,*.aks2 | wc -l` confirmed 32.
-- The 480 pretuned variants do per-shape kernel selection at call time; this
-  is the value we would lose by hand-rolling. The aggressive prune is safe
-  because hipengine's attention shape set is fixed at model-load time and
-  small (one head_dim, causal-only).
+- Disk footprint on gfx11xx, verified on this host post-`scripts/fetch_aotriton.sh`
+  (`du -sh ~/.cache/hipengine/aotriton/0.11.2b/`):
+    - Combined tarball download: 4.9 MB runtime + 475 MB compressed gfx11xx
+      images = **480 MB on the wire**.
+    - `libaotriton_v2.so.0.11.2` ≈ 5 MB.
+    - Default prune keeps only `flash/attn_fwd/` (396 forward variants for
+      bf16/fp16 × head_dim ∈ {16…256} × causal × …); drops every `bwd_*`,
+      `bwd_preprocess*`, and `debug_*` subdir. Post-prune cache: **159 MB**.
+    - Tighter prune to the exact shapes hipENGINE invokes
+      (bf16/fp16 × head_dim 128 × causal=true × dropout=false × no-bias) is
+      the per-GPU kernel streaming future-work item below; not implemented.
+- The 396 pretuned variants do per-shape kernel selection at call time; this
+  is the value we would lose by hand-rolling. The default attn_fwd-only prune
+  is safe because hipENGINE's attention shape set is fixed at model-load time
+  and small (one head_dim per registered model, causal-only forward).
 
 ### Why "surely native HIP beats Triton" is not a fast path
 
