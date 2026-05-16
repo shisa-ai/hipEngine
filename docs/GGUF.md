@@ -29,6 +29,72 @@ Recommended first implementation is a **GGUF scanner + FP16 fallback loader** an
 
 Do not treat this document as a performance claim. It is an implementation plan. Any hipENGINE GGUF speedup must be measured in hipENGINE after the loader/kernels land.
 
+## True `LLM.generate()` E2E acceptance gate
+
+The first native GGUF E2E target is fixed to the local file:
+
+```text
+/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf
+```
+
+The hard gate is **not** a lower-level kernel smoke or layer runner. It is the
+public API:
+
+```bash
+python3 scripts/qwen35_gguf_e2e_correctness.py
+```
+
+That script calls:
+
+```python
+hipengine.LLM(
+    "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    backend="hip_gfx1100",
+    quant="gguf_q4_k_m",
+).generate("The answer is", SamplingParams(max_tokens=4, temperature=0.0, top_p=1.0))
+```
+
+Acceptance fixture:
+
+```text
+tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json
+```
+
+External oracle: local llama.cpp CPU execution from
+`/home/lhl/llama.cpp/llama.cpp-hip-therock` at commit `59778f019`:
+
+```bash
+/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-simple \
+  -m /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf \
+  -n 4 -ngl 0 'The answer is'
+# full text: "The answer is 1.\n\n"
+```
+
+Prompt/token fixture:
+
+```text
+prompt text: "The answer is"
+prompt ids:  [760, 4087, 369]
+expected generated text: " 1.\n\n"
+expected generated token ids: [220, 16, 13, 271]
+```
+
+Definition of done for GGUF E2E:
+
+1. `scripts/qwen35_gguf_e2e_correctness.py` passes with repeat ≥ 2.
+2. The generated text and generated token IDs match the oracle fixture exactly.
+3. Repeated runs are deterministic.
+4. The public API path does not import `torch`.
+5. The implementation path materializes native GGUF resident weights and dispatches
+   native GGUF kernels (`gguf_q4_k`, `gguf_q5_k`, `gguf_q6_k`, `gguf_q8_0`) rather
+   than PARO/safetensors or dense fallback paths.
+6. A cached `rocprofv3 --kernel-trace` smoke proves the expected GGUF kernels ran.
+7. `WORKLOG.md` records the exact command output and any benchmark artifact only
+   after correctness passes.
+
+Until that command passes, hipENGINE has GGUF parsing and kernel coverage but does
+**not** claim true GGUF `LLM.generate()` E2E support.
+
 ## Why GGUF is attractive for hipENGINE
 
 GGUF gives us three useful things:

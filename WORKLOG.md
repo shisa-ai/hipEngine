@@ -15299,3 +15299,46 @@ PYTHONPATH=. python3 /tmp/bench_gguf_bf16_out.py
 Interpretation: direct BF16 output is roughly tied with FP32 output alone for 512/128 and ~3% slower for 4096/128 due to BF16 conversion in-kernel, but it is much faster than emitting FP32 and launching a separate cast kernel. Diagnostic artifact retained at `benchmarks/results/2026-05-16-hipengine-gguf-q4k-pack8-bf16out-diagnostic.json`.
 
 Next GGUF E2E step: materialize GGUF weights into resident records that choose Q4_K pack8 BF16 output and Q8_0/Q5_K/Q6_K BF16-output GEMVs, then wire the Qwen layer runner.
+
+## 2026-05-16 GGUF true `LLM.generate()` E2E acceptance gate
+
+Defined the hard public-API gate for native GGUF E2E before wiring the materializer/runner. Target model is fixed to `/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf`, backend `hip_gfx1100`, quant key `gguf_q4_k_m`.
+
+Oracle fixture:
+
+```text
+tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json
+prompt text: "The answer is"
+prompt ids: [760, 4087, 369]
+expected generated text: " 1.\n\n"
+expected generated token ids: [220, 16, 13, 271]
+```
+
+External oracle used to capture the fixture:
+
+```bash
+/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-tokenize \
+  -m /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf -p 'The answer is' --ids --log-disable
+# [760, 4087, 369]
+/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-simple \
+  -m /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf -n 4 -ngl 0 'The answer is'
+# 'The answer is 1.\n\n'
+/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-tokenize \
+  -m /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf -p ' 1.\n\n' --ids --log-disable
+# [220, 16, 13, 271]
+```
+
+Added `scripts/qwen35_gguf_e2e_correctness.py`. It intentionally calls `hipengine.LLM.generate()` and requires repeat determinism, exact generated text, exact generated token IDs via `llama-tokenize`, and no `torch` import by the generate path. It is expected to fail until the GGUF model path is wired.
+
+Validation for this acceptance-gate unit:
+
+```bash
+python3 -m py_compile scripts/qwen35_gguf_e2e_correctness.py
+python3 -m pytest tests/test_gguf_e2e_acceptance.py -q
+# 1 passed
+python3 scripts/qwen35_gguf_e2e_correctness.py --skip-tokenize-check >/tmp/gguf_e2e_gate_red.json
+# exit 1 as expected before implementation:
+# errors=["MissingConfigError: config.json not found under /models/gguf"]
+```
+
+Definition of done for the upcoming GGUF E2E tasks is now: `python3 scripts/qwen35_gguf_e2e_correctness.py` passes using the true public API, plus finite-logit/lower-level runner evidence and cached `rocprofv3 --kernel-trace` proof that native GGUF kernels ran.
