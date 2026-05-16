@@ -11050,3 +11050,42 @@ runnable and above guard at `656.950 tok/s` (`prefill_seconds=6.2349`, floor
 ran 40 times with `8.683 ms` total / `217.1 us` average, down from the retained
 one-token router logits trace (`15.429 ms` total / `385.7 us` average). Decision:
 keep. Updated benchmark artifact/rollup and `docs/KERNELS.md`.
+
+## 2026-05-16 — Prefill multiloop iter 44: rejected router logits tile8
+
+Tried widening iter 43's retained router/shared-gate logits prefill tile from four
+tokens to eight tokens per expert block for `tokens >= 8`, while preserving the
+retained tile4 path for `4..7` tokens and the original one-token kernel for
+decode/tiny rows. The goal was to reuse each BF16 router/shared-gate weight row
+across more prompt tokens and halve router-logits block count again.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.moe.router import build_qwen35_router
+lib = build_qwen35_router(load=True, require_cached=False)
+for name in ['hipengine_qwen35_router_logits_fp16', 'hipengine_qwen35_router_topk_shared_out_fp16']:
+    getattr(lib, name)
+print('router symbols loaded')
+PY
+python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/smoke.py --mode qwen35-router-hip --rows 9 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter44-router-tile8-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter44-router-tile8-trace.json
+```
+
+Results: build/tests passed (`37 passed`). Router smoke with `rows=9` exercised
+the tile8 path plus tail handling and matched the oracle (`selected_match=True`,
+`fp16_selected_match=True`, BF16 logits max abs `0.0`, FP16 logits max abs
+`4.77e-07`). Fixture gate passed (`max_kl=0.03406`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2510s`). 4K/128 was
+runnable and above guard at `659.063 tok/s`. 512/128 samples were `2038.951`,
+`2035.685`, `2031.740`, `2035.087`, `2030.906`, and `2024.218` tok/s (median
+`2033.413`), only +0.08% over retained `2031.783`. Profiler showed the local
+router-logits kernel did improve (`qwen35_router_logits_token_tile_kernel<_Float16,8>`
+`7.279 ms` total versus tile4's retained `8.683 ms` total), but the primary
+metric delta is below run noise and the wider kernel is not a real active-path
+win. Decision: reject/revert; keep iter 43 tile4.
