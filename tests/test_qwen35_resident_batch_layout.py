@@ -128,11 +128,31 @@ def test_prefill_config_validates_chunk_sizes_and_defaults_to_full_native() -> N
     assert config.require_full_native is False
     assert config.moe_grouped_device_gather is True
     assert PrefillConfig(attn_aotriton_min_tokens="1024").attn_aotriton_min_tokens == 1024
+    assert PrefillConfig(moe_chunk_size="1024").moe_chunk_size == 1024
 
     with pytest.raises(ValueError, match="full_attn_query_chunk_size"):
         PrefillConfig(full_attn_query_chunk_size=-1)
+    with pytest.raises(ValueError, match="moe_chunk_size"):
+        PrefillConfig(moe_chunk_size=-1)
     with pytest.raises(ValueError, match="attn_aotriton_min_tokens"):
         PrefillConfig(attn_aotriton_min_tokens=-1)
+
+
+def test_qwen35_resident_prefill_chunk_helpers_select_safe_ranges() -> None:
+    assert Qwen35ParoResidentSession._chunk_ranges(5, 2) == ((0, 2), (2, 4), (4, 5))
+    assert Qwen35ParoResidentSession._chunk_ranges(7, 2, min_chunk_size=4) == ((0, 2), (2, 7))
+    assert Qwen35ParoResidentSession._chunk_ranges(4, 0) == ((0, 4),)
+
+    session = _prefill_validation_session()
+    session.prefill_config = PrefillConfig(
+        linear_chunk_size=1024,
+        moe_chunk_size=512,
+        full_attn_query_chunk_size=4096,
+        full_attn_post_chunk_size=1024,
+    )
+
+    assert session._linear_prefill_layer_chunk_size(4096) == 512
+    assert session._full_attention_prefill_layer_chunk_size(8192) == 4096
 
 
 def test_qwen35_resident_prefill_native_contract_uses_full_native_by_default() -> None:

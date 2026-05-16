@@ -1574,6 +1574,51 @@ class Qwen35ParoResidentSession:
         copy_host_to_device(self.prefill_single_cu_buf, host_array_ptr(arr), arr.nbytes, runtime=self.runtime)
         return self.prefill_single_cu
 
+    def _prefill_single_cu_seqlens_pair(self, query_tokens: int, key_tokens: int) -> tuple[Tensor, Tensor]:
+        q_arr = np.asarray([0, int(query_tokens)], dtype=np.int32)
+        k_arr = np.asarray([0, int(key_tokens)], dtype=np.int32)
+        copy_host_to_device(self.prefill_single_cu_buf, host_array_ptr(q_arr), q_arr.nbytes, runtime=self.runtime)
+        copy_host_to_device(self.prefill_single_cu_k_buf, host_array_ptr(k_arr), k_arr.nbytes, runtime=self.runtime)
+        return self.prefill_single_cu, self.prefill_single_cu_k
+
+    @staticmethod
+    def _chunk_ranges(total: int, chunk_size: int, *, min_chunk_size: int = 1) -> tuple[tuple[int, int], ...]:
+        if total <= 0:
+            raise ValueError("total must be positive")
+        size = int(chunk_size)
+        min_rows = max(1, int(min_chunk_size))
+        if size <= 0 or total <= size:
+            return ((0, int(total)),)
+        ranges = [(start, min(start + size, total)) for start in range(0, total, size)]
+        while len(ranges) >= 2 and ranges[-1][1] - ranges[-1][0] < min_rows:
+            ranges[-2] = (ranges[-2][0], ranges[-1][1])
+            ranges.pop()
+        return tuple(ranges)
+
+    @staticmethod
+    def _smallest_positive_or_total(total: int, *sizes: int) -> int:
+        positives = [int(size) for size in sizes if int(size) > 0]
+        return int(total) if not positives else min(int(total), min(positives))
+
+    def _linear_prefill_layer_chunk_size(self, tokens: int) -> int:
+        config = self.prefill_config
+        size = self._smallest_positive_or_total(tokens, config.linear_chunk_size, config.moe_chunk_size)
+        min_rows = int(getattr(self.config, "linear_conv_kernel_dim", 1))
+        return min(int(tokens), max(size, min_rows)) if tokens >= min_rows else size
+
+    def _full_attention_prefill_layer_chunk_size(self, tokens: int) -> int:
+        config = self.prefill_config
+        if int(config.full_attn_query_chunk_size) > 0:
+            size = min(int(tokens), int(config.full_attn_query_chunk_size))
+        else:
+            size = self._smallest_positive_or_total(
+                tokens,
+                config.full_attn_post_chunk_size,
+                config.full_attn_rope_chunk_size,
+                config.moe_chunk_size,
+            )
+        return 2 if tokens > 1 and size == 1 else size
+
     def _prefill_use_aotriton_attention(self, tokens: int) -> bool:
         threshold = int(self.prefill_config.attn_aotriton_min_tokens)
         return threshold > 0 and int(tokens) >= threshold
@@ -1772,53 +1817,82 @@ class Qwen35ParoResidentSession:
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
-        append_spans, prefill_spans = self._prefill_full_attention_spans(tokens)
-        positions = self._prefill_rows_tensor(self.prefill_positions, tokens)
         use_aotriton_attention = self._prefill_use_aotriton_attention(tokens)
-        single_cu_seqlens = self._prefill_single_cu_seqlens(tokens) if use_aotriton_attention else None
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
                 conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
-                linear_scratch = self._ensure_linear_prefill_scratch(tokens=tokens)
-                moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=tokens)
-                out = state.run_linear_attention_moe_c1_layer_fp16(
-                    hidden,
-                    conv_state=conv_state,
-                    recurrent_state=recurrent_state,
-                    linear_scratch=linear_scratch,
-                    moe_scratch=moe_scratch,
-                    tokens=tokens,
-                    library=self.libraries,
-                    stream=stream,
-                )
+                chunk_size = self._linear_prefill_layer_chunk_size(tokens)
+                for start, end in self._chunk_ranges(
+                    tokens,
+                    chunk_size,
+                    min_chunk_size=int(getattr(self.config, "linear_conv_kernel_dim", 1)),
+                ):
+                    rows = end - start
+                    hidden_chunk = self._prefill_row_matrix_view(hidden, start, rows)
+                    linear_scratch = self._ensure_linear_prefill_scratch(tokens=rows)
+                    moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
+                    out = state.run_linear_attention_moe_c1_layer_fp16(
+                        hidden_chunk,
+                        conv_state=conv_state,
+                        recurrent_state=recurrent_state,
+                        linear_scratch=linear_scratch,
+                        moe_scratch=moe_scratch,
+                        tokens=rows,
+                        library=self.libraries,
+                        stream=stream,
+                    )
+                    self.runtime.memcpy_async(
+                        next_hidden.ptr + start * self.hidden_nbytes,
+                        out.ptr,
+                        rows * self.hidden_nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
             elif layer_type == "full_attention":
                 key_cache, value_cache = self._slot_full_cache(layer_id, 0)
-                attention_scratch = self._ensure_full_prefill_scratch(tokens=tokens)
-                moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=tokens)
-                out = state.run_full_attention_moe_prefill_layer_fp16(
-                    hidden,
-                    key_cache=key_cache,
-                    value_cache=value_cache,
-                    append_spans=append_spans,
-                    prefill_spans=prefill_spans,
-                    cos_table=self.cos,
-                    sin_table=self.sin,
-                    positions=positions,
-                    max_positions=self.max_sequence_length,
-                    attention_scratch=attention_scratch,
-                    moe_scratch=moe_scratch,
-                    cu_seqlens_q=single_cu_seqlens,
-                    cu_seqlens_k=single_cu_seqlens,
-                    aotriton_attention=use_aotriton_attention,
-                    tokens=tokens,
-                    block_size=self.block_size,
-                    library=self.libraries,
-                    stream=stream,
-                )
+                chunk_size = self._full_attention_prefill_layer_chunk_size(tokens)
+                for start, end in self._chunk_ranges(tokens, chunk_size, min_chunk_size=2):
+                    rows = end - start
+                    hidden_chunk = self._prefill_row_matrix_view(hidden, start, rows)
+                    append_spans, prefill_spans = self._prefill_full_attention_spans(rows, start=start, total_tokens=tokens)
+                    positions = self._prefill_rows_tensor(self.prefill_positions, rows, start=start)
+                    if use_aotriton_attention:
+                        cu_seqlens_q, cu_seqlens_k = self._prefill_single_cu_seqlens_pair(rows, end)
+                    else:
+                        cu_seqlens_q = cu_seqlens_k = None
+                    attention_scratch = self._ensure_full_prefill_scratch(tokens=rows)
+                    moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
+                    out = state.run_full_attention_moe_prefill_layer_fp16(
+                        hidden_chunk,
+                        key_cache=key_cache,
+                        value_cache=value_cache,
+                        append_spans=append_spans,
+                        prefill_spans=prefill_spans,
+                        cos_table=self.cos,
+                        sin_table=self.sin,
+                        positions=positions,
+                        max_positions=self.max_sequence_length,
+                        attention_scratch=attention_scratch,
+                        moe_scratch=moe_scratch,
+                        cu_seqlens_q=cu_seqlens_q,
+                        cu_seqlens_k=cu_seqlens_k,
+                        aotriton_attention=use_aotriton_attention,
+                        aotriton_kv_rows=end,
+                        tokens=rows,
+                        block_size=self.block_size,
+                        library=self.libraries,
+                        stream=stream,
+                    )
+                    self.runtime.memcpy_async(
+                        next_hidden.ptr + start * self.hidden_nbytes,
+                        out.ptr,
+                        rows * self.hidden_nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
-            self.runtime.memcpy_async(next_hidden.ptr, out.ptr, tokens * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
             hidden, next_hidden = next_hidden, hidden
         return hidden
 
@@ -2225,6 +2299,7 @@ class Qwen35ParoResidentSession:
         self.prefill_token_id_buf = self._dev(prefill_token_arr)
         self.prefill_position_buf = self._dev(prefill_position_arr)
         self.prefill_single_cu_buf = self._dev(prefill_single_cu_arr)
+        self.prefill_single_cu_k_buf = self._dev(prefill_single_cu_arr)
         self.prefill_token_ids = Tensor.from_handle(
             self.prefill_token_id_buf.ptr,
             prefill_token_arr.shape,
@@ -2239,6 +2314,12 @@ class Qwen35ParoResidentSession:
         )
         self.prefill_single_cu = Tensor.from_handle(
             self.prefill_single_cu_buf.ptr,
+            prefill_single_cu_arr.shape,
+            DType.INT32,
+            self.device,
+        )
+        self.prefill_single_cu_k = Tensor.from_handle(
+            self.prefill_single_cu_k_buf.ptr,
             prefill_single_cu_arr.shape,
             DType.INT32,
             self.device,

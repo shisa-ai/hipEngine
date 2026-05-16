@@ -443,8 +443,8 @@ extern "C" int hipengine_aotriton_attn_fwd_v3_compact_varlen(
       ? AOTRITON_NS::v3::flash::CausalType::WindowedAttention
       : AOTRITON_NS::v3::flash::CausalType::None;
   params.varlen_type = AOTRITON_NS::v3::flash::VarlenType::CompactVarlen;
-  params.window_left = AOTRITON_NS::v3::flash::WindowValue::TopLeftAligned;
-  params.window_right = AOTRITON_NS::v3::flash::WindowValue::TopLeftAligned;
+  params.window_left = AOTRITON_NS::v3::flash::WindowValue::BottomRightAligned;
+  params.window_right = AOTRITON_NS::v3::flash::WindowValue::BottomRightAligned;
 
   return static_cast<int>(AOTRITON_NS::v3::flash::attn_fwd(
       params,

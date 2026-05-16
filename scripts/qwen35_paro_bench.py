@@ -64,6 +64,11 @@ def main() -> int:
         default=0,
         help="Opt into AOTriton per-Q-head full-attention prefill at prompts with at least this many tokens (0 disables).",
     )
+    parser.add_argument("--prefill-linear-chunk-size", type=int, default=0, help="Chunk single-request linear-attention prefill layers (0 disables).")
+    parser.add_argument("--prefill-moe-chunk-size", type=int, default=0, help="Chunk grouped-MoE prefill scratch/users by limiting layer chunks (0 disables).")
+    parser.add_argument("--prefill-full-attn-query-chunk-size", type=int, default=0, help="Chunk single-request full-attention query rows (0 disables).")
+    parser.add_argument("--prefill-full-attn-post-chunk-size", type=int, default=0, help="Limit full-attention post/MoE chunk rows (0 disables).")
+    parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0, help="Limit full-attention RoPE/norm chunk rows (0 disables).")
     parser.add_argument(
         "--native-prefill",
         action="store_true",
@@ -92,6 +97,15 @@ def main() -> int:
         raise ValueError("--decode-tokens must be divisible by --graph-steps-per-replay")
     if args.attn_aotriton_min_tokens < 0:
         raise ValueError("--attn-aotriton-min-tokens must be non-negative")
+    for name in (
+        "prefill_linear_chunk_size",
+        "prefill_moe_chunk_size",
+        "prefill_full_attn_query_chunk_size",
+        "prefill_full_attn_post_chunk_size",
+        "prefill_full_attn_rope_chunk_size",
+    ):
+        if int(getattr(args, name)) < 0:
+            raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
     if args.native_prefill and args.serial_prefill_diagnostic:
         raise ValueError("--native-prefill cannot be combined with --serial-prefill-diagnostic")
 
@@ -117,7 +131,14 @@ def main() -> int:
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
             progress=progress,
-            prefill_config=PrefillConfig(attn_aotriton_min_tokens=args.attn_aotriton_min_tokens),
+            prefill_config=PrefillConfig(
+                linear_chunk_size=args.prefill_linear_chunk_size,
+                moe_chunk_size=args.prefill_moe_chunk_size,
+                full_attn_query_chunk_size=args.prefill_full_attn_query_chunk_size,
+                full_attn_post_chunk_size=args.prefill_full_attn_post_chunk_size,
+                full_attn_rope_chunk_size=args.prefill_full_attn_rope_chunk_size,
+                attn_aotriton_min_tokens=args.attn_aotriton_min_tokens,
+            ),
         )
     load_seconds = time.perf_counter() - load_start
     memory_snapshots["after_load"] = _memory_snapshot("after_load", session.runtime, session)
@@ -219,6 +240,13 @@ def main() -> int:
         "serial_prefill_diagnostic": bool(args.serial_prefill_diagnostic),
         "allow_rejected_native_prefill": bool(args.allow_rejected_native_prefill),
         "attn_aotriton_min_tokens": args.attn_aotriton_min_tokens,
+        "prefill_chunk_sizes": {
+            "linear": args.prefill_linear_chunk_size,
+            "moe": args.prefill_moe_chunk_size,
+            "full_attn_query": args.prefill_full_attn_query_chunk_size,
+            "full_attn_post": args.prefill_full_attn_post_chunk_size,
+            "full_attn_rope": args.prefill_full_attn_rope_chunk_size,
+        },
         "graph_replay": bool(args.graph_replay_decode),
         "graph_steps_per_replay": args.graph_steps_per_replay if args.graph_replay_decode else 0,
         "prefill_comparable_to_plan_moe2": bool((not args.serial_prefill_diagnostic) and native_prefill_plan.full_layer_limit_native),

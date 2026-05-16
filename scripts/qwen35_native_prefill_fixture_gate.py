@@ -182,6 +182,16 @@ def _command(args: argparse.Namespace) -> str:
         command += f" --top1-threshold {args.top1_threshold}"
     if getattr(args, "attn_aotriton_min_tokens", 0):
         command += f" --attn-aotriton-min-tokens {args.attn_aotriton_min_tokens}"
+    for flag, attr in (
+        ("--prefill-linear-chunk-size", "prefill_linear_chunk_size"),
+        ("--prefill-moe-chunk-size", "prefill_moe_chunk_size"),
+        ("--prefill-full-attn-query-chunk-size", "prefill_full_attn_query_chunk_size"),
+        ("--prefill-full-attn-post-chunk-size", "prefill_full_attn_post_chunk_size"),
+        ("--prefill-full-attn-rope-chunk-size", "prefill_full_attn_rope_chunk_size"),
+    ):
+        value = int(getattr(args, attr, 0))
+        if value:
+            command += f" {flag} {value}"
     if args.json is not None:
         command += f" --json {args.json}"
     return command
@@ -200,7 +210,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         decode_tokens=decode_tokens,
         max_layers=args.max_layers,
         prefill_mode="native",
-        prefill_config=PrefillConfig(attn_aotriton_min_tokens=args.attn_aotriton_min_tokens),
+        prefill_config=PrefillConfig(
+            linear_chunk_size=args.prefill_linear_chunk_size,
+            moe_chunk_size=args.prefill_moe_chunk_size,
+            full_attn_query_chunk_size=args.prefill_full_attn_query_chunk_size,
+            full_attn_post_chunk_size=args.prefill_full_attn_post_chunk_size,
+            full_attn_rope_chunk_size=args.prefill_full_attn_rope_chunk_size,
+            attn_aotriton_min_tokens=args.attn_aotriton_min_tokens,
+        ),
     )
     comparison = _compare_logits(serial["logits"], native["logits"])
     serial_generated_ids = [int(item["token_id"]) for item in serial["generated"]]
@@ -227,6 +244,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "decode_tokens": decode_tokens,
         "max_layers": int(args.max_layers),
         "attn_aotriton_min_tokens": int(args.attn_aotriton_min_tokens),
+        "prefill_chunk_sizes": {
+            "linear": int(args.prefill_linear_chunk_size),
+            "moe": int(args.prefill_moe_chunk_size),
+            "full_attn_query": int(args.prefill_full_attn_query_chunk_size),
+            "full_attn_post": int(args.prefill_full_attn_post_chunk_size),
+            "full_attn_rope": int(args.prefill_full_attn_rope_chunk_size),
+        },
         "thresholds": {
             "kl_max": float(args.kl_threshold),
             "top1_agreement_min": float(args.top1_threshold),
@@ -267,12 +291,26 @@ def main(argv: list[str] | None = None) -> int:
         default=0,
         help="Run native prefill with AOTriton full-attention when prompt length is at least this threshold (0 disables).",
     )
+    parser.add_argument("--prefill-linear-chunk-size", type=int, default=0)
+    parser.add_argument("--prefill-moe-chunk-size", type=int, default=0)
+    parser.add_argument("--prefill-full-attn-query-chunk-size", type=int, default=0)
+    parser.add_argument("--prefill-full-attn-post-chunk-size", type=int, default=0)
+    parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0)
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
     if args.max_new_tokens is not None and args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive")
     if args.attn_aotriton_min_tokens < 0:
         raise ValueError("--attn-aotriton-min-tokens must be non-negative")
+    for name in (
+        "prefill_linear_chunk_size",
+        "prefill_moe_chunk_size",
+        "prefill_full_attn_query_chunk_size",
+        "prefill_full_attn_post_chunk_size",
+        "prefill_full_attn_rope_chunk_size",
+    ):
+        if int(getattr(args, name)) < 0:
+            raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
     payload = run(args)
     text = json.dumps(payload, indent=2, ensure_ascii=False)
     print(text)

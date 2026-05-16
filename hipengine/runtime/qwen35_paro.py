@@ -1902,6 +1902,7 @@ class Qwen35ParoDecodeState:
         cu_seqlens_k: Tensor,
         rows: int,
         segments: int,
+        kv_rows: int | None = None,
         query_bf16: Tensor | None = None,
         key_cache: Tensor | None = None,
         value_cache: Tensor | None = None,
@@ -1914,6 +1915,9 @@ class Qwen35ParoDecodeState:
 
         _check_positive(rows, "rows")
         _check_positive(segments, "segments")
+        key_rows = int(rows if kv_rows is None else kv_rows)
+        if key_rows < rows:
+            raise ValueError("AOTriton key/value rows must cover query rows")
         if cu_seqlens_q.dtype is not DType.INT32 or cu_seqlens_k.dtype is not DType.INT32:
             raise ValueError("AOTriton compact-varlen prefill expects int32 cu_seqlens tensors")
         if scratch.query.dtype is not DType.FP32 or scratch.key.dtype is not DType.FP32 or scratch.value.dtype is not DType.FP16:
@@ -1948,6 +1952,8 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         if key_cache is None or value_cache is None:
+            if kv_rows is not None and key_rows != rows:
+                raise ValueError("AOTriton scratch-backed K/V cannot use more key rows than query rows")
             k_bf16 = self.workspace.reserve_tensor("attn.aotriton_k_bf16", scratch.key.shape, DType.BF16)
             v_bf16 = self.workspace.reserve_tensor("attn.aotriton_v_bf16", scratch.value.shape, DType.BF16)
             f32_to_bf16(
@@ -1988,21 +1994,21 @@ class Qwen35ParoDecodeState:
             if int(key_cache.shape[2]) != kv_heads or int(key_cache.shape[3]) != head_dim:
                 raise ValueError("AOTriton KV cache shape does not match attention head layout")
             cache_rows = int(key_cache.shape[0]) * int(key_cache.shape[1])
-            if rows > cache_rows:
+            if key_rows > cache_rows:
                 raise ValueError("AOTriton KV cache is too small for prefill rows")
             # The single-request prompt path appends K/V into an identity block table before
             # AOTriton runs.  That BF16 cache image is bit-identical to the prior
             # scratch-to-BF16 casts, so reuse it and skip two full-row cast kernels.
             k_tensor = aotriton_tensor4(
                 key_cache.ptr,
-                (1, kv_heads, rows, head_dim),
-                (kv_width * rows, head_dim, kv_width, 1),
+                (1, kv_heads, key_rows, head_dim),
+                (kv_width * key_rows, head_dim, kv_width, 1),
                 DType.BF16,
             )
             v_tensor = aotriton_tensor4(
                 value_cache.ptr,
-                (1, kv_heads, rows, head_dim),
-                (kv_width * rows, head_dim, kv_width, 1),
+                (1, kv_heads, key_rows, head_dim),
+                (kv_width * key_rows, head_dim, kv_width, 1),
                 DType.BF16,
             )
         aotriton_library = _library_for(library, "aotriton")
@@ -2016,7 +2022,7 @@ class Qwen35ParoDecodeState:
             aotriton_tensor4(attn_bf16.ptr, (1, q_heads, rows, head_dim), (q_width * rows, head_dim, q_width, 1), DType.BF16),
             persistent_atomic_counter_ptr=atomic_counter.ptr,
             max_seqlen_q=rows,
-            max_seqlen_k=rows,
+            max_seqlen_k=key_rows,
             sm_scale=(self.config.head_dim ** -0.5) if scale is None else scale,
             is_causal=True,
             stream=stream,
@@ -2033,6 +2039,7 @@ class Qwen35ParoDecodeState:
         cu_seqlens_k: Tensor,
         rows: int,
         segments: int,
+        kv_rows: int | None = None,
         gate: Tensor | None = None,
         query_bf16: Tensor | None = None,
         key_cache: Tensor | None = None,
@@ -2056,6 +2063,7 @@ class Qwen35ParoDecodeState:
             cu_seqlens_k=cu_seqlens_k,
             rows=rows,
             segments=segments,
+            kv_rows=kv_rows,
             query_bf16=query_bf16,
             key_cache=key_cache,
             value_cache=value_cache,
@@ -2427,6 +2435,7 @@ class Qwen35ParoDecodeState:
         cu_seqlens_q: Tensor | None = None,
         cu_seqlens_k: Tensor | None = None,
         aotriton_attention: bool = False,
+        aotriton_kv_rows: int | None = None,
         tokens: int,
         group_size: int = 128,
         block_size: int = 256,
@@ -2514,6 +2523,7 @@ class Qwen35ParoDecodeState:
                 cu_seqlens_k=cu_seqlens_k,
                 rows=tokens,
                 segments=1,
+                kv_rows=aotriton_kv_rows,
                 query_bf16=aotriton_query_bf16,
                 key_cache=key_cache,
                 value_cache=value_cache,

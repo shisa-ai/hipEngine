@@ -13070,3 +13070,29 @@ Comparison:
 Takeaway: the next long-context blocker is not AOTriton thresholding; it is wiring long-context prefill chunking.  Parent 32K/128 and 128K/128 rows add `NANOVLLM_PARO_PREFILL_LINEAR_CHUNK_SIZE=1024`, `NANOVLLM_PARO_MOE_CHUNK_SIZE=1024`, and full-attention post/RoPE/query chunk sizes.  hipENGINE `PrefillConfig` already has analogous fields, but the current single-request native prefill path does not apply them, so 128K cannot run on W7900 and 32K uses much higher peak memory than parent.
 
 Retained artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-long-checkpoint-diagnostic.json`.
+
+## 2026-05-16 — Task 25: wire long-context prefill chunking
+
+Implemented internal chunking for the Qwen3.5/PARO single-request native prefill path.  `PrefillConfig.linear_chunk_size` now chunks linear-attention layers, `full_attn_query_chunk_size` chunks full-attention query rows, and `moe_chunk_size` is available as a config/CLI field (currently limiting layer chunks when it is the only smaller configured bound).  Chunked full-attention AOTriton required changing the v3 wrapper causal window from top-left to bottom-right alignment so a query chunk at positions `[start:end)` can attend to cached keys `[0:end)` with the correct causal mask.
+
+Validation / smoke commands:
+
+```bash
+python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py scripts/qwen35_native_prefill_fixture_gate.py scripts/qwen35_decode_graph_fixture_gate.py tests/test_qwen35_resident_batch_layout.py
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q
+# 24 passed
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 40 --max-new-tokens 8 --attn-aotriton-min-tokens 512 --json /tmp/task25-nochunk-fixture-v2.json
+# passed=true, max_kl=0.039568870612619614, top1_agreement=1.0
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 40 --max-new-tokens 8 --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 128 --prefill-moe-chunk-size 128 --prefill-full-attn-query-chunk-size 128 --prefill-full-attn-post-chunk-size 128 --prefill-full-attn-rope-chunk-size 128 --json /tmp/task25-chunk-fixture-gate-v2.json
+# passed=true, max_kl=0.039568870612619614, top1_agreement=1.0
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 40 --max-new-tokens 8 --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/task25-parentchunk-fixture-gate.json
+# passed=true, max_kl=0.039568870612619614, top1_agreement=1.0
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 4 --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/task25-128k-maxlayers4-chunk-smoke.json
+# no OOM through first 3 linear-attention layers + first full-attention layer; prefill=12.846s, tracked_peak=5.844 GiB for max_layers=4 diagnostic smoke
+```
+
+Full 40-layer 128K/128 and with/without chunk tables remain the follow-up benchmark task.
