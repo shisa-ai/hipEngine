@@ -10974,3 +10974,38 @@ Profiler evidence: short prefill attention launched as
 `26.362 ms` total / `2636.2 us` average, down from the retained generic
 `36.361 ms` total. Decision: keep. Updated benchmark artifact/rollup and
 `docs/KERNELS.md`.
+
+## 2026-05-16 — Prefill multiloop iter 42: rejected short-attn token-base precompute
+
+Tried a tiny follow-up to iter 41's split short prefill-attention template:
+precompute the two physical token bases (`physical_block << 8`) for the
+`SHORT_BLOCK256` kernel and use `base + (token & 255)` in the score/value loops,
+removing `physical_block * block_size` from the short hot path. The generic
+4K/long-row template remained unchanged.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import build_qwen35_paged_attn_decode
+lib = build_qwen35_paged_attn_decode(load=True, require_cached=False)
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans')
+print('paged attention prefill symbol loaded')
+PY
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter42-attn-short-tokenbase-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter42-attn-short-tokenbase-trace.json
+```
+
+Results: targeted tests passed (`37 passed`) and fixture gate passed
+(`max_kl=0.03406`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2593s`). 4K/128 was
+runnable and above guard at `666.838 tok/s`. 512/128 samples were `1987.511`,
+`1969.814`, `1967.374`, and `1980.131` tok/s (median `1974.973`), only +0.016%
+relative to retained `1974.653`. Profiler showed only a tiny local attention
+change: short prefill GQA total `26.041 ms` versus retained `26.362 ms`.
+Decision: reject/revert. The primary-metric delta is noise, so keeping this
+active-path micro-change would violate the real-gain rule despite passing
+correctness and 4K guards.
