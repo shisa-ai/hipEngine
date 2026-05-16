@@ -139,9 +139,6 @@ def _valid_tensors() -> dict[str, np.ndarray]:
         "model.layers.0.post_attention_layernorm.weight": np.zeros((4,), dtype=np.float16),
         "model.layers.0.mlp.gate.weight": np.zeros((2, 4), dtype=np.float16),
         "model.layers.0.mlp.shared_expert_gate.weight": np.zeros((1, 4), dtype=np.float16),
-        "model.layers.0.mlp.shared_expert.gate_proj.weight": np.zeros((3, 4), dtype=np.float16),
-        "model.layers.0.mlp.shared_expert.up_proj.weight": np.zeros((3, 4), dtype=np.float16),
-        "model.layers.0.mlp.shared_expert.down_proj.weight": np.zeros((4, 3), dtype=np.float16),
         "model.layers.0.mlp.experts.gate_up_weight_theta": np.zeros((1, 2), dtype=np.float16),
         "model.layers.0.mlp.experts.gate_up_weight_pairs": np.zeros((1, 4), dtype=np.int16),
         "model.layers.0.mlp.experts.gate_up_weight_channel_scales": np.zeros((4,), dtype=np.float16),
@@ -149,6 +146,16 @@ def _valid_tensors() -> dict[str, np.ndarray]:
         "model.layers.0.mlp.experts.down_weight_pairs": np.zeros((1, 4), dtype=np.int16),
         "model.layers.0.mlp.experts.down_weight_channel_scales": np.zeros((4,), dtype=np.float16),
     }
+    # Packed shared-expert PARO tensors (one independent rotation per projection,
+    # mirrors the dense-attention layout). hidden_size=4, shared_int=3, group_size=4.
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        base = f"model.layers.0.mlp.shared_expert.{proj}"
+        tensors[f"{base}.qweight"] = np.zeros((4, 1), dtype=np.int32)
+        tensors[f"{base}.qzeros"] = np.zeros((1, 1), dtype=np.int32)
+        tensors[f"{base}.scales"] = np.zeros((1, 8), dtype=np.float16)
+        tensors[f"{base}.theta"] = np.zeros((1, 2), dtype=np.float16)
+        tensors[f"{base}.pairs"] = np.zeros((1, 4), dtype=np.int16)
+        tensors[f"{base}.channel_scales"] = np.zeros((4,), dtype=np.float16)
     for expert in range(2):
         for proj in ("gate_proj", "up_proj", "down_proj"):
             base = f"model.layers.0.mlp.experts.{expert}.{proj}"
@@ -188,13 +195,21 @@ def test_qwen35_paro_config_and_weight_name_normalization() -> None:
     assert normalize_qwen35_weight_name("language_model.layers.0.x") == "layers.0.x"
 
 
-def test_required_moe_c1_names_include_all_expert_triples() -> None:
+def test_required_moe_c1_names_include_all_expert_triples_and_packed_shared_expert() -> None:
     names = required_moe_c1_tensor_names(layer_id=3, num_experts=2)
 
     assert "layers.3.mlp.gate.weight" in names
     assert "layers.3.mlp.experts.gate_up_weight_theta" in names
     assert "layers.3.mlp.experts.1.down_proj.scales" in names
-    assert sum(name.endswith(".qweight") for name in names) == 6
+    # Packed shared-expert PARO tensors for each of gate/up/down projections.
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        for suffix in ("qweight", "qzeros", "scales", "theta", "pairs", "channel_scales"):
+            assert f"layers.3.mlp.shared_expert.{proj}.{suffix}" in names
+    # Legacy fp16 shared-expert .weight tensors are no longer required.
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        assert f"layers.3.mlp.shared_expert.{proj}.weight" not in names
+    # 6 routed-expert qweight (2 experts × 3 projs) + 3 packed shared-expert qweight.
+    assert sum(name.endswith(".qweight") for name in names) == 9
 
 
 def test_required_full_attention_names_include_rotated_qkv_and_o_proj() -> None:
@@ -292,6 +307,10 @@ def test_prepare_qwen35_paro_moe_c1_host_tensors_matches_parent_stacking(tmp_pat
     for expert in range(2):
         base = f"model.layers.0.mlp.experts.{expert}.gate_proj.qweight"
         tensors[base] = (np.arange(4, dtype=np.int32).reshape(4, 1) + expert * 10)
+    # Distinct shared-expert qweight per projection so we can check the transpose.
+    for offset, proj in enumerate(("gate_proj", "up_proj", "down_proj")):
+        base = f"model.layers.0.mlp.shared_expert.{proj}.qweight"
+        tensors[base] = (np.arange(4, dtype=np.int32).reshape(4, 1) + offset * 100)
     save_file(tensors, tmp_path / "model.safetensors")
     index = load_weight_index(tmp_path)
 
@@ -307,12 +326,22 @@ def test_prepare_qwen35_paro_moe_c1_host_tensors_matches_parent_stacking(tmp_pat
     assert stacked.shape == (2, 4, 1)
     assert transposed.shape == (2, 1, 4)
     np.testing.assert_array_equal(transposed, np.swapaxes(stacked, 1, 2))
-    gate_up_q = prepared["layers.0.mlp.shared_expert.gate_up_weight_w8a16"]
-    gate_up_scale = prepared["layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale"]
-    assert gate_up_q.dtype == np.int8
-    assert gate_up_q.shape == (6, 4)
-    assert gate_up_scale.dtype == np.float32
-    assert gate_up_scale.shape == (6,)
+    # Packed shared-expert qweight_pack8_decode is the rank-2 transpose [N/8, K]
+    # of the raw [K, N/8] qweight; raw qweight/qzeros/scales/theta/pairs/channel_scales
+    # are kept in the checkpoint, not duplicated into the prepared map.
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        decode = prepared[f"layers.0.mlp.shared_expert.{proj}.qweight_pack8_decode"]
+        raw = tensors[f"model.layers.0.mlp.shared_expert.{proj}.qweight"]
+        assert decode.dtype == np.int32
+        assert decode.shape == (1, 4)
+        np.testing.assert_array_equal(decode, np.ascontiguousarray(raw.T))
+    for legacy in (
+        "layers.0.mlp.shared_expert.gate_up_weight_w8a16",
+        "layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale",
+        "layers.0.mlp.shared_expert.down_weight_w8a16",
+        "layers.0.mlp.shared_expert.down_weight_w8a16_scale",
+    ):
+        assert legacy not in prepared
 
 
 def test_materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(tmp_path) -> None:
@@ -328,8 +357,10 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_prepared_layer(tmp_path) 
     assert layer.tensor(prepared_name).shape == (2, 1, 4)
     assert layer.tensor(prepared_name).dtype is DType.INT32
     assert layer.tensor("layers.0.mlp.router_shared_gate.weight").shape == (3, 4)
-    assert layer.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16").dtype is DType.INT8
-    assert layer.tensor("layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale").dtype is DType.FP32
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        decode = layer.tensor(f"layers.0.mlp.shared_expert.{proj}.qweight_pack8_decode")
+        assert decode.dtype is DType.INT32
+        assert decode.shape == (1, 4)
     expected_count = len(required_full_attention_moe_c1_tensor_names(layer_id=0, num_experts=2)) + len(
         prepared_moe_c1_tensor_names(layer_id=0)
     )
@@ -361,7 +392,11 @@ def test_prepare_qwen35_paro_moe_c1_runtime_host_tensors_uses_parent_mixed_dtype
     scales = prepared["layers.0.mlp.experts.stacked_gate_scales"]
     assert scales.dtype == np.float16
     assert prepared["layers.0.mlp.experts.stacked_gate_qweight_pack8_decode"].dtype == np.int32
-    assert prepared["layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale"].dtype == np.float32
+    # Packed shared-expert qweight_pack8_decode lands as raw int32 in the
+    # runtime-prepared map (no W8A16 quantization).
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        assert prepared[f"layers.0.mlp.shared_expert.{proj}.qweight_pack8_decode"].dtype == np.int32
+    assert "layers.0.mlp.shared_expert.gate_up_weight_w8a16_scale" not in prepared
 
 
 def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_parent_mixed_dtypes(tmp_path) -> None:

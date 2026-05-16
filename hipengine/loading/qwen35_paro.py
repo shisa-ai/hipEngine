@@ -236,14 +236,8 @@ def prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
             )
         )
     shared = f"{prefix}.shared_expert"
-    names.extend(
-        (
-            f"{shared}.gate_up_weight_w8a16",
-            f"{shared}.gate_up_weight_w8a16_scale",
-            f"{shared}.down_weight_w8a16",
-            f"{shared}.down_weight_w8a16_scale",
-        )
-    )
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        names.append(f"{shared}.{proj}.qweight_pack8_decode")
     return tuple(names)
 
 
@@ -262,14 +256,8 @@ def runtime_prepared_moe_c1_tensor_names(*, layer_id: int) -> tuple[str, ...]:
             )
         )
     shared = f"{prefix}.shared_expert"
-    names.extend(
-        (
-            f"{shared}.gate_up_weight_w8a16",
-            f"{shared}.gate_up_weight_w8a16_scale",
-            f"{shared}.down_weight_w8a16",
-            f"{shared}.down_weight_w8a16_scale",
-        )
-    )
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        names.append(f"{shared}.{proj}.qweight_pack8_decode")
     return tuple(names)
 
 
@@ -369,9 +357,6 @@ def required_moe_c1_tensor_names(*, layer_id: int, num_experts: int) -> tuple[st
         f"layers.{layer_id}.post_attention_layernorm.weight",
         f"{prefix}.gate.weight",
         f"{prefix}.shared_expert_gate.weight",
-        f"{prefix}.shared_expert.gate_proj.weight",
-        f"{prefix}.shared_expert.up_proj.weight",
-        f"{prefix}.shared_expert.down_proj.weight",
         f"{prefix}.experts.gate_up_weight_theta",
         f"{prefix}.experts.gate_up_weight_pairs",
         f"{prefix}.experts.gate_up_weight_channel_scales",
@@ -379,6 +364,19 @@ def required_moe_c1_tensor_names(*, layer_id: int, num_experts: int) -> tuple[st
         f"{prefix}.experts.down_weight_pairs",
         f"{prefix}.experts.down_weight_channel_scales",
     ]
+    shared = f"{prefix}.shared_expert"
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        base = f"{shared}.{proj}"
+        names.extend(
+            (
+                f"{base}.qweight",
+                f"{base}.qzeros",
+                f"{base}.scales",
+                f"{base}.theta",
+                f"{base}.pairs",
+                f"{base}.channel_scales",
+            )
+        )
     for expert in range(num_experts):
         for proj in ("gate_proj", "up_proj", "down_proj"):
             base = f"{prefix}.experts.{expert}.{proj}"
@@ -586,15 +584,9 @@ def prepare_qwen35_paro_moe_c1_host_tensors(
             )
         shared = f"{prefix}.shared_expert"
         _emit_progress(progress, "prepare_shared_expert_start", layer=layer_id)
-        shared_gate = _read_normalized_numpy_tensor(normalized, f"{shared}.gate_proj.weight", reader=reader)
-        shared_up = _read_normalized_numpy_tensor(normalized, f"{shared}.up_proj.weight", reader=reader)
-        shared_down = _read_normalized_numpy_tensor(normalized, f"{shared}.down_proj.weight", reader=reader)
-        gate_up_q, gate_up_scale = _quantize_w8a16_host(_concat_rows((shared_gate, shared_up)))
-        down_q, down_scale = _quantize_w8a16_host(shared_down)
-        prepared[f"{shared}.gate_up_weight_w8a16"] = gate_up_q
-        prepared[f"{shared}.gate_up_weight_w8a16_scale"] = gate_up_scale
-        prepared[f"{shared}.down_weight_w8a16"] = down_q
-        prepared[f"{shared}.down_weight_w8a16_scale"] = down_scale
+        for proj in ("gate_proj", "up_proj", "down_proj"):
+            qweight = _read_normalized_numpy_tensor(normalized, f"{shared}.{proj}.qweight", reader=reader)
+            prepared[f"{shared}.{proj}.qweight_pack8_decode"] = _transpose_generic_qweight(qweight)
         _emit_progress(progress, "prepare_shared_expert_done", layer=layer_id)
         return prepared
     finally:
@@ -899,14 +891,15 @@ def paro_marlin_k_pack8_decode_view(qweight_mk: object):
     return qweight_mk_arr.reshape(out_packed, groups * group_size)
 
 
-def _quantize_w8a16_host(weight: object):
+def _transpose_generic_qweight(array: object):
     import numpy as np
 
-    weight_f32 = np.asarray(weight, dtype=np.float32)
-    scale = np.maximum(np.max(np.abs(weight_f32), axis=1), 1.0e-8).astype(np.float32) / np.float32(127.0)
-    quantized = np.rint(weight_f32 / scale[:, None])
-    quantized = np.clip(quantized, -127, 127).astype(np.int8)
-    return np.ascontiguousarray(quantized), np.ascontiguousarray(scale)
+    qweight = np.asarray(array)
+    if qweight.ndim != 2:
+        raise ValueError(
+            f"generic qweight must be rank-2 [in_features, out_packed], got shape {qweight.shape}"
+        )
+    return np.ascontiguousarray(qweight.T)
 
 
 def _runtime_tensor_needs_f32(name: str) -> bool:
@@ -1303,15 +1296,9 @@ def _validate_moe_c1_shapes(
         f"{prefix}.gate.weight": (config.num_experts, config.hidden_size),
         f"{prefix}.shared_expert_gate.weight": (1, config.hidden_size),
     }
-    if config.shared_expert_intermediate_size > 0:
-        shared = config.shared_expert_intermediate_size
-        expected.update(
-            {
-                f"{prefix}.shared_expert.gate_proj.weight": (shared, config.hidden_size),
-                f"{prefix}.shared_expert.up_proj.weight": (shared, config.hidden_size),
-                f"{prefix}.shared_expert.down_proj.weight": (config.hidden_size, shared),
-            }
-        )
+    # Packed shared-expert qweight/qzeros/scales/theta/pairs/channel_scales
+    # mirror the attention dense-projection convention and are existence-only
+    # validated (matching how routed-expert qweight/qzeros/scales are checked).
 
     errors: list[str] = []
     for name, shape in expected.items():
