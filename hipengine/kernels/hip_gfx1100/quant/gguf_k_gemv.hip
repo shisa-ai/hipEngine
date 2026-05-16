@@ -1,0 +1,234 @@
+// GGUF Q8_0/Q5_K/Q6_K raw-byte GEMV bring-up kernels.
+// These preserve GGML quant math and are separate from PARO/AWQ kernels.
+
+#include <hip/hip_runtime.h>
+#include <stdint.h>
+
+namespace {
+
+using half_t = _Float16;
+constexpr int QK_K = 256;
+constexpr int Q8_0_BLOCK = 32;
+constexpr int Q8_0_BLOCK_BYTES = 34;
+constexpr int Q5_K_BLOCK_BYTES = 176;
+constexpr int Q6_K_BLOCK_BYTES = 210;
+
+__device__ inline float bf16_bits_to_float(uint16_t value) {
+  union {
+    uint32_t u32;
+    float f32;
+  } out;
+  out.u32 = static_cast<uint32_t>(value) << 16;
+  return out.f32;
+}
+
+__device__ inline float fp16_bytes_to_float(const uint8_t* ptr) {
+  const uint16_t bits = static_cast<uint16_t>(ptr[0]) |
+                        (static_cast<uint16_t>(ptr[1]) << 8);
+  union {
+    uint16_t u16;
+    half_t f16;
+  } in;
+  in.u16 = bits;
+  return static_cast<float>(in.f16);
+}
+
+template <typename scalar_t>
+__device__ inline float scalar_to_float(scalar_t value) {
+  return static_cast<float>(value);
+}
+
+template <>
+__device__ inline float scalar_to_float<uint16_t>(uint16_t value) {
+  return bf16_bits_to_float(value);
+}
+
+__device__ inline uint8_t q4_k_scale(const uint8_t* scales, int subblock) {
+  if (subblock < 4) {
+    return scales[subblock] & 0x3Fu;
+  }
+  const int idx = subblock - 4;
+  return (scales[8 + idx] & 0x0Fu) | ((scales[idx] >> 2) & 0x30u);
+}
+
+__device__ inline uint8_t q4_k_min(const uint8_t* scales, int subblock) {
+  if (subblock < 4) {
+    return scales[4 + subblock] & 0x3Fu;
+  }
+  const int idx = subblock - 4;
+  return (scales[8 + idx] >> 4) | ((scales[4 + idx] >> 2) & 0x30u);
+}
+
+__device__ inline float q8_0_weight(const uint8_t* row, int k) {
+  const int block_idx = k / Q8_0_BLOCK;
+  const int lane = k & (Q8_0_BLOCK - 1);
+  const uint8_t* block = row + static_cast<int64_t>(block_idx) * Q8_0_BLOCK_BYTES;
+  const float d = fp16_bytes_to_float(block);
+  const int8_t q = reinterpret_cast<const int8_t*>(block + 2)[lane];
+  return d * static_cast<float>(q);
+}
+
+__device__ inline float q5_k_weight(const uint8_t* row, int k) {
+  const int block_idx = k / QK_K;
+  const int within = k - block_idx * QK_K;
+  const int subblock = within >> 5;
+  const int lane = within & 31;
+  const uint8_t* block = row + static_cast<int64_t>(block_idx) * Q5_K_BLOCK_BYTES;
+  const float d = fp16_bytes_to_float(block);
+  const float dmin = fp16_bytes_to_float(block + 2);
+  const uint8_t* scales = block + 4;
+  const uint8_t* qh = block + 16;
+  const uint8_t* qs = block + 48;
+  const uint8_t packed = qs[(subblock >> 1) * 32 + lane];
+  const uint8_t ql = (subblock & 1) ? (packed >> 4) : (packed & 0x0Fu);
+  const uint8_t high = (qh[lane] >> subblock) & 0x01u;
+  const uint8_t q = ql | (high << 4);
+  const float scale = static_cast<float>(q4_k_scale(scales, subblock));
+  const float minv = static_cast<float>(q4_k_min(scales, subblock));
+  return d * scale * static_cast<float>(q) - dmin * minv;
+}
+
+__device__ inline float q6_k_weight(const uint8_t* row, int k) {
+  const int block_idx = k / QK_K;
+  const int within = k - block_idx * QK_K;
+  const int group32 = within >> 5;
+  const int lane = within & 31;
+  const uint8_t* block = row + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES;
+  const uint8_t* ql = block;
+  const uint8_t* qh = block + 128;
+  const int8_t* scales = reinterpret_cast<const int8_t*>(block + 192);
+  const float d = fp16_bytes_to_float(block + 208);
+
+  const int base64 = (group32 >= 4) ? 64 : 0;
+  const bool low_nibble = (group32 & 2) == 0;
+  const int ql_group = group32 & 1;
+  const uint8_t ql_byte = ql[base64 + ql_group * 32 + lane];
+  const uint8_t low = low_nibble ? (ql_byte & 0x0Fu) : (ql_byte >> 4);
+  const int qh_base = (group32 >= 4) ? 32 : 0;
+  const uint8_t high = (qh[qh_base + lane] >> (2 * (group32 & 3))) & 0x03u;
+  const int q = static_cast<int>(low | (high << 4)) - 32;
+  const int scale = static_cast<int>(scales[within >> 4]);
+  return d * static_cast<float>(scale * q);
+}
+
+__device__ inline float reduce_block_sum(float acc) {
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    acc += __shfl_down(acc, offset);
+  }
+  __shared__ float wave_sums[8];
+  if (lane == 0) {
+    wave_sums[wave] = acc;
+  }
+  __syncthreads();
+  float total = 0.0f;
+  if (tid == 0) {
+    const int waves = (blockDim.x + 31) >> 5;
+    for (int i = 0; i < waves; ++i) {
+      total += wave_sums[i];
+    }
+  }
+  return total;
+}
+
+template <typename scalar_t, int qtype>
+__launch_bounds__(256, 2)
+__global__ void gguf_k_gemv_f32_out_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    float* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+
+  int row_bytes = 0;
+  if constexpr (qtype == 8) {
+    row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  } else if constexpr (qtype == 5) {
+    row_bytes = (in_features / QK_K) * Q5_K_BLOCK_BYTES;
+  } else {
+    row_bytes = (in_features / QK_K) * Q6_K_BLOCK_BYTES;
+  }
+  const uint8_t* __restrict__ weight_row =
+      qweight + static_cast<int64_t>(out_col) * row_bytes;
+  const scalar_t* __restrict__ x_row =
+      x + static_cast<int64_t>(row) * in_features;
+
+  float acc = 0.0f;
+  for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
+    const float xv = scalar_to_float<scalar_t>(x_row[k]);
+    float wv;
+    if constexpr (qtype == 8) {
+      wv = q8_0_weight(weight_row, k);
+    } else if constexpr (qtype == 5) {
+      wv = q5_k_weight(weight_row, k);
+    } else {
+      wv = q6_k_weight(weight_row, k);
+    }
+    acc += xv * wv;
+  }
+  const float total = reduce_block_sum(acc);
+  if (threadIdx.x == 0) {
+    out[static_cast<int64_t>(row) * out_features + out_col] = total;
+  }
+}
+
+template <typename scalar_t, int qtype>
+int launch_gguf_k_gemv_f32_out(
+    const scalar_t* x,
+    const uint8_t* qweight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  const bool valid_shape = (qtype == 8) ? ((in_features % Q8_0_BLOCK) == 0)
+                                       : ((in_features % QK_K) == 0);
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || out_features <= 0 || !valid_shape ||
+      (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows));
+  gguf_k_gemv_f32_out_kernel<scalar_t, qtype><<<grid, block, 0, stream>>>(
+      x,
+      qweight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+}  // namespace
+
+#define HIPENGINE_GGUF_K_EXPORTS(NAME, QTYPE) \
+extern "C" int hipengine_##NAME##_gemv_f32_f32_out( \
+    const float* x, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_f32_out<float, QTYPE>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+} \
+extern "C" int hipengine_##NAME##_gemv_fp16_f32_out( \
+    const half_t* x, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_f32_out<half_t, QTYPE>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+} \
+extern "C" int hipengine_##NAME##_gemv_bf16_f32_out( \
+    const uint16_t* x, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_f32_out<uint16_t, QTYPE>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+}
+
+HIPENGINE_GGUF_K_EXPORTS(gguf_q8_0, 8)
+HIPENGINE_GGUF_K_EXPORTS(gguf_q5_k, 5)
+HIPENGINE_GGUF_K_EXPORTS(gguf_q6_k, 6)

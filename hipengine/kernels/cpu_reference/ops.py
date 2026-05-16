@@ -43,8 +43,12 @@ def qkv_proj(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> 
     return linear(x, weight, bias)
 
 
-def gguf_q4_k_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
-    """Reference GEMV over raw GGUF ``block_q4_K`` weight bytes."""
+def gguf_quant_gemv(
+    x: ArrayLike,
+    qweight: ArrayLike,
+    qtype: GGMLQuantizationType,
+) -> np.ndarray:
+    """Reference GEMV over raw GGUF quantized weight bytes."""
 
     x_arr = np.asarray(x, dtype=np.float32)
     qweight_arr = np.asarray(qweight)
@@ -52,12 +56,36 @@ def gguf_q4_k_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
         raise ValueError("x must have shape [rows, in_features]")
     if qweight_arr.ndim != 2:
         raise ValueError("qweight must have GGUF byte shape [out_features, bytes_per_row]")
-    weight = dequantize_gguf_data(qweight_arr, GGMLQuantizationType.Q4_K)
+    weight = dequantize_gguf_data(qweight_arr, qtype)
     if weight.ndim != 2:
         raise ValueError("qweight must dequantize to [out_features, in_features]")
     if x_arr.shape[1] != weight.shape[1]:
         raise ValueError("x.shape[1] must match qweight in_features")
     return np.matmul(x_arr, weight.T).astype(np.float32)
+
+
+def gguf_q8_0_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
+    """Reference GEMV over raw GGUF ``block_q8_0`` weight bytes."""
+
+    return gguf_quant_gemv(x, qweight, GGMLQuantizationType.Q8_0)
+
+
+def gguf_q4_k_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
+    """Reference GEMV over raw GGUF ``block_q4_K`` weight bytes."""
+
+    return gguf_quant_gemv(x, qweight, GGMLQuantizationType.Q4_K)
+
+
+def gguf_q5_k_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
+    """Reference GEMV over raw GGUF ``block_q5_K`` weight bytes."""
+
+    return gguf_quant_gemv(x, qweight, GGMLQuantizationType.Q5_K)
+
+
+def gguf_q6_k_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
+    """Reference GEMV over raw GGUF ``block_q6_K`` weight bytes."""
+
+    return gguf_quant_gemv(x, qweight, GGMLQuantizationType.Q6_K)
 
 
 def gguf_q4_k_pack8_gemv(
@@ -492,7 +520,10 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "rmsnorm": rmsnorm,
         "linear": linear,
         "qkv_proj": qkv_proj,
+        "gguf_q8_0_gemv": gguf_q8_0_gemv,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
+        "gguf_q5_k_gemv": gguf_q5_k_gemv,
+        "gguf_q6_k_gemv": gguf_q6_k_gemv,
         "gguf_q4_k_pack8_gemv": gguf_q4_k_pack8_gemv,
         "rotate": rotate,
         "attention_decode": attention_decode,
@@ -511,8 +542,23 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("cpu_reference", "linear", "gguf_q8_0", "gemv_f32_f32_out"),
+        gguf_q8_0_gemv,
+        replace=replace,
+    )
+    register(
         KernelKey("cpu_reference", "linear", "gguf_q4_k", "gemv_f32_f32_out"),
         gguf_q4_k_gemv,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "linear", "gguf_q5_k", "gemv_f32_f32_out"),
+        gguf_q5_k_gemv,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "linear", "gguf_q6_k", "gemv_f32_f32_out"),
+        gguf_q6_k_gemv,
         replace=replace,
     )
     register(

@@ -71,3 +71,20 @@ def test_builtin_gguf_q4_k_quant_plugin_is_registered() -> None:
     assert plugin.scale_granularity == "block256_subblock32_scale_min"
     assert plugin.calibration_artifact == "gguf"
     assert plugin.kernel_family == "gguf_q4_k_gemv"
+
+
+def test_builtin_mixed_gguf_quant_plugins_are_registered() -> None:
+    expected = {
+        "gguf_q8_0": ("gguf_block_q8_0", "block32_scale"),
+        "gguf_q5_k": ("gguf_block_q5_k", "block256_subblock32_scale_min"),
+        "gguf_q6_k": ("gguf_block_q6_k", "block256_subblock16_scale"),
+    }
+    for name, (storage, granularity) in expected.items():
+        plugin = resolve_quant(name)
+
+        assert plugin.weight_storage == storage
+        assert plugin.activation_preprocess == "none"
+        assert plugin.compute_dtype == "fp32_accum"
+        assert plugin.scale_granularity == granularity
+        assert plugin.calibration_artifact == "gguf"
+        assert plugin.kernel_family == "gguf_k_gemv"

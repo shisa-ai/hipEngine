@@ -21,6 +21,14 @@ from hipengine.quant.gguf import (
     quant_shape_to_byte_shape,
     unpack_q4_k_scale_min,
 )
+from hipengine.quant.gguf_k import (
+    GGUFQ5KQuant,
+    GGUFQ6KQuant,
+    GGUFQ80Quant,
+    GGUF_Q5_K,
+    GGUF_Q6_K,
+    GGUF_Q8_0,
+)
 from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K,
     GGUF_Q4_K_BLOCK_BYTES,
@@ -50,6 +58,9 @@ __all__ = [
     "GGMLQuantizationType",
     "GGUFQ4KPack8",
     "GGUFQ4KQuant",
+    "GGUFQ5KQuant",
+    "GGUFQ6KQuant",
+    "GGUFQ80Quant",
     "GGUFQuantLayout",
     "GGUFValueType",
     "GGUF_QUANT_LAYOUTS",
@@ -58,6 +69,9 @@ __all__ = [
     "GGUF_Q4_K_PACK",
     "GGUF_Q4_K_SUBBLOCK",
     "GGUF_Q4_K_SUBBLOCKS",
+    "GGUF_Q5_K",
+    "GGUF_Q6_K",
+    "GGUF_Q8_0",
     "MissingQuantError",
     "QuantPlugin",
     "QK_K",

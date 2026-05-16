@@ -15146,3 +15146,75 @@ PYTHONPATH=. python3 /tmp/bench_gemv_compare_pack8.py | tee /tmp/hipengine-gguf-
 Three reruns were stable. Diagnostic artifact retained at `benchmarks/results/2026-05-16-hipengine-gguf-q4k-pack8-gemv-diagnostic.json`; benchmark rollup notes this is a kernel microbench, not a promoted throughput row.
 
 Next GGUF speed steps: BF16/FP16 output to reduce stores and integrate pack8 materialization into GGUF model loading; then evaluate whether FP16 scale/min storage or Marlin/WMMA staging improves the 4K path further without violating correctness gates.
+
+## 2026-05-16 GGUF Q8_0/Q5_K/Q6_K raw GEMV coverage
+
+Started the next GGUF E2E enablement slice by adding native raw-byte GEMV coverage for the remaining tensor types needed by local Qwen3.5 Q4_K_M projections/token embedding before wiring a model runner:
+
+- `hipengine/quant/gguf_k.py`: quant plugin metadata for `gguf_q8_0`, `gguf_q5_k`, and `gguf_q6_k`.
+- `hipengine/kernels/cpu_reference/ops.py`: CPU references `gguf_q8_0_gemv`, `gguf_q5_k_gemv`, and `gguf_q6_k_gemv` using the GGUF dequant oracle.
+- `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.{hip,py}`: raw GGUF `Q8_0`/`Q5_K`/`Q6_K` GEMV kernels and wrappers for F32, FP16, and BF16-bit activations with FP32 output.
+- `scripts/gguf_k_gemv_smoke.py`: synthetic HIP correctness smoke for all three formats and activation dtypes.
+
+Pre-work checks:
+
+```bash
+git status -sb
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -n 32
+# gfx1100 / AMD Radeon RX 7900 XTX in this session
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# existing parent DRIFT remains in qwen35_expert.hip, smoke.hip,
+# paroquant_kernels.py, and paroquant_fusedw4.py; this GGUF K-family path is new
+# hipENGINE code and not a parent kernel port.
+```
+
+Targeted tests and synthetic GPU smoke:
+
+```bash
+python3 -m py_compile hipengine/quant/__init__.py hipengine/quant/gguf_k.py \
+  hipengine/kernels/cpu_reference/ops.py \
+  hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py \
+  scripts/gguf_k_gemv_smoke.py tests/test_gguf_k_gemv.py \
+  tests/test_model_quant_and_imports.py
+# ok
+python3 -m pytest tests/test_gguf_reader.py tests/test_gguf_quant_layout.py \
+  tests/test_gguf_q4_k_gemv.py tests/test_gguf_k_gemv.py \
+  tests/test_model_quant_and_imports.py tests/test_build.py \
+  tests/test_smoke_add_plan.py -q
+# 33 passed
+python3 scripts/gguf_k_gemv_smoke.py --rows 2 --out-features 7
+# Q8_0/Q5_K/Q6_K f32/fp16/bf16 max_abs=0.0; worst_max_abs=0.0
+```
+
+Real local GGUF tensor smoke against CPU reference, no performance claim:
+
+```bash
+# /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf, one BF16 activation row
+# Q8_0 blk.0.ssm_alpha.weight shape=(16, 1024): max_abs=2.384185791015625e-07, mean_abs=9.406358003616333e-08
+# Q5_K blk.0.attn_qkv.weight shape=(6144, 1024): max_abs=7.152557373046875e-07, mean_abs=2.737957949250358e-08
+# Q6_K token_embd.weight shape=(248320, 1024): max_abs=2.980232238769531e-07, mean_abs=3.5486451110955386e-08
+```
+
+Cached profiler smoke (prebuilt `.so`, `--require-cached-build`):
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+build_gguf_k_gemv(load=False, compiler_version=version)
+PY
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-k-rocprof.qQ3JIP -- \
+  python3 scripts/gguf_k_gemv_smoke.py --rows 2 --out-features 7 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# smoke again: worst_max_abs=0.0
+# rocpd dispatches show gguf_k_gemv_f32_out_kernel<*,8/5/6> ran with
+# Workgroup_Size_X=128; representative DurationNs values:
+# Q8_0 float/fp16/bf16: 3720 / 3200 / 3039
+# Q5_K float/fp16/bf16: 5439 / 5039 / 4960
+# Q6_K float/fp16/bf16: 4760 / 4799 / 4960
+```
+
+This gives native projection coverage for the Q8_0/Q5_K/Q6_K tensor types in the local 0.8B Q4_K_M GGUF. The next E2E blocker is output dtype/runtime wiring: current GGUF GEMVs emit FP32, so a model runner either needs BF16 output variants or explicit F32→BF16 casts between existing BF16 kernels.
