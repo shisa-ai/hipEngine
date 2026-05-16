@@ -15342,3 +15342,36 @@ python3 scripts/qwen35_gguf_e2e_correctness.py --skip-tokenize-check >/tmp/gguf_
 ```
 
 Definition of done for the upcoming GGUF E2E tasks is now: `python3 scripts/qwen35_gguf_e2e_correctness.py` passes using the true public API, plus finite-logit/lower-level runner evidence and cached `rocprofv3 --kernel-trace` proof that native GGUF kernels ran.
+
+## 2026-05-16 Qwen3.5 GGUF tensor mapping
+
+Implemented `hipengine/loading/qwen35_gguf.py` to convert the local Qwen3.5 GGUF tensor inventory into canonical runtime slots before materialization. The mapper:
+
+- decodes `qwen35.*` metadata into `Qwen35GGUFConfig`;
+- fixes layer types from `qwen35.full_attention_interval=4`, yielding 18 `linear_attention` layers and 6 `full_attention` layers for the 24-layer 0.8B file;
+- maps root tensors: `token_embd.weight`, tied `lm_head`, and `output_norm.weight`;
+- maps linear-attention tensors: `attn_gate`, `attn_qkv`, `ssm_a`, `ssm_alpha`, `ssm_beta`, `ssm_conv1d`, `ssm_dt_bias`, `ssm_norm`, `ssm_out`, plus shared norms/FFN;
+- maps full-attention tensors: `attn_q`, `attn_k`, `attn_v`, `attn_output`, `attn_q_norm`, `attn_k_norm`, plus shared norms/FFN;
+- validates missing, unexpected, and shape-mismatched tensors before any device materialization.
+
+Local inventory facts from `/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf`:
+
+```text
+architecture=qwen35 tensors=320
+quant counts: F32=133, Q4_K=98, Q5_K=36, Q6_K=17, Q8_0=36
+root: output_norm.weight F32 (1024,), token_embd.weight Q6_K (248320, 1024)
+layer 0: linear_attention, attn_qkv Q5_K (6144, 1024), ssm_out Q5_K (1024, 2048)
+layer 3: full_attention, attn_q Q4_K (4096, 1024), attn_k Q4_K (512, 1024), attn_v Q6_K (512, 1024), attn_output Q4_K (1024, 2048)
+```
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/loading/qwen35_gguf.py tests/test_qwen35_gguf_mapping.py
+python3 -m pytest tests/test_qwen35_gguf_mapping.py -q
+# 4 passed
+python3 -m pytest tests/test_gguf_reader.py tests/test_qwen35_gguf_mapping.py tests/test_model_quant_and_imports.py -q
+# 15 passed
+```
+
+Next step remains resident materialization: allocate device records for this map, repack Q4_K to pack8 where chosen, keep Q5_K/Q6_K/Q8_0 as raw GGUF byte tensors, and alias `lm_head` to `token_embd.weight` unless a future GGUF includes an explicit output tensor.

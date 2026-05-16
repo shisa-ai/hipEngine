@@ -16,7 +16,9 @@ local tensor types (`BF16`, `Q8_0`, `Q4_1`, `Q4_K`, `Q5_K`, `Q6_K`, `IQ4_XS`,
 repack for `Q4_K`, on gfx1100 while preserving GGML quant math. Full Qwen GGUF
 model materialization and deeper Marlin/WMMA tuning remain next steps. BF16
 output variants are available for the GGUF GEMV kernels used by the planned
-runtime path.
+runtime path. Qwen3.5 GGUF tensor-name mapping now validates the local 0.8B
+Q4_K_M inventory and classifies all 24 layers into 18 linear-attention and 6
+full-attention blocks.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
