@@ -14134,3 +14134,27 @@ sin/cos; still diagnostic only until shisa KL/top-1 gate exists.
 
 Artifact:
 `benchmarks/results/2026-05-17-hipengine-qwen36-packed-shared-decode-fusion-diagnostic.json`.
+
+## 2026-05-17 stale unit-test expectations review
+
+Reviewed the current non-passing full unit suite after the packed shared-expert
+commit. Failures were stale tests, not a new runtime regression:
+
+- `tests/test_cpu_reference.py::test_cpu_reference_full_attn_prefill_causal_gqa_gate`
+  still expected FP32 attention values, but `fix: align AOTriton prefill with
+  BF16 SDPA` intentionally changed the CPU reference to BF16-round attention
+  before applying the sigmoid gate. Updated the inline expected values and the
+  committed `full_attn_prefill_causal_gqa_gate.json` fixture.
+- `tests/test_hip_runtime.py` fake HIP library missed `hipMemset`,
+  `hipMemsetAsync`, and `hipMemGetInfo`, which are now configured by
+  `HipRuntime._configure()`.
+- `tests/test_llm_generate.py` fake weight indices lacked `model_path`, now
+  required because `LLM._load_model_metadata()` normalizes HF IDs to resolved
+  filesystem paths.
+
+Validation:
+
+```bash
+python3 -m pytest -q --tb=short
+# 254 passed
+```

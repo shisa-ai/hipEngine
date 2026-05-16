@@ -23,6 +23,13 @@ def _bf16_bits(values: np.ndarray) -> np.ndarray:
     return (np.asarray(values, dtype=np.float32).view(np.uint32) >> 16).astype(np.uint16)
 
 
+def _round_to_bf16_float(values: np.ndarray) -> np.ndarray:
+    bits = np.asarray(values, dtype=np.float32).view(np.uint32)
+    lsb = (bits >> np.uint32(16)) & np.uint32(1)
+    rounded = bits + np.uint32(0x7FFF) + lsb
+    return (rounded & np.uint32(0xFFFF0000)).view(np.float32)
+
+
 FIXTURE = Path("tests/fixtures/cpu_reference/rmsnorm_basic.json")
 FIXTURE_DIR = Path("tests/fixtures/cpu_reference")
 
@@ -101,20 +108,26 @@ def test_cpu_reference_full_attn_prefill_causal_gqa_gate() -> None:
     )
 
     softmax_10 = np.asarray([np.exp(1.0), 1.0], dtype=np.float32) / (np.exp(1.0) + 1.0)
+    attn_head0 = _round_to_bf16_float(
+        np.asarray(
+            [softmax_10[0] * 1.0 + softmax_10[1] * 3.0, softmax_10[0] * 2.0 + softmax_10[1] * 4.0],
+            dtype=np.float32,
+        )
+    )
+    attn_head1 = _round_to_bf16_float(
+        np.asarray(
+            [softmax_10[0] * 10.0 + softmax_10[1] * 30.0, softmax_10[0] * 20.0 + softmax_10[1] * 40.0],
+            dtype=np.float32,
+        )
+    )
     expected = np.asarray(
         [
             [[0.5, 1.0], [0.5, 1.0], [5.0, 10.0], [5.0, 10.0]],
             [
                 [1.0, 1.5],
-                [
-                    (softmax_10[0] * 1.0 + softmax_10[1] * 3.0) * 0.5,
-                    (softmax_10[0] * 2.0 + softmax_10[1] * 4.0) * 0.5,
-                ],
+                [attn_head0[0] * 0.5, attn_head0[1] * 0.5],
                 [10.0, 15.0],
-                [
-                    (softmax_10[0] * 10.0 + softmax_10[1] * 30.0) * 0.5,
-                    (softmax_10[0] * 20.0 + softmax_10[1] * 40.0) * 0.5,
-                ],
+                [attn_head1[0] * 0.5, attn_head1[1] * 0.5],
             ],
         ],
         dtype=np.float32,

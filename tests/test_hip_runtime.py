@@ -31,10 +31,14 @@ class FakeHipLibrary:
         self.next_ptr = 0x1000
         self.freed = []
         self.copied = []
+        self.sets = []
         self.hipMalloc = FakeFunction(self._malloc)
         self.hipFree = FakeFunction(self._free)
         self.hipMemcpy = FakeFunction(self._memcpy)
         self.hipMemcpyAsync = FakeFunction(self._memcpy_async)
+        self.hipMemset = FakeFunction(self._memset)
+        self.hipMemsetAsync = FakeFunction(self._memset_async)
+        self.hipMemGetInfo = FakeFunction(self._mem_get_info)
         self.hipStreamCreateWithFlags = FakeFunction(self._stream_create_with_flags)
         self.hipStreamDestroy = FakeFunction(lambda stream: 0)
         self.hipStreamSynchronize = FakeFunction(lambda stream: 0)
@@ -62,6 +66,19 @@ class FakeHipLibrary:
 
     def _memcpy_async(self, dst, src, nbytes, kind, stream):
         self.copied.append((dst.value, src.value, nbytes.value, kind, stream.value))
+        return 0
+
+    def _memset(self, dst, value, nbytes):
+        self.sets.append((dst.value, value.value, nbytes.value))
+        return 0
+
+    def _memset_async(self, dst, value, nbytes, stream):
+        self.sets.append((dst.value, value.value, nbytes.value, stream.value))
+        return 0
+
+    def _mem_get_info(self, free_bytes, total_bytes):
+        free_bytes._obj.value = 0x9000
+        total_bytes._obj.value = 0xA000
         return 0
 
     def _stream_create_with_flags(self, out_stream, flags):
@@ -92,8 +109,11 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
 
     ptr = runtime.malloc(16)
     runtime.memcpy(ptr, 0x2000, 16, HipMemcpyKind.HOST_TO_DEVICE)
+    runtime.memset(ptr, 0, 16)
+    free_bytes, total_bytes = runtime.mem_get_info()
     stream = runtime.stream_create()
     runtime.memcpy_async(ptr, 0x3000, 8, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+    runtime.memset_async(ptr, 0xAB, 8, stream)
     runtime.stream_begin_capture(stream)
     graph = runtime.stream_end_capture(stream)
     graph_exec = runtime.graph_instantiate(graph)
@@ -109,10 +129,12 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
     assert stream == 0x5001
     assert graph == 0x6000
     assert graph_exec == 0x7000
+    assert (free_bytes, total_bytes) == (0x9000, 0xA000)
     assert lib.copied == [
         (0x1000, 0x2000, 16, int(HipMemcpyKind.HOST_TO_DEVICE)),
         (0x1000, 0x3000, 8, int(HipMemcpyKind.DEVICE_TO_DEVICE), stream),
     ]
+    assert lib.sets == [(0x1000, 0, 16), (0x1000, 0xAB, 8, stream)]
     assert lib.freed == [0x1000]
 
 

@@ -22,7 +22,7 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
         calls["factory_kwargs"] = kwargs
         return FakeGenerator()
 
-    fake_index = SimpleNamespace(config={"architectures": ["FakeForCausalLM"]})
+    fake_index = SimpleNamespace(config={"architectures": ["FakeForCausalLM"]}, model_path="/tmp/fake-model")
     fake_plugin = SimpleNamespace(name="fake_model")
 
     monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
@@ -68,7 +68,10 @@ def test_llm_generate_normalizes_single_prompt(monkeypatch) -> None:
     monkeypatch.setattr(
         loading,
         "load_weight_index",
-        lambda model: SimpleNamespace(config={"text_config": {"architectures": ["FakeText"]}}),
+        lambda model: SimpleNamespace(
+            config={"text_config": {"architectures": ["FakeText"]}},
+            model_path="/tmp/fake-model",
+        ),
     )
     monkeypatch.setattr(models, "resolve_model", lambda architecture: SimpleNamespace(name="fake_single"))
     register_text_generator(
