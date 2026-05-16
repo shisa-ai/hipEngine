@@ -181,6 +181,11 @@ def test_qwen35_decode_state_projects_full_attention_qkv_fp16_tokens_split_layou
     )
     monkeypatch.setattr(
         qwen_runtime,
+        "awq_fusedw4_prefill_dual_fp16",
+        lambda *args, **kwargs: calls.append(("fusedw4_dual", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
         "awq_fusedw4_prefill_strided_fp16",
         lambda *args, **kwargs: calls.append(("fusedw4_strided", args, kwargs)),
     )
@@ -195,10 +200,10 @@ def test_qwen35_decode_state_projects_full_attention_qkv_fp16_tokens_split_layou
     assert q_proj is scratch.q_proj
     assert key is scratch.key_bf16
     assert value is scratch.value
-    assert [kind for kind, _args, _kwargs in calls] == ["fusedw4", "fusedw4", "fusedw4_strided"]
-    assert calls[0][1][4] == scratch.q_proj.ptr
-    assert calls[1][1][4] == scratch.key_bf16.ptr
-    assert calls[2][1][4] == scratch.value.ptr
+    assert [kind for kind, _args, _kwargs in calls] == ["fusedw4_dual", "fusedw4_strided"]
+    assert calls[0][1][8] == scratch.q_proj.ptr
+    assert calls[0][1][9] == scratch.key_bf16.ptr
+    assert calls[1][1][4] == scratch.value.ptr
 
 
 def test_qwen35_decode_state_prepare_full_attention_qkv_fp16_tokens_uses_vector_positions(monkeypatch) -> None:

@@ -11503,3 +11503,49 @@ ran 40 times with `14.742 ms` total / `368.6 us` average, down from tile8
 because the active loop judged the median gain insufficient relative to variance;
 retain tile8 and do not revisit tile16 unless a broader 4K/attention re-scope
 needs the local shared-down improvement.
+
+## 2026-05-16 — Prefill multiloop iter 56: dual fused-W4 prefill projection trial
+
+After four consecutive failed geometry/micro-tune iterations, switched back to a
+parent-proven structural lever: paired transposed W4 prompt projections. Added a
+transposed `hipengine_awq_fusedw4_prefill_dual_fp16` path that launches one WMMA
+prefill kernel over the concatenated output-tile grid for two independent
+projections while still writing separate contiguous outputs. Runtime routing now
+uses it for full-attention Q/K and linear-attention QKV/Z FP16 prefill pairs;
+V/O and linear-attention out_proj stay on the existing strided/single paths. The
+intent is launch reduction and better single-launch occupancy without changing
+per-output math or tensor layout.
+
+Validation commands/results before loop decision:
+
+```bash
+git diff --check
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/kernels/hip_gfx1100/quant/__init__.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_paro_awq_gemv_plan.py tests/test_qwen35_decode_state.py -q
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv
+lib = build_paro_awq_gemv(load=True, require_cached=False)
+for name in ('hipengine_awq_fusedw4_prefill_fp16','hipengine_awq_fusedw4_prefill_dual_fp16','hipengine_awq_fusedw4_prefill_strided_fp16'):
+    getattr(lib, name)
+print('fusedw4 symbols loaded')
+PY
+python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter56-dual-fusedw4-512-128-N.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter56-dual-fusedw4-4k-128-N.json
+rocprofv3 --kernel-trace -d /tmp/iter56-dual-fusedw4-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter56-dual-fusedw4-trace.json
+```
+
+GPU was idle at the start (`rocm-smi` GPU use `0%`, VRAM `0%`). Targeted tests
+passed (`37 passed`), fused-W4 symbols loaded, and pack8 smoke stayed bit-exact
+(`single_mismatch=0/0`, `dual_mismatch=0/0`, FP16 mismatches `0/0`). 512/128
+samples were `2080.018`, `2074.859`, `2084.484`, `2079.664`, `2060.165`, and exact-verify `2041.730`
+tok/s (median `2077.262`, +0.75% over retained `2061.730`, `MAD=4.989`). Fixture
+gate passed unchanged (`max_kl=0.03406`, top-1 `1.0`, `native_owned_device_bytes=1625645909`).
+4K/128 samples were `660.922` and `658.977` tok/s (median `659.950`, +0.09% vs
+retained `659.356`, above the 95% guard but effectively neutral). Profiler
+confirmed the structural change: transposed fused-W4 Q/K and QKV/Z now launch
+`awq_fusedw4_prefill_dual_fp16_kernel<32,32>` 40 times (`21.957 ms` total,
+`548.9 us` avg, `grid_x=12288`, `VGPR=120`, scratch `0`) instead of 80 single
+transposed fused-W4 launches totaling about `22.999-23.640 ms` in nearby retained
+traces; strided fused-W4 remains separate at 50 calls / `14.795 ms`.

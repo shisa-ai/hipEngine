@@ -82,6 +82,7 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16, qwen35_router_topk_shared_out_fp16
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
+    awq_fusedw4_prefill_dual_fp16,
     awq_fusedw4_prefill_fp16,
     awq_fusedw4_prefill_strided_fp16,
     gemv_awq_dual_pack8_transposed_bf16,
@@ -1642,28 +1643,20 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         else:
-            awq_fusedw4_prefill_fp16(
+            awq_fusedw4_prefill_dual_fp16(
                 scratch.q_rot.ptr,
+                scratch.k_rot.ptr,
                 q_qweight.ptr,
                 self.tensor(f"{q}.qzeros").ptr,
                 self.tensor(f"{q}.scales").ptr,
-                scratch.q_proj.ptr,
-                tokens,
-                scratch.q_rot.shape[-1],
-                q_out_packed,
-                group_size,
-                stream=stream,
-                library=awq_library,
-                runtime=self.runtime,
-            )
-            awq_fusedw4_prefill_fp16(
-                scratch.k_rot.ptr,
                 k_qweight.ptr,
                 self.tensor(f"{k}.qzeros").ptr,
                 self.tensor(f"{k}.scales").ptr,
+                scratch.q_proj.ptr,
                 scratch.key_bf16.ptr,
                 tokens,
-                scratch.k_rot.shape[-1],
+                scratch.q_rot.shape[-1],
+                q_out_packed,
                 k_out_packed,
                 group_size,
                 stream=stream,
@@ -2446,36 +2439,24 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         else:
-            # The dual GEMV writes row-major [qkv,z] per token.  Native
-            # prefill conv/GDN consumes contiguous [tokens,qkv] and [tokens,z]
-            # streams, so split multi-token prefill into two projections.
-            awq_library = _library_for(library, "awq")
-            awq_fusedw4_prefill_fp16(
+            awq_fusedw4_prefill_dual_fp16(
                 scratch.qkv_rot.ptr,
+                scratch.z_rot.ptr,
                 qkv_qweight.ptr,
                 self.tensor(f"{qkv}.qzeros").ptr,
                 self.tensor(f"{qkv}.scales").ptr,
-                scratch.qkv.ptr,
-                tokens,
-                scratch.qkv_rot.shape[-1],
-                qkv_out_packed,
-                group_size,
-                stream=stream,
-                library=awq_library,
-                runtime=self.runtime,
-            )
-            awq_fusedw4_prefill_fp16(
-                scratch.z_rot.ptr,
                 z_qweight.ptr,
                 self.tensor(f"{z}.qzeros").ptr,
                 self.tensor(f"{z}.scales").ptr,
+                scratch.qkv.ptr,
                 scratch.z.ptr,
                 tokens,
-                scratch.z_rot.shape[-1],
+                scratch.qkv_rot.shape[-1],
+                qkv_out_packed,
                 z_out_packed,
                 group_size,
                 stream=stream,
-                library=awq_library,
+                library=_library_for(library, "awq"),
                 runtime=self.runtime,
             )
         return scratch.qkv, scratch.z
