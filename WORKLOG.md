@@ -12471,3 +12471,28 @@ Readiness / blockers:
 - Follow-up perf cleanup: hoist/reuse the per-head `atomic_for_causal` buffer in
   `aotriton_wrap.cc` instead of allocating/freeing inside each head call, and
   evaluate a K/V fanout or native GQA-capable AOTriton API if available.
+
+## 2026-05-16 — GGUF intake analysis doc
+
+Wrote `docs/GGUF.md` as the first planning/intake document for GGUF support in hipENGINE.
+
+Source/evidence reviewed:
+
+- hipENGINE state was clean before the docs change.
+- Local llama.cpp GGUF references:
+  - `/home/lhl/llama.cpp/llama.cpp-hip-therock/ggml/include/gguf.h` for GGUF file structure, magic/version/alignment, KV table, tensor info, and tensor offsets.
+  - `/home/lhl/llama.cpp/llama.cpp-hip-therock/gguf-py/gguf/gguf_reader.py` for Python reader behavior.
+  - `/home/lhl/llama.cpp/llama.cpp-hip-therock/gguf-py/gguf/constants.py` for `GGMLQuantizationType` and `GGML_QUANT_SIZES` (`Q4_0`, `Q8_0`, `Q4_K`, `Q5_K`, `Q6_K`, `Q8_K`, IQ types, etc.).
+  - `/home/lhl/llama.cpp/llama.cpp-hip-therock/gguf-py/gguf/quants.py` and `ggml/src/ggml-quants.c` for CPU quant/dequant references.
+  - `/home/lhl/llama.cpp/llama.cpp-hip-therock/ggml/src/ggml-common.h` for GGML block structs and static sizes.
+- Parent `~/amd-gpu-tuning` docs that explain how GGUF/Q4_K informed the PARO Marlin-K work: `PLAN-PAROQUANT2.md`, `PLAN-LONGCONTEXT.md`, `PR_COMMENT-llamacpp-hip-unroll600.md`, and hipENGINE's new `docs/MARLIN.md`.
+
+Main conclusions documented:
+
+- GGUF scanner/metadata intake is easy and should be first.
+- FP16 fallback load is straightforward and useful for correctness/model plumbing, but not a performance/memory path.
+- Native GGUF quant execution is not drop-in from PARO Marlin-K: GGUF tensors are GGML block tensors (`Q4_0`, `Q8_0`, `Q4_K`, etc.) with embedded scale/min metadata and different quant math.
+- Recommended implementation order: scanner -> `inspect_gguf.py` tensor census -> quant-layout table/oracles -> Qwen dense name-map smoke -> FP16 fallback -> native `Q8_0` or `Q4_K` GEMV.
+- Keep GGUF as a first-class loader/quant family and preserve hipENGINE invariants: torch-free runtime, plugin registry keys, raw-pointer kernels, CPU-reference correctness gates, and benchmark artifact policy.
+
+Validation: docs-only change. Re-read `docs/GGUF.md` and ran `git diff --check -- docs/GGUF.md WORKLOG.md`. No GPU run; no new performance claim.
