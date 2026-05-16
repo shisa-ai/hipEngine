@@ -13096,3 +13096,27 @@ python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 --de
 ```
 
 Full 40-layer 128K/128 and with/without chunk tables remain the follow-up benchmark task.
+
+## 2026-05-16 — Task 26: chunked prefill validation sweep
+
+Validated task 25 chunking changes with narrow CPU/Python checks and fixture gates.  No benchmark rows retained; all timings below are correctness-gate diagnostics only.
+
+```bash
+python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py scripts/qwen35_native_prefill_fixture_gate.py scripts/qwen35_decode_graph_fixture_gate.py tests/test_qwen35_resident_batch_layout.py
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q
+# 25 passed
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 40 --max-new-tokens 8 --json /tmp/task26-default-unchunked-fixture.json
+# default unchunked/no-AOT path: passed=true, max_kl=0.04520468681522189, top1_agreement=1.0, expected_match=true
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 40 --max-new-tokens 8 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/task26-short-largechunk-noop-fixture.json
+# short/no-op chunk knobs: passed=true, max_kl=0.04520468681522189, top1_agreement=1.0, expected_match=true
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 40 --max-new-tokens 8 --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 128 --prefill-moe-chunk-size 128 --prefill-full-attn-query-chunk-size 128 --prefill-full-attn-post-chunk-size 128 --prefill-full-attn-rope-chunk-size 128 --json /tmp/task26-chunked-128-fixture.json
+# actual chunked path: passed=true, max_kl=0.039568870612619614, top1_agreement=1.0, expected_match=true
+
+python3 scripts/qwen35_decode_graph_fixture_gate.py --max-layers 40 --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 128 --prefill-moe-chunk-size 128 --prefill-full-attn-query-chunk-size 128 --prefill-full-attn-post-chunk-size 128 --prefill-full-attn-rope-chunk-size 128 --json /tmp/task26-chunked-decode-graph-fixture.json
+# chunked prefill + decode graph: passed=true, generated_match=true, expected_match=true, final_kl=0.0, final_top1_match=true
+```
+
+Default behavior remains unchanged for short/no-op chunk prompts: all chunk sizes default to 0 in `PrefillConfig`, and the 512-token fixture with parent long-context chunk sizes larger than the prompt produced the same native top-1 sequence and KL gate as the default unchunked/no-AOT run.
