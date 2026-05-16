@@ -10512,3 +10512,52 @@ retained guard. The profiler smoke confirmed the new strided instantiation ran:
 `Workgroup_Size_X=32`) alongside the existing transposed instantiation. Decision:
 keep. Remaining obvious projection gap is dense/W8 auxiliary prefill work and any
 remaining non-W4 projection buckets, not the W4 prompt projection family.
+
+## 2026-05-15 — Prefill multiloop iter 30: fused W8A16 shared gate/up SiLU kept
+
+After the W4 projection family moved to fused-W4/WMMA, a prefill-only profiler
+run showed W8A16 shared expert work as a top bucket: before this change,
+`w8a16_linear_lowp_out_kernel<_Float16>` ran 80 times for 40-layer 512-token
+prefill and totaled `50.934 ms`, with separate shared SiLU launches. Ported the
+parent `w8a16_shared_gate_up_bulk4_kernel` idea from `nano-vllm-amd@59195ed`
+into hipENGINE's raw-pointer W8A16 library as
+`hipengine_w8a16_shared_gate_up_silu_fp16`: four intermediate columns per block,
+FP16 lowp rounding before SiLU to match the existing gate/up → SiLU staging, and
+output into the existing `shared_intermediate` scratch. Runtime routing uses this
+only for `tokens > 1`; c=1/decode retains the old W8A16 gate/up +
+`silu_mul_dual_out_fp16` fallback, and the down projection remains unchanged.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/w8a16_linear.py hipengine/kernels/hip_gfx1100/quant/__init__.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_w8a16_linear_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
+lib = build_w8a16_linear(load=True, require_cached=False)
+for name in ('hipengine_w8a16_linear_fp16_lowp_out','hipengine_w8a16_shared_gate_up_silu_fp16'):
+    getattr(lib, name)
+print('w8a16 symbols loaded')
+PY
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+for i in 1 2 3; do python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter30-512-run${i}.json >/tmp/iter30-512-run${i}.stdout; done
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter30-w8-fused-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter30-w8-fused-trace.json
+sqlite3 -header -csv /tmp/iter30-w8-fused-trace/trace_results.db "select name, count(*) n, sum(duration)/1e6 total_ms, avg(duration)/1e3 avg_us, max(duration)/1e3 max_us from kernels where name like '%w8a16%' or name like '%silu_mul_dual_out%' group by name order by sum(duration) desc;"
+python3 scripts/check_lineage.py --kind kernel --diff stat || true
+```
+
+Results: tests passed (`60 passed`) and the W8A16 library rebuilt with the new
+symbol. 512/128 samples were `1763.007`, `1757.240`, `1748.107`, and `1743.355`
+tok/s (median `1752.674`), +4.4% over retained `1678.133`. Fixture gate passed
+(`max_kl=0.03406`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2953s`), so the owned
+memory accounting is unchanged. 4K/128 stayed runnable and improved to
+`572.269 tok/s` (`prefill_seconds=7.1575`, decode `102.614 tok/s`), above the
+95% guard. The profiler confirmed the new shared gate/up+SiLU kernel ran 40
+times (`14.805 ms` total, avg `370.114 us`) and the remaining W8A16 down ran 40
+times (`25.714 ms` total), replacing the previous 80 generic W8A16 launches plus
+standalone shared SiLU launches. Decision: keep. The remaining top buckets in
+the 512 prefill trace are now full-attention prefill GQA, GDN recurrent prefill,
+selected MoE WMMA, W4 prompt projections, and W8A16 down.

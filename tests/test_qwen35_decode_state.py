@@ -1294,6 +1294,39 @@ def test_qwen35_decode_state_runs_shared_expert_w8a16(monkeypatch) -> None:
     assert linear_calls[1][1] == {"threads": 64, "stream": 0, "library": None, "runtime": runtime}
 
 
+def test_qwen35_decode_state_runs_shared_expert_w8a16_fp16_prefill_fused_gate_up(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=2, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (2, 4096), "fp16")
+    calls = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "w8a16_shared_gate_up_silu_fp16",
+        lambda *args, **kwargs: calls.append(("fused_gate_up", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "w8a16_linear_fp16_lowp_out",
+        lambda *args, **kwargs: calls.append(("down", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "silu_mul_dual_out_fp16",
+        lambda *args, **kwargs: calls.append(("unfused_silu", args, kwargs)),
+    )
+
+    out = state.shared_expert_w8a16_fp16(hidden, scratch, tokens=2)
+
+    assert out is scratch.shared_out
+    assert [kind for kind, _args, _kwargs in calls] == ["fused_gate_up", "down"]
+    assert calls[0][1] == (hidden.ptr, 0xBD00, 0xBE00, scratch.shared_intermediate.ptr, 2, 4096, 768)
+    assert calls[0][2] == {"threads": 64, "stream": 0, "library": None, "runtime": runtime}
+    assert calls[1][1] == (scratch.shared_intermediate.ptr, 0xBF00, 0xC000, scratch.shared_out.ptr, 2, 768, 4096)
+    assert calls[1][2] == {"threads": 64, "stream": 0, "library": None, "runtime": runtime}
+
+
 def test_qwen35_decode_state_combines_moe_shared_residual(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())

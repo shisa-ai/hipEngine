@@ -34,6 +34,10 @@ __device__ inline float scalar_to_float_qwen35(scalar_t value) {
   return static_cast<float>(value);
 }
 
+__device__ inline float silu_f32(float value) {
+  return value / (1.0f + expf(-value));
+}
+
 __global__ void w8a16_linear_kernel(
     const uint16_t* hidden_states,
     const int8_t* weight,
@@ -127,6 +131,121 @@ __global__ void w8a16_linear_lowp_out_kernel(
   }
   if (threadIdx.x == 0) {
     out[token * out_features + row] = static_cast<scalar_t>(partial[0] * weight_scale[row]);
+  }
+}
+
+
+__global__ void w8a16_shared_gate_up_silu_fp16_kernel(
+    const half_t* hidden_states,
+    const int8_t* gate_up_weight,
+    const float* gate_up_scale,
+    half_t* out,
+    int64_t hidden_size,
+    int64_t intermediate_size) {
+  extern __shared__ float partial[];
+  float* gate_partials[4] = {partial, partial + blockDim.x, partial + 2 * blockDim.x, partial + 3 * blockDim.x};
+  float* up_partials[4] = {
+      partial + 4 * blockDim.x,
+      partial + 5 * blockDim.x,
+      partial + 6 * blockDim.x,
+      partial + 7 * blockDim.x,
+  };
+  const int64_t j_base = static_cast<int64_t>(blockIdx.x) * 4;
+  const int64_t token = blockIdx.y;
+  if (j_base >= intermediate_size) {
+    return;
+  }
+
+  bool active[4];
+  int64_t gate_rows[4];
+  int64_t up_rows[4];
+  float gate_acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float up_acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+#pragma unroll
+  for (int slot = 0; slot < 4; ++slot) {
+    const int64_t j = j_base + slot;
+    active[slot] = j < intermediate_size;
+    gate_rows[slot] = j * hidden_size;
+    up_rows[slot] = (j + intermediate_size) * hidden_size;
+  }
+
+  const int64_t hidden_row = token * hidden_size;
+  const int64_t vec_stride = blockDim.x * 8;
+  for (int64_t k = threadIdx.x * 8; k + 7 < hidden_size; k += vec_stride) {
+    const int64_t h_off = hidden_row + k;
+    const float x0 = static_cast<float>(hidden_states[h_off + 0]);
+    const float x1 = static_cast<float>(hidden_states[h_off + 1]);
+    const float x2 = static_cast<float>(hidden_states[h_off + 2]);
+    const float x3 = static_cast<float>(hidden_states[h_off + 3]);
+    const float x4 = static_cast<float>(hidden_states[h_off + 4]);
+    const float x5 = static_cast<float>(hidden_states[h_off + 5]);
+    const float x6 = static_cast<float>(hidden_states[h_off + 6]);
+    const float x7 = static_cast<float>(hidden_states[h_off + 7]);
+#pragma unroll
+    for (int slot = 0; slot < 4; ++slot) {
+      if (active[slot]) {
+        const int64_t g_off = gate_rows[slot] + k;
+        const int64_t u_off = up_rows[slot] + k;
+        gate_acc[slot] += x0 * static_cast<float>(static_cast<int>(gate_up_weight[g_off + 0]));
+        gate_acc[slot] += x1 * static_cast<float>(static_cast<int>(gate_up_weight[g_off + 1]));
+        gate_acc[slot] += x2 * static_cast<float>(static_cast<int>(gate_up_weight[g_off + 2]));
+        gate_acc[slot] += x3 * static_cast<float>(static_cast<int>(gate_up_weight[g_off + 3]));
+        gate_acc[slot] += x4 * static_cast<float>(static_cast<int>(gate_up_weight[g_off + 4]));
+        gate_acc[slot] += x5 * static_cast<float>(static_cast<int>(gate_up_weight[g_off + 5]));
+        gate_acc[slot] += x6 * static_cast<float>(static_cast<int>(gate_up_weight[g_off + 6]));
+        gate_acc[slot] += x7 * static_cast<float>(static_cast<int>(gate_up_weight[g_off + 7]));
+        up_acc[slot] += x0 * static_cast<float>(static_cast<int>(gate_up_weight[u_off + 0]));
+        up_acc[slot] += x1 * static_cast<float>(static_cast<int>(gate_up_weight[u_off + 1]));
+        up_acc[slot] += x2 * static_cast<float>(static_cast<int>(gate_up_weight[u_off + 2]));
+        up_acc[slot] += x3 * static_cast<float>(static_cast<int>(gate_up_weight[u_off + 3]));
+        up_acc[slot] += x4 * static_cast<float>(static_cast<int>(gate_up_weight[u_off + 4]));
+        up_acc[slot] += x5 * static_cast<float>(static_cast<int>(gate_up_weight[u_off + 5]));
+        up_acc[slot] += x6 * static_cast<float>(static_cast<int>(gate_up_weight[u_off + 6]));
+        up_acc[slot] += x7 * static_cast<float>(static_cast<int>(gate_up_weight[u_off + 7]));
+      }
+    }
+  }
+  for (int64_t k = (hidden_size & ~7) + threadIdx.x; k < hidden_size; k += blockDim.x) {
+    const float x = static_cast<float>(hidden_states[hidden_row + k]);
+#pragma unroll
+    for (int slot = 0; slot < 4; ++slot) {
+      if (active[slot]) {
+        gate_acc[slot] += x * static_cast<float>(static_cast<int>(gate_up_weight[gate_rows[slot] + k]));
+        up_acc[slot] += x * static_cast<float>(static_cast<int>(gate_up_weight[up_rows[slot] + k]));
+      }
+    }
+  }
+#pragma unroll
+  for (int slot = 0; slot < 4; ++slot) {
+    gate_partials[slot][threadIdx.x] = gate_acc[slot];
+    up_partials[slot][threadIdx.x] = up_acc[slot];
+  }
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+#pragma unroll
+      for (int slot = 0; slot < 4; ++slot) {
+        gate_partials[slot][threadIdx.x] += gate_partials[slot][threadIdx.x + stride];
+        up_partials[slot][threadIdx.x] += up_partials[slot][threadIdx.x + stride];
+      }
+    }
+    __syncthreads();
+  }
+
+  if (threadIdx.x == 0) {
+    const int64_t out_offset = token * intermediate_size;
+#pragma unroll
+    for (int slot = 0; slot < 4; ++slot) {
+      if (active[slot]) {
+        const int64_t j = j_base + slot;
+        const half_t gate_lowp = static_cast<half_t>(gate_partials[slot][0] * gate_up_scale[j]);
+        const half_t up_lowp = static_cast<half_t>(up_partials[slot][0] * gate_up_scale[intermediate_size + j]);
+        const float gate = static_cast<float>(gate_lowp);
+        const float up = static_cast<float>(up_lowp);
+        out[out_offset + j] = static_cast<half_t>(silu_f32(gate) * up);
+      }
+    }
   }
 }
 
@@ -265,6 +384,34 @@ extern "C" int hipengine_w8a16_linear_fp16_lowp_out(
       out,
       hidden_size,
       out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_w8a16_shared_gate_up_silu_fp16(
+    const half_t* hidden_states,
+    const int8_t* gate_up_weight,
+    const float* gate_up_scale,
+    half_t* out,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t intermediate_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || hidden_size <= 0 || intermediate_size <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      w8a16_shared_gate_up_silu_fp16_kernel,
+      dim3(static_cast<unsigned int>((intermediate_size + 3) / 4), static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(8 * threads) * sizeof(float),
+      stream,
+      hidden_states,
+      gate_up_weight,
+      gate_up_scale,
+      out,
+      hidden_size,
+      intermediate_size);
   return static_cast<int>(hipGetLastError());
 }
 

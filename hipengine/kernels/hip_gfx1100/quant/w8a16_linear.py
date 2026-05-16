@@ -14,6 +14,7 @@ _OUTPUT_NAME = "w8a16_linear.so"
 _SYMBOL_BF16_F32 = "hipengine_w8a16_linear_bf16_f32_out"
 _SYMBOL_BF16_LOWP = "hipengine_w8a16_linear_bf16_lowp_out"
 _SYMBOL_FP16_LOWP = "hipengine_w8a16_linear_fp16_lowp_out"
+_SYMBOL_SHARED_GATE_UP_SILU_FP16 = "hipengine_w8a16_shared_gate_up_silu_fp16"
 _SYMBOL_F32_F32 = "hipengine_w8a16_linear_f32_f32_out"
 _ALLOWED_THREADS = {64, 128, 256, 512}
 
@@ -152,6 +153,38 @@ def w8a16_linear_fp16_lowp_out(
     )
 
 
+def w8a16_shared_gate_up_silu_fp16(
+    hidden_ptr: int,
+    weight_ptr: int,
+    weight_scale_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    intermediate_size: int,
+    *,
+    threads: int = 64,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch fused FP16 W8A16 shared-expert gate/up + SiLU projection."""
+
+    _launch(
+        _SYMBOL_SHARED_GATE_UP_SILU_FP16,
+        hidden_ptr,
+        weight_ptr,
+        weight_scale_ptr,
+        out_ptr,
+        tokens,
+        hidden_size,
+        intermediate_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def w8a16_linear_f32_f32_out(
     hidden_ptr: int,
     weight_ptr: int,
@@ -199,6 +232,11 @@ def register_w8a16_linear_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey("hip_gfx1100", "w8a16_linear", quant, "fp16_lowp_out"),
             w8a16_linear_fp16_lowp_out,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "w8a16_linear", quant, "shared_gate_up_silu_fp16"),
+            w8a16_shared_gate_up_silu_fp16,
             replace=replace,
         )
         register(

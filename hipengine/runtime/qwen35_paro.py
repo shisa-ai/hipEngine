@@ -67,7 +67,11 @@ from hipengine.kernels.hip_gfx1100.norm import (
     paro_rmsnorm_out_bf16,
     paro_rmsnorm_out_fp16,
 )
-from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_lowp_out, w8a16_linear_fp16_lowp_out
+from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
+    w8a16_linear_bf16_lowp_out,
+    w8a16_linear_fp16_lowp_out,
+    w8a16_shared_gate_up_silu_fp16,
+)
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_count,
     qwen35_moe_group_prefix,
@@ -3356,28 +3360,44 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
-        w8a16_linear_fp16_lowp_out(
-            hidden.ptr,
-            self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
-            self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
-            scratch.shared_up.ptr,
-            tokens,
-            self.config.hidden_size,
-            2 * self.config.shared_expert_intermediate_size,
-            threads=threads,
-            stream=stream,
-            library=_library_for(library, "w8a16"),
-            runtime=self.runtime,
-        )
-        silu_mul_dual_out_fp16(
-            scratch.shared_up.ptr,
-            scratch.shared_intermediate.ptr,
-            tokens,
-            self.config.shared_expert_intermediate_size,
-            stream=stream,
-            library=_library_for(library, "silu"),
-            runtime=self.runtime,
-        )
+        w8a16_library = _library_for(library, "w8a16")
+        if tokens > 1:
+            w8a16_shared_gate_up_silu_fp16(
+                hidden.ptr,
+                self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
+                self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
+                scratch.shared_intermediate.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.shared_expert_intermediate_size,
+                threads=threads,
+                stream=stream,
+                library=w8a16_library,
+                runtime=self.runtime,
+            )
+        else:
+            w8a16_linear_fp16_lowp_out(
+                hidden.ptr,
+                self.tensor(f"{prefix}.gate_up_weight_w8a16").ptr,
+                self.tensor(f"{prefix}.gate_up_weight_w8a16_scale").ptr,
+                scratch.shared_up.ptr,
+                tokens,
+                self.config.hidden_size,
+                2 * self.config.shared_expert_intermediate_size,
+                threads=threads,
+                stream=stream,
+                library=w8a16_library,
+                runtime=self.runtime,
+            )
+            silu_mul_dual_out_fp16(
+                scratch.shared_up.ptr,
+                scratch.shared_intermediate.ptr,
+                tokens,
+                self.config.shared_expert_intermediate_size,
+                stream=stream,
+                library=_library_for(library, "silu"),
+                runtime=self.runtime,
+            )
         w8a16_linear_fp16_lowp_out(
             scratch.shared_intermediate.ptr,
             self.tensor(f"{prefix}.down_weight_w8a16").ptr,
@@ -3388,7 +3408,7 @@ class Qwen35ParoDecodeState:
             self.config.hidden_size,
             threads=threads,
             stream=stream,
-            library=_library_for(library, "w8a16"),
+            library=w8a16_library,
             runtime=self.runtime,
         )
         return scratch.shared_out
