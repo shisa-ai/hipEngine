@@ -55,6 +55,34 @@ def test_plan_hip_build_hashes_source_flags_and_compiler_version(tmp_path: Path)
     assert artifact_a.profile.wavefront == 32
 
 
+def test_plan_hip_build_can_disable_unroll600_for_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" __global__ void smoke() {}\n")
+
+    default = plan_hip_build(
+        sources=[source],
+        family="smoke",
+        profile="decode",
+        cache_root=tmp_path / "cache",
+        compiler_version="hipcc test version",
+    )
+    monkeypatch.setenv("HIPENGINE_DISABLE_UNROLL600", "1")
+    no_unroll = plan_hip_build(
+        sources=[source],
+        family="smoke",
+        profile="decode",
+        cache_root=tmp_path / "cache",
+        compiler_version="hipcc test version",
+    )
+
+    assert default.cache_key != no_unroll.cache_key
+    assert default.flags[:2] == ("-mllvm", "-amdgpu-unroll-threshold-local=600")
+    assert "-mllvm" not in no_unroll.flags
+    assert "-amdgpu-unroll-threshold-local=600" not in no_unroll.flags
+    assert "-mcumode" in no_unroll.flags
+
+
 def test_build_hip_dry_run_does_not_create_cache_or_run_compiler(tmp_path: Path) -> None:
     source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
 

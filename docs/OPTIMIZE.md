@@ -174,9 +174,9 @@ flags; kernel time only):
 
 | Bucket / family | 512/128 share | 4K/128 share | 32K/128 share | Main candidate(s) |
 | --- | ---: | ---: | ---: | --- |
-| MoE selected compact WMMA (`moe_awq_wmma`) | 26.2% | 21.5% | 15.6% | P1.4 thresholding; W.1 flag probe |
-| Linear-attention GDN prefill | 20.5% | 21.1% | 15.7% | P3.1 boundary fusion; W.1 |
-| W4 prefill GEMM | 17.9% | 17.1% | 12.7% | W.1; layout-preserving fusion only |
+| MoE selected compact WMMA (`moe_awq_wmma`) | 26.2% | 21.5% | 15.6% | P1.4 thresholding |
+| Linear-attention GDN prefill | 20.5% | 21.1% | 15.7% | P3.1 boundary fusion |
+| W4 prefill GEMM | 17.9% | 17.1% | 12.7% | layout-preserving fusion only |
 | Shared-expert W8A16 | 15.3% | 15.5% | 11.6% | P1.2 / P1.3 bulk dense path |
 | AOTriton prefill attention | 1.9% | 5.7% | 30.2% | P2 already mostly settled; P4 deferred |
 | Rotation / RoPE | 6.7% | 7.7% | 5.7% | P3.1 |
@@ -188,7 +188,7 @@ flags; kernel time only):
 Kernel totals: 512/128 = 196.9 ms (82% of host prefill), 4K/128 = 1.576 s (96%), 32K/128 =
 16.97 s (98%). The short/mid prefill miss is therefore not attention anymore; it is per-layer bulk
 work: MoE compact WMMA + GDN + W4 + shared expert. AOTriton becomes the long-context top bucket at
-32K, but 32K/128 and 128K/128 prefill are already ahead of parent, so P1/P3/W.1 stay ahead of P4.
+32K, but 32K/128 and 128K/128 prefill are already ahead of parent, so P1/P3 stay ahead of P4. W.1 was tested after this audit and is neutral/noisy, not a remaining lever.
 
 ### 5.1 P1 — Bulk dense / shared-expert GEMM-shaped paths (parent uses `F.linear(...)`)
 
@@ -202,7 +202,7 @@ kernels for the same work. This is the leading P0 hypothesis from `docs/PREFILL.
 | P1.2 | Torch-free bulk dense path for shared expert gate/up SiLU during prefill (replace `w8a16_shared_gate_up_silu_fp16(...)` for `tokens >= threshold`). | `docs/PREFILL.md` P0; parent ledger `native_shared_expert_dense_calls=80`; parent W8A16 prefill path. | +3-7% | neutral (decode uses unfused W8A16 fallback) | -0.0-0.2 GiB (avoids `shared_intermediate` scratch growth) | Keep existing tiled W8A16 path as fallback. Quantized shared expert is currently part of the memory advantage; do not lose it on decode. | pending | — |
 | P1.3 | Torch-free bulk dense shared down + combine for prefill (`w8a16_shared_down_combine_residual_fp16`). | Same as P1.2. | +2-5% | neutral | neutral | Combine kernel currently fuses sigmoid + residual; bulk dense version needs the same fused tail or an equivalent post-pass. | pending | — |
 | P1.4 | Empirical crossover threshold for compact WMMA vs bulk GEMM/GEMV across linear-attn A/B and shared expert (analogous to parent `WMMA_MIN_TOKENS=64`). | Parent `LESSONS-LEARNED.md` "Compact WMMA prefill crossover" + `docs/OPTIMAL.md`. | enables P1.1-P1.3 wins | neutral | neutral | Must hot-path-dispatch by token count without `if quant ==` branches. | pending | — |
-| P1.5 | Sweep `-mllvm -amdgpu-unroll-threshold-local=600` build flag on the hipENGINE prefill kernels. | `~/amd-gpu-tuning/PR_COMMENT-llamacpp-hip-unroll600.md`: llama.cpp HIP pp512 **+166%** at this flag; multi-model +6-232%. Parent PAROQUANT trial was **neutral** on `v8` kernels (E1 in `PLAN-PAROQUANT2.md` §12). | +10-40% on 512/128 prefill **if** it triggers; could also be neutral | neutral | neutral | Per-kernel build profile experiment; not a default. Verify no Scratch_Size spills. Parent E1 showed neutral on Marlin-K FMA — hipENGINE has more shape variety, so worth retesting. | pending | — |
+| P1.5 | Sweep `-mllvm -amdgpu-unroll-threshold-local=600` build flag on the hipENGINE prefill kernels. | `~/amd-gpu-tuning/PR_COMMENT-llamacpp-hip-unroll600.md`: llama.cpp HIP pp512 **+166%** at this flag; multi-model +6-232%. Parent PAROQUANT trial was **neutral** on `v8` kernels (E1 in `PLAN-PAROQUANT2.md` §12). | neutral/noisy measured | neutral/noisy measured | neutral | Default profiles already include the flag; `HIPENGINE_DISABLE_UNROLL600=1` strips only the unroll pair for ablation while preserving `-mcumode`. | accepted (neutral default) | `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-w1-unroll600-ablation-diagnostic.json` |
 | P1.6 | Selective `-mcumode` build profile on hot prefill kernels. | `PR_COMMENT-llamacpp-hip-unroll600.md` threshold bracket table; parent ROOFLINE notes CU mode is build-profile dependent on gfx1100. | +0-2% on top of P1.5 | neutral | neutral | Test only after P1.5 lands or rejects. | pending | — |
 
 ### 5.2 P2 — AOTriton glue and full-attention prelude
@@ -361,7 +361,7 @@ and VGPR audits, and treated as **per-kernel build flag**, not a global default.
 
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| W.1 | `-mllvm -amdgpu-unroll-threshold-local=600` on hot prefill kernels (linear-attn GDN, MoE compact WMMA, full-attn prelude, shared expert). | `PR_COMMENT-llamacpp-hip-unroll600.md` (llama.cpp +166% prefill, near-neutral decode); parent E1 (`PLAN-PAROQUANT2.md` §12.5): neutral on Marlin-K FMA. | +10-50% on a hot prefill kernel **if** it triggers; could be neutral | -0-2% | neutral | Verify `Scratch_Size=0` and VGPR not increased. Decode 0.6% regression observed in some PR_COMMENT models; cross-check Qwen3.5 retained sample. | pending | — |
+| W.1 | `-mllvm -amdgpu-unroll-threshold-local=600` on hot prefill kernels (linear-attn GDN, MoE compact WMMA, full-attn prelude, shared expert). | `PR_COMMENT-llamacpp-hip-unroll600.md` (llama.cpp +166% prefill, near-neutral decode); parent E1 (`PLAN-PAROQUANT2.md` §12.5): neutral on Marlin-K FMA. | neutral/noisy measured | neutral/noisy measured | neutral | Keep the current default, but stop treating it as an optimization lever. The no-unroll ablation preserves `-mcumode`; hot-library metadata stayed `private_segment_fixed_size=0`, no SGPR/VGPR spills, and unchanged max VGPR. | accepted (neutral default) | `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-w1-unroll600-ablation-diagnostic.json` |
 | W.2 | `-mcumode` build profile on hot decode kernels. | `PR_COMMENT-llamacpp-hip-unroll600.md` table; ROOFLINE §1.1. | n/a (default) | n/a | n/a | Already in `hipengine/core/build.py:47` default flags and `kernels/hip_gfx1100/wmma/paro_awq_wmma.py` extra flags. | accepted | `hipengine/core/build.py:47` |
 | W.3 | Per-kernel `__attribute__((amdgpu_waves_per_eu(...)))` retune after rotation/RMSNorm fusion lands. | Parent E4 rejected for Marlin-K but landed kernels in hipENGINE have different VGPR profile. | neutral | +0-2% | neutral | Re-evaluate per kernel; do not blanket-apply. | pending | — |
 
@@ -419,13 +419,11 @@ Order is chosen from the M.3/M.4 profile, not from parent folklore.
 1. **P1.1 + P1.2 + P1.3 + P1.4** — Bulk dense rocBLAS for linear-attn A/B and shared-expert
    gate/up/down, with empirical token-count threshold. The measured 512/4K prefill top buckets are
    MoE WMMA + GDN + W4 + shared expert, not attention.
-2. **W.1** — `-mllvm -amdgpu-unroll-threshold-local=600` per-kernel sweep on the four hot prefill
-   kernels. Cheap probe; keep only if `Scratch_Size=0` and the profile moves.
-3. **D2.1 + D5.2** — Marlin-K vec8/qweight-neutral port plus a W8A16 decode-kernel audit. Measured
+2. **D2.1 + D5.2** — Marlin-K vec8/qweight-neutral port plus a W8A16 decode-kernel audit. Measured
    short-context decode kernel time is ~43% W4/selected-MoE GEMV and ~16% W8A16.
-4. **D1.1 + D1.4 + D1.5** — Rotation-into-projection, selected-MoE post-op fold, and router fold.
+3. **D1.1 + D1.4 + D1.5** — Rotation-into-projection, selected-MoE post-op fold, and router fold.
    These target the 160 rotation calls/token, 40 combine calls/token, and 80 router calls/token.
-5. **D3.1 + D3.2 + D3.3** — Grouped-GQA producer port + split-cap retune + paged-decode min-context
+4. **D3.1 + D3.2 + D3.3** — Grouped-GQA producer port + split-cap retune + paged-decode min-context
    threshold. Attention jumps from ~11% short-context to 23% at 32K.
 
 Re-score the board after each retained row:

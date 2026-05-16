@@ -78,7 +78,7 @@ def plan_hip_build(
         raise ValueError("at least one source is required")
     compiler_version = compiler_version or f"{compiler}:unprobed"
     include_flags = tuple(f"-I{Path(path).expanduser()}" for path in include_dirs)
-    flags = (*build_profile.flags, *include_flags, *tuple(extra_flags))
+    flags = _maybe_disable_unroll600((*build_profile.flags, *include_flags, *tuple(extra_flags)))
     cache_key = _cache_key(
         sources=source_paths,
         flags=flags,
@@ -219,6 +219,34 @@ def _compiler_env_prefix(compiler: str) -> str:
     basename = Path(compiler).name or compiler
     safe = "".join(char if char.isalnum() else "_" for char in basename).upper()
     return f"HIPENGINE_{safe}"
+
+
+def _maybe_disable_unroll600(flags: tuple[str, ...]) -> tuple[str, ...]:
+    """Diagnostic W.1 ablation: strip only the unroll-600 pair from build flags.
+
+    This keeps other profile flags (notably decode `-mcumode`) intact, so the probe answers
+    whether `-mllvm -amdgpu-unroll-threshold-local=600` itself helps the hot kernels.
+    """
+
+    if not _env_truthy(os.environ.get("HIPENGINE_DISABLE_UNROLL600")):
+        return flags
+    out: list[str] = []
+    i = 0
+    while i < len(flags):
+        if (
+            i + 1 < len(flags)
+            and flags[i] == "-mllvm"
+            and flags[i + 1] == "-amdgpu-unroll-threshold-local=600"
+        ):
+            i += 2
+            continue
+        out.append(flags[i])
+        i += 1
+    return tuple(out)
+
+
+def _env_truthy(value: str | None) -> bool:
+    return value is not None and value.strip().lower() not in ("", "0", "false", "no", "off")
 
 
 def _profile(name: ProfileName) -> BuildProfile:

@@ -13969,3 +13969,65 @@ Conclusion: yes, on the shisa unstripped checkpoint the forced legacy shared
 expert path has lower prefill but higher decode than the packed shared-expert
 sidecar path. Artifact:
 `benchmarks/results/2026-05-17-hipengine-qwen36-shisa-force-legacy-diagnostic.json`.
+
+## 2026-05-17 — W.1 unroll-600 ablation across legacy and packed PARO
+
+User asked to run the W.1 compiler flag probe and include both shared-expert
+formats. Current build profiles already include `-mllvm
+-amdgpu-unroll-threshold-local=600`, so this was an ablation rather than an
+enablement. Added an env-only diagnostic knob in `hipengine/core/build.py`:
+`HIPENGINE_DISABLE_UNROLL600=1` strips only the `-mllvm`/unroll-600 pair while
+preserving other profile flags such as `-mcumode`.
+
+Model paths used:
+
+- legacy local path: `/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd` (`legacy_fp16`). The requested `z-lab/Qwen3.6-35B-A3B-PARO` 35B snapshot is not present locally.
+- packed path: `/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e` (`packed_paro_w4`).
+
+Benchmark protocol (W7900/gfx1100):
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <model> \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-w1-unroll-20260517/<label>.json
+# no-unroll rows add env: HIPENGINE_DISABLE_UNROLL600=1
+```
+
+No-unroll `.so` files were prebuilt outside the timed runs, then every measured
+run used `--require-cached-build`. Two runs/profile/workload were captured;
+results below are medians.
+
+| model | workload | default prefill | no-unroll prefill | no-unroll Δ | default decode | no-unroll decode | no-unroll Δ | peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab legacy | 512/128 | 2179.915 | 2185.043 | +0.24% | 109.060 | 109.143 | +0.08% | 18.587 |
+| z-lab legacy | 4096/128 | 2364.642 | 2361.915 | -0.12% | 110.212 | 110.227 | +0.01% | 20.458 |
+| shisa packed | 512/128 | 2400.079 | 2405.569 | +0.23% | 101.638 | 101.609 | -0.03% | 18.535 |
+| shisa packed | 4096/128 | 2653.642 | 2648.661 | -0.19% | 102.869 | 102.663 | -0.20% | 20.406 |
+
+Generated preview sanity matched exactly for each model/workload/profile (first
+two token IDs `9707, 9707`, logits equal to 6 decimals). Resource metadata audit
+via `.hip_fatbin` extraction + `llvm-readobj --notes` on hot libraries
+(`linear_gdn`, `moe_awq_wmma`, `paro_awq_gemv`, `w8a16_linear`, `kv_write`) found
+`private_segment_fixed_size=0`, SGPR/VGPR spill counts 0, and identical max VGPR
+between default and no-unroll.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/core/build.py scripts/qwen35_paro_bench.py
+python3 -m pytest tests/test_build.py tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short
+# 63 passed
+```
+
+Conclusion: W.1 is neutral/noisy across both local legacy and packed paths. Keep
+the current default unroll-600 flag, but remove it from the active optimization
+queue. Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-w1-unroll600-ablation-diagnostic.json`.
