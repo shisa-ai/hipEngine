@@ -13574,3 +13574,65 @@ emits a side-by-side markdown + JSON comparison. `--how-to-pack` prints the paro
 runbook. Smoke-tested by pointing it at the upstream z-lab checkpoint: it correctly
 flags `missing packed shared-expert tensors` for all 18 names and exits without
 launching the bench.
+
+### Addendum 2026-05-17 — explicit BPW and on-device memory delta for the packed shared expert
+
+The body of the section above describes the structural change but leaves the
+memory math implicit. Recording it here so it's not lost:
+
+**Disk BPW (Qwen3.5-35B-A3B):** the upstream `z-lab/Qwen3.5-35B-A3B-PARO`
+artifact lands at roughly `4.73 BPW` against a 35B-parameter denominator (the
+`scripts/strip_paro_safetensors.py --dry-run` against `dca2736` reports
+`estimated_output_bpw_from_tensor_bytes = 4.7184`). Packing the shared expert
+to the W4 PARO format saves the per-layer fp16 fallback weights:
+
+- per-layer fp16 fallback bytes (z-lab snapshot, layer 0 shapes):
+  `shared_expert.gate_proj.weight = [512, 2048] fp16 = 2 MiB`,
+  `shared_expert.up_proj.weight   = [512, 2048] fp16 = 2 MiB`,
+  `shared_expert.down_proj.weight = [2048, 512] fp16 = 2 MiB`  → **6 MiB/layer × 48 layers ≈ 288 MiB ≈ 0.281 GiB**
+- W4 + PARO sidecars added per shared-expert projection (group_size=128, hidden=2048, shared_int=512):
+  `qweight [K, N/8] int32` (2 MiB / 8 → ~256 KiB per proj, plus a `qweight_pack8_decode` transposed view of the same size)
+  `qzeros [K/128, N/8] int32` (~512 B), `scales [K/128, N] fp16` (~16 KiB)
+  `theta [krot, K/128] fp16`, `pairs [krot, K] int16`, `channel_scales [K] fp16` (~few KiB each)
+  → packed shared expert footprint is roughly **20–25 % of the fp16 fallback** per projection on disk.
+- Net BPW delta vs the legacy `4.73` baseline (already without duplicate
+  fallbacks for the routed experts): the planning estimate documented in
+  the original conversation that motivated this work was **~0.058 BPW** (~0.234 GiB),
+  matching the rough back-of-the-envelope above and what the
+  `strip_paro_safetensors.py --mode packed` math implies once paroquant
+  emits the packed shared expert. Concrete artifact-side numbers will land
+  in `benchmarks/results/qwen35_paro_packed_compare/comparison.json`
+  the moment a packed checkpoint exists.
+
+**On-device memory delta (decode, per shared-expert layer):**
+
+| Path                | bytes per projection K=hidden=2048, N=shared_int=512 |
+|---------------------|------------------------------------------------------|
+| W8A16-from-fp16 (legacy, fully hipENGINE-side quantized) | int8 weight ≈ 1.0 MiB + fp32 per-row scale ≈ 2 KiB ≈ **1.00 MiB/proj** |
+| W4 PARO + sidecars (this work)                            | qweight + transposed view ≈ 0.5 MiB + fp16 scales/theta/channel_scales/qzeros/pairs ≈ 30 KiB ≈ **0.53 MiB/proj** |
+
+So the shared expert weight footprint on device is roughly **halved**
+(W4+sidecars vs W8A16). That is consistent with the disk delta and is the
+*only* memory claim made for this work; no per-token bandwidth, decode-tps,
+or prefill-tps measurement has been taken yet, by design (see the gap section
+above).
+
+**Speed expectation, explicitly:** decode tps for the shared expert alone
+should be at parity or slightly better than the W8A16 path because (a) the
+input bandwidth per projection drops by roughly 2×, and (b) the routed-expert
+prefix already absorbed the rotation cost. The kernel count goes from
+W8A16's `linear + silu + linear` (3 launches) to the new `rotate + rotate +
+dual_GEMV + silu_dual + rotate + single_GEMV` (6 launches) at decode — same
+count after the dual-GEMV optimization replaces what would have been 7 if
+the literal spec-style two-single-GEMVs path had been used. The two extra
+launches vs W8A16 are the input rotations, which are cheap relative to the
+GEMVs. Net is expected to be parity-or-better but unmeasured; **not promoted
+to any benchmark table** until a packed checkpoint and a real run exist.
+
+Per AGENTS.md "Evidence Policy", `benchmarks/README.md` and
+`benchmarks/CHANGELOG.md` are intentionally *not* touched by this work.
+`benchmarks/results/` already contains the comparison driver's output
+directory schema (`scripts/qwen35_paro_packed_bench.py` will populate
+`benchmarks/results/qwen35_paro_packed_compare/comparison.json` the first
+time it runs successfully), but no artifact has been emitted yet because no
+packed checkpoint exists to run against.
