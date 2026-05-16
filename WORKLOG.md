@@ -15744,3 +15744,27 @@ Structured result excerpt:
 ```
 
 Interpretation: task #35 acceptance is met (public API returns text and the gate reaches text/token comparison), but true E2E correctness task #31 still fails oracle parity. Current generated completion is four spaces, tokenized by llama.cpp as `[257]`, while the fixture expects `" 1.\n\n"` / `[220, 16, 13, 271]`. Remaining #31 work is model-parity work, most likely stateful prompt prefill / recurrent+KV state carry-over rather than the previous public-output plumbing.
+
+## 2026-05-16 GGUF E2E parity debug
+
+Debugged task #31 after full-stack text return. The hard public API gate is now a deterministic oracle mismatch, not a runtime failure:
+
+```bash
+python3 scripts/qwen35_gguf_e2e_correctness.py >/tmp/gguf_e2e_debug.json
+# exit 1
+# outputs=['    ', '    ']
+# generated_token_ids=[257]
+# expected=' 1.\n\n', expected_generated_token_ids=[220, 16, 13, 271]
+# deterministic=True, errors=[], torch_loaded_by_generate=False
+```
+
+Top-k diagnostic from `Qwen35GGUFFullStackRunner.sample_next_token(...)`:
+
+```text
+ctx=[760,4087,369] -> top1 220 ' ' logit=11.3518  (matches expected first token)
+ctx=[760,4087,369,220] -> top1 220 ' ' logit=12.5115 (expected token 16 '1')
+ctx=[760,4087,369,220,16] -> top1 220 ' ' logit=11.2156
+ctx=[760,4087,369,220,16,13] -> top1 11 ',' logit=13.6971 (expected token 271 '\n\n')
+```
+
+Interpretation: the first generated token happens to match the oracle, but subsequent tokens fail because `Qwen35GGUFFullStackRunner.run_prompt_hidden()` still evaluates only the final token in a zeroed decode state. True parity requires prompt/state carry-over: linear-attention conv+GDN recurrent state per linear-attention layer and full-attention KV/RoPE history for full-attention layers. Task #31 stays open; do not mark true GGUF `LLM.generate()` E2E complete until that stateful prompt path matches the llama.cpp fixture.
