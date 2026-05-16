@@ -1,0 +1,338 @@
+"""Device materialization for Qwen3.5 GGUF tensor maps."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from types import MappingProxyType
+from typing import Iterable, Mapping
+
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.hip import HipRuntime
+from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
+from hipengine.loading.materialize import DeviceTensorAllocation, load_host_array_to_device_as_dtype
+from hipengine.loading.qwen35_gguf import (
+    Qwen35GGUFConfig,
+    Qwen35GGUFLayerMap,
+    Qwen35GGUFModelMap,
+    build_qwen35_gguf_tensor_map,
+)
+from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
+
+LAYOUT_DENSE_F32 = "dense_f32"
+LAYOUT_RAW_GGUF = "raw_gguf"
+LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFWeightSpec:
+    """One planned resident GGUF weight record."""
+
+    slot_path: str
+    source: GGUFTensorInfo
+    quant_key: str
+    layout: str
+    allocation_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFMaterializationPlan:
+    """Resident-weight layout plan derived from a validated tensor map."""
+
+    config: Qwen35GGUFConfig
+    root_specs: Mapping[str, Qwen35GGUFWeightSpec]
+    layer_specs: tuple[Mapping[str, Qwen35GGUFWeightSpec], ...]
+
+    @property
+    def specs(self) -> tuple[Qwen35GGUFWeightSpec, ...]:
+        specs: list[Qwen35GGUFWeightSpec] = []
+        seen: set[tuple[str, str]] = set()
+        for spec in self.root_specs.values():
+            key = (spec.source.name, spec.layout)
+            if key not in seen:
+                seen.add(key)
+                specs.append(spec)
+        for layer in self.layer_specs:
+            for spec in layer.values():
+                key = (spec.source.name, spec.layout)
+                if key not in seen:
+                    seen.add(key)
+                    specs.append(spec)
+        return tuple(specs)
+
+    @property
+    def tensor_names(self) -> tuple[str, ...]:
+        return tuple(spec.source.name for spec in self.specs)
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFDeviceWeight:
+    """Owned device allocations for one logical GGUF weight."""
+
+    spec: Qwen35GGUFWeightSpec
+    allocations: Mapping[str, DeviceTensorAllocation]
+
+    def allocation(self, name: str = "raw") -> DeviceTensorAllocation:
+        return self.allocations[name]
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        for allocation in reversed(tuple(self.allocations.values())):
+            allocation.free(runtime=runtime)
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFResidentLayerWeights:
+    layer_id: int
+    layer_type: str
+    weights: Mapping[str, Qwen35GGUFDeviceWeight]
+
+    def weight(self, slot: str) -> Qwen35GGUFDeviceWeight:
+        return self.weights[slot]
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFResidentWeights:
+    """Device-resident Qwen3.5 GGUF weights.
+
+    The map owns all device buffers. ``root_weights['lm_head']`` aliases
+    ``root_weights['token_embedding']`` for the local tied-output GGUF.
+    """
+
+    config: Qwen35GGUFConfig
+    root_weights: Mapping[str, Qwen35GGUFDeviceWeight]
+    layers: tuple[Qwen35GGUFResidentLayerWeights, ...]
+
+    def root(self, slot: str) -> Qwen35GGUFDeviceWeight:
+        return self.root_weights[slot]
+
+    def layer(self, layer_id: int) -> Qwen35GGUFResidentLayerWeights:
+        return self.layers[layer_id]
+
+    @property
+    def weights(self) -> tuple[Qwen35GGUFDeviceWeight, ...]:
+        weights: list[Qwen35GGUFDeviceWeight] = []
+        seen: set[int] = set()
+        for weight in self.root_weights.values():
+            if id(weight) not in seen:
+                seen.add(id(weight))
+                weights.append(weight)
+        for layer in self.layers:
+            for weight in layer.weights.values():
+                if id(weight) not in seen:
+                    seen.add(id(weight))
+                    weights.append(weight)
+        return tuple(weights)
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        for weight in reversed(self.weights):
+            weight.free(runtime=runtime)
+
+
+def plan_qwen35_gguf_materialization(
+    model_map: Qwen35GGUFModelMap,
+) -> Qwen35GGUFMaterializationPlan:
+    root_specs = {
+        slot: _spec_for_tensor(f"root.{slot}", tensor)
+        for slot, tensor in model_map.root_tensors.items()
+    }
+    layer_specs = tuple(_plan_layer(layer) for layer in model_map.layers)
+    return Qwen35GGUFMaterializationPlan(
+        config=model_map.config,
+        root_specs=MappingProxyType(root_specs),
+        layer_specs=tuple(MappingProxyType(layer) for layer in layer_specs),
+    )
+
+
+def materialize_qwen35_gguf_weights(
+    reader_or_path: GGUFReader | str | Path,
+    *,
+    selected_slots: Iterable[str] | None = None,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+) -> Qwen35GGUFResidentWeights:
+    """Materialize a validated Qwen3.5 GGUF map to resident device records.
+
+    ``selected_slots`` is a test/debug hook using slot paths such as
+    ``root.output_norm`` or ``layers.0.attn_qkv``. Production callers leave it
+    unset to materialize the full model.
+    """
+
+    reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+    plan = plan_qwen35_gguf_materialization(model_map)
+    selected = None if selected_slots is None else set(selected_slots)
+    materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight] = {}
+    try:
+        root_weights = {
+            slot: _materialize_or_alias(spec, reader, materialized, selected, device=device, runtime=runtime)
+            for slot, spec in plan.root_specs.items()
+            if selected is None or spec.slot_path in selected
+        }
+        layers = tuple(
+            Qwen35GGUFResidentLayerWeights(
+                layer_id=layer.layer_id,
+                layer_type=layer.layer_type,
+                weights=MappingProxyType(
+                    {
+                        slot: _materialize_or_alias(
+                            plan.layer_specs[layer.layer_id][slot],
+                            reader,
+                            materialized,
+                            selected,
+                            device=device,
+                            runtime=runtime,
+                        )
+                        for slot in plan.layer_specs[layer.layer_id]
+                        if selected is None or plan.layer_specs[layer.layer_id][slot].slot_path in selected
+                    }
+                ),
+            )
+            for layer in model_map.layers
+        )
+    except Exception:
+        for weight in reversed(tuple(materialized.values())):
+            weight.free(runtime=runtime)
+        raise
+    return Qwen35GGUFResidentWeights(
+        config=plan.config,
+        root_weights=MappingProxyType(root_weights),
+        layers=layers,
+    )
+
+
+def _plan_layer(layer: Qwen35GGUFLayerMap) -> dict[str, Qwen35GGUFWeightSpec]:
+    return {
+        slot: _spec_for_tensor(f"layers.{layer.layer_id}.{slot}", tensor)
+        for slot, tensor in layer.tensors.items()
+    }
+
+
+def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeightSpec:
+    qtype = GGMLQuantizationType(tensor.ggml_type)
+    if qtype == GGMLQuantizationType.F32:
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key="f32",
+            layout=LAYOUT_DENSE_F32,
+            allocation_names=("raw",),
+        )
+    if qtype == GGMLQuantizationType.Q4_K:
+        if len(tensor.shape) != 2:
+            raise ValueError(f"Q4_K tensor {tensor.name!r} must be rank-2 for pack8 materialization")
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key="gguf_q4_k",
+            layout=LAYOUT_Q4_K_PACK8,
+            allocation_names=("qweight", "scales", "mins"),
+        )
+    if qtype in (GGMLQuantizationType.Q5_K, GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0):
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key=f"gguf_{tensor.ggml_type_name.lower()}",
+            layout=LAYOUT_RAW_GGUF,
+            allocation_names=("raw",),
+        )
+    raise ValueError(f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r}: {tensor.name}")
+
+
+def _materialize_or_alias(
+    spec: Qwen35GGUFWeightSpec,
+    reader: GGUFReader,
+    materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight],
+    selected: set[str] | None,
+    *,
+    device: Device | None,
+    runtime: HipRuntime | None,
+) -> Qwen35GGUFDeviceWeight:
+    del selected  # selection is handled by callers before materialization.
+    key = (spec.source.name, spec.layout)
+    weight = materialized.get(key)
+    if weight is None:
+        weight = _materialize_spec(spec, reader, device=device, runtime=runtime)
+        materialized[key] = weight
+    return weight
+
+
+def _materialize_spec(
+    spec: Qwen35GGUFWeightSpec,
+    reader: GGUFReader,
+    *,
+    device: Device | None,
+    runtime: HipRuntime | None,
+) -> Qwen35GGUFDeviceWeight:
+    import numpy as np
+
+    raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
+    allocations: dict[str, DeviceTensorAllocation]
+    if spec.layout == LAYOUT_Q4_K_PACK8:
+        packed = repack_gguf_q4_k_pack8(raw)
+        allocations = {
+            "qweight": load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.pack8.qweight",
+                packed.qweight,
+                DType.INT32,
+                source_dtype="I32",
+                device=device,
+                runtime=runtime,
+            ),
+            "scales": load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.pack8.scales",
+                packed.scales,
+                DType.FP32,
+                source_dtype="F32",
+                device=device,
+                runtime=runtime,
+            ),
+            "mins": load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.pack8.mins",
+                packed.mins,
+                DType.FP32,
+                source_dtype="F32",
+                device=device,
+                runtime=runtime,
+            ),
+        }
+    elif spec.layout == LAYOUT_RAW_GGUF:
+        allocations = {
+            "raw": load_host_array_to_device_as_dtype(
+                spec.source.name,
+                raw,
+                DType.INT8,
+                source_dtype="I8",
+                device=device,
+                runtime=runtime,
+            )
+        }
+    elif spec.layout == LAYOUT_DENSE_F32:
+        allocations = {
+            "raw": load_host_array_to_device_as_dtype(
+                spec.source.name,
+                raw,
+                DType.FP32,
+                source_dtype="F32",
+                device=device,
+                runtime=runtime,
+            )
+        }
+    else:
+        raise ValueError(f"unsupported materialization layout {spec.layout!r}")
+    return Qwen35GGUFDeviceWeight(spec=spec, allocations=MappingProxyType(allocations))
+
+
+__all__ = [
+    "LAYOUT_DENSE_F32",
+    "LAYOUT_Q4_K_PACK8",
+    "LAYOUT_RAW_GGUF",
+    "Qwen35GGUFDeviceWeight",
+    "Qwen35GGUFMaterializationPlan",
+    "Qwen35GGUFResidentLayerWeights",
+    "Qwen35GGUFResidentWeights",
+    "Qwen35GGUFWeightSpec",
+    "materialize_qwen35_gguf_weights",
+    "plan_qwen35_gguf_materialization",
+]

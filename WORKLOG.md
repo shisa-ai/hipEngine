@@ -15375,3 +15375,43 @@ python3 -m pytest tests/test_gguf_reader.py tests/test_qwen35_gguf_mapping.py te
 ```
 
 Next step remains resident materialization: allocate device records for this map, repack Q4_K to pack8 where chosen, keep Q5_K/Q6_K/Q8_0 as raw GGUF byte tensors, and alias `lm_head` to `token_embd.weight` unless a future GGUF includes an explicit output tensor.
+
+## 2026-05-16 Qwen3.5 GGUF resident materialization plan
+
+Added `hipengine/loading/qwen35_gguf_materialize.py` with resident weight specs and selected/full materialization entry point for the validated Qwen3.5 GGUF map:
+
+- Q4_K rank-2 tensors materialize as lossless pack8 records: `qweight[int32] + scales[fp32] + mins[fp32]`.
+- Q5_K/Q6_K/Q8_0 tensors materialize as raw GGUF byte records (`DType.INT8` byte views for kernel ABI pointers).
+- F32 tensors materialize as dense FP32 records.
+- `root.lm_head` aliases `root.token_embedding` for the local tied-output GGUF.
+- `selected_slots=(...)` allows small resident materialization smokes without allocating the full model.
+
+Plan coverage for `/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf`:
+
+```text
+320 resident specs total
+layout counts: dense_f32=133, q4_k_pack8=98, raw_gguf=89
+quant counts: f32=133, gguf_q4_k=98, gguf_q5_k=36, gguf_q8_0=36, gguf_q6_k=17
+```
+
+Selected device materialization smoke allocated and freed:
+
+```text
+root.output_norm -> FP32 shape=(1024,)
+layers.0.attn_gate Q4_K pack8 -> qweight INT32 shape=(256, 1024), scales/mins FP32 shape=(32, 2048)
+layers.0.attn_qkv Q5_K raw -> INT8 byte shape=(6144, 704)
+layers.0.ssm_alpha Q8_0 raw -> INT8 byte shape=(16, 1088)
+layers.3.attn_v Q6_K raw -> INT8 byte shape=(512, 840)
+```
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/loading/qwen35_gguf_materialize.py tests/test_qwen35_gguf_materialize.py
+python3 -m pytest tests/test_qwen35_gguf_materialize.py -q
+# 2 passed
+python3 -m pytest tests/test_qwen35_gguf_mapping.py tests/test_qwen35_gguf_materialize.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py -q
+# 17 passed
+```
+
+Next blocker: native Q6_K token embedding lookup for `token_embd.weight`; the materializer can keep the raw token table resident, but the runtime still needs a device kernel to dequantize selected token rows into BF16 hidden state.
