@@ -11955,3 +11955,56 @@ top-1 `1.0`, `native_owned_device_bytes=1625645909`), and 4K/128 remained
 runnable at `661.442 tok/s` (`prefill_seconds=6.19253`, decode `102.300 tok/s`).
 Iteration outcome: blocked/log-only; do not route Qwen3.5 to AOTriton in a
 single compact-varlen call until the GQA fanout strategy is chosen and proven.
+
+## 2026-05-16 — Prefill multiloop iter 60: AOTriton per-Q-head GQA wrapper
+
+Implemented the first GQA workaround identified in iter 59: a wrapper-level
+`hipengine_aotriton_attn_fwd_compact_varlen_gqa_per_q_head(...)` entry that
+slices the Q/K/V/LSE/output descriptors and issues one H=1 AOTriton
+`attn_fwd_compact_varlen` call per Q head. This preserves Qwen3.5-style GQA
+semantics without expanding K/V to Q-head count. The entry is exposed in
+`aotriton_wrap.py` and registered under the explicit, still-unselected variant
+`KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro", "aotriton_attn_fwd_gqa_per_q_head")`.
+Default runtime dispatch remains unchanged.
+
+Validation commands:
+
+```bash
+git diff --check
+python3 -m py_compile hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.py
+python3 -m pytest tests/test_aotriton_discovery.py tests/test_qwen35_paged_attn_decode_plan.py -q
+HIPENGINE_AOTRITON_RUNTIME_ROOT=/home/lhl/Downloads/aotriton/aotriton HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
+artifact = build_aotriton_wrap(load=False)
+print(artifact.output_path)
+PY
+readelf -d /home/lhl/.cache/hipengine/build/aotriton_wrap-731a06998fc8c232/hipengine_aotriton_wrap.so | grep -E 'NEEDED|RUNPATH'
+LD_LIBRARY_PATH=/home/lhl/framework-cluster/lhl/therock/rocm-6.4/lib:$LD_LIBRARY_PATH HIPENGINE_AOTRITON_RUNTIME_ROOT=/home/lhl/Downloads/aotriton/aotriton HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+# q=(1,2,1,16), k/v=(1,1,1,16), fp16 out; call gqa_per_q_head wrapper
+PY
+```
+
+Results: tests passed (`9 passed`). Wrapper built at
+`/home/lhl/.cache/hipengine/build/aotriton_wrap-731a06998fc8c232/
+hipengine_aotriton_wrap.so`; `readelf` still shows only RUNPATH to the explicit
+AOTriton lib dir and NEEDED `libaotriton_v2.so.0.8.0` (no direct
+`libamdhip64.so.7`). The GPU GQA smoke returned both Q heads correctly:
+`[0,1,2,...,15,0,1,2,...,15]`, fixing the iter-59 direct-call zero-head
+failure. Next runtime iteration can wire this opt-in variant for real Qwen3.5
+prefill and measure whether 16 launches/layer are tolerable at T=4K.
+
+Loop verify/guard after the per-Q-head wrapper change:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128-rerun.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
+```
+
+Results: 512/128 default-path samples were `2068.065` and `2055.817 tok/s`.
+The per-Q-head wrapper remains unselected by default, so these lower samples are
+recorded as default-path variance rather than an active-path regression.
+Fixture gate passed unchanged (`max_kl=0.0340584589`, top-1 `1.0`,
+`native_owned_device_bytes=1625645909`). 4K/128 remained runnable at
+`661.201 tok/s` (`prefill_seconds=6.19479`, decode `101.998 tok/s`).

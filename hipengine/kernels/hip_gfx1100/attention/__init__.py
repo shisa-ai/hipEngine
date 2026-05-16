@@ -22,6 +22,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
 )
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
     aotriton_attn_fwd_compact_varlen,
+    aotriton_attn_fwd_compact_varlen_gqa_per_q_head,
     build_aotriton_wrap,
     plan_aotriton_wrap_build,
     register_aotriton_wrap_kernels,
@@ -41,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
 __all__ = [
     "build_qwen35_paged_attn_decode",
     "aotriton_attn_fwd_compact_varlen",
+    "aotriton_attn_fwd_compact_varlen_gqa_per_q_head",
     "build_aotriton_wrap",
     "build_qwen35_paged_kv_write",
     "plan_aotriton_wrap_build",
