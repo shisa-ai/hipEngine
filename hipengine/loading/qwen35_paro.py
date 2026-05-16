@@ -188,6 +188,34 @@ def _shared_expert_tensor_names(*, layer_id: int, shared_expert_format: str) -> 
     return _packed_shared_expert_tensor_names(layer_id=layer_id)
 
 
+def _shared_expert_runtime_sidecar_tensor_names(*, layer_id: int, shared_expert_format: str) -> tuple[str, ...]:
+    """Checkpoint tensors consumed directly by the runtime shared-expert path.
+
+    Packed W4 materialization prepares ``qweight_pack8_decode`` from raw
+    ``qweight`` at load time, so raw ``qweight`` is intentionally omitted from
+    the runtime device map.  The other sidecars are read directly by the W4
+    PARO kernels.
+    """
+
+    shared_expert_format = _normalize_shared_expert_format(shared_expert_format)
+    if shared_expert_format == SHARED_EXPERT_FORMAT_LEGACY_FP16:
+        return ()
+    shared = f"layers.{layer_id}.mlp.shared_expert"
+    names: list[str] = []
+    for proj in ("gate_proj", "up_proj", "down_proj"):
+        base = f"{shared}.{proj}"
+        names.extend(
+            (
+                f"{base}.qzeros",
+                f"{base}.scales",
+                f"{base}.theta",
+                f"{base}.pairs",
+                f"{base}.channel_scales",
+            )
+        )
+    return tuple(names)
+
+
 def _detect_shared_expert_format(tensors: dict[str, Any], *, layer_id: int) -> str:
     """Detect the dense shared-expert representation for one layer.
 
@@ -451,6 +479,7 @@ def runtime_full_attention_moe_c1_tensor_names(
             f"{experts}.down_weight_channel_scales",
         )
     )
+    names.extend(_shared_expert_runtime_sidecar_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format))
     names.extend(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format))
     return tuple(names)
 
@@ -496,6 +525,7 @@ def runtime_linear_attention_moe_c1_tensor_names(
             f"{experts}.down_weight_channel_scales",
         )
     )
+    names.extend(_shared_expert_runtime_sidecar_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format))
     names.extend(runtime_prepared_moe_c1_tensor_names(layer_id=layer_id, shared_expert_format=shared_expert_format))
     return tuple(names)
 

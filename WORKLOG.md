@@ -13839,3 +13839,34 @@ python3 scripts/qwen35_rocprof_audit.py --dry-run --workloads 512/128 >/tmp/qwen
 
 Next optimization step from the measured profile: P1.1/P1.2/P1.3/P1.4 (bulk dense rocBLAS for
 linear-attn A/B and shared-expert prefill paths) plus W.1 as the cheap flag probe.
+
+## 2026-05-17 — Fix packed shared-expert runtime sidecar materialization
+
+While starting the shisa legacy/packed benchmark comparison, the first shisa run
+failed during native prefill with:
+
+```text
+KeyError: 'layers.0.mlp.shared_expert.gate_proj.pairs'
+```
+
+Root cause: the dual-format loader correctly detected the shisa checkpoint as
+`packed_paro_w4`, and prepared `shared_expert.{proj}.qweight_pack8_decode`, but
+`runtime_{full,linear}_attention_moe_c1_tensor_names()` did not include the
+packed shared-expert sidecars consumed directly by `shared_expert_paro_w4_*`:
+`qzeros`, `scales`, `theta`, `pairs`, and `channel_scales`. The tests' manual
+runtime weight fixture had those tensors, so the materialized-runtime path was
+not covered.
+
+Fix: packed runtime tensor-name helpers now include those sidecars while still
+omitting raw `qweight` (only used at load time to build `qweight_pack8_decode`).
+Legacy W8A16 format still includes no packed sidecars.
+
+CPU validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short
+# 55 passed
+```
+
+The failed shisa benchmark will be rerun after this fix. GPU timing before the
+failure is discarded; no throughput result was produced.

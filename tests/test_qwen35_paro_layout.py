@@ -502,6 +502,12 @@ def test_materialize_qwen35_paro_full_attention_moe_c1_runtime_layer_uses_parent
     assert layer.tensor("layers.0.mlp.router_shared_gate.weight").dtype is DType.BF16
     assert layer.tensor("layers.0.mlp.experts.stacked_gate_scales").dtype is DType.FP16
     assert layer.tensor("layers.0.mlp.experts.down_weight_theta").dtype is DType.FP16
+    assert layer.tensor("layers.0.mlp.shared_expert.gate_proj.pairs").dtype is DType.INT16
+    assert layer.tensor("layers.0.mlp.shared_expert.gate_proj.theta").dtype is DType.FP16
+    assert layer.tensor("layers.0.mlp.shared_expert.gate_proj.channel_scales").dtype is DType.FP16
+    assert layer.tensor("layers.0.mlp.shared_expert.gate_proj.qzeros").dtype is DType.INT32
+    assert layer.tensor("layers.0.mlp.shared_expert.gate_proj.scales").dtype is DType.FP16
+    assert "layers.0.mlp.shared_expert.gate_proj.qweight" not in names
     q_scales = layer.allocation("layers.0.self_attn.q_proj.scales")
     assert bytes(runtime.buffers[q_scales.buffer.ptr]) == tensors[
         "model.layers.0.self_attn.q_proj.scales"
@@ -552,6 +558,9 @@ def test_materialize_qwen35_paro_linear_attention_moe_c1_runtime_layer_uses_stat
     assert layer.tensor("layers.0.linear_attn.in_proj_a.weight").dtype is DType.FP16
     assert layer.tensor("layers.0.linear_attn.in_proj_qkv.scales").dtype is DType.FP16
     assert layer.tensor("layers.0.mlp.router_shared_gate.weight").dtype is DType.BF16
+    assert layer.tensor("layers.0.mlp.shared_expert.down_proj.pairs").dtype is DType.INT16
+    assert layer.tensor("layers.0.mlp.shared_expert.down_proj.theta").dtype is DType.FP16
+    assert "layers.0.mlp.shared_expert.down_proj.qweight" not in layer.weights.tensors
     conv = layer.allocation("layers.0.linear_attn.conv1d.weight")
     assert bytes(runtime.buffers[conv.buffer.ptr]) == tensors["model.layers.0.linear_attn.conv1d.weight"].astype(np.float32).tobytes()
     layer.free(runtime=runtime)
