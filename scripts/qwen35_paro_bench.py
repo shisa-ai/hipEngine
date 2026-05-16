@@ -46,6 +46,15 @@ def main() -> int:
     parser.add_argument("--progress", action="store_true")
     parser.add_argument("--roctx", action="store_true", help="Emit ROCTX ranges for profiler correlation")
     parser.add_argument(
+        "--rocprof-selected-region",
+        choices=("none", "prefill", "measured_decode_graph", "measured_decode"),
+        default="none",
+        help=(
+            "Call roctxProfilerResume/Pause around one phase for rocprofv3 --selected-regions. "
+            "Profiler-only; does not affect benchmark semantics."
+        ),
+    )
+    parser.add_argument(
         "--graph-replay-decode",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -120,7 +129,7 @@ def main() -> int:
     max_sequence = len(prompt_tokens) + args.warmup_decode_tokens + args.decode_tokens + 1
 
     progress = _emit_progress if args.progress else None
-    roctx = _Roctx(enabled=args.roctx)
+    roctx = _Roctx(enabled=args.roctx or args.rocprof_selected_region != "none")
     runner = Qwen35ParoNextTokenRunner(model)
     reset_memory_stats()
     memory_snapshots: dict[str, Any] = {
@@ -158,15 +167,16 @@ def main() -> int:
     try:
         prefill_start = time.perf_counter()
         next_result = None
-        with roctx.range("hipengine:prefill"):
-            if args.serial_prefill_diagnostic:
-                for pos, token in enumerate(prompt_tokens):
-                    with roctx.range("hipengine:prefill_step"):
-                        next_result = session.step(token, position=pos, sample=(pos == len(prompt_tokens) - 1))
-            else:
-                with roctx.range("hipengine:native_prefill_single_request"):
-                    _ = (args.native_prefill, args.allow_rejected_native_prefill)
-                    next_result = session.prefill_native(prompt_tokens, sample=True)
+        with roctx.profiler_region("prefill", selected=args.rocprof_selected_region):
+            with roctx.range("hipengine:prefill"):
+                if args.serial_prefill_diagnostic:
+                    for pos, token in enumerate(prompt_tokens):
+                        with roctx.range("hipengine:prefill_step"):
+                            next_result = session.step(token, position=pos, sample=(pos == len(prompt_tokens) - 1))
+                else:
+                    with roctx.range("hipengine:native_prefill_single_request"):
+                        _ = (args.native_prefill, args.allow_rejected_native_prefill)
+                        next_result = session.prefill_native(prompt_tokens, sample=True)
         prefill_seconds = time.perf_counter() - prefill_start
         if next_result is None:
             raise RuntimeError("prefill did not produce next-token logits")
@@ -195,8 +205,9 @@ def main() -> int:
                 )
             try:
                 decode_start = time.perf_counter()
-                with roctx.range("hipengine:measured_decode_graph"):
-                    graph.replay(args.decode_tokens)
+                with roctx.profiler_region("measured_decode_graph", selected=args.rocprof_selected_region):
+                    with roctx.range("hipengine:measured_decode_graph"):
+                        graph.replay(args.decode_tokens)
                 decode_seconds = time.perf_counter() - decode_start
                 result = graph.read_sample()
                 avg_step = decode_seconds / args.decode_tokens
@@ -207,17 +218,18 @@ def main() -> int:
                 graph.close()
         else:
             decode_start = time.perf_counter()
-            with roctx.range("hipengine:measured_decode"):
-                for offset in range(args.decode_tokens):
-                    step_start = time.perf_counter()
-                    with roctx.range("hipengine:measured_decode_step"):
-                        result = session.step(next_token, position=decode_start_pos + offset, sample=True)
-                    step_seconds = time.perf_counter() - step_start
-                    if result is None:
-                        raise RuntimeError("decode step did not produce a token")
-                    decode_samples.append(step_seconds)
-                    next_token = result.token_id
-                    generated.append(result.to_json_dict())
+            with roctx.profiler_region("measured_decode", selected=args.rocprof_selected_region):
+                with roctx.range("hipengine:measured_decode"):
+                    for offset in range(args.decode_tokens):
+                        step_start = time.perf_counter()
+                        with roctx.range("hipengine:measured_decode_step"):
+                            result = session.step(next_token, position=decode_start_pos + offset, sample=True)
+                        step_seconds = time.perf_counter() - step_start
+                        if result is None:
+                            raise RuntimeError("decode step did not produce a token")
+                        decode_samples.append(step_seconds)
+                        next_token = result.token_id
+                        generated.append(result.to_json_dict())
             decode_seconds = time.perf_counter() - decode_start
         memory_snapshots["after_decode"] = _memory_snapshot("after_decode", session.runtime, session)
     finally:
@@ -314,6 +326,9 @@ class _Roctx:
     def range(self, name: str) -> "_RoctxRange":
         return _RoctxRange(self, name)
 
+    def profiler_region(self, name: str, *, selected: str) -> "_RoctxProfilerRegion":
+        return _RoctxProfilerRegion(self, enabled=(selected == name))
+
     def push(self, name: str) -> None:
         if self._lib is not None:
             self._lib.roctxRangePushA(name.encode("utf-8"))
@@ -321,6 +336,20 @@ class _Roctx:
     def pop(self) -> None:
         if self._lib is not None:
             self._lib.roctxRangePop()
+
+    def profiler_resume(self) -> None:
+        if self._lib is None:
+            return
+        func = getattr(self._lib, "roctxProfilerResume", None)
+        if func is not None:
+            func(0)
+
+    def profiler_pause(self) -> None:
+        if self._lib is None:
+            return
+        func = getattr(self._lib, "roctxProfilerPause", None)
+        if func is not None:
+            func(0)
 
 
 class _RoctxRange:
@@ -338,6 +367,25 @@ class _RoctxRange:
         tb: TracebackType | None,
     ) -> None:
         self.roctx.pop()
+
+
+class _RoctxProfilerRegion:
+    def __init__(self, roctx: _Roctx, *, enabled: bool) -> None:
+        self.roctx = roctx
+        self.enabled = enabled
+
+    def __enter__(self) -> None:
+        if self.enabled:
+            self.roctx.profiler_resume()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        if self.enabled:
+            self.roctx.profiler_pause()
 
 
 def _read_compiler_version(path: Path) -> str:

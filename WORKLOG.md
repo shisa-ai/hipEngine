@@ -13745,3 +13745,97 @@ reservation. Next GPU step, once clear: run the original z-lab benchmark through
 `scripts/qwen35_paro_bench.py` and compare against the pre-packed baseline to
 confirm no legacy-format throughput regression; packed-format perf still requires
 a real packed checkpoint artifact.
+
+## 2026-05-17 — Qwen3.5/PARO rocprof Amdahl baseline (M.3/M.4)
+
+Ran the OPTIMIZE.md Lane M profiling baseline for Qwen3.5-35B-A3B-PARO `w4_paro` on W7900/gfx1100.
+
+Important profiler gotchas hit and resolved:
+
+- A first tiny rocprof smoke without `--compiler-version-file` / `--require-cached-build` could hang
+  with GPU at 0% because a profiled Python process may spawn `hipcc`/clang. Verified cache-only smoke
+  works:
+  ```bash
+  rocprofv3 --kernel-trace --marker-trace --output-format csv -d /tmp/rocprof-probe -o probe -- \
+    python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16 \
+      --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+  # produced probe_kernel_trace.csv in <1s
+  ```
+- Plain `/opt/rocm/lib/libroctx64.so` markers did not produce marker trace CSVs under this
+  rocprofv3. A temporary `LD_LIBRARY_PATH` override that symlinks `libroctx64.so` to
+  `librocprofiler-sdk-roctx.so.1` does produce marker traces.
+- Full marker tracing around HIP graph replay and full selected-region tracing of 64/128 graph
+  replays both hit a rocprofiler-sdk finalization assert:
+  `retired dangling correlation IDs`. A 16-replay selected-region decode graph trace is stable,
+  so the decode Amdahl uses 16 one-step graph replays and scales per token. The throughput
+  scoreboard in `docs/OPTIMIZE.md` remains the true 128-token comparison-table run.
+
+Added profiling support:
+
+- `scripts/qwen35_paro_bench.py --rocprof-selected-region {prefill,measured_decode_graph,measured_decode}`
+  wraps the chosen phase with `roctxProfilerResume/Pause` for `rocprofv3 --selected-regions`.
+  This is profiler-only and does not change benchmark semantics.
+- New `scripts/qwen35_rocprof_audit.py` runs selected-region rocprof for prefill and measured
+  decode graph, forces the SDK ROCTX library via `/tmp/hipengine-roctx-sdk-override/libroctx64.so`,
+  parses kernel trace CSVs into family/top-kernel Amdahl summaries, and writes a compact artifact.
+
+Command:
+
+```bash
+python3 scripts/qwen35_rocprof_audit.py \
+  --workloads 512/128 4096/128 32768/128 \
+  --out benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json
+```
+
+Raw traces/logs stay under `/tmp/hipengine-rocprof-qwen35-audit/`. Committed compact artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`.
+
+Measured selected-region totals:
+
+| Workload | Prefill kernel ms | Prefill kernel/host | Decode profile kernel ms | Decode host s (16 replays) | Dispatches/token | Kernel ms/token |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 196.9 | 82.4% | 116.2 | 0.1688 | 877 | 7.27 |
+| 4K/128 | 1576.4 | 96.0% | 115.6 | 0.1681 | 877 | 7.23 |
+| 32K/128 | 16973.3 | 98.1% | 137.6 | 0.1906 | 877 | 8.60 |
+
+Prefill top families:
+
+| Bucket | 512 | 4K | 32K |
+| --- | ---: | ---: | ---: |
+| MoE selected compact WMMA | 26.2% | 21.5% | 15.6% |
+| Linear-attention GDN prefill | 20.5% | 21.1% | 15.7% |
+| W4 prefill GEMM | 17.9% | 17.1% | 12.7% |
+| Shared-expert W8A16 | 15.3% | 15.5% | 11.6% |
+| AOTriton prefill attention | 1.9% | 5.7% | 30.2% |
+
+Decode top families:
+
+| Bucket | 512 | 4K | 32K | Calls/token |
+| --- | ---: | ---: | ---: | ---: |
+| Selected-MoE W4 GEMV | 17.9% | 18.3% | 15.5% | 80 |
+| W8A16 linear/lm-head/dense | 15.7% | 15.7% | 13.4% | 81 |
+| W4 single pack8 GEMV | 13.4% | 13.6% | 11.6% | 50 |
+| W4 dual pack8 GEMV | 11.8% | 11.7% | 10.0% | 40 |
+| Decode attention | 11.4% | 10.5% | 22.9% | 10-20 |
+| Rotation/RoPE | 9.4% | 9.6% | 8.4% | 160 |
+
+Updated `docs/OPTIMIZE.md`:
+
+- M.3 and M.4 are `accepted` with the artifact path and rocprof caveat.
+- Replaced the old hand-narrated/parent-borrowed §5/§6 Amdahl blocks with measured hipENGINE tables.
+- Added data-backed D5.2: audit W8A16 decode kernels (`w8a16_linear_kernel`,
+  `w8a16_linear_lowp_out_kernel`) for tile/occupancy headroom, explicitly **not** fused argmax.
+- Reordered §12 punchlist from measured buckets: P1 bulk dense/threshold first, W.1, D2.1+D5.2,
+  then D1 fusion and D3 attention.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/qwen35_paro_bench.py scripts/qwen35_rocprof_audit.py
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json >/tmp/rocprof-artifact.valid
+python3 scripts/qwen35_paro_bench.py --help | grep -A5 rocprof-selected-region
+python3 scripts/qwen35_rocprof_audit.py --dry-run --workloads 512/128 >/tmp/qwen35_rocprof_audit.dryrun
+```
+
+Next optimization step from the measured profile: P1.1/P1.2/P1.3/P1.4 (bulk dense rocBLAS for
+linear-attn A/B and shared-expert prefill paths) plus W.1 as the cheap flag probe.

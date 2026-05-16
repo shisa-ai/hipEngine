@@ -151,45 +151,44 @@ These apply to **every** row below before it can move from `in-progress` to `acc
 ## 4. Lane M — Measurement (profile our own kernels before optimizing them)
 
 The parent and llama.cpp throughput rows are the comparison baselines and are not in question.
-What we are missing is our **own** per-kernel rocprof data — the §5 prefill Amdahl block is hand-narrated
-from `docs/PREFILL.md` and the §6 decode block is the parent's 0.8B 4K/128 audit, not ours. Without
-hipENGINE-local rocprof we are guessing which bucket each P/D candidate actually targets on this
-machine.
+What we needed was our **own** per-kernel rocprof data. That baseline is now landed via
+`rocprofv3 --kernel-trace --selected-regions` using `roctxProfilerResume/Pause` around prefill and
+measured decode graph. Raw traces stay under `/tmp/hipengine-rocprof-qwen35-audit/`; the committed
+summary is `benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`.
+
+Caveat: rocprofv3 1.2.3 asserts in finalization when tracing 64/128 graph replays on this host
+(`retired dangling correlation IDs`). The decode Amdahl rows therefore profile **16 one-step graph
+replays** and scale per token; the throughput scoreboard in §1 remains the real 128-token run.
 
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| M.3 | Collect matched `rocprofv3 --kernel-trace` + ROCTX profiles for hipENGINE 512/128, 4K/128, 32K/128 with the comparison-table flags. Retain only compact summaries under `benchmarks/results/`. | `docs/KERNELS.md` "Pre-optimization audit"; parent `~/amd-gpu-tuning/scripts/summarize_rocprof_kernels.py` bucketing precedent. | n/a | n/a | n/a | Use `--compiler-version-file` + `--require-cached-build` so the profiled process never spawns `hipcc` (parent JIT-cache gotcha). Trace artifacts stay in `/tmp/`; only compact JSON commits. | pending | — |
-| M.4 | Per-bucket Amdahl table for hipENGINE 512/128 decode replay-only window (scoped via the existing `hipengine:measured_decode_graph` ROCTX range, so no warmup/capture subtraction). | Parent rocprof tail audit `artifacts/paroquant2_rocprof_audit_20260515_iter30/`; ROOFLINE §5. | n/a | n/a | n/a | Window must be scoped via the ROCTX marker, not by wall-clock subtraction. | pending | — |
-
-These two are the only measurement prereqs. They unblock the §5 / §6 hipENGINE bucket tables and
-tell us which P/D candidate actually targets the biggest bucket on **this** stack. Everything else in
-P/D/A/W can run in parallel with M, and an accepted measurement (correctness gate + retained
-benchmark row update) is enough to flip a row to `accepted` — there is no separate "promote to
-`LLM.generate()`" ceremony gating optimization work.
+| M.3 | Collect matched `rocprofv3 --kernel-trace` profiles for hipENGINE 512/128, 4K/128, 32K/128 with the comparison-table flags. Retain only compact summaries under `benchmarks/results/`. | `docs/KERNELS.md` "Pre-optimization audit"; parent `~/amd-gpu-tuning/scripts/summarize_rocprof_kernels.py` bucketing precedent. | n/a | n/a | n/a | Used `--compiler-version-file` + `--require-cached-build`; selected-region profiling avoids profiled `hipcc` and marker-trace graph replay crashes. | accepted | `benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json` |
+| M.4 | Per-bucket Amdahl table for hipENGINE 512/128 decode replay-only window. | Parent rocprof tail audit `artifacts/paroquant2_rocprof_audit_20260515_iter30/`; ROOFLINE §5. | n/a | n/a | n/a | 16 traced graph replays; 877 dispatches/token and 7.27 ms GPU kernel time/token at 512/128. | accepted | §6 table below + same artifact |
 
 ---
 
 ## 5. Lane P — Prefill
 
-The Amdahl break-up of 512/128 prefill (40-layer hipENGINE rocprof, `docs/PREFILL.md` §"Optimization
-diagnosis 2026-05-16"):
+Measured selected-region prefill Amdahl (`rocprofv3 --kernel-trace`, 40 layers, comparison-table
+flags; kernel time only):
 
-```
-qwen35_gdn_prefill_recurrent_k2          17.9% (linear-attn recurrent state)
-gemm_awq_selected_dual_pack8_wmma         14.8% (MoE selected pack8 WMMA)
-qwen35_paged_full_attn_prefill_gqa        11.4% (AOTriton at 4K closes this)
-awq_fusedw4_prefill_fp16_kernel<*,true>   10.1% (Q/K stacked W4 prefill)
-gemm_awq_selected_pack8_wmma               8.5% (MoE singleton pack8)
-w8a16_shared_down_combine_residual         7.0% (shared-expert down + combine)
-w8a16_shared_gate_up_silu                  6.8% (shared-expert gate+up)
-awq_fusedw4_prefill_fp16<*,false>          6.4% (V/O/linear-out W4 prefill)
-paro_rotate1                               4.0% (PARO rotation)
-qwen35_router_logits_token_tile            3.8% (router logits)
-```
+| Bucket / family | 512/128 share | 4K/128 share | 32K/128 share | Main candidate(s) |
+| --- | ---: | ---: | ---: | --- |
+| MoE selected compact WMMA (`moe_awq_wmma`) | 26.2% | 21.5% | 15.6% | P1.4 thresholding; W.1 flag probe |
+| Linear-attention GDN prefill | 20.5% | 21.1% | 15.7% | P3.1 boundary fusion; W.1 |
+| W4 prefill GEMM | 17.9% | 17.1% | 12.7% | W.1; layout-preserving fusion only |
+| Shared-expert W8A16 | 15.3% | 15.5% | 11.6% | P1.2 / P1.3 bulk dense path |
+| AOTriton prefill attention | 1.9% | 5.7% | 30.2% | P2 already mostly settled; P4 deferred |
+| Rotation / RoPE | 6.7% | 7.7% | 5.7% | P3.1 |
+| Router | 4.5% | 4.6% | 3.4% | P3.2 |
+| Linear-attention conv | 1.8% | 1.8% | 1.3% | low priority |
+| RMSNorm | 1.2% | 1.7% | 1.3% | fused only when paired with P3.1 |
+| MoE metadata | 0.8% | 0.8% | 0.6% | P3.3 stays low priority |
 
-Parent docs and `docs/PREFILL.md` agree the **per-layer non-attention bulk work** is the residual
-gap (P1 lanes below), with AOTriton already closing the old 4K full-attention cliff (P2) and the
-linear-attention/MoE rms+rotate boundaries open for fusion (P3).
+Kernel totals: 512/128 = 196.9 ms (82% of host prefill), 4K/128 = 1.576 s (96%), 32K/128 =
+16.97 s (98%). The short/mid prefill miss is therefore not attention anymore; it is per-layer bulk
+work: MoE compact WMMA + GDN + W4 + shared expert. AOTriton becomes the long-context top bucket at
+32K, but 32K/128 and 128K/128 prefill are already ahead of parent, so P1/P3/W.1 stay ahead of P4.
 
 ### 5.1 P1 — Bulk dense / shared-expert GEMM-shaped paths (parent uses `F.linear(...)`)
 
@@ -248,23 +247,29 @@ Keep as default policy.
 
 ## 6. Lane D — Decode
 
-Per-bucket Amdahl break-up of the parent rocprof tail audit (0.8B 4K/128, `PLAN-PAROQUANT2.md`
-§11.9; replace with hipENGINE-measured buckets once M.4 lands):
+Measured selected-region decode Amdahl (`rocprofv3 --kernel-trace --selected-regions`, 16 one-step
+graph replays because rocprofv3 crashes at 64/128 traced replays on this host; shares are kernel
+time only and scale per token):
 
-```
-paged full-attention decode      22.8%
-small glue / elementwise         17.3%   <-- launch-fanout pile
-rotation / RoPE                  14.5%
-W4 dual pack8 GEMV               12.9%
-W4 single pack8 GEMV             10.2%
-W8A16 lm-head + dense linear      8.4%
-RMSNorm / add-RMSNorm             6.9%
-linear-attention GDN decode       6.9%
-```
+| Bucket / family | 512/128 share | 4K/128 share | 32K/128 share | Calls/token | Main candidate(s) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Selected-MoE W4 GEMV | 17.9% | 18.3% | 15.5% | 80 | D1.4; D2.1 where applicable |
+| W8A16 linear / lm-head / dense | 15.7% | 15.7% | 13.4% | 81 | D5.2 |
+| W4 single pack8 GEMV | 13.4% | 13.6% | 11.6% | 50 | D2.1 |
+| W4 dual pack8 GEMV | 11.8% | 11.7% | 10.0% | 40 | D2.1; D1.1 |
+| Decode attention | 11.4% | 10.5% | 22.9% | 10-20 | D3.1 / D3.2 / D3.3 |
+| Rotation / RoPE | 9.4% | 9.6% | 8.4% | 160 | D1.1 |
+| Router | 5.8% | 5.8% | 5.1% | 80 | D1.5 / D5.3 |
+| Linear-attention GDN decode | 5.2% | 5.4% | 4.8% | 30 | D5.1 |
+| RMSNorm / add-RMSNorm | 3.3% | 3.4% | 3.0% | 91 | D1.2 |
+| Dense GEMV | 1.2% | 1.2% | 1.2% | 30 | already fused for A/B decode (D5.4) |
+| MoE combine | 1.2% | 1.2% | 1.0% | 40 | D1.4 |
 
-Combined "fusion-eligible boundary" buckets (rotation + RMSNorm + small glue) are ~39%, larger than
-W4 GEMV (~23%). The W4 inner loop is **not** the headline lever — boundary fusion and dispatch
-reduction are.
+Decode graph replay emits **877 dispatches/token** in this profile. Kernel time/token is 7.27 ms at
+512, 7.23 ms at 4K, and 8.60 ms at 32K; host decode steps are slower because graph replay and host
+bookkeeping sit outside kernel duration. The parent-borrowed "boundary fusion dominates W4" story
+was too strong for hipENGINE: W4 + selected-MoE GEMV is ~43% of short-context kernel time, W8A16 is
+~16%, and boundary/glue buckets (rotation + router + GDN + RMSNorm + combine) are ~25%.
 
 ### 6.1 D1 — Dispatch reduction and boundary fusion (largest non-W4 buckets)
 
@@ -312,15 +317,16 @@ harness` row described, so it is folded into Lane M.
 | D4.2 | Cap dispatches/token below 700 via batched D1.1-D1.6 fusions (Vulkan-style graph-level fusion). | `LLAMACPP-VULKAN.md`; parent `PLAN-PAROQUANT2.md` §11.5.2 (~660/tok current parent floor); Vulkan ~fewer than 200/tok at the same shape. | neutral | **+4-8%** when stacked | neutral | Per `LESSONS-LEARNED.md` "Output buffers alone are rarely enough", launch-count-only fusion under graph replay is sub-1%; must change data flow / reuse to count. | pending | — |
 | D4.4 | Per-kernel `__launch_bounds__` retune after rotation/RMSNorm/W4 fusion changes (LESSONS-LEARNED "Runtime thread-count knobs must honor kernel launch bounds"). | `LESSONS-LEARNED.md` Task 23 audit. | neutral | +0-2% | neutral | Must cross-check against statically allocated shared memory + reduction scratch; never accept a knob value that bypasses `__launch_bounds__`. | pending | — |
 
-### 6.5 D5 — Decode glue / small wins ledger
+### 6.5 D5 — Decode glue / secondary kernel audits
 
-These are individually sub-1% but compound. Parent §11.10 found that **GDN recurrent decode**, **PARO
-single rotation**, **router select/logits**, and **W8A16 lm-head** combined still dominate ~25% of
-decode wall after fusion polish.
+These are smaller than the W4/attention headline lanes, but M.4 says they still matter:
+W8A16 is ~16% of short-context decode kernel time, while GDN/router/rotation/RMSNorm/glue compound
+into the dispatch floor.
 
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | D5.1 | Audit `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel` for vec8 / occupancy headroom on c=1 decode (currently `VGPR=56`, `LDS=1616`). | `docs/KERNELS.md` rocprof note; ROOFLINE §9 RDNA3 occupancy rules. | neutral | +0.5-2% | neutral | Per LESSONS-LEARNED, deep-loop unroll is the largest RDNA3 GEMV lever for `N/blockDim.x < 64`. | pending | — |
+| D5.2 | Audit W8A16 decode kernels (`w8a16_linear_kernel`, `w8a16_linear_lowp_out_kernel`) for tile/occupancy headroom; **not** fused argmax. | M.4: W8A16 family is 15.7% / 15.7% / 13.4% of 512/4K/32K decode kernel time. Parent notes fused `lm_head + argmax` is not a lever, but the W8A16 matvec itself is still large. | neutral | +0-2% if tile/occupancy issue is real | neutral | Stop if rocprof/ISA shows the kernels are already bandwidth/occupancy optimal; do not redo argmax fusion. | pending | `benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json` |
 | D5.3 | Router top-k cooperative producer (one workgroup all experts) — avoid the naive logits+top-k fusion that collapses occupancy. | `LESSONS-LEARNED.md` "Router fusion is the opposite case"; current router uses one block per expert. | neutral | +0.5-1% | neutral | Without inter-block sync, naive same-kernel fused top-k is racy or collapses occupancy. Use cooperative producer pattern. | pending | — |
 | D5.4 | Linear-attention A/B decode same-input fusion. | LESSONS-LEARNED retained win precedent. | neutral | +0.6-1% (parent measured) | neutral | Already live in hipENGINE: `project_linear_attention_ab_fp16` dispatches `dense_dual_gemv_out_fp16` on the `tokens == 1` decode path; prefill keeps two unfused GEMVs (handled by P1.1). | accepted | `hipengine/runtime/qwen35_paro.py:2795` |
 
@@ -408,19 +414,19 @@ evidence (e.g. structural changes that invalidate the earlier rejection).
 
 ## 12. First concrete punchlist (next 4-6 iterations)
 
-Order is chosen to maximize signal-per-iteration. **M.x is gating; do it first.**
+Order is chosen from the M.3/M.4 profile, not from parent folklore.
 
-1. **M.3 / M.4** — Matched hipENGINE rocprof + per-bucket Amdahl tables for 512/128, 4K/128,
-   32K/128. Confirms or falsifies the P1 / D1 bucket hypotheses (which are currently sourced from
-   `docs/PREFILL.md` for prefill and the parent 0.8B audit for decode) before any code lands.
-2. **P1.1 + P1.2 + P1.4** — Bulk dense rocBLAS for linear-attn A/B and shared-expert gate/up SiLU,
-   with empirical token-count threshold. Largest single prefill lever per `PREFILL.md`.
-3. **W.1** — `-mllvm -amdgpu-unroll-threshold-local=600` per-kernel sweep on the four hot prefill
-   kernels. Cheap one-iteration probe; could compound with P1.
-4. **D1.1 + D1.4 + D2.1** — Rotation-into-projection fusion at the right granularity, selected-MoE
-   post-op fold, and Marlin-K vec8 + qweight-neutral port. Stack toward the +6% / +17% decode lift.
+1. **P1.1 + P1.2 + P1.3 + P1.4** — Bulk dense rocBLAS for linear-attn A/B and shared-expert
+   gate/up/down, with empirical token-count threshold. The measured 512/4K prefill top buckets are
+   MoE WMMA + GDN + W4 + shared expert, not attention.
+2. **W.1** — `-mllvm -amdgpu-unroll-threshold-local=600` per-kernel sweep on the four hot prefill
+   kernels. Cheap probe; keep only if `Scratch_Size=0` and the profile moves.
+3. **D2.1 + D5.2** — Marlin-K vec8/qweight-neutral port plus a W8A16 decode-kernel audit. Measured
+   short-context decode kernel time is ~43% W4/selected-MoE GEMV and ~16% W8A16.
+4. **D1.1 + D1.4 + D1.5** — Rotation-into-projection, selected-MoE post-op fold, and router fold.
+   These target the 160 rotation calls/token, 40 combine calls/token, and 80 router calls/token.
 5. **D3.1 + D3.2 + D3.3** — Grouped-GQA producer port + split-cap retune + paged-decode min-context
-   threshold. Closes 32K/128 and 128K/128 decode against parent.
+   threshold. Attention jumps from ~11% short-context to 23% at 32K.
 
 Re-score the board after each retained row:
 
