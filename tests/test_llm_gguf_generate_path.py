@@ -41,12 +41,12 @@ def test_llm_generate_gguf_path_reaches_native_probe(monkeypatch) -> None:
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFOneLayerProbe", FakeProbe)
 
     llm = LLM(str(MODEL), backend="hip_gfx1100", quant="gguf_q4_k_m")
-    with pytest.raises(NotImplementedError, match="tokenizer detokenization"):
+    with pytest.raises(NotImplementedError, match="full layer chain"):
         llm.generate("The answer is", SamplingParams(max_tokens=1))
 
     assert calls == [
         ("init", str(MODEL.resolve()), 0),
         ("enter",),
-        ("sample_next_token", 760),
+        ("sample_next_token", 369),
         ("exit", True),
     ]

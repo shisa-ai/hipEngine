@@ -15598,3 +15598,40 @@ Structured result excerpt:
 ```
 
 This is a real blocker, not a pass: the public path now reaches native GGUF kernels and FP32 lm-head argmax, but it still uses the layer-0 projection probe and has no GGUF tokenizer/detokenizer. I added follow-up tasks #33 (GGUF tokenizer/detokenizer), #34 (full Qwen3.5 GGUF layer chain), and #35 (full logits/text generation); task #31 is blocked on those and must not be marked complete until `scripts/qwen35_gguf_e2e_correctness.py` passes against the llama.cpp oracle fixture.
+
+## 2026-05-16 Qwen3.5 GGUF tokenizer/detokenizer
+
+Implemented `hipengine/tokenization/gguf.py` with a torch-free Qwen3.5 GGUF byte-BPE tokenizer loaded from GGUF metadata:
+
+- `tokenizer.ggml.tokens`
+- `tokenizer.ggml.merges`
+- `tokenizer.ggml.token_type`
+- `tokenizer.ggml.eos_token_id`
+- `tokenizer.ggml.padding_token_id`
+
+Acceptance fixture now passes without llama.cpp on the hipENGINE hot path:
+
+```text
+encode("The answer is") -> [760, 4087, 369]
+decode([220, 16, 13, 271]) -> " 1.\n\n"
+encode(" 1.\n\n") -> [220, 16, 13, 271]
+decode([760, 4087, 369, 220, 16, 13, 271]) -> "The answer is 1.\n\n"
+```
+
+The public GGUF bring-up generator now constructs `Qwen35GGUFTokenizer` from the in-memory GGUF index, tokenizes prompts through that tokenizer, and decodes the probe sampled token in the diagnostic `NotImplementedError`. No `torch` import is introduced by tokenizer construction or use.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/tokenization/__init__.py hipengine/tokenization/gguf.py \
+  hipengine/generation/qwen35_gguf.py tests/test_qwen35_gguf_tokenizer.py \
+  tests/test_llm_gguf_generate_path.py
+python3 -m pytest tests/test_qwen35_gguf_tokenizer.py tests/test_llm_gguf_generate_path.py -q
+# 6 passed
+python3 scripts/qwen35_gguf_e2e_correctness.py --skip-tokenize-check >/tmp/gguf_e2e_task33_red.json
+# exit 1 as expected; task #31 still blocked by the full layer chain:
+# NotImplementedError: ... probe token_id=100872, text='东南', logit=3.07238e+27); full layer chain is not wired yet
+# torch_loaded_by_generate=False
+```
+
+Task #33 is complete; remaining true E2E blockers are #34 full Qwen3.5 GGUF layer chain and #35 final logits/text generation over that full layer chain.

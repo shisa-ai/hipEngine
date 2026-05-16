@@ -31,8 +31,10 @@ finite deterministic BF16 hidden-size output. `hipengine.LLM.generate()` now det
 GGUF files, resolves the `qwen35` model plugin, and routes the target quant key
 through the native GGUF bring-up generator. The bring-up path now also runs the
 tied Q6_K `token_embd.weight` lm-head GEMV to produce FP32 logits and a
-deterministic argmax token, then intentionally stops because tokenizer
-detokenization and the full layer chain are not wired yet.
+deterministic argmax token. The GGUF tokenizer/detokenizer now parses Qwen3.5
+byte-BPE metadata without torch or llama.cpp subprocesses on the hot path; the
+public generator intentionally stops because the full layer chain is not wired
+yet.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
