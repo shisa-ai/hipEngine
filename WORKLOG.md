@@ -15038,3 +15038,28 @@ rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-q4k-rocprof-cach
 ```
 
 Next GGUF kernel work: lowp output and/or a repacked-Marlin layout; this spike is correctness-first and keeps GGUF math independent from PARO/AWQ kernels.
+
+## 2026-05-16 GGUF Q4_K vs PARO/BF16 GEMV microbench
+
+Measured a narrow decode-GEMV microbench on current local hardware (gfx1100 / AMD Radeon RX 7900 XTX, HIP 7.13.60940). This is diagnostic only, not a retained benchmark rollup row: synthetic single-row GEMV, output width 128, BF16 activations for all three paths. GGUF Q4_K currently writes FP32 output; PARO AWQ and dense BF16 write BF16 output. Timing uses HIP events around graph execution with 500 kernel launches captured per graph, avoiding Python/CPU enqueue gaps.
+
+Exact command/script:
+
+```bash
+PYTHONPATH=. python3 /tmp/bench_gemv_compare.py
+# temp script uses:
+# - dense_gemv_out_bf16, threads=256
+# - gemv_awq_pack8_transposed_bf16, group_size=128, threads=128
+# - gguf_q4_k_gemv_bf16_f32_out, threads=128
+# - K/N shapes: 512/128 and 4096/128, rows=1
+# - repeats: 20k for 512/128, 10k for 4096/128
+```
+
+Representative run (3 reruns were stable within ~0.1%):
+
+| Shape rows=1, K/N | BF16 dense | PARO AWQ pack8 transposed BF16 | GGUF Q4_K BF16→FP32 | GGUF vs PARO | GGUF vs dense |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 3.33 us | 3.81 us | 3.49 us | 0.916x time (GGUF ~8% faster) | 1.05x time (GGUF ~5% slower) |
+| 4096/128 | 3.44 us | 6.65 us | 9.49 us | 1.43x time (GGUF ~43% slower) | 2.76x time (GGUF ~176% slower) |
+
+Interpretation: the correctness-first raw GGUF Q4_K kernel is launch/overhead bound at 512/128 and roughly tied with existing paths there. At 4096/128, raw Q4_K metadata/nibble decode dominates; it is substantially slower than PARO pack8 and dense BF16 for this narrow output shape. This supports the next-step plan: repack GGUF Q4_K into a Marlin/PARO-like internal layout and/or add lowp output instead of treating the raw-byte spike as the final fast path.
