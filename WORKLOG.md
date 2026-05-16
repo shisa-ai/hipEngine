@@ -15460,3 +15460,29 @@ rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-q6-embed-rocprof
 ```
 
 This removes the GGUF token-embedding blocker without full dense embedding-table dequantization. Next step: GGUF linear dispatch adapter over the resident records.
+
+## 2026-05-16 GGUF linear dispatch adapter
+
+Added `hipengine/runtime/gguf_linear.py`, a registry-driven runtime adapter for resident GGUF linear weights. It resolves dispatch from resident weight metadata and output dtype:
+
+```text
+Q4_K pack8 + BF16 activation -> pack8_bf16_bf16_out for hidden projections
+Q4_K pack8 + BF16 activation -> pack8_bf16_f32_out for FP32 outputs
+Q5_K/Q6_K/Q8_0 raw + BF16 activation -> gemv_bf16_bf16_out for hidden projections
+Q5_K/Q6_K/Q8_0 raw + BF16 activation -> gemv_bf16_f32_out for logits/FP32 outputs
+```
+
+The adapter uses `KernelKey`/`resolve(...)` and a table keyed by resident layout + activation/output dtype rather than adding model/engine `if backend == ...` branches. Q4_K pack8 and raw GGUF ABIs are separated behind a small ABI table so callers pass the same high-level `Qwen35GGUFDeviceWeight` record.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/gguf_linear.py hipengine/runtime/__init__.py tests/test_gguf_linear_dispatch.py
+python3 -m pytest tests/test_gguf_linear_dispatch.py -q
+# 5 passed
+python3 -m pytest tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_materialize.py \
+  tests/test_gguf_q6_k_embedding.py tests/test_model_quant_and_imports.py -q
+# 20 passed
+```
+
+Next step: wire a Qwen3.5 GGUF layer runner that consumes resident root/layer records, Q6_K embedding lookup, and this GGUF linear adapter.

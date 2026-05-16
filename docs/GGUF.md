@@ -22,7 +22,9 @@ full-attention blocks. The resident materialization plan covers all 320 tensors:
 98 Q4_K weights use lossless pack8 records, 89 Q5_K/Q6_K/Q8_0 weights keep raw
 GGUF block bytes, and 133 F32 tensors stay dense F32. A native Q6_K embedding
 lookup kernel now dequantizes selected `token_embd.weight` rows directly to BF16
-hidden states, avoiding full dense embedding-table fallback.
+hidden states, avoiding full dense embedding-table fallback. A registry-driven
+runtime adapter selects the GGUF linear variants for BF16 hidden projections and
+FP32 lm-head logits from resident weight metadata.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
