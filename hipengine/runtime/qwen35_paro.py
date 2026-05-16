@@ -103,6 +103,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import (
     paro_rotate1_bf16,
+    paro_rotate1_bf16_gate_fp16,
     paro_rotate1_fp16,
     paro_rotate2_bf16,
     paro_rotate2_fp16,
@@ -1893,7 +1894,7 @@ class Qwen35ParoDecodeState:
         )
         return scratch.gated_attn
 
-    def prefill_full_attention_aotriton_varlen_gqa_gate_fp16(
+    def prefill_full_attention_aotriton_varlen_gqa_bf16(
         self,
         scratch: Qwen35ParoAttentionScratch,
         *,
@@ -1901,15 +1902,15 @@ class Qwen35ParoDecodeState:
         cu_seqlens_k: Tensor,
         rows: int,
         segments: int,
-        gate: Tensor | None = None,
         query_bf16: Tensor | None = None,
         key_cache: Tensor | None = None,
         value_cache: Tensor | None = None,
+        attn_bf16_out: Tensor | None = None,
         scale: float | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
-        """Run AOTriton compact-varlen GQA prefill and apply Qwen3.5 sigmoid gate."""
+        """Run AOTriton compact-varlen GQA prefill and return BF16 attention output."""
 
         _check_positive(rows, "rows")
         _check_positive(segments, "segments")
@@ -1917,13 +1918,6 @@ class Qwen35ParoDecodeState:
             raise ValueError("AOTriton compact-varlen prefill expects int32 cu_seqlens tensors")
         if scratch.query.dtype is not DType.FP32 or scratch.key.dtype is not DType.FP32 or scratch.value.dtype is not DType.FP16:
             raise ValueError("AOTriton prefill expects FP32 Q/K source tensors and FP16 V scratch tensor")
-        if scratch.gated_attn.dtype is not DType.FP16:
-            raise ValueError("AOTriton prefill currently writes FP16 attention output")
-        gate_tensor = scratch.gate if gate is None else gate
-        if gate_tensor.dtype is not DType.FP16:
-            raise ValueError("AOTriton gate post-pass currently expects FP16 gate tensor")
-        if gate_tensor.shape != scratch.query.shape:
-            raise ValueError("gate tensor must match query shape for AOTriton post-pass")
         lse = self.workspace.reserve_tensor("attn.aotriton_lse", (self.config.num_attention_heads, rows), DType.FP32)
         q_heads = self.config.num_attention_heads
         kv_heads = self.config.num_key_value_heads
@@ -1936,7 +1930,12 @@ class Qwen35ParoDecodeState:
             if query_bf16.dtype is not DType.BF16 or query_bf16.shape != scratch.query.shape:
                 raise ValueError("AOTriton query BF16 tensor must match full-attention query shape")
             q_bf16 = query_bf16
-        attn_bf16 = self.workspace.reserve_tensor("attn.aotriton_out_bf16", scratch.query.shape, DType.BF16)
+        if attn_bf16_out is None:
+            attn_bf16 = self.workspace.reserve_tensor("attn.aotriton_out_bf16", scratch.query.shape, DType.BF16)
+        else:
+            if attn_bf16_out.dtype is not DType.BF16 or attn_bf16_out.shape != scratch.query.shape:
+                raise ValueError("AOTriton BF16 attention output tensor must match query shape")
+            attn_bf16 = attn_bf16_out
         atomic_counter = self.workspace.reserve_tensor("attn.aotriton_atomic", (1,), DType.INT32)
         cast_library = _library_for(library, "cast")
         if query_bf16 is None:
@@ -2024,13 +2023,53 @@ class Qwen35ParoDecodeState:
             library=aotriton_library,
             runtime=self.runtime,
         )
+        return attn_bf16
+
+    def prefill_full_attention_aotriton_varlen_gqa_gate_fp16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        cu_seqlens_q: Tensor,
+        cu_seqlens_k: Tensor,
+        rows: int,
+        segments: int,
+        gate: Tensor | None = None,
+        query_bf16: Tensor | None = None,
+        key_cache: Tensor | None = None,
+        value_cache: Tensor | None = None,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run AOTriton compact-varlen GQA prefill and apply Qwen3.5 sigmoid gate."""
+
+        if scratch.gated_attn.dtype is not DType.FP16:
+            raise ValueError("AOTriton gate post-pass currently writes FP16 attention output")
+        gate_tensor = scratch.gate if gate is None else gate
+        if gate_tensor.dtype is not DType.FP16:
+            raise ValueError("AOTriton gate post-pass currently expects FP16 gate tensor")
+        if gate_tensor.shape != scratch.query.shape:
+            raise ValueError("gate tensor must match query shape for AOTriton post-pass")
+        attn_bf16 = self.prefill_full_attention_aotriton_varlen_gqa_bf16(
+            scratch,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_k=cu_seqlens_k,
+            rows=rows,
+            segments=segments,
+            query_bf16=query_bf16,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            scale=scale,
+            library=library,
+            stream=stream,
+        )
         aotriton_gate_mul_bf16_to_fp16(
             attn_bf16.ptr,
             gate_tensor.ptr,
             scratch.gated_attn.ptr,
-            rows * q_width,
+            rows * self.config.num_attention_heads * self.config.head_dim,
             stream=stream,
-            library=aotriton_library,
+            library=_library_for(library, "aotriton"),
             runtime=self.runtime,
         )
         return scratch.gated_attn
@@ -2178,6 +2217,58 @@ class Qwen35ParoDecodeState:
         pairs = self.tensor(f"{prefix}.pairs")
         paro_rotate1_fp16(
             gated_attn.ptr,
+            scratch.o_rot.ptr,
+            pairs.ptr,
+            self.tensor(f"{prefix}.theta").ptr,
+            self.tensor(f"{prefix}.channel_scales").ptr,
+            tokens,
+            q_width,
+            group_size,
+            _rotation_krot(pairs),
+            stream=stream,
+            library=_library_for(library, "rotate"),
+            runtime=self.runtime,
+        )
+        self.project_pack8_fp16(
+            scratch.o_rot,
+            scratch.o_proj,
+            weight_prefix=prefix,
+            rows=tokens,
+            in_features=q_width,
+            group_size=group_size,
+            threads=64 if tokens > 1 else 128,
+            library=library,
+            stream=stream,
+        )
+        return scratch.o_proj
+
+    def project_full_attention_o_bf16_attn_gate_fp16(
+        self,
+        attn_bf16: Tensor,
+        gate: Tensor,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        tokens: int = 1,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Fuse BF16 attention gating with PARO rotate1 before the FP16 O projection."""
+
+        if attn_bf16.dtype is not DType.BF16:
+            raise ValueError("fused full-attention O projection expects BF16 attention output")
+        if gate.dtype is not DType.FP16:
+            raise ValueError("fused full-attention O projection expects FP16 gate tensor")
+        if scratch.o_rot.dtype is not DType.FP16 or scratch.o_proj.dtype is not DType.FP16:
+            raise ValueError("fused full-attention O projection expects FP16 output scratch")
+        if attn_bf16.shape != gate.shape or attn_bf16.numel != scratch.o_rot.numel:
+            raise ValueError("attention output, gate, and O-rotation scratch sizes must match")
+        prefix = f"layers.{self.layer_weights.layer_id}.self_attn.o_proj"
+        q_width = self.config.num_attention_heads * self.config.head_dim
+        pairs = self.tensor(f"{prefix}.pairs")
+        paro_rotate1_bf16_gate_fp16(
+            attn_bf16.ptr,
+            gate.ptr,
             scratch.o_rot.ptr,
             pairs.ptr,
             self.tensor(f"{prefix}.theta").ptr,
@@ -2408,16 +2499,34 @@ class Qwen35ParoDecodeState:
         if aotriton_attention:
             if cu_seqlens_q is None or cu_seqlens_k is None:
                 raise ValueError("AOTriton prefill requires cu_seqlens_q/k tensors")
-            gated = self.prefill_full_attention_aotriton_varlen_gqa_gate_fp16(
+            # AOTriton returns BF16 and the fused gate+rotate path does not need
+            # the old FP16 gated-attention scratch. Reinterpret those bytes as
+            # BF16 output to avoid another full-width intermediate allocation.
+            aotriton_attn_bf16_out = Tensor.from_handle(
+                attention_scratch.gated_attn.ptr,
+                attention_scratch.query.shape,
+                DType.BF16,
+                attention_scratch.gated_attn.device,
+            )
+            attn_bf16 = self.prefill_full_attention_aotriton_varlen_gqa_bf16(
                 attention_scratch,
                 cu_seqlens_q=cu_seqlens_q,
                 cu_seqlens_k=cu_seqlens_k,
                 rows=tokens,
                 segments=1,
-                gate=gate,
                 query_bf16=aotriton_query_bf16,
                 key_cache=key_cache,
                 value_cache=value_cache,
+                attn_bf16_out=aotriton_attn_bf16_out,
+                library=library,
+                stream=stream,
+            )
+            attn_out = self.project_full_attention_o_bf16_attn_gate_fp16(
+                attn_bf16,
+                gate,
+                attention_scratch,
+                tokens=tokens,
+                group_size=group_size,
                 library=library,
                 stream=stream,
             )
@@ -2433,14 +2542,14 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
-        attn_out = self.project_full_attention_o_fp16(
-            gated,
-            attention_scratch,
-            tokens=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
-        )
+            attn_out = self.project_full_attention_o_fp16(
+                gated,
+                attention_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
             hidden,
             attn_out,

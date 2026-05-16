@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-05-16",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "change": "Fuse AOTriton BF16 attention-output gate with the downstream PARO rotate1 step and alias the unused FP16 gated-attention scratch as BF16 AOTriton output, removing the separate BF16-to-FP16 gate launch and one full-width BF16 output workspace allocation on the single-request AOTriton prefill path.",
+  "validation": {
+    "unit_tests": "python3 -m pytest tests/test_paro_rotate_plan.py -q && python3 -m pytest tests/test_aotriton_discovery.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q # 3 passed + 67 passed",
+    "py_compile": "python3 -m py_compile hipengine/kernels/hip_gfx1100/rotary/paro_rotate.py hipengine/kernels/hip_gfx1100/rotary/__init__.py hipengine/runtime/qwen35_paro.py tests/test_paro_rotate_plan.py # ok",
+    "fixture_gate": "python3 scripts/qwen35_native_prefill_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/task18-fused-gate-rotate-alias-fixture-aotriton.json # passed=True max_kl=0.039568870612619614 top1=1.0"
+  },
+  "correctness": {
+    "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+    "passed": true,
+    "expected_match": true,
+    "max_kl": 0.039568870612619614,
+    "top1_agreement": 1.0
+  },
+  "measurements": [
+    {
+      "workload": "512/128",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task18-fused-gate-rotate-alias-512-128.json",
+      "hipengine": {
+        "prefill_tok_s": 2312.857477176532,
+        "decode_tok_s": 101.70262962339062,
+        "tracked_peak_allocated_gib": 18.581109796650708,
+        "tracked_current_before_close_gib": 18.372723345644772,
+        "hip_used_peak_sampled_gib": 18.59998321533203,
+        "owned_session_peak_gib": 1.5541498707607388
+      },
+      "previous_cast_glue_diagnostic": {
+        "prefill_tok_s": 2317.3872897756114,
+        "decode_tok_s": 100.9976099616168,
+        "tracked_peak_allocated_gib": 18.620172296650708,
+        "tracked_current_before_close_gib": 18.411785845644772,
+        "hip_used_peak_sampled_gib": 18.64099884033203,
+        "owned_session_peak_gib": 1.5932123707607388
+      },
+      "parent": {
+        "prefill_tok_s": 2696.4422279659416,
+        "decode_tok_s": 116.04961191700822,
+        "peak_allocated_gib": 18.79712200164795,
+        "peak_reserved_gib": 18.8359375
+      },
+      "deltas_vs_previous": {
+        "prefill_pct": -0.19547067592305956,
+        "decode_pct": 0.6980557876981042,
+        "tracked_peak_allocated_gib_delta": -0.0390625,
+        "owned_session_peak_gib_delta": -0.0390625
+      },
+      "deltas_vs_parent": {
+        "prefill_pct": -14.225587583931521,
+        "decode_pct": -12.362800751007864,
+        "tracked_peak_allocated_gib_delta": -0.2160122049972415,
+        "tracked_peak_allocated_pct": -1.1491770121952904
+      },
+      "memory_summary": {
+        "tracked_peak_allocated_bytes": 19951314725,
+        "tracked_peak_allocated_gib": 18.581109796650708,
+        "tracked_current_allocated_bytes_before_close": 19727561477,
+        "tracked_current_allocated_gib_before_close": 18.372723345644772,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 1668755717,
+        "owned_session_peak_gib": 1.5541498707607388,
+        "hip_used_peak_sampled_bytes": 19971579904,
+        "hip_used_peak_sampled_gib": 18.59998321533203,
+        "notes": [
+          "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+        ]
+      }
+    },
+    {
+      "workload": "4K/128",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task18-fused-gate-rotate-alias-4k-128.json",
+      "hipengine": {
+        "prefill_tok_s": 2371.5343956354104,
+        "decode_tok_s": 102.21148578290648,
+        "tracked_peak_allocated_gib": 20.41502041835338,
+        "tracked_current_before_close_gib": 18.74820272345096,
+        "hip_used_peak_sampled_gib": 19.009521484375,
+        "owned_session_peak_gib": 1.9296292485669255
+      },
+      "previous_cast_glue_diagnostic": {
+        "prefill_tok_s": 2378.627160754759,
+        "decode_tok_s": 102.02017465317716,
+        "tracked_peak_allocated_gib": 20.72752041835338,
+        "tracked_current_before_close_gib": 19.06070272345096,
+        "hip_used_peak_sampled_gib": 19.323974609375,
+        "owned_session_peak_gib": 2.2421292485669255
+      },
+      "parent": {
+        "prefill_tok_s": 2741.4888496031463,
+        "decode_tok_s": 113.04910466336666,
+        "peak_allocated_gib": 21.64404582977295,
+        "peak_reserved_gib": 21.708984375
+      },
+      "deltas_vs_previous": {
+        "prefill_pct": -0.29818734252988754,
+        "decode_pct": 0.18752284082994564,
+        "tracked_peak_allocated_gib_delta": -0.3125,
+        "owned_session_peak_gib_delta": -0.3125
+      },
+      "deltas_vs_parent": {
+        "prefill_pct": -13.494654702728038,
+        "decode_pct": -9.586647247434676,
+        "tracked_peak_allocated_gib_delta": -1.2290254114195704,
+        "tracked_peak_allocated_pct": -5.678353396059421
+      },
+      "memory_summary": {
+        "tracked_peak_allocated_bytes": 21920461261,
+        "tracked_peak_allocated_gib": 20.41502041835338,
+        "tracked_current_allocated_bytes_before_close": 20130729389,
+        "tracked_current_allocated_gib_before_close": 18.74820272345096,
+        "tracked_current_allocated_bytes_after_close": 0,
+        "tracked_current_allocated_gib_after_close": 0.0,
+        "owned_session_peak_bytes": 2071923629,
+        "owned_session_peak_gib": 1.9296292485669255,
+        "hip_used_peak_sampled_bytes": 20411318272,
+        "hip_used_peak_sampled_gib": 19.009521484375,
+        "notes": [
+          "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+          "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+          "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
+        ]
+      }
+    }
+  ],
+  "notes": [
+    "AOTriton remains opt-in with --attn-aotriton-min-tokens 512; default dispatch remains native until threshold sweep lands.",
+    "The fused rotate kernel preserves prior semantics by rounding BF16 attention * sigmoid(FP16 gate) to FP16 before PARO scaling/rotation, matching the old gate kernel followed by rotate1_fp16.",
+    "Throughput is neutral/slightly negative versus the previous single-run cast-glue diagnostic, so this is retained as a memory/launch-cleanup diagnostic rather than a performance win."
+  ]
+}

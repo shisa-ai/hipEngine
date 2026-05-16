@@ -12868,3 +12868,39 @@ Lineage hygiene for the kernel touch:
 python3 scripts/check_lineage.py --kind kernel --diff stat
 # DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9; no code copied from the drifted parent for this task. qwen35_rotary.hip change is a hipENGINE-only BF16-Q output specialization of the already-ported vector-position prelude.
 ```
+
+## 2026-05-16 — Task 18 AOTriton gate+rotate fusion diagnostic
+
+Implemented the smallest downstream fusion for the AOTriton single-request prefill tail: `paro_rotate1_bf16_gate_fp16(...)` reads BF16 AOTriton attention output plus FP16 gate, rounds `attention * sigmoid(gate)` to FP16, then applies the same PARO rotate1 math before the FP16 O projection.  The runtime AOTriton path now requests raw BF16 attention output, aliases the unused FP16 `scratch.gated_attn` bytes as the BF16 AOTriton output tensor, and skips the separate `aotriton_gate_mul_bf16_to_fp16` launch/intermediate on that path.  The older gate method remains available as a fallback helper.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/rotary/paro_rotate.py hipengine/kernels/hip_gfx1100/rotary/__init__.py hipengine/runtime/qwen35_paro.py tests/test_paro_rotate_plan.py
+python3 -m pytest tests/test_paro_rotate_plan.py -q
+# 3 passed
+python3 -m pytest tests/test_aotriton_discovery.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+# 67 passed
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/task18-fused-gate-rotate-alias-fixture-aotriton.json
+# passed=true, expected_match=true, max_kl=0.039568870612619614, top1_agreement=1.0
+```
+
+Diagnostic benchmark commands (performance_claim=false; AOTriton still opt-in at threshold 512):
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task18-fused-gate-rotate-alias-512-128.json
+# prefill=2312.857 tok/s, decode=101.703 tok/s, tracked_peak=18.581 GiB, owned_peak=1.554 GiB
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task18-fused-gate-rotate-alias-4k-128.json
+# prefill=2371.534 tok/s, decode=102.211 tok/s, tracked_peak=20.415 GiB, owned_peak=1.930 GiB
+```
+
+Compared with `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-cast-glue-diagnostic.json`, throughput is neutral/slightly negative (512 -0.2%, 4K -0.3%), but tracked peak memory drops by 0.039 GiB at 512 and 0.3125 GiB at 4K.  Retained as a launch/memory cleanup diagnostic, not a promoted throughput win; the P0 dense/shared-expert prefill gap remains the next likely target.
+
+Retained artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-gate-rotate-diagnostic.json`.
+
+Lineage hygiene:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9; no parent kernel code was copied for this task. The new rotate gate helper is a hipENGINE-only fusion of existing gate and rotate semantics.
+```
