@@ -1,4 +1,4 @@
-# Manifest pin for the AOTriton flash-attention runtime used by the gfx1100
+# Manifest pin for the AOTriton flash-attention runtime used by the gfx11
 # attention wrapper.  hipENGINE vendors a pruned copy of this pin under
 # aotriton_runtime/<version>/ and tracks the binary/image payloads with Git LFS.
 # The fetch helper at scripts/fetch_aotriton.sh remains the refresh/offline-cache

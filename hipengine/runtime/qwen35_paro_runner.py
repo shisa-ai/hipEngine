@@ -23,6 +23,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.backends import hip_target_arch_environment, hip_target_arch_for_backend
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
     lm_head_argmax_stage1_blocks,
@@ -127,6 +128,7 @@ class Qwen35ParoNextTokenRunner:
         index: WeightIndex | None = None,
         runtime: HipRuntime | None = None,
         shared_expert_format: str | None = None,
+        backend: str = "hip_gfx1100",
     ) -> None:
         self.model = Path(model)
         self.index = index or load_weight_index(self.model)
@@ -134,6 +136,8 @@ class Qwen35ParoNextTokenRunner:
         self.normalized_infos = _normalized_infos(self.index)
         self.runtime = runtime or get_hip_runtime()
         self.shared_expert_format = shared_expert_format
+        self.backend = backend
+        self.target_arch = hip_target_arch_for_backend(backend)
 
     def run_next_token(
         self,
@@ -749,6 +753,8 @@ class Qwen35ParoResidentSession:
         self.model = runner.model
         self.config = runner.config
         self.runtime = runner.runtime
+        self.backend = runner.backend
+        self.target_arch = runner.target_arch
         self.device = Device("hip", 0)
         self.max_sequence_length = int(max_sequence_length)
         self.block_size = int(block_size)
@@ -2166,34 +2172,40 @@ class Qwen35ParoResidentSession:
         from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import build_qwen35_rotary
         from hipengine.kernels.hip_gfx1100.wmma import build_paro_awq_wmma
 
-        build_kwargs = {
-            "load": True,
-            "compiler_version": self.compiler_version,
-            "require_cached": self.require_cached_build,
-        }
-        self.libraries = {
-            "attention": build_qwen35_paged_attn_decode(**build_kwargs),
-            "awq": build_paro_awq_gemv(**build_kwargs),
-            "cast": build_cast(**build_kwargs),
-            "combine": build_paro_combine(**build_kwargs),
-            "dense": build_dense_gemv(**build_kwargs),
-            "group_scatter": build_qwen35_moe_group_scatter(**build_kwargs),
-            "kv": build_qwen35_paged_kv_write(**build_kwargs),
-            "linear_conv": build_qwen35_linear_attn_conv(**build_kwargs),
-            "linear_gdn": build_qwen35_linear_attn_gdn(**build_kwargs),
-            "lm_head": build_lm_head(**build_kwargs),
-            "norm": build_qwen35_rmsnorm(**build_kwargs),
-            "qwen_rotary": build_qwen35_rotary(**build_kwargs),
-            "router": build_qwen35_router(**build_kwargs),
-            "rotate": build_paro_rotate(**build_kwargs),
-            "runtime_state": build_runtime_state(**build_kwargs),
-            "silu": build_paro_silu(**build_kwargs),
-            "w8a16": build_w8a16_linear(**build_kwargs),
-            "wmma": build_paro_awq_wmma(**build_kwargs),
-        }
-        if self.prefill_config.attn_aotriton_min_tokens > 0:
-            self.libraries["aotriton"] = build_aotriton_wrap(**build_kwargs)
-        self._emit("load_kernel_libraries_done", count=len(self.libraries))
+        with hip_target_arch_environment(self.target_arch):
+            build_kwargs = {
+                "load": True,
+                "compiler_version": self.compiler_version,
+                "require_cached": self.require_cached_build,
+            }
+            self.libraries = {
+                "attention": build_qwen35_paged_attn_decode(**build_kwargs),
+                "awq": build_paro_awq_gemv(**build_kwargs),
+                "cast": build_cast(**build_kwargs),
+                "combine": build_paro_combine(**build_kwargs),
+                "dense": build_dense_gemv(**build_kwargs),
+                "group_scatter": build_qwen35_moe_group_scatter(**build_kwargs),
+                "kv": build_qwen35_paged_kv_write(**build_kwargs),
+                "linear_conv": build_qwen35_linear_attn_conv(**build_kwargs),
+                "linear_gdn": build_qwen35_linear_attn_gdn(**build_kwargs),
+                "lm_head": build_lm_head(**build_kwargs),
+                "norm": build_qwen35_rmsnorm(**build_kwargs),
+                "qwen_rotary": build_qwen35_rotary(**build_kwargs),
+                "router": build_qwen35_router(**build_kwargs),
+                "rotate": build_paro_rotate(**build_kwargs),
+                "runtime_state": build_runtime_state(**build_kwargs),
+                "silu": build_paro_silu(**build_kwargs),
+                "w8a16": build_w8a16_linear(**build_kwargs),
+                "wmma": build_paro_awq_wmma(**build_kwargs),
+            }
+            if self.prefill_config.attn_aotriton_min_tokens > 0:
+                self.libraries["aotriton"] = build_aotriton_wrap(**build_kwargs)
+        self._emit(
+            "load_kernel_libraries_done",
+            count=len(self.libraries),
+            backend=self.backend,
+            target_arch=self.target_arch,
+        )
 
     def _load_embedding(self) -> None:
         self._emit("load_embedding_start")

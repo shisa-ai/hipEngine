@@ -14158,3 +14158,92 @@ Validation:
 python3 -m pytest -q --tb=short
 # 254 passed
 ```
+
+## 2026-05-17 — Initial gfx1151 backend port
+
+Ported the current gfx11 Qwen3.5/PARO implementation to a Strix Halo backend key without forking kernel bodies.
+
+### Scope
+
+- Reviewed `/home/lhl/github/shisa-ai/amd-gpu-tuning/docs/ROOFLINE-gfx1151.md`; relevant constraints are 40 CUs, native `gfx1151` code objects, lower LPDDR bandwidth, and no assumption that W7900 wrapper defaults are optimal.
+- Fixed `docs/source_lineage.json` external paths from `/home/lhl/amd-gpu-tuning/...` to `/home/lhl/github/shisa-ai/amd-gpu-tuning/...`, then ran:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`
+  - Result: expected DRIFT vs baseline `22405a9` in parent `qwen35_expert.hip`, `smoke.hip`, `paroquant_kernels.py`, and `paroquant_fusedw4.py`; no new kernel bodies were copied for this gfx1151 port.
+- Added explicit HIP target-arch plumbing in `hipengine/core/build.py`:
+  - `target_arch=` API and `HIPENGINE_HIP_ARCH` / `HIPENGINE_HIP_OFFLOAD_ARCH` env default.
+  - Emits `--offload-arch=gfx1151` and includes it in the build-cache key.
+  - Converts `HIPENGINE_ROCM_DEVICE_LIB_PATH` / `HIP_DEVICE_LIB_PATH` into explicit `--rocm-device-lib-path=...`, also included in the cache key. This avoids reusing artifacts built with a mismatched ROCm device-lib path.
+- Added `hipengine/kernels/backends.py` for backend→native-arch metadata.
+- Added `hipengine/kernels/hip_gfx1151/__init__.py` to register `hip_gfx1151` aliases for the current `hip_gfx1100` kernel key space. This is a bring-up baseline using the same proven kernel bodies compiled as native `gfx1151`, not a tuning claim.
+- Wired Qwen3.5/PARO generation and benchmark entrypoints:
+  - `hipengine.generation.qwen35_paro` now registers `backend="hip_gfx1151"` for `w4_paro`.
+  - `Qwen35ParoNextTokenRunner` carries `backend` and `target_arch`; resident session library builds run under the backend target-arch environment.
+  - `scripts/qwen35_paro_bench.py`, `scripts/smoke.py --mode qwen35-paro-generate-hip`, and `scripts/qwen35_paro_next_token.py` accept `--backend hip_gfx1151`.
+- AOTriton note: current vendored 0.11.2b payload is the pruned `amd-gfx11xx` forward-attention image set. If we need additional gfx1151-specific AOTriton images later, use the existing Git-LFS vendor/fetch flow rather than runtime downloads.
+- Added `scripts/__init__.py` so pytest imports repo scripts instead of the unrelated third-party `scripts` package in this Python environment.
+
+### Validation
+
+ROCm visibility:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -n 80
+```
+
+Result: HIP loads; visible GPU is `AMD RYZEN AI MAX+ 395 w/ Radeon 8060S`, target `gfx1151`.
+
+Build dry-run shows native arch in command:
+
+```bash
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/smoke.py --mode smoke-add-plan
+```
+
+Result command includes `--offload-arch=gfx1151 --rocm-device-lib-path=/opt/rocm/amdgcn/bitcode`; output cache key `smoke-8106da2da6b3d257`.
+
+Small gfx1151 GPU smokes:
+
+```bash
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/smoke.py --mode smoke-add-hip --n 1024
+# n=1024 max_abs=0.0
+
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16
+# rows=2 hidden_size=16 max_abs=0.0 bit_mismatch=0
+```
+
+Profiler smoke with cached build:
+
+```bash
+hipcc --version > /tmp/hipengine-gfx1151-hipcc-version.txt
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  rocprofv3 --kernel-trace -f csv -o /tmp/hipengine-gfx1151-rmsnorm-trace -- \
+    python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16 \
+      --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build
+```
+
+Trace file `/tmp/hipengine-gfx1151-rmsnorm-trace_kernel_trace.csv` shows expected kernel:
+`(anonymous namespace)::qwen35_rmsnorm_kernel(...)`, `End_Timestamp - Start_Timestamp = 4088 ns`.
+
+Test suite:
+
+```bash
+python3 -m py_compile hipengine/core/build.py hipengine/kernels/backends.py \
+  hipengine/kernels/hip_gfx1151/__init__.py hipengine/runtime/qwen35_paro_runner.py \
+  hipengine/generation/qwen35_paro.py scripts/qwen35_paro_bench.py scripts/smoke.py \
+  scripts/qwen35_paro_next_token.py tests/test_gfx1151_backend.py
+python3 -m pytest tests/test_build.py tests/test_gfx1151_backend.py tests/test_llm_generate.py -q --tb=short
+# 13 passed
+python3 -m pytest -q --tb=short
+# all tests passed
+```
+
+### Notes
+
+- First raw build without a ROCm device-lib path failed with `cannot find ROCm device library`; building with a mismatched mambaforge device-lib path produced a smoke-launch segfault. Retained validation uses `/opt/rocm/amdgcn/bitcode`, and the build cache now keys explicit `--rocm-device-lib-path` so these artifacts do not collide.
+- No throughput benchmark was run or claimed in this entry; this is an initial correctness/build/backend port.

@@ -22,6 +22,12 @@ DEFAULT_MODEL = (
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--backend",
+        choices=("hip_gfx1100", "hip_gfx1151"),
+        default="hip_gfx1100",
+        help="Kernel backend key; hip_gfx1151 builds native gfx1151 code objects.",
+    )
     parser.add_argument("--prompt", default="Hello")
     parser.add_argument("--token-id", type=int, default=None, help="Bypass tokenizer and decode this single token id")
     parser.add_argument("--max-layers", type=int, default=0, help="Debug limit; 0 means all layers")
@@ -46,6 +52,7 @@ def main() -> int:
         os.environ["OMP_NUM_THREADS"] = threads
         os.environ["MKL_NUM_THREADS"] = threads
 
+    from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner
 
     def emit_progress(payload: dict) -> None:
@@ -56,16 +63,17 @@ def main() -> int:
         if line is not None:
             print(line, file=sys.stderr, flush=True)
 
-    runner = Qwen35ParoNextTokenRunner(args.model)
-    result = runner.run_next_token(
-        prompt=args.prompt,
-        token_id=args.token_id,
-        max_layers=args.max_layers,
-        lm_head_chunk=args.lm_head_chunk,
-        progress=emit_progress if args.progress else None,
-        resident_layers=args.resident_layers,
-        lm_head=args.lm_head,
-    )
+    runner = Qwen35ParoNextTokenRunner(args.model, backend=args.backend)
+    with hip_target_arch_environment(runner.target_arch):
+        result = runner.run_next_token(
+            prompt=args.prompt,
+            token_id=args.token_id,
+            max_layers=args.max_layers,
+            lm_head_chunk=args.lm_head_chunk,
+            progress=emit_progress if args.progress else None,
+            resident_layers=args.resident_layers,
+            lm_head=args.lm_head,
+        )
     print(json.dumps(result.to_json_dict(), ensure_ascii=False))
     return 0
 

@@ -78,6 +78,12 @@ def main() -> int:
         default=DEFAULT_QWEN35_PARO_MODEL,
         help="Model path for qwen35-paro-generate-hip.",
     )
+    parser.add_argument(
+        "--backend",
+        choices=("hip_gfx1100", "hip_gfx1151"),
+        default="hip_gfx1100",
+        help="Backend key for qwen35-paro-generate-hip.",
+    )
     parser.add_argument("--prompt", default="Hello", help="Prompt for qwen35-paro-generate-hip.")
     parser.add_argument("--max-tokens", type=int, default=1, help="Max tokens for generate smoke.")
     parser.add_argument(
@@ -108,7 +114,7 @@ def main() -> int:
     if args.mode == "smoke-add-plan":
         return smoke_add_plan_smoke()
     if args.mode == "qwen35-paro-generate-hip":
-        return qwen35_paro_generate_hip_smoke(args.model, args.prompt, args.max_tokens)
+        return qwen35_paro_generate_hip_smoke(args.model, args.prompt, args.max_tokens, backend=args.backend)
     compiler_version = None
     if args.compiler_version_file is not None:
         compiler_version = _read_compiler_version(args.compiler_version_file)
@@ -346,10 +352,10 @@ def smoke_add_plan_smoke() -> int:
     return 0
 
 
-def qwen35_paro_generate_hip_smoke(model: str, prompt: str, max_tokens: int) -> int:
+def qwen35_paro_generate_hip_smoke(model: str, prompt: str, max_tokens: int, *, backend: str = "hip_gfx1100") -> int:
     from hipengine import LLM, SamplingParams
 
-    llm = LLM(model, backend="hip_gfx1100", quant="w4_paro")
+    llm = LLM(model, backend=backend, quant="w4_paro")
     outputs = llm.generate(
         prompt,
         SamplingParams(max_tokens=max_tokens, temperature=0.0, top_p=1.0),

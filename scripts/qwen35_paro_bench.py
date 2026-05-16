@@ -37,6 +37,12 @@ DEFAULT_MODEL = (
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--backend",
+        choices=("hip_gfx1100", "hip_gfx1151"),
+        default="hip_gfx1100",
+        help="Kernel backend key; hip_gfx1151 builds native gfx1151 code objects.",
+    )
     parser.add_argument("--prompt", default="Hello")
     parser.add_argument("--token-id", type=int, default=9707, help="Repeated token id for fixed-length prompt")
     parser.add_argument("--prompt-length", type=int, default=16)
@@ -137,7 +143,11 @@ def main() -> int:
     progress = _emit_progress if args.progress else None
     roctx = _Roctx(enabled=args.roctx or args.rocprof_selected_region != "none")
     shared_expert_format = None if args.shared_expert_format == "auto" else args.shared_expert_format
-    runner = Qwen35ParoNextTokenRunner(model, shared_expert_format=shared_expert_format)
+    runner = Qwen35ParoNextTokenRunner(
+        model,
+        shared_expert_format=shared_expert_format,
+        backend=args.backend,
+    )
     reset_memory_stats()
     memory_snapshots: dict[str, Any] = {
         "before_load": _memory_snapshot("before_load", runner.runtime),
@@ -248,7 +258,8 @@ def main() -> int:
         "schema": 1,
         "model": str(model),
         "quant": "w4_paro",
-        "backend": "hip_gfx1100",
+        "backend": args.backend,
+        "target_arch": runner.target_arch,
         "mode": "actual_autoregressive_resident",
         "prompt_source": "repeated_token_id" if args.token_id is not None else "prompt_tokenized_repeat",
         "prompt": args.prompt,

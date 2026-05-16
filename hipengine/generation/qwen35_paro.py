@@ -28,6 +28,7 @@ class Qwen35ParoOneTokenGenerator:
     model_path: str | Path
     weight_index: WeightIndex
     model_plugin: Any
+    backend: str = "hip_gfx1100"
     lm_head_chunk: int = 4096
     _runner: Qwen35ParoNextTokenRunner | None = field(default=None, init=False, repr=False)
 
@@ -73,7 +74,11 @@ class Qwen35ParoOneTokenGenerator:
 
     def _get_runner(self) -> Qwen35ParoNextTokenRunner:
         if self._runner is None:
-            self._runner = Qwen35ParoNextTokenRunner(self.model_path, index=self.weight_index)
+            self._runner = Qwen35ParoNextTokenRunner(
+                self.model_path,
+                index=self.weight_index,
+                backend=self.backend,
+            )
         return self._runner
 
 
@@ -97,6 +102,21 @@ def make_qwen35_paro_one_token_generator(
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
+        backend="hip_gfx1100",
+    )
+
+
+def make_qwen35_paro_one_token_generator_gfx1151(
+    *,
+    model_path: str | Path,
+    weight_index: WeightIndex,
+    model_plugin: Any,
+) -> Qwen35ParoOneTokenGenerator:
+    return Qwen35ParoOneTokenGenerator(
+        model_path=model_path,
+        weight_index=weight_index,
+        model_plugin=model_plugin,
+        backend="hip_gfx1151",
     )
 
 
@@ -105,4 +125,10 @@ register_text_generator(
     backend="hip_gfx1100",
     quant="w4_paro",
     factory=make_qwen35_paro_one_token_generator,
+)
+register_text_generator(
+    model="qwen3_5_moe_paro",
+    backend="hip_gfx1151",
+    quant="w4_paro",
+    factory=make_qwen35_paro_one_token_generator_gfx1151,
 )

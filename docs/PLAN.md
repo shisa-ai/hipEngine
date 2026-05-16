@@ -414,7 +414,7 @@ The kernel layer sees `hipengine.Tensor` (raw device ptr + metadata) on the acti
 │    ├─ norm/ rotary/ — rmsnorm, rotary                            │
 │    ├─ fused/        — silu_mul, gate_combine, weighted_sum       │
 │    └─ common/       — helpers.cuh + extension.cpp aggregator     │
-│  • kernels/hip_gfx1151/   — Strix Halo (future)                  │
+│  • kernels/hip_gfx1151/   — Strix Halo / gfx1151 initial port    │
 │  • kernels/cuda_sm86/     — NVIDIA (future)                      │
 │  • kernels/cpu_reference/ — torch-free numpy, correctness        │
 │  • kernels/registry.py    — (backend, layer, quant, variant)     │
@@ -671,7 +671,7 @@ The monolithic `qwen35_expert.hip` + `paroquant_kernels.py` embedded string are 
 
 **Correctness gate for the split:** after partitioning, verify (a) every kernel name still resolves via the Python extension module, (b) `rocprofv3 --kernel-trace` reports the same kernel set with matching `DurationNs` distribution on the Qwen3.6-35B-A3B decode smoke, (c) KL ≤ 0.05 and top-1 ≥ 90% vs the monolithic build on the correctness fixtures.
 
-Build system: **no `torch.utils.cpp_extension`**. hipENGINE's own build layer (`hipengine.core.build`) calls `hipcc` (or `nvcc` for CUDA backends) via `subprocess.run`, links with `ctypes.CDLL`, and caches by source+flags hash. Three HIP profiles adopted from `nano-vllm-amd/nanovllm/native/amd/extension.py` — `decode` (`-mllvm -amdgpu-unroll-threshold-local=600` + `-mcumode`, wave32; CU mode is not wave64), `prefill` (`-mllvm -amdgpu-unroll-threshold-local=600`, WGP/wave32), and `baseline` (no flags, wave32). The edit→bench loop stays at ~5–10 s per kernel change.
+Build system: **no `torch.utils.cpp_extension`**. hipENGINE's own build layer (`hipengine.core.build`) calls `hipcc` (or `nvcc` for CUDA backends) via `subprocess.run`, links with `ctypes.CDLL`, and caches by source+flags hash. Three HIP profiles adopted from `nano-vllm-amd/nanovllm/native/amd/extension.py` — `decode` (`-mllvm -amdgpu-unroll-threshold-local=600` + `-mcumode`, wave32; CU mode is not wave64), `prefill` (`-mllvm -amdgpu-unroll-threshold-local=600`, WGP/wave32), and `baseline` (no flags, wave32). Native HIP target arch (`--offload-arch=gfx1100` / `gfx1151`) is explicit through `target_arch` or `HIPENGINE_HIP_ARCH` and participates in the cache key. The edit→bench loop stays at ~5–10 s per kernel change.
 
 ### Reference backend for correctness
 

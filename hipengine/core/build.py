@@ -14,6 +14,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Sequence
 
+_ENV_HIP_ARCH = "HIPENGINE_HIP_ARCH"
+_ENV_HIP_OFFLOAD_ARCH = "HIPENGINE_HIP_OFFLOAD_ARCH"
+_ENV_ROCM_DEVICE_LIB_PATH = "HIPENGINE_ROCM_DEVICE_LIB_PATH"
+_ENV_HIP_DEVICE_LIB_PATH = "HIP_DEVICE_LIB_PATH"
+
 CompilerKind = Literal["hip", "cuda"]
 ProfileName = Literal["decode", "prefill", "baseline"]
 
@@ -39,6 +44,7 @@ class BuildArtifact:
     flags: tuple[str, ...]
     compiler: str
     compiler_version: str
+    target_arch: str | None = None
 
 
 PROFILES: dict[ProfileName, BuildProfile] = {
@@ -66,9 +72,19 @@ def plan_hip_build(
     compiler_version: str | None = None,
     include_dirs: Sequence[str | Path] = (),
     extra_flags: Sequence[str] = (),
+    target_arch: str | None = None,
     output_name: str | None = None,
 ) -> BuildArtifact:
-    """Return the deterministic build artifact plan without invoking a compiler."""
+    """Return the deterministic build artifact plan without invoking a compiler.
+
+    ``target_arch`` is the native HIP offload architecture, e.g. ``gfx1100`` or
+    ``gfx1151``. When omitted, ``HIPENGINE_HIP_ARCH`` /
+    ``HIPENGINE_HIP_OFFLOAD_ARCH`` provide a process-wide default. The resulting
+    ``--offload-arch=...`` flag is part of the cache key so gfx1100 and gfx1151
+    code objects never share artifacts. When a ROCm device-library path is provided
+    through ``HIPENGINE_ROCM_DEVICE_LIB_PATH`` / ``HIP_DEVICE_LIB_PATH``, it is also
+    emitted as an explicit compiler flag and included in the cache key.
+    """
 
     if not family:
         raise ValueError("family must be non-empty")
@@ -78,7 +94,12 @@ def plan_hip_build(
         raise ValueError("at least one source is required")
     compiler_version = compiler_version or f"{compiler}:unprobed"
     include_flags = tuple(f"-I{Path(path).expanduser()}" for path in include_dirs)
-    flags = _maybe_disable_unroll600((*build_profile.flags, *include_flags, *tuple(extra_flags)))
+    target_arch = _normalize_target_arch(target_arch or _target_arch_from_environment())
+    arch_flags = (f"--offload-arch={target_arch}",) if target_arch is not None else ()
+    device_lib_flags = _rocm_device_lib_flags()
+    flags = _maybe_disable_unroll600(
+        (*build_profile.flags, *arch_flags, *device_lib_flags, *include_flags, *tuple(extra_flags))
+    )
     cache_key = _cache_key(
         sources=source_paths,
         flags=flags,
@@ -109,6 +130,7 @@ def plan_hip_build(
         flags=flags,
         compiler=compiler,
         compiler_version=compiler_version,
+        target_arch=target_arch,
     )
 
 
@@ -122,6 +144,7 @@ def build_hip(
     compiler_version: str | None = None,
     include_dirs: Sequence[str | Path] = (),
     extra_flags: Sequence[str] = (),
+    target_arch: str | None = None,
     output_name: str | None = None,
     force: bool = False,
     dry_run: bool = False,
@@ -155,6 +178,7 @@ def build_hip(
         compiler_version=version,
         include_dirs=include_dirs,
         extra_flags=extra_flags,
+        target_arch=target_arch,
         output_name=output_name,
     )
     if dry_run:
@@ -219,6 +243,29 @@ def _compiler_env_prefix(compiler: str) -> str:
     basename = Path(compiler).name or compiler
     safe = "".join(char if char.isalnum() else "_" for char in basename).upper()
     return f"HIPENGINE_{safe}"
+
+
+def _target_arch_from_environment() -> str | None:
+    return os.environ.get(_ENV_HIP_ARCH) or os.environ.get(_ENV_HIP_OFFLOAD_ARCH)
+
+
+def _rocm_device_lib_flags() -> tuple[str, ...]:
+    path = os.environ.get(_ENV_ROCM_DEVICE_LIB_PATH) or os.environ.get(_ENV_HIP_DEVICE_LIB_PATH)
+    if not path:
+        return ()
+    resolved = str(Path(path).expanduser())
+    return (f"--rocm-device-lib-path={resolved}",)
+
+
+def _normalize_target_arch(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if any(char.isspace() for char in stripped):
+        raise ValueError(f"HIP target architecture must not contain whitespace: {value!r}")
+    return stripped
 
 
 def _maybe_disable_unroll600(flags: tuple[str, ...]) -> tuple[str, ...]:
@@ -298,6 +345,7 @@ def _write_manifest(artifact: BuildArtifact) -> None:
                 f"wavefront={artifact.profile.wavefront}",
                 f"cache_key={artifact.cache_key}",
                 f"compiler={artifact.compiler}",
+                f"target_arch={artifact.target_arch or ''}",
                 "compiler_version<<EOF",
                 artifact.compiler_version,
                 "EOF",
