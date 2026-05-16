@@ -14316,3 +14316,95 @@ resident-runner diagnostic rather than a promoted public `LLM.generate()` row,
 
 Artifact:
 `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p12-shared-gate-up-token-tile-diagnostic.json`.
+
+## 2026-05-17 — P1.3 legacy W8A16 shared down+combine token tiling retained
+
+Task #6 prototyped the shared-expert down projection plus fused combine/residual
+prefill path. To preserve the W8A16 memory advantage and the existing fused tail,
+the retained implementation token-tiles the quantized down+combine kernel rather
+than materializing fp16 dense down weights or a separate shared-output scratch:
+
+- Added `w8a16_shared_down_combine_residual_fp16_token_tiled_kernel<2/4>` in
+  `hipengine/kernels/hip_gfx1100/quant/w8a16_linear.hip` plus ctypes wrappers.
+- Runtime default: legacy W8A16 shared down+combine uses `token_tile=2` when
+  `tokens >= 2`; decode `tokens == 1` stays untiled.
+- Existing `w8a16_shared_down_combine_residual_fp16(...)` remains fallback and
+  opt-out (`HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE=0`).
+- The tail semantics are unchanged: precompute shared sigmoid in-place, compute
+  lowp W8A16 shared down, then write `residual + selected + gate * shared`.
+- Shisa packed sidecars are intentionally unaffected; they continue through W4
+  shared expert plus `shared_gate_combine_residual_batch_out_fp16`.
+
+Microcheck:
+
+```bash
+# random small shape tokens=5 hidden=17 intermediate=32 gate_stride=9
+# tile2 max_abs 0.0 vs original fused down+combine kernel
+# tile4 max_abs 0.0 vs original fused down+combine kernel
+```
+
+Validation / correctness:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/w8a16_linear.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short
+# 40 passed
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p13-shared-down-combine-token-tile-20260517/p13_down_tile2_fixture_gate.json
+# passed=true, max_kl=0.0395688706, top1_agreement=1.0, generated IDs match fixture
+```
+
+Profiler smoke (cache-only build, one layer, prompt 512) confirmed the new kernel
+launched:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-file /tmp/hipengine-p13-shared-down-combine-token-tile-20260517/rocprof/p13_down_tile2 -- \
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --max-layers 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p13-shared-down-combine-token-tile-20260517/rocprof/p13_down_tile2_bench.json
+# trace includes void (anonymous namespace)::w8a16_shared_down_combine_residual_fp16_token_tiled_kernel<2>(...), DurationNs 309524
+```
+
+Benchmark protocol on W7900/gfx1100, all rows used cache-only HIP builds:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-legacy-or-shisa-packed> \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p13-shared-down-combine-token-tile-20260517/<label>.json
+# candidate rows set HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE=2 or 4
+```
+
+Two-run medians, `HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE=2` vs the
+previous no-down-token-tile default (which already included P1.2 gate/up tiling):
+
+| model/path | workload | prefill Δ | decode Δ | peak GiB | generated/logit sanity |
+| --- | ---: | ---: | ---: | ---: | --- |
+| z-lab legacy W8A16 | 512/128 | +0.93% | +0.09% | 18.587 | first two generated IDs/logits match |
+| z-lab legacy W8A16 | 4096/128 | +0.91% | -0.14% | 20.458 | first two generated IDs/logits match |
+| shisa stripped packed | 512/128 | -0.17% | +0.25% | 18.535 | packed path unaffected/noise |
+| shisa stripped packed | 4096/128 | -0.01% | -0.00% | 20.406 | packed path unaffected/noise |
+
+Tile4 was rejected after a one-run probe because it regressed z-lab legacy 512
+and 4K. A final no-env post-change pass confirmed the default path is wired.
+Because this remains a resident-runner diagnostic rather than a promoted public
+`LLM.generate()` row, `performance_claim=false` in the artifact.
+
+Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p13-shared-down-combine-token-tile-diagnostic.json`.

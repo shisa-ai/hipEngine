@@ -80,6 +80,7 @@ from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
     w8a16_linear_bf16_lowp_out,
     w8a16_linear_fp16_lowp_out,
     w8a16_shared_down_combine_residual_fp16,
+    w8a16_shared_down_combine_residual_fp16_token_tiled,
     w8a16_shared_gate_sigmoid_fp32,
     w8a16_shared_gate_up_silu_fp16,
     w8a16_shared_gate_up_silu_fp16_token_tiled,
@@ -3770,23 +3771,44 @@ class Qwen35ParoDecodeState:
             library=w8a16_library,
             runtime=self.runtime,
         )
-        w8a16_shared_down_combine_residual_fp16(
-            scratch.shared_intermediate.ptr,
-            self.tensor(f"{prefix}.down_weight_w8a16").ptr,
-            self.tensor(f"{prefix}.down_weight_w8a16_scale").ptr,
-            scratch.selected_out.ptr,
-            shared_gate_logits_ptr,
-            residual.ptr,
-            scratch.moe_out.ptr,
-            tokens,
-            self.config.hidden_size,
-            self.config.shared_expert_intermediate_size,
-            self.config.num_experts + 1,
-            threads=threads,
-            stream=stream,
-            library=w8a16_library,
-            runtime=self.runtime,
-        )
+        token_tile = _use_shared_down_combine_prefill_token_tiled(tokens)
+        if token_tile:
+            w8a16_shared_down_combine_residual_fp16_token_tiled(
+                scratch.shared_intermediate.ptr,
+                self.tensor(f"{prefix}.down_weight_w8a16").ptr,
+                self.tensor(f"{prefix}.down_weight_w8a16_scale").ptr,
+                scratch.selected_out.ptr,
+                shared_gate_logits_ptr,
+                residual.ptr,
+                scratch.moe_out.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.shared_expert_intermediate_size,
+                self.config.num_experts + 1,
+                token_tile=token_tile,
+                threads=threads,
+                stream=stream,
+                library=w8a16_library,
+                runtime=self.runtime,
+            )
+        else:
+            w8a16_shared_down_combine_residual_fp16(
+                scratch.shared_intermediate.ptr,
+                self.tensor(f"{prefix}.down_weight_w8a16").ptr,
+                self.tensor(f"{prefix}.down_weight_w8a16_scale").ptr,
+                scratch.selected_out.ptr,
+                shared_gate_logits_ptr,
+                residual.ptr,
+                scratch.moe_out.ptr,
+                tokens,
+                self.config.hidden_size,
+                self.config.shared_expert_intermediate_size,
+                self.config.num_experts + 1,
+                threads=threads,
+                stream=stream,
+                library=w8a16_library,
+                runtime=self.runtime,
+            )
         return scratch.moe_out
 
     def shared_expert_w8a16_fp16(
@@ -5146,6 +5168,28 @@ def _shared_gate_up_prefill_min_tokens() -> int:
 def _use_shared_gate_up_prefill_token_tiled(tokens: int) -> int:
     tile = _shared_gate_up_prefill_token_tile()
     return tile if tile > 0 and tokens >= _shared_gate_up_prefill_min_tokens() else 0
+
+
+def _shared_down_combine_prefill_token_tile() -> int:
+    value = os.environ.get("HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE")
+    if value is None or value.strip() == "":
+        return 2
+    tile = int(value)
+    if tile not in (0, 2, 4):
+        raise ValueError("HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE must be 0, 2, or 4")
+    return tile
+
+
+def _shared_down_combine_prefill_min_tokens() -> int:
+    value = os.environ.get("HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_MIN_TOKENS")
+    if value is None or value.strip() == "":
+        return 2
+    return max(2, int(value))
+
+
+def _use_shared_down_combine_prefill_token_tiled(tokens: int) -> int:
+    tile = _shared_down_combine_prefill_token_tile()
+    return tile if tile > 0 and tokens >= _shared_down_combine_prefill_min_tokens() else 0
 
 
 def _library_for(library, family: str):

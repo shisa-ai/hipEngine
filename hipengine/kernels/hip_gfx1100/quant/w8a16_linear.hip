@@ -539,6 +539,151 @@ __global__ void w8a16_shared_down_combine_residual_fp16_kernel(
 }
 
 
+template <int TOKEN_TILE>
+__global__ void w8a16_shared_down_combine_residual_fp16_token_tiled_kernel(
+    const half_t* shared_intermediate,
+    const int8_t* down_weight,
+    const float* down_scale,
+    const half_t* selected,
+    const float* shared_gate,
+    const half_t* residual,
+    half_t* out,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t intermediate_size,
+    int64_t gate_stride) {
+  extern __shared__ float partial[];
+  const int64_t row_base = static_cast<int64_t>(blockIdx.x) * 8;
+  const int64_t token_base = static_cast<int64_t>(blockIdx.y) * TOKEN_TILE;
+  if (row_base >= hidden_size || token_base >= tokens) {
+    return;
+  }
+
+  bool active_row[8];
+  int64_t down_rows[8];
+#pragma unroll
+  for (int slot = 0; slot < 8; ++slot) {
+    const int64_t row = row_base + slot;
+    active_row[slot] = row < hidden_size;
+    down_rows[slot] = row * intermediate_size;
+  }
+
+  bool active_token[TOKEN_TILE];
+#pragma unroll
+  for (int t = 0; t < TOKEN_TILE; ++t) {
+    active_token[t] = token_base + t < tokens;
+  }
+
+  float acc[TOKEN_TILE][8];
+#pragma unroll
+  for (int t = 0; t < TOKEN_TILE; ++t) {
+#pragma unroll
+    for (int slot = 0; slot < 8; ++slot) {
+      acc[t][slot] = 0.0f;
+    }
+  }
+
+  const int64_t vec_stride = blockDim.x * 8;
+  for (int64_t j = threadIdx.x * 8; j + 7 < intermediate_size; j += vec_stride) {
+#pragma unroll
+    for (int slot = 0; slot < 8; ++slot) {
+      if (active_row[slot]) {
+        const int64_t w_off = down_rows[slot] + j;
+        const float w0 = static_cast<float>(static_cast<int>(down_weight[w_off + 0]));
+        const float w1 = static_cast<float>(static_cast<int>(down_weight[w_off + 1]));
+        const float w2 = static_cast<float>(static_cast<int>(down_weight[w_off + 2]));
+        const float w3 = static_cast<float>(static_cast<int>(down_weight[w_off + 3]));
+        const float w4 = static_cast<float>(static_cast<int>(down_weight[w_off + 4]));
+        const float w5 = static_cast<float>(static_cast<int>(down_weight[w_off + 5]));
+        const float w6 = static_cast<float>(static_cast<int>(down_weight[w_off + 6]));
+        const float w7 = static_cast<float>(static_cast<int>(down_weight[w_off + 7]));
+#pragma unroll
+        for (int t = 0; t < TOKEN_TILE; ++t) {
+          if (active_token[t]) {
+            const int64_t m_off = (token_base + t) * intermediate_size + j;
+            const float m0 = static_cast<float>(shared_intermediate[m_off + 0]);
+            const float m1 = static_cast<float>(shared_intermediate[m_off + 1]);
+            const float m2 = static_cast<float>(shared_intermediate[m_off + 2]);
+            const float m3 = static_cast<float>(shared_intermediate[m_off + 3]);
+            const float m4 = static_cast<float>(shared_intermediate[m_off + 4]);
+            const float m5 = static_cast<float>(shared_intermediate[m_off + 5]);
+            const float m6 = static_cast<float>(shared_intermediate[m_off + 6]);
+            const float m7 = static_cast<float>(shared_intermediate[m_off + 7]);
+            acc[t][slot] += m0 * w0;
+            acc[t][slot] += m1 * w1;
+            acc[t][slot] += m2 * w2;
+            acc[t][slot] += m3 * w3;
+            acc[t][slot] += m4 * w4;
+            acc[t][slot] += m5 * w5;
+            acc[t][slot] += m6 * w6;
+            acc[t][slot] += m7 * w7;
+          }
+        }
+      }
+    }
+  }
+  for (int64_t j = (intermediate_size & ~7) + threadIdx.x; j < intermediate_size; j += blockDim.x) {
+#pragma unroll
+    for (int slot = 0; slot < 8; ++slot) {
+      if (active_row[slot]) {
+        const float w = static_cast<float>(static_cast<int>(down_weight[down_rows[slot] + j]));
+#pragma unroll
+        for (int t = 0; t < TOKEN_TILE; ++t) {
+          if (active_token[t]) {
+            const float mid = static_cast<float>(shared_intermediate[(token_base + t) * intermediate_size + j]);
+            acc[t][slot] += mid * w;
+          }
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int t = 0; t < TOKEN_TILE; ++t) {
+#pragma unroll
+    for (int slot = 0; slot < 8; ++slot) {
+      partial[(t * 8 + slot) * blockDim.x + threadIdx.x] = acc[t][slot];
+    }
+  }
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+#pragma unroll
+      for (int t = 0; t < TOKEN_TILE; ++t) {
+#pragma unroll
+        for (int slot = 0; slot < 8; ++slot) {
+          partial[(t * 8 + slot) * blockDim.x + threadIdx.x] +=
+              partial[(t * 8 + slot) * blockDim.x + threadIdx.x + stride];
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  if (threadIdx.x == 0) {
+#pragma unroll
+    for (int t = 0; t < TOKEN_TILE; ++t) {
+      if (active_token[t]) {
+        const int64_t token = token_base + t;
+        const float gate = shared_gate[token * gate_stride];
+        const int64_t out_offset = token * hidden_size;
+#pragma unroll
+        for (int slot = 0; slot < 8; ++slot) {
+          if (active_row[slot]) {
+            const int64_t row = row_base + slot;
+            const int64_t idx = out_offset + row;
+            const half_t shared_lowp = static_cast<half_t>(partial[(t * 8 + slot) * blockDim.x] * down_scale[row]);
+            const float value = static_cast<float>(residual[idx]) + static_cast<float>(selected[idx]) + gate * static_cast<float>(shared_lowp);
+            out[idx] = static_cast<half_t>(value);
+          }
+        }
+      }
+    }
+  }
+}
+
+
 __global__ void w8a16_linear_f32_kernel(
     const float* hidden_states,
     const int8_t* weight,
@@ -819,6 +964,84 @@ extern "C" int hipengine_w8a16_shared_down_combine_residual_fp16(
       shared_gate,
       residual,
       out,
+      hidden_size,
+      intermediate_size,
+      gate_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_w8a16_shared_down_combine_residual_fp16_token_tile2(
+    const half_t* shared_intermediate,
+    const int8_t* down_weight,
+    const float* down_scale,
+    const half_t* selected,
+    const float* shared_gate,
+    const half_t* residual,
+    half_t* out,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t intermediate_size,
+    int64_t gate_stride,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || hidden_size <= 0 || intermediate_size <= 0 || gate_stride <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (w8a16_shared_down_combine_residual_fp16_token_tiled_kernel<2>),
+      dim3(
+          static_cast<unsigned int>((hidden_size + 7) / 8),
+          static_cast<unsigned int>((tokens + 1) / 2)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(16 * threads) * sizeof(float),
+      stream,
+      shared_intermediate,
+      down_weight,
+      down_scale,
+      selected,
+      shared_gate,
+      residual,
+      out,
+      tokens,
+      hidden_size,
+      intermediate_size,
+      gate_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_w8a16_shared_down_combine_residual_fp16_token_tile4(
+    const half_t* shared_intermediate,
+    const int8_t* down_weight,
+    const float* down_scale,
+    const half_t* selected,
+    const float* shared_gate,
+    const half_t* residual,
+    half_t* out,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t intermediate_size,
+    int64_t gate_stride,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || hidden_size <= 0 || intermediate_size <= 0 || gate_stride <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (w8a16_shared_down_combine_residual_fp16_token_tiled_kernel<4>),
+      dim3(
+          static_cast<unsigned int>((hidden_size + 7) / 8),
+          static_cast<unsigned int>((tokens + 3) / 4)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(32 * threads) * sizeof(float),
+      stream,
+      shared_intermediate,
+      down_weight,
+      down_scale,
+      selected,
+      shared_gate,
+      residual,
+      out,
+      tokens,
       hidden_size,
       intermediate_size,
       gate_stride);

@@ -19,6 +19,8 @@ _SYMBOL_SHARED_GATE_UP_SILU_FP16_TOKEN_TILE2 = "hipengine_w8a16_shared_gate_up_s
 _SYMBOL_SHARED_GATE_UP_SILU_FP16_TOKEN_TILE4 = "hipengine_w8a16_shared_gate_up_silu_fp16_token_tile4"
 _SYMBOL_SHARED_GATE_SIGMOID_FP32 = "hipengine_w8a16_shared_gate_sigmoid_fp32"
 _SYMBOL_SHARED_DOWN_COMBINE_RESIDUAL_FP16 = "hipengine_w8a16_shared_down_combine_residual_fp16"
+_SYMBOL_SHARED_DOWN_COMBINE_RESIDUAL_FP16_TOKEN_TILE2 = "hipengine_w8a16_shared_down_combine_residual_fp16_token_tile2"
+_SYMBOL_SHARED_DOWN_COMBINE_RESIDUAL_FP16_TOKEN_TILE4 = "hipengine_w8a16_shared_down_combine_residual_fp16_token_tile4"
 _SYMBOL_F32_F32 = "hipengine_w8a16_linear_f32_f32_out"
 _ALLOWED_THREADS = {64, 128, 256, 512}
 
@@ -296,6 +298,55 @@ def w8a16_shared_down_combine_residual_fp16(
     )
 
 
+def w8a16_shared_down_combine_residual_fp16_token_tiled(
+    shared_intermediate_ptr: int,
+    down_weight_ptr: int,
+    down_scale_ptr: int,
+    selected_ptr: int,
+    shared_gate_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    intermediate_size: int,
+    gate_stride: int,
+    *,
+    token_tile: int,
+    threads: int = 64,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch token-tiled FP16 W8A16 shared down + shared-gate/residual combine."""
+
+    symbols = {
+        2: _SYMBOL_SHARED_DOWN_COMBINE_RESIDUAL_FP16_TOKEN_TILE2,
+        4: _SYMBOL_SHARED_DOWN_COMBINE_RESIDUAL_FP16_TOKEN_TILE4,
+    }
+    try:
+        symbol = symbols[int(token_tile)]
+    except KeyError as exc:
+        raise ValueError("token_tile must be 2 or 4") from exc
+    _launch_shared_down_combine_residual(
+        symbol,
+        shared_intermediate_ptr,
+        down_weight_ptr,
+        down_scale_ptr,
+        selected_ptr,
+        shared_gate_ptr,
+        residual_ptr,
+        out_ptr,
+        tokens,
+        hidden_size,
+        intermediate_size,
+        gate_stride,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def w8a16_linear_f32_f32_out(
     hidden_ptr: int,
     weight_ptr: int,
@@ -363,6 +414,11 @@ def register_w8a16_linear_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey("hip_gfx1100", "w8a16_linear", quant, "shared_down_combine_residual_fp16"),
             w8a16_shared_down_combine_residual_fp16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "w8a16_linear", quant, "shared_down_combine_residual_fp16_token_tiled"),
+            w8a16_shared_down_combine_residual_fp16_token_tiled,
             replace=replace,
         )
         register(

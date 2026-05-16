@@ -1592,6 +1592,49 @@ def test_qwen35_decode_state_uses_token_tiled_legacy_shared_gate_up_prefill(monk
     assert kwargs == {"token_tile": 4, "threads": 64, "stream": 0x55, "library": None, "runtime": runtime}
 
 
+def test_qwen35_decode_state_uses_token_tiled_legacy_shared_down_prefill(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _legacy_prepared_moe_weights())
+    scratch = state.reserve_moe_grouped_prefill_scratch(tokens=4, activation_dtype="fp16")
+    residual = _tensor(0xD100, (4, 4096), "fp16")
+    calls = []
+
+    def fake_sigmoid(*args, **kwargs):
+        calls.append(("sigmoid", args, kwargs))
+
+    def fake_tiled(*args, **kwargs):
+        calls.append(("tiled", args, kwargs))
+
+    monkeypatch.setenv("HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE", "4")
+    monkeypatch.setattr(qwen_runtime, "w8a16_shared_gate_sigmoid_fp32", fake_sigmoid)
+    monkeypatch.setattr(qwen_runtime, "w8a16_shared_down_combine_residual_fp16_token_tiled", fake_tiled)
+    monkeypatch.setattr(qwen_runtime, "w8a16_shared_down_combine_residual_fp16", lambda *a, **k: pytest.fail("unexpected fallback"))
+
+    out = state.shared_expert_down_combine_residual_fp16(scratch, residual, tokens=4, stream=0x55)
+
+    assert out is scratch.moe_out
+    assert [kind for kind, _args, _kwargs in calls] == ["sigmoid", "tiled"]
+    shared_gate_logits_ptr = scratch.router_logits.ptr + 128 * 4
+    sigmoid_args, sigmoid_kwargs = calls[0][1], calls[0][2]
+    assert sigmoid_args == (shared_gate_logits_ptr, shared_gate_logits_ptr, 4, 129)
+    assert sigmoid_kwargs == {"threads": 128, "stream": 0x55, "library": None, "runtime": runtime}
+    tiled_args, tiled_kwargs = calls[1][1], calls[1][2]
+    assert tiled_args == (
+        scratch.shared_intermediate.ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_weight_w8a16").ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_weight_w8a16_scale").ptr,
+        scratch.selected_out.ptr,
+        shared_gate_logits_ptr,
+        residual.ptr,
+        scratch.moe_out.ptr,
+        4,
+        4096,
+        768,
+        129,
+    )
+    assert tiled_kwargs == {"token_tile": 4, "threads": 64, "stream": 0x55, "library": None, "runtime": runtime}
+
+
 def test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_combine(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _legacy_prepared_moe_weights())
@@ -1610,7 +1653,8 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_com
         ("weighted_lanes_sum_out_fp16_f32w", "weighted_lanes"),
         ("w8a16_shared_gate_up_silu_fp16", "legacy_gate_up_silu"),
         ("w8a16_shared_gate_sigmoid_fp32", "legacy_shared_gate_sigmoid"),
-        ("w8a16_shared_down_combine_residual_fp16", "legacy_down_combine"),
+        ("w8a16_shared_down_combine_residual_fp16", "unexpected_legacy_down_fallback"),
+        ("w8a16_shared_down_combine_residual_fp16_token_tiled", "legacy_down_combine_tiled"),
         ("shared_gate_combine_residual_batch_out_fp16", "unexpected_split_combine"),
         ("awq_fusedw4_prefill_dual_fp16", "unexpected_w4"),
     ]:
@@ -1628,7 +1672,7 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_com
         "weighted_lanes",
         "legacy_gate_up_silu",
         "legacy_shared_gate_sigmoid",
-        "legacy_down_combine",
+        "legacy_down_combine_tiled",
     ]
     final_combine = calls[-1][1]
     shared_gate_logits_ptr = scratch.router_logits.ptr + 128 * 4
