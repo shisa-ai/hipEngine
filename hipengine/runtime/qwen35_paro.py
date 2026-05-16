@@ -99,6 +99,8 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     awq_fusedw4_prefill_strided_fp16,
     gemv_awq_dual_pack8_transposed_bf16,
     gemv_awq_dual_pack8_transposed_fp16,
+    gemv_awq_dual_pack8_transposed_rotate_staged_bf16,
+    gemv_awq_dual_pack8_transposed_rotate_staged_fp16,
     gemv_awq_pack8_strided_bf16,
     gemv_awq_pack8_strided_fp16,
     gemv_awq_pack8_transposed_bf16,
@@ -141,6 +143,7 @@ class Qwen35ParoAttentionScratch:
     q_rot: Tensor
     k_rot: Tensor
     v_rot: Tensor
+    rotate_fuse_barrier: Tensor
     q_proj_key: Tensor
     q_proj: Tensor
     key_bf16: Tensor
@@ -164,6 +167,7 @@ class Qwen35ParoLinearAttentionScratch:
     attn_input: Tensor
     qkv_rot: Tensor
     z_rot: Tensor
+    rotate_fuse_barrier: Tensor
     qkv_z: Tensor
     qkv: Tensor
     z: Tensor
@@ -259,6 +263,7 @@ class Qwen35ParoDecodeState:
         self.layer_weights = layer_weights
         self.runtime = runtime
         self.workspace = workspace or RuntimeWorkspace(runtime=runtime)
+        self._rotate_fuse_ready: set[int] = set()
 
     @property
     def config(self):
@@ -312,6 +317,7 @@ class Qwen35ParoDecodeState:
             q_rot=self.workspace.reserve_tensor("attn.q_rot", (tokens, cfg.hidden_size), lowp),
             k_rot=self.workspace.reserve_tensor("attn.k_rot", (tokens, cfg.hidden_size), lowp),
             v_rot=self.workspace.reserve_tensor("attn.v_rot", (tokens, cfg.hidden_size), lowp),
+            rotate_fuse_barrier=self.workspace.reserve_tensor("attn.rotate_fuse_barrier", (2,), DType.INT32),
             q_proj_key=q_proj_key,
             q_proj=q_proj,
             key_bf16=key_bf16,
@@ -515,6 +521,24 @@ class Qwen35ParoDecodeState:
         q_pairs = self.tensor(f"{q}.pairs")
         k_pairs = self.tensor(f"{k}.pairs")
         v_pairs = self.tensor(f"{v}.pairs")
+        if tokens == 1 and hidden.ptr == scratch.attn_input.ptr and _rotate_dual_pack8_fused_enabled():
+            self._rotate_fuse_ready.add(scratch.rotate_fuse_barrier.ptr)
+            paro_rotate1_bf16(
+                hidden.ptr,
+                scratch.v_rot.ptr,
+                v_pairs.ptr,
+                self.tensor(f"{v}.theta").ptr,
+                self.tensor(f"{v}.channel_scales").ptr,
+                tokens,
+                self.config.hidden_size,
+                group_size,
+                _rotation_krot(v_pairs),
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+            return scratch.q_rot, scratch.k_rot, scratch.v_rot
+        self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
         paro_rotate3_bf16(
             hidden.ptr,
             scratch.q_rot.ptr,
@@ -557,25 +581,57 @@ class Qwen35ParoDecodeState:
         k_out_packed = _out_packed_from_generic_transposed_qweight(k_qweight)
         awq_library = _library_for(library, "awq")
         if tokens == 1:
-            gemv_awq_dual_pack8_transposed_bf16(
-                scratch.q_rot.ptr,
-                scratch.k_rot.ptr,
-                q_qweight.ptr,
-                self.tensor(f"{q}.qzeros").ptr,
-                self.tensor(f"{q}.scales").ptr,
-                k_qweight.ptr,
-                self.tensor(f"{k}.qzeros").ptr,
-                self.tensor(f"{k}.scales").ptr,
-                scratch.q_proj_key.ptr,
-                tokens,
-                scratch.q_rot.shape[-1],
-                q_out_packed,
-                k_out_packed,
-                group_size,
-                stream=stream,
-                library=awq_library,
-                runtime=self.runtime,
-            )
+            use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
+            if use_rotate_fused:
+                gemv_awq_dual_pack8_transposed_rotate_staged_bf16(
+                    scratch.attn_input.ptr,
+                    scratch.q_rot.ptr,
+                    scratch.k_rot.ptr,
+                    self.tensor(f"{q}.pairs").ptr,
+                    self.tensor(f"{k}.pairs").ptr,
+                    self.tensor(f"{q}.theta").ptr,
+                    self.tensor(f"{k}.theta").ptr,
+                    self.tensor(f"{q}.channel_scales").ptr,
+                    self.tensor(f"{k}.channel_scales").ptr,
+                    q_qweight.ptr,
+                    self.tensor(f"{q}.qzeros").ptr,
+                    self.tensor(f"{q}.scales").ptr,
+                    k_qweight.ptr,
+                    self.tensor(f"{k}.qzeros").ptr,
+                    self.tensor(f"{k}.scales").ptr,
+                    scratch.q_proj_key.ptr,
+                    scratch.rotate_fuse_barrier.ptr,
+                    tokens,
+                    scratch.q_rot.shape[-1],
+                    q_out_packed,
+                    k_out_packed,
+                    group_size,
+                    _rotation_krot(self.tensor(f"{q}.pairs")),
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+                self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
+            else:
+                gemv_awq_dual_pack8_transposed_bf16(
+                    scratch.q_rot.ptr,
+                    scratch.k_rot.ptr,
+                    q_qweight.ptr,
+                    self.tensor(f"{q}.qzeros").ptr,
+                    self.tensor(f"{q}.scales").ptr,
+                    k_qweight.ptr,
+                    self.tensor(f"{k}.qzeros").ptr,
+                    self.tensor(f"{k}.scales").ptr,
+                    scratch.q_proj_key.ptr,
+                    tokens,
+                    scratch.q_rot.shape[-1],
+                    q_out_packed,
+                    k_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
         else:
             gemv_awq_pack8_transposed_bf16(
                 scratch.q_rot.ptr,
@@ -764,6 +820,7 @@ class Qwen35ParoDecodeState:
             attn_input=self.workspace.reserve_tensor("linear_attn.attn_input", (tokens, cfg.hidden_size), lowp),
             qkv_rot=self.workspace.reserve_tensor("linear_attn.qkv_rot", (tokens, cfg.hidden_size), lowp),
             z_rot=self.workspace.reserve_tensor("linear_attn.z_rot", (tokens, cfg.hidden_size), lowp),
+            rotate_fuse_barrier=self.workspace.reserve_tensor("linear_attn.rotate_fuse_barrier", (2,), DType.INT32),
             qkv_z=qkv_z,
             qkv=qkv,
             z=z,
@@ -814,6 +871,10 @@ class Qwen35ParoDecodeState:
         theta_z = self.tensor(f"{z}.theta")
         scales_qkv = self.tensor(f"{qkv}.channel_scales")
         scales_z = self.tensor(f"{z}.channel_scales")
+        if tokens == 1 and hidden.ptr == scratch.attn_input.ptr and _rotate_dual_pack8_fused_enabled():
+            self._rotate_fuse_ready.add(scratch.rotate_fuse_barrier.ptr)
+            return scratch.qkv_rot, scratch.z_rot
+        self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
         paro_rotate2_bf16(
             hidden.ptr,
             scratch.qkv_rot.ptr,
@@ -851,25 +912,58 @@ class Qwen35ParoDecodeState:
         qkv_out_packed = _out_packed_from_generic_transposed_qweight(qkv_qweight)
         z_out_packed = _out_packed_from_generic_transposed_qweight(z_qweight)
         if tokens == 1:
-            gemv_awq_dual_pack8_transposed_bf16(
-                scratch.qkv_rot.ptr,
-                scratch.z_rot.ptr,
-                qkv_qweight.ptr,
-                self.tensor(f"{qkv}.qzeros").ptr,
-                self.tensor(f"{qkv}.scales").ptr,
-                z_qweight.ptr,
-                self.tensor(f"{z}.qzeros").ptr,
-                self.tensor(f"{z}.scales").ptr,
-                scratch.qkv_z.ptr,
-                tokens,
-                scratch.qkv_rot.shape[-1],
-                qkv_out_packed,
-                z_out_packed,
-                group_size,
-                stream=stream,
-                library=_library_for(library, "awq"),
-                runtime=self.runtime,
-            )
+            awq_library = _library_for(library, "awq")
+            use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
+            if use_rotate_fused:
+                gemv_awq_dual_pack8_transposed_rotate_staged_bf16(
+                    scratch.attn_input.ptr,
+                    scratch.qkv_rot.ptr,
+                    scratch.z_rot.ptr,
+                    self.tensor(f"{qkv}.pairs").ptr,
+                    self.tensor(f"{z}.pairs").ptr,
+                    self.tensor(f"{qkv}.theta").ptr,
+                    self.tensor(f"{z}.theta").ptr,
+                    self.tensor(f"{qkv}.channel_scales").ptr,
+                    self.tensor(f"{z}.channel_scales").ptr,
+                    qkv_qweight.ptr,
+                    self.tensor(f"{qkv}.qzeros").ptr,
+                    self.tensor(f"{qkv}.scales").ptr,
+                    z_qweight.ptr,
+                    self.tensor(f"{z}.qzeros").ptr,
+                    self.tensor(f"{z}.scales").ptr,
+                    scratch.qkv_z.ptr,
+                    scratch.rotate_fuse_barrier.ptr,
+                    tokens,
+                    scratch.qkv_rot.shape[-1],
+                    qkv_out_packed,
+                    z_out_packed,
+                    group_size,
+                    _rotation_krot(self.tensor(f"{qkv}.pairs")),
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+                self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
+            else:
+                gemv_awq_dual_pack8_transposed_bf16(
+                    scratch.qkv_rot.ptr,
+                    scratch.z_rot.ptr,
+                    qkv_qweight.ptr,
+                    self.tensor(f"{qkv}.qzeros").ptr,
+                    self.tensor(f"{qkv}.scales").ptr,
+                    z_qweight.ptr,
+                    self.tensor(f"{z}.qzeros").ptr,
+                    self.tensor(f"{z}.scales").ptr,
+                    scratch.qkv_z.ptr,
+                    tokens,
+                    scratch.qkv_rot.shape[-1],
+                    qkv_out_packed,
+                    z_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
         else:
             # The dual GEMV writes row-major [qkv,z] per token.  Native
             # prefill conv/GDN consumes contiguous [tokens,qkv] and [tokens,z]
@@ -1689,6 +1783,24 @@ class Qwen35ParoDecodeState:
         q_pairs = self.tensor(f"{q}.pairs")
         k_pairs = self.tensor(f"{k}.pairs")
         v_pairs = self.tensor(f"{v}.pairs")
+        if tokens == 1 and hidden.ptr == scratch.attn_input.ptr and _rotate_dual_pack8_fused_enabled():
+            self._rotate_fuse_ready.add(scratch.rotate_fuse_barrier.ptr)
+            paro_rotate1_fp16(
+                hidden.ptr,
+                scratch.v_rot.ptr,
+                v_pairs.ptr,
+                self.tensor(f"{v}.theta").ptr,
+                self.tensor(f"{v}.channel_scales").ptr,
+                tokens,
+                self.config.hidden_size,
+                group_size,
+                _rotation_krot(v_pairs),
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+            return scratch.q_rot, scratch.k_rot, scratch.v_rot
+        self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
         paro_rotate3_fp16(
             hidden.ptr,
             scratch.q_rot.ptr,
@@ -1731,25 +1843,57 @@ class Qwen35ParoDecodeState:
         k_out_packed = _out_packed_from_generic_transposed_qweight(k_qweight)
         awq_library = _library_for(library, "awq")
         if tokens == 1:
-            gemv_awq_dual_pack8_transposed_fp16(
-                scratch.q_rot.ptr,
-                scratch.k_rot.ptr,
-                q_qweight.ptr,
-                self.tensor(f"{q}.qzeros").ptr,
-                self.tensor(f"{q}.scales").ptr,
-                k_qweight.ptr,
-                self.tensor(f"{k}.qzeros").ptr,
-                self.tensor(f"{k}.scales").ptr,
-                scratch.q_proj_key.ptr,
-                tokens,
-                scratch.q_rot.shape[-1],
-                q_out_packed,
-                k_out_packed,
-                group_size,
-                stream=stream,
-                library=awq_library,
-                runtime=self.runtime,
-            )
+            use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
+            if use_rotate_fused:
+                gemv_awq_dual_pack8_transposed_rotate_staged_fp16(
+                    scratch.attn_input.ptr,
+                    scratch.q_rot.ptr,
+                    scratch.k_rot.ptr,
+                    self.tensor(f"{q}.pairs").ptr,
+                    self.tensor(f"{k}.pairs").ptr,
+                    self.tensor(f"{q}.theta").ptr,
+                    self.tensor(f"{k}.theta").ptr,
+                    self.tensor(f"{q}.channel_scales").ptr,
+                    self.tensor(f"{k}.channel_scales").ptr,
+                    q_qweight.ptr,
+                    self.tensor(f"{q}.qzeros").ptr,
+                    self.tensor(f"{q}.scales").ptr,
+                    k_qweight.ptr,
+                    self.tensor(f"{k}.qzeros").ptr,
+                    self.tensor(f"{k}.scales").ptr,
+                    scratch.q_proj_key.ptr,
+                    scratch.rotate_fuse_barrier.ptr,
+                    tokens,
+                    scratch.q_rot.shape[-1],
+                    q_out_packed,
+                    k_out_packed,
+                    group_size,
+                    _rotation_krot(self.tensor(f"{q}.pairs")),
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+                self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
+            else:
+                gemv_awq_dual_pack8_transposed_fp16(
+                    scratch.q_rot.ptr,
+                    scratch.k_rot.ptr,
+                    q_qweight.ptr,
+                    self.tensor(f"{q}.qzeros").ptr,
+                    self.tensor(f"{q}.scales").ptr,
+                    k_qweight.ptr,
+                    self.tensor(f"{k}.qzeros").ptr,
+                    self.tensor(f"{k}.scales").ptr,
+                    scratch.q_proj_key.ptr,
+                    tokens,
+                    scratch.q_rot.shape[-1],
+                    q_out_packed,
+                    k_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
         else:
             awq_fusedw4_prefill_dual_fp16(
                 scratch.q_rot.ptr,
@@ -2819,6 +2963,10 @@ class Qwen35ParoDecodeState:
         z = f"{prefix}.in_proj_z"
         pairs_qkv = self.tensor(f"{qkv}.pairs")
         pairs_z = self.tensor(f"{z}.pairs")
+        if tokens == 1 and hidden.ptr == scratch.attn_input.ptr and _rotate_dual_pack8_fused_enabled():
+            self._rotate_fuse_ready.add(scratch.rotate_fuse_barrier.ptr)
+            return scratch.qkv_rot, scratch.z_rot
+        self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
         paro_rotate2_fp16(
             hidden.ptr,
             scratch.qkv_rot.ptr,
@@ -2856,25 +3004,58 @@ class Qwen35ParoDecodeState:
         qkv_out_packed = _out_packed_from_generic_transposed_qweight(qkv_qweight)
         z_out_packed = _out_packed_from_generic_transposed_qweight(z_qweight)
         if tokens == 1:
-            gemv_awq_dual_pack8_transposed_fp16(
-                scratch.qkv_rot.ptr,
-                scratch.z_rot.ptr,
-                qkv_qweight.ptr,
-                self.tensor(f"{qkv}.qzeros").ptr,
-                self.tensor(f"{qkv}.scales").ptr,
-                z_qweight.ptr,
-                self.tensor(f"{z}.qzeros").ptr,
-                self.tensor(f"{z}.scales").ptr,
-                scratch.qkv_z.ptr,
-                tokens,
-                scratch.qkv_rot.shape[-1],
-                qkv_out_packed,
-                z_out_packed,
-                group_size,
-                stream=stream,
-                library=_library_for(library, "awq"),
-                runtime=self.runtime,
-            )
+            awq_library = _library_for(library, "awq")
+            use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
+            if use_rotate_fused:
+                gemv_awq_dual_pack8_transposed_rotate_staged_fp16(
+                    scratch.attn_input.ptr,
+                    scratch.qkv_rot.ptr,
+                    scratch.z_rot.ptr,
+                    self.tensor(f"{qkv}.pairs").ptr,
+                    self.tensor(f"{z}.pairs").ptr,
+                    self.tensor(f"{qkv}.theta").ptr,
+                    self.tensor(f"{z}.theta").ptr,
+                    self.tensor(f"{qkv}.channel_scales").ptr,
+                    self.tensor(f"{z}.channel_scales").ptr,
+                    qkv_qweight.ptr,
+                    self.tensor(f"{qkv}.qzeros").ptr,
+                    self.tensor(f"{qkv}.scales").ptr,
+                    z_qweight.ptr,
+                    self.tensor(f"{z}.qzeros").ptr,
+                    self.tensor(f"{z}.scales").ptr,
+                    scratch.qkv_z.ptr,
+                    scratch.rotate_fuse_barrier.ptr,
+                    tokens,
+                    scratch.qkv_rot.shape[-1],
+                    qkv_out_packed,
+                    z_out_packed,
+                    group_size,
+                    _rotation_krot(self.tensor(f"{qkv}.pairs")),
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+                self._rotate_fuse_ready.discard(scratch.rotate_fuse_barrier.ptr)
+            else:
+                gemv_awq_dual_pack8_transposed_fp16(
+                    scratch.qkv_rot.ptr,
+                    scratch.z_rot.ptr,
+                    qkv_qweight.ptr,
+                    self.tensor(f"{qkv}.qzeros").ptr,
+                    self.tensor(f"{qkv}.scales").ptr,
+                    z_qweight.ptr,
+                    self.tensor(f"{z}.qzeros").ptr,
+                    self.tensor(f"{z}.scales").ptr,
+                    scratch.qkv_z.ptr,
+                    tokens,
+                    scratch.qkv_rot.shape[-1],
+                    qkv_out_packed,
+                    z_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
         else:
             awq_fusedw4_prefill_dual_fp16(
                 scratch.qkv_rot.ptr,
@@ -5223,6 +5404,14 @@ class Qwen35ParoDecodeState:
     def free(self) -> None:
         self.workspace.free()
         self.layer_weights.free(runtime=self.runtime)
+
+
+
+def _rotate_dual_pack8_fused_enabled() -> bool:
+    value = os.environ.get("HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED")
+    if value is None or value.strip() == "":
+        return False
+    return value.strip().lower() not in {"0", "false", "off", "no"}
 
 
 

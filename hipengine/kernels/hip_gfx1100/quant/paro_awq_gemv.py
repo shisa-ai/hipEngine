@@ -15,6 +15,7 @@ _SYMBOL_PACK8_STRIDED = "hipengine_gemv_awq_pack8_strided_bf16"
 _SYMBOL_PACK8_TRANSPOSED = "hipengine_gemv_awq_pack8_transposed_bf16"
 _SYMBOL_DUAL_PACK8_STRIDED = "hipengine_gemv_awq_dual_pack8_strided_bf16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED = "hipengine_gemv_awq_dual_pack8_transposed_bf16"
+_SYMBOL_DUAL_PACK8_TRANSPOSED_ROTATE_STAGED = "hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_bf16"
 _SYMBOL_PACK8_STRIDED_FP16 = "hipengine_gemv_awq_pack8_strided_fp16"
 _SYMBOL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_transposed_fp16"
 _SYMBOL_FUSEDW4_PREFILL_FP16 = "hipengine_awq_fusedw4_prefill_fp16"
@@ -22,6 +23,7 @@ _SYMBOL_FUSEDW4_PREFILL_DUAL_FP16 = "hipengine_awq_fusedw4_prefill_dual_fp16"
 _SYMBOL_FUSEDW4_PREFILL_STRIDED_FP16 = "hipengine_awq_fusedw4_prefill_strided_fp16"
 _SYMBOL_DUAL_PACK8_STRIDED_FP16 = "hipengine_gemv_awq_dual_pack8_strided_fp16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_transposed_fp16"
+_SYMBOL_DUAL_PACK8_TRANSPOSED_ROTATE_STAGED_FP16 = "hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_fp16"
 _SYMBOL_SELECTED_DUAL_ROTATE_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16"
 _SYMBOL_SELECTED_DUAL_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_bf16"
 _SYMBOL_SELECTED_DUAL_TRANSPOSED = "hipengine_gemv_awq_selected_dual_pack8_transposed_bf16"
@@ -233,6 +235,71 @@ def gemv_awq_dual_pack8_transposed_bf16(
         library=library,
         runtime=runtime,
     )
+
+
+def gemv_awq_dual_pack8_transposed_rotate_staged_bf16(
+    x_ptr: int,
+    rotated_a_ptr: int,
+    rotated_b_ptr: int,
+    pairs_a_ptr: int,
+    pairs_b_ptr: int,
+    theta_a_ptr: int,
+    theta_b_ptr: int,
+    channel_scales_a_ptr: int,
+    channel_scales_b_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    barrier_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    krot: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch decode fused rotate-stage + dual transposed pack8 GEMV for BF16 buffers."""
+
+    _launch_pack8_dual_rotate_staged(
+        _SYMBOL_DUAL_PACK8_TRANSPOSED_ROTATE_STAGED,
+        x_ptr,
+        rotated_a_ptr,
+        rotated_b_ptr,
+        pairs_a_ptr,
+        pairs_b_ptr,
+        theta_a_ptr,
+        theta_b_ptr,
+        channel_scales_a_ptr,
+        channel_scales_b_ptr,
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        barrier_ptr,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        group_size,
+        krot,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
 
 
 def gemv_awq_pack8_strided_fp16(
@@ -521,6 +588,71 @@ def gemv_awq_dual_pack8_transposed_fp16(
         library=library,
         runtime=runtime,
     )
+
+
+def gemv_awq_dual_pack8_transposed_rotate_staged_fp16(
+    x_ptr: int,
+    rotated_a_ptr: int,
+    rotated_b_ptr: int,
+    pairs_a_ptr: int,
+    pairs_b_ptr: int,
+    theta_a_ptr: int,
+    theta_b_ptr: int,
+    channel_scales_a_ptr: int,
+    channel_scales_b_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    barrier_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    krot: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch decode fused rotate-stage + dual transposed pack8 GEMV for FP16 buffers."""
+
+    _launch_pack8_dual_rotate_staged(
+        _SYMBOL_DUAL_PACK8_TRANSPOSED_ROTATE_STAGED_FP16,
+        x_ptr,
+        rotated_a_ptr,
+        rotated_b_ptr,
+        pairs_a_ptr,
+        pairs_b_ptr,
+        theta_a_ptr,
+        theta_b_ptr,
+        channel_scales_a_ptr,
+        channel_scales_b_ptr,
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        barrier_ptr,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        group_size,
+        krot,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
 
 
 def gemv_awq_selected_dual_pack8_strided_rotate_out_bf16(
@@ -1020,6 +1152,11 @@ def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "rotate+dual_pack8_gemv", "w4_paro", "transposed"),
+        gemv_awq_dual_pack8_transposed_rotate_staged_bf16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "pack8_gemv", "w4_paro", "strided_fp16"),
         gemv_awq_pack8_strided_fp16,
         replace=replace,
@@ -1052,6 +1189,11 @@ def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dual_pack8_gemv", "w4_paro", "transposed_fp16"),
         gemv_awq_dual_pack8_transposed_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "rotate+dual_pack8_gemv", "w4_paro", "transposed_fp16"),
+        gemv_awq_dual_pack8_transposed_rotate_staged_fp16,
         replace=replace,
     )
     register(
@@ -1220,6 +1362,100 @@ def _launch_pack8_dual(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def _launch_pack8_dual_rotate_staged(
+    symbol: str,
+    x_ptr: int,
+    rotated_a_ptr: int,
+    rotated_b_ptr: int,
+    pairs_a_ptr: int,
+    pairs_b_ptr: int,
+    theta_a_ptr: int,
+    theta_b_ptr: int,
+    channel_scales_a_ptr: int,
+    channel_scales_b_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    barrier_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    krot: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_pack8_dual_rotate_staged_shape(rows, in_features, out_packed_a, out_packed_b, group_size, krot, threads)
+    library = library or build_paro_awq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(rotated_a_ptr),
+        ctypes.c_void_p(rotated_b_ptr),
+        ctypes.c_void_p(pairs_a_ptr),
+        ctypes.c_void_p(pairs_b_ptr),
+        ctypes.c_void_p(theta_a_ptr),
+        ctypes.c_void_p(theta_b_ptr),
+        ctypes.c_void_p(channel_scales_a_ptr),
+        ctypes.c_void_p(channel_scales_b_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qzeros_a_ptr),
+        ctypes.c_void_p(scales_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(qzeros_b_ptr),
+        ctypes.c_void_p(scales_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(barrier_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_packed_a),
+        ctypes.c_int64(out_packed_b),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(krot),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
 
 
 def _launch_selected_dual_rotate(
@@ -1638,6 +1874,26 @@ def _check_pack8_dual_shape(
     _check_positive(out_packed_a, "out_packed_a")
     _check_positive(out_packed_b, "out_packed_b")
     _check_pack8_common(in_features, group_size, threads)
+
+
+def _check_pack8_dual_rotate_staged_shape(
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    krot: int,
+    threads: int,
+) -> None:
+    _check_pack8_dual_shape(rows, in_features, out_packed_a, out_packed_b, group_size, threads)
+    if rows != 1:
+        raise ValueError("rotate-staged dual pack8 GEMV is decode-only and requires rows=1")
+    if krot < 0:
+        raise ValueError("krot must be non-negative")
+    rotate_blocks = (in_features // group_size) * 2
+    if out_packed_a + out_packed_b < rotate_blocks:
+        raise ValueError("out_packed_a + out_packed_b must cover the rotate staging blocks")
+
 
 
 def _check_pack8_common(in_features: int, group_size: int, threads: int) -> None:

@@ -215,6 +215,8 @@ def test_qwen35_decode_state_reserves_full_attention_split_k_scratch() -> None:
 
     assert scratch.attn_input.shape == (1, 4096)
     assert scratch.q_rot.shape == (1, 4096)
+    assert scratch.rotate_fuse_barrier.shape == (2,)
+    assert scratch.rotate_fuse_barrier.dtype is DType.INT32
     assert scratch.q_proj_key.shape == (1, 8704)
     assert scratch.q_proj.shape == (1, 8192)
     assert scratch.key_bf16.shape == (1, 512)
@@ -280,6 +282,40 @@ def test_qwen35_decode_state_projects_full_attention_qkv_fp16_tokens_split_layou
     assert calls[0][1][8] == scratch.q_proj.ptr
     assert calls[0][1][9] == scratch.key_bf16.ptr
     assert calls[1][1][4] == scratch.value.ptr
+
+
+def test_qwen35_decode_state_projects_linear_qkv_z_fp16_with_fused_rotation_when_deferred(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED", "1")
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    scratch = state.reserve_linear_attention_scratch(tokens=1, activation_dtype="fp16")
+    calls = []
+
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_fp16", lambda *args, **kwargs: calls.append(("unexpected_rotate2", args, kwargs)))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_dual_pack8_transposed_rotate_staged_fp16",
+        lambda *args, **kwargs: calls.append(("fused", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_dual_pack8_transposed_fp16",
+        lambda *args, **kwargs: calls.append(("unexpected_dual", args, kwargs)),
+    )
+
+    state.rotate_linear_attention_inputs_fp16(scratch.attn_input, scratch, tokens=1)
+    qkv, z = state.project_linear_attention_qkv_z_fp16(scratch, tokens=1)
+
+    assert qkv is scratch.qkv
+    assert z is scratch.z
+    assert [kind for kind, _args, _kwargs in calls] == ["fused"]
+    args = calls[0][1]
+    assert args[0] == scratch.attn_input.ptr
+    assert args[1] == scratch.qkv_rot.ptr
+    assert args[2] == scratch.z_rot.ptr
+    assert args[15] == scratch.qkv_z.ptr
+    assert args[16] == scratch.rotate_fuse_barrier.ptr
+
 
 
 def test_qwen35_decode_state_prepare_full_attention_qkv_fp16_tokens_uses_vector_positions(monkeypatch) -> None:
@@ -739,6 +775,8 @@ def test_qwen35_decode_state_reserves_linear_attention_scratch() -> None:
 
     assert scratch.attn_input.shape == (1, 4096)
     assert scratch.qkv_z.shape == (1, 12288)
+    assert scratch.rotate_fuse_barrier.shape == (2,)
+    assert scratch.rotate_fuse_barrier.dtype is DType.INT32
     assert scratch.qkv.shape == (1, 8192)
     assert scratch.z.shape == (1, 4096)
     assert scratch.qkv_f32.shape == (1, 8192)
@@ -1082,6 +1120,7 @@ def test_qwen35_decode_state_runs_linear_attention_moe_layer_chain(monkeypatch) 
     monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", record("rotate2"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_rotate_staged_bf16", record("fused_dual_pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_bf16", record("single_pack8"))
     monkeypatch.setattr(qwen_runtime, "dense_gemv_out_bf16", record("dense"))
     monkeypatch.setattr(qwen_runtime, "dense_dual_gemv_out_bf16", record("dense_dual"))
@@ -1228,6 +1267,7 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
     monkeypatch.setattr(qwen_runtime, "paro_rotate2_bf16", record("rotate2"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_strided_bf16", record("pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_bf16", record("dual_pack8"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_rotate_staged_bf16", record("fused_dual_pack8"))
     monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_bf16", record("single_pack8"))
     monkeypatch.setattr(qwen_runtime, "qwen35_split_qgate_bf16", record("split_qgate"))
     monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("bf16_to_f32"))
@@ -1961,10 +2001,10 @@ def test_qwen35_decode_state_free_releases_workspace() -> None:
     state.free()
 
     assert runtime.allocations == {}
-    # 31 attention/moe scratch tensors + 5 new shared-expert scratch tensors
-    # (shared_gate_input, shared_up_input, shared_gate_out, shared_up_out,
-    # shared_down_input) introduced by the W4 PARO shared-expert path.
-    assert len(runtime.freed) == 36
+    # 32 attention/moe scratch tensors (including rotate_fuse_barrier) + 5
+    # shared-expert scratch tensors (shared_gate_input, shared_up_input,
+    # shared_gate_out, shared_up_out, shared_down_input).
+    assert len(runtime.freed) == 37
 
 
 def test_qwen35_decode_state_reserves_parent_mixed_fp16_scratch() -> None:
@@ -2073,6 +2113,7 @@ def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch)
         ("paro_rmsnorm_out_fp16", "input_norm"),
         ("paro_rotate3_fp16", "rotate3"),
         ("gemv_awq_dual_pack8_transposed_fp16", "dual_pack8"),
+        ("gemv_awq_dual_pack8_transposed_rotate_staged_fp16", "fused_dual_pack8"),
         ("gemv_awq_pack8_strided_fp16", "pack8"),
         ("qwen35_split_qgate_fp16", "split_qgate"),
         ("fp16_to_f32", "fp16_to_f32"),

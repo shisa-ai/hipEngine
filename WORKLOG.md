@@ -14660,3 +14660,48 @@ Recorded artifact and rollup:
 - `benchmarks/results/2026-05-17-hipengine-qwen35-d52-w8a16-decode-audit.json`
 - `docs/OPTIMIZE.md` D5.2 marked accepted(stop)
 - `benchmarks/README.md` diagnostic row + `benchmarks/CHANGELOG.md` one-liner
+
+## 2026-05-17 — D1.1 rotation-into-W4 producer decode fusion rejected
+
+Task #10 implemented an opt-in generic transposed rotate-staged dual pack8 GEMV
+surface for the decode projection pairs that share an input:
+
+- Kernel wrappers: `gemv_awq_dual_pack8_transposed_rotate_staged_{bf16,fp16}`.
+- Runtime gate: `HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED=1` (default remains off).
+- Covered decode pairs: linear-attention `in_proj_qkv + in_proj_z`; full-attention
+  `q_proj + k_proj` with `v_proj` still rotated by the existing single-rotate path.
+- Design: rotate each input once into the existing pack8/repacked scratch, then run
+  the dual transposed pack8 GEMV after a device-side barrier; no per-output-pack
+  rotation recompute, preserving the parent D4 rejection lesson.
+
+Correctness / visibility:
+
+```bash
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py -q --tb=short
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py scripts/smoke.py
+python3 scripts/smoke.py --mode paro-pack8-rotate-staged-hip --rows 1 --hidden-size 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/check_lineage.py --kind kernel --diff stat  # known drift: qwen35_expert, smoke, paroquant_kernels, paroquant_fusedw4
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d11-rotate-dual-pack8-fusion-rejected.json >/tmp/d11-json-check.json
+git diff --check
+```
+
+The opt-in graph fixture gate matched the known generated sample/logits (`final_kl=0`,
+expected/generated match true), and rocprof confirmed the fused FP16 kernel path:
+`gemv_awq_dual_pack8_transposed_rotate_staged_kernel<_Float16,true>` with two
+observed dispatches in the small smoke trace (`DurationNs` 36320 / 33761,
+`VGPR_Count=104`, `Scratch_Size=0`, `LDS_Block_Size=512`).
+
+Performance decision:
+
+- 512/128 graph decode default/off median: `115.450 tok/s`, prefill `2268.369 tok/s`,
+  peak `18.176 GiB`.
+- 512/128 opt-in fused median: `110.457 tok/s`, prefill `2262.721 tok/s`, peak
+  `18.176 GiB`.
+- Delta: decode `-4.32%`, prefill `-0.25%`, memory neutral.
+
+Rejected as a default. The removed rotate launches are cheaper under one-step graph
+replay than the barrier/spin/global-staging overhead; full-attention Q/K also leaves
+V on a separate rotate, so it does not remove the whole rotation launch family. The
+opt-in code path and kernel catalog entry are kept as evidence/diagnostic surface;
+`docs/OPTIMIZE.md` marks D1.1 rejected and the artifact is
+`benchmarks/results/2026-05-17-hipengine-qwen35-d11-rotate-dual-pack8-fusion-rejected.json`.

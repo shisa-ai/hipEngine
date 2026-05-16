@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "status": "diagnostic_rejected",
+  "blocked_reason": "Opt-in rotate-once staged dual-pack8 fusion regressed 512/128 graph decode; default remains off.",
+  "performance_claim": false,
+  "date": "2026-05-17",
+  "task": "D1.1 rotation-into-W4-producer decode fusion",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "implementation": {
+    "kernel": "gemv_awq_dual_pack8_transposed_rotate_staged_kernel<_Float16, true>",
+    "wrappers": [
+      "gemv_awq_dual_pack8_transposed_rotate_staged_bf16",
+      "gemv_awq_dual_pack8_transposed_rotate_staged_fp16"
+    ],
+    "runtime_gate": "HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED=1",
+    "default": "off",
+    "surfaces": [
+      "linear_attn.in_proj_qkv + in_proj_z rows==1",
+      "full_attn.q_proj + k_proj rows==1 with v_proj rotated separately"
+    ],
+    "notes": [
+      "The fused kernel rotates each projection input once per row into existing pack8/repacked scratch, then uses a device-side barrier before the dual pack8 GEMV loop.",
+      "The path preserves qweight_pack8_decode / qweight_mk zero-copy layout and is decode-only; multi-token prefill stays on existing rotate + prefill kernels."
+    ]
+  },
+  "correctness": {
+    "micro_fixture": {
+      "command": "python3 scripts/smoke.py --mode paro-pack8-rotate-staged-hip --rows 1 --hidden-size 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "description": "Committed BF16/FP16 deterministic hidden=128 rotate-staged pack8 smoke comparing staged rotations and dual transposed pack8 outputs against NumPy CPU references.",
+      "mismatch": 0,
+      "rotated_mismatch": 0,
+      "fp16_mismatch": 0,
+      "fp16_rotated_mismatch": 0,
+      "max_abs_output": 0.0,
+      "max_abs_rotated": 0.0,
+      "fp16_max_abs_output": 0.0,
+      "fp16_max_abs_rotated": 0.0
+    },
+    "graph_fixture_gate": {
+      "command": "HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED=1 python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --max-new-tokens 16 --json /tmp/hipengine-d11/graph-fixture-optin.json",
+      "status": "accepted",
+      "generated_match": true,
+      "expected_match": true,
+      "final_kl": 0.0,
+      "final_top1_match": true,
+      "finite_logits": true
+    }
+  },
+  "rocprof": {
+    "command": "HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d11/rocprof --output-file d11_rotate_fused -- python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 4 --decode-tokens 2 --warmup-decode-tokens 0 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d11/rocprof-bench.json",
+    "csv": "/tmp/hipengine-d11/rocprof/d11_rotate_fused_kernel_trace.csv",
+    "kernel_name_contains": "gemv_awq_dual_pack8_transposed_rotate_staged_kernel<_Float16, true>",
+    "observed_dispatches": 2,
+    "duration_ns": [
+      36320,
+      33761
+    ],
+    "lds_block_size_bytes": 512,
+    "scratch_size_bytes": 0,
+    "vgpr_count": 104,
+    "workgroup_size_x": 128,
+    "grid_size_x": 196608
+  },
+  "benchmarks": {
+    "command": "python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --json <path>",
+    "default_gate_off": {
+      "env": "unset HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED (default off; first run used explicit 0 before default flip)",
+      "runs": [
+        {
+          "json": "/tmp/hipengine-d11/512x128-off.json",
+          "prefill_tok_s": 2302.616271485803,
+          "decode_tok_s": 115.74545648999975,
+          "peak_gib": 18.17562458757311
+        },
+        {
+          "json": "/tmp/hipengine-d11/final/512x128-default-1.json",
+          "prefill_tok_s": 2264.346756586993,
+          "decode_tok_s": 115.45020754109446,
+          "peak_gib": 18.17562458757311
+        },
+        {
+          "json": "/tmp/hipengine-d11/final/512x128-default-2.json",
+          "prefill_tok_s": 2268.368517389437,
+          "decode_tok_s": 115.40920298998947,
+          "peak_gib": 18.17562458757311
+        }
+      ],
+      "median_prefill_tok_s": 2268.368517389437,
+      "median_decode_tok_s": 115.45020754109446,
+      "median_peak_gib": 18.17562458757311
+    },
+    "opt_in_fused": {
+      "env": "HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED=1",
+      "runs": [
+        {
+          "json": "/tmp/hipengine-d11/512x128-on.json",
+          "prefill_tok_s": 2275.5502352426847,
+          "decode_tok_s": 110.16261796188323,
+          "peak_gib": 18.17562458757311
+        },
+        {
+          "json": "/tmp/hipengine-d11/final/512x128-optin-1.json",
+          "prefill_tok_s": 2262.7205286867675,
+          "decode_tok_s": 110.46967708476865,
+          "peak_gib": 18.17562458757311
+        },
+        {
+          "json": "/tmp/hipengine-d11/final/512x128-optin-2.json",
+          "prefill_tok_s": 2255.5153231387603,
+          "decode_tok_s": 110.45728368476506,
+          "peak_gib": 18.17562458757311
+        }
+      ],
+      "median_prefill_tok_s": 2262.7205286867675,
+      "median_decode_tok_s": 110.45728368476506,
+      "median_peak_gib": 18.17562458757311
+    },
+    "delta": {
+      "prefill_percent": -0.24899210480708778,
+      "decode_percent": -4.324739910726003,
+      "peak_gib": 0.0
+    }
+  },
+  "decision": {
+    "action": "reject_default_and_keep_opt_in_for_evidence",
+    "stop_condition": "The only rotate-once single-kernel design that preserves pack8 layout needs global scratch plus a device-side barrier. Under one-step graph replay, the removed rotate launch is cheaper than the barrier/spin/global-staging cost; full-attention Q/K also does not reduce launch count because V still needs a separate rotate. Recomputing rotation per output pack remains disallowed by the parent D4 rejection.",
+    "default_runtime_impact": "none; HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED defaults off"
+  }
+}
