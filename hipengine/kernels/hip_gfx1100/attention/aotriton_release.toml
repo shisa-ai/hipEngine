@@ -1,0 +1,21 @@
+[aotriton]
+version = "0.8.2b"
+source_ref = "0.8.2b"
+source_commit = "b24f43a9771622faa157155568b9a200c3b49e41"
+# The generated config.h inside the extracted runtime reports this build SHA.
+runtime_git_sha1 = "33fb6bd5290b2e9e9bc71dbcf91f92c6ba7689b1"
+so_name = "libaotriton_v2.so.0.8.0"
+
+[aotriton.archive]
+rocm = "6.3"
+url = "https://github.com/ROCm/aotriton/releases/download/0.8.2b/aotriton-0.8.2b-manylinux_2_28_x86_64-rocm6.3-shared.tar.gz"
+sha256 = "16356dc1813cf3e60da23eb2f29440cb35eedd3a2fbf81e6093a0bc42056ad08"
+size_bytes = 374748255
+
+[aotriton.prune]
+# The fetch helper's default pruning keeps the gfx110x forward-attention image
+# tree and removes other architectures/backward/debug image directories.  Do
+# not prune individual attn_fwd .aks2 files until the wrapper has exercised the
+# AOTriton selector for all target shapes.
+architectures = ["amd-gfx110x"]
+flash_subdirs = ["attn_fwd"]

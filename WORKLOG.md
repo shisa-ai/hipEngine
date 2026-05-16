@@ -11638,25 +11638,30 @@ Phase 1 AOTriton spike. No measurements changed; this commit is docs-only.
 
 Files: `docs/PREFILL.md`, `WORKLOG.md`.
 
-## 2026-05-16 — Prefill multiloop iter 57: AOTriton submodule scaffold
+## 2026-05-16 — Prefill multiloop iter 57: AOTriton source/runtime scaffold
 
 User flagged that the local `~/Downloads/aotriton` 0.8 dump may be stale and
-recommended a recent checkout as a submodule before wrapping attention. Added
-`third_party/aotriton` as a git submodule tracking ROCm/aotriton `main`, pinned
-at `5dbebd9c3bb19de0d63167a02e4ba3a4b16daa64`. The nested AOTriton Triton
-submodule is not initialized yet (`third_party/aotriton/third_party/triton` is
-shown with a leading `-`); initialize recursively only when building AOTriton.
+recommended a recent checkout before wrapping attention. After the peer
+`docs/PREFILL.md` production decision landed, aligned the spike with Option 1:
+source-reference submodule plus fetched runtime tarball. Added
+`third_party/aotriton` as a git submodule pinned to release tag `0.8.2b`
+(commit `b24f43a9771622faa157155568b9a200c3b49e41`) and removed the `branch = main`
+tracking line from `.gitmodules`. The nested AOTriton Triton submodule is not
+initialized; initialize recursively only for an explicit from-source AOTriton
+build, not for normal hipENGINE wrapper work.
 
 Also added a torch-free discovery scaffold at
-`hipengine/kernels/hip_gfx1100/attention/aotriton.py`. It resolves current
-source headers from `HIPENGINE_AOTRITON_SOURCE_ROOT` or the pinned submodule,
-and separately resolves a built runtime from `HIPENGINE_AOTRITON_RUNTIME_ROOT`
-or an in-place submodule build. It intentionally does **not** fall back to the
-older `~/Downloads` runtime, so the next wrapper does not accidentally use 0.8.
-The current upstream header is the v3 API (`include/aotriton/flash.h` includes
-`v2/flash.h` but exposes `aotriton::v3::flash::attn_fwd(params, ...)` with
-`attn_fwd_params`, `CausalType`, and `VarlenType`); the next wrapper should use
-that v3 params struct unless a built release forces v2 compatibility.
+`hipengine/kernels/hip_gfx1100/attention/aotriton.py`. It resolves source
+headers from `HIPENGINE_AOTRITON_SOURCE_ROOT` or the pinned source submodule,
+and separately resolves an extracted runtime from `HIPENGINE_AOTRITON_RUNTIME_ROOT`
+or a fetch-on-install cache. It intentionally does **not** fall back to the older
+`~/Downloads` runtime unless the developer points `HIPENGINE_AOTRITON_RUNTIME_ROOT`
+there. The pinned 0.8.2b source header is the v2 API with
+`aotriton::v2::flash::attn_fwd_compact_varlen(...)`, matching the release
+tarball ABI. Added `aotriton_release.toml` with the 0.8.2b ROCm 6.3 tarball URL
+and SHA256 (`16356dc1813cf3e60da23eb2f29440cb35eedd3a2fbf81e6093a0bc42056ad08`),
+plus `scripts/fetch_aotriton.sh` to download, verify, extract, optionally prune,
+and write `MANIFEST.local.json` under `~/.cache/hipengine/aotriton/0.8.2b/`.
 
 Validation commands:
 
@@ -11664,27 +11669,27 @@ Validation commands:
 git submodule status --recursive
 python3 -m py_compile hipengine/kernels/hip_gfx1100/attention/aotriton.py
 python3 -m pytest tests/test_aotriton_discovery.py -q
-python3 - <<'PY'
-from hipengine.kernels.hip_gfx1100.attention.aotriton import aotriton_source_tree
-p = aotriton_source_tree()
-print('aotriton_source_root', p.root)
-print('flash_header', p.flash_header)
+scripts/fetch_aotriton.sh --dry-run
+HIPENGINE_AOTRITON_RUNTIME_ROOT=/home/lhl/Downloads/aotriton/aotriton python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.aotriton import aotriton_runtime_tree, aotriton_source_tree
+print('source', aotriton_source_tree())
+print('runtime', aotriton_runtime_tree())
 PY
 python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
 python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
 python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json
 ```
 
-Results: discovery tests passed (`2 passed`) and resolved the source root to
-`/home/lhl/hipengine/third_party/aotriton` with header
-`third_party/aotriton/include/aotriton/flash.h`. The default hot path is
-unchanged: 512/128 exact verify was `2082.303 tok/s`; fixture gate passed
-unchanged (`max_kl=0.03406`, top-1 `1.0`, `native_owned_device_bytes=1625645909`);
-4K/128 stayed above guard at `661.233 tok/s` (`prefill_seconds=6.1945`, decode
-`102.172 tok/s`). This iteration is setup/log-only for the AOTriton attention
-plugin, not a retained performance optimization. Note: `docs/PREFILL.md` was
-already modified in the worktree by another actor when this setup landed; left
-that high-conflict file unstaged.
+Results: discovery tests passed (`3 passed`), `fetch_aotriton.sh --dry-run`
+printed the expected 0.8.2b install plan, source discovery resolved
+`/home/lhl/hipengine/third_party/aotriton/include/aotriton/flash.h`, and runtime
+discovery resolved the explicitly provided `/home/lhl/Downloads/aotriton/aotriton`
+tree. The default hot path is unchanged: 512/128 exact verify was
+`2093.475 tok/s`; fixture gate passed unchanged (`max_kl=0.03406`, top-1 `1.0`,
+`native_owned_device_bytes=1625645909`); 4K/128 stayed above guard at
+`661.422 tok/s` (`prefill_seconds=6.1927`, decode `102.306 tok/s`). This
+iteration is setup/log-only for the AOTriton attention plugin, not a retained
+performance optimization.
 
 ## 2026-05-16 — docs/PREFILL.md: kernel-source verification + production decision
 
