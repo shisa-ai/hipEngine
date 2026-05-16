@@ -24,7 +24,10 @@ GGUF block bytes, and 133 F32 tensors stay dense F32. A native Q6_K embedding
 lookup kernel now dequantizes selected `token_embd.weight` rows directly to BF16
 hidden states, avoiding full dense embedding-table fallback. A registry-driven
 runtime adapter selects the GGUF linear variants for BF16 hidden projections and
-FP32 lm-head logits from resident weight metadata.
+FP32 lm-head logits from resident weight metadata. A first resident one-layer
+projection probe now starts at Q6_K token embedding and runs layer-0 RMSNorm,
+Q4_K `attn_gate`, and Q5_K `ssm_out` through native GGUF kernels to produce a
+finite deterministic BF16 hidden-size output.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 

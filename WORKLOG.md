@@ -15486,3 +15486,31 @@ python3 -m pytest tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_mate
 ```
 
 Next step: wire a Qwen3.5 GGUF layer runner that consumes resident root/layer records, Q6_K embedding lookup, and this GGUF linear adapter.
+
+## 2026-05-16 Qwen3.5 GGUF one-layer projection probe
+
+Added `hipengine/runtime/qwen35_gguf_runner.py` with `Qwen35GGUFOneLayerProbe`, the first resident runtime wiring over the GGUF materializer. This is explicitly a bring-up probe, not the final full layer. It runs:
+
+```text
+Q6_K token_embd lookup -> BF16 hidden
+layer-0 attn_norm RMSNorm -> BF16 norm hidden
+layer-0 attn_gate Q4_K pack8 GEMV -> BF16 ssm_inner
+layer-0 ssm_out Q5_K raw GEMV -> BF16 hidden-size output
+```
+
+The probe verifies resident root/layer records, the Q6_K embedding kernel, F32 norm weights, and the GGUF linear dispatch adapter can work together in a deterministic runtime path.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_runner.py
+python3 -m pytest tests/test_qwen35_gguf_runner.py -q
+# 1 passed
+python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py \
+  tests/test_qwen35_gguf_materialize.py tests/test_gguf_q6_k_embedding.py -q
+# 13 passed
+```
+
+`tests/test_qwen35_gguf_runner.py` runs token id `760` twice through the probe and checks exact BF16 determinism, shape `(1, 1024)`, finite decoded FP32 values, and nonzero output.
+
+Next step: expose a GGUF model path through `hipengine.LLM.generate()` and then replace/extend the probe with the full Qwen layer chain (conv/SSM or full attention, residuals, FFN, final norm, lm-head).
