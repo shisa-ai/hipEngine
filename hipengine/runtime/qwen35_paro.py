@@ -71,6 +71,7 @@ from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
     w8a16_linear_bf16_lowp_out,
     w8a16_linear_fp16_lowp_out,
     w8a16_shared_down_combine_residual_fp16,
+    w8a16_shared_gate_sigmoid_fp32,
     w8a16_shared_gate_up_silu_fp16,
 )
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
@@ -3387,7 +3388,21 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
+        w8a16_library = _library_for(library, "w8a16")
         shared_gate_logits_ptr = scratch.router_logits.ptr + self.config.num_experts * DType.FP32.itemsize
+        # Overwrite the shared-gate logit column in place with sigmoid(logit).
+        # Router top-k/weights have already been materialized, and this avoids
+        # recomputing the same expf once per hidden row tile below.
+        w8a16_shared_gate_sigmoid_fp32(
+            shared_gate_logits_ptr,
+            shared_gate_logits_ptr,
+            tokens,
+            self.config.num_experts + 1,
+            threads=128,
+            stream=stream,
+            library=w8a16_library,
+            runtime=self.runtime,
+        )
         w8a16_shared_down_combine_residual_fp16(
             scratch.shared_intermediate.ptr,
             self.tensor(f"{prefix}.down_weight_w8a16").ptr,
@@ -3402,7 +3417,7 @@ class Qwen35ParoDecodeState:
             self.config.num_experts + 1,
             threads=threads,
             stream=stream,
-            library=_library_for(library, "w8a16"),
+            library=w8a16_library,
             runtime=self.runtime,
         )
         return scratch.moe_out

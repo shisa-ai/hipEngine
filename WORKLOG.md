@@ -11194,3 +11194,48 @@ runnable and above guard at `655.964 tok/s`. 512/128 samples were `2036.300`,
 dual compact WMMA `34.245 -> 33.827 ms`, single compact WMMA `19.404 -> 19.346`
 ms, while whole-prefill timing regressed. Decision: reject/revert; keep
 `__launch_bounds__(32, 2)`.
+
+## 2026-05-16 — Prefill multiloop iter 48: retained shared-gate sigmoid precompute
+
+After four consecutive rejected micro-tunes, refined the shared-expert lane by
+removing redundant work instead of changing thread count or math. The grouped
+FP16 shared down+combine kernel was recomputing the same shared-gate sigmoid once
+per hidden-row tile (`ceil(hidden_size/4)` times per token). Added
+`hipengine_w8a16_shared_gate_sigmoid_fp32`, which overwrites the existing router
+shared-gate logit column in place with `sigmoid(logit)` after top-k/routing
+weights are already materialized, then changed fused shared down+combine to
+consume the cached FP32 gate. This adds no persistent scratch allocation and
+keeps the grouped-MoE ABI/dispatch path unchanged.
+
+Validation commands:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/w8a16_linear.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_w8a16_linear_plan.py tests/test_qwen35_decode_state.py -q
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
+lib = build_w8a16_linear(load=True, require_cached=False)
+for name in ['hipengine_w8a16_shared_gate_up_silu_fp16', 'hipengine_w8a16_shared_gate_sigmoid_fp32', 'hipengine_w8a16_shared_down_combine_residual_fp16']:
+    getattr(lib, name)
+print('w8a16 shared symbols loaded')
+PY
+python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter48-shared-gate-sigmoid-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter48-shared-gate-sigmoid-trace.json
+```
+
+Results: targeted tests passed (`37 passed`) and W8A16 smoke stayed green
+(`bf16_f32_max_abs=0.0`, `f32_f32_max_abs=4.77e-07`, `lowp_mismatch=0`,
+`fp16_lowp_mismatch=0`). 512/128 samples were `2061.288`, `2040.598`,
+`2037.803`, `2042.010`, `2038.149`, `2039.177`, and `2025.894` tok/s (median
+`2039.177`), +0.36% over retained `2031.783`. Fixture gate passed
+(`max_kl=0.03406`, top-1 agreement `1.0`, `native_owned_device_bytes=1625645909`,
+native prefill `0.2519s`). 4K/128 remained above the no-regression guard at
+`656.630 tok/s` (`prefill_seconds=6.2379`, decode `101.859 tok/s`). Profiler
+evidence: `shared_gate_sigmoid_fp32_kernel` ran 40 times for only `0.091 ms`
+total, while `w8a16_shared_down_combine_residual_fp16_kernel` ran 40 times for
+`18.768 ms` total / `469.2 us` avg versus the prior retained bucket orientation
+around `19.5 ms`. Decision: keep. Updated the benchmark diagnostic artifact,
+rollup, changelog, and kernel catalog.

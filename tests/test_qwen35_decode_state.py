@@ -1344,6 +1344,7 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_fused_shared_down_combine(mon
         ("gemm_awq_selected_pack8_wmma_compact_fp16", "down_wmma"),
         ("weighted_lanes_sum_out_fp16_f32w", "weighted_lanes"),
         ("w8a16_shared_gate_up_silu_fp16", "shared_gate_up"),
+        ("w8a16_shared_gate_sigmoid_fp32", "shared_gate_sigmoid"),
         ("w8a16_shared_down_combine_residual_fp16", "shared_down_combine"),
     ]:
         monkeypatch.setattr(qwen_runtime, name, lambda *args, label=label, **kwargs: calls.append((label, args, kwargs)))
@@ -1369,15 +1370,19 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_fused_shared_down_combine(mon
         "down_wmma",
         "weighted_lanes",
         "shared_gate_up",
+        "shared_gate_sigmoid",
         "shared_down_combine",
     ]
-    assert calls[-2][1] == (hidden.ptr, 0xBD00, 0xBE00, scratch.shared_intermediate.ptr, 2, 4096, 768)
+    assert calls[-3][1] == (hidden.ptr, 0xBD00, 0xBE00, scratch.shared_intermediate.ptr, 2, 4096, 768)
+    shared_gate_logits_ptr = scratch.router_logits.ptr + 128 * 4
+    assert calls[-2][1] == (shared_gate_logits_ptr, shared_gate_logits_ptr, 2, 129)
+    assert calls[-2][2] == {"threads": 128, "stream": 0, "library": None, "runtime": runtime}
     assert calls[-1][1] == (
         scratch.shared_intermediate.ptr,
         0xBF00,
         0xC000,
         scratch.selected_out.ptr,
-        scratch.router_logits.ptr + 128 * 4,
+        shared_gate_logits_ptr,
         residual.ptr,
         scratch.moe_out.ptr,
         2,

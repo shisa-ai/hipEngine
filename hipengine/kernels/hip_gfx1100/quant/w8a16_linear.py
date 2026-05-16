@@ -15,6 +15,7 @@ _SYMBOL_BF16_F32 = "hipengine_w8a16_linear_bf16_f32_out"
 _SYMBOL_BF16_LOWP = "hipengine_w8a16_linear_bf16_lowp_out"
 _SYMBOL_FP16_LOWP = "hipengine_w8a16_linear_fp16_lowp_out"
 _SYMBOL_SHARED_GATE_UP_SILU_FP16 = "hipengine_w8a16_shared_gate_up_silu_fp16"
+_SYMBOL_SHARED_GATE_SIGMOID_FP32 = "hipengine_w8a16_shared_gate_sigmoid_fp32"
 _SYMBOL_SHARED_DOWN_COMBINE_RESIDUAL_FP16 = "hipengine_w8a16_shared_down_combine_residual_fp16"
 _SYMBOL_F32_F32 = "hipengine_w8a16_linear_f32_f32_out"
 _ALLOWED_THREADS = {64, 128, 256, 512}
@@ -186,12 +187,38 @@ def w8a16_shared_gate_up_silu_fp16(
     )
 
 
+def w8a16_shared_gate_sigmoid_fp32(
+    gate_logits_ptr: int,
+    gate_values_ptr: int,
+    tokens: int,
+    gate_stride: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Precompute the shared-expert sigmoid gate once per token."""
+
+    _launch_shared_gate_sigmoid(
+        _SYMBOL_SHARED_GATE_SIGMOID_FP32,
+        gate_logits_ptr,
+        gate_values_ptr,
+        tokens,
+        gate_stride,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def w8a16_shared_down_combine_residual_fp16(
     shared_intermediate_ptr: int,
     down_weight_ptr: int,
     down_scale_ptr: int,
     selected_ptr: int,
-    gate_logits_ptr: int,
+    shared_gate_ptr: int,
     residual_ptr: int,
     out_ptr: int,
     tokens: int,
@@ -204,7 +231,7 @@ def w8a16_shared_down_combine_residual_fp16(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch fused FP16 W8A16 shared down + shared gate/residual combine."""
+    """Launch fused FP16 W8A16 shared down + precomputed shared-gate/residual combine."""
 
     _launch_shared_down_combine_residual(
         _SYMBOL_SHARED_DOWN_COMBINE_RESIDUAL_FP16,
@@ -212,7 +239,7 @@ def w8a16_shared_down_combine_residual_fp16(
         down_weight_ptr,
         down_scale_ptr,
         selected_ptr,
-        gate_logits_ptr,
+        shared_gate_ptr,
         residual_ptr,
         out_ptr,
         tokens,
@@ -281,6 +308,11 @@ def register_w8a16_linear_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
         register(
+            KernelKey("hip_gfx1100", "w8a16_linear", quant, "shared_gate_sigmoid_fp32"),
+            w8a16_shared_gate_sigmoid_fp32,
+            replace=replace,
+        )
+        register(
             KernelKey("hip_gfx1100", "w8a16_linear", quant, "shared_down_combine_residual_fp16"),
             w8a16_shared_down_combine_residual_fp16,
             replace=replace,
@@ -337,13 +369,52 @@ def _launch(
     _check_launch(runtime, err)
 
 
+def _launch_shared_gate_sigmoid(
+    symbol: str,
+    gate_logits_ptr: int,
+    gate_values_ptr: int,
+    tokens: int,
+    gate_stride: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(tokens, "tokens")
+    _check_positive(gate_stride, "gate_stride")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64, 128, 256, or 512")
+    library = library or build_w8a16_linear(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(gate_logits_ptr),
+        ctypes.c_void_p(gate_values_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(gate_stride),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def _launch_shared_down_combine_residual(
     symbol: str,
     shared_intermediate_ptr: int,
     down_weight_ptr: int,
     down_scale_ptr: int,
     selected_ptr: int,
-    gate_logits_ptr: int,
+    shared_gate_ptr: int,
     residual_ptr: int,
     out_ptr: int,
     tokens: int,
@@ -382,7 +453,7 @@ def _launch_shared_down_combine_residual(
         ctypes.c_void_p(down_weight_ptr),
         ctypes.c_void_p(down_scale_ptr),
         ctypes.c_void_p(selected_ptr),
-        ctypes.c_void_p(gate_logits_ptr),
+        ctypes.c_void_p(shared_gate_ptr),
         ctypes.c_void_p(residual_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_int64(tokens),

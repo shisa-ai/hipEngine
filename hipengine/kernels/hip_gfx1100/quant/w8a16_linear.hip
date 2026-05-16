@@ -38,6 +38,20 @@ __device__ inline float silu_f32(float value) {
   return value / (1.0f + expf(-value));
 }
 
+__global__ void shared_gate_sigmoid_fp32_kernel(
+    const float* gate_logits,
+    float* gate_values,
+    int64_t tokens,
+    int64_t gate_stride) {
+  const int64_t token = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (token >= tokens) {
+    return;
+  }
+  const int64_t offset = token * gate_stride;
+  const float logit = gate_logits[offset];
+  gate_values[offset] = 1.0f / (1.0f + expf(-logit));
+}
+
 __global__ void w8a16_linear_kernel(
     const uint16_t* hidden_states,
     const int8_t* weight,
@@ -255,7 +269,7 @@ __global__ void w8a16_shared_down_combine_residual_fp16_kernel(
     const int8_t* down_weight,
     const float* down_scale,
     const half_t* selected,
-    const float* gate_logits,
+    const float* shared_gate,
     const half_t* residual,
     half_t* out,
     int64_t hidden_size,
@@ -332,7 +346,7 @@ __global__ void w8a16_shared_down_combine_residual_fp16_kernel(
   }
 
   if (threadIdx.x == 0) {
-    const float gate = 1.0f / (1.0f + expf(-gate_logits[token * gate_stride]));
+    const float gate = shared_gate[token * gate_stride];
     const int64_t out_offset = token * hidden_size;
 #pragma unroll
     for (int slot = 0; slot < 4; ++slot) {
@@ -513,12 +527,35 @@ extern "C" int hipengine_w8a16_shared_gate_up_silu_fp16(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_w8a16_shared_gate_sigmoid_fp32(
+    const float* gate_logits,
+    float* gate_values,
+    int64_t tokens,
+    int64_t gate_stride,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || gate_stride <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      shared_gate_sigmoid_fp32_kernel,
+      dim3(static_cast<unsigned int>((tokens + threads - 1) / threads)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      gate_logits,
+      gate_values,
+      tokens,
+      gate_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_w8a16_shared_down_combine_residual_fp16(
     const half_t* shared_intermediate,
     const int8_t* down_weight,
     const float* down_scale,
     const half_t* selected,
-    const float* gate_logits,
+    const float* shared_gate,
     const half_t* residual,
     half_t* out,
     int64_t tokens,
@@ -540,7 +577,7 @@ extern "C" int hipengine_w8a16_shared_down_combine_residual_fp16(
       down_weight,
       down_scale,
       selected,
-      gate_logits,
+      shared_gate,
       residual,
       out,
       hidden_size,

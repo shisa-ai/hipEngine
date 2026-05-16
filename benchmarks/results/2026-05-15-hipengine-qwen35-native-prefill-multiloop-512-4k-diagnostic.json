@@ -10,31 +10,34 @@
   "path": "native_prefill_c1_multiloop",
   "max_layers": 40,
   "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
-  "change": "Tile Qwen3.5 router/shared-gate logits across four adjacent prefill tokens per expert block, reusing BF16 router weight loads for tokens>=4 while leaving decode tokens=1 on the original one-token kernel.",
-  "source_lineage": "hipENGINE local optimization of the ported nano-vllm-amd@59195ed router/shared-gate kernel; preserves logits/selected/routing ABI and the existing block-parallel router_select path.",
+  "change": "Precompute each token's shared-expert sigmoid gate once in the W8A16 library and let fused shared down+residual combine consume the cached FP32 gate instead of recomputing expf for every hidden-row tile.",
+  "source_lineage": "hipENGINE local optimization of the ported nano-vllm-amd@59195ed W8A16 shared-expert path; preserves grouped-MoE ABI, reuses the existing router shared-gate column in place, and adds no persistent scratch allocation.",
   "workloads": {
     "512_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json",
       "prefill_tok_s_samples": [
-        2037.1190132834188,
-        2036.5642202735198,
-        2027.0024600166219,
-        2019.8560919209795
+        2061.287688578985,
+        2040.5976417195154,
+        2037.803157697264,
+        2042.0098527967066,
+        2038.1492171727284,
+        2039.176914251775,
+        2025.89396352077
       ],
-      "prefill_tok_s_median": 2031.7833401450707,
-      "previous_retained_prefill_tok_s": 1974.653007628181,
-      "delta_percent": 2.893183374303865,
-      "representative_prefill_seconds": 0.2513353400863707,
-      "representative_decode_tok_s": 101.55420982859128
+      "prefill_tok_s_median": 2039.176914251775,
+      "previous_retained_prefill_tok_s": 2031.7833401450707,
+      "delta_percent": 0.36389579344500156,
+      "representative_prefill_seconds": 0.25108169694431126,
+      "representative_decode_tok_s": 101.71489459624055
     },
     "4096_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json",
-      "prefill_tok_s": 656.9500176103202,
-      "previous_retained_prefill_tok_s": 649.9967210600794,
-      "delta_percent": 1.0697433190197745,
-      "prefill_seconds": 6.234873110894114,
-      "decode_tok_s": 102.40365548785024,
-      "guard_floor_prefill_tok_s": 639.0176763809909,
+      "prefill_tok_s": 656.6303801871952,
+      "previous_retained_prefill_tok_s": 656.9500176103202,
+      "delta_percent": -0.048654755241139824,
+      "prefill_seconds": 6.237908149836585,
+      "decode_tok_s": 101.85853729377834,
+      "guard_floor_prefill_tok_s": 624.1025167298042,
       "guard_passed": true
     }
   },
@@ -48,7 +51,7 @@
     "max_kl": 0.034058458922996276,
     "top1_agreement": 1.0,
     "native_owned_device_bytes": 1625645909,
-    "native_prefill_seconds": 0.25187351694330573
+    "native_prefill_seconds": 0.25186545797623694
   },
   "additional_gates": [
     {
@@ -56,25 +59,29 @@
       "passed": true
     },
     {
-      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY' ... build_qwen35_router(load=True, require_cached=False) ... PY",
-      "passed": true,
-      "evidence": "hipengine_qwen35_router_logits_fp16 and hipengine_qwen35_router_topk_shared_out_fp16 symbols loaded"
+      "command": "python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/w8a16_linear.py hipengine/runtime/qwen35_paro.py",
+      "passed": true
     },
     {
-      "command": "python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py -q",
+      "command": "python3 -m pytest tests/test_w8a16_linear_plan.py tests/test_qwen35_decode_state.py -q",
       "passed": true,
       "evidence": "37 passed"
     },
     {
-      "command": "python3 scripts/smoke.py --mode qwen35-router-hip --rows 8 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY' ... build_w8a16_linear(load=True, require_cached=False) ... PY",
       "passed": true,
-      "evidence": "selected_match=True, fp16_selected_match=True, BF16 logits max_abs=0.0, FP16 logits max_abs=2.38e-07"
+      "evidence": "hipengine_w8a16_shared_gate_up_silu_fp16, hipengine_w8a16_shared_gate_sigmoid_fp32, and hipengine_w8a16_shared_down_combine_residual_fp16 symbols loaded"
     },
     {
-      "command": "rocprofv3 --kernel-trace -d /tmp/iter43-router-tile4-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter43-router-tile4-trace.json",
+      "command": "python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
       "passed": true,
-      "evidence": "qwen35_router_logits_token_tile_kernel<_Float16,4> ran 40 times, total 8.683 ms / avg 217.1 us; prior retained one-token router logits was 15.429 ms total / avg 385.7 us"
+      "evidence": "bf16_f32_max_abs=0.0, f32_f32_max_abs=4.77e-07, lowp_mismatch=0, fp16_lowp_mismatch=0"
+    },
+    {
+      "command": "rocprofv3 --kernel-trace -d /tmp/iter48-shared-gate-sigmoid-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter48-shared-gate-sigmoid-trace.json",
+      "passed": true,
+      "evidence": "shared_gate_sigmoid_fp32_kernel ran 40 times for 0.091 ms total; shared down-combine total was 18.768 ms vs prior retained 19.526 ms in the same bucket orientation."
     }
   ],
-  "worklog": "2026-05-16 \u2014 Prefill multiloop iter 43: token-tiled router logits"
+  "worklog": "2026-05-16 \u2014 Prefill multiloop iter 48: precomputed shared gate sigmoid"
 }

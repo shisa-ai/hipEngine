@@ -34,6 +34,7 @@ from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
     w8a16_linear_f32_f32_out,
     w8a16_linear_fp16_lowp_out,
     w8a16_shared_down_combine_residual_fp16,
+    w8a16_shared_gate_sigmoid_fp32,
     w8a16_shared_gate_up_silu_fp16,
 )
 
@@ -69,5 +70,6 @@ __all__ = [
     "w8a16_linear_f32_f32_out",
     "w8a16_linear_fp16_lowp_out",
     "w8a16_shared_down_combine_residual_fp16",
+    "w8a16_shared_gate_sigmoid_fp32",
     "w8a16_shared_gate_up_silu_fp16",
 ]
