@@ -13225,3 +13225,56 @@ Current board captured in the new plan:
 - vs llama.cpp Vulkan: prefill already wins all retained split rows; decode needs +16.9%, +9.1%, +4.4%, +5.6% at 512/4K/32K/128K.
 
 Plan decision: do an audit-first grind rather than another blind kernel loop.  Lane 0 is benchmark/protocol promotion; Lane 1 is matched ROCTX/rocprof profiles; Lane 2 attacks short/mid prefill through bulk dense/shared-expert GEMM-shaped paths; Lane 3 attacks decode through replay-only dispatch/rotation/W4/profile-driven attention work; Lane 4 preserves the memory advantage; Lane 5 defers c>N decode until batch-1 board closure.  `docs/PLAN.md` project-structure docs list now points at `docs/OPTIMIZE.md`.
+
+## 2026-05-17 — Reorganize `docs/OPTIMIZE.md` into per-category candidate tables
+
+Reviewed every parent and hipENGINE doc named in `AGENTS.md` "Key Files" plus the parent
+optimization references (`~/amd-gpu-tuning/docs/OPTIMAL.md`, `PLAN-PAROQUANT.md`,
+`PLAN-PAROQUANT2.md` including the §11 post-mortem and the live §12 punchlist,
+`PLAN-LONGCONTEXT.md`, `docs/LLAMACPP-VULKAN.md`, `PR_COMMENT-llamacpp-hip-unroll600.md`,
+`LESSONS-LEARNED.md`).  Rewrote `docs/OPTIMIZE.md` so each optimization lane is a table with
+ID / candidate / source-lineage / expected prefill Δ / expected decode Δ / memory / risk / status /
+result columns, per the user request to be able to grind through candidates and fill in results.
+
+New layout:
+
+- §1 Scoreboard preserved (3 comparison tables + compact goal).
+- §2 Strategy paragraph.
+- §3 Non-negotiable promotion gates (correctness / no torch / registry-only / memory / rollup /
+  generated-sample equality).
+- §4 Lane M — measurement and protocol promotion (blocks everything: accepted
+  `LLM.generate()` rows, comparison-table auto-refresh, matched rocprof captures, per-bucket
+  Amdahl, local Vulkan calibration).
+- §5 Lane P — prefill (P1 bulk dense / shared-expert; P2 AOTriton glue; P3 boundary fusion;
+  P4 native FA-2; P5 long-context chunking).
+- §6 Lane D — decode (D1 dispatch / boundary fusion; D2 Marlin-K vec8 + qweight-neutral port plus
+  informational rows for every parent §12 rejection; D3 long-context attention split-K + grouped-GQA;
+  D4 launch-floor / replay hygiene; D5 decode glue ledger; D6 DFlash/MTP).
+- §7 Lane A — memory guardrails.
+- §8 Lane W — compiler / build profile sweeps.
+- §9 Lane S — c>N / serving (deferred).
+- §10 Lane K — other quant formats / models (deferred).
+- §11 Do-not-chase list (curated from parent rejections + LESSONS-LEARNED).
+- §12 First concrete punchlist (M.1/M.2 → M.3/M.4 → M.5 → P1.1/P1.2/P1.4 → W.1 →
+  D1.1/D1.4/D2.1 → D3.1/D3.2/D3.3).
+- §13 Reference map.
+
+Status legend explicitly distinguishes `pending` / `in-progress` / `accepted` / `rejected` /
+`parked` / `deferred`, with `parked (parent rejected ...)` rows kept as informational so future
+agents do not re-run the same dead-end experiments (Marlin-K B1-B7, C1-C5, E1-E6, F1/F2, naive
+sudot4, LDS staging, wave32-only sweeps over AWQ layout, multi-step graph replay, etc.).
+
+Validation:
+
+```bash
+wc -l docs/OPTIMIZE.md
+# 457
+grep -c "^| " docs/OPTIMIZE.md
+# 155 table rows
+grep -E "^### " docs/OPTIMIZE.md
+# Section headings: 1.1-1.4 scoreboard; 5.1-5.5 P1-P5; 6.1-6.6 D1-D6
+```
+
+No code, kernel, or benchmark changes in this commit; the doc rewrite is the logical unit.
+Unrelated untracked `hipengine/util/__init__.py` is owned by another agent per AGENTS.md
+coordination rules and is left alone.
