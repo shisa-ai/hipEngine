@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "status": "diagnostic_rejected",
+  "blocked_reason": "The safe c=1 selected-MoE post-op fold is already the default path; the next direct down+combine fusion would collapse selected-expert grid parallelism and has prior parent evidence of a slowdown.",
+  "performance_claim": false,
+  "date": "2026-05-17",
+  "task": "D1.4 selected-MoE post-op fold",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "current_path_audit": {
+    "decode_c1_path": "Qwen35ParoDecodeState.run_moe_c1_fp16 -> combine_moe_c1_shared_residual_fp16 -> weighted_sum_shared_gate_combine_residual_out_fp16_f32w",
+    "already_fused_work": [
+      "selected-expert weighted sum over num_experts_per_tok rows",
+      "shared gate sigmoid",
+      "shared expert combine",
+      "post-MoE residual add"
+    ],
+    "dispatch_floor_remaining": "one combine launch per MoE layer remains (40 calls/token in M.4) because fusing into selected down GEMV would need either atomics or reduced parallelism.",
+    "grouped_prefill_note": "The sorted-lane grouped prefill path still uses weighted_lanes_sum_out + shared_gate_combine_residual_batch, but that path is tokens>1 prefill only and cannot improve 512/128 decode."
+  },
+  "correctness": {
+    "pytest": {
+      "command": "python3 -m pytest tests/test_paro_combine_plan.py tests/test_qwen35_decode_state.py -q --tb=short",
+      "status": "passed",
+      "tests": 47
+    },
+    "combine_smoke": {
+      "command": "python3 scripts/smoke.py --mode paro-combine-hip --rows 8 --hidden-size 2048 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "status": "passed",
+      "bf16_mismatches": {
+        "weighted": 0,
+        "fused": 0,
+        "batch_fused": 0,
+        "shared": 0,
+        "shared_residual": 0,
+        "weighted_lanes": 0,
+        "shared_batch": 0
+      },
+      "fp16_mismatches": {
+        "weighted": 0,
+        "fused": 0,
+        "batch_fused": 0,
+        "shared": 0,
+        "shared_residual": 0,
+        "weighted_lanes": 0,
+        "shared_batch": 0
+      }
+    },
+    "graph_fixture_gate": {
+      "command": "python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --max-new-tokens 16 --json /tmp/hipengine-d14/graph-fixture-current.json",
+      "status": "accepted",
+      "generated_match": true,
+      "expected_match": true,
+      "final_kl": 0.0,
+      "final_top1_match": true,
+      "finite_logits": true
+    }
+  },
+  "micro_probe": {
+    "command": "PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d14-combine-probe --output-file combine_threads -- python3 /tmp/d14_combine_probe.py --features 2048 --rows 8 --reps 50 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "target_kernel": "weighted_sum_shared_gate_combine_residual_out_kernel<_Float16, float>",
+    "thread_sweep_duration_ns_median_after_warmup": {
+      "64": 2440.0,
+      "128": 2440.5,
+      "256": 2440.0
+    },
+    "conclusion": "No runtime thread-count lever; the fused c=1 combine kernel is launch-floor-sized at ~2.44 us for rows=8, features=2048."
+  },
+  "parent_negative_evidence": {
+    "source": "/home/lhl/amd-gpu-tuning/WORKLOG.md#2026-05-10-Rejected-direct-selected-down-combine-fusion",
+    "prototype": "selected down-projection + weighted expert sum + shared-gate combine + residual add",
+    "correctness": "bit-for-bit on rows=8, in=512, out=2048, experts=256, FP16",
+    "microbench_us": {
+      "old_selected_down_plus_combine": 13.38,
+      "fused_selected_down_combine": 16.52
+    },
+    "speedup": 0.81,
+    "reason": "The fused kernel removed one launch and an intermediate but collapsed grid parallelism from out_pack * active_experts blocks to out_pack blocks; graph replay already amortizes the launch saving."
+  },
+  "benchmarks": {
+    "current_default_512x128": {
+      "command": "python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d14/512x128-current.json",
+      "prefill_tok_s": 2284.6519109337655,
+      "decode_tok_s": 115.75539512735635,
+      "peak_gib": 18.17562458757311
+    },
+    "comparison_baseline": {
+      "source": "benchmarks/results/2026-05-17-hipengine-qwen35-d11-rotate-dual-pack8-fusion-rejected.json default gate-off median",
+      "prefill_tok_s": 2268.368517389437,
+      "decode_tok_s": 115.45020754109446,
+      "peak_gib": 18.17562458757311
+    },
+    "delta_vs_recent_default_percent": {
+      "prefill": 0.7178473099307083,
+      "decode": 0.2643473909265537
+    },
+    "interpretation": "Run-to-run noise/current baseline only; no D1.4 candidate was defaulted and no 512/128 decode improvement is claimed."
+  },
+  "decision": {
+    "action": "reject_further_default_change_and_keep_existing_fused_postop",
+    "stop_condition": "The dataflow-permitted c=1 post-op fold is already active and correct. The next direct fusion that would remove the remaining combine launch is rejected by parent target-shape evidence because it abandons selected-expert parallelism; thread probing found no smaller combine-kernel lever.",
+    "future_reopen_condition": "Only revisit if a design preserves per-expert/out-pack parallelism while avoiding atomics, or if a graph-level fusion can remove the dispatch without changing the selected down GEMV grid."
+  }
+}

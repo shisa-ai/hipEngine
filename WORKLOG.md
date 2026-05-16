@@ -14705,3 +14705,48 @@ V on a separate rotate, so it does not remove the whole rotation launch family. 
 opt-in code path and kernel catalog entry are kept as evidence/diagnostic surface;
 `docs/OPTIMIZE.md` marks D1.1 rejected and the artifact is
 `benchmarks/results/2026-05-17-hipengine-qwen35-d11-rotate-dual-pack8-fusion-rejected.json`.
+
+## 2026-05-17 — D1.4 selected-MoE post-op fold stop/reject
+
+Task #11 audited the selected-MoE post-op fold. The safe c=1 decode fold is
+already the default hipENGINE path: `run_moe_c1_fp16()` calls
+`combine_moe_c1_shared_residual_fp16()`, which launches
+`weighted_sum_shared_gate_combine_residual_out_fp16_f32w` for `tokens == 1`.
+That one kernel already performs selected-expert weighted sum, shared-gate
+sigmoid/combine, and residual add. The remaining combine bucket in M.4 is the
+one launch per MoE layer (`~40` calls/token), not a split post-op chain.
+
+Validation / probes:
+
+```bash
+python3 -m pytest tests/test_paro_combine_plan.py tests/test_qwen35_decode_state.py -q --tb=short
+python3 scripts/smoke.py --mode paro-combine-hip --rows 8 --hidden-size 2048 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --max-new-tokens 16 --json /tmp/hipengine-d14/graph-fixture-current.json
+PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d14-combine-probe --output-file combine_threads -- python3 /tmp/d14_combine_probe.py --features 2048 --rows 8 --reps 50 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d14/512x128-current.json
+```
+
+Results:
+
+- Combine smoke at `rows=8`, `hidden=2048` passed BF16/FP16 weighted/fused/batch/
+  shared/weighted-lane checks with all mismatches `0`.
+- Graph fixture gate passed (`generated_match=true`, `expected_match=true`,
+  `final_kl=0`, top-1 match true).
+- Combine thread probe medians for
+  `weighted_sum_shared_gate_combine_residual_out_kernel<_Float16,float>` were
+  effectively identical: 64 threads `2440.0 ns`, 128 threads `2440.5 ns`,
+  256 threads `2440.0 ns`; no thread-count lever.
+- Current 512/128 default diagnostic: prefill `2284.652 tok/s`, decode
+  `115.755 tok/s`, peak `18.176 GiB`. This is current baseline/no candidate
+  delta, not a retained improvement.
+
+Decision: reject further D1.4 default changes. The only direct way to remove the
+remaining combine launch is to fuse selected down-projection with weighted sum /
+shared gate / residual, but parent target-shape evidence already rejected that
+exact design: bit-correct, yet `13.38 us -> 16.52 us` (`0.81x`) because it
+collapses grid parallelism from `out_pack * active_experts` blocks to `out_pack`
+blocks. Reopen only for a design that preserves per-expert/out-pack parallelism
+without atomics or a graph-level fusion that removes the dispatch without
+changing selected-down GEMV layout.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d14-selected-moe-postop-fold-rejected.json`.
