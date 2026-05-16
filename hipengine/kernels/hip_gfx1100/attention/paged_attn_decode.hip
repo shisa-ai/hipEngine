@@ -1077,10 +1077,16 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   extern __shared__ float shared[];
   float* scores = shared;
   float* partial = scores + max_context_len;
+  float* q_shared = partial + blockDim.x;
   const int64_t kv_group = num_q_heads / num_kv_heads;
   const int64_t kv_head = q_head / kv_group;
   const float* q = query + (row * num_q_heads + q_head) * head_dim;
   const int32_t* row_table = block_tables + row * block_table_len;
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    q_shared[dim] = q[dim];
+  }
+  __syncthreads();
 
   float local_max = -3.4028234663852886e38f;
   for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
@@ -1097,8 +1103,12 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
     }
     const int64_t k_offset = ((physical_block * block_size + block_offset) * num_kv_heads + kv_head) * head_dim;
     float acc = 0.0f;
-    for (int64_t dim = 0; dim < head_dim; ++dim) {
-      acc += q[dim] * bf16_bits_to_float(key_cache[k_offset + dim]);
+    if ((head_dim & 7) == 0) {
+      acc = paged_key_dot_vec8(q_shared, key_cache, k_offset, head_dim);
+    } else {
+      for (int64_t dim = 0; dim < head_dim; ++dim) {
+        acc += q_shared[dim] * bf16_bits_to_float(key_cache[k_offset + dim]);
+      }
     }
     const float score = acc * scale;
     scores[token] = score;
@@ -1226,10 +1236,16 @@ __global__ void qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel(
   extern __shared__ float shared[];
   float* scores = shared;
   float* partial = scores + max_context_len;
+  float* q_shared = partial + blockDim.x;
   const int64_t kv_group = num_q_heads / num_kv_heads;
   const int64_t kv_head = q_head / kv_group;
   const float* q = query + (row * num_q_heads + q_head) * head_dim;
   const int32_t* row_table = block_tables + row * block_table_len;
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    q_shared[dim] = q[dim];
+  }
+  __syncthreads();
 
   float local_max = -3.4028234663852886e38f;
   for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
@@ -1246,8 +1262,12 @@ __global__ void qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel(
     }
     const int64_t k_offset = ((physical_block * block_size + block_offset) * num_kv_heads + kv_head) * head_dim;
     float acc = 0.0f;
-    for (int64_t dim = 0; dim < head_dim; ++dim) {
-      acc += q[dim] * bf16_bits_to_float(key_cache[k_offset + dim]);
+    if ((head_dim & 7) == 0) {
+      acc = paged_key_dot_vec8(q_shared, key_cache, k_offset, head_dim);
+    } else {
+      for (int64_t dim = 0; dim < head_dim; ++dim) {
+        acc += q_shared[dim] * bf16_bits_to_float(key_cache[k_offset + dim]);
+      }
     }
     const float score = acc * scale;
     scores[token] = score;
@@ -1674,9 +1694,9 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
   // Keep short prefill rows at one RDNA3 wave; 4K rows need the retained
   // 64-thread path for value-loop throughput. The earlier 256-thread launch was
   // repeat-nondeterministic on gfx1100 for identical inputs. Shared scratch must
-  // reserve max_context_len score slots plus one reduction slot per thread.
+  // reserve score slots, one reduction slot per thread, and one cached query head.
   const int threads = max_context_len <= 1024 ? 32 : 64;
-  const size_t shared = static_cast<size_t>(max_context_len + threads) * sizeof(float);
+  const size_t shared = static_cast<size_t>(max_context_len + threads + head_dim) * sizeof(float);
   hipLaunchKernelGGL(
       qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel,
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
@@ -1732,10 +1752,10 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spa
       (num_q_heads % num_kv_heads) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  // Match the single-request short-row one-wave policy and fix short varlen
-  // rows where max_context_len * 2 under-allocated per-thread reduction scratch.
+  // Match the single-request short-row one-wave policy and keep enough scratch
+  // for reduction slots plus the cached query head on short varlen rows.
   const int threads = max_context_len <= 1024 ? 32 : 64;
-  const size_t shared = static_cast<size_t>(max_context_len + threads) * sizeof(float);
+  const size_t shared = static_cast<size_t>(max_context_len + threads + head_dim) * sizeof(float);
   hipLaunchKernelGGL(
       qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel,
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),

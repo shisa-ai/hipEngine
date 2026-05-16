@@ -10670,3 +10670,49 @@ remained runnable at `576.765 tok/s` but did not improve the retained best
 (`578.288`). Decision: reject/revert. Keep the one-wave 32-thread short-row
 attention policy; 64 threads hurts the composed 512 path despite the larger top
 bucket.
+
+## 2026-05-16 — Prefill multiloop iter 34: shared query cache for full-attn prefill
+
+After two negative thread-count retunes, re-read the relevant optimization notes
+before changing code: `docs/ROOFLINE.md`, `docs/KERNELS.md`, parent
+`~/amd-gpu-tuning/docs/OPTIMAL.md`, plus parent `WORKLOG.md` / `LESSONS-LEARNED.md`
+entries on compact WMMA, GDN recurrent rejections, and the retained full-shape
+PARO route. The current retained trace still had full-attention GQA prefill as
+the largest 512 bucket (`56.377 ms` across 10 launches). Unlike the optimized
+paged decode context kernel, the prefill kernel reread the same FP32 query head
+from global memory for every visible token. Changed the single-request and
+varlen full-attention prefill kernels to cache the per-block query head in LDS
+and use the existing vec8 BF16 key-dot helper when `head_dim` is divisible by 8.
+The retained 32-thread short-row / 64-thread 4K launch policy is unchanged.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import build_qwen35_paged_attn_decode
+lib = build_qwen35_paged_attn_decode(load=True, require_cached=False)
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans')
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans')
+print('paged attention prefill symbols loaded')
+PY
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter34-attn-qshared-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter34-attn-qshared-trace.json
+sqlite3 -header -csv /tmp/iter34-attn-qshared-trace/trace_results.db "select name, count(*) n, sum(duration)/1e6 total_ms, avg(duration)/1e3 avg_us, max(duration)/1e3 max_us from kernels where name like '%prefill_gqa_gate%' or name like '%gdn_prefill%' or name like '%awq_fusedw4%' group by name order by sum(duration) desc limit 20;"
+```
+
+Results: paged-attention library rebuilt and targeted tests passed (`37 passed`).
+512/128 samples were `1887.964`, `1879.829`, `1884.834`, and `1883.046` tok/s
+(median `1883.940`), +4.9% over retained `1796.282`. Fixture gate passed
+(`max_kl=0.03406`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2731s`). 4K/128
+remained runnable and improved to `658.418 tok/s` (`prefill_seconds=6.2210`,
+decode `102.086 tok/s`), well above the 95% guard from retained `578.288`.
+Profiler evidence: `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel` ran 10
+times with `39.981 ms` total / `3998.1 us` average, down from the prior retained
+trace's `56.377 ms` total. Decision: keep. Updated benchmark artifact/rollup and
+`docs/KERNELS.md`; still below the parent OPTIMAL target, with current top
+buckets now GDN recurrent prefill, compact WMMA selected MoE, and W4 prompt
+projections.

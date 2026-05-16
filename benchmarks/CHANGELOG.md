@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-16
+
+- [diagnostic retained] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / native c=1 512/128 + 4K/128: 512 prefill 1796.282 -> 1883.940 tok/s (+4.9%) and 4K prefill 578.288 -> 658.418 tok/s (+13.9%) due to caching full-attention prefill queries in shared memory and using vec8 BF16 key dots; not promoted to current-fastest because `LLM.generate()` row/full sweep remain open; `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-multiloop-512-4k-diagnostic.json`.
+
 ## 2026-05-15
 
 - [diagnostic retained] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / native c=1 512/128 + 4K/128: 512 prefill 1752.674 -> 1796.282 tok/s (+2.5%) and 4K prefill 572.269 -> 578.288 tok/s (+1.1%) due to fusing FP16 W8A16 shared down projection with selected/shared-gate/residual combine for grouped MoE prefill; not promoted to current-fastest because `LLM.generate()` row/full sweep remain open; `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-multiloop-512-4k-diagnostic.json`.
