@@ -12,6 +12,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     embedding_lookup_bf16_i64,
     embedding_lookup_fp16_i64,
     plan_runtime_state_build,
+    record_i64_scalar_indexed,
     register_runtime_state_kernels,
     set_decode_position_i64,
     set_decode_positions_i64,
@@ -66,6 +67,10 @@ def test_runtime_state_registers_graph_friendly_helpers() -> None:
     )
     assert resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="set_i64") is set_i64_scalar
     assert resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="set_vector_i64") is set_i64_vector
+    assert (
+        resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="record_i64_indexed")
+        is record_i64_scalar_indexed
+    )
 
 
 def test_runtime_state_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -104,3 +109,5 @@ def test_embedding_lookup_validates_shape_before_gpu_load() -> None:
         set_decode_positions_i64(0, 0, 0, 0)
     with pytest.raises(ValueError, match="rows"):
         advance_decode_positions_i64(0, 0, 0)
+    with pytest.raises(ValueError, match="capacity"):
+        record_i64_scalar_indexed(0, 0, 0, 0)

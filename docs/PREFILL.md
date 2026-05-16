@@ -134,13 +134,18 @@ Source artifacts:
 - Parent: `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json`
   and `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json`
   (`nano-vllm-amd@59195ed`, OPTIMAL flags, decode graph replay).
-- hipENGINE: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-memory-diagnostic.json`
+- hipENGINE original AOTriton audit: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-memory-diagnostic.json`
   (`a00c244`, no decode graph replay, AOTriton opt-in threshold 512).
+- hipENGINE decode-graph follow-up: `benchmarks/results/2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json`
+  (same opt-in threshold, one-step HIP graph replay, graph-vs-eager fixture gate).
 
 The important shape signal is that the residual prefill gap is almost the same
 at 512 and 4K after AOTriton V3: the old 4K native-attention cliff is closed, so
-the remaining gap is unlikely to be the quadratic attention core.  It points at
-per-layer non-attention bulk work and launch/cast glue.
+the remaining gap is unlikely to be the quadratic attention core.  The decode
+follow-up moved hipENGINE decode to `109.34` tok/s at 512 and `110.30` tok/s at
+4K, narrowing the parent decode gap to `-5.8%` and `-2.4%`; it does not change
+the prefill diagnosis.  The remaining prefill gap points at per-layer
+non-attention bulk work and launch/cast glue.
 
 #### Parent vs hipENGINE prefill call structure
 
@@ -152,7 +157,7 @@ per-layer non-attention bulk work and launch/cast glue.
 | Shared expert during prefill | `ParoQuantSharedExpert.forward(...)` uses W8A16 only for `x.shape[0] == 1`; multi-row prefill uses dense `F.linear(...)` gate/up and down (`native_shared_expert_dense_calls` in parent ledgers). | `shared_expert_gate_up_silu_fp16(...)` and `shared_expert_down_combine_residual_fp16(...)` use custom W8A16 row/column kernels for all `tokens > 1`. | Likely prefill gap and also explains hipENGINE's slightly lower peak memory: hipENGINE quantizes this branch but does not yet have a tiled bulk W8A16/dense-GEMM implementation. |
 | Grouped routed MoE | Compact stacked MoE, compact WMMA tile map, dual gate/up WMMA, fused SiLU+down-rotate, single down WMMA, weighted-lane accumulation. | Same compact WMMA route is ported and wired in `run_moe_grouped_compact_fp16(...)`. | Probably not the first gap unless a matched profile disproves parity. |
 | Full-attention Q/K/V/O W4 projections | Parent multi-row W4 projections use pack8 replacement and bulk AWQ prefill paths once row count exceeds GEMV thresholds. | hipENGINE uses fused W4 prefill kernels for dual Q/K, QKV/Z, and single V/O/out projections. | Needs profiler verification, but current source structure does not show an obvious missing parent optimization here. |
-| Decode | Parent retained rows use `--decode-use-step-graph-replay`. | The latest hipENGINE diagnostic rows explicitly did **not** use graph replay. | Explains most decode delta, not the prefill delta. |
+| Decode | Parent retained rows use `--decode-use-step-graph-replay`. | hipENGINE now has one-step HIP graph replay with device token/position state and fixture validation (`qwen35_decode_graph_fixture_gate.py`). | Explains most prior decode delta; remaining decode gap is small at 4K and separate from the prefill gap. |
 
 #### Prioritized prefill gap table
 
@@ -161,7 +166,7 @@ per-layer non-attention bulk work and launch/cast glue.
 | P0 | Replace bulk dense GEMV-style kernels with real bulk GEMM/WMMA for linear-attention A/B and shared-expert prefill. | Parent source uses `F.linear(...)` for multi-row `ParoQuantDenseLinear` and multi-row `ParoQuantSharedExpert`; parent ledgers show `native_aux_dense_linear_calls=280` and `native_shared_expert_dense_calls=80`. hipENGINE source uses `dense_gemv_out_fp16(...)` for A/B and scalar W8A16 shared kernels. | These costs scale roughly linearly with prompt rows and occur in every layer/MoE layer, matching the near-constant -13% residual gap at both 512 and 4K. | Capture a matched 512/128 ROCTX+`rocprofv3` profile first; if confirmed, add a torch-free rocBLAS/hipBLAS or tiled WMMA bulk dense path, starting with shared expert gate/up+down and linear A/B. |
 | P1 | Avoid or fuse AOTriton dtype/post-pass glue. | **Landed as diagnostics:** single-request AOTriton prefill writes BF16 Q directly from head-norm/RoPE, reuses the already-appended BF16 paged KV cache for K/V, fuses BF16 attention × FP16 gate into PARO rotate1, and aliases the old gated scratch as BF16 AOTriton output. | These changes remove Q/K/V cast launches plus the separate gate launch and reduce 4K tracked peak memory by ~0.39 GiB cumulatively, but single-run throughput stayed neutral/slightly negative; this is no longer a leading explanation for the -13% residual gap. | Keep the cast-glue and gate-rotate artifacts as evidence; prioritize the P0 bulk dense/shared-expert gap unless matched profiler attribution says attention post-pass still dominates. |
 | P2 | Make AOTriton default only after the threshold sweep. | Current code still requires `attn_aotriton_min_tokens > 0`; latest good rows used threshold 512. | Not a gap for opt-in comparison, but it determines whether users get the fixed 4K path by default. | Run the queued 32/64/128/256/512 threshold sweep with memory reporting and set a typed default from evidence. |
-| P2 | Decode graph replay parity. | Parent rows use step graph replay; current hipENGINE rows do not. | Decode delta is separate from prefill, but it affects end-to-end comparison tables. | Implement/validate the queued decode graph replay task after the prefill threshold sweep. |
+| P2 | Decode graph replay parity. | **Landed as diagnostic:** one-step HIP graph replay records generated IDs on device for the fixture gate and reaches 109.34 tok/s (512/128) / 110.30 tok/s (4K/128), reducing the parent decode gap to -5.8% / -2.4%. | Decode delta is separate from prefill, but it affects end-to-end comparison tables. | Keep the graph gate in the benchmark protocol; remaining decode work should wait until prefill default/threshold and P0 bulk kernels are settled. |
 | P3 | Matched profiler attribution. | This audit is source/ledger based; no matched hipENGINE-vs-parent prefill kernel-time table exists yet. | Prevents tuning the wrong family if dense/shared kernels are not the top residual. | Retain compact 512/128 and 4K/128 profiler summaries with ROCTX ranges before landing invasive kernel work. |
 
 #### Additional low-risk prefill fusion audit (2026-05-16)
@@ -207,7 +212,7 @@ Landed and usable now:
 | Full-attention decode/prelude | Existing c=1 Q/K/V projection, vector-position RoPE prefill prelude, KV append, native append-then-attend causal GQA prefill kernel including varlen/block-diagonal `cu_seqlens` ABI, context/GQA decode, gate, output projection. Decode kernels remain useful as oracle only for prefill attention. |
 | KV append | `qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(...)` appends all prompt rows into one request cache; row-major `*_batch_spans(...)` remains for c>N-shaped caches. Both consume per-row append positions in `spans.live_counts`. |
 | KV metadata | `KVLiveSpans` already carries `request_ids`, `row_positions`, and `span_role`; compact prefill needs wiring/population, not a span redesign. |
-| Graph primitives | `hipengine.core.hip.HipRuntime` exposes HIP graph capture/instantiate/launch; decode graph capture exists. |
+| Graph primitives | `hipengine.core.hip.HipRuntime` exposes HIP graph capture/instantiate/launch; c=1 decode graph replay exists with max-replay split sizing and optional generated-token recording for gates. |
 
 Missing for the final path:
 

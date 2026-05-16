@@ -40,6 +40,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     embedding_lookup_batch_mapped_fp16_i64,
     embedding_lookup_bf16_i64,
     embedding_lookup_fp16_i64,
+    record_i64_scalar_indexed,
     set_decode_position_i64,
     set_decode_positions_i64,
     set_i64_scalar,
@@ -1300,44 +1301,84 @@ class Qwen35ParoResidentSession:
             return PrefillConfig().require_full_native
         return bool(config.require_full_native)
 
-    def capture_decode_graph(self, *, position: int, steps_per_replay: int = 1) -> "Qwen35ParoDecodeGraph":
-        """Capture one generated-token decode step for replay.
+    def capture_decode_graph(
+        self,
+        *,
+        position: int,
+        steps_per_replay: int = 1,
+        max_replay_steps: int | None = None,
+        record_steps: int = 0,
+    ) -> "Qwen35ParoDecodeGraph":
+        """Capture generated-token decode steps for replay.
 
         The captured step consumes the current device argmax token (`lm_out_index`),
         writes the next argmax token back to the same device scalar, and advances
-        device position/context at the end. Host tokenization/text decode is not
-        part of the graph.
+        device position/context at the end.  ``max_replay_steps`` lets callers
+        bake enough split-K attention capacity for the full replay span rather
+        than only the captured micro-step.  If ``record_steps`` is positive, each
+        replayed token id is appended to a device int64 buffer for correctness
+        gates; host tokenization/text decode is not part of the graph.
         """
 
         if self.closed:
             raise RuntimeError("session is closed")
         if steps_per_replay <= 0:
             raise ValueError("steps_per_replay must be positive")
+        if max_replay_steps is not None and max_replay_steps <= 0:
+            raise ValueError("max_replay_steps must be positive")
+        if record_steps < 0:
+            raise ValueError("record_steps must be non-negative")
         self._check_position(position)
+        replay_span = int(max_replay_steps) if max_replay_steps is not None else int(steps_per_replay)
+        self._check_position(position + replay_span - 1)
         self._check_position(position + steps_per_replay - 1)
-        num_splits = max(1, (position + steps_per_replay + self.chunk_size - 1) // self.chunk_size)
+        num_splits = max(1, (position + replay_span + self.chunk_size - 1) // self.chunk_size)
+        generated_buf: DeviceBuffer | None = None
+        generated_index_buf: DeviceBuffer | None = None
+        if record_steps:
+            generated_buf = malloc(int(record_steps) * DType.INT64.itemsize, runtime=self.runtime)
+            generated_index_buf = malloc(DType.INT64.itemsize, runtime=self.runtime)
+            self.runtime.memset(generated_buf.ptr, 0xFF, generated_buf.nbytes)
+            zero = np.zeros((1,), dtype=np.int64)
+            copy_host_to_device(generated_index_buf, host_array_ptr(zero), runtime=self.runtime)
+        graph = 0
         stream = self.runtime.stream_create()
-        self._set_position(position, stream=stream)
-        self.runtime.stream_synchronize(stream)
-        self.runtime.stream_begin_capture(stream)
         try:
-            for offset in range(steps_per_replay):
-                self._step_from_device_token(
-                    position=position + offset,
-                    num_splits=num_splits,
-                    advance_position=True,
-                    stream=stream,
-                )
-            graph = self.runtime.stream_end_capture(stream)
-        except Exception:
-            # If capture fails, try to end capture so the stream is not left in capture mode.
+            self._set_position(position, stream=stream)
+            self.runtime.stream_synchronize(stream)
+            self.runtime.stream_begin_capture(stream)
             try:
-                self.runtime.stream_end_capture(stream)
+                for offset in range(steps_per_replay):
+                    self._step_from_device_token(
+                        position=position + offset,
+                        num_splits=num_splits,
+                        advance_position=True,
+                        stream=stream,
+                        record_output_ptr=None if generated_buf is None else generated_buf.ptr,
+                        record_index_ptr=None if generated_index_buf is None else generated_index_buf.ptr,
+                        record_capacity=record_steps,
+                    )
+                graph = self.runtime.stream_end_capture(stream)
             except Exception:
-                pass
+                # If capture fails, try to end capture so the stream is not left in capture mode.
+                try:
+                    self.runtime.stream_end_capture(stream)
+                except Exception:
+                    pass
+                raise
+            graph_exec = self.runtime.graph_instantiate(graph)
+        except Exception:
+            if graph:
+                try:
+                    self.runtime.graph_destroy(graph)
+                except Exception:
+                    pass
             self.runtime.stream_destroy(stream)
+            if generated_index_buf is not None:
+                free(generated_index_buf, runtime=self.runtime)
+            if generated_buf is not None:
+                free(generated_buf, runtime=self.runtime)
             raise
-        graph_exec = self.runtime.graph_instantiate(graph)
         return Qwen35ParoDecodeGraph(
             session=self,
             graph=graph,
@@ -1346,13 +1387,39 @@ class Qwen35ParoResidentSession:
             position=position,
             num_splits=num_splits,
             steps_per_replay=steps_per_replay,
+            max_replay_steps=replay_span,
+            generated=generated_buf,
+            generated_index=generated_index_buf,
+            record_steps=record_steps,
         )
 
-    def _step_from_device_token(self, *, position: int, num_splits: int, advance_position: bool, stream: int) -> None:
+    def _step_from_device_token(
+        self,
+        *,
+        position: int,
+        num_splits: int,
+        advance_position: bool,
+        stream: int,
+        record_output_ptr: int | None = None,
+        record_index_ptr: int | None = None,
+        record_capacity: int = 0,
+    ) -> None:
         self._check_position(position)
         self._set_token_embedding_from_ptr(self.lm_out_index.ptr, stream=stream)
         hidden = self._run_layers(position=position, num_splits_override=num_splits, stream=stream)
         self._sample_device_from_hidden(hidden, stream=stream)
+        if record_output_ptr is not None:
+            if record_index_ptr is None:
+                raise ValueError("record_index_ptr is required when recording decode graph outputs")
+            record_i64_scalar_indexed(
+                self.lm_out_index.ptr,
+                record_output_ptr,
+                record_index_ptr,
+                int(record_capacity),
+                stream=stream,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
         if advance_position:
             advance_decode_position_i64(
                 self.position_buf.ptr,
@@ -2530,6 +2597,10 @@ class Qwen35ParoDecodeGraph:
     position: int
     num_splits: int
     steps_per_replay: int = 1
+    max_replay_steps: int = 1
+    generated: DeviceBuffer | None = None
+    generated_index: DeviceBuffer | None = None
+    record_steps: int = 0
     closed: bool = False
 
     def replay(self, steps: int) -> None:
@@ -2539,6 +2610,10 @@ class Qwen35ParoDecodeGraph:
             raise ValueError("steps must be non-negative")
         if self.steps_per_replay <= 0:
             raise ValueError("steps_per_replay must be positive")
+        if steps > self.max_replay_steps:
+            raise ValueError("steps exceed captured max_replay_steps")
+        if self.record_steps and steps > self.record_steps:
+            raise ValueError("steps exceed decode graph record capacity")
         if steps % self.steps_per_replay != 0:
             raise ValueError("steps must be divisible by steps_per_replay")
         launches = steps // self.steps_per_replay
@@ -2551,6 +2626,22 @@ class Qwen35ParoDecodeGraph:
             raise RuntimeError("decode graph is closed")
         return self.session._read_sample()
 
+    def read_generated_token_ids(self, count: int | None = None) -> list[int]:
+        if self.closed:
+            raise RuntimeError("decode graph is closed")
+        if self.generated is None:
+            raise RuntimeError("decode graph was captured without generated-token recording")
+        rows = int(self.record_steps if count is None else count)
+        if rows < 0 or rows > self.record_steps:
+            raise ValueError("count outside decode graph record capacity")
+        host = np.empty((rows,), dtype=np.int64)
+        copy_device_to_host(
+            host_array_ptr(host),
+            DeviceBuffer(self.generated.ptr, rows * DType.INT64.itemsize),
+            runtime=self.session.runtime,
+        )
+        return [int(item) for item in host.tolist()]
+
     def close(self) -> None:
         if self.closed:
             return
@@ -2559,6 +2650,12 @@ class Qwen35ParoDecodeGraph:
         self.session.runtime.graph_destroy(self.graph)
         if self.stream:
             self.session.runtime.stream_destroy(self.stream)
+        if self.generated_index is not None:
+            free(self.generated_index, runtime=self.session.runtime)
+            self.generated_index = None
+        if self.generated is not None:
+            free(self.generated, runtime=self.session.runtime)
+            self.generated = None
 
     def __enter__(self) -> "Qwen35ParoDecodeGraph":
         return self

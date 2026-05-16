@@ -165,6 +165,7 @@ def main() -> int:
                 graph = session.capture_decode_graph(
                     position=decode_start_pos,
                     steps_per_replay=args.graph_steps_per_replay,
+                    max_replay_steps=args.decode_tokens,
                 )
             try:
                 decode_start = time.perf_counter()

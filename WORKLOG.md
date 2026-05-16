@@ -12918,3 +12918,59 @@ Top candidates identified:
 5. MoE metadata: combine small group-prefix/tile-map/metadata-zero launches if profiler shows they matter.
 
 Deferred as not easy: input RMSNorm+PARO input rotation, rotate fused into generic W4 WMMA projections, and folding sorted-lane selected-output accumulation into shared down combine.
+
+## 2026-05-16 — Task 20 decode graph replay validation
+
+Implemented the task-20 graph-replay closure around the existing c=1 Qwen3.5/PARO resident decode graph path:
+
+- Added `record_i64_scalar_indexed(...)` to `hipengine/kernels/hip_gfx1100/runtime/state.hip` so replay can append each generated token id to a device buffer without host work inside the graph.
+- Extended `Qwen35ParoResidentSession.capture_decode_graph(...)` with `max_replay_steps` (bakes split-K attention capacity for the whole measured replay span) and optional `record_steps` for correctness gates.
+- Added `scripts/qwen35_decode_graph_fixture_gate.py`, which runs native prefill twice, compares eager decode vs HIP graph replay generated IDs, checks fixture expected IDs, and compares final logits/top-1/KL.
+- Updated `scripts/qwen35_paro_bench.py --graph-replay-decode` to pass `max_replay_steps=args.decode_tokens`.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/runtime/state.py hipengine/kernels/hip_gfx1100/runtime/__init__.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py scripts/qwen35_decode_graph_fixture_gate.py tests/test_runtime_state_plan.py
+python3 -m pytest tests/test_runtime_state_plan.py -q
+# 3 passed
+
+python3 scripts/qwen35_decode_graph_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task20-decode-graph-fixture-gate.json
+# passed=true, generated_match=true, expected_match=true, final_kl=0.0, final_top1_match=true
+```
+
+Diagnostic benchmark commands (performance_claim=false; AOTriton still opt-in at threshold 512):
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/task20-graph-512-128.json
+# prefill=2312.754 tok/s, decode=109.340 tok/s, tracked_peak=18.581 GiB
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/task20-graph-4k-128.json
+# prefill=2372.725 tok/s, decode=110.303 tok/s, tracked_peak=20.415 GiB
+```
+
+Compared with the prior no-graph AOTriton gate-rotate diagnostic:
+
+| Workload | Previous decode | Graph decode | Delta | Parent step-graph decode | Gap vs parent |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 101.703 tok/s | 109.340 tok/s | +7.5% | 116.050 tok/s | -5.8% |
+| 4K/128 | 102.211 tok/s | 110.303 tok/s | +7.9% | 113.049 tok/s | -2.4% |
+
+Retained artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json`.
+
+Caveat: this closes the c=1 reusable-step decode replay gap for the opt-in AOTriton single-request path.  It does not make the compact c>N serial decode bridge c-aware; that remains separate future work.
+
+Additional targeted regression bundle after the artifact write:
+
+```bash
+python3 -m pytest tests/test_runtime_state_plan.py tests/test_qwen35_decode_state.py tests/test_aotriton_discovery.py -q
+# 46 passed
+```
+
+Lineage hygiene for the runtime-state kernel touch:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9.
+# No parent kernel code was copied for this task; `record_i64_scalar_indexed` is a hipENGINE-only graph-gate helper.
+```

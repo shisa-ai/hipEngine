@@ -96,6 +96,20 @@ __global__ void advance_decode_position_i64_kernel(int64_t* position, int64_t* c
   }
 }
 
+__global__ void record_i64_scalar_indexed_kernel(
+    const int64_t* value,
+    int64_t* out,
+    int64_t* index,
+    int64_t capacity) {
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    const int64_t row = index[0];
+    if (row >= 0 && row < capacity) {
+      out[row] = value[0];
+    }
+    index[0] = row + 1;
+  }
+}
+
 __global__ void set_i64_vector_kernel(int64_t* out, const int64_t* values, int64_t rows) {
   const int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (row < rows) {
@@ -344,6 +358,28 @@ extern "C" int hipengine_advance_decode_position_i64(
       stream,
       position,
       context);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_record_i64_scalar_indexed(
+    const int64_t* value,
+    int64_t* out,
+    int64_t* index,
+    int64_t capacity,
+    hipStream_t stream) {
+  if (capacity <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      record_i64_scalar_indexed_kernel,
+      dim3(1),
+      dim3(1),
+      0,
+      stream,
+      value,
+      out,
+      index,
+      capacity);
   return static_cast<int>(hipGetLastError());
 }
 

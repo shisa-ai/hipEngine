@@ -23,6 +23,7 @@ _SYMBOL_SET_POSITION = "hipengine_set_decode_position_i64"
 _SYMBOL_SET_POSITIONS = "hipengine_set_decode_positions_i64"
 _SYMBOL_ADVANCE_POSITION = "hipengine_advance_decode_position_i64"
 _SYMBOL_ADVANCE_POSITIONS = "hipengine_advance_decode_positions_i64"
+_SYMBOL_RECORD_I64_INDEXED = "hipengine_record_i64_scalar_indexed"
 
 
 def plan_runtime_state_build(
@@ -437,6 +438,35 @@ def advance_decode_positions_i64(
     _check_launch(runtime, err)
 
 
+def record_i64_scalar_indexed(
+    value_i64_ptr: int,
+    out_i64_ptr: int,
+    index_i64_ptr: int,
+    capacity: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append one int64 scalar to ``out[index[0]]`` and increment ``index`` on device."""
+
+    if capacity <= 0:
+        raise ValueError("capacity must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_RECORD_I64_INDEXED)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(value_i64_ptr),
+        ctypes.c_void_p(out_i64_ptr),
+        ctypes.c_void_p(index_i64_ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "token_embedding", "w4_paro", "bf16_i64"),
@@ -496,6 +526,11 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "scalar_state", "w4_paro", "set_vector_i64"),
         set_i64_vector,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "scalar_state", "w4_paro", "record_i64_indexed"),
+        record_i64_scalar_indexed,
         replace=replace,
     )
 
