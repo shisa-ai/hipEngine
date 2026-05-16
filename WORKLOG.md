@@ -10636,3 +10636,37 @@ median `1796.282`. The 4K/128 guard remained runnable but lower than retained at
 reject/revert. The 64-thread retained setting is better for the composed prefill
 path despite the larger reduction size; avoid retuning these W8A16 shared helpers
 without direct kernel-trace evidence of a positive end-to-end signal.
+
+## 2026-05-16 — Prefill multiloop iter 33: rejected 64-thread short full-attn prefill
+
+Tried changing the full-attention GQA prefill wrapper so short rows
+(`max_context_len <= 1024`, including the 512-token primary shape) use 64
+threads instead of the retained 32-thread wave32 policy. The motivation was the
+trace top bucket: all-layer 512-token full-attention prefill took ~56 ms, and
+64 threads might reduce per-lane score/value work while still avoiding the known
+unsafe 256-thread launch.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import build_qwen35_paged_attn_decode
+lib = build_qwen35_paged_attn_decode(load=True, require_cached=False)
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans')
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans')
+print('paged attention prefill symbols loaded')
+PY
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+```
+
+Results: paged-attention library rebuilt and targeted tests passed (`37 passed`).
+Fixture gate passed (`max_kl=0.04303`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.3011s`). Primary
+512/128 regressed to `1709.874 tok/s` versus retained median `1796.282`; 4K/128
+remained runnable at `576.765 tok/s` but did not improve the retained best
+(`578.288`). Decision: reject/revert. Keep the one-wave 32-thread short-row
+attention policy; 64 threads hurts the composed 512 path despite the larger top
+bucket.
