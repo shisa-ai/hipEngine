@@ -44,8 +44,8 @@ Cross-links:
 
 ## 1. Current scoreboard
 
-Current hipENGINE rows are still **diagnostic resident-runner rows** (`performance_claim=false`),
-not accepted public `LLM.generate()` throughput rows. They use:
+Current hipENGINE rows are resident-runner comparison-table diagnostics run with the deployment
+defaults:
 
 ```text
 --attn-aotriton-min-tokens 512
@@ -58,6 +58,7 @@ not accepted public `LLM.generate()` throughput rows. They use:
 ```
 
 Source: `benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json`.
+Re-score with:
 
 ```bash
 python3 scripts/qwen35_compare_tables.py all
@@ -107,18 +108,19 @@ attention/W4 work, in that order. Single-knob kernel rewrites alone cannot get t
 
 ## 2. Strategy in one paragraph
 
-Do not start with another blind kernel multiloop. First promote the measurement harness and capture
-matched ROCTX / `rocprofv3 --kernel-trace` profiles for every comparison row. The remaining short/mid
-prefill miss is most likely bulk dense/shared-expert GEMV-shaped work (Lane P1) plus AOTriton glue
-(Lane P2); the parent runs these as framework `F.linear(...)` GEMMs and llama.cpp HIP's prefill jumps
-+166% with one compiler flag. The decode miss is the compound of replay dispatch fanout (~660-900
-dispatches/token), rotation + RMSNorm boundary launches (combined ~20% of decode bucket per the
-parent rocprof audit), and a small W4-launch-floor tail; we attack each in audit-first order and
-land the parent's already-validated wins (Marlin-K vec8 layout, fused selected-MoE shared
-gate-sigmoid skip) where they port cleanly. Long-context is mostly chunking-bound and already
-parity/ahead of parent on prefill — the next 32K/128K decode levers are attention split-cap
-retuning and the grouped-GQA producer family. Memory stays a feature: every candidate must keep
-512/4K under 24 GiB and must not reintroduce duplicate W4 qweight residency.
+Do not start with another blind kernel multiloop. First capture matched ROCTX / `rocprofv3
+--kernel-trace` profiles for hipENGINE on the comparison rows so we know which bucket each P/D
+candidate actually targets on this stack (Lane M). The remaining short/mid prefill miss is most
+likely bulk dense/shared-expert GEMV-shaped work (Lane P1) plus AOTriton glue (Lane P2); the parent
+runs these as framework `F.linear(...)` GEMMs and llama.cpp HIP's prefill jumps +166% with one
+compiler flag. The decode miss is the compound of replay dispatch fanout (~660-900 dispatches/token
+on parent), rotation + RMSNorm boundary launches (combined ~20% of decode bucket per the parent
+rocprof audit), and a small W4-launch-floor tail; we attack each in audit-first order and land the
+parent's already-validated wins (Marlin-K vec8 layout, fused selected-MoE shared gate-sigmoid skip)
+where they port cleanly. Long-context is mostly chunking-bound and already parity/ahead of parent
+on prefill — the next 32K/128K decode levers are attention split-cap retuning and the grouped-GQA
+producer family. Memory stays a feature: every candidate must keep 512/4K under 24 GiB and must not
+reintroduce duplicate W4 qweight residency.
 
 ---
 
@@ -146,20 +148,24 @@ These apply to **every** row below before it can move from `in-progress` to `acc
 
 ---
 
-## 4. Lane M — Measurement and protocol promotion (blocks everything)
+## 4. Lane M — Measurement (profile our own kernels before optimizing them)
 
-These are not optimizations. They make every other lane's status field meaningful. **Do these
-first**; lanes P/D/A/W are wasted iterations otherwise.
+The parent and llama.cpp throughput rows are the comparison baselines and are not in question.
+What we are missing is our **own** per-kernel rocprof data — the §5 prefill Amdahl block is hand-narrated
+from `docs/PREFILL.md` and the §6 decode block is the parent's 0.8B 4K/128 audit, not ours. Without
+hipENGINE-local rocprof we are guessing which bucket each P/D candidate actually targets on this
+machine.
 
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| M.1 | Promote first accepted `LLM.generate()` row for Qwen3.5/PARO 512/128 and 4K/128 with same flags as the comparison-table diagnostic. | `docs/BENCHMARK.md` acceptance protocol; current rows live in `benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json` and are `performance_claim=false`. | n/a | n/a | n/a | Needs repeated-run policy + retained sample/decode-graph gate per `docs/BENCHMARK.md`. | pending | — |
-| M.2 | Add a `scripts/qwen35_compare_tables.py` auto-refresh hook from the current retained artifact. | Today the script is intentionally hardcoded; refresh it whenever a retained row moves. | n/a | n/a | n/a | Must keep the script the human checkpoint per lane. | pending | — |
-| M.3 | Collect matched `rocprofv3 --kernel-trace` + ROCTX profiles for hipENGINE 512/128, 4K/128, 32K/128 with the comparison-table flags. Retain only compact summaries under `benchmarks/results/`. | Templates in `docs/OPTIMIZE.md` (earlier version); `docs/KERNELS.md` "Pre-optimization audit"; parent `~/amd-gpu-tuning/KERNEL_BLOCKERS.md` rocprof shim. | n/a | n/a | n/a | Verify `rocprofv3` is not blocked by the `spirv-expand-step` LLVM crash on this host (`tools/rocprof_torch_site/sitecustomize.py` shim if needed). | pending | — |
-| M.4 | Build a per-bucket Amdahl table for hipENGINE 512/128 decode (replay-only window, after subtracting warmup/capture/prefill) — analogous to the parent rocprof tail audit in `PLAN-PAROQUANT2.md` §11.9. | Parent rocprof tail audit `artifacts/paroquant2_rocprof_audit_20260515_iter30/`; ROOFLINE §5. | n/a | n/a | n/a | Decode replay window must not include eager-validation steps. | pending | — |
-| M.5 | Match-baseline llama.cpp Vulkan Q4_K_M on **this** machine at 4K/4K to confirm/refute the 122.2 tok/s ceiling. | Parent `PLAN-PAROQUANT2.md` §11.5.7 and §12.6 F4: local Vulkan rerun showed Qwen3.6-35B-A3B MXFP4 4K/128 tg = 112.12 tok/s, **not** the +9% Vulkan headline. Need a Q4_K_M GGUF for parity. | n/a | n/a | n/a | Headline decode-vs-Vulkan target may be smaller (~+5%) than the table in §1.3 suggests. | pending | — |
+| M.3 | Collect matched `rocprofv3 --kernel-trace` + ROCTX profiles for hipENGINE 512/128, 4K/128, 32K/128 with the comparison-table flags. Retain only compact summaries under `benchmarks/results/`. | `docs/KERNELS.md` "Pre-optimization audit"; parent `~/amd-gpu-tuning/scripts/summarize_rocprof_kernels.py` bucketing precedent. | n/a | n/a | n/a | Use `--compiler-version-file` + `--require-cached-build` so the profiled process never spawns `hipcc` (parent JIT-cache gotcha). Trace artifacts stay in `/tmp/`; only compact JSON commits. | pending | — |
+| M.4 | Per-bucket Amdahl table for hipENGINE 512/128 decode replay-only window (scoped via the existing `hipengine:measured_decode_graph` ROCTX range, so no warmup/capture subtraction). | Parent rocprof tail audit `artifacts/paroquant2_rocprof_audit_20260515_iter30/`; ROOFLINE §5. | n/a | n/a | n/a | Window must be scoped via the ROCTX marker, not by wall-clock subtraction. | pending | — |
 
-Until M.1-M.5 land, no row below can move to `accepted`; only `in-progress`/`rejected`/`parked` is valid.
+These two are the only measurement prereqs. They unblock the §5 / §6 hipENGINE bucket tables and
+tell us which P/D candidate actually targets the biggest bucket on **this** stack. Everything else in
+P/D/A/W can run in parallel with M, and an accepted measurement (correctness gate + retained
+benchmark row update) is enough to flip a row to `accepted` — there is no separate "promote to
+`LLM.generate()`" ceremony gating optimization work.
 
 ---
 
@@ -204,9 +210,9 @@ kernels for the same work. This is the leading P0 hypothesis from `docs/PREFILL.
 
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| P2.1 | AOTriton `attn_fwd_compact_varlen` Q/gate + K prelude fusion: read FP16 `Q\|gate` and FP16 K directly, emit gate FP16 + BF16 Q + FP32/BF16 K in one kernel; removes split + key cast launches + `query_raw`/`key_raw` scratch. | `docs/PREFILL.md` low-risk fusion audit, candidate #3; parent grouped-prefill kernel template. | +1-3% at 512/128, +1-2% at 4K/128 (mostly latency hiding) | neutral | -0.05-0.2 GiB | Previous AOTriton cast/gate fusions were throughput-neutral/slightly negative; require profile proof before spending more than a small spike. | pending | — |
-| P2.2 | AOTriton 0.12 / V3 upgrade and shape-streaming kernel pull (`PLAN-PAROQUANT2.md` style "stream only used variants"). | `docs/PREFILL.md` `aotriton_release.toml`; AOTriton 0.11.2b baseline is vendored through Git LFS with only the 12 BF16 head-dim-256 gfx11xx forward images hipENGINE needs. | +0-3% if newer kernels are faster on Qwen3.5 shape | neutral | -0.1 GiB if shape streaming lands | Wrapper ABI must stay stable; pin manifest is the contract. | parked, blocked-by: M.5 measurement of upstream Vulkan ceiling on this machine. | — |
-| P2.3 | Keep `--attn-aotriton-min-tokens 512` as the code/default deployment policy and keep native attention as a diagnostic fallback only. | `docs/PREFILL.md` AOTriton sweep table (4K native = 662 tok/s; threshold-512 AOTriton = 2346 tok/s). | n/a (already deployed) | neutral | n/a | AOTriton is a baseline runtime dependency; `PrefillConfig` and benchmark defaults use threshold 512, while `0` remains an explicit diagnostic override. | accepted (deployment policy) | `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json` |
+| P2.1 | AOTriton `attn_fwd_compact_varlen` Q/gate + K prelude fusion: read FP16 `Q\|gate` and FP16 K directly, emit gate FP16 + BF16 Q + FP32/BF16 K in one kernel; removes split + key cast launches + `query_raw`/`key_raw` scratch. | `docs/PREFILL.md` low-risk fusion audit, candidate #3; parent grouped-prefill kernel template. | throughput-neutral/slightly negative measured | neutral | small memory cleanup retained | Two diagnostics landed: cast-glue fusion is within run noise, gate-rotate fusion is neutral/slightly negative. Kept on tree as a launch/memory cleanup; not a perf lever. | rejected (perf); accepted (memory cleanup) | `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-cast-glue-diagnostic.json`, `…-aotriton-gate-rotate-diagnostic.json` |
+| P2.2 | AOTriton V3 `attn_fwd_compact_varlen` ABI (shape-streaming compact-varlen params). | `docs/PREFILL.md` `aotriton_release.toml`; vendored 0.11.2b with the 12 BF16 head-dim-256 gfx11xx forward images Qwen3.5 needs. | landed via V3 ABI; throughput within run noise | neutral | within memory diagnostic noise | V3 ABI is the call path; 0.12 image upgrade only worth re-opening if M.3 says AOTriton time is a non-trivial prefill bucket. | accepted (ABI landed) | `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-prefill-diagnostic.json` |
+| P2.3 | Default deployment policy `--attn-aotriton-min-tokens 512`; native attention is diagnostic fallback only. | `docs/PREFILL.md` AOTriton sweep table (4K native = 662 tok/s; threshold-512 AOTriton = 2346 tok/s). | n/a (already deployed) | neutral | n/a | `PrefillConfig` and benchmark defaults use threshold 512; `0` is an explicit diagnostic override. | accepted (deployment policy) | `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json` |
 
 ### 5.3 P3 — Boundary fusion for linear-attention and MoE prefill
 
@@ -217,7 +223,7 @@ as the recommended order; all are validated by source structure, not measurement
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | P3.1 | Fuse `qwen35_gdn_prefill_rmsnorm_gate_fp16` + `paro_rotate1_fp16` + `awq_fusedw4_prefill_strided_fp16` tail into a single GDN-out kernel; removes one launch and `recurrent_bf16` materialization on all 30 linear-attn layers. | `docs/PREFILL.md` audit candidate #1; `head_v_dim == group_size` for Qwen3.5/PARO so the shape is safe. | +2-4% at 4K/128, +1-2% at 32K/128 | neutral | -0.05-0.15 GiB (drop `recurrent_bf16` scratch) | Keep two-kernel path as fallback for non-Qwen3.5 shapes. Fixture gates must pass per-layer. | pending | — |
 | P3.2 | Prefill-only router shared-gate `sigmoid()` fused into top-k path so grouped prefill skips `w8a16_shared_gate_sigmoid_fp32`. | `docs/PREFILL.md` audit candidate #2. | +0.3-1% at 512/128, +0.5-1.5% at 4K/128 | must not change c=1 decode (combine kernel applies sigmoid itself) | neutral | The c=1 `weighted_sum_shared_gate_combine_residual_*` kernel expects raw shared-gate logits; do not flip semantics for the decode path. | pending | — |
-| P3.3 | MoE metadata fanout collapse: combine `moe_group_prefix` + `moe_wmma_tile_map` and initialize `scatter_offsets`/`tile_expert` in the same small metadata kernel. | `docs/PREFILL.md` audit candidate #5. | +0-0.5% | neutral | neutral | Small payoff; do after profiler confirms metadata is visible. | parked, policy: small payoff per source audit, do after M.3 says metadata bucket is non-negligible. | — |
+| P3.3 | MoE metadata fanout collapse: combine `moe_group_prefix` + `moe_wmma_tile_map` and initialize `scatter_offsets`/`tile_expert` in the same small metadata kernel. | `docs/PREFILL.md` audit candidate #5. | +0-0.5% | neutral | neutral | Small payoff per source audit; only escalate if M.3 says the MoE metadata bucket is non-negligible. | pending (low priority) | — |
 | P3.4 | Templated FP16-input segment conv wrapper for packed linear-attention path; remove `fp16_to_f32` cast and `qkv_f32` scratch in c>N packed prefill. | `docs/PREFILL.md` audit candidate #4. | +0-1% c=1; bigger lift on c>N | neutral | -0.05 GiB on c>N | Affects compact c>N more than batch-1; schedule after the batch-1 board closes. | deferred (Lane S, c>N) | — |
 
 ### 5.4 P4 — Native full-attention prefill kernel (long-term replacement of AOTriton)
@@ -228,9 +234,14 @@ as the recommended order; all are validated by source structure, not measurement
 
 ### 5.5 Long-context prefill (32K/128, 128K/128)
 
+Chunked long-context prefill (`PrefillConfig.linear_chunk_size`, `moe_chunk_size`,
+`full_attn_query/post/rope_chunk_size`) is **landed** and is the source of the current 32K/128K
+advantage over parent: +8.9% prefill at 32K and the unblock for 128K, with -14.4 GiB at 32K and
+-3.8 GiB at 128K (artifact `benchmarks/results/2026-05-16-hipengine-qwen35-prefill-chunking-diagnostic.json`).
+Keep as default policy.
+
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| P5.1 | Already-landed: chunked long-context prefill (`PrefillConfig.linear_chunk_size`, `moe_chunk_size`, `full_attn_query/post/rope_chunk_size`). | `docs/PREFILL.md` chunking checkpoint; `benchmarks/results/2026-05-16-hipengine-qwen35-prefill-chunking-diagnostic.json`. | +5.7% (4K), +8.9% (32K), unblocks 128K | neutral | -1.8 GiB (4K), -14.4 GiB (32K), -3.8 GiB (128K vs parent) | None — landed; keep as default policy. | accepted | `WORKLOG.md` 2026-05-16 chunked rerun. |
 | P5.2 | Long-context chunk-size auto-tuner that respects per-shape memory budget instead of static defaults. | Parent `OPTIMAL.md` long-prefill overrides; current hipENGINE uses static defaults. | +1-3% at 32K/128 | neutral | -0.3 GiB at 32K, -0.5 GiB at 128K | Must verify same fixture gates pass for each chunk size; do not regress 512/4K. | pending | — |
 
 ---
@@ -238,7 +249,7 @@ as the recommended order; all are validated by source structure, not measurement
 ## 6. Lane D — Decode
 
 Per-bucket Amdahl break-up of the parent rocprof tail audit (0.8B 4K/128, `PLAN-PAROQUANT2.md`
-§11.9; treat as steering, not as the hipENGINE bucket map until M.4 lands):
+§11.9; replace with hipENGINE-measured buckets once M.4 lands):
 
 ```
 paged full-attention decode      22.8%
@@ -261,30 +272,24 @@ reduction are.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | D1.1 | Fuse rotation into the same-input W4 GEMV producer for paired q/k/v stacked attention projections. | Parent `gemv_awq_selected_dual_pack8_strided_rotate_out` precedent (already ported as a kernel surface in hipENGINE, but selected/strided only); `PLAN-PAROQUANT2.md` D4 rejected at per-output-pack granularity but valid at projection granularity. | neutral | **+2-4% at 512/128**, +1-3% at 4K/128 | neutral | Must rotate **once** per residual block (not once per output pack); D4 rejection in `PLAN-PAROQUANT2.md` §12.4 is the cautionary tale. | pending | — |
 | D1.2 | Fuse `paro_rmsnorm` / `add_rmsnorm` producer into the following projection where the normalized vector is single-use. | Parent linear-attn QKV/Z + full-attn Q/K precedents (`afb7b16`, `FULL_ATTN_QK_PACK8_FUSED`); extend to V projection (full-attn) and shared-expert projection. | neutral | **+1-2%** | neutral | Must keep fast pack8/repacked layout; per LESSONS-LEARNED "Output buffers alone are rarely enough under graph replay" — only count wins that change arithmetic / data reuse. | pending | — |
-| D1.3 | Same-input projection fusion for remaining adjacent c=1 GEMV pairs not yet fused (audit M.4 result first). | Parent linear-attn `LINEAR_ATTN_QKV_Z_PACK8_FUSED` `+0.74%`, full-attn `FULL_ATTN_QK_PACK8_FUSED` `+0.41%`; LESSONS-LEARNED Q/K/V pack8 widen was **rejected** because it abandoned pack8 layout. | neutral | **+0.5-1%** per fusion, compounds | neutral | Must preserve pack8 / repacked layout. Pure launch-count fusion is sub-1% under graph replay; only counts if arithmetic/reuse also improves. | pending | — |
+| D1.3 | Same-input projection fusion for remaining adjacent c=1 GEMV pairs not yet fused (consult M.4 buckets for ordering). | Parent linear-attn `LINEAR_ATTN_QKV_Z_PACK8_FUSED` `+0.74%`, full-attn `FULL_ATTN_QK_PACK8_FUSED` `+0.41%`; LESSONS-LEARNED Q/K/V pack8 widen was **rejected** because it abandoned pack8 layout. | neutral | **+0.5-1%** per fusion, compounds | neutral | Must preserve pack8 / repacked layout. Pure launch-count fusion is sub-1% under graph replay; only counts if arithmetic/reuse also improves. | pending | — |
 | D1.4 | Selected-MoE post-op fold: combine selected-expert weighted-sum + add + sigmoid + residual into one kernel (Vulkan `MUL_MAT_ID_ADD_ID_MUL` shape). | Parent `selected-MoE silu/down-rotation fusion` (`fbff0fe`) precedent; `PLAN-PAROQUANT2.md` §11.5.2; `LLAMACPP-VULKAN.md` graph fusion analysis. | neutral | **+1-2% at 512/128, +1% at 4K/128** | neutral | Sorted-lane semantics: weighted scatter cannot naively fuse without atomics or layout change. Re-read parent F2 WMMA M16 lesson before attempting larger combined kernels. | pending | — |
 | D1.5 | Router top-k + softmax + scatter fold (Vulkan `MUL_MAT_ID_MUL` shape). | `LLAMACPP-VULKAN.md`; parent `PLAN-PAROQUANT2.md` §11.5.2. | neutral | **+0.5-1.5%** | neutral | Router currently uses one-block-per-expert producer for occupancy; naive fold collapses occupancy. Use cooperative producer + tail scatter pattern. | pending | — |
-| D1.6 | Decode k_proj + v_proj fused launch (parent `gemv_awq_dual_pack8` for QKV; extend to k/v stacked decode). | Parent `LESSONS-LEARNED.md` "Tiny c=1 projections are often launch-bound"; `PLAN-PAROQUANT2.md` §11.5.2. | neutral | **+1-1.5%** | neutral | Already fused in hipENGINE for some pairs (full-attn Q/K, linear-attn QKV/Z). Audit remaining same-input pairs via M.4 before coding. | pending | — |
+| D1.6 | Decode k_proj + v_proj fused launch (parent `gemv_awq_dual_pack8` for QKV; extend to k/v stacked decode). | Parent `LESSONS-LEARNED.md` "Tiny c=1 projections are often launch-bound"; `PLAN-PAROQUANT2.md` §11.5.2. | neutral | **+1-1.5%** | neutral | Already fused in hipENGINE for some pairs (full-attn Q/K, linear-attn QKV/Z). Use M.4 to enumerate remaining same-input pairs before coding. | pending | — |
 
 ### 6.2 D2 — W4 layout / Marlin-K vec8 port (the only retained parent W4 win)
 
 `PLAN-PAROQUANT2.md` §11 documents that **most** Marlin-K work (FMA-only, Q8-FMA staging, sudot4,
 all inner-loop ISA experiments) regressed or no-opped on the parent. The only retained win is the
-**vec8 FMA inner loop + qweight-neutral replacement** (parent commits `7718fff` + `1522293`).
-Everything else in §12.2-§12.6 (B1-B7, C1-C5, D1-D6, E1-E6, F1-F4) is `rejected` or `parked` upstream
-— **do not redo them blind.** They are listed below as informational so future agents see the
-guardrails.
+**vec8 FMA inner loop + qweight-neutral replacement** (parent commits `7718fff` + `1522293`). The
+rejected/parked siblings (B1-B7, C1-C5, D1-D6, E1-E6, F1-F4 in §12.2-§12.6) live in §11's
+Do-Not-Chase list, not as candidate rows.
 
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | D2.1 | Port parent Marlin-K vec8 FMA kernel + qweight-neutral repack-on-load to hipENGINE non-expert `ParoQuantLinear` modules. | `docs/MARLIN.md` (full port plan); parent `nano-vllm-amd@7718fff`, `1522293`; `tools/paro_marlin_k_repack_reference.py`. | -0.7-0.3% (decode-pack8 view; prefill marginally slower on parent rerun) | **+1.1-2.6% on 35B 4K/128**, +1.5% on 35B 512/128 (parent §11.11 evidence) | +0.023 GiB peak metadata residue | Must preserve fast pack8 view path for prefill. Parent acceptance gate already passed correctness + 24 GiB memory. JIT extension name + cache path must be added to `docs/KERNELS.md` and `AGENTS.md` per `PLAN-PAROQUANT2.md` §0.6. | pending | — |
-| D2.2 | Polish residual Marlin-K metadata residency (`qzeros_mk`, `scales_mk`) to 0 GiB. | `PLAN-PAROQUANT2.md` §12.1 A4 — `parked` upstream because every removal regressed decode. | n/a | neutral | -0.02 GiB | Parent already evaluated; reopen only if 24 GiB gate becomes tight. | parked, policy: parent A4 evaluated and parked; reopen only with new memory pressure. | — |
-| D2.3 | Activation pre-quantize to Q8 once per residual block; downstream W4 GEMV reads Q8 directly. | `PLAN-PAROQUANT2.md` §11.5.3 + §12.4 D1 (parked: needs ABI). Needed prerequisite for any future `sudot4` lane. | neutral | unknown; parent unable to land due to ABI gap | -0.05 GiB | Needs a torch-free per-residual Q8 ABI (act + per-chunk fp16 scale tensor). Not a quick win. | parked, blocked-by: torch-free Q8 activation ABI | — |
-| D2.4 (informational) | Marlin-K FMA inner-loop bandwidth tweaks (`int4` qweight load, `XVec8` activation vec-load, scale vec-load, `v_perm_b32` nibble unpack, `__half2` FMA, accumulator/register reshape, weight-hoist). | `PLAN-PAROQUANT2.md` §12.2 B1-B7 — **all rejected upstream**. | — | — | — | Do not redo without new evidence; parent has artifacts and ISA proofs. | parked (parent rejected B1-B7) | — |
-| D2.5 (informational) | Marlin-K shape work (multi-row WG, templated WGSIZE, dual-projection fused, selected-MoE fused, strided fallback). | `PLAN-PAROQUANT2.md` §12.3 C1-C5 — C1 rejected (multi-row); C2 rejected (WGSIZE template); C3 parked (superseded by qweight-neutral view); C4 parked (selected-MoE inactive in 35B serving); C5 parked. | — | — | — | Same. | parked (parent rejected C1-C5) | — |
-| D2.6 (informational) | Marlin-K codegen sweeps: unroll-600 (E1), launch_bounds (E2), `__builtin_assume` (E3), waves_per_eu (E4), nontemporal qweight load (E5), LDS prefetch (E6). | `PLAN-PAROQUANT2.md` §12.5 — all rejected/parked. | — | — | — | Same. | parked (parent rejected E1-E6) | — |
-| D2.7 (informational) | Marlin-K frontier: Triton GEMV (F1), WMMA c=1 INT4 (F2), megakernel attention (F3), Vulkan-on-this-machine (F4). | `PLAN-PAROQUANT2.md` §12.6 — F1/F2 rejected, F3/F4 parked. | — | — | — | F4 (Vulkan calibration) is the same as M.5 above. | parked (parent rejected F1/F2; F4 = M.5) | — |
-| D2.8 (informational) | Naive `sudot4` over current PARO/AWQ layout. | Parent `PLAN-PAROQUANT.md` two scratch trials + §11.3.3: 3.92-9.72× slower than tuned FMA. | — | — | — | Per `docs/OPTIMIZE.md` Do-Not-Chase list. | parked (parent rejected) | — |
+| D2.2 | Polish residual Marlin-K metadata residency (`qzeros_mk`, `scales_mk`) to 0 GiB. | `PLAN-PAROQUANT2.md` §12.1 A4 — `parked` upstream because every removal regressed decode. | n/a | neutral | -0.02 GiB | Parent already evaluated; reopen only if 24 GiB gate becomes tight. | parked | — |
+| D2.3 | Activation pre-quantize to Q8 once per residual block; downstream W4 GEMV reads Q8 directly. | `PLAN-PAROQUANT2.md` §11.5.3 + §12.4 D1 (parked: needs ABI). Prerequisite for any future `sudot4` lane. | neutral | unknown; parent unable to land due to ABI gap | -0.05 GiB | Needs a torch-free per-residual Q8 ABI (act + per-chunk fp16 scale tensor). Not a quick win. | parked, blocked-by: torch-free Q8 activation ABI | — |
 
 ### 6.3 D3 — Long-context attention (32K, 128K)
 
@@ -298,11 +303,13 @@ guardrails.
 
 ### 6.4 D4 — Decode launch floor and replay graph hygiene
 
+The "do not revisit multi-step graph replay" guardrail lives in §11's Do-Not-Chase list. M.3 already
+produces the per-family dispatch count / kernel time / gap data the earlier `D4.1 replay-only
+harness` row described, so it is folded into Lane M.
+
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| D4.1 | Replay-only profile harness: emit dispatches/token, per-family dispatch count, kernel time/token, inter-kernel gaps for 512/128 and 4K/128. | `docs/ROOFLINE.md`; parent steering signal ~894 replay-path dispatches/token after projection fusions. | n/a | n/a (enables D1.x, D4.2) | n/a | Must subtract prefill/warmup/capture from trace. | pending | — |
 | D4.2 | Cap dispatches/token below 700 via batched D1.1-D1.6 fusions (Vulkan-style graph-level fusion). | `LLAMACPP-VULKAN.md`; parent `PLAN-PAROQUANT2.md` §11.5.2 (~660/tok current parent floor); Vulkan ~fewer than 200/tok at the same shape. | neutral | **+4-8%** when stacked | neutral | Per `LESSONS-LEARNED.md` "Output buffers alone are rarely enough", launch-count-only fusion under graph replay is sub-1%; must change data flow / reuse to count. | pending | — |
-| D4.3 | Keep one-step decode graph replay as the retained graph shape; do **not** revisit multi-step capture. | `LESSONS-LEARNED.md` "Multi-step graph replay" — parent tested 1/2/4/8/16 step capture, no reliable gain; 4K/4K diverged at token 581. | n/a | -3-7% if reverted accidentally | n/a | This is a guardrail, not a candidate. | accepted (guardrail) | `WORKLOG.md` decode-graph fixture gate. |
 | D4.4 | Per-kernel `__launch_bounds__` retune after rotation/RMSNorm/W4 fusion changes (LESSONS-LEARNED "Runtime thread-count knobs must honor kernel launch bounds"). | `LESSONS-LEARNED.md` Task 23 audit. | neutral | +0-2% | neutral | Must cross-check against statically allocated shared memory + reduction scratch; never accept a knob value that bypasses `__launch_bounds__`. | pending | — |
 
 ### 6.5 D5 — Decode glue / small wins ledger
@@ -314,9 +321,8 @@ decode wall after fusion polish.
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | D5.1 | Audit `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel` for vec8 / occupancy headroom on c=1 decode (currently `VGPR=56`, `LDS=1616`). | `docs/KERNELS.md` rocprof note; ROOFLINE §9 RDNA3 occupancy rules. | neutral | +0.5-2% | neutral | Per LESSONS-LEARNED, deep-loop unroll is the largest RDNA3 GEMV lever for `N/blockDim.x < 64`. | pending | — |
-| D5.2 | W8A16 lm-head decode tile or fused argmax (parent decode profile shows lm-head 8.4%). | LESSONS-LEARNED W8A16 lm-head retained win + parent decode rocprof; current hipENGINE wrapper is `lm_head_fp16_argmax_bf16`. | neutral | +0-1% | neutral | Per parent decode notes "Fused `lm_head + argmax` is **not** a current lever" — argmax was only 0.2% of selected-region kernel time. Stop at audit unless profile says otherwise. | parked (parent already audited) | — |
 | D5.3 | Router top-k cooperative producer (one workgroup all experts) — avoid the naive logits+top-k fusion that collapses occupancy. | `LESSONS-LEARNED.md` "Router fusion is the opposite case"; current router uses one block per expert. | neutral | +0.5-1% | neutral | Without inter-block sync, naive same-kernel fused top-k is racy or collapses occupancy. Use cooperative producer pattern. | pending | — |
-| D5.4 | Linear-attention A/B decode same-input fusion (already done in parent / hipENGINE: `linear_attn_AB_fused`). | LESSONS-LEARNED retained win precedent. | neutral | already +0.6-1% | neutral | Confirm hipENGINE has this. If not, port. | pending (status audit) | — |
+| D5.4 | Linear-attention A/B decode same-input fusion. | LESSONS-LEARNED retained win precedent. | neutral | +0.6-1% (parent measured) | neutral | Already live in hipENGINE: `project_linear_attention_ab_fp16` dispatches `dense_dual_gemv_out_fp16` on the `tokens == 1` decode path; prefill keeps two unfused GEMVs (handled by P1.1). | accepted | `hipengine/runtime/qwen35_paro.py:2795` |
 
 ### 6.6 D6 — DFlash / MTP / multi-token speculative decode
 
@@ -338,8 +344,7 @@ candidate above must preserve this. The rows below are **guardrails**, not candi
 | A.2 | Default 4K/128 peak | 19.88 GiB (parent 21.64 GiB) | Same. | accepted |
 | A.3 | Default 32K/128 peak | 20.69 GiB (parent 21.37 GiB) | Long-context chunked policy is the default; do not silently revert. | accepted |
 | A.4 | Default 128K/128 peak | 23.66 GiB (parent 27.42 GiB) | Stay below 24 GiB; the differentiator vs parent. | accepted |
-| A.5 | AOTriton is vendored through Git LFS and remains the baseline runtime dependency. | n/a | `attn_aotriton_min_tokens=512` is the default; `0` is diagnostic only and must not be used for current-fastest rows. | accepted |
-| A.6 | Alias ownership for qweight views (Marlin-K-style zero-copy) | n/a | Aliases must be non-owning tensors; never create two owning `DeviceTensorAllocation` records for the same pointer. | accepted |
+| A.5 | Alias ownership for qweight views (Marlin-K-style zero-copy) | n/a | Aliases must be non-owning tensors; never create two owning `DeviceTensorAllocation` records for the same pointer. | accepted |
 
 ---
 
@@ -351,7 +356,7 @@ and VGPR audits, and treated as **per-kernel build flag**, not a global default.
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | W.1 | `-mllvm -amdgpu-unroll-threshold-local=600` on hot prefill kernels (linear-attn GDN, MoE compact WMMA, full-attn prelude, shared expert). | `PR_COMMENT-llamacpp-hip-unroll600.md` (llama.cpp +166% prefill, near-neutral decode); parent E1 (`PLAN-PAROQUANT2.md` §12.5): neutral on Marlin-K FMA. | +10-50% on a hot prefill kernel **if** it triggers; could be neutral | -0-2% | neutral | Verify `Scratch_Size=0` and VGPR not increased. Decode 0.6% regression observed in some PR_COMMENT models; cross-check Qwen3.5 retained sample. | pending | — |
-| W.2 | `-mcumode` build profile on hot decode kernels. | `PR_COMMENT-llamacpp-hip-unroll600.md` table; default hipENGINE already uses `-mcumode` per ROOFLINE §1.1. | n/a (already default) | n/a | n/a | Confirm wrappers actually compile with `-mcumode`; some build paths may have dropped it. | pending (status audit) | — |
+| W.2 | `-mcumode` build profile on hot decode kernels. | `PR_COMMENT-llamacpp-hip-unroll600.md` table; ROOFLINE §1.1. | n/a (default) | n/a | n/a | Already in `hipengine/core/build.py:47` default flags and `kernels/hip_gfx1100/wmma/paro_awq_wmma.py` extra flags. | accepted | `hipengine/core/build.py:47` |
 | W.3 | Per-kernel `__attribute__((amdgpu_waves_per_eu(...)))` retune after rotation/RMSNorm fusion lands. | Parent E4 rejected for Marlin-K but landed kernels in hipENGINE have different VGPR profile. | neutral | +0-2% | neutral | Re-evaluate per kernel; do not blanket-apply. | pending | — |
 
 ---
@@ -388,7 +393,7 @@ evidence (e.g. structural changes that invalidate the earlier rejection).
 
 | Avoid | Why | Source |
 | --- | --- | --- |
-| Naive `sudot4`/dp4a over current PARO/AWQ layout | 3.92-9.72× slower than tuned FMA; layout + activation staging dominate. | `PLAN-PAROQUANT.md`, `PLAN-PAROQUANT2.md` §11.3.3, §12.6 D2.8 |
+| Naive `sudot4`/dp4a over current PARO/AWQ layout | 3.92-9.72× slower than tuned FMA; layout + activation staging dominate. | `PLAN-PAROQUANT.md` two scratch trials, `PLAN-PAROQUANT2.md` §11.3.3 |
 | LDS staging as the default hypothesis | RDNA3 parent evidence repeatedly found barrier/occupancy costs > reuse benefits. | `LESSONS-LEARNED.md` "LDS is not free", `PLAN-PAROQUANT2.md` E6 |
 | Multi-step graph replay | Parent tested 1/2/4/8/16; no reliable gain; 4K/4K diverged at token 581. | `LESSONS-LEARNED.md`, `OPTIMAL.md` |
 | Thread-count sweeps without source/profile justification | Many regress; `__launch_bounds__` and LDS scratch must be checked first. | `LESSONS-LEARNED.md` Task 23 |
@@ -405,20 +410,16 @@ evidence (e.g. structural changes that invalidate the earlier rejection).
 
 Order is chosen to maximize signal-per-iteration. **M.x is gating; do it first.**
 
-1. **M.1 / M.2** — Promote first accepted `LLM.generate()` rows + auto-refresh the comparison table.
-   Without this, every other "+X%" below is unverifiable.
-2. **M.3 / M.4** — Matched rocprof profiles + per-bucket Amdahl table for 512/128 decode and prefill.
-   Confirms or falsifies P1 / D1 bucket hypotheses before code.
-3. **M.5** — Local llama.cpp Vulkan Q4_K_M at 4K/4K. Calibrates headline decode targets (the +14.4%
-   gap may already be smaller).
-4. **P1.1 + P1.2 + P1.4** — Bulk dense rocBLAS for linear-attn A/B and shared-expert gate/up SiLU,
-   with empirical token-count threshold. This is the largest single prefill lever per `PREFILL.md`.
-5. **W.1** — `-mllvm -amdgpu-unroll-threshold-local=600` per-kernel sweep on the four hot prefill
-   kernels above. Cheap one-iteration probe; could compound with P1.
-6. **D1.1 + D1.4 + D2.1** — Rotation-into-projection fusion at the right granularity, selected-MoE
-   post-op fold, and Marlin-K vec8 + qweight-neutral port. Stack these toward the +6% / +17%
-   decode lift.
-7. **D3.1 + D3.2 + D3.3** — Grouped-GQA producer port + split-cap retune + paged-decode min-context
+1. **M.3 / M.4** — Matched hipENGINE rocprof + per-bucket Amdahl tables for 512/128, 4K/128,
+   32K/128. Confirms or falsifies the P1 / D1 bucket hypotheses (which are currently sourced from
+   `docs/PREFILL.md` for prefill and the parent 0.8B audit for decode) before any code lands.
+2. **P1.1 + P1.2 + P1.4** — Bulk dense rocBLAS for linear-attn A/B and shared-expert gate/up SiLU,
+   with empirical token-count threshold. Largest single prefill lever per `PREFILL.md`.
+3. **W.1** — `-mllvm -amdgpu-unroll-threshold-local=600` per-kernel sweep on the four hot prefill
+   kernels. Cheap one-iteration probe; could compound with P1.
+4. **D1.1 + D1.4 + D2.1** — Rotation-into-projection fusion at the right granularity, selected-MoE
+   post-op fold, and Marlin-K vec8 + qweight-neutral port. Stack toward the +6% / +17% decode lift.
+5. **D3.1 + D3.2 + D3.3** — Grouped-GQA producer port + split-cap retune + paged-decode min-context
    threshold. Closes 32K/128 and 128K/128 decode against parent.
 
 Re-score the board after each retained row:

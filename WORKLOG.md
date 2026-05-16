@@ -13636,3 +13636,59 @@ directory schema (`scripts/qwen35_paro_packed_bench.py` will populate
 `benchmarks/results/qwen35_paro_packed_compare/comparison.json` the first
 time it runs successfully), but no artifact has been emitted yet because no
 packed checkpoint exists to run against.
+
+## 2026-05-17 — OPTIMIZE.md: cut process ceremony + already-landed rows
+
+Trimmed `docs/OPTIMIZE.md` to remove three categories of clutter the prior session left in:
+
+1. **Process ceremony gating real work.** Killed Lane M.1 (promote first `LLM.generate()`
+   accepted row), M.2 (auto-refresh hook for `qwen35_compare_tables.py`), and M.5 (rerun
+   llama.cpp Vulkan Q4_K_M locally to second-guess the published baseline). These were
+   doc-process tasks, not measurement tasks. Dropped the "Until M.1-M.5 land, no row below
+   can move to `accepted`" footer and the `parked, blocked-by: M.5` dependency on P2.2.
+   Lane M is now just M.3 (rocprof + ROCTX) and M.4 (per-bucket Amdahl) — the actual
+   profile capture we still need.
+
+2. **Already-attempted rows still marked `pending`.**
+   - P2.1 (AOTriton Q/gate + K prelude fusion) → `rejected (perf); accepted (memory cleanup)`
+     per `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-cast-glue-diagnostic.json`
+     and `…-aotriton-gate-rotate-diagnostic.json`.
+   - P2.2 (AOTriton V3 compact-varlen ABI) → `accepted (ABI landed)` per
+     `…-aotriton-v3-prefill-diagnostic.json`.
+   - D5.4 (linear-attn A/B decode same-input fusion) → `accepted` (live as
+     `dense_dual_gemv_out_fp16` in `hipengine/runtime/qwen35_paro.py:2795` on the
+     `tokens == 1` decode path).
+   - W.2 (`-mcumode` default flag) → `accepted` (already in
+     `hipengine/core/build.py:47` default flags + WMMA `extra_flags`).
+
+3. **Padding rows that triple-counted Do-Not-Chase guardrails.**
+   - §6.2 D2.4–D2.8 ("informational" rows listing parent's rejected B1–B7, C1–C5, E1–E6,
+     F1/F2 Marlin-K experiments). The paragraph above the table and §11 "Marlin-K B1-B7
+     / C1-C5 / E1-E6 / F1/F2 inner-loop experiments" line already cover this. Killed
+     5 rows.
+   - §6.4 D4.1 (replay-only profile harness) folded into M.3 — same data product.
+   - §6.4 D4.3 (do-not-revisit multi-step graph replay) moved to §11's Do-Not-Chase list;
+     it was a guardrail row, not a candidate.
+   - §6.5 D5.2 (lm-head fused argmax) parent already audited and rejected — pure
+     "don't redo" filler.
+   - §7 A.5 (AOTriton vendored runtime dep) — not a memory guardrail; duplicates P2.3.
+   - §5.5 P5.1 (chunked long-context prefill) — landed work; converted to a one-paragraph
+     "already landed" note rather than a full candidate row.
+
+Also trimmed §1 ("performance_claim=false" / "not accepted public LLM.generate() throughput
+rows" ceremony) and §2 ("First promote the measurement harness") to match the leaner Lane M.
+
+Net: 152 → 142 table rows. Live punchlist now reads as 28 pending / 11 accepted /
+5 parked / 12 deferred / 9 rejected. No new candidates added; nothing measurement-related
+removed.
+
+```bash
+wc -l docs/OPTIMIZE.md
+# 458
+grep -c '^| ' docs/OPTIMIZE.md
+# 142
+```
+
+Next concrete step on the doc punchlist is M.3 (rocprofv3 --kernel-trace + ROCTX) on
+512/128, 4K/128, 32K/128 with the comparison-table flags, producing per-bucket Amdahl
+tables to replace the parent-borrowed §6 decode block. No GPU runs in this commit.
