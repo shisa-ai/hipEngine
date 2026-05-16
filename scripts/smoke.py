@@ -57,6 +57,7 @@ def main() -> int:
             "paro-selected-gemv-hip",
             "paro-selected-gemv-rotate-hip",
             "paro-pack8-gemv-hip",
+            "paro-marlin-k-hip",
             "paro-rotate-hip",
             "paro-silu-hip",
             "paro-combine-hip",
@@ -235,6 +236,13 @@ def main() -> int:
         )
     if args.mode == "paro-pack8-gemv-hip":
         return paro_pack8_gemv_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "paro-marlin-k-hip":
+        return paro_marlin_k_hip_smoke(
             args.rows,
             args.hidden_size,
             compiler_version=compiler_version,
@@ -6337,6 +6345,104 @@ def paro_silu_hip_smoke(
         and dual_rotate_fp16_mismatch == 0
         and pair_rotate_fp16_mismatch == 0
     ) else 1
+
+
+
+def paro_marlin_k_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant import build_paro_marlin_k, gemv_paro_marlin_k_fma_fp16
+    from hipengine.loading import repack_paro_awq_to_marlin_k_host
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 128 or hidden_size % 128 != 0:
+        raise ValueError("--hidden-size must be >= 128 and divisible by 128")
+
+    group_size = 128
+    out_packed = 2
+    x = (
+        (np.arange(rows * hidden_size, dtype=np.float32).reshape(rows, hidden_size) % 17) / np.float32(17.0)
+        - np.float32(0.5)
+    ).astype(np.float16)
+    qweight_3d, qzeros_3d, scales_bits_3d = _make_pack8_fixture(1, hidden_size, out_packed, group_size, salt=31)
+    qweight = qweight_3d[0].copy()
+    qzeros = qzeros_3d[0].copy()
+    scales = _bf16_bits_to_float32(scales_bits_3d[0]).astype(np.float16)
+    qweight_mk, qzeros_mk, scales_mk = repack_paro_awq_to_marlin_k_host(qweight, qzeros, scales)
+    expected = _pack8_reference_lowp(
+        x,
+        np.ascontiguousarray(qweight.T),
+        qzeros,
+        scales,
+        group_size,
+        qweight_transposed=True,
+        out_dtype=np.float16,
+    )
+    out = np.empty_like(expected)
+
+    runtime = get_hip_runtime()
+    library = build_paro_marlin_k(load=True, compiler_version=compiler_version, require_cached=require_cached_build)
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = dev(x)
+        qweight_dev = dev(qweight_mk)
+        qzeros_dev = dev(qzeros_mk)
+        scales_dev = dev(scales_mk)
+        out_device = out_dev(out)
+        gemv_paro_marlin_k_fma_fp16(
+            x_dev.ptr,
+            qweight_dev.ptr,
+            qzeros_dev.ptr,
+            scales_dev.ptr,
+            out_device.ptr,
+            rows,
+            hidden_size,
+            out_packed,
+            group_size,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out), out_device, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    mismatch = int(np.count_nonzero(out.view(np.uint16) != expected.view(np.uint16)))
+    max_abs = float(np.max(np.abs(out.astype(np.float32) - expected.astype(np.float32))))
+    print(
+        f"rows={rows} hidden_size={hidden_size} out_packed={out_packed} "
+        f"mismatch={mismatch} max_abs={max_abs}"
+    )
+    print("marlin0=", out[0].astype(np.float32).tolist())
+    return 0 if mismatch == 0 else 1
 
 
 

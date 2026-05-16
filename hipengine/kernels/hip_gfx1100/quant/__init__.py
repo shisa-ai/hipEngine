@@ -1,5 +1,12 @@
 """gfx1100 quantized kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.quant.paro_marlin_k import (
+    build_paro_marlin_k,
+    gemv_paro_marlin_k_fma_fp16,
+    marlin_k_default_threads,
+    plan_paro_marlin_k_build,
+    register_paro_marlin_k_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     awq_fusedw4_prefill_dual_fp16,
     awq_fusedw4_prefill_fp16,
@@ -46,6 +53,7 @@ __all__ = [
     "awq_fusedw4_prefill_fp16",
     "awq_fusedw4_prefill_strided_fp16",
     "build_paro_awq_gemv",
+    "build_paro_marlin_k",
     "build_w8a16_linear",
     "gemv_awq_dual_pack8_strided_bf16",
     "gemv_awq_dual_pack8_strided_fp16",
@@ -65,9 +73,13 @@ __all__ = [
     "gemv_awq_selected_pack8_strided_fp16",
     "gemv_awq_selected_pack8_transposed_bf16",
     "gemv_awq_selected_pack8_transposed_fp16",
+    "gemv_paro_marlin_k_fma_fp16",
+    "marlin_k_default_threads",
     "plan_paro_awq_gemv_build",
+    "plan_paro_marlin_k_build",
     "plan_w8a16_linear_build",
     "register_paro_awq_gemv_kernels",
+    "register_paro_marlin_k_kernels",
     "register_w8a16_linear_kernels",
     "w8a16_linear_bf16_f32_out",
     "w8a16_linear_bf16_lowp_out",

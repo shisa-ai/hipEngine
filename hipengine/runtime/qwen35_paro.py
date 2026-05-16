@@ -92,6 +92,7 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_wmma_tile_map,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_topk_shared_out_bf16, qwen35_router_topk_shared_out_fp16
+from hipengine.kernels.hip_gfx1100.quant.paro_marlin_k import gemv_paro_marlin_k_fma_fp16, marlin_k_default_threads
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     awq_fusedw4_prefill_dual_fp16,
     awq_fusedw4_prefill_fp16,
@@ -347,26 +348,46 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         prefix = normalize_qwen35_weight_name(weight_prefix)
-        qweight = self.tensor(f"{prefix}.qweight")
         qzeros = self.tensor(f"{prefix}.qzeros")
         scales = self.tensor(f"{prefix}.scales")
-        if not qweight.shape:
-            raise ValueError(f"{prefix}.qweight must have at least one dimension")
-        gemv_awq_pack8_strided_bf16(
-            x.ptr,
-            qweight.ptr,
-            qzeros.ptr,
-            scales.ptr,
-            out.ptr,
-            rows,
-            x.shape[-1] if in_features is None else in_features,
-            _out_packed_from_strided_qweight(qweight),
-            group_size,
-            threads=threads,
-            stream=stream,
-            library=_library_for(library, "awq"),
-            runtime=self.runtime,
-        )
+        width = x.shape[-1] if in_features is None else in_features
+        awq_library = _library_for(library, "awq")
+        if self.has_tensor(f"{prefix}.qweight"):
+            qweight = self.tensor(f"{prefix}.qweight")
+            if not qweight.shape:
+                raise ValueError(f"{prefix}.qweight must have at least one dimension")
+            gemv_awq_pack8_strided_bf16(
+                x.ptr,
+                qweight.ptr,
+                qzeros.ptr,
+                scales.ptr,
+                out.ptr,
+                rows,
+                width,
+                _out_packed_from_strided_qweight(qweight),
+                group_size,
+                threads=threads,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+        else:
+            qweight = self.tensor(f"{prefix}.qweight_pack8_decode")
+            gemv_awq_pack8_transposed_bf16(
+                x.ptr,
+                qweight.ptr,
+                qzeros.ptr,
+                scales.ptr,
+                out.ptr,
+                rows,
+                width,
+                _out_packed_from_generic_transposed_qweight(qweight),
+                group_size,
+                threads=threads,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         return out
 
     def project_pack8_fp16(
@@ -383,45 +404,98 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         prefix = normalize_qwen35_weight_name(weight_prefix)
-        qweight = self.tensor(f"{prefix}.qweight")
         qzeros = self.tensor(f"{prefix}.qzeros")
         scales = self.tensor(f"{prefix}.scales")
-        if not qweight.shape:
-            raise ValueError(f"{prefix}.qweight must have at least one dimension")
         width = x.shape[-1] if in_features is None else in_features
-        out_packed = _out_packed_from_strided_qweight(qweight)
         awq_library = _library_for(library, "awq")
-        if rows > 1 and group_size % 16 == 0 and width % group_size == 0:
-            awq_fusedw4_prefill_strided_fp16(
+        if rows == 1 and self.has_tensor(f"{prefix}.qweight_mk"):
+            qweight_mk = self.tensor(f"{prefix}.qweight_mk")
+            out_packed = _out_packed_from_marlin_qweight(qweight_mk)
+            gemv_paro_marlin_k_fma_fp16(
                 x.ptr,
-                qweight.ptr,
-                qzeros.ptr,
-                scales.ptr,
+                qweight_mk.ptr,
+                self.tensor(f"{prefix}.qzeros_mk").ptr,
+                self.tensor(f"{prefix}.scales_mk").ptr,
                 out.ptr,
                 rows,
                 width,
                 out_packed,
                 group_size,
+                threads=marlin_k_default_threads(width, out_packed * 8),
                 stream=stream,
-                library=awq_library,
+                library=_library_for(library, "marlin_k"),
                 runtime=self.runtime,
             )
+        elif self.has_tensor(f"{prefix}.qweight"):
+            qweight = self.tensor(f"{prefix}.qweight")
+            if not qweight.shape:
+                raise ValueError(f"{prefix}.qweight must have at least one dimension")
+            out_packed = _out_packed_from_strided_qweight(qweight)
+            if rows > 1 and group_size % 16 == 0 and width % group_size == 0:
+                awq_fusedw4_prefill_strided_fp16(
+                    x.ptr,
+                    qweight.ptr,
+                    qzeros.ptr,
+                    scales.ptr,
+                    out.ptr,
+                    rows,
+                    width,
+                    out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+            else:
+                gemv_awq_pack8_strided_fp16(
+                    x.ptr,
+                    qweight.ptr,
+                    qzeros.ptr,
+                    scales.ptr,
+                    out.ptr,
+                    rows,
+                    width,
+                    out_packed,
+                    group_size,
+                    threads=threads,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
         else:
-            gemv_awq_pack8_strided_fp16(
-                x.ptr,
-                qweight.ptr,
-                qzeros.ptr,
-                scales.ptr,
-                out.ptr,
-                rows,
-                width,
-                out_packed,
-                group_size,
-                threads=threads,
-                stream=stream,
-                library=awq_library,
-                runtime=self.runtime,
-            )
+            qweight = self.tensor(f"{prefix}.qweight_pack8_decode")
+            out_packed = _out_packed_from_generic_transposed_qweight(qweight)
+            if rows > 1 and group_size % 16 == 0 and width % group_size == 0:
+                awq_fusedw4_prefill_fp16(
+                    x.ptr,
+                    qweight.ptr,
+                    qzeros.ptr,
+                    scales.ptr,
+                    out.ptr,
+                    rows,
+                    width,
+                    out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+            else:
+                gemv_awq_pack8_transposed_fp16(
+                    x.ptr,
+                    qweight.ptr,
+                    qzeros.ptr,
+                    scales.ptr,
+                    out.ptr,
+                    rows,
+                    width,
+                    out_packed,
+                    group_size,
+                    threads=threads,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
         return out
 
     def rotate_full_attention_inputs_bf16(
@@ -5245,6 +5319,12 @@ def _out_packed_from_transposed_qweight(qweight: Tensor) -> int:
 def _out_packed_from_generic_transposed_qweight(qweight: Tensor) -> int:
     if len(qweight.shape) != 2:
         raise ValueError("generic transposed qweight must have shape [out_packed, in_features]")
+    return qweight.shape[0]
+
+
+def _out_packed_from_marlin_qweight(qweight: Tensor) -> int:
+    if len(qweight.shape) != 3 or qweight.shape[-1] != 128:
+        raise ValueError("Marlin-K qweight must have shape [out_packed, groups, 128]")
     return qweight.shape[0]
 
 

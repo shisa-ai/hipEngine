@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
+import os
 from typing import Any
 
 from safetensors import safe_open
@@ -16,6 +17,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.loading.materialize import (
     DeviceTensorAllocation,
     DeviceWeightMap,
+    alias_device_allocation,
     float_array_to_bf16_bits,
     load_host_array_to_device,
     load_host_array_to_device_as_dtype,
@@ -1268,12 +1270,35 @@ def _runtime_tensor_needs_fp16(name: str) -> bool:
     return (
         name.endswith(".weight")
         or name.endswith(".scales")
+        or name.endswith(".scales_mk")
         or name.endswith("_scales")
         or name.endswith(".theta")
         or name.endswith("_theta")
         or name.endswith(".channel_scales")
         or name.endswith("_channel_scales")
     ) and not name.endswith("_w8a16_scale")
+
+
+def _env_flag_enabled(name: str, *, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _use_paro_marlin_k_replacement() -> bool:
+    return _env_flag_enabled("HIPENGINE_PARO_MARLIN_K_REPLACE", default=True)
+
+
+def _non_expert_paro_linear_prefixes(config: Qwen35ParoConfig, *, layer_id: int) -> tuple[str, ...]:
+    layer_type = config.layer_types[layer_id]
+    if layer_type == "full_attention":
+        attn = f"layers.{layer_id}.self_attn"
+        return tuple(f"{attn}.{proj}" for proj in ("q_proj", "k_proj", "v_proj", "o_proj"))
+    if layer_type == "linear_attention":
+        linear = f"layers.{layer_id}.linear_attn"
+        return tuple(f"{linear}.{proj}" for proj in ("in_proj_qkv", "in_proj_z", "out_proj"))
+    return ()
 
 
 def _prepare_linear_attention_qkv_z_pack8_runtime_tensors(
@@ -1283,6 +1308,7 @@ def _prepare_linear_attention_qkv_z_pack8_runtime_tensors(
     reader: _NormalizedTensorReader,
     layer_id: int,
     progress: Callable[[dict[str, Any]], None] | None = None,
+    skip_sources: set[str] | None = None,
 ) -> dict[str, object]:
     """Prepare transposed generic qweights for fused linear-attention QKV/Z decode."""
 
@@ -1290,10 +1316,13 @@ def _prepare_linear_attention_qkv_z_pack8_runtime_tensors(
 
     prefix = f"layers.{layer_id}.linear_attn"
     required = (f"{prefix}.in_proj_qkv.qweight", f"{prefix}.in_proj_z.qweight")
+    skip_sources = skip_sources or set()
     if not all(name in names for name in required):
         return {}
     prepared: dict[str, object] = {}
     for source in required:
+        if source in skip_sources:
+            continue
         target = source.removesuffix(".qweight") + ".qweight_pack8_decode"
         _emit_progress(progress, "prepare_runtime_tensor_start", layer=layer_id, name=target)
         qweight = np.asarray(_read_normalized_numpy_tensor(normalized, source, reader=reader), dtype=np.int32)
@@ -1309,6 +1338,7 @@ def _prepare_full_attention_qk_pack8_runtime_tensors(
     reader: _NormalizedTensorReader,
     layer_id: int,
     progress: Callable[[dict[str, Any]], None] | None = None,
+    skip_sources: set[str] | None = None,
 ) -> dict[str, object]:
     """Prepare transposed generic qweights for fused full-attention Q/K decode."""
 
@@ -1316,16 +1346,79 @@ def _prepare_full_attention_qk_pack8_runtime_tensors(
 
     prefix = f"layers.{layer_id}.self_attn"
     required = (f"{prefix}.q_proj.qweight", f"{prefix}.k_proj.qweight")
+    skip_sources = skip_sources or set()
     if not all(name in names for name in required):
         return {}
     prepared: dict[str, object] = {}
     for source in required:
+        if source in skip_sources:
+            continue
         target = source.removesuffix(".qweight") + ".qweight_pack8_decode"
         _emit_progress(progress, "prepare_runtime_tensor_start", layer=layer_id, name=target)
         qweight = np.asarray(_read_normalized_numpy_tensor(normalized, source, reader=reader), dtype=np.int32)
         prepared[target] = np.ascontiguousarray(qweight.T)
         _emit_progress(progress, "prepare_runtime_tensor_done", layer=layer_id, name=target, shape=tuple(prepared[target].shape))
     return prepared
+
+
+def _prepare_non_expert_marlin_k_runtime_tensors(
+    normalized: dict[str, Any],
+    config: Qwen35ParoConfig,
+    *,
+    names: tuple[str, ...],
+    reader: _NormalizedTensorReader,
+    layer_id: int,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> tuple[dict[str, object], dict[str, tuple[str, tuple[int, ...]]], set[str]]:
+    """Prepare qweight-neutral Marlin-K buffers and pack8 aliases.
+
+    Returns ``(prepared_arrays, aliases, skipped_raw_qweights)``.  ``aliases``
+    maps alias tensor name to ``(owner_name, alias_shape)`` and is materialized
+    after the owner device allocation exists.
+    """
+
+    if not _use_paro_marlin_k_replacement():
+        return {}, {}, set()
+
+    import numpy as np
+
+    prepared: dict[str, object] = {}
+    aliases: dict[str, tuple[str, tuple[int, ...]]] = {}
+    skipped_raw: set[str] = set()
+    names_set = set(names)
+    for prefix in _non_expert_paro_linear_prefixes(config, layer_id=layer_id):
+        qweight_name = f"{prefix}.qweight"
+        qzeros_name = f"{prefix}.qzeros"
+        scales_name = f"{prefix}.scales"
+        required = (qweight_name, qzeros_name, scales_name)
+        if not all(name in names_set for name in required):
+            continue
+        _emit_progress(progress, "prepare_marlin_k_start", layer=layer_id, name=prefix)
+        qweight = np.asarray(_read_normalized_numpy_tensor(normalized, qweight_name, reader=reader), dtype=np.int32)
+        # Tiny unit fixtures use toy K values; Marlin-K v0 is only defined for
+        # group_size=128 and exact K/group metadata.  Leave incompatible test or
+        # fallback surfaces on the existing pack8 layout.
+        if qweight.ndim != 2 or qweight.shape[0] % 128 != 0:
+            _emit_progress(progress, "prepare_marlin_k_skip", layer=layer_id, name=prefix, reason="shape")
+            continue
+        qzeros = np.asarray(_read_normalized_numpy_tensor(normalized, qzeros_name, reader=reader), dtype=np.int32)
+        scales = np.asarray(_read_normalized_numpy_tensor(normalized, scales_name, reader=reader), dtype=np.float16)
+        qweight_mk, qzeros_mk, scales_mk = repack_paro_awq_to_marlin_k_host(qweight, qzeros, scales)
+        owner_name = f"{prefix}.qweight_mk"
+        prepared[owner_name] = qweight_mk
+        prepared[f"{prefix}.qzeros_mk"] = qzeros_mk
+        prepared[f"{prefix}.scales_mk"] = scales_mk
+        aliases[f"{prefix}.qweight_pack8_decode"] = (owner_name, (qweight_mk.shape[0], qweight_mk.shape[1] * qweight_mk.shape[2]))
+        skipped_raw.add(qweight_name)
+        _emit_progress(
+            progress,
+            "prepare_marlin_k_done",
+            layer=layer_id,
+            name=prefix,
+            qweight_shape=tuple(qweight_mk.shape),
+        )
+    return prepared, aliases, skipped_raw
+
 
 
 def _materialize_runtime_layer(
@@ -1344,7 +1437,15 @@ def _materialize_runtime_layer(
     allocations: dict[str, DeviceTensorAllocation] = {}
     reader = _NormalizedTensorReader(normalized)
     try:
-        direct_names = tuple(name for name in names if name not in prepared_names)
+        marlin_prepared, marlin_aliases, marlin_raw_qweights = _prepare_non_expert_marlin_k_runtime_tensors(
+            normalized,
+            config,
+            names=names,
+            reader=reader,
+            layer_id=layer_id,
+            progress=progress,
+        )
+        direct_names = tuple(name for name in names if name not in prepared_names and name not in marlin_raw_qweights)
         for idx, name in enumerate(direct_names, start=1):
             _emit_progress(
                 progress,
@@ -1417,12 +1518,48 @@ def _materialize_runtime_layer(
                 index=idx,
                 total=len(direct_names),
             )
+        for idx, (name, array) in enumerate(marlin_prepared.items(), start=1):
+            _emit_progress(
+                progress,
+                "materialize_marlin_k_tensor_start",
+                layer=layer_id,
+                name=name,
+                index=idx,
+                total=len(marlin_prepared),
+            )
+            if _runtime_tensor_needs_fp16(name):
+                allocations[name] = load_host_array_to_device_as_dtype(
+                    name,
+                    array,
+                    DType.FP16,
+                    device=device,
+                    runtime=runtime,
+                )
+            else:
+                allocations[name] = load_host_array_to_device(name, array, device=device, runtime=runtime)
+            _emit_progress(
+                progress,
+                "materialize_marlin_k_tensor_done",
+                layer=layer_id,
+                name=name,
+                index=idx,
+                total=len(marlin_prepared),
+            )
+        for alias_name, (owner_name, alias_shape) in marlin_aliases.items():
+            allocations[alias_name] = alias_device_allocation(
+                alias_name,
+                allocations[owner_name],
+                alias_shape,
+                DType.INT32,
+                device=device,
+            )
         linear_pack8 = _prepare_linear_attention_qkv_z_pack8_runtime_tensors(
             normalized,
             names=names,
             reader=reader,
             layer_id=layer_id,
             progress=progress,
+            skip_sources=marlin_raw_qweights,
         )
         linear_pack8.update(
             _prepare_full_attention_qk_pack8_runtime_tensors(
@@ -1431,6 +1568,7 @@ def _materialize_runtime_layer(
                 reader=reader,
                 layer_id=layer_id,
                 progress=progress,
+                skip_sources=marlin_raw_qweights,
             )
         )
         for idx, (name, array) in enumerate(linear_pack8.items(), start=1):

@@ -562,6 +562,70 @@ def test_qwen35_decode_state_projects_pack8_with_normalized_weight_prefix(monkey
     assert kwargs == {"threads": 128, "stream": 0, "library": None, "runtime": runtime}
 
 
+def test_qwen35_decode_state_projects_marlin_k_fp16_decode(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    prefix = "layers.0.self_attn.o_proj"
+    weights = DeviceWeightMap(
+        {
+            f"{prefix}.qweight_mk": _allocation(f"{prefix}.qweight_mk", 0xB000, (512, 32, 128), "int32"),
+            f"{prefix}.qzeros_mk": _allocation(f"{prefix}.qzeros_mk", 0xB100, (512, 32), "int32"),
+            f"{prefix}.scales_mk": _allocation(f"{prefix}.scales_mk", 0xB200, (512, 32, 8), "fp16"),
+            f"{prefix}.qweight_pack8_decode": _allocation(
+                f"{prefix}.qweight_pack8_decode", 0xB000, (512, 4096), "int32"
+            ),
+            f"{prefix}.qzeros": _allocation(f"{prefix}.qzeros", 0xB300, (32, 512), "int32"),
+            f"{prefix}.scales": _allocation(f"{prefix}.scales", 0xB400, (32, 4096), "fp16"),
+        }
+    )
+    state = _state(runtime, weights)
+    x = Tensor.from_handle(0xC000, (1, 4096), "fp16", Device("hip", 0))
+    out = Tensor.from_handle(0xC100, (1, 4096), "fp16", Device("hip", 0))
+    calls = []
+
+    monkeypatch.setattr(qwen_runtime, "gemv_paro_marlin_k_fma_fp16", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_fp16", lambda *a, **k: pytest.fail("unexpected pack8 fallback"))
+
+    result = state.project_pack8_fp16(x, out, weight_prefix=f"model.{prefix}", rows=1, group_size=128)
+
+    assert result is out
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == (0xC000, 0xB000, 0xB100, 0xB200, 0xC100, 1, 4096, 512, 128)
+    assert kwargs == {"threads": 128, "stream": 0, "library": None, "runtime": runtime}
+
+
+def test_qwen35_decode_state_preserves_pack8_view_for_marlin_prefill(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    prefix = "layers.0.self_attn.o_proj"
+    weights = DeviceWeightMap(
+        {
+            f"{prefix}.qweight_mk": _allocation(f"{prefix}.qweight_mk", 0xB000, (512, 32, 128), "int32"),
+            f"{prefix}.qzeros_mk": _allocation(f"{prefix}.qzeros_mk", 0xB100, (512, 32), "int32"),
+            f"{prefix}.scales_mk": _allocation(f"{prefix}.scales_mk", 0xB200, (512, 32, 8), "fp16"),
+            f"{prefix}.qweight_pack8_decode": _allocation(
+                f"{prefix}.qweight_pack8_decode", 0xB000, (512, 4096), "int32"
+            ),
+            f"{prefix}.qzeros": _allocation(f"{prefix}.qzeros", 0xB300, (32, 512), "int32"),
+            f"{prefix}.scales": _allocation(f"{prefix}.scales", 0xB400, (32, 4096), "fp16"),
+        }
+    )
+    state = _state(runtime, weights)
+    x = Tensor.from_handle(0xC000, (4, 4096), "fp16", Device("hip", 0))
+    out = Tensor.from_handle(0xC100, (4, 4096), "fp16", Device("hip", 0))
+    calls = []
+
+    monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_fp16", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(qwen_runtime, "gemv_paro_marlin_k_fma_fp16", lambda *a, **k: pytest.fail("unexpected Marlin rows>1"))
+
+    result = state.project_pack8_fp16(x, out, weight_prefix=prefix, rows=4, group_size=128, stream=0x55)
+
+    assert result is out
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == (0xC000, 0xB000, 0xB300, 0xB400, 0xC100, 4, 4096, 512, 128)
+    assert kwargs == {"stream": 0x55, "library": None, "runtime": runtime}
+
+
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 

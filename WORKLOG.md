@@ -14478,3 +14478,109 @@ correctness gate for the policy. The GEMV fallback uses slightly less scratch
 Conclusion: retain `HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS=2`; no useful
 GEMV crossover above decode token count one. P1.1-P1.4 are now closed. Artifact:
 `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p14-moe-wmma-threshold-diagnostic.json`.
+
+## 2026-05-17 — D2.1 Marlin-K qweight-neutral decode retained
+
+Task #8 ported the documented parent Marlin-K v0 path for non-expert PARO W4
+rows==1 single GEMV decode. Pre-port checks:
+
+- Re-read `docs/KERNELS.md` and `docs/MARLIN.md`.
+- Ran `python3 scripts/check_lineage.py --kind kernel --diff stat`; parent
+  `nano-vllm-amd` still reports drift vs the old `22405a9` baseline.
+- Attempted `git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd show 7718fff` and
+  `1522293`; those short SHAs are not present in the current parent checkout.
+  Used the committed evidence in `docs/MARLIN.md` and
+  `/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md` §§11.10-11.11, which document
+  `7718fff` (vec8 FMA) and `1522293` (qweight-neutral replacement).
+
+Implementation:
+
+- Added `hipengine/kernels/hip_gfx1100/quant/paro_marlin_k.{hip,py}` with a
+  separate `paro_marlin_k.so` build family, registry key
+  `(hip_gfx1100, marlin_k_gemv, w4_paro, fma_fp16)`, and the retained vec8
+  FP32-FMA loop over `qweight_mk [N/8,K/128,128]`, `qzeros_mk [N/8,K/128]`,
+  `scales_mk [N/8,K/128,8]`.
+- Added torch-free NumPy repack helpers plus non-owning device allocation aliases
+  so `qweight_pack8_decode [N/8,K]` is a zero-copy view over `qweight_mk`; this
+  preserves fused pack8 prefill/QK/QKVZ paths without duplicate W4 qweight
+  residency.
+- `HIPENGINE_PARO_MARLIN_K_REPLACE` defaults on; setting it to `0` restores the
+  old pack8/raw-qweight materialization for diagnostics.
+- Runtime dispatch uses Marlin-K only for `rows == 1` FP16 single projections;
+  rows>1 and fused pair projections continue to use the existing pack8/fusedw4
+  paths through the alias.
+
+Validation commands:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/paro_marlin_k.py \
+  hipengine/loading/materialize.py hipengine/loading/qwen35_paro.py \
+  hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py \
+  scripts/smoke.py
+python3 -m pytest \
+  tests/test_qwen35_paro_marlin_k.py tests/test_qwen35_decode_state.py \
+  tests/test_qwen35_paro_layout.py tests/test_build.py -q --tb=short
+# 77 passed
+
+python3 scripts/smoke.py --mode paro-marlin-k-hip --rows 2 --hidden-size 128 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# mismatch=0 max_abs=0.0
+
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/hipengine-d21-marlin-k-20260517/rocprof_marlin_smoke -- \
+  python3 scripts/smoke.py --mode paro-marlin-k-hip --rows 2 --hidden-size 128 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# gemv_paro_marlin_k_fma_kernel<_Float16>, DurationNs=6720, VGPR=104,
+# Scratch_Size=0, LDS_Block_Size=512
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d21-marlin-k-20260517/native_prefill_fixture_gate.json
+# passed=true, max_kl=0.0395688706, top1_agreement=1.0
+
+python3 scripts/qwen35_decode_graph_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d21-marlin-k-20260517/decode_graph_fixture_gate.json
+# passed=true, generated_match=true, expected_match=true, final_kl=0.0
+```
+
+Benchmark protocol on W7900/gfx1100 (ROCm HIP `7.2.53211-d40244d`), all rows
+cache-only HIP builds:
+
+```bash
+# baseline rows add: HIPENGINE_PARO_MARLIN_K_REPLACE=0
+# candidate rows add: HIPENGINE_PARO_MARLIN_K_REPLACE=1
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d21-marlin-k-20260517/{off,on}_{prompt}_128_run{1,2,3}.json
+```
+
+Three-run medians, Marlin-K qweight-neutral default vs pack8/raw fallback:
+
+| workload | fallback decode tok/s | Marlin-K decode tok/s | decode Δ | fallback prefill tok/s | Marlin-K prefill tok/s | peak GiB fallback/Marlin |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 109.061 | 115.137 | +5.57% | 2209.588 | 2231.018 | 18.587 / 18.176 |
+| 4096/128 | 110.088 | 116.263 | +5.61% | 2436.294 | 2468.623 | 20.458 / 20.047 |
+
+Conclusion: retain Marlin-K qweight-neutral replacement as the default. It is a
+resident-runner diagnostic row (`performance_claim=false`) because public
+`LLM.generate()` throughput is still not promoted, but the required 512/128 and
+4K/128 decode rows both improve with low variance, correctness gates pass, the
+kernel is visible under rocprof, and peak memory remains below the 24 GiB guardrail
+while dropping by ~0.411 GiB. Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-d21-marlin-k-qweight-neutral-diagnostic.json`.

@@ -2182,6 +2182,7 @@ class Qwen35ParoResidentSession:
         from hipengine.kernels.hip_gfx1100.norm import build_qwen35_rmsnorm
         from hipengine.kernels.hip_gfx1100.runtime import build_runtime_state
         from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import build_paro_awq_gemv
+        from hipengine.kernels.hip_gfx1100.quant.paro_marlin_k import build_paro_marlin_k
         from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
         from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import build_paro_rotate
         from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import build_qwen35_rotary
@@ -2203,6 +2204,7 @@ class Qwen35ParoResidentSession:
             "linear_conv": build_qwen35_linear_attn_conv(**build_kwargs),
             "linear_gdn": build_qwen35_linear_attn_gdn(**build_kwargs),
             "lm_head": build_lm_head(**build_kwargs),
+            "marlin_k": build_paro_marlin_k(**build_kwargs),
             "norm": build_qwen35_rmsnorm(**build_kwargs),
             "qwen_rotary": build_qwen35_rotary(**build_kwargs),
             "router": build_qwen35_router(**build_kwargs),
