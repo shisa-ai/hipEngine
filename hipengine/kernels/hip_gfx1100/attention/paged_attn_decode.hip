@@ -1092,7 +1092,7 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   }
 
   for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
-    q_shared[dim] = q[dim];
+    q_shared[dim] = bf16_bits_to_float(float_to_bf16_bits(q[dim]));
   }
   __syncthreads();
 
@@ -1188,7 +1188,8 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
     }
     const int64_t gate_idx = (row * num_q_heads + q_head) * gate_stride1 + dim * gate_stride2;
     const float gate_v = static_cast<float>(gate[gate_idx]);
-    out[(row * num_q_heads + q_head) * head_dim + dim] = static_cast<half_t>(acc * sigmoid_f32(gate_v));
+    const float attn_bf16 = bf16_bits_to_float(float_to_bf16_bits(acc));
+    out[(row * num_q_heads + q_head) * head_dim + dim] = static_cast<half_t>(attn_bf16 * sigmoid_f32(gate_v));
   }
 }
 
@@ -1267,7 +1268,7 @@ __global__ void qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel(
   const int32_t* row_table = block_tables + row * block_table_len;
 
   for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
-    q_shared[dim] = q[dim];
+    q_shared[dim] = bf16_bits_to_float(float_to_bf16_bits(q[dim]));
   }
   __syncthreads();
 
@@ -1347,7 +1348,8 @@ __global__ void qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel(
     }
     const int64_t gate_idx = (row * num_q_heads + q_head) * gate_stride1 + dim * gate_stride2;
     const float gate_v = static_cast<float>(gate[gate_idx]);
-    out[(row * num_q_heads + q_head) * head_dim + dim] = static_cast<half_t>(acc * sigmoid_f32(gate_v));
+    const float attn_bf16 = bf16_bits_to_float(float_to_bf16_bits(acc));
+    out[(row * num_q_heads + q_head) * head_dim + dim] = static_cast<half_t>(attn_bf16 * sigmoid_f32(gate_v));
   }
 }
 

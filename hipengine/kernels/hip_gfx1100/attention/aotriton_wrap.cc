@@ -51,12 +51,34 @@ __device__ inline float sigmoid_f32(float value) {
   return 1.0f / (1.0f + expf(-value));
 }
 
+__device__ inline float bf16_bits_to_float(uint16_t bits) {
+  union {
+    uint32_t u32;
+    float f32;
+  } value;
+  value.u32 = static_cast<uint32_t>(bits) << 16;
+  return value.f32;
+}
+
 __global__ void gate_mul_fp16_inplace_kernel(half_t* attn_out, const half_t* gate, int64_t total) {
   for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
        idx < total;
        idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
     const float gated = static_cast<float>(attn_out[idx]) * sigmoid_f32(static_cast<float>(gate[idx]));
     attn_out[idx] = static_cast<half_t>(gated);
+  }
+}
+
+__global__ void gate_mul_bf16_to_fp16_kernel(
+    const uint16_t* attn_out,
+    const half_t* gate,
+    half_t* out,
+    int64_t total) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const float gated = bf16_bits_to_float(attn_out[idx]) * sigmoid_f32(static_cast<float>(gate[idx]));
+    out[idx] = static_cast<half_t>(gated);
   }
 }
 
@@ -218,6 +240,31 @@ extern "C" int hipengine_aotriton_gate_mul_fp16_inplace(
       reinterpret_cast<hipStream_t>(stream),
       reinterpret_cast<half_t*>(attn_out),
       reinterpret_cast<const half_t*>(gate),
+      total);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_aotriton_gate_mul_bf16_to_fp16(
+    const void* attn_out,
+    const void* gate,
+    void* out,
+    int64_t total,
+    void* stream) {
+  if (attn_out == nullptr || gate == nullptr || out == nullptr || total <= 0) {
+    return static_cast<int>(kInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t blocks64 = (total + threads - 1) / threads;
+  const int blocks = static_cast<int>(blocks64 > 65535 ? 65535 : blocks64);
+  hipLaunchKernelGGL(
+      gate_mul_bf16_to_fp16_kernel,
+      dim3(blocks),
+      dim3(threads),
+      0,
+      reinterpret_cast<hipStream_t>(stream),
+      reinterpret_cast<const uint16_t*>(attn_out),
+      reinterpret_cast<const half_t*>(gate),
+      reinterpret_cast<half_t*>(out),
       total);
   return static_cast<int>(hipGetLastError());
 }

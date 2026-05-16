@@ -21,6 +21,7 @@ _SOURCE = Path(__file__).with_name("aotriton_wrap.cc")
 _OUTPUT_NAME = "hipengine_aotriton_wrap.so"
 _SYMBOL_CHECK_GPU = "hipengine_aotriton_check_gpu"
 _SYMBOL_GATE_MUL_FP16_INPLACE = "hipengine_aotriton_gate_mul_fp16_inplace"
+_SYMBOL_GATE_MUL_BF16_TO_FP16 = "hipengine_aotriton_gate_mul_bf16_to_fp16"
 _SYMBOL_ATTN_FWD_COMPACT_VARLEN = "hipengine_aotriton_attn_fwd_compact_varlen"
 _SYMBOL_ATTN_FWD_COMPACT_VARLEN_GQA_PER_Q_HEAD = "hipengine_aotriton_attn_fwd_compact_varlen_gqa_per_q_head"
 
@@ -248,6 +249,38 @@ def aotriton_gate_mul_fp16_inplace(
     _check_hip(
         runtime,
         fn(ctypes.c_void_p(attn_out_ptr), ctypes.c_void_p(gate_ptr), ctypes.c_int64(total), ctypes.c_void_p(stream)),
+    )
+
+
+def aotriton_gate_mul_bf16_to_fp16(
+    attn_out_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    total: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    home_root: str | Path | None = None,
+) -> None:
+    """Apply Qwen3.5 sigmoid gate from BF16 attention output into FP16 output."""
+
+    if total <= 0:
+        raise ValueError("total must be positive")
+    library = library or build_aotriton_wrap(home_root=home_root, load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GATE_MUL_BF16_TO_FP16)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    _check_hip(
+        runtime,
+        fn(
+            ctypes.c_void_p(attn_out_ptr),
+            ctypes.c_void_p(gate_ptr),
+            ctypes.c_void_p(out_ptr),
+            ctypes.c_int64(total),
+            ctypes.c_void_p(stream),
+        ),
     )
 
 

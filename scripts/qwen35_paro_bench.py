@@ -24,6 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 
 DEFAULT_MODEL = (
@@ -57,6 +58,12 @@ def main() -> int:
         help="Fail instead of invoking hipcc if any resident HIP library is missing from cache.",
     )
     parser.add_argument(
+        "--attn-aotriton-min-tokens",
+        type=int,
+        default=0,
+        help="Opt into AOTriton per-Q-head full-attention prefill at prompts with at least this many tokens (0 disables).",
+    )
+    parser.add_argument(
         "--native-prefill",
         action="store_true",
         help="Deprecated compatibility no-op: native single-request prefill is the default.",
@@ -82,6 +89,8 @@ def main() -> int:
         raise ValueError("--graph-steps-per-replay must be positive")
     if args.graph_replay_decode and args.decode_tokens and (args.decode_tokens % args.graph_steps_per_replay) != 0:
         raise ValueError("--decode-tokens must be divisible by --graph-steps-per-replay")
+    if args.attn_aotriton_min_tokens < 0:
+        raise ValueError("--attn-aotriton-min-tokens must be non-negative")
     if args.native_prefill and args.serial_prefill_diagnostic:
         raise ValueError("--native-prefill cannot be combined with --serial-prefill-diagnostic")
 
@@ -103,6 +112,7 @@ def main() -> int:
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
             progress=progress,
+            prefill_config=PrefillConfig(attn_aotriton_min_tokens=args.attn_aotriton_min_tokens),
         )
     load_seconds = time.perf_counter() - load_start
 
@@ -196,6 +206,7 @@ def main() -> int:
         "prefill_execution_detail": getattr(session, "last_prefill_execution", None),
         "serial_prefill_diagnostic": bool(args.serial_prefill_diagnostic),
         "allow_rejected_native_prefill": bool(args.allow_rejected_native_prefill),
+        "attn_aotriton_min_tokens": args.attn_aotriton_min_tokens,
         "graph_replay": bool(args.graph_replay_decode),
         "graph_steps_per_replay": args.graph_steps_per_replay if args.graph_replay_decode else 0,
         "prefill_comparable_to_plan_moe2": bool((not args.serial_prefill_diagnostic) and native_prefill_plan.full_layer_limit_native),

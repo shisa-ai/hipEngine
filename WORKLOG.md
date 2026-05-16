@@ -12146,3 +12146,328 @@ Next:
 - Re-run the prefill-perf multiloop on the cleaned foundation.  Target: 4K
   attention via the AOTriton per-Q-head variant, threshold-tuned to beat the
   hand-rolled kernel.
+
+## 2026-05-16 — Post-rebase review smoke: AOTriton runtime wiring and Marlin-K loader
+
+Reviewed the post-pull state after the AOTriton 0.11.2b cleanup and Marlin-K
+host-repack commits.  The committed Marlin-K work is loader/host-layout only
+(`docs/MARLIN.md`, `hipengine/loading/qwen35_paro.py`,
+`tests/test_qwen35_paro_marlin_k.py`); it does not yet wire a Marlin-K decode
+kernel, so a decode throughput gain should not be expected from the current
+runtime path.
+
+Targeted validation stayed green after the rebase plus local review fixes:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -40
+python3 -m pytest tests/test_qwen35_paro_marlin_k.py tests/test_aotriton_discovery.py \
+  tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_resident_batch_layout.py -q
+# 39 passed
+```
+
+During the opt-in AOTriton runtime smoke, the first attempt hit a missing
+`_check_positive` helper, and the second attempt faulted the GPU when passing
+FP32 Q/K scratch descriptors into AOTriton.  For measurement only, added the
+missing positive validator and cast FP32 Q/K scratch to FP16 before the
+AOTriton call.  Also added an `--attn-aotriton-min-tokens` knob to the native
+prefill fixture gate so this route can be tested explicitly.
+
+Smoke commands/results on W7900/gfx1100, Qwen3.5-35B-A3B-PARO w4_paro,
+`--max-layers 40`, repeated token id 9707, no graph replay:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-review-default-512-128.json
+# default path: prefill 2123.798 tok/s, decode 101.811 tok/s
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-review-default-4k-128.json
+# default path: prefill 662.401 tok/s, decode 102.389 tok/s
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-review-aotriton-512-128.json
+# AOTriton at 512: prefill 1866.301 tok/s, decode 101.869 tok/s (slower than default)
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 4096 \
+  --json /tmp/hipengine-review-th4096-4k-128.json
+# AOTriton at 4K: prefill 2203.038 tok/s, decode 102.007 tok/s
+```
+
+Correctness gates:
+
+```bash
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --json /tmp/hipengine-review-fixture-gate.json
+# default path passed: max_kl=0.0340584589, top1=1.0, generated_match=true
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --attn-aotriton-min-tokens 512 --json /tmp/hipengine-review-aotriton-fixture-gate.json
+# AOTriton path FAILED: max_kl=8.8731804708, top1=0.484848, generated_match=false
+```
+
+Conclusion: the rebased default path is healthy and roughly in the expected
+range (512/128 improved vs the latest retained diagnostic sample by variance;
+4K/128 remains ~662 tok/s without AOTriton).  The opt-in AOTriton path is
+promising for long prefill speed (4K/128 ~2203 tok/s) but is **not retainable**
+currently because the 512 fixture correctness gate fails badly after the FP16
+Q/K cast.  Multiloop iter 61 was recorded as `revert`/blocked, and the loop was
+paused.  Do not promote or commit AOTriton runtime dispatch until the Q/K dtype
+or descriptor semantics are corrected and the fixture gate passes.
+
+## 2026-05-16 — Task #3 rerun: Qwen3.5/PARO 512/128 and 4K/128 default smokes
+
+Reran the requested default-path Qwen3.5-35B-A3B-PARO smoke commands after the
+targeted AOTriton/Marlin validation.  AOTriton dispatch stayed disabled
+(`attn_aotriton_min_tokens=0`) for both runs.
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/task3-qwen35-paro-512-128.json
+# prefill_tok_s=2059.8899402533602, warmed_decode_tok_s=101.33408660385875
+# path=single_request_native_full, aotriton_attention=false, generated preview token ids all 9707
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/task3-qwen35-paro-4k-128.json
+# prefill_tok_s=662.2098953663426, warmed_decode_tok_s=102.37353841024634
+# path=single_request_native_full, aotriton_attention=false, generated preview token ids all 9707
+```
+
+Comparison to `benchmarks/README.md` retained diagnostic row
+(512 prefill median 2077.262 tok/s, decode ~101.2 tok/s; 4K prefill median
+659.950 tok/s, decode 102.146 tok/s): 512 prefill is ~0.8% below the retained
+median (within recent variance), 4K prefill is ~0.3% above, and decode is
+essentially unchanged.  Default smoke health is good; this does not validate the
+opt-in AOTriton route, which remains blocked by the separate fixture-gate
+failure recorded above.
+
+## 2026-05-16 — Task #5 AOTriton mismatch localized
+
+Localized the opt-in AOTriton prefill mismatch before attempting the BF16 fix.
+The short version: the descriptors/GQA fanout are not the main problem.  The
+current runtime wiring violates AOTriton's same-dtype contract when trying to
+mirror native FP32-query/BF16-cache semantics, and the runnable all-FP16
+workaround diverges from the BF16 KV cache representation used by both the
+native HIP path and the parent torch SDPA path.
+
+Reference checked in parent nano-vllm-amd:
+
+```python
+# /home/lhl/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/mtp.py:407-415
+q = query.transpose(0, 1).unsqueeze(0).to(torch.bfloat16)
+k = key.transpose(0, 1).unsqueeze(0).to(torch.bfloat16)
+v = value.transpose(0, 1).unsqueeze(0).to(torch.bfloat16)
+attn = F.scaled_dot_product_attention(q, k, v, is_causal=True,
+                                      scale=float(head_dim) ** -0.5,
+                                      enable_gqa=True)
+gated = attn.float() * torch.sigmoid(gate.float())
+# cache stores BF16 key/value
+```
+
+Localization evidence:
+
+- Synthetic AOTriton GQA compact-varlen with **uniform FP16** Q/K/V at real
+  shape family (`num_q_heads=16`, `num_kv_heads=2`, `head_dim=256`) matches a
+  host softmax reference at rows up to 512 (`max_abs=0.000244`, no GPU fault).
+  This supports the GQA slice/stride math.
+- Synthetic mixed dtype (`Q=FP32`, `K/V=FP16` or `BF16`) can run at small rows
+  but faults at larger rows/head_dim (`Memory access fault ... Page not
+  present`) around rows 128/512.  This points to an AOTriton image dispatch
+  same-dtype requirement rather than a row/stride bug.
+- AOTriton all-FP16 on the full Qwen3.5 fixture is close for the prefill seed
+  only but diverges during decode:
+
+```bash
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --max-new-tokens 1 --attn-aotriton-min-tokens 512 \
+  --json /tmp/aot-qkvfp16-l40.json
+# passed=true, max_kl=0.0001395008, top1=1.0, seed token 4403 matches
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --attn-aotriton-min-tokens 512 --json /tmp/aot-qkvfp16-fixture32.json
+# passed=false, generated_match=false, max_kl=8.8731804708, top1=0.484848
+```
+
+- Restricting AOTriton to only the final full-attention layer kept the 32-token
+  fixture passing (`/tmp/aot-lastonly-fixture32.json`: `max_kl=0.0340584589`,
+  top1 `1.0`, generated IDs match).  This confirms the long-run failure is
+  cache/hidden-state drift accumulating across layers, not an immediate causal
+  mask or gate-shape failure.
+
+Conclusion / next fix target: switch the runtime AOTriton path to the parent
+semantics: cast Q/K/V to BF16, call AOTriton with uniform BF16 descriptors and a
+BF16 output scratch, then apply the Qwen gate in FP32 semantics while writing
+FP16 output (`gate_mul_bf16_to_fp16` or equivalent).  Do not use mixed FP32
+Q with BF16/FP16 K/V; it is undefined for AOTriton's prebuilt images and caused
+the page faults.  Hoisting the per-head `atomic_for_causal` allocation is a
+later perf cleanup after correctness.
+
+## 2026-05-16 — Task #7 validation: BF16-native fallback and AOTriton match
+
+After the AOTriton BF16 fix, aligned the native HIP prefill fallback with the
+same Qwen3.5/PARO prefill semantics used by parent nano-vllm-amd SDPA:
+BF16-rounded Q, BF16 K/V cache, BF16-rounded attention output, then FP32
+sigmoid gate to FP16 output.  The native HIP prefill kernels now round loaded Q
+through BF16 and round the pre-gate attention accumulator through BF16 before
+applying the FP16 gate.  CPU reference prefill/varlen oracles were updated to
+mirror that BF16 pre-gate contract.
+
+Kernel/oracle smokes after the native fallback alignment:
+
+```bash
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+# rows=3 ... prefill_gate_fp16_max_abs=0 prefill_gate_fp16_mismatch=0
+
+python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+# rows=4 ... varlen_prefill_gate_fp16_max_abs=0 varlen_prefill_gate_fp16_mismatch=0
+```
+
+Targeted unit tests:
+
+```bash
+python3 -m pytest tests/test_qwen35_paro_marlin_k.py tests/test_aotriton_discovery.py \
+  tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_decode_state.py -q
+# 73 passed
+```
+
+Fixture gates against the serial resident path:
+
+```bash
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --json /tmp/task7-bf16native-fixture-default.json
+# default native: passed=true, generated_match=true, expected_match=true,
+# max_kl=0.0452046868, top1=1.0
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --attn-aotriton-min-tokens 512 --json /tmp/task7-bf16native-fixture-aotriton.json
+# AOTriton: passed=true, generated_match=true, expected_match=true,
+# max_kl=0.0395688706, top1=1.0
+```
+
+Direct default-native vs AOTriton comparison on the same 512/32 fixture:
+
+```bash
+python3 - <<'PY' >/tmp/task7-default-vs-aotriton.json
+# Runs _run_once(... prefill_mode='native') once with default prefill_config and
+# once with PrefillConfig(attn_aotriton_min_tokens=512), then compares full
+# lm-head logits with _compare_logits.
+PY
+# generated_match=true, max_kl=0.0172678504, top1=1.0
+```
+
+Smoke performance, repeated token id 9707, max_layers=40, no graph replay:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/task7-bf16native-default-512-128.json
+# default 512/128: prefill=2045.535 tok/s, decode=101.246 tok/s
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/task7-bf16native-default-4k-128.json
+# default 4K/128: prefill=662.630 tok/s, decode=102.163 tok/s
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/task7-bf16native-aotriton-512-128.json
+# AOTriton 512/128: prefill=1836.089 tok/s, decode=101.864 tok/s
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/task7-bf16native-aotriton-4k-128.json
+# AOTriton 4K/128: prefill=2185.173 tok/s, decode=102.296 tok/s
+```
+
+Conclusion: native HIP fallback and AOTriton now share the parent-style BF16
+Q/K/V + BF16 pre-gate attention semantics and match each other at the fixture
+level (direct max KL 0.0173, top1 100%, generated IDs identical).  AOTriton is
+still slower at 512 due to per-Q-head launches/casts, but it is correctness-clean
+and ~3.3x faster than native fallback at 4K prefill.
+
+## 2026-05-16 — Task #8 AOTriton debug wrap-up / readiness
+
+AOTriton correctness blocker is resolved for the explicit opt-in path.  The
+substantive fix was to match parent nano-vllm-amd SDPA prefill semantics end to
+end: uniform BF16 Q/K/V/Out for attention, then FP32 sigmoid gate semantics to
+FP16 output.  The native HIP fallback was aligned to the same BF16 pre-gate
+contract so fallback, AOTriton, CPU reference, and parent SDPA are testing the
+same math.
+
+Files changed in this logical unit:
+
+- `hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.{cc,py}` and
+  `attention/__init__.py`: add `hipengine_aotriton_gate_mul_bf16_to_fp16` C/Python
+  wrapper for BF16 attention output + FP16 gate -> FP16 gated output.
+- `hipengine/runtime/qwen35_paro.py`, `qwen35_paro_runner.py`,
+  `runtime/prefill.py`, `scripts/qwen35_paro_bench.py`,
+  `tests/test_qwen35_resident_batch_layout.py`: opt-in runtime dispatch via
+  `PrefillConfig.attn_aotriton_min_tokens`, disabled by default.
+- `scripts/qwen35_native_prefill_fixture_gate.py`: fixture-gate knob for
+  exercising AOTriton prefill.
+- `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip`: native
+  fallback now rounds Q and pre-gate attention output through BF16 in prefill
+  kernels, matching parent SDPA/AOTriton semantics.
+- `hipengine/kernels/cpu_reference/ops.py`: CPU prefill references mirror the
+  BF16 Q and BF16 pre-gate attention contract.
+
+Final validation evidence is in the previous Task #7 entry.  Compact summary:
+
+```bash
+python3 -m pytest tests/test_qwen35_paro_marlin_k.py tests/test_aotriton_discovery.py \
+  tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_decode_state.py -q
+# 73 passed
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --json /tmp/task7-bf16native-fixture-default.json
+# default native passed; max_kl=0.0452046868, top1=1.0
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --attn-aotriton-min-tokens 512 --json /tmp/task7-bf16native-fixture-aotriton.json
+# AOTriton passed; max_kl=0.0395688706, top1=1.0
+
+# Direct default-native vs AOTriton on the same 512/32 fixture:
+# generated_match=true, max_kl=0.0172678504, top1=1.0
+```
+
+Performance summary from Task #7 smokes (W7900/gfx1100, Qwen3.5-35B-A3B-PARO
+w4_paro, max_layers=40, token id 9707):
+
+- Default 512/128: `2045.535 tok/s` prefill, `101.246 tok/s` decode.
+- Default 4K/128: `662.630 tok/s` prefill, `102.163 tok/s` decode.
+- AOTriton 512/128: `1836.089 tok/s` prefill, `101.864 tok/s` decode.
+- AOTriton 4K/128: `2185.173 tok/s` prefill, `102.296 tok/s` decode.
+
+Readiness / blockers:
+
+- Correctness: ready for commit.  Default and AOTriton fixture gates pass, and
+  direct default-vs-AOTriton comparison passes the KL/top-1 contract.
+- Perf: AOTriton should remain threshold-gated; it is slower at 512 due to
+  per-Q-head launches plus cast/gate passes, but 4K is ~3.3x faster.  A sensible
+  default threshold is not chosen yet; keep the default disabled (`0`) until a
+  threshold sweep lands.
+- Follow-up perf cleanup: hoist/reuse the per-head `atomic_for_causal` buffer in
+  `aotriton_wrap.cc` instead of allocating/freeing inside each head call, and
+  evaluate a K/V fanout or native GQA-capable AOTriton API if available.

@@ -8,6 +8,8 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
+    aotriton_attn_fwd_compact_varlen_gqa_per_q_head,
+    aotriton_gate_mul_bf16_to_fp16,
     qwen35_full_attn_decode_context_bf16,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_fp16,
@@ -21,7 +23,10 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_write_paged_kv_mixed_value_fp16_prompt_spans,
     qwen35_write_paged_kv_mixed_value_fp16_spans,
 )
-from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16, f32_to_fp16, fp16_to_f32
+from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import tensor1 as aotriton_tensor1
+from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import tensor2 as aotriton_tensor2
+from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import tensor4 as aotriton_tensor4
+from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16, f32_to_fp16, fp16_to_bf16, fp16_to_f32
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     shared_gate_combine_residual_batch_out_bf16,
     shared_gate_combine_residual_batch_out_fp16,
@@ -1860,6 +1865,97 @@ class Qwen35ParoDecodeState:
         )
         return scratch.gated_attn
 
+    def prefill_full_attention_aotriton_varlen_gqa_gate_fp16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        cu_seqlens_q: Tensor,
+        cu_seqlens_k: Tensor,
+        rows: int,
+        segments: int,
+        gate: Tensor | None = None,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run AOTriton compact-varlen GQA prefill and apply Qwen3.5 sigmoid gate."""
+
+        _check_positive(rows, "rows")
+        _check_positive(segments, "segments")
+        if cu_seqlens_q.dtype is not DType.INT32 or cu_seqlens_k.dtype is not DType.INT32:
+            raise ValueError("AOTriton compact-varlen prefill expects int32 cu_seqlens tensors")
+        if scratch.query.dtype is not DType.FP32 or scratch.key.dtype is not DType.FP32 or scratch.value.dtype is not DType.FP16:
+            raise ValueError("AOTriton prefill expects FP32 Q/K source tensors and FP16 V scratch tensor")
+        if scratch.gated_attn.dtype is not DType.FP16:
+            raise ValueError("AOTriton prefill currently writes FP16 attention output")
+        gate_tensor = scratch.gate if gate is None else gate
+        if gate_tensor.dtype is not DType.FP16:
+            raise ValueError("AOTriton gate post-pass currently expects FP16 gate tensor")
+        if gate_tensor.shape != scratch.query.shape:
+            raise ValueError("gate tensor must match query shape for AOTriton post-pass")
+        lse = self.workspace.reserve_tensor("attn.aotriton_lse", (self.config.num_attention_heads, rows), DType.FP32)
+        q_heads = self.config.num_attention_heads
+        kv_heads = self.config.num_key_value_heads
+        head_dim = self.config.head_dim
+        q_width = q_heads * head_dim
+        kv_width = kv_heads * head_dim
+        q_bf16 = self.workspace.reserve_tensor("attn.aotriton_q_bf16", scratch.query.shape, DType.BF16)
+        k_bf16 = self.workspace.reserve_tensor("attn.aotriton_k_bf16", scratch.key.shape, DType.BF16)
+        v_bf16 = self.workspace.reserve_tensor("attn.aotriton_v_bf16", scratch.value.shape, DType.BF16)
+        attn_bf16 = self.workspace.reserve_tensor("attn.aotriton_out_bf16", scratch.query.shape, DType.BF16)
+        cast_library = _library_for(library, "cast")
+        f32_to_bf16(
+            scratch.query.ptr,
+            q_bf16.ptr,
+            rows * q_width,
+            stream=stream,
+            library=cast_library,
+            runtime=self.runtime,
+        )
+        f32_to_bf16(
+            scratch.key.ptr,
+            k_bf16.ptr,
+            rows * kv_width,
+            stream=stream,
+            library=cast_library,
+            runtime=self.runtime,
+        )
+        fp16_to_bf16(
+            scratch.value.ptr,
+            v_bf16.ptr,
+            rows * kv_width,
+            stream=stream,
+            library=cast_library,
+            runtime=self.runtime,
+        )
+        aotriton_library = _library_for(library, "aotriton")
+        aotriton_attn_fwd_compact_varlen_gqa_per_q_head(
+            aotriton_tensor4(q_bf16.ptr, (1, q_heads, rows, head_dim), (q_width * rows, head_dim, q_width, 1), DType.BF16),
+            aotriton_tensor4(k_bf16.ptr, (1, kv_heads, rows, head_dim), (kv_width * rows, head_dim, kv_width, 1), DType.BF16),
+            aotriton_tensor4(v_bf16.ptr, (1, kv_heads, rows, head_dim), (kv_width * rows, head_dim, kv_width, 1), DType.BF16),
+            aotriton_tensor1(cu_seqlens_q.ptr, (segments + 1,), (1,), DType.INT32),
+            aotriton_tensor1(cu_seqlens_k.ptr, (segments + 1,), (1,), DType.INT32),
+            aotriton_tensor2(lse.ptr, (q_heads, rows), (rows, 1), DType.FP32),
+            aotriton_tensor4(attn_bf16.ptr, (1, q_heads, rows, head_dim), (q_width * rows, head_dim, q_width, 1), DType.BF16),
+            max_seqlen_q=rows,
+            max_seqlen_k=rows,
+            sm_scale=(self.config.head_dim ** -0.5) if scale is None else scale,
+            is_causal=True,
+            stream=stream,
+            library=aotriton_library,
+            runtime=self.runtime,
+        )
+        aotriton_gate_mul_bf16_to_fp16(
+            attn_bf16.ptr,
+            gate_tensor.ptr,
+            scratch.gated_attn.ptr,
+            rows * q_width,
+            stream=stream,
+            library=aotriton_library,
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
+
     def append_full_attention_kv_fp16_batch(
         self,
         scratch: Qwen35ParoAttentionScratch,
@@ -2158,6 +2254,9 @@ class Qwen35ParoDecodeState:
         max_positions: int,
         attention_scratch: Qwen35ParoAttentionScratch | None = None,
         moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | None = None,
+        cu_seqlens_q: Tensor | None = None,
+        cu_seqlens_k: Tensor | None = None,
+        aotriton_attention: bool = False,
         tokens: int,
         group_size: int = 128,
         block_size: int = 256,
@@ -2219,17 +2318,31 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        gated = self.prefill_full_attention_gqa_gate_fp16(
-            attention_scratch,
-            key_cache=key_cache,
-            value_cache=value_cache,
-            spans=prefill_spans,
-            rows=tokens,
-            gate=gate,
-            block_size=block_size,
-            library=library,
-            stream=stream,
-        )
+        if aotriton_attention:
+            if cu_seqlens_q is None or cu_seqlens_k is None:
+                raise ValueError("AOTriton prefill requires cu_seqlens_q/k tensors")
+            gated = self.prefill_full_attention_aotriton_varlen_gqa_gate_fp16(
+                attention_scratch,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_k=cu_seqlens_k,
+                rows=tokens,
+                segments=1,
+                gate=gate,
+                library=library,
+                stream=stream,
+            )
+        else:
+            gated = self.prefill_full_attention_gqa_gate_fp16(
+                attention_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=prefill_spans,
+                rows=tokens,
+                gate=gate,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
         attn_out = self.project_full_attention_o_fp16(
             gated,
             attention_scratch,
@@ -4266,6 +4379,12 @@ def _library_for(library, family: str):
     if isinstance(library, dict):
         return library.get(family)
     return library
+
+
+def _check_positive(value: int, name: str) -> None:
+    if int(value) <= 0:
+        raise ValueError(f"{name} must be positive")
+
 
 def _out_packed_from_strided_qweight(qweight: Tensor) -> int:
     if len(qweight.shape) < 2:

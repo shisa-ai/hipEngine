@@ -28,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16,
 )
+from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
 from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16
 from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16, paro_rmsnorm_out_fp16
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
@@ -1196,6 +1197,8 @@ class Qwen35ParoResidentSession:
                 "full_native": True,
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
+                "aotriton_attention": self._prefill_use_aotriton_attention(len(tokens)),
+                "attn_aotriton_min_tokens": self.prefill_config.attn_aotriton_min_tokens,
             }
             if not sample:
                 return None
@@ -1499,6 +1502,15 @@ class Qwen35ParoResidentSession:
             Tensor.from_handle(value_buf.ptr, shape, value_cache.dtype, value_cache.device),
         )
 
+    def _prefill_single_cu_seqlens(self, tokens: int) -> Tensor:
+        arr = np.asarray([0, int(tokens)], dtype=np.int32)
+        copy_host_to_device(self.prefill_single_cu_buf, host_array_ptr(arr), arr.nbytes, runtime=self.runtime)
+        return self.prefill_single_cu
+
+    def _prefill_use_aotriton_attention(self, tokens: int) -> bool:
+        threshold = int(self.prefill_config.attn_aotriton_min_tokens)
+        return threshold > 0 and int(tokens) >= threshold
+
     def _materialize_packed_prefill_metadata(self, slab) -> Qwen35ParoPackedPrefillMetadata:
         if slab.rows > self.prefill_capacity_rows:
             raise ValueError("compact prompt slab rows exceed prefill buffer capacity")
@@ -1695,6 +1707,8 @@ class Qwen35ParoResidentSession:
         next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
         append_spans, prefill_spans = self._prefill_full_attention_spans(tokens)
         positions = self._prefill_rows_tensor(self.prefill_positions, tokens)
+        use_aotriton_attention = self._prefill_use_aotriton_attention(tokens)
+        single_cu_seqlens = self._prefill_single_cu_seqlens(tokens) if use_aotriton_attention else None
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
@@ -1727,6 +1741,9 @@ class Qwen35ParoResidentSession:
                     max_positions=self.max_sequence_length,
                     attention_scratch=attention_scratch,
                     moe_scratch=moe_scratch,
+                    cu_seqlens_q=single_cu_seqlens,
+                    cu_seqlens_k=single_cu_seqlens,
+                    aotriton_attention=use_aotriton_attention,
                     tokens=tokens,
                     block_size=self.block_size,
                     library=self.libraries,
@@ -2029,6 +2046,8 @@ class Qwen35ParoResidentSession:
             "w8a16": build_w8a16_linear(**build_kwargs),
             "wmma": build_paro_awq_wmma(**build_kwargs),
         }
+        if self.prefill_config.attn_aotriton_min_tokens > 0:
+            self.libraries["aotriton"] = build_aotriton_wrap(**build_kwargs)
         self._emit("load_kernel_libraries_done", count=len(self.libraries))
 
     def _load_embedding(self) -> None:
@@ -2135,8 +2154,10 @@ class Qwen35ParoResidentSession:
         self.batch_positions = Tensor.from_handle(self.position_buf.ptr, self.batch_layout.slot_scalar_shape, DType.INT64, self.device)
         prefill_token_arr = np.zeros((self.prefill_capacity_rows,), dtype=np.int64)
         prefill_position_arr = np.arange(self.prefill_capacity_rows, dtype=np.int64)
+        prefill_single_cu_arr = np.asarray([0, 0], dtype=np.int32)
         self.prefill_token_id_buf = self._dev(prefill_token_arr)
         self.prefill_position_buf = self._dev(prefill_position_arr)
+        self.prefill_single_cu_buf = self._dev(prefill_single_cu_arr)
         self.prefill_token_ids = Tensor.from_handle(
             self.prefill_token_id_buf.ptr,
             prefill_token_arr.shape,
@@ -2147,6 +2168,12 @@ class Qwen35ParoResidentSession:
             self.prefill_position_buf.ptr,
             prefill_position_arr.shape,
             DType.INT64,
+            self.device,
+        )
+        self.prefill_single_cu = Tensor.from_handle(
+            self.prefill_single_cu_buf.ptr,
+            prefill_single_cu_arr.shape,
+            DType.INT32,
             self.device,
         )
         self.batch_contexts = Tensor.from_handle(self.context_buf.ptr, self.batch_layout.slot_scalar_shape, DType.INT64, self.device)

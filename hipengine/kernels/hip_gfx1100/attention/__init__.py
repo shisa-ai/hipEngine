@@ -23,6 +23,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
     aotriton_attn_fwd_compact_varlen,
     aotriton_attn_fwd_compact_varlen_gqa_per_q_head,
+    aotriton_gate_mul_bf16_to_fp16,
     aotriton_gate_mul_fp16_inplace,
     build_aotriton_wrap,
     plan_aotriton_wrap_build,
@@ -44,6 +45,7 @@ __all__ = [
     "build_qwen35_paged_attn_decode",
     "aotriton_attn_fwd_compact_varlen",
     "aotriton_attn_fwd_compact_varlen_gqa_per_q_head",
+    "aotriton_gate_mul_bf16_to_fp16",
     "aotriton_gate_mul_fp16_inplace",
     "build_aotriton_wrap",
     "build_qwen35_paged_kv_write",

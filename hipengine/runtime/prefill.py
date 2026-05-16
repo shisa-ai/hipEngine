@@ -19,6 +19,7 @@ class PrefillConfig:
     full_attn_query_chunk_size: int = 0
     full_attn_post_chunk_size: int = 0
     full_attn_rope_chunk_size: int = 0
+    attn_aotriton_min_tokens: int = 0
     moe_grouped_device_gather: bool = True
     moe_stacked_compact: bool = True
     require_full_native: bool = True
@@ -29,6 +30,7 @@ class PrefillConfig:
             "full_attn_query_chunk_size",
             "full_attn_post_chunk_size",
             "full_attn_rope_chunk_size",
+            "attn_aotriton_min_tokens",
         ):
             value = int(getattr(self, name))
             if value < 0:

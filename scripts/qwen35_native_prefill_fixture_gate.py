@@ -25,6 +25,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 
 DEFAULT_MODEL = (
@@ -79,11 +80,17 @@ def _run_once(
     decode_tokens: int,
     max_layers: int,
     prefill_mode: str,
+    prefill_config: PrefillConfig | None = None,
 ) -> dict[str, Any]:
     max_sequence = len(prompt_tokens) + decode_tokens + 2
     logits: list[np.ndarray] = []
     generated: list[dict[str, Any]] = []
-    with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence, max_layers=max_layers) as session:
+    with Qwen35ParoResidentSession(
+        runner,
+        max_sequence_length=max_sequence,
+        max_layers=max_layers,
+        prefill_config=prefill_config,
+    ) as session:
         owned_device_bytes = _owned_device_bytes(session)
         prefill_start = time.perf_counter()
         if prefill_mode == "native":
@@ -173,6 +180,8 @@ def _command(args: argparse.Namespace) -> str:
         command += f" --kl-threshold {args.kl_threshold}"
     if args.top1_threshold != 0.90:
         command += f" --top1-threshold {args.top1_threshold}"
+    if getattr(args, "attn_aotriton_min_tokens", 0):
+        command += f" --attn-aotriton-min-tokens {args.attn_aotriton_min_tokens}"
     if args.json is not None:
         command += f" --json {args.json}"
     return command
@@ -185,7 +194,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     expected = [int(item) for item in fixture["expected_generated_token_ids"][:decode_tokens]]
     runner = Qwen35ParoNextTokenRunner(args.model)
     serial = _run_once(runner, prompt_tokens, decode_tokens=decode_tokens, max_layers=args.max_layers, prefill_mode="serial")
-    native = _run_once(runner, prompt_tokens, decode_tokens=decode_tokens, max_layers=args.max_layers, prefill_mode="native")
+    native = _run_once(
+        runner,
+        prompt_tokens,
+        decode_tokens=decode_tokens,
+        max_layers=args.max_layers,
+        prefill_mode="native",
+        prefill_config=PrefillConfig(attn_aotriton_min_tokens=args.attn_aotriton_min_tokens),
+    )
     comparison = _compare_logits(serial["logits"], native["logits"])
     serial_generated_ids = [int(item["token_id"]) for item in serial["generated"]]
     native_generated_ids = [int(item["token_id"]) for item in native["generated"]]
@@ -210,6 +226,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "prompt_length": len(prompt_tokens),
         "decode_tokens": decode_tokens,
         "max_layers": int(args.max_layers),
+        "attn_aotriton_min_tokens": int(args.attn_aotriton_min_tokens),
         "thresholds": {
             "kl_max": float(args.kl_threshold),
             "top1_agreement_min": float(args.top1_threshold),
@@ -244,10 +261,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-new-tokens", type=int, default=None, help="Override fixture decode_len")
     parser.add_argument("--kl-threshold", type=float, default=0.05)
     parser.add_argument("--top1-threshold", type=float, default=0.90)
+    parser.add_argument(
+        "--attn-aotriton-min-tokens",
+        type=int,
+        default=0,
+        help="Run native prefill with AOTriton full-attention when prompt length is at least this threshold (0 disables).",
+    )
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
     if args.max_new_tokens is not None and args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive")
+    if args.attn_aotriton_min_tokens < 0:
+        raise ValueError("--attn-aotriton-min-tokens must be non-negative")
     payload = run(args)
     text = json.dumps(payload, indent=2, ensure_ascii=False)
     print(text)

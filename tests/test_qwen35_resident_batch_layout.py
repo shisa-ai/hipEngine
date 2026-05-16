@@ -124,11 +124,15 @@ def test_prefill_config_validates_chunk_sizes_and_defaults_to_full_native() -> N
     config = PrefillConfig(linear_chunk_size="4", require_full_native=False)
 
     assert config.linear_chunk_size == 4
+    assert config.attn_aotriton_min_tokens == 0
     assert config.require_full_native is False
     assert config.moe_grouped_device_gather is True
+    assert PrefillConfig(attn_aotriton_min_tokens="1024").attn_aotriton_min_tokens == 1024
 
     with pytest.raises(ValueError, match="full_attn_query_chunk_size"):
         PrefillConfig(full_attn_query_chunk_size=-1)
+    with pytest.raises(ValueError, match="attn_aotriton_min_tokens"):
+        PrefillConfig(attn_aotriton_min_tokens=-1)
 
 
 def test_qwen35_resident_prefill_native_contract_uses_full_native_by_default() -> None:

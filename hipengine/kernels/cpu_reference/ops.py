@@ -232,7 +232,7 @@ def full_attn_prefill(
     1-based visible lengths for each row.
     """
 
-    q = np.asarray(query, dtype=np.float32)
+    q = _round_to_bf16_float(np.asarray(query, dtype=np.float32))
     g = np.asarray(gate, dtype=np.float32)
     positions_arr = np.asarray(positions, dtype=np.int64)
     if q.ndim != 3:
@@ -316,7 +316,7 @@ def full_attn_prefill(
             )
             logits = np.matmul(keys, q[row, q_head]) * scale_value
             weights = _softmax(logits, axis=0)
-            attn = np.matmul(weights, values)
+            attn = _round_to_bf16_float(np.matmul(weights, values))
             out[row, q_head] = attn * _sigmoid(g[row, q_head])
     if output_dtype is None:
         return out
@@ -345,7 +345,7 @@ def full_attn_prefill_varlen(
     segments and clamp each row so it cannot attend beyond the segment's K end.
     """
 
-    q = np.asarray(query, dtype=np.float32)
+    q = _round_to_bf16_float(np.asarray(query, dtype=np.float32))
     g = np.asarray(gate, dtype=np.float32)
     positions_arr = np.asarray(positions, dtype=np.int64)
     contexts = np.asarray(context_counts, dtype=np.int64)
@@ -422,7 +422,8 @@ def full_attn_prefill_varlen(
                 )
                 logits = np.matmul(keys, q[row, q_head]) * scale_value
                 weights = _softmax(logits, axis=0)
-                out[row, q_head] = np.matmul(weights, values) * _sigmoid(g[row, q_head])
+                attn = _round_to_bf16_float(np.matmul(weights, values))
+                out[row, q_head] = attn * _sigmoid(g[row, q_head])
     if output_dtype is None:
         return out
     return out.astype(np.dtype(output_dtype))
@@ -485,6 +486,14 @@ def _cache_to_float(value: ArrayLike) -> np.ndarray:
     if arr.dtype == np.uint16:
         return (arr.astype(np.uint32) << 16).view(np.float32)
     return arr.astype(np.float32)
+
+
+def _round_to_bf16_float(value: ArrayLike) -> np.ndarray:
+    arr = np.asarray(value, dtype=np.float32)
+    bits = arr.view(np.uint32)
+    lsb = (bits >> np.uint32(16)) & np.uint32(1)
+    rounded = bits + np.uint32(0x7FFF) + lsb
+    return (rounded & np.uint32(0xFFFF0000)).view(np.float32)
 
 
 def _cache_row(
