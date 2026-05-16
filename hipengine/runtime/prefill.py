@@ -12,7 +12,9 @@ class PrefillConfig:
     The defaults describe the final retained path: full-native prefill is
     required unless a caller explicitly opts into bring-up/oracle behavior.
     Chunk sizes of ``0`` mean unchunked, matching the parent environment-knob
-    convention.
+    convention.  AOTriton is a baseline vendored runtime dependency for the
+    gfx1100 Qwen3.5/PARO path; the measured crossover policy uses AOTriton
+    attention once prompts reach 512 tokens.
     """
 
     linear_chunk_size: int = 0
@@ -20,7 +22,7 @@ class PrefillConfig:
     full_attn_post_chunk_size: int = 0
     full_attn_rope_chunk_size: int = 0
     moe_chunk_size: int = 0
-    attn_aotriton_min_tokens: int = 0
+    attn_aotriton_min_tokens: int = 512
     moe_grouped_device_gather: bool = True
     moe_stacked_compact: bool = True
     require_full_native: bool = True

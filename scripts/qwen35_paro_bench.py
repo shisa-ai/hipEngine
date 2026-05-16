@@ -45,7 +45,12 @@ def main() -> int:
     parser.add_argument("--max-layers", type=int, default=0, help="Debug limit; 0 means all layers")
     parser.add_argument("--progress", action="store_true")
     parser.add_argument("--roctx", action="store_true", help="Emit ROCTX ranges for profiler correlation")
-    parser.add_argument("--graph-replay-decode", action="store_true", help="Replay measured decode with a captured HIP graph")
+    parser.add_argument(
+        "--graph-replay-decode",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Replay measured decode with a captured HIP graph (default; use --no-graph-replay-decode for eager diagnostics)",
+    )
     parser.add_argument("--graph-steps-per-replay", type=int, default=1, help="Decode token steps captured per graph replay")
     parser.add_argument(
         "--compiler-version-file",
@@ -61,8 +66,8 @@ def main() -> int:
     parser.add_argument(
         "--attn-aotriton-min-tokens",
         type=int,
-        default=0,
-        help="Opt into AOTriton per-Q-head full-attention prefill at prompts with at least this many tokens (0 disables).",
+        default=512,
+        help="Use AOTriton per-Q-head full-attention prefill at prompts with at least this many tokens (0 disables for diagnostics).",
     )
     parser.add_argument("--prefill-linear-chunk-size", type=int, default=0, help="Chunk single-request linear-attention prefill layers (0 disables).")
     parser.add_argument("--prefill-moe-chunk-size", type=int, default=0, help="Chunk grouped-MoE prefill scratch/users by limiting layer chunks (0 disables).")

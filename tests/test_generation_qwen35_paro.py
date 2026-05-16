@@ -21,15 +21,32 @@ def _result(token_id: int, text: str) -> Qwen35ParoAutoregressiveStepResult:
     return Qwen35ParoAutoregressiveStepResult(token_id=token_id, token_text=text, logit=float(token_id))
 
 
-def test_qwen35_paro_generator_runs_multi_token_resident_decode(monkeypatch) -> None:
+def test_qwen35_paro_generator_runs_multi_token_resident_decode_graph(monkeypatch) -> None:
     calls = []
 
+    class FakeGraph:
+        def __enter__(self):
+            calls.append(("graph_enter",))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("graph_close",))
+
+        def replay(self, steps: int):
+            calls.append(("graph_replay", steps))
+
+        def read_generated_token_ids(self, count: int):
+            calls.append(("graph_read", count))
+            return [101, 102]
+
     class FakeSession:
-        tokenizer = SimpleNamespace(token_to_id=lambda token: 999 if token == "<|endoftext|>" else None)
+        tokenizer = SimpleNamespace(
+            token_to_id=lambda token: 999 if token == "<|endoftext|>" else None,
+            decode=lambda ids: {101: "B", 102: "C"}[int(ids[0])],
+        )
 
         def __init__(self, runner, *, max_sequence_length):
             calls.append(("init", runner, max_sequence_length))
-            self.outputs = iter([_result(100, "A"), _result(101, "B"), _result(102, "C")])
 
         def __enter__(self):
             return self
@@ -39,11 +56,19 @@ def test_qwen35_paro_generator_runs_multi_token_resident_decode(monkeypatch) -> 
 
         def prefill_native(self, token_ids, *, sample: bool = True):
             calls.append(("prefill_native", tuple(token_ids), sample))
-            return next(self.outputs) if sample else None
+            return _result(100, "A") if sample else None
 
-        def step(self, token_id: int, *, position: int, sample: bool = True):
-            calls.append(("step", token_id, position, sample))
-            return next(self.outputs) if sample else None
+        def capture_decode_graph(self, *, position, steps_per_replay, max_replay_steps, record_steps):
+            calls.append(
+                (
+                    "capture_decode_graph",
+                    position,
+                    steps_per_replay,
+                    max_replay_steps,
+                    record_steps,
+                )
+            )
+            return FakeGraph()
 
     monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
@@ -62,8 +87,11 @@ def test_qwen35_paro_generator_runs_multi_token_resident_decode(monkeypatch) -> 
     assert calls == [
         ("init", runner, 6),
         ("prefill_native", (10, 11), True),
-        ("step", 100, 2, True),
-        ("step", 101, 3, True),
+        ("capture_decode_graph", 2, 1, 2, 2),
+        ("graph_enter",),
+        ("graph_replay", 2),
+        ("graph_read", 2),
+        ("graph_close",),
         ("close",),
     ]
 

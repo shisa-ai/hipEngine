@@ -313,8 +313,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--attn-aotriton-min-tokens",
         type=int,
-        default=0,
-        help="Run native prefill with AOTriton full-attention when prompt length is at least this threshold (0 disables).",
+        default=512,
+        help="Run native prefill with AOTriton full-attention when prompt length is at least this threshold (0 disables for diagnostics).",
     )
     parser.add_argument("--prefill-linear-chunk-size", type=int, default=0)
     parser.add_argument("--prefill-moe-chunk-size", type=int, default=0)

@@ -1,14 +1,16 @@
 # Manifest pin for the AOTriton flash-attention runtime used by the gfx1100
-# attention wrapper.  hipENGINE does not vendor AOTriton binaries; the fetch
-# helper at scripts/fetch_aotriton.sh downloads the pinned archives into the
-# user cache (default ~/.cache/hipengine/aotriton/<version>/).  See
-# docs/PREFILL.md "AOTriton distribution and pinning strategy" for the
-# rationale and lookup chain.
+# attention wrapper.  hipENGINE vendors a pruned copy of this pin under
+# aotriton_runtime/<version>/ and tracks the binary/image payloads with Git LFS.
+# The fetch helper at scripts/fetch_aotriton.sh remains the refresh/offline-cache
+# tool for bumping or replacing the vendored tree.  See docs/PREFILL.md
+# "AOTriton distribution and pinning strategy" for the rationale and lookup
+# chain.
 #
 # Bumping version: update [aotriton].version, update both [[aotriton.archives]]
 # urls + sha256 + size_bytes, refresh so_name from `readelf -d` of the new .so,
 # adjust rocm_min/rocm_max to the release's supported band, re-run the fetcher,
-# re-build the wrapper, re-run the fixture gate.
+# prune/vendor the required runtime/images, re-build the wrapper, re-run the
+# fixture gate.
 
 [aotriton]
 version = "0.11.2b"
@@ -39,11 +41,19 @@ sha256 = "839299637fccb13fbe3e7823d57d1b2dcd0e0bed78abbcb7005ea5f4fd82b928"
 size_bytes = 475390993
 
 [aotriton.prune]
-# Keep only the forward-attention kernel images.  AOTriton ships forward
-# kernels (attn_fwd), backward/training kernels (bwd_*), and debug helpers in
-# the gfx11xx image tarball; hipENGINE is inference-only.  After pruning the
-# cache footprint drops from ~700 MB to ~123 MB.
+# Fetch-cache pruning keeps only the forward-attention kernel family.  AOTriton
+# ships forward kernels (attn_fwd), backward/training kernels (bwd_*), and debug
+# helpers in the gfx11xx image tarball; hipENGINE is inference-only.
 keep_flash_subdirs = ["attn_fwd"]
 # Restrict to the gfx11xx image tree.  AOTriton 0.11.x ships one image tarball
 # per architecture family; future fetches may add more.
 keep_archs = ["amd-gfx11xx"]
+
+[aotriton.vendor]
+# The committed baseline runtime is stricter than the external fetch cache:
+# lib/header runtime plus only BF16 head_dim=256 gfx11xx forward-attention
+# images used by Qwen3.5/PARO AOTriton prefill.  Binary payloads are Git LFS
+# objects; run `git lfs pull` after clone if they are missing.
+relative_path = "aotriton_runtime/0.11.2b"
+image_glob = "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__＊bf16@16_256_*___gfx11xx.aks2"
+image_count = 12

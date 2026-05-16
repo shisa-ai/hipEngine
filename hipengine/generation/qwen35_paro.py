@@ -11,6 +11,7 @@ from hipengine.loading import WeightIndex
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoNextTokenRunner,
     Qwen35ParoResidentSession,
+    _decode_token_cached,
     _select_token,
 )
 
@@ -45,23 +46,30 @@ class Qwen35ParoOneTokenGenerator:
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
         max_sequence_length = len(prompt_ids) + max_tokens + 1
-        generated = []
+        generated_text: list[str] = []
         with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence_length) as session:
             next_result = session.prefill_native(prompt_ids, sample=True)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")
-            generated.append(next_result)
+            generated_text.append(next_result.token_text)
             if not ignore_eos and _is_eos(session.tokenizer, next_result.token_id):
-                return "".join(item.token_text for item in generated)
-            current = next_result
-            for offset in range(1, max_tokens):
-                current = session.step(current.token_id, position=len(prompt_ids) + offset - 1)
-                if current is None:
-                    raise RuntimeError("decode step did not produce next-token logits")
-                generated.append(current)
-                if not ignore_eos and _is_eos(session.tokenizer, current.token_id):
-                    break
-        return "".join(item.token_text for item in generated)
+                return "".join(generated_text)
+
+            remaining = max_tokens - 1
+            if remaining:
+                with session.capture_decode_graph(
+                    position=len(prompt_ids),
+                    steps_per_replay=1,
+                    max_replay_steps=remaining,
+                    record_steps=remaining,
+                ) as graph:
+                    graph.replay(remaining)
+                    token_ids = graph.read_generated_token_ids(remaining)
+                for token_id in token_ids:
+                    generated_text.append(_decode_token_cached(session.tokenizer, token_id))
+                    if not ignore_eos and _is_eos(session.tokenizer, token_id):
+                        break
+        return "".join(generated_text)
 
     def _get_runner(self) -> Qwen35ParoNextTokenRunner:
         if self._runner is None:

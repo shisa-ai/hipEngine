@@ -2,7 +2,8 @@
 
 These tests are torch-free.  They construct fake AOTriton cache trees on disk
 and verify that the lookup chain documented in ``aotriton.py`` and
-``docs/PREFILL.md`` finds them.  No real AOTriton binary is required.
+``docs/PREFILL.md`` finds them.  The real vendored AOTriton tree is discovered
+without dlopening it.
 """
 
 from __future__ import annotations
@@ -52,6 +53,20 @@ def test_manifest_pins_version_and_soname() -> None:
     pin = load_manifest()
     assert pin.version, "manifest must record an AOTriton version"
     assert pin.so_name.startswith("libaotriton_v2.so")
+
+
+def test_discovery_finds_vendored_runtime_by_default(monkeypatch) -> None:
+    pin = load_manifest()
+    monkeypatch.delenv("HIPENGINE_AOTRITON_LIB", raising=False)
+    monkeypatch.delenv("HIPENGINE_AOTRITON_HOME", raising=False)
+
+    tree = aotriton_runtime_tree()
+
+    assert tree.manifest == pin
+    assert tree.source == "vendored"
+    assert tree.library.name == "libaotriton_v2.so.0.11.2"
+    assert tree.flash_header.is_file()
+    assert (tree.images_dir / "amd-gfx11xx" / "flash" / "attn_fwd").is_dir()
 
 
 def test_discovery_finds_cache_under_home_root(monkeypatch, tmp_path) -> None:
@@ -106,6 +121,23 @@ def test_discovery_lib_env_must_exist(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("HIPENGINE_AOTRITON_HOME", raising=False)
 
     with pytest.raises(FileNotFoundError, match="HIPENGINE_AOTRITON_LIB"):
+        aotriton_runtime_tree()
+
+
+def test_discovery_rejects_unpulled_lfs_pointer(monkeypatch, tmp_path) -> None:
+    pin = load_manifest()
+    cache_root = tmp_path / "cache"
+    version_dir = _make_fake_tree(cache_root, pin.version, pin.so_name)
+    library = version_dir / "lib" / pin.so_name
+    library.write_text(
+        "version https://git-lfs.github.com/spec/v1\n"
+        "oid sha256:0123456789abcdef\n"
+        "size 123\n"
+    )
+    monkeypatch.delenv("HIPENGINE_AOTRITON_LIB", raising=False)
+    monkeypatch.setenv("HIPENGINE_AOTRITON_HOME", str(cache_root))
+
+    with pytest.raises(AotritonNotInstalledError, match="git lfs pull"):
         aotriton_runtime_tree()
 
 

@@ -117,15 +117,14 @@ Reference files:
 
 ### 2026-05-16 AOTriton V3 parent-gap audit
 
-Latest single-request diagnostic rows use hipENGINE's opt-in AOTriton V3
+Latest single-request diagnostic rows use hipENGINE's AOTriton V3
 compact-varlen GQA path (`--attn-aotriton-min-tokens 512`) and real
 hipENGINE-owned memory accounting.  They supersede the older bring-up rows above
-for the current parent-parity gap discussion; they are still diagnostic rather
-than promoted current-fastest rows because AOTriton remains an optional fetched
-runtime and the full `LLM.generate()` acceptance protocol has not landed.  The
-threshold sweep below now recommends `--attn-aotriton-min-tokens 512` for
-deployments that have installed AOTriton; the code default remains disabled
-(`0`) so a baseline install does not fail when the optional runtime is absent.
+for the current parent-parity gap discussion.  AOTriton is now a mandatory,
+vendored baseline runtime dependency for the gfx1100 Qwen3.5/PARO path, and the
+`LLM.generate()`/benchmark defaults select the threshold-512 policy plus decode
+HIP graph replay.  `attn_aotriton_min_tokens=0` is retained only as an explicit
+native-attention diagnostic override.
 
 | Workload | Parent prefill tok/s | hipENGINE AOTriton V3 prefill tok/s | Prefill delta | Parent decode tok/s | hipENGINE decode tok/s | Decode delta | Peak allocated delta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -177,9 +176,10 @@ IDs match eager and fixture).
 The measured crossover is between 256 and 512 prompt tokens.  Among tested
 threshold policies (`0`, `32`, `64`, `128`, `256`, `512`), threshold `512` is the
 only one that avoids the short-prompt regressions while still selecting the fast
-path at the first prompt length where AOTriton wins.  Because AOTriton is an
-optional fetched runtime, `PrefillConfig.attn_aotriton_min_tokens` stays at `0`;
-installed-AOTriton deployments should pass `--attn-aotriton-min-tokens 512`.
+path at the first prompt length where AOTriton wins.  Because AOTriton is now
+vendored through Git LFS and treated as a baseline runtime dependency,
+`PrefillConfig.attn_aotriton_min_tokens` defaults to `512`; pass `0` only for
+native-attention diagnostics.
 
 | Workload | Native prefill tok/s | AOTriton threshold-512 prefill tok/s | Prefill delta | Native decode tok/s | AOTriton decode tok/s | Peak GiB delta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -188,7 +188,7 @@ installed-AOTriton deployments should pass `--attn-aotriton-min-tokens 512`.
 
 #### Long-shape checkpoint (2026-05-16)
 
-Follow-up diagnostic checkpoint with the same installed-AOTriton policy
+Follow-up diagnostic checkpoint with the same baseline AOTriton policy
 (`--attn-aotriton-min-tokens 512`) and one-step decode graph replay:
 `benchmarks/results/2026-05-16-hipengine-qwen35-long-checkpoint-diagnostic.json`.
 No new long-context oracle fixture was run; this row inherits the threshold-512
@@ -247,7 +247,7 @@ the quick comparison script covers the same context set for every baseline.
 | --- | --- | --- | --- | --- |
 | P0 | Replace bulk dense GEMV-style kernels with real bulk GEMM/WMMA for linear-attention A/B and shared-expert prefill. | Parent source uses `F.linear(...)` for multi-row `ParoQuantDenseLinear` and multi-row `ParoQuantSharedExpert`; parent ledgers show `native_aux_dense_linear_calls=280` and `native_shared_expert_dense_calls=80`. hipENGINE source uses `dense_gemv_out_fp16(...)` for A/B and scalar W8A16 shared kernels. | These costs scale roughly linearly with prompt rows and occur in every layer/MoE layer, matching the near-constant -13% residual gap at both 512 and 4K. | Capture a matched 512/128 ROCTX+`rocprofv3` profile first; if confirmed, add a torch-free rocBLAS/hipBLAS or tiled WMMA bulk dense path, starting with shared expert gate/up+down and linear A/B. |
 | P1 | Avoid or fuse AOTriton dtype/post-pass glue. | **Landed as diagnostics:** single-request AOTriton prefill writes BF16 Q directly from head-norm/RoPE, reuses the already-appended BF16 paged KV cache for K/V, fuses BF16 attention × FP16 gate into PARO rotate1, and aliases the old gated scratch as BF16 AOTriton output. | These changes remove Q/K/V cast launches plus the separate gate launch and reduce 4K tracked peak memory by ~0.39 GiB cumulatively, but single-run throughput stayed neutral/slightly negative; this is no longer a leading explanation for the -13% residual gap. | Keep the cast-glue and gate-rotate artifacts as evidence; prioritize the P0 bulk dense/shared-expert gap unless matched profiler attribution says attention post-pass still dominates. |
-| P2 | Keep AOTriton threshold policy evidence-backed. | **Sweep landed as diagnostic:** forced AOTriton is slower at 32/64/128/256 and faster at 512/1024/4096; threshold 512 is the first tested policy that avoids short-prompt regressions while keeping the fixed 4K path. | Not a gap for opt-in comparison, but it determines whether installed-AOTriton users get the fixed 4K path without hurting short prompts. | Keep code default `0` because AOTriton is optional; recommend `--attn-aotriton-min-tokens 512` for installed deployments and rerun the sweep when AOTriton or the prelude changes. |
+| P2 | Keep AOTriton threshold policy evidence-backed. | **Sweep landed as diagnostic:** forced AOTriton is slower at 32/64/128/256 and faster at 512/1024/4096; threshold 512 is the first tested policy that avoids short-prompt regressions while keeping the fixed 4K path. | Not a gap for current comparison, but it determines the default full-attention path without hurting short prompts. | Keep code default `512` now that AOTriton is vendored through Git LFS; use `0` only for native-attention diagnostics and rerun the sweep when AOTriton or the prelude changes. |
 | P2 | Decode graph replay parity. | **Landed as diagnostic:** one-step HIP graph replay records generated IDs on device for the fixture gate and reaches 109.34 tok/s (512/128) / 110.30 tok/s (4K/128), reducing the parent decode gap to -5.8% / -2.4%. | Decode delta is separate from prefill, but it affects end-to-end comparison tables. | Keep the graph gate in the benchmark protocol; remaining decode work should wait until prefill default/threshold and P0 bulk kernels are settled. |
 | P3 | Matched profiler attribution. | This audit is source/ledger based; no matched hipENGINE-vs-parent prefill kernel-time table exists yet. | Prevents tuning the wrong family if dense/shared kernels are not the top residual. | Retain compact 512/128 and 4K/128 profiler summaries with ROCTX ranges before landing invasive kernel work. |
 
@@ -887,9 +887,9 @@ AOTriton as the perf oracle is what makes a later native port tractable.
   no `if quant=="..."`; the model layer asks the registry for an attention
   prefill key and gets one. The existing kernel stays registered as the
   short-T variant.
-- Threshold via `PrefillConfig.attn_aotriton_min_tokens` (default 1024,
-  re-measured); decode and short prefill continue on the existing hand-rolled
-  kernel where it is fine.
+- Threshold via `PrefillConfig.attn_aotriton_min_tokens` (default `512`, per
+  the retained threshold sweep); decode and short prefill continue on the
+  existing hand-rolled kernel where it is fine.
 - Add a tiny **gate-fusion post-pass kernel** in the same module:
   `out[row, q_head, dim] *= sigmoid(gate[row, q_head, dim])` over the
   AOTriton output. The existing prefill kernel fuses this inside its
@@ -898,11 +898,11 @@ AOTriton as the perf oracle is what makes a later native port tractable.
   num_q_heads=16. Reuse the existing decode-side gate kernel pattern at
   `paged_attn_decode.hip:316,329` for the math; only the launch shape
   changes.
-- Use the fetch-on-install + pinned-manifest scheme described in "AOTriton
-  distribution and pinning strategy" below: pin in
-  `aotriton_release.toml`, install with `scripts/fetch_aotriton.sh`, resolve
-  via `aotriton_runtime_tree()`. Do not vendor the AOTriton binary in git;
-  do not add a submodule; do not depend on PyTorch's bundled copy.
+- Use the Git-LFS-vendored, pinned-manifest scheme described in "AOTriton
+  distribution and pinning strategy" below: pin in `aotriton_release.toml`,
+  vendor/update with `scripts/vendor_aotriton.sh`, and resolve via
+  `aotriton_runtime_tree()`. Do not add a submodule; do not depend on
+  PyTorch's bundled copy.
 - Correctness gate: re-run `scripts/qwen35_native_prefill_fixture_gate.py` on
   `fixtures/qwen35_paro/parent_512_32_seed1234.json` and the 4K repeated-token
   diagnostic; require `passed=true`, `max_kl <= 0.05`, top-1 ≥ 90 %, and
@@ -939,9 +939,10 @@ AOTriton (`https://github.com/ROCm/aotriton`) is under active development:
 ABI churn is real between minors, release artifacts are matrixed across ROCm
 minors, and the version PyTorch bundles is mangled (the conda installs on this
 host show `libaotriton_v2.so.torch` symlinks under `torch/lib/`). hipENGINE
-pins one upstream release in `aotriton_release.toml` and fetches it on demand
-into the user cache. There is exactly one supported install path. No
-submodule. No vendored binary. No PyTorch dependency.
+pins one upstream release in `aotriton_release.toml` and now vendors the exact
+pruned gfx11xx runtime/images needed by the Qwen3.5/PARO inference path under
+`hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/`. Binary payloads
+are tracked with Git LFS. No submodule. No PyTorch dependency.
 
 #### Pinned version: 0.11.2b
 
@@ -984,9 +985,11 @@ need both:
 | GPU images (gfx11xx) | `aotriton-0.11.2b-images-amd-gfx11xx.tar.gz` | 475 MB | `lib/aotriton.images/amd-gfx11xx/flash/{attn_fwd,bwd_*,debug_*}/*.aks2` |
 
 Both share the same top-level `aotriton/` directory and merge cleanly into
-one cache tree. After pruning to `flash/attn_fwd` (the only kernel family
-hipENGINE invokes; everything else is training/debug), the on-disk footprint
-is ~123 MB.
+one cache tree. The committed vendor tree is pruned further than the generic
+fetch cache: it keeps the runtime library/headers plus the 12 BF16 head_dim=256
+`gfx11xx` forward-attention images used by Qwen3.5/PARO AOTriton prefill. The
+vendored footprint is ~24 MiB on disk here (~42 MB logical file bytes) before
+Git LFS pointer substitution.
 
 #### Manifest schema
 
@@ -1016,6 +1019,11 @@ size_bytes = 475390993
 [aotriton.prune]
 keep_flash_subdirs = ["attn_fwd"]
 keep_archs = ["amd-gfx11xx"]
+
+[aotriton.vendor]
+relative_path = "aotriton_runtime/0.11.2b"
+image_glob = "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__＊bf16@16_256_*___gfx11xx.aks2"
+image_count = 12
 ```
 
 #### Lookup chain at module load
@@ -1027,16 +1035,21 @@ consulted.
 1. **`HIPENGINE_AOTRITON_LIB`** — explicit path to `libaotriton_v2.so`.
    The matching `include/` and `aotriton.images/` trees must live at the
    standard sibling paths. Developer override; not for production.
-2. **`${HIPENGINE_AOTRITON_HOME:-~/.cache/hipengine/aotriton}/<version>/`**
-   — the fetch-on-install destination. `<version>` is read from
-   `aotriton_release.toml`; mismatched cache directories are ignored.
-3. **`/opt/rocm/lib/libaotriton_v2.so`** — only when its SONAME matches the
+2. **Explicit `root` argument or `HIPENGINE_AOTRITON_HOME`** — cache root that
+   contains `<version>/lib/libaotriton_v2.so`. Missing explicit roots fail
+   loudly instead of silently falling back.
+3. **Vendored package tree** —
+   `hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/<version>/`.
+   This is the baseline path for normal checkouts.
+4. **Default external cache `${HOME}/.cache/hipengine/aotriton/<version>/`** —
+   useful for pin refreshes or local experiments.
+5. **`/opt/rocm/lib/libaotriton_v2.so`** — only when its SONAME matches the
    manifest's pinned `so_name`. Not shipped by ROCm 7.2.2 today; reserved
    for future ROCm releases that begin bundling AOTriton.
-4. Nothing found → `AotritonNotInstalledError` pointing at
-   `scripts/fetch_aotriton.sh`. Generation falls back to the hand-rolled
-   `qwen35_causal_gqa_gate_fp16` kernel for that call so a baseline install
-   is still correct, just slower at long T.
+6. Nothing found → `AotritonNotInstalledError` pointing at Git LFS or
+   `scripts/fetch_aotriton.sh`. AOTriton is the baseline runtime dependency;
+   install LFS objects with `git lfs pull` after clone if the vendored payload
+   is missing.
 
 There are no other env vars. `HIPENGINE_AOTRITON_SOURCE_ROOT` and
 `HIPENGINE_AOTRITON_RUNTIME_ROOT` (used during the 0.8.x spike) have been
@@ -1045,7 +1058,31 @@ removed; if you find them in docs or commit messages, they predate the
 
 #### Bring-up checklist
 
-One-time, per host:
+Normal checkout bring-up:
+
+```bash
+git lfs install
+git lfs pull
+```
+
+The vendored tree should then exist at:
+
+```text
+hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/0.11.2b/
+```
+
+`pip install hipengine` from a source tree or wheel includes the vendored
+runtime as package data once the LFS objects are present. Refreshing the
+vendored baseline is explicit:
+
+```bash
+scripts/vendor_aotriton.sh --force
+  [--local-tarball-dir PATH]   # reuse already-downloaded release tarballs
+  [--skip-fetch]               # copy from an already-populated cache
+```
+
+`scripts/fetch_aotriton.sh` remains available for pin refreshes, offline mirrors,
+or external-cache overrides:
 
 ```bash
 scripts/fetch_aotriton.sh
@@ -1060,12 +1097,10 @@ scripts/fetch_aotriton.sh
 The helper downloads both pinned tarballs (~480 MB total), verifies SHA256
 against the manifest, extracts into `~/.cache/hipengine/aotriton/<version>/`,
 prunes per the manifest, and writes `MANIFEST.local.json` recording
-provenance.
-
-`pip install hipengine` does **not** invoke the fetcher. Long-T attention
-falls back to the hand-rolled kernel when AOTriton is absent; that path is
-correct but slower above ~1K prompt tokens. The fetcher is one explicit
-bring-up step, recorded in `WORKLOG.md` per AGENTS.md.
+provenance. To update the vendored baseline after changing the manifest pin,
+run `scripts/vendor_aotriton.sh --force`; it fetches (or reuses) the cache,
+copies the pruned runtime/images into `aotriton_runtime/<version>/`, updates
+`MANIFEST.vendor.json`, and then the fixture gate must be re-run.
 
 #### Why not just `pip install aotriton`
 
@@ -1093,8 +1128,8 @@ Instead:
 2. `aotriton_wrap.py` dlopens *our* wrapper .so (built by the same hipcc JIT
    path that builds all other gfx1100 kernels), not AOTriton directly.
 3. Bumping AOTriton: edit `aotriton_release.toml`, re-run
-   `scripts/fetch_aotriton.sh`, re-build the wrapper (seconds via JIT cache),
-   re-run the fixture gate.
+   `scripts/vendor_aotriton.sh --force`, re-build the wrapper (seconds via JIT
+   cache), re-run the fixture gate.
 
 If AOTriton 0.12 renames the entrypoint, only `aotriton_wrap.cc` changes;
 the registry key, runtime call site, and Python ABI remain stable.
@@ -1136,9 +1171,10 @@ landing; recorded here so a future iteration can pick it up):
   the pruned cache, fall back to the hand-rolled kernel for that call and
   emit one diagnostic so the manifest can grow.
 
-This would close the last footprint complaint about the AOTriton dependency
-("why is `pip install hipengine && fetch_aotriton.sh` ~500 MB?"). Until it
-lands, the default prune to `flash/attn_fwd` is the only mitigation.
+The 0.11.2b vendor step already mitigates the original ~500 MB fetch by
+committing only the 12 BF16 head-dim-256 forward images hipENGINE uses.  Future
+shape streaming would reduce wheel/source-checkout footprint further, but it is
+not required for the baseline runtime dependency.
 
 ### Explicit non-goals for the next spike
 

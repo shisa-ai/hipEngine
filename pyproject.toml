@@ -31,6 +31,11 @@ dev = [
   "pytest>=8.0",
 ]
 
+[tool.hatch.build]
+artifacts = [
+  "hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["hipengine"]
 

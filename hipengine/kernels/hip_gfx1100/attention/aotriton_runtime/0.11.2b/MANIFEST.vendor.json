@@ -1,0 +1,73 @@
+{
+  "version": "0.11.2b",
+  "source_cache_layout": "${HIPENGINE_AOTRITON_HOME:-~/.cache/hipengine/aotriton}/<version>",
+  "source_manifest": "../../aotriton_release.toml",
+  "library": "lib/libaotriton_v2.so.0.11.2",
+  "library_bytes": 17739448,
+  "library_sha256": "4baa2aa6ca58e9bdbbcd3233387a262f4c9367e9ace5d9ccfac075cb2d3aa6e0",
+  "images_policy": "manifest [aotriton.vendor].image_glob",
+  "image_glob": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_*___gfx11xx.aks2",
+  "image_count": 12,
+  "images": [
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_F_F_0_0___gfx11xx.aks2",
+      "bytes": 554900,
+      "sha256": "dfdda5724a0d4f73d7cc45f5e8ec248fa9fbc194e010f5f889e866e283a2a0f4"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_F_F_0_1___gfx11xx.aks2",
+      "bytes": 595644,
+      "sha256": "d2969fcbb92a721dd76651c8ab41326cbf9a2667f0c74239e4c708c44ae17b5b"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_F_F_3_0___gfx11xx.aks2",
+      "bytes": 219780,
+      "sha256": "6638f25a1232e0a27f88fddc76511b819635114804b74df628a6152714ed9724"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_F_T_0_0___gfx11xx.aks2",
+      "bytes": 728248,
+      "sha256": "8dc14477c7ac2c7c9816c5f6ba07514d79a977c36340f3e4beae945b0090c8e7"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_F_T_0_1___gfx11xx.aks2",
+      "bytes": 506972,
+      "sha256": "9885a20feec27ac78d710c540333a964daa72951a88baefa5010846853afe843"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_F_T_3_0___gfx11xx.aks2",
+      "bytes": 354672,
+      "sha256": "cce5e655025b73dbe96f58637d9696651a04012141f952062d32731b81bce743"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_T_F_0_0___gfx11xx.aks2",
+      "bytes": 745300,
+      "sha256": "1431a1fb2427feb53bd5e2c7eb8a26e4dee7cb77d45dff36f1e34acc95f70d37"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_T_F_0_1___gfx11xx.aks2",
+      "bytes": 767748,
+      "sha256": "bc8674cf83e841a6814f6f00dd02361352ca6dee8bc4a4ea7d0d8b4a0c13edfe"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_T_F_3_0___gfx11xx.aks2",
+      "bytes": 342536,
+      "sha256": "4cb91eda41b9b10ed4c3538813085f8dc0b2f897f602ceb9252b62a1960c7119"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_T_T_0_0___gfx11xx.aks2",
+      "bytes": 910156,
+      "sha256": "4a499fe99f38a078720379cbb15e998b9f21a700776da22a69e8710a1d5ea93c"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_T_T_0_1___gfx11xx.aks2",
+      "bytes": 632768,
+      "sha256": "3adf8d83061742e0c0b4508cd4c37adbbb2983ceea3d49169109a463f20f00e3"
+    },
+    {
+      "path": "lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__\uff0abf16@16_256_T_T_3_0___gfx11xx.aks2",
+      "bytes": 542508,
+      "sha256": "d10144c810b129b7f832aff32bd8c0a5e731226fd690e6e195fb3907f22ecfb8"
+    }
+  ]
+}

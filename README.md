@@ -14,9 +14,10 @@ supported GPUs and models.
   gfx1100/RDNA3 with wave32, vec8 FMA, and the actual cache hierarchy.
 - **Torch-free runtime.** `import torch` is **not** on the hot path. The
   runtime owns a thin `hipengine.Tensor` over raw HIP/CUDA device pointers and
-  drives `hipblasLt`, `hipGraph`, and JIT builds through `ctypes`. Torch
-  appears only as an optional dlpack bridge behind the `hipengine[torch]`
-  extra (~100 MiB install vs ~2 GiB with torch).
+  drives `hipblasLt`, `hipGraph`, AOTriton, and JIT builds through `ctypes`.
+  Torch appears only as an optional dlpack bridge behind the `hipengine[torch]`
+  extra (~125 MiB install including the vendored AOTriton subset vs ~2 GiB with
+  torch).
 - **Multi-backend from day one.** Kernels live under `kernels/hip_gfx1100/`,
   `kernels/hip_gfx1151/`, `kernels/cuda_sm86/`, `kernels/cpu_reference/` as
   peer trees.
@@ -98,6 +99,10 @@ Full layer diagram, plugin axes, KV cache ABI, and roadmap are in
 ## Installation
 
 ```bash
+# one-time: fetch Git LFS payloads, including the vendored AOTriton runtime/images
+git lfs install
+git lfs pull
+
 # core runtime (torch-free)
 pip install -e .
 

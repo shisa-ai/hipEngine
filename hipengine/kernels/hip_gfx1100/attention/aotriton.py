@@ -1,9 +1,12 @@
 """AOTriton runtime discovery for gfx1100 attention wrappers.
 
-hipENGINE does not vendor AOTriton.  The C++ wrapper (``aotriton_wrap.cc``)
-builds against a manifest-pinned AOTriton runtime tree that the user installs
-once via ``scripts/fetch_aotriton.sh``.  This module is torch-free and only
-resolves paths; it never dlopens AOTriton directly.
+hipENGINE vendors the manifest-pinned, pruned AOTriton runtime/images needed by
+its gfx1100 Qwen3.5/PARO inference path.  The C++ wrapper
+(``aotriton_wrap.cc``) builds against that tree by default.  Developer/system
+lookup hooks remain for explicit override or for refreshing the vendored pin,
+but AOTriton is now a baseline runtime dependency, not an optional fetch-only
+optimization.  This module is torch-free and only resolves paths; it never
+dlopens AOTriton directly.
 
 Lookup chain (first hit wins):
 
@@ -11,13 +14,15 @@ Lookup chain (first hit wins):
    The matching ``include/`` and ``aotriton.images/`` trees must live at
    ``<parent>/../include`` and ``<parent>/aotriton.images`` (the standard
    release layout).
-2. ``${HIPENGINE_AOTRITON_HOME:-~/.cache/hipengine/aotriton}/<version>/`` —
-   the fetch-on-install destination.  ``<version>`` is read from
-   ``aotriton_release.toml``.
-3. ``/opt/rocm/lib/libaotriton_v2.so`` — only when the SONAME matches the
+2. Explicit ``root`` argument or ``HIPENGINE_AOTRITON_HOME`` — cache root that
+   contains ``<version>/lib/libaotriton_v2.so``.  Missing explicit roots fail
+   loudly instead of silently falling back.
+3. Vendored package tree under ``aotriton_runtime/<version>/``.
+4. Default external cache ``~/.cache/hipengine/aotriton/<version>/``.
+5. ``/opt/rocm/lib/libaotriton_v2.so`` — only when the SONAME matches the
    manifest's pinned ``so_name``.
-4. Nothing found → :class:`AotritonNotInstalledError` with a clear hint
-   pointing at ``scripts/fetch_aotriton.sh``.
+6. Nothing found → :class:`AotritonNotInstalledError` with a clear hint about
+   Git LFS or ``scripts/fetch_aotriton.sh``.
 
 The intentionally minimal env-var surface mirrors ``docs/PREFILL.md``
 "AOTriton distribution and pinning strategy".  Earlier env vars
@@ -42,6 +47,7 @@ _MANIFEST_PATH = Path(__file__).with_name("aotriton_release.toml")
 _ENV_LIB = "HIPENGINE_AOTRITON_LIB"
 _ENV_HOME = "HIPENGINE_AOTRITON_HOME"
 _DEFAULT_HOME = Path.home() / ".cache" / "hipengine" / "aotriton"
+_VENDORED_HOME = Path(__file__).with_name("aotriton_runtime")
 _SYSTEM_LIB_CANDIDATES = (
     Path("/opt/rocm/lib/libaotriton_v2.so"),
 )
@@ -114,17 +120,33 @@ def aotriton_runtime_tree(
             )
         return _from_library(lib_path, pin, source=_ENV_LIB)
 
-    # 2. Cache layout under HIPENGINE_AOTRITON_HOME (or developer override).
+    # 2. Explicit cache layout under root / HIPENGINE_AOTRITON_HOME.
     home_override = root
-    if home_override is None:
-        env_home = os.environ.get(_ENV_HOME)
-        home_override = env_home if env_home else _DEFAULT_HOME
-    home_root = Path(home_override).expanduser().resolve()
+    env_home = os.environ.get(_ENV_HOME) if home_override is None else None
+    if home_override is not None or env_home:
+        home_root = Path(home_override or env_home).expanduser().resolve()
+        cache_lib = home_root / pin.version / "lib" / _LIB_GLOB_NAME
+        if cache_lib.is_file() or cache_lib.is_symlink():
+            return _from_library(cache_lib.resolve(), pin, source=str(home_root))
+        raise AotritonNotInstalledError(
+            "AOTriton runtime not found at explicit cache root.\n"
+            f"Looked at: {cache_lib}\n"
+            "Unset HIPENGINE_AOTRITON_HOME to use the vendored runtime, or "
+            "refresh the external cache with scripts/fetch_aotriton.sh."
+        )
+
+    # 3. Vendored package tree (baseline path).
+    vendored_lib = _VENDORED_HOME / pin.version / "lib" / _LIB_GLOB_NAME
+    if vendored_lib.is_file() or vendored_lib.is_symlink():
+        return _from_library(vendored_lib.resolve(), pin, source="vendored")
+
+    # 4. Default external cache layout.
+    home_root = _DEFAULT_HOME.expanduser().resolve()
     cache_lib = home_root / pin.version / "lib" / _LIB_GLOB_NAME
     if cache_lib.is_file() or cache_lib.is_symlink():
         return _from_library(cache_lib.resolve(), pin, source=str(home_root))
 
-    # 3. System ROCm fallback (SONAME-gated).
+    # 5. System ROCm fallback (SONAME-gated).
     for candidate in _SYSTEM_LIB_CANDIDATES:
         if candidate.is_file() or candidate.is_symlink():
             soname = _read_soname(candidate)
@@ -135,18 +157,22 @@ def aotriton_runtime_tree(
         "AOTriton runtime not found.\n"
         f"Looked at:\n"
         f"  ${_ENV_LIB} (env override)\n"
+        f"  vendored {_VENDORED_HOME / pin.version}/lib/{_LIB_GLOB_NAME}\n"
         f"  {home_root}/{pin.version}/lib/{_LIB_GLOB_NAME}\n"
         f"  {_SYSTEM_LIB_CANDIDATES[0]}\n"
-        "Install the pinned release with:\n"
-        "  scripts/fetch_aotriton.sh\n"
-        "Then either accept the default cache path (~/.cache/hipengine/aotriton) "
-        f"or set ${_ENV_HOME} to the cache root."
+        "Install Git LFS objects for the vendored runtime (`git lfs pull`) or "
+        "refresh the external cache with `scripts/fetch_aotriton.sh`."
     )
 
 
 def _from_library(library: Path, pin: AotritonManifest, *, source: str) -> AotritonRuntimeTree:
     lib_dir = library.parent
     root = lib_dir.parent
+    if _is_lfs_pointer(library):
+        raise AotritonNotInstalledError(
+            f"AOTriton library at {library} is a Git LFS pointer, not the binary payload. "
+            "Run `git lfs pull` to install the vendored runtime."
+        )
     include_dir = root / "include"
     flash_header = include_dir / "aotriton" / "flash.h"
     if not flash_header.is_file():
@@ -160,6 +186,12 @@ def _from_library(library: Path, pin: AotritonManifest, *, source: str) -> Aotri
             "AOTriton images directory not found under "
             + " or ".join(str(p) for p in image_candidates)
         )
+    sample_image = next(images_dir.rglob("*.aks2"), None)
+    if sample_image is not None and _is_lfs_pointer(sample_image):
+        raise AotritonNotInstalledError(
+            f"AOTriton image {sample_image} is a Git LFS pointer, not the binary payload. "
+            "Run `git lfs pull` to install the vendored runtime."
+        )
     return AotritonRuntimeTree(
         root=root,
         include_dir=include_dir,
@@ -169,6 +201,16 @@ def _from_library(library: Path, pin: AotritonManifest, *, source: str) -> Aotri
         source=source,
         manifest=pin,
     )
+
+
+def _is_lfs_pointer(path: Path) -> bool:
+    try:
+        if path.stat().st_size > 512:
+            return False
+        head = path.read_bytes()[:128]
+    except OSError:
+        return False
+    return head.startswith(b"version https://git-lfs.github.com/spec/v1")
 
 
 def _read_soname(library: Path) -> str | None:

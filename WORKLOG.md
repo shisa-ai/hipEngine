@@ -13344,3 +13344,60 @@ python3 scripts/llamacpp_bench_with_peak.py \
 Next step (separate logical unit): run the full 4-workload sweep on both backends with
 `--poll 10`, retain the artifacts under `benchmarks/results/`, and wire the result into
 `scripts/qwen35_compare_tables.py` so the `Memory / peak GiB` table fills its blanks.
+
+## 2026-05-16 — AOTriton vendored baseline + default graph policy
+
+User clarified that AOTriton is mandatory for gfx1100 Qwen3.5/PARO, not an optional
+fetch-only optimization.  Implemented the baseline packaging/default flip without touching
+GPU sweeps or unrelated benchmark artifacts in the shared worktree.
+
+Changes:
+
+- Initialized Git LFS locally (`git lfs install --local`) and added `.gitattributes` for
+  vendored AOTriton `.so*` and `.aks2` payloads.
+- Pruned and vendored AOTriton `0.11.2b` under
+  `hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/0.11.2b/`: runtime headers,
+  `libaotriton_v2.so.0.11.2`, symlink `libaotriton_v2.so`, and the 12 BF16 head-dim-256
+  gfx11xx forward-attention images required by Qwen3.5/PARO.  `MANIFEST.vendor.json`
+  records SHA256s/counts.
+- Added `scripts/vendor_aotriton.sh` as the reproducible refresh path: fetch/cache via the
+  pinned manifest, copy only `[aotriton.vendor]` images, and regenerate the vendor manifest.
+- Changed AOTriton discovery to prefer the vendored package tree by default, keep explicit
+  env/cache overrides for developers, and reject unpulled Git LFS pointer files with a
+  clear `git lfs pull` hint.
+- Promoted `PrefillConfig.attn_aotriton_min_tokens=512`, benchmark/fixture default
+  `--attn-aotriton-min-tokens 512`, and `scripts/qwen35_paro_bench.py` decode graph replay
+  default (`--no-graph-replay-decode` remains the eager diagnostic override).
+- Updated `hipengine.generation.qwen35_paro` so the public `LLM.generate()` Qwen3.5/PARO path
+  uses `Qwen35ParoResidentSession.capture_decode_graph(..., record_steps=...)` for generated
+  tokens after native prefill.
+- Updated README, `docs/PREFILL.md`, `docs/PLAN.md`, `docs/OPTIMIZE.md`, benchmark rollup text,
+  changelog policy note, and package build artifacts so the vendored runtime is documented as
+  baseline package data.
+
+Validation (CPU/no-GPU only because GPU is in use by sweeps):
+
+```bash
+scripts/vendor_aotriton.sh --skip-fetch --force
+# Vendored AOTriton 0.11.2b ... Images: 12
+
+git check-attr filter diff merge text -- \
+  hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/0.11.2b/lib/libaotriton_v2.so.0.11.2 \
+  hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/0.11.2b/lib/aotriton.images/amd-gfx11xx/flash/attn_fwd/FONLY__＊bf16@16_256_F_F_0_0___gfx11xx.aks2
+# both report filter/diff/merge=lfs
+
+python3 -m pytest tests/test_aotriton_discovery.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py -q
+# 39 passed
+
+python3 scripts/qwen35_paro_bench.py --help
+# exposes --graph-replay-decode / --no-graph-replay-decode and --attn-aotriton-min-tokens
+
+scripts/vendor_aotriton.sh --help
+# prints refresh usage
+
+git diff --check
+# clean
+```
+
+Unrelated untracked `benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json` was left
+unstaged/untouched.

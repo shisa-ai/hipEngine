@@ -5,6 +5,8 @@
 __pycache__/
 *.py[cod]
 *.so
+!hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*.so
+!hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*.so.*
 *.egg-info/
 *.egg
 .pytest_cache/

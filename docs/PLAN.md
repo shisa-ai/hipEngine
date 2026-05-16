@@ -580,8 +580,9 @@ Measured from this workspace (`du -sh`):
 | `tokenizers` (HF, Rust via pyo3) | ~10 MiB | BPE tokenization |
 | `jinja2` | ~1 MiB | Chat templates |
 | `numpy` (optional) | ~30 MiB | Convenience, fallback math |
+| AOTriton 0.11.2b gfx11xx subset (Git LFS) | ~24 MiB on disk / ~42 MB logical bytes | Baseline full-attention prefill runtime for Qwen3.5/PARO gfx1100 |
 
-A torch-free hipENGINE ships as **~100 MiB** vs **~2 GiB** with torch. Faster cold start, cleaner Docker images, no torch GPU-detection surprises, runs in environments where torch is broken (Strix Halo, edge ROCm builds, CUDA-forked environments).
+A torch-free hipENGINE ships as **~125 MiB** including the vendored AOTriton subset vs **~2 GiB** with torch. Faster cold start, cleaner Docker images, no torch GPU-detection surprises, runs in environments where torch is broken (Strix Halo, edge ROCm builds, CUDA-forked environments). AOTriton is a pinned, vendored runtime dependency for the gfx1100 Qwen3.5/PARO path, tracked with Git LFS rather than pulled from PyTorch.
 
 #### Kernel bodies are already torch-free
 
@@ -605,7 +606,7 @@ void qwen35_paged_full_attn_decode_split_k_warp_launch(
 |---|---|---|---|
 | `torch.Tensor` metadata (strides, dtype, device, contig, views) | 1,373 refs in `native/qwen35/*.py` | `hipengine.Tensor` with dlpack export | ~500 |
 | `torch.cat` / `torch.stack` / `torch.split` | 67 refs, mostly weight-load time | numpy + `hipMemcpyAsync` for big stacks; pure-Python for small | ~150 |
-| `F.scaled_dot_product_attention` (prefill + short decode) | 8 call sites | **Our own HIP FA2 prefill kernel** — needed anyway for long-context prefill | ~1,500 HIP (new kernel, one-time) |
+| `F.scaled_dot_product_attention` (prefill + short decode) | 8 call sites | Pinned AOTriton C++ ABI shim for the default Qwen3.5/PARO path, plus native HIP attention fallback for diagnostics/short prompts | ~200 C++/Python shim + vendored Git-LFS runtime |
 | `torch.cuda.CUDAGraph` | 1 site (`model_runner.py:250`) | `hipGraphCreate` / `hipGraphLaunch` via ctypes on `libamdhip64.so` | ~300 |
 | `torch.matmul` / `torch.mm` (prefill fallbacks, M≤4) | 10 sites | `hipblasLt` / `rocBLAS` bindings via ctypes on `libhipblaslt.so` | ~400 |
 | `torch.utils.cpp_extension.load[_inline]` (JIT dev loop) | 1 loader + 3 `load_inline` | `subprocess.run(['hipcc', …])` + `ctypes.CDLL` + hash cache | ~400 |
@@ -614,7 +615,7 @@ void qwen35_paged_full_attn_decode_split_k_warp_launch(
 | Triton kernels | 0 call sites in `nano-vllm-amd` native path | **Drop** from runtime deps; keep Triton-as-reference optional | 0 |
 | HF `safetensors`, `tokenizers`, `jinja2`, config JSON | Loading glue (~200 LoC) | **Keep** — all already torch-free | ~200 (glue) |
 
-**Total replacement budget:** ~1,950 new Python LoC + ~1,500 new HIP LoC (FA2 prefill kernel) + ~200 LoC of loading glue. Against a 1.7 GiB dependency drop and a clear multi-backend story, this is cheap — and we need the FA2 prefill kernel regardless of host-language choice.
+**Total replacement budget:** ~1,950 new Python LoC + the AOTriton C++ shim/vendored runtime + ~200 LoC of loading glue. Against a 1.7 GiB dependency drop and a clear multi-backend story, this is cheap. A native FA2 HIP kernel remains future work only if AOTriton headroom or packaging constraints justify it.
 
 #### Optional torch interop
 
