@@ -15798,3 +15798,74 @@ python3 scripts/qwen35_gguf_e2e_correctness.py >/tmp/gguf_e2e_pass_final.json
 ```
 
 Scope caveat: this is true `hipengine.LLM.generate()` E2E correctness for the fixed Qwen3.5-0.8B-Q4_K_M GGUF fixture. The full-attention context path currently uses a CPU-hosted small-context attention bridge after native GGUF projections; task #32 should record profiler evidence for the native kernels that still execute, and future work should replace the bridge with all-GPU prefill/KV history.
+
+## 2026-05-16 GGUF E2E profiling and task #32 closeout
+
+Completed task #32 documentation/profile closeout for the Qwen3.5-0.8B-Q4_K_M GGUF public E2E path.
+
+Correctness gate, with cached compiler-version key to avoid repeated `hipcc --version` probes:
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+/usr/bin/time -f 'elapsed=%E exit=%x' env \
+  PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/qwen35_gguf_e2e_correctness.py > /tmp/gguf_e2e_env_pass.json
+# elapsed=0:25.70 exit=0
+# passed=True
+# outputs=[' 1.\n\n', ' 1.\n\n']
+# generated_token_ids=[220, 16, 13, 271]
+# deterministic=True, expected_text_match=True, expected_token_ids_match=True
+# torch_loaded_by_generate=False
+```
+
+Timing caveat: fresh Python processes are much slower without `HIPENGINE_COMPILER_VERSION_FILE` because each JIT family probes `hipcc --version` to resolve cache keys. With the env var set, a one-token public `LLM.generate()` diagnostic takes ~11.75s on this local 0.8B target; without it the same one-token diagnostic was ~66.93s. These timings are diagnostic only and are not retained as a throughput row.
+
+Cached profiler smoke:
+
+```bash
+cat >/tmp/profile_gguf_generate_one.py <<'PY'
+from hipengine import LLM, SamplingParams
+model = "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf"
+llm = LLM(model, backend="hip_gfx1100", quant="gguf_q4_k_m")
+out = llm.generate("The answer is", SamplingParams(max_tokens=1, temperature=0.0, top_p=1.0))
+print(repr(out))
+PY
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-e2e-rocprof.JGJySh -- \
+  env PYTHONPATH=/home/lhl/hipENGINE \
+      HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      python3 /tmp/profile_gguf_generate_one.py
+# stdout: [' ']
+# elapsed=0:12.18 exit=0
+# results DB: /tmp/hipengine-gguf-e2e-rocprof.JGJySh/rocm/3278774_results.db
+```
+
+Kernel trace summary from the DB:
+
+```text
+total dispatches=1205, unique kernel symbols=14
+gguf_q4_k_pack8_gemv_out_kernel<unsigned short, unsigned short>: count=294 avg=44.9 us
+gguf_k_gemv_out_kernel<unsigned short, unsigned short, 5>: count=108 avg=79.9 us
+gguf_k_gemv_out_kernel<unsigned short, unsigned short, 8>: count=108 avg=9.80 us
+gguf_k_gemv_out_kernel<unsigned short, unsigned short, 6>: count=48 avg=53.2 us
+gguf_k_gemv_out_kernel<unsigned short, float, 6>: count=1 avg=3345.9 us
+gguf_q6_k_embedding_bf16_out_kernel: count=3 avg=7.20 us
+gguf_rmsnorm_bf16_f32_weight_kernel: count=73 avg=8.05 us
+gguf_add_rmsnorm_bf16_f32_weight_kernel: count=72 avg=8.76 us
+gguf_bf16_add_kernel: count=72 avg=3.18 us
+qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>: count=54 avg=6.97 us
+qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>: count=54 avg=30.5 us
+f32_to_bf16_kernel: count=54 avg=3.13 us
+silu_mul_dual_out_kernel<unsigned short>: count=72 avg=3.14 us
+```
+
+Validation for closeout:
+
+```bash
+python3 -m pytest tests/test_gguf_ops.py tests/test_qwen35_gguf_runner.py \
+  tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_tokenizer.py \
+  tests/test_gguf_e2e_acceptance.py tests/test_llm_generate.py \
+  tests/test_model_quant_and_imports.py -q
+# 21 passed
+```
+
+Retained correctness/profile artifact: `benchmarks/results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json`. This is a correctness-only diagnostic; no hipENGINE throughput row is promoted because the full-attention prompt context still uses a CPU-hosted small-context bridge and the timing is not a tuned benchmark protocol.

@@ -63,8 +63,19 @@ The hard gate is **not** a lower-level kernel smoke or layer runner. It is the
 public API:
 
 ```bash
-python3 scripts/qwen35_gguf_e2e_correctness.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py
 ```
+
+Use a precomputed compiler-version file for repeatable cached JIT behavior:
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+```
+
+Without this environment variable, fresh Python processes repeatedly probe
+`hipcc --version` while resolving JIT cache keys, which can make the correctness
+run look like it is hanging even when all kernels are cached.
 
 That script calls:
 
@@ -114,9 +125,14 @@ Definition of done for GGUF E2E:
 7. `WORKLOG.md` records the exact command output and any benchmark artifact only
    after correctness passes.
 
-As of 2026-05-16, this command passes for the fixed target fixture. Broader
-prompts, batched prefill, all-GPU full-attention prefill, and throughput claims
-remain future work.
+As of 2026-05-16, this command passes for the fixed target fixture. A cached
+`rocprofv3 --kernel-trace` smoke over `LLM.generate(max_tokens=1)` recorded 1205
+kernel dispatches across 14 unique kernel symbols, including Q4_K pack8 GEMV,
+Q5_K/Q6_K/Q8_0 raw GEMV, Q6_K embedding, GGUF RMSNorm/add-RMSNorm, linear-attn
+conv/GDN, BF16 casts, and SiLU. See
+`benchmarks/results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json`.
+Broader prompts, batched prefill, all-GPU full-attention prefill, and throughput
+claims remain future work.
 
 ## Why GGUF is attractive for hipENGINE
 
