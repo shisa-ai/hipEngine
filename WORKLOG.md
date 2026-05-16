@@ -11117,3 +11117,43 @@ retained `2031.783`. Profiler confirmed the source of the regression: shared
 expert down-combine worsened from retained `19.543 ms` total to `33.283 ms`, and
 shared gate/up worsened from `15.633 ms` to `17.540 ms`. Decision:
 reject/revert; keep the 64-thread grouped shared-expert helper launches.
+
+## 2026-05-16 — Prefill multiloop iter 46: rejected W8A16 shared fast exp
+
+Tried replacing the W8A16 shared-expert helper `expf` calls with device fast
+`__expf` in the FP16 shared gate/up SiLU and shared down-combine gate sigmoid.
+The change was scoped to `hipengine/kernels/hip_gfx1100/quant/w8a16_linear.hip`;
+ABI, dispatch, and c=1/non-grouped helper structure were unchanged.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import build_w8a16_linear
+lib = build_w8a16_linear(load=True, require_cached=False)
+for name in ['hipengine_w8a16_shared_gate_up_silu_fp16', 'hipengine_w8a16_shared_down_combine_residual_fp16']:
+    getattr(lib, name)
+print('w8a16 shared symbols loaded')
+PY
+python3 -m pytest tests/test_qwen35_moe_group_scatter_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/smoke.py --mode w8a16-linear-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/smoke.py --mode w8a16-shared-expert-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+rocprofv3 --kernel-trace -d /tmp/iter46-w8a16-fastexp-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter46-w8a16-fastexp-trace.json
+```
+
+Results: targeted tests passed (`37 passed`), W8A16 linear smoke passed, and the
+shared-expert smoke stayed bit-exact (`gate_up_mismatch=0`,
+`intermediate_mismatch=0`, `out_mismatch=0`). Fixture gate passed
+(`max_kl=0.01970`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2506s`). 4K/128 was
+runnable and above guard at `658.373 tok/s`. 512/128 samples were `2030.564`,
+`2036.835`, `2030.852`, `2036.902`, `2017.649`, and `2014.217` tok/s (median
+`2030.708`), -0.05% versus retained `2031.783`. Profiler showed a real local
+bucket improvement — shared down-combine `19.543 -> 18.989 ms` and shared gate/up
+`15.633 -> 14.801 ms` total — but the primary metric did not improve and the
+sample spread overlaps retained noise. Decision: reject/revert; keep precise
+`expf` in the default path unless a later fused/shared-expert change turns this
+into a clear end-to-end win.
