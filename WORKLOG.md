@@ -15571,3 +15571,30 @@ python3 scripts/qwen35_gguf_e2e_correctness.py --skip-tokenize-check >/tmp/gguf_
 ```
 
 `tests/test_qwen35_gguf_runner.py` now also checks `sample_next_token(760)` twice for finite logits, stable top-1 token id, and stable top logit. The sampled token is not expected to match llama.cpp yet because the hidden state is still the layer-0 projection probe rather than the full Qwen layer stack.
+
+## 2026-05-16 GGUF true E2E gate status
+
+Ran the hard public API gate after GGUF loader routing, resident materialization, Q6_K embedding, GGUF linear dispatch, one-layer probe, and tied Q6_K lm-head argmax probe:
+
+```bash
+python3 scripts/qwen35_gguf_e2e_correctness.py >/tmp/gguf_e2e_gate_final_red.json
+# exit 1
+```
+
+Structured result excerpt:
+
+```json
+{
+  "passed": false,
+  "errors": [
+    "NotImplementedError: Qwen3.5 GGUF public path reached native GGUF lm-head sampling (probe token_id=1792, logit=7.76852e+27); tokenizer detokenization and full layer chain are not wired yet"
+  ],
+  "outputs": [],
+  "deterministic": false,
+  "expected_text_match": false,
+  "expected_token_ids_match": false,
+  "torch_loaded_by_generate": false
+}
+```
+
+This is a real blocker, not a pass: the public path now reaches native GGUF kernels and FP32 lm-head argmax, but it still uses the layer-0 projection probe and has no GGUF tokenizer/detokenizer. I added follow-up tasks #33 (GGUF tokenizer/detokenizer), #34 (full Qwen3.5 GGUF layer chain), and #35 (full logits/text generation); task #31 is blocked on those and must not be marked complete until `scripts/qwen35_gguf_e2e_correctness.py` passes against the llama.cpp oracle fixture.
