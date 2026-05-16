@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 
 from hipengine.kernels.registry import KernelKey, register
+from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 
 ArrayLike = Any
 
@@ -39,6 +40,23 @@ def linear(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np
 
 def qkv_proj(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np.ndarray:
     return linear(x, weight, bias)
+
+
+def gguf_q4_k_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
+    """Reference GEMV over raw GGUF ``block_q4_K`` weight bytes."""
+
+    x_arr = np.asarray(x, dtype=np.float32)
+    qweight_arr = np.asarray(qweight)
+    if x_arr.ndim != 2:
+        raise ValueError("x must have shape [rows, in_features]")
+    if qweight_arr.ndim != 2:
+        raise ValueError("qweight must have GGUF byte shape [out_features, bytes_per_row]")
+    weight = dequantize_gguf_data(qweight_arr, GGMLQuantizationType.Q4_K)
+    if weight.ndim != 2:
+        raise ValueError("qweight must dequantize to [out_features, in_features]")
+    if x_arr.shape[1] != weight.shape[1]:
+        raise ValueError("x.shape[1] must match qweight in_features")
+    return np.matmul(x_arr, weight.T).astype(np.float32)
 
 
 def o_proj(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np.ndarray:
@@ -437,6 +455,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "rmsnorm": rmsnorm,
         "linear": linear,
         "qkv_proj": qkv_proj,
+        "gguf_q4_k_gemv": gguf_q4_k_gemv,
         "rotate": rotate,
         "attention_decode": attention_decode,
         "full_attn_prefill": full_attn_prefill,
@@ -451,6 +470,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "full_attn_prefill", "w4_paro", "qwen35_causal_gqa_gate_fp16"),
         full_attn_prefill,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "linear", "gguf_q4_k", "gemv_f32_f32_out"),
+        gguf_q4_k_gemv,
         replace=replace,
     )
 

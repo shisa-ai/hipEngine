@@ -63,6 +63,7 @@ def main() -> int:
             "paro-silu-hip",
             "paro-combine-hip",
             "paro-awq-wmma-compact-hip",
+            "gguf-q4-k-gemv-hip",
             "dense-gemv-hip",
             "lm-head-hip",
             "w8a16-linear-hip",
@@ -279,6 +280,13 @@ def main() -> int:
         )
     if args.mode == "paro-awq-wmma-compact-hip":
         return paro_awq_wmma_compact_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "gguf-q4-k-gemv-hip":
+        return gguf_q4_k_gemv_hip_smoke(
+            args.rows,
+            args.hidden_size,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -5347,6 +5355,184 @@ def w8a16_shared_expert_hip_smoke(
         if gate_up_mismatch == 0 and intermediate_mismatch == 0 and out_mismatch == 0
         else 1
     )
+
+def gguf_q4_k_gemv_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.cpu_reference import gguf_q4_k_gemv
+    from hipengine.kernels.hip_gfx1100.quant import (
+        build_gguf_q4_k_gemv,
+        gguf_q4_k_gemv_bf16_f32_out,
+        gguf_q4_k_gemv_f32_f32_out,
+        gguf_q4_k_gemv_fp16_f32_out,
+    )
+    from hipengine.quant.gguf import bf16_to_float32
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 1:
+        raise ValueError("--hidden-size must be >= 1")
+
+    in_features = max(256, ((hidden_size + 255) // 256) * 256)
+    out_features = 7
+    threads = 128
+    x_f32 = (
+        (np.arange(rows * in_features, dtype=np.float32).reshape(rows, in_features) % 19) - 9
+    ) / 16.0
+    x_fp16 = x_f32.astype(np.float16)
+    x_bf16 = _float32_to_bf16_bits(x_f32)
+    qweight = _make_smoke_q4_k_weight(out_features, in_features)
+    expected_f32 = gguf_q4_k_gemv(x_f32, qweight)
+    expected_fp16 = gguf_q4_k_gemv(x_fp16.astype(np.float32), qweight)
+    expected_bf16 = gguf_q4_k_gemv(bf16_to_float32(x_bf16), qweight)
+    out_f32 = np.empty((rows, out_features), dtype=np.float32)
+    out_fp16 = np.empty((rows, out_features), dtype=np.float32)
+    out_bf16 = np.empty((rows, out_features), dtype=np.float32)
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_gemv(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        contiguous = np.ascontiguousarray(array)
+        buffer = malloc(contiguous.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(contiguous), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_f32_dev = dev(x_f32)
+        x_fp16_dev = dev(x_fp16)
+        x_bf16_dev = dev(x_bf16)
+        qweight_dev = dev(qweight)
+        out_f32_dev = out_dev(out_f32)
+        out_fp16_dev = out_dev(out_fp16)
+        out_bf16_dev = out_dev(out_bf16)
+        gguf_q4_k_gemv_f32_f32_out(
+            x_f32_dev.ptr,
+            qweight_dev.ptr,
+            out_f32_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_gemv_fp16_f32_out(
+            x_fp16_dev.ptr,
+            qweight_dev.ptr,
+            out_fp16_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_gemv_bf16_f32_out(
+            x_bf16_dev.ptr,
+            qweight_dev.ptr,
+            out_bf16_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_f32), out_f32_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_fp16), out_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_bf16), out_bf16_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    f32_max_abs = float(np.max(np.abs(out_f32 - expected_f32)))
+    fp16_max_abs = float(np.max(np.abs(out_fp16 - expected_fp16)))
+    bf16_max_abs = float(np.max(np.abs(out_bf16 - expected_bf16)))
+    print(
+        f"rows={rows} requested_hidden_size={hidden_size} in_features={in_features} "
+        f"out_features={out_features} f32_max_abs={f32_max_abs} "
+        f"fp16_max_abs={fp16_max_abs} bf16_max_abs={bf16_max_abs}"
+    )
+    print("f32_row0=", out_f32[0, : min(8, out_features)].tolist())
+    return 0 if f32_max_abs <= 1e-5 and fp16_max_abs <= 1e-5 and bf16_max_abs <= 1e-5 else 1
+
+
+def _make_smoke_q4_k_weight(out_features: int, in_features: int):
+    import numpy as np
+
+    qk_k = 256
+    block_bytes = 144
+    blocks_per_row = in_features // qk_k
+    data = np.empty((out_features, blocks_per_row * block_bytes), dtype=np.uint8)
+    for out_idx in range(out_features):
+        for block_idx in range(blocks_per_row):
+            start = block_idx * block_bytes
+            data[out_idx, start : start + block_bytes] = _make_smoke_q4_k_block(out_idx, block_idx)
+    return data
+
+
+def _make_smoke_q4_k_block(out_idx: int, block_idx: int):
+    import numpy as np
+
+    qk_k = 256
+    d = np.float16(0.015625 * (1 + (out_idx % 5)))
+    dmin = np.float16(0.0078125 * (1 + (block_idx % 3)))
+    scales = ((np.arange(8, dtype=np.uint8) * 3 + out_idx + block_idx) % 63 + 1).astype(np.uint8)
+    mins = ((np.arange(8, dtype=np.uint8) * 5 + 2 * out_idx + block_idx) % 17).astype(np.uint8)
+    q = ((np.arange(qk_k, dtype=np.uint16) + out_idx * 7 + block_idx * 11) % 16).astype(np.uint8)
+    packed_scales = _pack_smoke_q4_k_scales(scales, mins)
+    q_groups = q.reshape(8, 32)
+    packed_q = np.empty(128, dtype=np.uint8)
+    for pair in range(4):
+        packed_q[pair * 32 : (pair + 1) * 32] = q_groups[2 * pair] | (q_groups[2 * pair + 1] << 4)
+    return np.concatenate(
+        [
+            np.asarray([d], dtype=np.float16).view(np.uint8),
+            np.asarray([dmin], dtype=np.float16).view(np.uint8),
+            packed_scales,
+            packed_q,
+        ]
+    )
+
+
+def _pack_smoke_q4_k_scales(scales, mins):
+    import numpy as np
+
+    scales = np.asarray(scales, dtype=np.uint8)
+    mins = np.asarray(mins, dtype=np.uint8)
+    out = np.zeros(12, dtype=np.uint8)
+    out[:4] = (scales[:4] & 0x3F) | ((scales[4:] & 0x30) << 2)
+    out[4:8] = (mins[:4] & 0x3F) | ((mins[4:] & 0x30) << 2)
+    out[8:12] = (scales[4:] & 0x0F) | ((mins[4:] & 0x0F) << 4)
+    return out
+
 
 def w8a16_linear_hip_smoke(
     rows: int,

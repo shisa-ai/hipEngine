@@ -20,6 +20,7 @@ from hipengine.quant.gguf import (
     quant_shape_from_byte_shape,
     quant_shape_to_byte_shape,
 )
+from hipengine.quant.gguf_q4_k import GGUF_Q4_K, GGUFQ4KQuant
 from hipengine.quant.w4_paro import W4_PARO, W4ParoQuant
 from hipengine.quant.registry import (
     DuplicateQuantError,
@@ -36,9 +37,11 @@ __all__ = [
     "FP16",
     "FP16Quant",
     "GGMLQuantizationType",
+    "GGUFQ4KQuant",
     "GGUFQuantLayout",
     "GGUFValueType",
     "GGUF_QUANT_LAYOUTS",
+    "GGUF_Q4_K",
     "MissingQuantError",
     "QuantPlugin",
     "QK_K",

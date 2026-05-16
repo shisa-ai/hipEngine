@@ -14965,3 +14965,76 @@ python3 -m pytest tests/test_gguf_reader.py tests/test_gguf_quant_layout.py \
 ```
 
 Next GGUF step: wire Qwen GGUF tensor names into a model/fallback materialization path; native GGUF kernels remain future work.
+
+## 2026-05-16 GGUF Q4_K GEMV correctness spike
+
+Added the first native GGUF quant kernel spike, intentionally separate from PARO/AWQ:
+
+- `hipengine/quant/gguf_q4_k.py`: `gguf_q4_k` quant plugin metadata.
+- `hipengine/kernels/cpu_reference/ops.py`: `gguf_q4_k_gemv` reference that dequantizes raw `block_q4_K` bytes and runs NumPy GEMV.
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.{hip,py}`: raw-pointer HIP GEMV wrappers for FP32, FP16, and BF16-bit activations with FP32 output. The kernel consumes raw GGUF `block_q4_K` bytes and applies GGML Q4_K math: `d * scale[subblock] * q - dmin * min[subblock]`.
+- `scripts/smoke.py --mode gguf-q4-k-gemv-hip`: synthetic packed-Q4_K GPU smoke.
+
+Pre-work checks:
+
+```bash
+git status -sb
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -n 40
+# gfx1100 / AMD Radeon RX 7900 XTX in this session
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# reports existing parent-source DRIFT in qwen35_expert.hip, smoke.hip,
+# paroquant_kernels.py, and paroquant_fusedw4.py; this GGUF spike is new code,
+# not a parent kernel port.
+```
+
+Targeted tests:
+
+```bash
+python3 -m py_compile scripts/smoke.py \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py \
+  hipengine/quant/gguf_q4_k.py tests/test_gguf_q4_k_gemv.py
+# ok
+python3 -m pytest tests/test_gguf_reader.py tests/test_gguf_quant_layout.py \
+  tests/test_gguf_q4_k_gemv.py tests/test_model_quant_and_imports.py \
+  tests/test_build.py tests/test_smoke_add_plan.py -q
+# 25 passed
+```
+
+GPU correctness smokes, no retained performance claim:
+
+```bash
+python3 scripts/smoke.py --mode gguf-q4-k-gemv-hip --rows 2 --hidden-size 512
+# rows=2 requested_hidden_size=512 in_features=512 out_features=7
+# f32_max_abs=0.0 fp16_max_abs=0.0 bf16_max_abs=0.0
+```
+
+Real local GGUF tensor smoke:
+
+```bash
+# /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf tensor blk.0.attn_gate.weight
+# shape=(2048, 1024), one FP32 activation row vs CPU reference
+# max_abs=1.7881393432617188e-07, mean_abs=2.785827746265568e-08
+```
+
+Cached profiler smoke (prebuilt `.so`, `--require-cached-build` to avoid hipcc under profiler):
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import build_gguf_q4_k_gemv
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+build_gguf_q4_k_gemv(load=False, compiler_version=version)
+PY
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-q4k-rocprof-cached.JOOUGX -- \
+  python3 scripts/smoke.py --mode gguf-q4-k-gemv-hip --rows 2 --hidden-size 512 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# smoke again: f32/fp16/bf16 max_abs=0.0
+# rocpd dispatches:
+# gguf_q4_k_gemv_f32_out_kernel<float>          DurationNs=5319, Workgroup_Size_X=128
+# gguf_q4_k_gemv_f32_out_kernel<_Float16>       DurationNs=4679, Workgroup_Size_X=128
+# gguf_q4_k_gemv_f32_out_kernel<unsigned short> DurationNs=4920, Workgroup_Size_X=128
+```
+
+Next GGUF kernel work: lowp output and/or a repacked-Marlin layout; this spike is correctness-first and keeps GGUF math independent from PARO/AWQ kernels.

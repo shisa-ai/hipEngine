@@ -60,3 +60,14 @@ def test_builtin_w4_paro_quant_plugin_is_registered() -> None:
     assert plugin.scale_granularity == "group128_per_output_channel"
     assert plugin.calibration_artifact == "paroquant_theta_pairs_scales"
     assert plugin.kernel_family == "paro_awq_pack8"
+
+
+def test_builtin_gguf_q4_k_quant_plugin_is_registered() -> None:
+    plugin = resolve_quant("gguf_q4_k")
+
+    assert plugin.weight_storage == "gguf_block_q4_k"
+    assert plugin.activation_preprocess == "none"
+    assert plugin.compute_dtype == "fp32_accum"
+    assert plugin.scale_granularity == "block256_subblock32_scale_min"
+    assert plugin.calibration_artifact == "gguf"
+    assert plugin.kernel_family == "gguf_q4_k_gemv"
