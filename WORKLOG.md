@@ -10895,3 +10895,42 @@ Profiler evidence: `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel` ran 10
 times with `36.361 ms` total / `3636.1 us` average, down from retained
 `40.102 ms` total. Decision: keep. Updated benchmark artifact/rollup and
 `docs/KERNELS.md`.
+
+## 2026-05-16 — Prefill multiloop iter 40: rejected short-row attention block-table preload
+
+Tried extending the retained `block_size=256` address fast path in
+`qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel` with a short-row path for
+`visible_len <= 512`. The trial preloaded `row_table[0]` / `row_table[1]` once
+per block and used those two physical blocks in the score and value loops. The
+primary 512 shape improved because every causal row sees at most two 256-token
+blocks, but the same extra branches/locals stayed in the kernel and hurt the
+4K guard path even though it fell back to the generic address path.
+
+Validation commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import build_qwen35_paged_attn_decode
+lib = build_qwen35_paged_attn_decode(load=True, require_cached=False)
+getattr(lib, 'hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans')
+print('paged attention prefill symbol loaded')
+PY
+python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py -q
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --json /tmp/multiloop-fixture-gate.json >/tmp/multiloop-fixture-gate.stdout
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128.json >/tmp/multiloop-prefill-4k-128.stdout 2>/tmp/multiloop-prefill-4k-128.stderr
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-4k-128-rerun.json >/tmp/multiloop-prefill-4k-128-rerun.stdout 2>/tmp/multiloop-prefill-4k-128-rerun.stderr
+rocprofv3 --kernel-trace -d /tmp/iter40-attn-short2-trace -o trace -- python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/iter40-attn-short2-trace.json
+```
+
+Results: targeted tests passed (`37 passed`) and the fixture gate passed
+(`max_kl=0.03406`, top-1 agreement `1.0`,
+`native_owned_device_bytes=1625645909`, native prefill `0.2651s`). 512/128
+samples were `1948.157`, `1942.087`, `1924.765`, and `1928.438` tok/s (median
+`1935.263`), +0.6% over retained `1923.274`. The 512 profiler confirmed the
+intended local win: prefill GQA total `32.941 ms` versus retained `36.361 ms`.
+However 4K/128 regressed below the required 95% guard twice: `633.950` and
+`635.234` tok/s versus floor `639.018` (`0.95 * 672.650`). Decision:
+reject/revert. The short-row specialization is not safe as a default-path active
+change until it can be separated from the long-context kernel or made neutral at
+4K.
