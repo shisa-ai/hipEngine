@@ -13870,3 +13870,59 @@ python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_stat
 
 The failed shisa benchmark will be rerun after this fix. GPU timing before the
 failure is discarded; no throughput result was produced.
+
+## 2026-05-17 — Dual-format PARO benchmark results: z-lab legacy + shisa packed/unstripped
+
+Ran the restored dual shared-expert loader/runtime through the resident benchmark
+on W7900/gfx1100 using the same diagnostic protocol as prior Qwen3.5/PARO rows:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <checkpoint> \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-paro-dual-bench-20260517/<label>.json
+```
+
+Checkpoint format detection:
+
+- `z-lab/Qwen3.5-35B-A3B-PARO` (`dca2736`) -> true `legacy_fp16`; only shared-expert fp16 `.weight` tensors are present.
+- `shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5` (`1492d9a`) -> unstripped: both fp16 fallback `.weight` tensors and packed sidecars are present; loader prefers packed sidecars.
+- `shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed` (`501ef86`) -> stripped packed sidecars only.
+
+Median timings (two runs for 512 rows and shisa 4K rows; one run for z-lab 4K):
+
+| checkpoint | format used | workload | prefill tok/s | decode tok/s | tracked peak GiB | sampled HIP peak GiB |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| z-lab Qwen3.5 PARO | legacy_fp16/W8A16 shared expert | 512/128 | 2185.814 | 109.288 | 18.587 | 18.604 |
+| z-lab Qwen3.5 PARO | legacy_fp16/W8A16 shared expert | 4096/128 | 2371.502 | 110.364 | 20.458 | 19.013 |
+| shisa Qwen3.6 unstripped | packed_paro_w4 sidecars | 512/128 | 2417.232 | 101.547 | 18.535 | 18.551 |
+| shisa Qwen3.6 stripped-packed | packed_paro_w4 sidecars | 512/128 | 2418.130 | 101.634 | 18.535 | 18.551 |
+| shisa Qwen3.6 unstripped | packed_paro_w4 sidecars | 4096/128 | 2655.734 | 102.795 | 20.406 | 18.959 |
+| shisa Qwen3.6 stripped-packed | packed_paro_w4 sidecars | 4096/128 | 2653.591 | 103.057 | 20.406 | 18.959 |
+
+Takeaways:
+
+1. The original z-lab PARO model runs again on the restored legacy path. Decode is
+   effectively unchanged vs the previous graph-replay diagnostic row (`109.340 ->
+   109.288 tok/s`, -0.05% at 512; `110.303 -> 110.364`, +0.06% at 4K). The 512
+   prefill median is lower than that older single row (`2312.754 -> 2185.814`,
+   -5.5%); the current comparison-table/no-op-chunk row was `2216.487`, so this
+   is closer to -1.4% vs the recent table baseline. No correctness gate rerun was
+   done in this benchmark-only pass.
+2. shisa unstripped vs stripped-packed has identical on-device peaks and timing is
+   within run noise because both variants use packed sidecars at runtime. The
+   stripped checkpoint mainly helps disk/package size: safetensors size
+   `21.686 GiB -> 19.068 GiB` (-12.1%).
+3. Packed shared-expert sidecar materialization is now covered by layout tests;
+   the first shisa run exposed that missing materialization and was discarded.
+
+Committed compact artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-paro-dual-format-diagnostic.json`.
+Rollup/changelog updated as diagnostic retained, `performance_claim=false`.

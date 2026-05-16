@@ -1,0 +1,421 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "reason_not_promoted": "Regression/format comparison run only; no KL/top-1 correctness gate was rerun for the shisa checkpoints, and shisa legacy-vs-packed timing deltas are within single-run noise.",
+  "date": "2026-05-17",
+  "git_commit": "a039e82",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "bench_script": "scripts/qwen35_paro_bench.py",
+  "common_args": "--token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode(default)",
+  "models": {
+    "zlab_legacy": {
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "safetensors_bytes": 20655904040,
+      "safetensors_gib": 19.237309731543064
+    },
+    "shisa_legacy_unstripped": {
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+      "safetensors_bytes": 23284714104,
+      "safetensors_gib": 21.685579888522625
+    },
+    "shisa_packed_stripped": {
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+      "safetensors_bytes": 20474495512,
+      "safetensors_gib": 19.0683598741889
+    }
+  },
+  "format_detection": {
+    "zlab_legacy": "legacy_fp16",
+    "shisa_legacy_unstripped": "packed_paro_w4 (both packed sidecars and fp16 fallback weights present; loader prefers packed)",
+    "shisa_packed_stripped": "packed_paro_w4"
+  },
+  "validation": {
+    "layout_unit_tests": "python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short -> 55 passed",
+    "zlab_layout_probe": "validate_qwen35_paro_linear_attention_moe_c1_layout(layer_id=0) -> passed=True shared_expert_format=legacy_fp16 missing=0 shape_errors=0",
+    "shisa_layout_probe": "legacy/unstripped and packed/stripped checkpoints both validate as packed_paro_w4 because the unstripped checkpoint contains packed sidecars; original z-lab remains the true legacy_fp16 regression path.",
+    "correctness_gate": "not rerun in this benchmark-only pass; existing Qwen3.5 fixture gates remain in prior artifacts, shisa CPU-reference gate is future work."
+  },
+  "measurements": [
+    {
+      "label": "zlab_legacy_512_128",
+      "model_key": "zlab_legacy",
+      "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "workload": "512/128",
+      "runs": [
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/zlab-legacy-512-128.json",
+          "prefill_tok_s": 2175.9599427802405,
+          "decode_tok_s": 109.33006765021071,
+          "prefill_seconds": 0.23529844917356968,
+          "decode_seconds": 1.1707666770089418,
+          "load_seconds": 25.19522065599449,
+          "tracked_peak_gib": 18.586900514550507,
+          "hip_used_peak_sampled_gib": 18.60388946533203,
+          "owned_session_peak_gib": 1.5545694949105382,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.356470108032227
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.533092498779297
+            }
+          ]
+        },
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/zlab-legacy-512-128-r2.json",
+          "prefill_tok_s": 2195.6687260463586,
+          "decode_tok_s": 109.24509471010285,
+          "prefill_seconds": 0.23318636091426015,
+          "decode_seconds": 1.1716773218940943,
+          "load_seconds": 25.014087532879785,
+          "tracked_peak_gib": 18.586900514550507,
+          "hip_used_peak_sampled_gib": 18.60388946533203,
+          "owned_session_peak_gib": 1.5545694949105382,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.356470108032227
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.533092498779297
+            }
+          ]
+        }
+      ],
+      "median_prefill_tok_s": 2185.8143344132995,
+      "median_decode_tok_s": 109.28758118015678,
+      "median_load_seconds": 25.104654094437137,
+      "tracked_peak_gib": 18.586900514550507,
+      "hip_used_peak_sampled_gib": 18.60388946533203,
+      "owned_session_peak_gib": 1.5545694949105382
+    },
+    {
+      "label": "zlab_legacy_4k_128",
+      "model_key": "zlab_legacy",
+      "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "workload": "4096/128",
+      "runs": [
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/zlab-legacy-4k-128.json",
+          "prefill_tok_s": 2371.502429207833,
+          "decode_tok_s": 110.36396499586112,
+          "prefill_seconds": 1.7271751230582595,
+          "decode_seconds": 1.1597988528665155,
+          "load_seconds": 25.211681191809475,
+          "tracked_peak_gib": 20.458408792503178,
+          "hip_used_peak_sampled_gib": 19.013427734375,
+          "owned_session_peak_gib": 1.9300488727167249,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.182941436767578
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.408403396606445
+            }
+          ]
+        }
+      ],
+      "median_prefill_tok_s": 2371.502429207833,
+      "median_decode_tok_s": 110.36396499586112,
+      "median_load_seconds": 25.211681191809475,
+      "tracked_peak_gib": 20.458408792503178,
+      "hip_used_peak_sampled_gib": 19.013427734375,
+      "owned_session_peak_gib": 1.9300488727167249
+    },
+    {
+      "label": "shisa_legacy_512_128",
+      "model_key": "shisa_legacy_unstripped",
+      "model_path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+      "workload": "512/128",
+      "runs": [
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/shisa-legacy-512-128.json",
+          "prefill_tok_s": 2440.005599317563,
+          "decode_tok_s": 101.34794958674651,
+          "prefill_seconds": 0.20983558404259384,
+          "decode_seconds": 1.2629757239483297,
+          "load_seconds": 24.239458570024,
+          "tracked_peak_gib": 18.53460101503879,
+          "hip_used_peak_sampled_gib": 18.55115509033203,
+          "owned_session_peak_gib": 1.5545694949105382,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.44217872619629
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.18210792541504
+            }
+          ]
+        },
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/shisa-legacy-512-128-r2.json",
+          "prefill_tok_s": 2394.4577736414626,
+          "decode_tok_s": 101.74638650794087,
+          "prefill_seconds": 0.2138271159492433,
+          "decode_seconds": 1.258029934950173,
+          "load_seconds": 23.92684969585389,
+          "tracked_peak_gib": 18.53460101503879,
+          "hip_used_peak_sampled_gib": 18.55115509033203,
+          "owned_session_peak_gib": 1.5545694949105382,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.44217872619629
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.18210792541504
+            }
+          ]
+        }
+      ],
+      "median_prefill_tok_s": 2417.231686479513,
+      "median_decode_tok_s": 101.54716804734369,
+      "median_load_seconds": 24.083154132938944,
+      "tracked_peak_gib": 18.53460101503879,
+      "hip_used_peak_sampled_gib": 18.55115509033203,
+      "owned_session_peak_gib": 1.5545694949105382
+    },
+    {
+      "label": "shisa_packed_512_128",
+      "model_key": "shisa_packed_stripped",
+      "model_path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+      "workload": "512/128",
+      "runs": [
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/shisa-packed-512-128.json",
+          "prefill_tok_s": 2430.4356633552047,
+          "decode_tok_s": 101.73516210087509,
+          "prefill_seconds": 0.21066181990318,
+          "decode_seconds": 1.2581687329802662,
+          "load_seconds": 28.33826070697978,
+          "tracked_peak_gib": 18.53460101503879,
+          "hip_used_peak_sampled_gib": 18.55115509033203,
+          "owned_session_peak_gib": 1.5545694949105382,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.44217872619629
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.18210792541504
+            }
+          ]
+        },
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/shisa-packed-512-128-r2.json",
+          "prefill_tok_s": 2405.8247988160956,
+          "decode_tok_s": 101.53209736355805,
+          "prefill_seconds": 0.21281682699918747,
+          "decode_seconds": 1.26068507716991,
+          "load_seconds": 23.402455755043775,
+          "tracked_peak_gib": 18.53460101503879,
+          "hip_used_peak_sampled_gib": 18.55115509033203,
+          "owned_session_peak_gib": 1.5545694949105382,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.44217872619629
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.18210792541504
+            }
+          ]
+        }
+      ],
+      "median_prefill_tok_s": 2418.13023108565,
+      "median_decode_tok_s": 101.63362973221658,
+      "median_load_seconds": 25.870358231011778,
+      "tracked_peak_gib": 18.53460101503879,
+      "hip_used_peak_sampled_gib": 18.55115509033203,
+      "owned_session_peak_gib": 1.5545694949105382
+    },
+    {
+      "label": "shisa_legacy_4k_128",
+      "model_key": "shisa_legacy_unstripped",
+      "model_path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+      "workload": "4096/128",
+      "runs": [
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/shisa-legacy-4k-128.json",
+          "prefill_tok_s": 2667.382172806191,
+          "decode_tok_s": 102.82970989284625,
+          "prefill_seconds": 1.535587979014963,
+          "decode_seconds": 1.2447764379903674,
+          "load_seconds": 24.02531008585356,
+          "tracked_peak_gib": 20.40610929299146,
+          "hip_used_peak_sampled_gib": 18.958740234375,
+          "owned_session_peak_gib": 1.9300488727167249,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.685245513916016
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.736207962036133
+            }
+          ]
+        },
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/shisa-legacy-4k-128-r2.json",
+          "prefill_tok_s": 2644.0866895637255,
+          "decode_tok_s": 102.76087828060167,
+          "prefill_seconds": 1.549117136048153,
+          "decode_seconds": 1.2456102180294693,
+          "load_seconds": 24.071178876096383,
+          "tracked_peak_gib": 20.40610929299146,
+          "hip_used_peak_sampled_gib": 18.958740234375,
+          "owned_session_peak_gib": 1.9300488727167249,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.685245513916016
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.736207962036133
+            }
+          ]
+        }
+      ],
+      "median_prefill_tok_s": 2655.7344311849583,
+      "median_decode_tok_s": 102.79529408672397,
+      "median_load_seconds": 24.048244480974972,
+      "tracked_peak_gib": 20.40610929299146,
+      "hip_used_peak_sampled_gib": 18.958740234375,
+      "owned_session_peak_gib": 1.9300488727167249
+    },
+    {
+      "label": "shisa_packed_4k_128",
+      "model_key": "shisa_packed_stripped",
+      "model_path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+      "workload": "4096/128",
+      "runs": [
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/shisa-packed-4k-128.json",
+          "prefill_tok_s": 2657.1300641651123,
+          "decode_tok_s": 103.11712865560953,
+          "prefill_seconds": 1.5415127980522811,
+          "decode_seconds": 1.241306867916137,
+          "load_seconds": 23.365786576876417,
+          "tracked_peak_gib": 20.40610929299146,
+          "hip_used_peak_sampled_gib": 18.958740234375,
+          "owned_session_peak_gib": 1.9300488727167249,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.685245513916016
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.736207962036133
+            }
+          ]
+        },
+        {
+          "source_json_tmp": "/tmp/hipengine-paro-dual-bench-20260517/shisa-packed-4k-128-r2.json",
+          "prefill_tok_s": 2650.0515764247084,
+          "decode_tok_s": 102.99671659438609,
+          "prefill_seconds": 1.5456302950624377,
+          "decode_seconds": 1.2427580629009753,
+          "load_seconds": 23.514751681825146,
+          "tracked_peak_gib": 20.40610929299146,
+          "hip_used_peak_sampled_gib": 18.958740234375,
+          "owned_session_peak_gib": 1.9300488727167249,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.685245513916016
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.736207962036133
+            }
+          ]
+        }
+      ],
+      "median_prefill_tok_s": 2653.5908202949104,
+      "median_decode_tok_s": 103.05692262499781,
+      "median_load_seconds": 23.44026912935078,
+      "tracked_peak_gib": 20.40610929299146,
+      "hip_used_peak_sampled_gib": 18.958740234375,
+      "owned_session_peak_gib": 1.9300488727167249
+    }
+  ],
+  "comparisons": {
+    "zlab_original_vs_previous_graph_row": {
+      "512/128": {
+        "prefill_pct_vs_previous_graph_row": -5.488679971440991,
+        "decode_pct_vs_previous_graph_row": -0.04794111930055388,
+        "previous": {
+          "prefill_tok_s": 2312.754,
+          "decode_tok_s": 109.34,
+          "artifact": "benchmarks/results/2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json"
+        }
+      },
+      "4096/128": {
+        "prefill_pct_vs_previous_graph_row": -0.05152602143809594,
+        "decode_pct_vs_previous_graph_row": 0.05527047846488957,
+        "previous": {
+          "prefill_tok_s": 2372.725,
+          "decode_tok_s": 110.303,
+          "artifact": "benchmarks/results/2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json"
+        }
+      }
+    },
+    "shisa_packed_stripped_vs_legacy_unstripped": {
+      "512/128": {
+        "packed_vs_legacy_prefill_pct": 0.03717246514526779,
+        "packed_vs_legacy_decode_pct": 0.08514435856308342,
+        "packed_vs_legacy_tracked_peak_gib_delta": 0.0,
+        "packed_vs_legacy_hip_peak_gib_delta": 0.0
+      },
+      "4096/128": {
+        "packed_vs_legacy_prefill_pct": -0.08071631202565356,
+        "packed_vs_legacy_decode_pct": 0.2545141201241323,
+        "packed_vs_legacy_tracked_peak_gib_delta": 0.0,
+        "packed_vs_legacy_hip_peak_gib_delta": 0.0
+      }
+    },
+    "shisa_disk_delta": {
+      "legacy_unstripped_gib": 21.685579888522625,
+      "packed_stripped_gib": 19.0683598741889,
+      "delta_gib": -2.617220014333725,
+      "delta_pct": -12.068941793522997
+    }
+  }
+}
