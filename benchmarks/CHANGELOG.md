@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-05-16
 
+- [diagnostic retained] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / native c=1 512/128 + 4K/128: 512 prefill 1906.259 -> 1923.274 tok/s (+0.9%) and 4K prefill 661.506 -> 672.650 tok/s (+1.7%) due to a `block_size=256` prefill-attention address fast path; not promoted to current-fastest because `LLM.generate()` row/full sweep remain open; `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-multiloop-512-4k-diagnostic.json`.
 - [diagnostic retained] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / native c=1 512/128 + 4K/128: 512 prefill 1883.940 -> 1906.259 tok/s (+1.2%) and 4K prefill 658.418 -> 661.506 tok/s (+0.5%) due to specializing GDN recurrent prefill k2 for its fixed two-wave reduction; not promoted to current-fastest because `LLM.generate()` row/full sweep remain open; `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-multiloop-512-4k-diagnostic.json`.
 - [diagnostic retained] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / native c=1 512/128 + 4K/128: 512 prefill 1796.282 -> 1883.940 tok/s (+4.9%) and 4K prefill 578.288 -> 658.418 tok/s (+13.9%) due to caching full-attention prefill queries in shared memory and using vec8 BF16 key dots; not promoted to current-fastest because `LLM.generate()` row/full sweep remain open; `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-multiloop-512-4k-diagnostic.json`.
 

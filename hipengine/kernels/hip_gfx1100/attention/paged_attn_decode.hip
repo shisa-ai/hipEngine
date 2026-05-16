@@ -1082,6 +1082,7 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   const int64_t kv_head = q_head / kv_group;
   const float* q = query + (row * num_q_heads + q_head) * head_dim;
   const int32_t* row_table = block_tables + row * block_table_len;
+  const bool block_size_256 = block_size == 256;
 
   for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
     q_shared[dim] = q[dim];
@@ -1090,12 +1091,12 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
 
   float local_max = -3.4028234663852886e38f;
   for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
-    const int64_t logical_block = token / block_size;
+    const int64_t logical_block = block_size_256 ? (token >> 8) : (token / block_size);
     if (logical_block >= block_table_len) {
       scores[token] = -3.4028234663852886e38f;
       continue;
     }
-    const int64_t block_offset = token - logical_block * block_size;
+    const int64_t block_offset = block_size_256 ? (token & 255) : (token - logical_block * block_size);
     const int64_t physical_block = static_cast<int64_t>(row_table[logical_block]);
     if (physical_block < 0) {
       scores[token] = -3.4028234663852886e38f;
@@ -1150,11 +1151,11 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
     float acc = 0.0f;
     for (int64_t token = 0; token < visible_len; ++token) {
-      const int64_t logical_block = token / block_size;
+      const int64_t logical_block = block_size_256 ? (token >> 8) : (token / block_size);
       if (logical_block >= block_table_len) {
         continue;
       }
-      const int64_t block_offset = token - logical_block * block_size;
+      const int64_t block_offset = block_size_256 ? (token & 255) : (token - logical_block * block_size);
       const int64_t physical_block = static_cast<int64_t>(row_table[logical_block]);
       if (physical_block < 0) {
         continue;
