@@ -12974,3 +12974,61 @@ python3 scripts/check_lineage.py --kind kernel --diff stat
 # DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9.
 # No parent kernel code was copied for this task; `record_i64_scalar_indexed` is a hipENGINE-only graph-gate helper.
 ```
+
+## 2026-05-16 — Task 21 AOTriton threshold sweep
+
+Ran the AOTriton opt-in threshold sweep after real memory reporting and decode graph replay landed.  Hardware/env smoke before the sweep:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+# hip OK
+rocminfo | grep -E 'Name:|gfx'
+# AMD Radeon Pro W7900 / gfx1100 present
+```
+
+Short-prompt sweep commands used cached HIP builds, repeated token id `9707`, `max_layers=40`, and `decode_tokens=0` to isolate prefill.  For each prompt length `P in {32,64,128,256,512,1024,4096}` I ran:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length P --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task21-p${P}-native-prefill.json
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length P --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 32 --json /tmp/task21-p${P}-aot32-prefill.json
+```
+
+Results (single-run diagnostics, `performance_claim=false`):
+
+| Prompt | Native prefill tok/s | Forced AOTriton tok/s | Delta | Native peak GiB | AOTriton peak GiB |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 32 | 605.657 | 504.397 | -16.7% | 18.331 | 18.334 |
+| 64 | 994.069 | 829.395 | -16.6% | 18.345 | 18.350 |
+| 128 | 1464.792 | 1304.824 | -10.9% | 18.371 | 18.381 |
+| 256 | 1892.317 | 1826.457 | -3.5% | 18.429 | 18.449 |
+| 512 | 2146.479 | 2284.584 | +6.4% | 18.541 | 18.580 |
+| 1024 | 1815.743 | 2498.659 | +37.6% | 18.763 | 18.842 |
+| 4096 | 662.419 | 2356.051 | +255.7% | 20.099 | 20.414 |
+
+Crossover is between 256 and 512 prompt tokens.  Simulating thresholds `{0,32,64,128,256,512}` from the disabled/forced rows picks threshold `512` as the only tested policy that avoids short-prompt regressions while still selecting AOTriton at the first winning length.
+
+Graph-replay workload rows (current parent-comparison protocol):
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --graph-replay-decode --json /tmp/task21-p512-native_graph.json
+# prefill=2125.642 tok/s, decode=109.225 tok/s, tracked_peak=18.542 GiB
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --graph-replay-decode --attn-aotriton-min-tokens 512 --json /tmp/task21-p512-aot512_graph.json
+# prefill=2270.750 tok/s, decode=109.123 tok/s, tracked_peak=18.581 GiB
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --graph-replay-decode --json /tmp/task21-p4096-native_graph.json
+# prefill=662.873 tok/s, decode=109.980 tok/s, tracked_peak=20.100 GiB
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --graph-replay-decode --attn-aotriton-min-tokens 512 --json /tmp/task21-p4096-aot512_graph.json
+# prefill=2345.670 tok/s, decode=110.091 tok/s, tracked_peak=20.415 GiB
+```
+
+Correctness gates for the selected threshold:
+
+```bash
+python3 scripts/qwen35_native_prefill_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/task21-aot512-prefill-fixture-gate.json
+# passed=true, expected_match=true, max_kl=0.039568870612619614, top1_agreement=1.0
+python3 scripts/qwen35_decode_graph_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task21-aot512-decode-graph-fixture-gate.json
+# passed=true, generated_match=true, expected_match=true, final_kl=0.0, final_top1_match=true
+```
+
+Decision: recommend `--attn-aotriton-min-tokens 512` for deployments with the pinned AOTriton runtime installed.  Keep `PrefillConfig.attn_aotriton_min_tokens=0` as the code default because AOTriton is an optional fetched runtime; flipping the default before an absent-runtime fallback exists would make baseline sessions fail.
+
+Retained artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json`.

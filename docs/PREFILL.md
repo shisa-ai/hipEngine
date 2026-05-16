@@ -121,8 +121,11 @@ Latest single-request diagnostic rows use hipENGINE's opt-in AOTriton V3
 compact-varlen GQA path (`--attn-aotriton-min-tokens 512`) and real
 hipENGINE-owned memory accounting.  They supersede the older bring-up rows above
 for the current parent-parity gap discussion; they are still diagnostic rather
-than promoted current-fastest rows because AOTriton is not yet default and the
-threshold sweep has not landed.
+than promoted current-fastest rows because AOTriton remains an optional fetched
+runtime and the full `LLM.generate()` acceptance protocol has not landed.  The
+threshold sweep below now recommends `--attn-aotriton-min-tokens 512` for
+deployments that have installed AOTriton; the code default remains disabled
+(`0`) so a baseline install does not fail when the optional runtime is absent.
 
 | Workload | Parent prefill tok/s | hipENGINE AOTriton V3 prefill tok/s | Prefill delta | Parent decode tok/s | hipENGINE decode tok/s | Decode delta | Peak allocated delta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -138,14 +141,50 @@ Source artifacts:
   (`a00c244`, no decode graph replay, AOTriton opt-in threshold 512).
 - hipENGINE decode-graph follow-up: `benchmarks/results/2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json`
   (same opt-in threshold, one-step HIP graph replay, graph-vs-eager fixture gate).
+- hipENGINE threshold sweep: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json`
+  (32/64/128/256/512/1024/4096 prompt sweep, threshold-512 fixture and graph gates).
 
 The important shape signal is that the residual prefill gap is almost the same
 at 512 and 4K after AOTriton V3: the old 4K native-attention cliff is closed, so
 the remaining gap is unlikely to be the quadratic attention core.  The decode
 follow-up moved hipENGINE decode to `109.34` tok/s at 512 and `110.30` tok/s at
 4K, narrowing the parent decode gap to `-5.8%` and `-2.4%`; it does not change
-the prefill diagnosis.  The remaining prefill gap points at per-layer
-non-attention bulk work and launch/cast glue.
+the prefill diagnosis.  The threshold sweep moved the AOTriton policy from
+"pending" to "recommended opt-in threshold 512".  The remaining prefill gap
+points at per-layer non-attention bulk work and launch/cast glue.
+
+#### AOTriton threshold sweep (2026-05-16)
+
+Single-run diagnostic sweep on W7900/gfx1100, repeated token id `9707`,
+`max_layers=40`, cached HIP builds, real hipENGINE memory accounting.  Short
+prompt rows use `--decode-tokens 0 --warmup-decode-tokens 0` to isolate prefill;
+512/128 and 4K/128 rows use one-step decode graph replay.  Correctness gates:
+`qwen35_native_prefill_fixture_gate.py` with `--attn-aotriton-min-tokens 512`
+passed (`max_kl=0.039568870612619614`, top-1 agreement `1.0`, fixture IDs
+match), and `qwen35_decode_graph_fixture_gate.py` passed (`final_kl=0.0`, graph
+IDs match eager and fixture).
+
+| Prompt tokens | Native attention prefill tok/s | Forced AOTriton prefill tok/s | AOTriton delta | Native peak GiB | AOTriton peak GiB |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 32 | 605.657 | 504.397 | -16.7% | 18.331 | 18.334 |
+| 64 | 994.069 | 829.395 | -16.6% | 18.345 | 18.350 |
+| 128 | 1464.792 | 1304.824 | -10.9% | 18.371 | 18.381 |
+| 256 | 1892.317 | 1826.457 | -3.5% | 18.429 | 18.449 |
+| 512 | 2146.479 | 2284.584 | +6.4% | 18.541 | 18.580 |
+| 1024 | 1815.743 | 2498.659 | +37.6% | 18.763 | 18.842 |
+| 4096 | 662.419 | 2356.051 | +255.7% | 20.099 | 20.414 |
+
+The measured crossover is between 256 and 512 prompt tokens.  Among tested
+threshold policies (`0`, `32`, `64`, `128`, `256`, `512`), threshold `512` is the
+only one that avoids the short-prompt regressions while still selecting the fast
+path at the first prompt length where AOTriton wins.  Because AOTriton is an
+optional fetched runtime, `PrefillConfig.attn_aotriton_min_tokens` stays at `0`;
+installed-AOTriton deployments should pass `--attn-aotriton-min-tokens 512`.
+
+| Workload | Native prefill tok/s | AOTriton threshold-512 prefill tok/s | Prefill delta | Native decode tok/s | AOTriton decode tok/s | Peak GiB delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 / 128 | 2125.642 | 2270.750 | +6.8% | 109.225 | 109.123 | +0.039 |
+| 4096 / 128 | 662.873 | 2345.670 | +253.9% | 109.980 | 110.091 | +0.315 |
 
 #### Parent vs hipENGINE prefill call structure
 
@@ -165,7 +204,7 @@ non-attention bulk work and launch/cast glue.
 | --- | --- | --- | --- | --- |
 | P0 | Replace bulk dense GEMV-style kernels with real bulk GEMM/WMMA for linear-attention A/B and shared-expert prefill. | Parent source uses `F.linear(...)` for multi-row `ParoQuantDenseLinear` and multi-row `ParoQuantSharedExpert`; parent ledgers show `native_aux_dense_linear_calls=280` and `native_shared_expert_dense_calls=80`. hipENGINE source uses `dense_gemv_out_fp16(...)` for A/B and scalar W8A16 shared kernels. | These costs scale roughly linearly with prompt rows and occur in every layer/MoE layer, matching the near-constant -13% residual gap at both 512 and 4K. | Capture a matched 512/128 ROCTX+`rocprofv3` profile first; if confirmed, add a torch-free rocBLAS/hipBLAS or tiled WMMA bulk dense path, starting with shared expert gate/up+down and linear A/B. |
 | P1 | Avoid or fuse AOTriton dtype/post-pass glue. | **Landed as diagnostics:** single-request AOTriton prefill writes BF16 Q directly from head-norm/RoPE, reuses the already-appended BF16 paged KV cache for K/V, fuses BF16 attention × FP16 gate into PARO rotate1, and aliases the old gated scratch as BF16 AOTriton output. | These changes remove Q/K/V cast launches plus the separate gate launch and reduce 4K tracked peak memory by ~0.39 GiB cumulatively, but single-run throughput stayed neutral/slightly negative; this is no longer a leading explanation for the -13% residual gap. | Keep the cast-glue and gate-rotate artifacts as evidence; prioritize the P0 bulk dense/shared-expert gap unless matched profiler attribution says attention post-pass still dominates. |
-| P2 | Make AOTriton default only after the threshold sweep. | Current code still requires `attn_aotriton_min_tokens > 0`; latest good rows used threshold 512. | Not a gap for opt-in comparison, but it determines whether users get the fixed 4K path by default. | Run the queued 32/64/128/256/512 threshold sweep with memory reporting and set a typed default from evidence. |
+| P2 | Keep AOTriton threshold policy evidence-backed. | **Sweep landed as diagnostic:** forced AOTriton is slower at 32/64/128/256 and faster at 512/1024/4096; threshold 512 is the first tested policy that avoids short-prompt regressions while keeping the fixed 4K path. | Not a gap for opt-in comparison, but it determines whether installed-AOTriton users get the fixed 4K path without hurting short prompts. | Keep code default `0` because AOTriton is optional; recommend `--attn-aotriton-min-tokens 512` for installed deployments and rerun the sweep when AOTriton or the prelude changes. |
 | P2 | Decode graph replay parity. | **Landed as diagnostic:** one-step HIP graph replay records generated IDs on device for the fixture gate and reaches 109.34 tok/s (512/128) / 110.30 tok/s (4K/128), reducing the parent decode gap to -5.8% / -2.4%. | Decode delta is separate from prefill, but it affects end-to-end comparison tables. | Keep the graph gate in the benchmark protocol; remaining decode work should wait until prefill default/threshold and P0 bulk kernels are settled. |
 | P3 | Matched profiler attribution. | This audit is source/ledger based; no matched hipENGINE-vs-parent prefill kernel-time table exists yet. | Prevents tuning the wrong family if dense/shared kernels are not the top residual. | Retain compact 512/128 and 4K/128 profiler summaries with ROCTX ranges before landing invasive kernel work. |
 

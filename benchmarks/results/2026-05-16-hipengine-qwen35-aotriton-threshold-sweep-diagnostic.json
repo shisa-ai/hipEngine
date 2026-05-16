@@ -1,0 +1,514 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-05-16",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "source_commit_before_artifact": "4a907e5",
+  "change": "AOTriton opt-in threshold sweep after real hipENGINE memory reporting and decode graph replay: compare disabled native attention with forced AOTriton at prompt lengths 32/64/128/256/512/1024/4096, then validate threshold 512 on 512/128 and 4K/128 graph-replay workloads.",
+  "validation": {
+    "rocm_smoke": "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\" && rocminfo | grep -E 'Name:|gfx'",
+    "prefill_fixture_gate": "python3 scripts/qwen35_native_prefill_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/task21-aot512-prefill-fixture-gate.json",
+    "decode_graph_fixture_gate": "python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task21-aot512-decode-graph-fixture-gate.json"
+  },
+  "correctness": {
+    "prefill_fixture": {
+      "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+      "passed": true,
+      "attn_aotriton_min_tokens": 512,
+      "max_kl": 0.039568870612619614,
+      "top1_agreement": 1.0,
+      "generated_match": true,
+      "expected_match": true
+    },
+    "decode_graph_fixture": {
+      "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+      "passed": true,
+      "attn_aotriton_min_tokens": 512,
+      "generated_match": true,
+      "expected_match": true,
+      "final_kl": 0.0,
+      "final_top1_match": true
+    }
+  },
+  "prefill_prompt_sweep": [
+    {
+      "prompt_length": 32,
+      "decode_tokens": 0,
+      "native_disabled": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 32 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task21-p32-native-prefill.json",
+        "prefill_tok_s": 605.6574195491531,
+        "tracked_peak_allocated_gib": 18.33138591889292,
+        "hip_used_peak_sampled_gib": 18.541015625,
+        "aotriton_attention": false
+      },
+      "aotriton_forced_threshold_32": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 32 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 32 --json /tmp/task21-p32-aot32-prefill.json",
+        "prefill_tok_s": 504.39715336395903,
+        "tracked_peak_allocated_gib": 18.33384643588215,
+        "hip_used_peak_sampled_gib": 18.54535675048828,
+        "aotriton_attention": true
+      },
+      "aotriton_vs_native_prefill_pct": -16.71906640895632,
+      "aotriton_minus_native_tracked_peak_gib": 0.0024605169892311096
+    },
+    {
+      "prompt_length": 64,
+      "decode_tokens": 0,
+      "native_disabled": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 64 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task21-p64-native-prefill.json",
+        "prefill_tok_s": 994.0691359445715,
+        "tracked_peak_allocated_gib": 18.3446678603068,
+        "hip_used_peak_sampled_gib": 18.541015625,
+        "aotriton_attention": false
+      },
+      "aotriton_forced_threshold_32": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 64 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 32 --json /tmp/task21-p64-aot32-prefill.json",
+        "prefill_tok_s": 829.3950255375231,
+        "tracked_peak_allocated_gib": 18.34958885703236,
+        "hip_used_peak_sampled_gib": 18.549942016601562,
+        "aotriton_attention": true
+      },
+      "aotriton_vs_native_prefill_pct": -16.565659716471714,
+      "aotriton_minus_native_tracked_peak_gib": 0.004920996725559235
+    },
+    {
+      "prompt_length": 128,
+      "decode_tokens": 0,
+      "native_disabled": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 128 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task21-p128-native-prefill.json",
+        "prefill_tok_s": 1464.7923903370627,
+        "tracked_peak_allocated_gib": 18.371231743134558,
+        "hip_used_peak_sampled_gib": 18.541015625,
+        "aotriton_attention": false
+      },
+      "aotriton_forced_threshold_32": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 128 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 32 --json /tmp/task21-p128-aot32-prefill.json",
+        "prefill_tok_s": 1304.8236171094486,
+        "tracked_peak_allocated_gib": 18.381073699332774,
+        "hip_used_peak_sampled_gib": 18.55432891845703,
+        "aotriton_attention": true
+      },
+      "aotriton_vs_native_prefill_pct": -10.92091782309189,
+      "aotriton_minus_native_tracked_peak_gib": 0.009841956198215485
+    },
+    {
+      "prompt_length": 256,
+      "decode_tokens": 0,
+      "native_disabled": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 256 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task21-p256-native-prefill.json",
+        "prefill_tok_s": 1892.3166032113102,
+        "tracked_peak_allocated_gib": 18.429397062398493,
+        "hip_used_peak_sampled_gib": 18.546875,
+        "aotriton_attention": false
+      },
+      "aotriton_forced_threshold_32": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 256 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 32 --json /tmp/task21-p256-aot32-prefill.json",
+        "prefill_tok_s": 1826.4568882475924,
+        "tracked_peak_allocated_gib": 18.44908093754202,
+        "hip_used_peak_sampled_gib": 18.567886352539062,
+        "aotriton_attention": true
+      },
+      "aotriton_vs_native_prefill_pct": -3.480375052036866,
+      "aotriton_minus_native_tracked_peak_gib": 0.019683875143527985
+    },
+    {
+      "prompt_length": 512,
+      "decode_tokens": 0,
+      "native_disabled": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task21-p512-native-prefill.json",
+        "prefill_tok_s": 2146.4794289185056,
+        "tracked_peak_allocated_gib": 18.54069205466658,
+        "hip_used_peak_sampled_gib": 18.55859375,
+        "aotriton_attention": false
+      },
+      "aotriton_forced_threshold_32": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 32 --json /tmp/task21-p512-aot32-prefill.json",
+        "prefill_tok_s": 2284.5836525560226,
+        "tracked_peak_allocated_gib": 18.58005976770073,
+        "hip_used_peak_sampled_gib": 18.59803009033203,
+        "aotriton_attention": true
+      },
+      "aotriton_vs_native_prefill_pct": 6.433987755806259,
+      "aotriton_minus_native_tracked_peak_gib": 0.039367713034152985
+    },
+    {
+      "prompt_length": 1024,
+      "decode_tokens": 0,
+      "native_disabled": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 1024 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task21-p1024-native-prefill.json",
+        "prefill_tok_s": 1815.7431446492078,
+        "tracked_peak_allocated_gib": 18.763287761248648,
+        "hip_used_peak_sampled_gib": 18.57421875,
+        "aotriton_attention": false
+      },
+      "aotriton_forced_threshold_32": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 1024 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 32 --json /tmp/task21-p1024-aot32-prefill.json",
+        "prefill_tok_s": 2498.6586546829235,
+        "tracked_peak_allocated_gib": 18.84202315006405,
+        "hip_used_peak_sampled_gib": 18.651382446289062,
+        "aotriton_attention": true
+      },
+      "aotriton_vs_native_prefill_pct": 37.61079930529774,
+      "aotriton_minus_native_tracked_peak_gib": 0.07873538881540298
+    },
+    {
+      "prompt_length": 4096,
+      "decode_tokens": 0,
+      "native_disabled": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/task21-p4096-native-prefill.json",
+        "prefill_tok_s": 662.4186995360704,
+        "tracked_peak_allocated_gib": 20.09902221802622,
+        "hip_used_peak_sampled_gib": 18.693359375,
+        "aotriton_attention": false
+      },
+      "aotriton_forced_threshold_32": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 32 --json /tmp/task21-p4096-aot32-prefill.json",
+        "prefill_tok_s": 2356.051341498237,
+        "tracked_peak_allocated_gib": 20.413963661529124,
+        "hip_used_peak_sampled_gib": 19.007568359375,
+        "aotriton_attention": true
+      },
+      "aotriton_vs_native_prefill_pct": 255.6740386629052,
+      "aotriton_minus_native_tracked_peak_gib": 0.314941443502903
+    }
+  ],
+  "threshold_policy_simulation": [
+    {
+      "attn_aotriton_min_tokens": 0,
+      "selected_by_prompt": [
+        {
+          "prompt_length": 32,
+          "selected_path": "native",
+          "prefill_tok_s": 605.6574195491531
+        },
+        {
+          "prompt_length": 64,
+          "selected_path": "native",
+          "prefill_tok_s": 994.0691359445715
+        },
+        {
+          "prompt_length": 128,
+          "selected_path": "native",
+          "prefill_tok_s": 1464.7923903370627
+        },
+        {
+          "prompt_length": 256,
+          "selected_path": "native",
+          "prefill_tok_s": 1892.3166032113102
+        },
+        {
+          "prompt_length": 512,
+          "selected_path": "native",
+          "prefill_tok_s": 2146.4794289185056
+        },
+        {
+          "prompt_length": 1024,
+          "selected_path": "native",
+          "prefill_tok_s": 1815.7431446492078
+        },
+        {
+          "prompt_length": 4096,
+          "selected_path": "native",
+          "prefill_tok_s": 662.4186995360704
+        }
+      ],
+      "simple_mean_prefill_tok_s_across_tested_prompt_lengths": 1368.7824031636974
+    },
+    {
+      "attn_aotriton_min_tokens": 32,
+      "selected_by_prompt": [
+        {
+          "prompt_length": 32,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 504.39715336395903
+        },
+        {
+          "prompt_length": 64,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 829.3950255375231
+        },
+        {
+          "prompt_length": 128,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 1304.8236171094486
+        },
+        {
+          "prompt_length": 256,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 1826.4568882475924
+        },
+        {
+          "prompt_length": 512,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2284.5836525560226
+        },
+        {
+          "prompt_length": 1024,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2498.6586546829235
+        },
+        {
+          "prompt_length": 4096,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2356.051341498237
+        }
+      ],
+      "simple_mean_prefill_tok_s_across_tested_prompt_lengths": 1657.7666189993865
+    },
+    {
+      "attn_aotriton_min_tokens": 64,
+      "selected_by_prompt": [
+        {
+          "prompt_length": 32,
+          "selected_path": "native",
+          "prefill_tok_s": 605.6574195491531
+        },
+        {
+          "prompt_length": 64,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 829.3950255375231
+        },
+        {
+          "prompt_length": 128,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 1304.8236171094486
+        },
+        {
+          "prompt_length": 256,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 1826.4568882475924
+        },
+        {
+          "prompt_length": 512,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2284.5836525560226
+        },
+        {
+          "prompt_length": 1024,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2498.6586546829235
+        },
+        {
+          "prompt_length": 4096,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2356.051341498237
+        }
+      ],
+      "simple_mean_prefill_tok_s_across_tested_prompt_lengths": 1672.232371311557
+    },
+    {
+      "attn_aotriton_min_tokens": 128,
+      "selected_by_prompt": [
+        {
+          "prompt_length": 32,
+          "selected_path": "native",
+          "prefill_tok_s": 605.6574195491531
+        },
+        {
+          "prompt_length": 64,
+          "selected_path": "native",
+          "prefill_tok_s": 994.0691359445715
+        },
+        {
+          "prompt_length": 128,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 1304.8236171094486
+        },
+        {
+          "prompt_length": 256,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 1826.4568882475924
+        },
+        {
+          "prompt_length": 512,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2284.5836525560226
+        },
+        {
+          "prompt_length": 1024,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2498.6586546829235
+        },
+        {
+          "prompt_length": 4096,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2356.051341498237
+        }
+      ],
+      "simple_mean_prefill_tok_s_across_tested_prompt_lengths": 1695.75724422685
+    },
+    {
+      "attn_aotriton_min_tokens": 256,
+      "selected_by_prompt": [
+        {
+          "prompt_length": 32,
+          "selected_path": "native",
+          "prefill_tok_s": 605.6574195491531
+        },
+        {
+          "prompt_length": 64,
+          "selected_path": "native",
+          "prefill_tok_s": 994.0691359445715
+        },
+        {
+          "prompt_length": 128,
+          "selected_path": "native",
+          "prefill_tok_s": 1464.7923903370627
+        },
+        {
+          "prompt_length": 256,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 1826.4568882475924
+        },
+        {
+          "prompt_length": 512,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2284.5836525560226
+        },
+        {
+          "prompt_length": 1024,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2498.6586546829235
+        },
+        {
+          "prompt_length": 4096,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2356.051341498237
+        }
+      ],
+      "simple_mean_prefill_tok_s_across_tested_prompt_lengths": 1718.6099261165089
+    },
+    {
+      "attn_aotriton_min_tokens": 512,
+      "selected_by_prompt": [
+        {
+          "prompt_length": 32,
+          "selected_path": "native",
+          "prefill_tok_s": 605.6574195491531
+        },
+        {
+          "prompt_length": 64,
+          "selected_path": "native",
+          "prefill_tok_s": 994.0691359445715
+        },
+        {
+          "prompt_length": 128,
+          "selected_path": "native",
+          "prefill_tok_s": 1464.7923903370627
+        },
+        {
+          "prompt_length": 256,
+          "selected_path": "native",
+          "prefill_tok_s": 1892.3166032113102
+        },
+        {
+          "prompt_length": 512,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2284.5836525560226
+        },
+        {
+          "prompt_length": 1024,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2498.6586546829235
+        },
+        {
+          "prompt_length": 4096,
+          "selected_path": "aotriton",
+          "prefill_tok_s": 2356.051341498237
+        }
+      ],
+      "simple_mean_prefill_tok_s_across_tested_prompt_lengths": 1728.0184568256116
+    }
+  ],
+  "workload_measurements": [
+    {
+      "workload": "512/128",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "native_disabled_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --graph-replay-decode --json /tmp/task21-p512-native_graph.json",
+        "prefill_tok_s": 2125.6415846834357,
+        "decode_tok_s": 109.22462417013905,
+        "decode_step_median_s": 0.009155444640782662,
+        "tracked_peak_allocated_gib": 18.541742083616555,
+        "hip_used_peak_sampled_gib": 18.560546875
+      },
+      "aotriton_threshold_512_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --graph-replay-decode --attn-aotriton-min-tokens 512 --json /tmp/task21-p512-aot512_graph.json",
+        "prefill_tok_s": 2270.7502943605778,
+        "decode_tok_s": 109.12336153409855,
+        "decode_step_median_s": 0.009163940570942941,
+        "tracked_peak_allocated_gib": 18.581109796650708,
+        "hip_used_peak_sampled_gib": 18.60193634033203
+      },
+      "aotriton_vs_native": {
+        "prefill_pct": 6.826584063971097,
+        "decode_pct": -0.09271044584485688,
+        "tracked_peak_allocated_gib_delta": 0.039367713034152985
+      },
+      "parent_step_graph": {
+        "prefill_tok_s": 2696.4422279659416,
+        "decode_tok_s": 116.04961191700822,
+        "peak_allocated_gib": 18.79712200164795,
+        "source_commit": "59195ed"
+      },
+      "aotriton_vs_parent": {
+        "prefill_pct": -15.787170560909225,
+        "decode_pct": -5.968352903982921,
+        "tracked_peak_allocated_gib_delta": -0.2160122049972415
+      }
+    },
+    {
+      "workload": "4K/128",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "native_disabled_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --graph-replay-decode --json /tmp/task21-p4096-native_graph.json",
+        "prefill_tok_s": 662.8725902452718,
+        "decode_tok_s": 109.9800118324678,
+        "decode_step_median_s": 0.009092561305806157,
+        "tracked_peak_allocated_gib": 20.100078974850476,
+        "hip_used_peak_sampled_gib": 18.6953125
+      },
+      "aotriton_threshold_512_graph": {
+        "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --graph-replay-decode --attn-aotriton-min-tokens 512 --json /tmp/task21-p4096-aot512_graph.json",
+        "prefill_tok_s": 2345.6699769580136,
+        "decode_tok_s": 110.09071497890513,
+        "decode_step_median_s": 0.009083418162845192,
+        "tracked_peak_allocated_gib": 20.41502041835338,
+        "hip_used_peak_sampled_gib": 19.011474609375
+      },
+      "aotriton_vs_native": {
+        "prefill_pct": 253.86437929045823,
+        "decode_pct": 0.10065751457271066,
+        "tracked_peak_allocated_gib_delta": 0.314941443502903
+      },
+      "parent_step_graph": {
+        "prefill_tok_s": 2741.4888496031463,
+        "decode_tok_s": 113.04910466336666,
+        "peak_allocated_gib": 21.64404582977295,
+        "source_commit": "59195ed"
+      },
+      "aotriton_vs_parent": {
+        "prefill_pct": -14.438098944025645,
+        "decode_pct": -2.616906779820072,
+        "tracked_peak_allocated_gib_delta": -1.2290254114195704
+      }
+    }
+  ],
+  "decision": {
+    "measured_crossover": "AOTriton is slower at 32/64/128/256 prompt tokens and faster at 512/1024/4096; crossover is between 256 and 512 tokens for this repeated-token c=1 workload.",
+    "recommended_opt_in_threshold": 512,
+    "code_default": 0,
+    "default_policy": "Leave PrefillConfig.attn_aotriton_min_tokens at 0 because AOTriton is an optional fetched runtime and enabling it by default would make sessions fail when the cache is absent. For installed AOTriton deployments, use --attn-aotriton-min-tokens 512."
+  },
+  "notes": [
+    "Short prompt rows use decode_tokens=0 to isolate prefill and avoid graph/decode noise; throughput is a single run per shape, so this is a policy diagnostic rather than an accepted performance claim.",
+    "512/128 and 4K/128 rows use one-step HIP graph replay to match the current parent comparison protocol.",
+    "The threshold policy simulation uses the forced-AOTriton and disabled measurements; for a given prompt, all thresholds <= prompt select the same AOTriton path and thresholds > prompt select the native path."
+  ]
+}
