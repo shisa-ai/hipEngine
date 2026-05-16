@@ -17,6 +17,12 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-17
+
+- [comparison baseline] llama.cpp HIP / Qwen3.6-35B-A3B UD-Q4_K_M / 512+4K+32K+128K split rows: peak GiB `null -> 21.125 / 21.197 / 21.738 / 23.605 GiB` via `scripts/llamacpp_bench_with_peak.py --poll 10` sampling `/sys/class/drm/card1/device/mem_info_vram_used` during `-r 1` split prefill (`-p P -n 0 -d 0`) and decode-at-offset (`-p 0 -n 128 -d P`); tok/s rows kept from `~/amd-gpu-tuning/PLAN-LONGCONTEXT.md` because the `-r 1` instrumented sweep is not throughput-valid; `benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json`.
+- [comparison baseline] llama.cpp Vulkan / Qwen3.6-35B-A3B UD-Q4_K_M / 512+4K+32K+128K split rows: peak GiB `null -> 20.844 / 20.969 / 21.533 / 23.596 GiB` via the same sampler/protocol against `/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench`; tok/s rows unchanged for the same instrumentation reason; `benchmarks/results/2026-05-17-llamacpp-vulkan-qwen36-peak.json`.
+- [diagnostic retained] hipENGINE comparison-tables artifact: filled the previously-null `peak_gib` entries under `baselines["llama.cpp-hip"]` and `baselines["llama.cpp-vulkan"]` with the rows above; `scripts/qwen35_compare_tables.py` default changed from `nano-vllm-amd` to `all` so all three comparison tables render in one shot; `benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json`.
+
 ## 2026-05-16
 
 - [diagnostic retained] hipENGINE / Qwen3.5-35B-A3B-PARO / w4_paro / comparison table checkpoint 512/128 + 4K/128 + 32K/128 + 128K/128: added 512/128 current no-op-chunk row `2216.487` prefill / `109.105` decode / `18.581 GiB` peak and `scripts/qwen35_compare_tables.py` for separate prefill/decode/memory tables vs `nano-vllm-amd`, llama.cpp HIP, or llama.cpp Vulkan; `benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json`.

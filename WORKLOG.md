@@ -13401,3 +13401,69 @@ git diff --check
 
 Unrelated untracked `benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json` was left
 unstaged/untouched.
+
+## 2026-05-17 — Retain llama.cpp HIP/Vulkan peak VRAM in the comparison tables
+
+Ran the new `scripts/llamacpp_bench_with_peak.py` against the canonical `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
+on both backends, `-r 1`, `--poll 10` ms, four canonical workloads (512/128, 4K/128, 32K/128,
+128K/128), splitting each into prefill (`-p P -n 0 -d 0`) and decode-at-offset (`-p 0 -n 128 -d P`)
+llama-bench invocations. Measured peak VRAM per row via
+`/sys/class/drm/card1/device/mem_info_vram_used` sampled in a background thread.
+
+Throughput from these `-r 1` instrumented runs is **not** retained: the polling overhead and
+single-shot timing make the tok/s noisy relative to the historical PLAN-LONGCONTEXT split-row
+numbers. Throughput rows in the comparison stay as they were; only the previously-null `peak_gib`
+fields are populated.
+
+Results (peak GiB, this host, W7900):
+
+| Workload | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: |
+| 512/128 | 21.125 | 20.844 |
+| 4K/128 | 21.197 | 20.969 |
+| 32K/128 | 21.738 | 21.533 |
+| 128K/128 | 23.605 | 23.596 |
+
+Resulting deltas vs hipENGINE tracked peak (negative = hipENGINE wins, positive = llama.cpp
+lower):
+
+- vs HIP: 512 `-2.54`, 4K `-1.32`, 32K `-1.05`, 128K `+0.05` GiB.
+- vs Vulkan: 512 `-2.26`, 4K `-1.09`, 32K `-0.85`, 128K `+0.06` GiB.
+
+hipENGINE wins memory at all four contexts vs HIP and Vulkan, with the 128K rows now effectively
+tied within run noise (≈50 MiB).
+
+Changes:
+
+- `scripts/qwen35_compare_tables.py`: filled the `peak_gib` field of every llama.cpp HIP/Vulkan
+  row from the new artifacts; trimmed the notes to one short sentence pointing at the source
+  JSON; changed the default `baseline` argument from `nano-vllm-amd` to `all` so a bare
+  `python3 scripts/qwen35_compare_tables.py` now prints all three tables in one shot.
+- `benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json`: same
+  minimal change — only the `baselines["llama.cpp-*"]["rows"][*].peak_gib` and one note
+  reference were edited.
+- `benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json` and
+  `benchmarks/results/2026-05-17-llamacpp-vulkan-qwen36-peak.json`: retained the sweep
+  artifacts as the canonical source for the peak rows.
+- `benchmarks/README.md`: added the llama.cpp HIP/Vulkan rows under “External comparison
+  baselines” with the new peak numbers and a footnote pointing at the instrumentation, and
+  bumped `Last updated` to 2026-05-17.
+- `benchmarks/CHANGELOG.md`: dated one-liners for each baseline `peak_gib` update plus the
+  comparison-table artifact / default-arg change.
+
+Validation:
+
+```bash
+python3 -m json.tool benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json >/dev/null
+python3 -m json.tool benchmarks/results/2026-05-17-llamacpp-vulkan-qwen36-peak.json >/dev/null
+python3 -m json.tool benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json >/dev/null
+python3 -m py_compile scripts/qwen35_compare_tables.py scripts/llamacpp_bench_with_peak.py hipengine/util/amdgpu_vram.py
+python3 scripts/qwen35_compare_tables.py >/tmp/task32-all.md
+python3 scripts/qwen35_compare_tables.py llama.cpp-hip >/tmp/task32-hip.md
+python3 scripts/qwen35_compare_tables.py llama.cpp-vulkan >/tmp/task32-vulkan.md
+# all four memory tables now render with both columns populated; delta column shows GiB
+# instead of '—'.
+```
+
+Unrelated untracked `scripts/strip_paro_safetensors.py` is owned by another agent per AGENTS.md
+coordination rules and is left alone.

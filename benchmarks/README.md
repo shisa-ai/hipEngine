@@ -1,6 +1,6 @@
 # hipENGINE Benchmark Rollup
 
-Last updated: 2026-05-16
+Last updated: 2026-05-17
 
 Human-readable scoreboard for hipENGINE performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -69,6 +69,14 @@ Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 entry and
 | --- | --- | --- | --- | ---: | ---: | --- | --- | --- | --- |
 | Qwen3.6-35B-A3B | Q8_K_XL GGUF | llama.cpp ROCm | pp512/tg128 | 949.89 ± 9.59 | 74.32 ± 0.02 | — | `~/amd-gpu-tuning/WORKLOG.md` | 2026-04-28 | `llama-bench`, `-fa 1`. |
 | Qwen3.6-35B-A3B | Q8_K_XL GGUF | llama.cpp ROCm server | 4K/4K | 1139.72 | 71.49 | 44.94 GiB used | `~/amd-gpu-tuning/WORKLOG.md` | 2026-04-28 | `/completion`, temp 0, `ignore_eos=true`. |
+| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp HIP | 512/128 split (`-p 512 -n 0 -d 0` / `-p 0 -n 128 -d 512`) | 2436.049 | 85.487 | 21.125 | tok/s `~/amd-gpu-tuning/PLAN-LONGCONTEXT.md`; peak [`2026-05-17-llamacpp-hip-qwen36-peak.json`](results/2026-05-17-llamacpp-hip-qwen36-peak.json) | 2026-05-17 | Peak measured via `scripts/llamacpp_bench_with_peak.py --poll 10` sampling `mem_info_vram_used`; tok/s rows kept from the original PLAN sweep (the new `-r 1` instrumented sweep is throughput-invalid). |
+| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp HIP | 4K/128 split | 2176.905 | 87.375 | 21.197 | same as above; peak [`2026-05-17-llamacpp-hip-qwen36-peak.json`](results/2026-05-17-llamacpp-hip-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
+| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp HIP | 32K/128 split | 1496.409 | 76.994 | 21.738 | same as above; peak [`2026-05-17-llamacpp-hip-qwen36-peak.json`](results/2026-05-17-llamacpp-hip-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
+| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp HIP | 128K/128 split | 710.213 | 57.341 | 23.605 | same as above; peak [`2026-05-17-llamacpp-hip-qwen36-peak.json`](results/2026-05-17-llamacpp-hip-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
+| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 512/128 split | 1816.927 | 127.515 | 20.844 | tok/s `~/amd-gpu-tuning/PLAN-LONGCONTEXT.md`; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
+| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 4K/128 split | 1705.093 | 120.163 | 20.969 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
+| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 32K/128 split | 1128.554 | 98.073 | 21.533 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
+| Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 128K/128 split | 480.539 | 64.478 | 23.596 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
 
 ### Host-architecture comparator: Qwen3-0.6B FP16 c=1
 

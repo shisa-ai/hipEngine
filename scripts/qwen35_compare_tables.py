@@ -63,13 +63,13 @@ BASELINES: dict[str, Baseline] = {
         source="~/amd-gpu-tuning/PLAN-LONGCONTEXT.md split rows",
         notes=(
             "Qwen3.6-35B-A3B UD-Q4_K_M GGUF, f16 KV, split pp/tg rows with decode depth. "
-            "Memory was not retained for these split rows."
+            "Peak GiB from benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json."
         ),
         rows=(
-            Row("512/128", 2436.049, 85.487, None),
-            Row("4K/128", 2176.905, 87.375, None),
-            Row("32K/128", 1496.409, 76.994, None),
-            Row("128K/128", 710.213, 57.341, None),
+            Row("512/128", 2436.049, 85.487, 21.125),
+            Row("4K/128", 2176.905, 87.375, 21.197),
+            Row("32K/128", 1496.409, 76.994, 21.738),
+            Row("128K/128", 710.213, 57.341, 23.605),
         ),
     ),
     "llama.cpp-vulkan": Baseline(
@@ -78,13 +78,13 @@ BASELINES: dict[str, Baseline] = {
         source="~/amd-gpu-tuning/PLAN-LONGCONTEXT.md split rows",
         notes=(
             "Qwen3.6-35B-A3B UD-Q4_K_M GGUF, f16 KV, split pp/tg rows with decode depth. "
-            "Memory was not retained for these split rows."
+            "Peak GiB from benchmarks/results/2026-05-17-llamacpp-vulkan-qwen36-peak.json."
         ),
         rows=(
-            Row("512/128", 1816.927, 127.515, None),
-            Row("4K/128", 1705.093, 120.163, None),
-            Row("32K/128", 1128.554, 98.073, None),
-            Row("128K/128", 480.539, 64.478, None),
+            Row("512/128", 1816.927, 127.515, 20.844),
+            Row("4K/128", 1705.093, 120.163, 20.969),
+            Row("32K/128", 1128.554, 98.073, 21.533),
+            Row("128K/128", 480.539, 64.478, 23.596),
         ),
     ),
 }
@@ -205,10 +205,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "baseline",
         nargs="?",
-        default="nano-vllm-amd",
+        default="all",
         help=(
             "Comparison baseline: nano-vllm-amd, llama.cpp-hip, llama.cpp-vulkan, or all. "
-            "Aliases with spaces such as 'llama.cpp HIP' are accepted."
+            "Aliases with spaces such as 'llama.cpp HIP' are accepted. Default: all."
         ),
     )
     return parser.parse_args()

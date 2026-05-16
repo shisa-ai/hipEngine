@@ -107,62 +107,62 @@
         "llama.cpp-hip": {
             "display": "llama.cpp HIP",
             "source": "~/amd-gpu-tuning/PLAN-LONGCONTEXT.md split rows",
-            "notes": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF, f16 KV, split pp/tg rows with decode depth. Memory was not retained for these split rows.",
+            "notes": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF, f16 KV, split pp/tg rows with decode depth. Peak GiB from benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json.",
             "rows": [
                 {
                     "workload": "512/128",
                     "prefill_tok_s": 2436.049,
                     "decode_tok_s": 85.487,
-                    "peak_gib": null
+                    "peak_gib": 21.125
                 },
                 {
                     "workload": "4K/128",
                     "prefill_tok_s": 2176.905,
                     "decode_tok_s": 87.375,
-                    "peak_gib": null
+                    "peak_gib": 21.197
                 },
                 {
                     "workload": "32K/128",
                     "prefill_tok_s": 1496.409,
                     "decode_tok_s": 76.994,
-                    "peak_gib": null
+                    "peak_gib": 21.738
                 },
                 {
                     "workload": "128K/128",
                     "prefill_tok_s": 710.213,
                     "decode_tok_s": 57.341,
-                    "peak_gib": null
+                    "peak_gib": 23.605
                 }
             ]
         },
         "llama.cpp-vulkan": {
             "display": "llama.cpp Vulkan",
             "source": "~/amd-gpu-tuning/PLAN-LONGCONTEXT.md split rows",
-            "notes": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF, f16 KV, split pp/tg rows with decode depth. Memory was not retained for these split rows.",
+            "notes": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF, f16 KV, split pp/tg rows with decode depth. Peak GiB from benchmarks/results/2026-05-17-llamacpp-vulkan-qwen36-peak.json.",
             "rows": [
                 {
                     "workload": "512/128",
                     "prefill_tok_s": 1816.927,
                     "decode_tok_s": 127.515,
-                    "peak_gib": null
+                    "peak_gib": 20.844
                 },
                 {
                     "workload": "4K/128",
                     "prefill_tok_s": 1705.093,
                     "decode_tok_s": 120.163,
-                    "peak_gib": null
+                    "peak_gib": 20.969
                 },
                 {
                     "workload": "32K/128",
                     "prefill_tok_s": 1128.554,
                     "decode_tok_s": 98.073,
-                    "peak_gib": null
+                    "peak_gib": 21.533
                 },
                 {
                     "workload": "128K/128",
                     "prefill_tok_s": 480.539,
                     "decode_tok_s": 64.478,
-                    "peak_gib": null
+                    "peak_gib": 23.596
                 }
             ]
         }
