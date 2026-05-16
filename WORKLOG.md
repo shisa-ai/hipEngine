@@ -15545,3 +15545,29 @@ python3 -m pytest tests/test_llm_gguf_generate_path.py tests/test_llm_generate.p
 ```
 
 Next blocker: implement the GGUF lm-head logits path and deterministic sampling so the public API can return real generated text instead of stopping after native-kernel route proof.
+
+## 2026-05-16 GGUF lm-head logits and argmax probe
+
+Extended `Qwen35GGUFOneLayerProbe` with a tied lm-head logits path:
+
+```text
+BF16 hidden probe output -> Q6_K token_embd.weight GEMV -> FP32 logits [1, vocab]
+FP32 logits -> deterministic NumPy argmax (temperature-0 probe)
+```
+
+The public GGUF bring-up generator now reaches Q6_K lm-head GEMV and reports the sampled probe token before intentionally stopping on the remaining tokenizer/full-layer blocker.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/generation/qwen35_gguf.py \
+  tests/test_qwen35_gguf_runner.py tests/test_llm_gguf_generate_path.py
+python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_llm_gguf_generate_path.py -q
+# 3 passed
+python3 scripts/qwen35_gguf_e2e_correctness.py --skip-tokenize-check >/tmp/gguf_e2e_gate_red3.json
+# exit 1 as expected:
+# NotImplementedError: Qwen3.5 GGUF public path reached native GGUF lm-head sampling (probe token_id=1792, logit=7.76852e+27); tokenizer detokenization and full layer chain are not wired yet
+# torch_loaded_by_generate=False
+```
+
+`tests/test_qwen35_gguf_runner.py` now also checks `sample_next_token(760)` twice for finite logits, stable top-1 token id, and stable top logit. The sampled token is not expected to match llama.cpp yet because the hidden state is still the layer-0 projection probe rather than the full Qwen layer stack.

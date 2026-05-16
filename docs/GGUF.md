@@ -29,8 +29,10 @@ projection probe now starts at Q6_K token embedding and runs layer-0 RMSNorm,
 Q4_K `attn_gate`, and Q5_K `ssm_out` through native GGUF kernels to produce a
 finite deterministic BF16 hidden-size output. `hipengine.LLM.generate()` now detects
 GGUF files, resolves the `qwen35` model plugin, and routes the target quant key
-through the native GGUF bring-up generator; it intentionally stops at the
-not-yet-wired lm-head/sampling stage.
+through the native GGUF bring-up generator. The bring-up path now also runs the
+tied Q6_K `token_embd.weight` lm-head GEMV to produce FP32 logits and a
+deterministic argmax token, then intentionally stops because tokenizer
+detokenization and the full layer chain are not wired yet.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 

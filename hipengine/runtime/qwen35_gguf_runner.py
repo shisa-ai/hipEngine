@@ -17,7 +17,14 @@ from hipengine.loading.qwen35_gguf_materialize import (
     materialize_qwen35_gguf_weights,
 )
 from hipengine.quant.gguf import bf16_to_float32
-from hipengine.runtime.gguf_linear import launch_gguf_linear
+from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFNextTokenProbeResult:
+    token_id: int
+    logit: float
+    logits: np.ndarray
 
 
 @dataclass
@@ -40,6 +47,7 @@ class Qwen35GGUFOneLayerProbe:
         self.runtime = self.runtime or get_hip_runtime()
         selected = (
             "root.token_embedding",
+            "root.lm_head",
             f"layers.{self.layer_id}.attn_norm",
             f"layers.{self.layer_id}.attn_gate",
             f"layers.{self.layer_id}.ssm_out",
@@ -130,6 +138,50 @@ class Qwen35GGUFOneLayerProbe:
     def run_token_f32(self, token_id: int) -> np.ndarray:
         return bf16_to_float32(self.run_token(token_id))
 
+    def logits_from_hidden_bits(self, hidden_bits: np.ndarray) -> np.ndarray:
+        """Run the tied Q6_K lm-head and return FP32 logits on host."""
+
+        assert self.weights is not None
+        runtime = self.runtime or get_hip_runtime()
+        hidden = np.ascontiguousarray(hidden_bits, dtype=np.uint16)
+        if hidden.shape != (1, self.hidden_size):
+            raise ValueError(f"hidden_bits must have shape (1, {self.hidden_size})")
+        logits = np.empty((1, self.vocab_size), dtype=np.float32)
+        buffers = []
+        try:
+            hidden_buf = malloc(hidden.nbytes, runtime=runtime)
+            logits_buf = malloc(logits.nbytes, runtime=runtime)
+            buffers.extend((hidden_buf, logits_buf))
+            copy_host_to_device(hidden_buf, host_array_ptr(hidden), runtime=runtime)
+            launch_gguf_linear(
+                self.weights.root("lm_head"),
+                hidden_buf.ptr,
+                logits_buf.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=self.vocab_size,
+                output_dtype=GGUF_OUTPUT_F32,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(host_array_ptr(logits), logits_buf, runtime=runtime)
+        finally:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
+        return logits
+
+    def sample_next_token(self, token_id: int) -> Qwen35GGUFNextTokenProbeResult:
+        logits = self.logits_from_hidden_bits(self.run_token(token_id))
+        if not np.all(np.isfinite(logits)):
+            raise FloatingPointError("GGUF lm-head logits contain NaN or Inf")
+        flat = logits.reshape(-1)
+        next_id = int(np.argmax(flat))
+        return Qwen35GGUFNextTokenProbeResult(
+            token_id=next_id,
+            logit=float(flat[next_id]),
+            logits=logits,
+        )
+
     def close(self) -> None:
         if self.weights is not None:
             self.weights.free(runtime=self.runtime)
@@ -142,4 +194,4 @@ class Qwen35GGUFOneLayerProbe:
         self.close()
 
 
-__all__ = ["Qwen35GGUFOneLayerProbe"]
+__all__ = ["Qwen35GGUFNextTokenProbeResult", "Qwen35GGUFOneLayerProbe"]

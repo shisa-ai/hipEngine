@@ -36,10 +36,11 @@ class Qwen35GGUFBringupGenerator:
         for prompt in request.prompts:
             token_id = _probe_token_id(prompt)
             with Qwen35GGUFOneLayerProbe(self.model_path, layer_id=0) as probe:
-                probe.run_token(token_id)
+                result = probe.sample_next_token(token_id)
         raise NotImplementedError(
-            "Qwen3.5 GGUF public path reached native GGUF kernels; "
-            "lm-head logits and token sampling are not wired yet"
+            "Qwen3.5 GGUF public path reached native GGUF lm-head sampling "
+            f"(probe token_id={result.token_id}, logit={result.logit:.6g}); "
+            "tokenizer detokenization and full layer chain are not wired yet"
         )
 
 
