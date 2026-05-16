@@ -8,7 +8,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
-    aotriton_attn_fwd_compact_varlen,
+    aotriton_attn_fwd_v3_compact_varlen,
     aotriton_gate_mul_bf16_to_fp16,
     qwen35_full_attn_decode_context_bf16,
     qwen35_full_attn_gate_mul_bf16,
@@ -1903,6 +1903,7 @@ class Qwen35ParoDecodeState:
         k_bf16 = self.workspace.reserve_tensor("attn.aotriton_k_bf16", scratch.key.shape, DType.BF16)
         v_bf16 = self.workspace.reserve_tensor("attn.aotriton_v_bf16", scratch.value.shape, DType.BF16)
         attn_bf16 = self.workspace.reserve_tensor("attn.aotriton_out_bf16", scratch.query.shape, DType.BF16)
+        atomic_counter = self.workspace.reserve_tensor("attn.aotriton_atomic", (1,), DType.INT32)
         cast_library = _library_for(library, "cast")
         f32_to_bf16(
             scratch.query.ptr,
@@ -1929,7 +1930,7 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
         aotriton_library = _library_for(library, "aotriton")
-        aotriton_attn_fwd_compact_varlen(
+        aotriton_attn_fwd_v3_compact_varlen(
             aotriton_tensor4(q_bf16.ptr, (1, q_heads, rows, head_dim), (q_width * rows, head_dim, q_width, 1), DType.BF16),
             aotriton_tensor4(k_bf16.ptr, (1, kv_heads, rows, head_dim), (kv_width * rows, head_dim, kv_width, 1), DType.BF16),
             aotriton_tensor4(v_bf16.ptr, (1, kv_heads, rows, head_dim), (kv_width * rows, head_dim, kv_width, 1), DType.BF16),
@@ -1937,6 +1938,7 @@ class Qwen35ParoDecodeState:
             aotriton_tensor1(cu_seqlens_k.ptr, (segments + 1,), (1,), DType.INT32),
             aotriton_tensor2(lse.ptr, (q_heads, rows), (rows, 1), DType.FP32),
             aotriton_tensor4(attn_bf16.ptr, (1, q_heads, rows, head_dim), (q_width * rows, head_dim, q_width, 1), DType.BF16),
+            persistent_atomic_counter_ptr=atomic_counter.ptr,
             max_seqlen_q=rows,
             max_seqlen_k=rows,
             sm_scale=(self.config.head_dim ** -0.5) if scale is None else scale,

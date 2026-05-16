@@ -21,6 +21,7 @@ from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
     AOTRITON_DTYPE_FP32,
     aotriton_attn_fwd_compact_varlen,
     aotriton_attn_fwd_compact_varlen_gqa_per_q_head,
+    aotriton_attn_fwd_v3_compact_varlen,
     aotriton_dtype,
     plan_aotriton_wrap_build,
     tensor4,
@@ -158,6 +159,15 @@ def test_aotriton_prefill_variant_is_registered() -> None:
             variant="aotriton_attn_fwd",
         )
         is aotriton_attn_fwd_compact_varlen
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="full_attn_prefill",
+            quant="w4_paro",
+            variant="aotriton_attn_fwd_v3",
+        )
+        is aotriton_attn_fwd_v3_compact_varlen
     )
     assert (
         resolve(

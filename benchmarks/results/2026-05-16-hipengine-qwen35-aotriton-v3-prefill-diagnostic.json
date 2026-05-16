@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "reason_not_promoted": "Opt-in AOTriton prefill diagnostic only; default dispatch remains disabled until threshold sweep/full LLM.generate row and repeated-run protocol land.",
+  "date": "2026-05-16",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "change": "AOTriton V3 compact-varlen params ABI for opt-in Qwen3.5/PARO prefill, preserving BF16 Q/K/V/Out and BF16-to-FP16 gate semantics.",
+  "validation": {
+    "v2_v3_harness": {
+      "description": "Random BF16 compact-varlen GQA tensors, Q=(1,16,rows,256), K/V=(1,2,rows,256), compared V3 params call with V2 direct-GQA call and repeated V3 call using the same persistent atomic counter.",
+      "rows_64": {
+        "v2_v3_bits_equal": true,
+        "v3_repeat_bits_equal": true,
+        "max_abs": 0.0,
+        "mismatch": 0,
+        "atomic_after": 0
+      },
+      "rows_512": {
+        "v2_v3_bits_equal": true,
+        "v3_repeat_bits_equal": true,
+        "max_abs": 0.0,
+        "mismatch": 0,
+        "atomic_after": 0
+      }
+    },
+    "targeted_tests": {
+      "command": "python3 -m pytest tests/test_qwen35_paro_marlin_k.py tests/test_aotriton_discovery.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_decode_state.py -q",
+      "result": "73 passed"
+    },
+    "fixture_gate": {
+      "command": "python3 scripts/qwen35_native_prefill_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/task14-v3-fixture-aotriton.json",
+      "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+      "prompt_length": 512,
+      "decode_tokens": 32,
+      "max_layers": 40,
+      "attn_aotriton_min_tokens": 512,
+      "passed": true,
+      "generated_match": true,
+      "expected_match": true,
+      "max_kl": 0.039568870612619614,
+      "top1_agreement": 1.0,
+      "owned_device_bytes": 1625645917
+    }
+  },
+  "measurements": [
+    {
+      "workload": "512/128",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task14-v3-aotriton-512-128.json",
+      "prefill_tok_s": 2183.259595109745,
+      "decode_tok_s": 101.46153703174342,
+      "prefill_seconds": 0.2345117370132357,
+      "decode_seconds": 1.2615618070121855,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 512,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512
+      }
+    },
+    {
+      "workload": "4K/128",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/task14-v3-aotriton-4k-128.json",
+      "prefill_tok_s": 2377.9402308413432,
+      "decode_tok_s": 102.85992953740318,
+      "prefill_seconds": 1.7224991389084607,
+      "decode_seconds": 1.2444107299670577,
+      "prefill_execution_detail": {
+        "path": "single_request_native_full",
+        "tokens": 4096,
+        "full_native": true,
+        "linear_prefix_layers": 3,
+        "layer_limit": 40,
+        "aotriton_attention": true,
+        "attn_aotriton_min_tokens": 512
+      }
+    }
+  ],
+  "comparisons": {
+    "previous_v2_direct_gqa_smoke": {
+      "512_128_prefill_tok_s": 2164.732,
+      "4k_128_prefill_tok_s": 2374.341,
+      "source": "WORKLOG.md 2026-05-16 V2 direct-GQA AOTriton shortcut entry"
+    },
+    "native_bf16_fallback_smoke": {
+      "512_128_prefill_tok_s": 2045.535,
+      "4k_128_prefill_tok_s": 662.63,
+      "source": "WORKLOG.md 2026-05-16 Task #7 validation entry"
+    },
+    "parent_fixture_metrics": {
+      "prefill_tok_s": 2682.660298904437,
+      "decode_tok_s": 116.25779530736419,
+      "prefill_seconds": 0.19085532380267978,
+      "decode_seconds": 0.275250359904021,
+      "peak_allocated_bytes": 20183255040,
+      "peak_reserved_bytes": 20224933888,
+      "allocated_after_load_bytes": 19644673536,
+      "reserved_after_load_bytes": 19667091456
+    }
+  }
+}

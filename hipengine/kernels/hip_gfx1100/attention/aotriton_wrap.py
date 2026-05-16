@@ -23,6 +23,7 @@ _SYMBOL_CHECK_GPU = "hipengine_aotriton_check_gpu"
 _SYMBOL_GATE_MUL_FP16_INPLACE = "hipengine_aotriton_gate_mul_fp16_inplace"
 _SYMBOL_GATE_MUL_BF16_TO_FP16 = "hipengine_aotriton_gate_mul_bf16_to_fp16"
 _SYMBOL_ATTN_FWD_COMPACT_VARLEN = "hipengine_aotriton_attn_fwd_compact_varlen"
+_SYMBOL_ATTN_FWD_V3_COMPACT_VARLEN = "hipengine_aotriton_attn_fwd_v3_compact_varlen"
 _SYMBOL_ATTN_FWD_COMPACT_VARLEN_GQA_PER_Q_HEAD = "hipengine_aotriton_attn_fwd_compact_varlen_gqa_per_q_head"
 
 AOTRITON_DTYPE_FP32 = 1
@@ -170,6 +171,68 @@ def aotriton_attn_fwd_compact_varlen(
     _check_hip(runtime, err)
 
 
+def aotriton_attn_fwd_v3_compact_varlen(
+    q: AotritonTensor4,
+    k: AotritonTensor4,
+    v: AotritonTensor4,
+    cu_seqlens_q: AotritonTensor1,
+    cu_seqlens_k: AotritonTensor1,
+    softmax_lse: AotritonTensor2,
+    out: AotritonTensor4,
+    *,
+    persistent_atomic_counter_ptr: int,
+    max_seqlen_q: int,
+    max_seqlen_k: int,
+    sm_scale: float,
+    is_causal: bool = True,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    home_root: str | Path | None = None,
+) -> None:
+    """Launch AOTriton V3 compact-varlen forward attention through the C shim."""
+
+    if max_seqlen_q <= 0 or max_seqlen_k <= 0:
+        raise ValueError("max_seqlen_q and max_seqlen_k must be positive")
+    if is_causal and int(persistent_atomic_counter_ptr) == 0:
+        raise ValueError("causal AOTriton V3 prefill requires a persistent atomic counter")
+    library = library or build_aotriton_wrap(home_root=home_root, load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ATTN_FWD_V3_COMPACT_VARLEN)
+    fn.argtypes = [
+        ctypes.POINTER(AotritonTensor4),
+        ctypes.POINTER(AotritonTensor4),
+        ctypes.POINTER(AotritonTensor4),
+        ctypes.POINTER(AotritonTensor1),
+        ctypes.POINTER(AotritonTensor1),
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.POINTER(AotritonTensor2),
+        ctypes.POINTER(AotritonTensor4),
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_int32,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.byref(q),
+        ctypes.byref(k),
+        ctypes.byref(v),
+        ctypes.byref(cu_seqlens_q),
+        ctypes.byref(cu_seqlens_k),
+        ctypes.c_int32(max_seqlen_q),
+        ctypes.c_int32(max_seqlen_k),
+        ctypes.byref(softmax_lse),
+        ctypes.byref(out),
+        ctypes.c_void_p(persistent_atomic_counter_ptr),
+        ctypes.c_float(sm_scale),
+        ctypes.c_int32(1 if is_causal else 0),
+        ctypes.c_void_p(stream),
+    )
+    _check_hip(runtime, err)
+
+
 def aotriton_attn_fwd_compact_varlen_gqa_per_q_head(
     q: AotritonTensor4,
     k: AotritonTensor4,
@@ -307,6 +370,11 @@ def register_aotriton_wrap_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro", "aotriton_attn_fwd"),
         aotriton_attn_fwd_compact_varlen,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro", "aotriton_attn_fwd_v3"),
+        aotriton_attn_fwd_v3_compact_varlen,
         replace=replace,
     )
     register(

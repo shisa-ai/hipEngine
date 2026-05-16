@@ -368,6 +368,91 @@ extern "C" int hipengine_aotriton_attn_fwd_compact_varlen(
   return static_cast<int>(aot_err);
 }
 
+extern "C" int hipengine_aotriton_attn_fwd_v3_compact_varlen(
+    const HipengineAotritonTensor4* q,
+    const HipengineAotritonTensor4* k,
+    const HipengineAotritonTensor4* v,
+    const HipengineAotritonTensor1* cu_seqlens_q,
+    const HipengineAotritonTensor1* cu_seqlens_k,
+    int32_t max_seqlen_q,
+    int32_t max_seqlen_k,
+    const HipengineAotritonTensor2* softmax_lse,
+    const HipengineAotritonTensor4* out,
+    void* persistent_atomic_counter,
+    float sm_scale,
+    int32_t is_causal,
+    void* stream) {
+  if (max_seqlen_q <= 0 || max_seqlen_k <= 0) {
+    return static_cast<int>(kInvalidValue);
+  }
+  if (is_causal != 0 && persistent_atomic_counter == nullptr) {
+    return static_cast<int>(kInvalidValue);
+  }
+
+  TensorView<4> q_view;
+  TensorView<4> k_view;
+  TensorView<4> v_view;
+  TensorView<1> cu_q_view;
+  TensorView<1> cu_k_view;
+  TensorView<2> lse_view;
+  TensorView<4> out_view;
+  if (!make_tensor(q, &q_view) || !make_tensor(k, &k_view) || !make_tensor(v, &v_view) ||
+      !make_tensor(cu_seqlens_q, &cu_q_view) || !make_tensor(cu_seqlens_k, &cu_k_view) ||
+      !make_tensor(softmax_lse, &lse_view) || !make_tensor(out, &out_view)) {
+    return static_cast<int>(kInvalidValue);
+  }
+
+  hipStream_t hip_stream = reinterpret_cast<hipStream_t>(stream);
+  if (is_causal != 0) {
+    if (hipError_t err = hipMemsetAsync(persistent_atomic_counter, 0, sizeof(int32_t), hip_stream); err != hipSuccess) {
+      return static_cast<int>(err);
+    }
+  }
+
+  TensorView<4> null_bias = TensorView<4>::get_null_tensor(AOTRITON_NS::kFloat32);
+  TensorView<2> null_alibi = TensorView<2>::get_null_tensor(q_view.dtype());
+  TensorView<4> null_encoded_softmax = TensorView<4>::get_null_tensor(AOTRITON_NS::kFloat32);
+  TensorView<0> null_seed(0, AOTRITON_NS::kInt64);
+  TensorView<0> null_offset(0, AOTRITON_NS::kInt64);
+  TensorView<0> atomic_view = persistent_atomic_counter != nullptr
+      ? TensorView<0>(reinterpret_cast<intptr_t>(persistent_atomic_counter), AOTRITON_NS::kInt32)
+      : TensorView<0>(0, AOTRITON_NS::kInt32);
+
+  AOTRITON_NS::v3::flash::attn_fwd_params params;
+  params.Q = q_view;
+  params.K = k_view;
+  params.V = v_view;
+  params.B = null_bias;
+  params.A = null_alibi;
+  params.Sm_scale = sm_scale;
+  params.L = lse_view;
+  params.Out = out_view;
+  params.cu_seqlens_q = cu_q_view;
+  params.cu_seqlens_k = cu_k_view;
+  params.Max_seqlen_q = max_seqlen_q;
+  params.Max_seqlen_k = max_seqlen_k;
+  params.dropout_p = 0.0f;
+  params.philox_seed_ptr = null_seed;
+  params.philox_offset1 = null_offset;
+  params.philox_offset2 = 0;
+  params.philox_seed_output = null_seed;
+  params.philox_offset_output = null_offset;
+  params.encoded_softmax = null_encoded_softmax;
+  params.persistent_atomic_counter = atomic_view;
+  params.causal_type = is_causal != 0
+      ? AOTRITON_NS::v3::flash::CausalType::WindowedAttention
+      : AOTRITON_NS::v3::flash::CausalType::None;
+  params.varlen_type = AOTRITON_NS::v3::flash::VarlenType::CompactVarlen;
+  params.window_left = AOTRITON_NS::v3::flash::WindowValue::TopLeftAligned;
+  params.window_right = AOTRITON_NS::v3::flash::WindowValue::TopLeftAligned;
+
+  return static_cast<int>(AOTRITON_NS::v3::flash::attn_fwd(
+      params,
+      AOTRITON_NS::v3::flash::attn_fwd_params::kVersion,
+      Stream(hip_stream),
+      nullptr));
+}
+
 extern "C" int hipengine_aotriton_attn_fwd_compact_varlen_gqa_per_q_head(
     const HipengineAotritonTensor4* q,
     const HipengineAotritonTensor4* k,

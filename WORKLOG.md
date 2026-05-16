@@ -12572,3 +12572,117 @@ current pinned binary.  The V2 direct-GQA shortcut is correctness-clean and flip
 follow-ups are now threshold sweep and optional V3/atomic-counter cleanup; keep
 default dispatch disabled (`attn_aotriton_min_tokens=0`) until the threshold
 sweep lands.
+
+## 2026-05-16 — AOTriton V3 params ABI for opt-in Qwen3.5/PARO prefill
+
+Moved the opt-in AOTriton prefill path from the V2 positional
+`attn_fwd_compact_varlen` ABI to the top-level V3 `attn_fwd_params` ABI while
+preserving the already-validated BF16 semantics: FP32 Q/K scratch -> BF16, FP16
+V scratch -> BF16, V3 attention writes BF16, then BF16 attention output is gated
+with FP32 sigmoid semantics into FP16.  Default runtime dispatch remains disabled
+unless `PrefillConfig.attn_aotriton_min_tokens > 0`.
+
+V3 binding details:
+
+- Added `hipengine_aotriton_attn_fwd_v3_compact_varlen` in
+  `aotriton_wrap.cc` and `aotriton_attn_fwd_v3_compact_varlen` in Python.
+- `attn_fwd_params` uses Q shape `(1, 16, rows, 256)` and K/V shape
+  `(1, 2, rows, 256)` so GQA is inferred from `Q.size(1)` vs `K.size(1)`.
+- `cu_seqlens_q/k=[0, rows]`, `Max_seqlen_q/k=rows`,
+  `varlen_type=CompactVarlen`, `causal_type=WindowedAttention`, and
+  `window_left=window_right=WindowValue::TopLeftAligned`, matching AOTriton's
+  own V2 compatibility implementation.
+- Replaced per-call V2 `hipMalloc/hipFree` atomic behavior with a reusable
+  workspace tensor `attn.aotriton_atomic` (`int32[1]`).  The C shim resets it via
+  `hipMemsetAsync(..., 0, 4)` before each causal V3 call.
+
+Header/source verification:
+
+```bash
+# Installed header: ~/.cache/hipengine/aotriton/0.11.2b/include/aotriton/flash.h
+# V3 exposes attn_fwd_params + attn_fwd(params, kVersion, stream, options).
+# Parent source checked in ~/amd-gpu-tuning/reference/aotriton/v3src/flash/attn_fwd.cc:
+# V2 compatibility path lowers causal=True to CausalType::WindowedAttention with
+# WindowValue::TopLeftAligned for both window_left/right, and V3 infers
+# Num_head_q / Num_head_k from Q/K shapes.
+```
+
+One-off V2 direct-GQA vs V3 params equivalence harness:
+
+```bash
+python3 - <<'PY'
+# random BF16 compact-varlen GQA tensors, Q=(1,16,rows,256), K/V=(1,2,rows,256)
+# compare aotriton_attn_fwd_compact_varlen(...) against
+# aotriton_attn_fwd_v3_compact_varlen(...), then run V3 again with the same
+# persistent atomic pointer to verify reset/reuse behavior.
+PY
+# {'rows': 64, 'v2_v3_bits_equal': True, 'v3_repeat_bits_equal': True,
+#  'max_abs': 0.0, 'mismatch': 0, 'atomic_after': 0}
+# {'rows': 512, 'v2_v3_bits_equal': True, 'v3_repeat_bits_equal': True,
+#  'max_abs': 0.0, 'mismatch': 0, 'atomic_after': 0}
+```
+
+Build/targeted tests:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/attention/aotriton_wrap.py \
+  hipengine/runtime/qwen35_paro.py tests/test_aotriton_discovery.py
+# ok
+
+python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
+lib = build_aotriton_wrap(load=True)
+print('built', lib)
+PY
+# built ~/.cache/hipengine/build/aotriton_wrap-f055fc0f2aacfe03/hipengine_aotriton_wrap.so
+
+python3 -m pytest tests/test_qwen35_paro_marlin_k.py tests/test_aotriton_discovery.py \
+  tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_decode_state.py -q
+# 73 passed
+```
+
+Correctness fixture gate:
+
+```bash
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --attn-aotriton-min-tokens 512 --json /tmp/task14-v3-fixture-aotriton.json
+# passed=true, generated_match=true, expected_match=true,
+# max_kl=0.0395688706, top1=1.0
+```
+
+Diagnostic smoke performance on W7900/gfx1100, Qwen3.5-35B-A3B-PARO w4_paro,
+max_layers=40, repeated token id 9707, no graph replay, AOTriton opt-in threshold
+512:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/task14-v3-aotriton-512-128.json
+# prefill=2183.260 tok/s, decode=101.462 tok/s
+# previous V2 direct-GQA smoke: prefill=2164.732 tok/s
+# previous BF16 native fallback smoke: prefill=2045.535 tok/s
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/task14-v3-aotriton-4k-128.json
+# prefill=2377.940 tok/s, decode=102.860 tok/s
+# previous V2 direct-GQA smoke: prefill=2374.341 tok/s
+# previous BF16 native fallback smoke: prefill=662.630 tok/s
+```
+
+Retained diagnostic artifact/rollup update:
+
+- `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-prefill-diagnostic.json`
+- `benchmarks/README.md` blocked/diagnostic row updated; no current-fastest row
+  promoted because AOTriton remains opt-in pending threshold sweep/full
+  `LLM.generate()` protocol.
+- `benchmarks/CHANGELOG.md` one-liner added.
+
+Conclusion: V3 is correctness-equivalent to the V2 direct-GQA shortcut and now
+puts hipENGINE on the richer long-term AOTriton API with a reusable persistent
+atomic counter.  The next useful step is a threshold sweep; default remains
+`attn_aotriton_min_tokens=0` until that lands.
