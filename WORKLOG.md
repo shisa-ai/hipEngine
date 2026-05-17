@@ -16230,3 +16230,75 @@ Updated `scripts/qwen35_compare_tables.py` with `shisa-packed-gfx1151`, `llama.c
 python3 scripts/qwen35_compare_tables.py --target gfx1151 hip-gfx1151 --no-memory
 python3 scripts/qwen35_compare_tables.py --target gfx1151 vulkan-gfx1151 --no-memory
 ```
+
+## 2026-05-17 — gfx1151 4K prefill gap diagnosis
+
+Investigated why `hip_gfx1151` shisa packed prefill trails upstream llama.cpp HIP at 4K. Baseline comparison from the retained TUI sweep:
+
+- hipENGINE shisa packed 4K/128: `630.585 prefill tok/s` / `63.364 decode tok/s`.
+- upstream llama.cpp HIP GGUF 4K/128: `1004.220 prefill tok/s` / `49.379 decode tok/s`.
+
+### Profiling command
+
+Used cached kernels and profiled a 4K/1 run to keep decode noise out:
+
+```bash
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+rocprofv3 --kernel-trace --memory-copy-trace --stats --summary --summary-units msec \
+  --output-directory /tmp/gfx1151-prefill-diagnostics-20260517/profile-full-4k/out \
+  --output-file trace --output-format csv -- \
+  python3 scripts/qwen35_paro_bench.py \
+    --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+    --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 \
+    --prompt-length 4096 --decode-tokens 1 --warmup-decode-tokens 0 --max-layers 40 \
+    --attn-aotriton-min-tokens 512 --graph-replay-decode \
+    --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build
+```
+
+Baseline 4K/1 reproduced the issue: `6.524s prefill`, `627.865 tok/s`. Kernel trace total was `6.439s`, so the gap is real GPU work, not Python timing overhead. Top kernels:
+
+| Kernel group | Time | Calls | Share |
+| --- | ---: | ---: | ---: |
+| linear GDN recurrent K2 | 1.568s | 30 | 24.3% |
+| linear conv prefill lowp | 0.945s | 30 | 14.7% |
+| PARO rotate1 | 0.939s | 190 | 14.6% |
+| grouped MoE selected dual/down WMMA | 0.821s | 80 | 12.8% |
+| AWQ prefill dual/single | 0.834s | 170 | 12.9% |
+| linear prepare | 0.319s | 30 | 5.0% |
+| AOTriton full attention | 0.157s | 10 | 2.4% |
+
+Conclusion: 4K prefill is not attention-bound. Full-attention AOTriton is only ~2.4% of kernel time. The loss is dominated by unchunked 4096-row linear-attention and rotate/MLP surfaces on the 30 linear-attention layers.
+
+### Chunk-size A/B
+
+Repeated 4K/1 with prefill chunk flags:
+
+| Variant | Prefill seconds | Prefill tok/s | Notes |
+| --- | ---: | ---: | --- |
+| default unchunked | 6.441s | 635.884 | no manual chunks |
+| AOTriton disabled | 17.163s | 238.656 | confirms AOTriton is necessary, not the bottleneck |
+| fused linear GDN rotate env | 6.311s | 649.045 | small +2% only |
+| 1024 all chunks | 5.013s | 817.076 | +28% |
+| 512 all chunks | 4.381s | 934.927 | +47% |
+| 384 all chunks | 4.028s | 1016.899 | +60% |
+| 256 all chunks | 3.977s | 1029.808 | +62%, slightly above upstream HIP 4K/128 prefill |
+
+4K/128 and 4K/4K confirmation with 256-row chunks:
+
+| Workload | Prefill tok/s | Decode tok/s | Tracked peak |
+| --- | ---: | ---: | ---: |
+| 4K/128 chunk256 | 1026.369 | 63.512 | 18.097 GiB |
+| 4K/4K chunk256 | 1018.157 | 62.477 | 18.210 GiB |
+
+Additional spot checks:
+
+| Workload | Prefill tok/s with chunk256 | Decode tok/s | Tracked peak |
+| --- | ---: | ---: | ---: |
+| 512/128 | 966.510 | 62.139 | 17.997 GiB |
+| 2048/128 | 970.225 | 62.396 | 18.040 GiB |
+| 8192/128 | 981.441 | 62.035 | 18.211 GiB |
+| 32K/1 | 794.933 | 48.624 | 18.908 GiB |
+
+Chunk256 profile (`/tmp/gfx1151-prefill-diagnostics-20260517/profile-chunk256-4k/out`) reduced kernel total from `6.439s` to `3.987s`. The biggest wins were linear conv (`0.945s -> 0.091s`) and rotate1 (`0.939s -> 0.181s`); GDN recurrent also improved (`1.568s -> 0.931s`). MoE/AWQ/attention kernel time increases from more chunks/launches, but the linear-attention gains dominate.
+
+Working hypothesis: Strix Halo/gfx1151 dislikes the current unchunked 4096-row prefill surfaces for linear-attention/rotate kernels. The existing long-context chunk machinery fixes the shape. Next optimization should promote a mid-context gfx1151/default autotune profile around `256` rows for `linear/moe/full_attn_*` chunks, then rerun correctness + retained 512/4K/32K/128K sweeps.
