@@ -17826,3 +17826,30 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. py
 ```
 
 This improves the retained 512-token metric from `2142.8408` to `2271.7421 tok/s`, but remains below the Qwen3.6 packed PARO target (`2451.2 tok/s` 512; `2666.7 tok/s` 4K). Next likely bottleneck is still rows>1 projection/linear-attention prefill throughput.
+
+## 2026-05-17 GGUF bulk prefill iteration 11
+
+A fresh 128-token rocprof trace after iteration 10 showed dense BF16 rows>1 prefill was still dominant: `dense_prefill_gemm_out_kernel<uint16_t,32,8,32>` accounted for ~34.7 ms of 72.5 ms traced kernel time, ahead of Q4_K dual prefill (~12.4 ms), Q4_K single prefill (~9.7 ms), and GDN K2 prefill (~5.2 ms).
+
+Retuned the retained dense BF16 prefill kernel from 32x8x32 to 32x8x16 and added `#pragma unroll` to the tile-K accumulation loop. Rejected one-run variants: 16x8x16 (`2421.0 tok/s`), 64x8x16 (`2413.4`), 64x4x16 (`2339.7`), 32x4x16 (`2326.2`), 16x16x16 (`2291.2`), 32x16x16 (`2310.5`), 32x8x8 (`2228.9`), 32x8x24 (`2259.4`), plus Q4 pack8 default-thread variants 64/128/heuristic (`2405.5` / `2320.5` / `2391.3`).
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/linear/dense_gemv.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt -q
+# 1 passed
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --json /tmp/hipengine-gguf-bulk-loop-e2e.json >/tmp/hipengine-gguf-bulk-loop-e2e.out; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q'
+# 13 passed; E2E expected text/token IDs matched and torch_loaded_by_generate=false
+```
+
+Loop metrics:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-runs 0 --measured-runs 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-bulk-loop-512.json
+# 512: prefill_tok_s=2609.6445, decode_tok_s=84.6944, tracked_peak_gib=0.9374, finite_final_logits_all=true
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 1 --warmup-runs 0 --measured-runs 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-bulk-loop-4k.json
+# 4K: prefill_tok_s=3565.8555, decode_tok_s=47.4130, tracked_peak_gib=1.6084, finite_final_logits_all=true
+```
+
+This clears the one-run prefill targets for both Qwen3.6 packed PARO comparison rows (512 target `2451.2 tok/s`; 4K target `2666.7 tok/s`). Next step is promoted 3-run 512/128 and 4K/128 artifacts plus benchmark rollup/changelog updates if the medians hold.

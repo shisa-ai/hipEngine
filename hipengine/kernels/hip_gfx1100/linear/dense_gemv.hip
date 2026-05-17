@@ -134,6 +134,7 @@ __global__ void dense_prefill_gemm_out_kernel(
     if (row < rows && out_col < out_features) {
       const int64_t remaining_k = in_features - k0;
       const int tile_k = remaining_k < TILE_K ? static_cast<int>(remaining_k) : TILE_K;
+#pragma unroll
       for (int k = 0; k < tile_k; ++k) {
         acc = fmaf(scalar_to_float(sx[local_row][k]), scalar_to_float(sw[local_col][k]), acc);
       }
@@ -248,7 +249,7 @@ extern "C" int hipengine_dense_prefill_gemm_out_bf16(
   }
   constexpr int TILE_M = 32;
   constexpr int TILE_N = 8;
-  constexpr int TILE_K = 32;
+  constexpr int TILE_K = 16;
   hipLaunchKernelGGL(
       (dense_prefill_gemm_out_kernel<uint16_t, TILE_M, TILE_N, TILE_K>),
       dim3(
