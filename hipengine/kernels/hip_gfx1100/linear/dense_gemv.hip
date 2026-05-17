@@ -247,7 +247,7 @@ extern "C" int hipengine_dense_prefill_gemm_out_bf16(
     return static_cast<int>(hipErrorInvalidValue);
   }
   constexpr int TILE_M = 16;
-  constexpr int TILE_N = 16;
+  constexpr int TILE_N = 8;
   constexpr int TILE_K = 32;
   hipLaunchKernelGGL(
       (dense_prefill_gemm_out_kernel<uint16_t, TILE_M, TILE_N, TILE_K>),

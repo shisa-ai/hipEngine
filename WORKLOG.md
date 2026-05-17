@@ -17758,3 +17758,28 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. py
 ```
 
 The experiment was reverted immediately; retained tree keeps Q4_K pack8 materialization. No correctness guard was run after the adverse metric because no code from the experiment was retained.
+
+## 2026-05-17 GGUF bulk prefill iteration 7
+
+Explored dense BF16 prefill backend options after Q5/Q6 layer densification:
+
+- rocBLAS BF16 `rocblas_gemm_ex` via ctypes was rejected: loading/creating a rocBLAS handle in the existing HIP process segfaulted during `rocblas_create_handle`, so the code was fully reverted.
+- A direct BF16 WMMA variant compiled and passed the 4-token bulk-vs-serial smoke but regressed 512-token prefill to `1721.7193 tok/s`; reverted.
+- Dense tiled scalar GEMM variants:
+  - 8x32x32: `1452.9477 tok/s` (rejected)
+  - 32x8x32: `2150.9462 tok/s`
+  - 32x8x64: `1782.1596 tok/s` (rejected)
+  - 64x4x32: `2131.4080 tok/s`
+  - 32x16x32: `1971.9513 tok/s` (rejected)
+  - 16x8x32: retained; exact loop verify `2142.8408 tok/s`
+
+Validation for retained 16x8x32 tile:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt -q
+# 1 passed
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --json /tmp/hipengine-gguf-bulk-loop-e2e.json >/tmp/hipengine-gguf-bulk-loop-e2e.out; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q'
+# 13 passed
+```
+
+Loop metric: `2142.8408 tok/s` for 512-token prefill (`0.9374 GiB` tracked peak). This improves over the retained iteration-5 metric (`1977.1244 tok/s`) but remains below the Qwen3.6 packed PARO target (`2451.2 tok/s`).
