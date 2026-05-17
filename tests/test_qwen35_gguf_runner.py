@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -60,6 +61,41 @@ def test_qwen35_gguf_resident_session_can_allocate_benchmark_length_cache() -> N
         assert session.scratch is not None
         assert session.scratch.max_positions >= 512 + 128 + 1
         assert session.scratch.block_table_tensor.numel >= 3
+
+
+def test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        weights=SimpleNamespace(
+            config=SimpleNamespace(
+                is_moe=True,
+                ssm_conv_kernel=4,
+            )
+        )
+    )
+    calls: list[tuple[list[int], str, bool]] = []
+
+    def fake_bulk_prefill(
+        self: Qwen35GGUFResidentSession,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        bulk_attention_mode: str,
+        return_logits: bool,
+    ) -> SimpleNamespace:
+        _ = self
+        calls.append((list(token_ids), bulk_attention_mode, return_logits))
+        return SimpleNamespace(token_id=42, logit=1.0, logits=None)
+
+    monkeypatch.setattr(Qwen35GGUFResidentSession, "_run_bulk_prefill_and_sample", fake_bulk_prefill)
+
+    default = session.prefill([760, 4087, 369, 220], return_logits=False)
+    native = session.prefill([760, 4087, 369, 220], bulk_attention_mode="native", return_logits=True)
+
+    assert default.token_id == native.token_id == 42
+    assert calls == [
+        ([760, 4087, 369, 220], "bulk", False),
+        ([760, 4087, 369, 220], "native", True),
+    ]
 
 
 def test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt() -> None:

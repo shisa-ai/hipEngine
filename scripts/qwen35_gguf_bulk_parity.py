@@ -2,10 +2,10 @@
 """Diagnostic qwen35moe GGUF serial-vs-bulk prefill parity probe.
 
 This script compares the current public token-serial qwen35moe GGUF prefill
-path against two bulk schedulers: the parity-safe native-attention + row-bulk
-FFN/MoE path, and the faster fully bulk attention path. It also bisects
-hidden-state drift by layer limit. The output documents which bulk scheduler may
-be enabled by default and why the faster scheduler remains diagnostic-only.
+path against two bulk schedulers: the native-attention + row-bulk FFN/MoE
+fallback path, and the fast fully bulk attention+MoE path selected by default
+for qwen35moe long prompts. It also bisects hidden-state drift by layer limit.
+The output documents whether the default and fallback schedulers remain exact.
 """
 
 from __future__ import annotations

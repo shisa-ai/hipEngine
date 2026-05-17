@@ -1610,8 +1610,8 @@ class Qwen35GGUFResidentSession:
     The session materializes GGUF weights once, owns reusable device scratch, and
     carries linear-attention recurrent state plus paged full-attention K/V cache
     across decode steps. Full-attention q/k norm, RoPE, KV append, softmax, gate
-    application, lm-head argmax, and one-step decode graph replay stay on GPU for
-    the resident path; public full-model bulk prefill remains follow-up work.
+    application, lm-head argmax, full-model bulk prefill, and one-step decode
+    graph replay stay on GPU for the resident path.
     """
 
     model_path: str | Path
@@ -1721,11 +1721,11 @@ class Qwen35GGUFResidentSession:
         """Consume prompt tokens once and return the greedy next token.
 
         Prompts at least as long as the linear-attention convolution kernel use
-        native bulk prefill by default. qwen35moe defaults to a parity-safe
-        scheduler that preserves row-serial attention state updates and batches
-        only the FFN/MoE rows; the faster fully bulk attention scheduler remains
-        opt-in via ``bulk_attention_mode='bulk'``. Short prompts keep the
-        token-serial path as a correctness/bisect fallback. Set
+        bulk prefill by default. qwen35moe now defaults to the fast fully
+        bulk attention+MoE scheduler after the full-attention and recurrent
+        parity fixes; pass ``bulk_attention_mode='native'`` to keep row-serial
+        attention as a diagnostic fallback. Short prompts keep the token-serial
+        path as a correctness/bisect fallback. Set
         ``return_logits=False`` for public generation paths that only need the
         sampled token and should avoid copying full logits back to the host.
         """
@@ -1736,14 +1736,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident session is closed")
         min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
         selected_bulk_attention_mode = bulk_attention_mode
-        if self.runner.weights.config.is_moe and use_bulk is None:
-            # qwen35moe defaults to the parity-safe bulk scheduler: resident
-            # row-serial attention kernels preserve token-serial state semantics,
-            # then MoE/FFN work is batched over prompt rows.
-            selected_bulk_attention_mode = "native"
-            run_bulk = len(token_ids) >= min_bulk_tokens
-        else:
-            run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
+        run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
         if run_bulk:
             if len(token_ids) < min_bulk_tokens:
                 raise ValueError(

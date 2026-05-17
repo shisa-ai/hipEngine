@@ -3,8 +3,8 @@
 
 The harness measures the public GGUF resident execution surface directly: a
 single persistent ``Qwen35GGUFResidentSession`` per run, default resident prefill
-(native bulk when supported, token-serial fallback for short prompts; qwen35moe
-uses parity-safe native-attention bulk by default), one optional warmup decode
+(bulk when supported, token-serial fallback for short prompts; qwen35moe uses
+fast fully bulk attention+MoE by default), one optional warmup decode
 token, and one-step HIP graph replay for measured
 decode.  It is intentionally shape-driven so the retained artifacts can compare
 512/128 and 4K/128 against PARO resident diagnostics and llama.cpp GGUF rows.
@@ -161,8 +161,8 @@ def main() -> int:
         "summary": _summary(measured_runs),
         "notes": [
             "Prefill mode is controlled by --force-bulk-prefill/--no-bulk-prefill; default delegates to Qwen35GGUFResidentSession.prefill().",
-            "--bulk-prefill-attention-mode=native preserves row-serial attention while using row-bulk FFN/MoE and is the qwen35moe default when use_bulk is delegated.",
-            "--bulk-prefill-attention-mode=bulk selects the fast fully bulk scheduler; qwen35moe default promotion is tracked separately from this explicit benchmark flag.",
+            "--bulk-prefill-attention-mode=bulk selects the fast fully bulk scheduler and is the qwen35moe delegated default.",
+            "--bulk-prefill-attention-mode=native preserves row-serial attention while using row-bulk FFN/MoE as a qwen35moe diagnostic fallback.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
         ],
     }

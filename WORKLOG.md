@@ -18294,3 +18294,54 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
 Task #57 acceptance is met: `scripts/qwen35_gguf_bulk_parity.py` reports serial/default/native/fast bulk top-1 match, KL `0.0`, max logit abs `0.0`, and no hidden drift on the probe; public qwen35moe no-torch smoke passes. Task #55 remains open because this is still far below the PARO/llama.cpp-class targets. Next: task #58 can promote the fast-bulk scheduler by default, then task #59/#60 need GGUF-to-packed sidecars/grouped packed MoE kernels to attack the raw GGUF expert bottleneck.
 
 Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-linear-recurrent-parity-fixed-diagnostic.json`.
+
+## 2026-05-17 qwen35moe GGUF task #58 fast-bulk default promotion
+
+Task #58 promoted the qwen35moe GGUF long-prompt default from the parity-safe native-attention row-bulk scheduler to the fully bulk attention+MoE scheduler fixed in tasks #56/#57. `Qwen35GGUFResidentSession.prefill(..., use_bulk=None)` now delegates to `bulk_attention_mode="bulk"` for prompts at least as long as the SSM conv kernel; `bulk_attention_mode="native"` remains the diagnostic row-serial attention fallback.
+
+Implementation notes:
+
+- Removed the qwen35moe-specific default override to `bulk_attention_mode="native"`.
+- Added a unit test that constructs a lightweight qwen35moe session facade and verifies delegated default prefill calls `_run_bulk_prefill_and_sample(..., bulk_attention_mode="bulk")`, while `bulk_attention_mode="native"` still selects the fallback.
+- Updated parity/benchmark script copy and retained benchmark artifacts to reflect that fast bulk is now the qwen35moe default.
+
+Validation:
+
+```bash
+PYTHONPATH=. pytest -q \
+  tests/test_qwen35_gguf_runner.py::test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback \
+  tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt \
+  tests/test_llm_gguf_generate_path.py tests/test_gguf_linear_dispatch.py
+# 12 passed
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bulk_parity.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task58-default-parity.json
+# fast_bulk_attention_default_allowed=true; serial/default/native/fast-bulk token 4469; KL=0.0; max_abs_logit=0.0; no hidden drift
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 2 \
+  --json /tmp/hipengine-task58-public-correctness.json
+# passed=true; Hello -> izio.; IDs [43482, 13]; torch_loaded_by_generate=false
+```
+
+Default delegated benchmark rows after promotion:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-task58-default-512-128.json
+# resident_default_prefill_graph_decode: 99.851351586 tok/s prefill, 49.798204951 tok/s decode, tracked peak 20.885867577 GiB
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-task58-default-4096-128.json
+# resident_default_prefill_graph_decode: 77.920811931 tok/s prefill, 33.168146420 tok/s decode, tracked peak 22.121930633 GiB
+```
+
+Acceptance is met: public qwen35moe `LLM.generate()` correctness remains torch-free, the parity probe accepts fast default, and 512/128 default prefill is `99.851 tok/s`, up from the prior parity-safe native-attention row's `15.469 tok/s`. Task #55 remains open; next work is task #59/#60 to create GGUF-to-packed sidecars/grouped packed MoE kernels, then task #61 for the 512/128 optimization loop and decode profiling.
+
+Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-fast-bulk-default-promoted-diagnostic.json`.

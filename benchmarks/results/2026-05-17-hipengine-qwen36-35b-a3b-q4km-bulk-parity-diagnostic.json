@@ -8,7 +8,7 @@
     369,
     220
   ],
-  "elapsed_seconds": 17.043655592016876,
+  "elapsed_seconds": 16.796577552042436,
   "native_attention_bulk_ffn_default_allowed": true,
   "fast_bulk_attention_default_allowed": true,
   "summary": {
@@ -33,13 +33,13 @@
     "serial": {
       "token_id": 4469,
       "logit": 9.824976921081543,
-      "seconds": 0.6375856689992361,
+      "seconds": 0.6387990200310014,
       "finite_logits": true
     },
     "default": {
       "token_id": 4469,
       "logit": 9.824976921081543,
-      "seconds": 0.3571072199847549,
+      "seconds": 0.160703445028048,
       "finite_logits": true
     },
     "default_comparison": {
@@ -54,7 +54,7 @@
     "native_attention_bulk_ffn": {
       "token_id": 4469,
       "logit": 9.824976921081543,
-      "seconds": 0.35735599597683176,
+      "seconds": 0.3577517800149508,
       "finite_logits": true
     },
     "native_attention_bulk_ffn_comparison": {
@@ -69,7 +69,7 @@
     "fast_bulk_attention": {
       "token_id": 4469,
       "logit": 9.824976921081543,
-      "seconds": 0.16097239503869787,
+      "seconds": 0.1610013900208287,
       "finite_logits": true
     },
     "fast_bulk_attention_comparison": {
