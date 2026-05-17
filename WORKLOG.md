@@ -18514,3 +18514,128 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
 Interpretation: the sidecar kernels are correctness-safe and rocprof-visible, and they improve 512/128 prefill by `+303.8%` versus the old parity-safe native-attention row baseline (`15.469 tok/s`). They are **not** a promoted default because they are `-37.5%` versus the current raw fast-bulk default (`99.941 tok/s`) and still `-97.4%` versus llama.cpp HIP Q4_K_M (`2436.049 tok/s`). The immediate blocker is data movement/residency plus lack of grouped/tiled reuse: the full sidecar cache is 23.844 GiB, while the 24 GiB device cannot keep raw GGUF weights plus all sidecars resident, so the opt-in path copies/allocates/frees sidecars layer-by-layer during prefill. Task #61 should profile per-layer compute vs copy overhead and design grouped-by-expert/tiled reuse or a memory policy that avoids duplicate raw+sidecar residency.
 
 Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-expert-pack8-sidecar-diagnostic.json`.
+
+## 2026-05-17 qwen35moe GGUF task #61 512/128 PARO-range blocker profile
+
+Task #61 used 512/128 as the primary loop after the task #58 fast-bulk parity fixes and task #60 expert sidecar kernels. The accepted outcome is a retained blocker with profile evidence: current qwen35moe GGUF prefill is still far below the PARO/llama.cpp-class 2000 tok/s+ target, and rocprof shows the limiter is row-wise GGUF GEMV, not attention.
+
+Correctness gates:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bulk_parity.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task61/bulk-parity.json
+# serial/default/native/fast token 4469, KL 0, max logit diff 0, no hidden drift
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json \
+  --json /tmp/hipengine-task61/public-e2e.json
+# passed=true; output izio.; IDs [43482, 13]; torch_loaded_by_generate=false
+```
+
+Exact 512/128 default benchmark rerun (attached RX 7900 XTX/gfx1100, cached HIP builds):
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task61/default-512-128-3run.json
+# prefill tok/s samples: 99.775917, 99.919782, 99.978547; median 99.919782
+# decode tok/s samples: 49.870983, 49.857312, 49.826997; median 49.857312
+# tracked peak: 20.885868 GiB; final token id 11 in all runs
+```
+
+Comparison to targets:
+
+- vs 2000 tok/s task floor: `99.920`, `-95.0%`, needs `20.0x`.
+- vs retained PARO source-lineage 512/128: `2696.4`, `-96.29%`, needs `27.0x`.
+- vs llama.cpp HIP UD-Q4_K_M 512/128: `2436.049`, `-95.90%`, needs `24.4x`.
+
+Profile evidence, raw default prefill-only:
+
+```bash
+rm -rf /tmp/hipengine-task61/rocprof-default-512 && mkdir -p /tmp/hipengine-task61/rocprof-default-512
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task61/rocprof-default-512 -- \
+  python3 scripts/qwen35_gguf_bench.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 \
+    --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+    --json /tmp/hipengine-task61/default-512-prefill-profile-run.json
+# prefill wall 5.145595 s, 99.502589 tok/s under rocprof
+# 1175 dispatches, total kernel time 5113.632 ms
+```
+
+Top raw-default families from the kernel trace:
+
+- Q8_0 dense row-GEMV (`gguf_k_prefill_out_kernel<...,8>`): `1931.179 ms`, `250` calls, `37.77%` of kernel time.
+- Q4 selected expert row-GEMV: `1453.014 ms`, `80` calls, `28.41%`.
+- Q5 selected expert row-GEMV: `925.587 ms`, `37` calls, `18.10%`.
+- Q6 selected expert row-GEMV: `62.748 ms`, `3` calls, `1.23%`.
+- GDN recurrent prefill: `663.649 ms`, `30` calls, `12.98%`.
+- Full-attention prefill: `38.927 ms`, `10` calls, `0.76%`.
+
+The profile is decisive: raw default prefill spends ~`4.37 s` in Q8_0 dense plus selected-expert row-GEMV alone. The 2000 tok/s budget for 512 tokens is `0.256 s`, so even deleting attention and router work cannot get close without replacing row-GEMV with matrix-tiled/dequant+GEMM kernels.
+
+Sidecar iteration and profile:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --use-expert-sidecar --expert-sidecar-cache-dir /tmp/hipengine-task60-sidecar --require-expert-sidecar \
+  --json /tmp/hipengine-task61/sidecar-512-128-1run.json
+# 62.399822 tok/s prefill, 49.483763 tok/s decode, tracked peak 21.510867 GiB
+```
+
+Sidecar rocprof prefill-only:
+
+```bash
+rm -rf /tmp/hipengine-task61/rocprof-sidecar-512 && mkdir -p /tmp/hipengine-task61/rocprof-sidecar-512
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task61/rocprof-sidecar-512 -- \
+  python3 scripts/qwen35_gguf_bench.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 \
+    --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+    --use-expert-sidecar --expert-sidecar-cache-dir /tmp/hipengine-task60-sidecar --require-expert-sidecar \
+    --json /tmp/hipengine-task61/sidecar-512-prefill-profile-run.json
+# prefill wall 8.196755 s, total kernel time 3091.346 ms
+# Q8_0 dense remains 1912.262 ms / 61.86% of kernel time.
+# Sidecar Q4 dual gate/up is 246.683 ms and sidecar down selected is 191.431 ms total.
+```
+
+Interpretation: sidecar kernels make selected expert *kernel* time much smaller, but wall time regresses because the 24 GiB device cannot keep both raw GGUF expert weights and the full 23.844 GiB packed sidecar cache resident. The opt-in path copies/allocates/frees sidecar arrays layer-by-layer, and the one-run 512/128 sidecar benchmark reports `44.7 GiB` total allocated and `23.8 GiB` total freed by the end of prefill. The remaining dense Q8_0 row-GEMV family then dominates sidecar kernel time anyway.
+
+Rejected iteration:
+
+- Temporarily changed `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py` wrapper defaults from `threads=128` to `threads=256` for raw Q8/Q5/Q6 and selected variants.
+- Ran:
+  ```bash
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+    python3 scripts/qwen35_gguf_bulk_parity.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+    --layer-limits 0,40 --json /tmp/hipengine-task61/bulk-parity-ggufk-t256-probe.json
+  ```
+- Rejected before throughput benchmarking and reverted: serial/default/native/fast were internally exact, but the deterministic probe token changed from the accepted `4469` to `451`, which violates the qwen35moe fixture stability expectation.
+
+Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-512-128-paro-blocker-profile.json`.
+
+Next required work before reopening the PARO-range target:
+
+1. Replace Q8_0/Q5_K/Q6_K row-GEMV prefill with matrix-tiled kernels or a dequant+GEMM path with a memory plan. Q8_0 dense alone is `37.8%` of raw prefill kernel time and `61.9%` after sidecar.
+2. Add grouped-by-expert/tiled selected-MoE kernels that reuse packed expert data across selected rows rather than launching one row/output dot product per block.
+3. Solve sidecar residency: either omit raw expert weights once sidecar decode fallback exists, or stream sidecars in a way that avoids multi-second H2D/allocation overhead.
+4. Preserve deterministic qwen35moe correctness when changing reductions; simple thread-count retunes can alter logits/tokens.
