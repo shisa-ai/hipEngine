@@ -2,8 +2,9 @@
 """Resident Qwen3.5 GGUF c=1 benchmark harness.
 
 The harness measures the public GGUF resident execution surface directly: a
-single persistent ``Qwen35GGUFResidentSession`` per run, token-serial prefill,
-one optional warmup decode token, and one-step HIP graph replay for measured
+single persistent ``Qwen35GGUFResidentSession`` per run, default resident prefill
+(native bulk when supported, token-serial fallback for short prompts), one
+optional warmup decode token, and one-step HIP graph replay for measured
 decode.  It is intentionally shape-driven so the retained artifacts can compare
 512/128 and 4K/128 against PARO resident diagnostics and llama.cpp GGUF rows.
 """
@@ -41,6 +42,17 @@ def main() -> int:
     parser.add_argument("--warmup-decode-tokens", type=int, default=1)
     parser.add_argument("--warmup-runs", type=int, default=1)
     parser.add_argument("--measured-runs", type=int, default=3)
+    prefill_group = parser.add_mutually_exclusive_group()
+    prefill_group.add_argument(
+        "--force-bulk-prefill",
+        action="store_true",
+        help="Pass use_bulk=True to Qwen35GGUFResidentSession.prefill().",
+    )
+    prefill_group.add_argument(
+        "--no-bulk-prefill",
+        action="store_true",
+        help="Pass use_bulk=False to Qwen35GGUFResidentSession.prefill().",
+    )
     parser.add_argument(
         "--graph-replay-decode",
         action=argparse.BooleanOptionalAction,
@@ -74,6 +86,12 @@ def main() -> int:
         raise ValueError("--decode-tokens must be divisible by --graph-steps-per-replay")
 
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file else None
+    if args.force_bulk_prefill:
+        use_bulk_prefill = True
+    elif args.no_bulk_prefill:
+        use_bulk_prefill = False
+    else:
+        use_bulk_prefill = None
     prompt_tokens = [int(args.token_id)] * int(args.prompt_length)
     max_sequence_length = len(prompt_tokens) + args.warmup_decode_tokens + args.decode_tokens + 1
 
@@ -89,6 +107,7 @@ def main() -> int:
             max_sequence_length=max_sequence_length,
             graph_replay_decode=args.graph_replay_decode,
             graph_steps_per_replay=args.graph_steps_per_replay,
+            use_bulk_prefill=use_bulk_prefill,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
             measured=measured,
@@ -110,7 +129,7 @@ def main() -> int:
         "model": str(args.model),
         "quant": args.quant,
         "backend": "hip_gfx1100",
-        "mode": "resident_token_serial_prefill_graph_decode" if args.graph_replay_decode else "resident_token_serial_prefill_eager_decode",
+        "mode": _mode_name(graph_replay_decode=args.graph_replay_decode, use_bulk_prefill=use_bulk_prefill),
         "prompt_source": "repeated_token_id",
         "token_id": int(args.token_id),
         "prompt_length": int(args.prompt_length),
@@ -121,13 +140,15 @@ def main() -> int:
         "max_sequence_length": int(max_sequence_length),
         "graph_replay_decode": bool(args.graph_replay_decode),
         "graph_steps_per_replay": int(args.graph_steps_per_replay if args.graph_replay_decode else 0),
+        "use_bulk_prefill": use_bulk_prefill,
         "require_cached_build": bool(args.require_cached_build),
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
         "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
         "runs": runs,
         "summary": _summary(measured_runs),
         "notes": [
-            "Prefill is currently token-serial through Qwen35GGUFResidentSession.prefill(); this benchmark is not a promoted throughput row.",
+            "Prefill mode is controlled by --force-bulk-prefill/--no-bulk-prefill; default delegates to Qwen35GGUFResidentSession.prefill().",
+            "qwen35moe GGUF bulk prefill is diagnostic-only until stronger long-prompt parity/oracle gates land.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
         ],
     }
@@ -137,6 +158,17 @@ def main() -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(text + "\n")
     return 0
+
+
+def _mode_name(*, graph_replay_decode: bool, use_bulk_prefill: bool | None) -> str:
+    if use_bulk_prefill is True:
+        prefill = "bulk_prefill"
+    elif use_bulk_prefill is False:
+        prefill = "token_serial_prefill"
+    else:
+        prefill = "default_prefill"
+    decode = "graph_decode" if graph_replay_decode else "eager_decode"
+    return f"resident_{prefill}_{decode}"
 
 
 def _run_once(
@@ -149,6 +181,7 @@ def _run_once(
     max_sequence_length: int,
     graph_replay_decode: bool,
     graph_steps_per_replay: int,
+    use_bulk_prefill: bool | None,
     compiler_version: str | None,
     require_cached_build: bool,
     measured: bool,
@@ -173,7 +206,7 @@ def _run_once(
     graph_capture_seconds = 0.0
     try:
         prefill_start = time.perf_counter()
-        first = session.prefill(prompt_tokens, return_logits=False)
+        first = session.prefill(prompt_tokens, use_bulk=use_bulk_prefill, return_logits=False)
         prefill_seconds = time.perf_counter() - prefill_start
         generated_token_ids.append(first.token_id)
         next_token = first.token_id
@@ -228,6 +261,7 @@ def _run_once(
         "prompt_length": len(prompt_tokens),
         "decode_tokens": int(decode_tokens),
         "warmup_decode_tokens": int(warmup_decode_tokens),
+        "use_bulk_prefill": use_bulk_prefill,
         "timings": {
             "load_seconds": load_seconds,
             "prefill_seconds": prefill_seconds,

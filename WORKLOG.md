@@ -18050,3 +18050,56 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
 Deltas vs prior hipENGINE diagnostic: 512/128 `+137%` prefill and `+1675%` decode; 4K/128 `+138%` prefill and `+1105%` decode. Still not close to retained PARO: prefill remains `-99.8%` and decode remains `-57.1%/-70.7%` at 512/4K. Task #55 therefore remains open. Next required architecture work is qwen35moe bulk prefill with row-strided shared-router logits plus rows*top_k selected expert dispatch; further raw-GGUF kernel micro-tuning/grouped-MoE R&D should move to `~/amd-gpu-tuning/` per `docs/KERNELS.md` before porting stable kernels back.
 
 Retained progress artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-selected-device-experts-diagnostic.json`.
+
+## 2026-05-17 qwen35moe GGUF task #55 explicit bulk-MoE-prefill iteration
+
+Implemented the next task #55 progress iteration: qwen35moe GGUF post-attention MoE now has a multi-row path for explicit diagnostic bulk prefill. The new path computes row-strided router logits for all prompt rows, selects top-k experts on device for each row, launches selected raw GGUF expert gate/up/down over `tokens * top_k` lanes, runs shared expert rows in bulk, and uses the existing batched weighted/shared-gate/residual combine. The public qwen35moe default remains token-serial unless `use_bulk=True` is explicit, because a manual 4-token qwen35moe serial-vs-bulk probe is finite but not parity-clean yet (`token_id 4469 vs 101478`, KL `3.0287`, max logit abs diff `14.378`). The bench harness therefore gained `--force-bulk-prefill` / `--no-bulk-prefill` so this remains an explicit diagnostic path rather than a silent public default.
+
+Validation and correctness gates:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_gguf_bench.py
+PYTHONPATH=. pytest -q tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt tests/test_llm_gguf_generate_path.py tests/test_gguf_linear_dispatch.py
+# 11 passed
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/gguf_prefill_projection_smoke.py --rows 4 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# Q4_K/Q8_0/Q5_K/Q6_K selected_bf16_bf16_out all max_abs=0.0 bit_mismatch=0; worst_max_abs=0.0
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json \
+  --repeat 2 --json /tmp/hipengine-qwen36-task55-bulk-final-correctness.json
+# passed=true; outputs=["izio.", "izio."]; ids [43482,13]; finite logits argmax=43482; torch_loaded_by_generate=false
+```
+
+Short profile after the bulk path (8/1, graph decode enabled) showed dispatches `8389 -> 2178` vs the previous selected-device-expert profile and kernel total `219.125 -> 141.864 ms`. Top remaining GPU time is raw GGUF Q8_0 prefill (`34.8%`), Q4_K selected expert prefill (`31.6%`), and Q5_K selected expert prefill (`18.2%`), so matching PARO likely requires grouped/packed MoE kernels or a GGUF-to-packed sidecar path rather than more Python dispatch work here.
+
+```bash
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen36-task55-bulk-profile-8-1 -- \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-qwen36-task55-bulk-profile-8-1.json
+# prefill/decode 31.639/31.107 tok/s under rocprof; dispatches=2178; kernel_total=141.864 ms
+```
+
+Requested shape measurements with explicit bulk prefill:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --force-bulk-prefill --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-qwen36-task55-bulk-512-128-v2.json
+# prefill/decode 115.972105206 / 49.798281168 tok/s; tracked peak 20.885867577 GiB; final logits finite
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --force-bulk-prefill --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-qwen36-task55-bulk-4096-128-v2.json
+# prefill/decode 102.865865153 / 33.184899353 tok/s; tracked peak 22.121930633 GiB; final logits finite
+```
+
+Deltas vs the prior selected-device-expert diagnostic: 512/128 `+1623%` prefill and `-0.1%` decode; 4K/128 `+1424%` prefill and `+0.1%` decode. Still not close to retained PARO: prefill remains `-95.7%/-96.2%`, decode remains `-57.1%/-70.6%`. Task #55 remains open. Next work should first establish a stronger qwen35moe long-prompt bulk oracle/parity target, then move raw-GGUF grouped/packed MoE kernel R&D to `~/amd-gpu-tuning/` before porting stable kernels back.
+
+Retained progress artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bulk-moe-prefill-diagnostic.json`.

@@ -37,6 +37,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     silu_mul_separate_out_bf16,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32, build_lm_head, lm_head_argmax_stage1_blocks
@@ -1111,9 +1112,10 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         if self.weights.config.is_moe:
-            if rows != 1:
-                raise NotImplementedError("qwen35moe GGUF bulk MoE rows are not wired yet")
-            self._run_post_attention_moe_c1(layer_id, out_ptr, scratch, stream=stream)
+            if rows == 1:
+                self._run_post_attention_moe_c1(layer_id, out_ptr, scratch, stream=stream)
+            else:
+                self._run_post_attention_moe_rows(layer_id, out_ptr, scratch, rows=rows, stream=stream)
             return
         if not launch_gguf_linear_pair(
             layer.weight("ffn_gate"),
@@ -1339,6 +1341,181 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
+    def _run_post_attention_moe_rows(
+        self,
+        layer_id: int,
+        out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        assert self.weights is not None
+        cfg = self.weights.config
+        if not cfg.is_moe:
+            raise ValueError("MoE path requires qwen35moe GGUF config")
+        if rows <= 1:
+            raise ValueError("bulk MoE rows path requires rows > 1")
+        if not hasattr(scratch, "moe_shared_gate_logits"):
+            raise ValueError("qwen35moe bulk MoE scratch is missing shared-gate logits")
+        layer = self.weights.layer(layer_id)
+        runtime = self.runtime or get_hip_runtime()
+        top_k = int(cfg.expert_used_count)
+        if top_k <= 0:
+            raise ValueError("qwen35moe GGUF expert_used_count must be positive")
+        selected_rows = rows * top_k
+
+        qwen35_router_logits_bf16(
+            scratch.post_norm.ptr,
+            layer.weight("ffn_gate_inp").allocation().tensor.ptr,
+            scratch.moe_router_logits.ptr,
+            rows,
+            self.hidden_size,
+            cfg.expert_count,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_router_logits_bf16(
+            scratch.post_norm.ptr,
+            layer.weight("ffn_gate_inp_shexp").allocation().tensor.ptr,
+            scratch.moe_shared_gate_logits.ptr,
+            rows,
+            self.hidden_size,
+            1,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_router_select(
+            scratch.moe_router_logits.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.moe_routing_weights.ptr,
+            rows,
+            cfg.expert_count,
+            cfg.expert_count,
+            top_k,
+            stream=stream,
+            runtime=runtime,
+        )
+
+        gate_weight = layer.weight("ffn_gate_exps")
+        up_weight = layer.weight("ffn_up_exps")
+        down_weight = layer.weight("ffn_down_exps")
+        gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
+        _launch_selected_raw_gguf_moe_linear(
+            gate_weight,
+            scratch.post_norm.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.ffn_gate_up.ptr,
+            x_rows=rows,
+            rows=selected_rows,
+            num_experts=cfg.expert_count,
+            in_features=self.hidden_size,
+            out_features=cfg.expert_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        _launch_selected_raw_gguf_moe_linear(
+            up_weight,
+            scratch.post_norm.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+            x_rows=rows,
+            rows=selected_rows,
+            num_experts=cfg.expert_count,
+            in_features=self.hidden_size,
+            out_features=cfg.expert_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        silu_mul_separate_out_bf16(
+            scratch.ffn_gate_up.ptr,
+            scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+            scratch.ffn_intermediate.ptr,
+            rows=selected_rows,
+            features=cfg.expert_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        _launch_selected_raw_gguf_moe_linear(
+            down_weight,
+            scratch.ffn_intermediate.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.moe_down_out.ptr,
+            x_rows=selected_rows,
+            rows=selected_rows,
+            num_experts=cfg.expert_count,
+            in_features=cfg.expert_feed_forward_length,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+
+        if not launch_gguf_linear_pair(
+            layer.weight("ffn_gate_shexp"),
+            layer.weight("ffn_up_shexp"),
+            scratch.post_norm.ptr,
+            scratch.moe_shared_gate.ptr,
+            scratch.moe_shared_up.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=cfg.expert_shared_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        ):
+            launch_gguf_linear(
+                layer.weight("ffn_gate_shexp"),
+                scratch.post_norm.ptr,
+                scratch.moe_shared_gate.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_shared_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ffn_up_shexp"),
+                scratch.post_norm.ptr,
+                scratch.moe_shared_up.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_shared_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+        silu_mul_separate_out_bf16(
+            scratch.moe_shared_gate.ptr,
+            scratch.moe_shared_up.ptr,
+            scratch.moe_shared_intermediate.ptr,
+            rows=rows,
+            features=cfg.expert_shared_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ffn_down_shexp"),
+            scratch.moe_shared_intermediate.ptr,
+            scratch.moe_shared_out.ptr,
+            rows=rows,
+            in_features=cfg.expert_shared_feed_forward_length,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
+            scratch.moe_down_out.ptr,
+            scratch.moe_routing_weights.ptr,
+            scratch.moe_shared_out.ptr,
+            scratch.moe_shared_gate_logits.ptr,
+            scratch.residual.ptr,
+            out_ptr,
+            rows,
+            top_k,
+            self.hidden_size,
+            1,
+            stream=stream,
+            runtime=runtime,
+        )
+
     def close(self) -> None:
         if self.weights is not None:
             self.weights.free(runtime=self.runtime)
@@ -1480,6 +1657,9 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident session is closed")
         min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
         if self.runner.weights.config.is_moe and use_bulk is None:
+            # qwen35moe bulk GGUF prefill is available as an explicit diagnostic
+            # path, but it is not the public default until a stronger long-prompt
+            # oracle closes the remaining serial-vs-bulk drift.
             run_bulk = False
         else:
             run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
@@ -2037,6 +2217,15 @@ class _GGUFFullAttentionPrefillScratch:
     ffn_gate_up: object
     ffn_intermediate: object
     ffn_down: object
+    moe_router_logits: object
+    moe_shared_gate_logits: object
+    moe_selected_experts: object
+    moe_routing_weights: object
+    moe_down_out: object
+    moe_shared_gate: object
+    moe_shared_up: object
+    moe_shared_intermediate: object
+    moe_shared_out: object
     key_cache: object
     value_cache: object
     block_table: object
@@ -2080,6 +2269,10 @@ class _GGUFFullAttentionPrefillScratch:
         q_f32_bytes = rows * runner.q_width * 4
         kv_f32_bytes = rows * runner.kv_width * 4
         ffn_bytes = rows * runner.ffn_size * 2
+        moe_lane_count = max(1, int(cfg.expert_used_count)) if cfg.is_moe else 1
+        moe_top_k = max(1, int(cfg.expert_used_count))
+        moe_experts = max(1, int(cfg.expert_count))
+        moe_shared_ffn = max(1, int(cfg.expert_shared_feed_forward_length or runner.ffn_size or 1))
         linear_qkv_bf16_bytes = rows * runner.linear_qkv_width * 2
         linear_qkv_f32_bytes = rows * runner.linear_qkv_width * 4
         linear_z_bytes = rows * cfg.ssm_inner_size * 2
@@ -2126,9 +2319,18 @@ class _GGUFFullAttentionPrefillScratch:
             "attn_out": buf(hidden_bytes),
             "post_norm": buf(hidden_bytes),
             "residual": buf(hidden_bytes),
-            "ffn_gate_up": buf(2 * ffn_bytes),
-            "ffn_intermediate": buf(ffn_bytes),
+            "ffn_gate_up": buf(2 * ffn_bytes * moe_lane_count),
+            "ffn_intermediate": buf(ffn_bytes * moe_lane_count),
             "ffn_down": buf(hidden_bytes),
+            "moe_router_logits": buf(rows * moe_experts * DType.FP32.itemsize),
+            "moe_shared_gate_logits": buf(rows * DType.FP32.itemsize),
+            "moe_selected_experts": buf(rows * moe_top_k * DType.INT64.itemsize),
+            "moe_routing_weights": buf(rows * moe_top_k * DType.FP32.itemsize),
+            "moe_down_out": buf(moe_top_k * hidden_bytes),
+            "moe_shared_gate": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
+            "moe_shared_up": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
+            "moe_shared_intermediate": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
+            "moe_shared_out": buf(hidden_bytes),
             "key_cache": buf(cache_nbytes),
             "value_cache": buf(cache_nbytes),
             "block_table": buf(block_table_arr.nbytes),
