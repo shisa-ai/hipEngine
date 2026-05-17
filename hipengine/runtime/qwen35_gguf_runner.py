@@ -12,16 +12,27 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
+    aotriton_attn_fwd_v3_compact_varlen,
+    tensor1 as aotriton_tensor1,
+    tensor2 as aotriton_tensor2,
+    tensor4 as aotriton_tensor4,
+)
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_full_attn_gate_mul_bf16,
     qwen35_paged_full_attn_decode_context_bf16_spans,
 )
-from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import qwen35_write_paged_kv_mixed_value_bf16_spans
+from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
+    qwen35_write_paged_kv_mixed_value_bf16_prompt_spans,
+    qwen35_write_paged_kv_mixed_value_bf16_spans,
+)
 from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused import (
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_bf16_add,
+    gguf_gate_mul_bf16,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
+    gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
     silu_mul_dual_out_bf16,
 )
@@ -37,6 +48,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
 )
 from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
+from hipengine.runtime.prefill import PrefillConfig
 
 
 @dataclass(frozen=True)
@@ -44,6 +56,15 @@ class Qwen35GGUFNextTokenProbeResult:
     token_id: int
     logit: float
     logits: np.ndarray
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFFullAttentionPrefillResult:
+    """Host-visible result for a GGUF full-attention layer prefill probe."""
+
+    hidden_bits: np.ndarray
+    mode: str
+    used_aotriton: bool
 
 
 @dataclass
@@ -380,6 +401,244 @@ class Qwen35GGUFFullStackRunner:
             logits=logits,
         )
 
+    def run_full_attention_prefill_layer(
+        self,
+        layer_id: int,
+        hidden_bits: np.ndarray,
+        *,
+        prefill_config: PrefillConfig | None = None,
+        attn_aotriton_min_tokens: int | None = None,
+    ) -> Qwen35GGUFFullAttentionPrefillResult:
+        """Run one GGUF full-attention layer over multiple prompt rows.
+
+        This is the layer-level native prefill path used to validate the GGUF
+        AOTriton V3 wiring before the full model prefill scheduler is promoted.
+        Rows below the threshold use the existing resident one-token path in a
+        loop; rows at/above the threshold use the compact-varlen AOTriton V3
+        attention path after GGUF Q/K/V projection and GPU q/k norm+RoPE.
+        """
+
+        if self.weights is None:
+            raise RuntimeError("GGUF runner is closed")
+        if self.weights.config.layer_types[layer_id] != FULL_ATTENTION:
+            raise ValueError(f"layer {layer_id} is not a full_attention layer")
+        hidden = np.ascontiguousarray(hidden_bits, dtype=np.uint16)
+        if hidden.ndim != 2 or hidden.shape[1] != self.hidden_size:
+            raise ValueError(f"hidden_bits must have shape (rows, {self.hidden_size})")
+        rows = int(hidden.shape[0])
+        if rows <= 0:
+            raise ValueError("hidden_bits must contain at least one row")
+        config = prefill_config or PrefillConfig()
+        threshold = int(config.attn_aotriton_min_tokens if attn_aotriton_min_tokens is None else attn_aotriton_min_tokens)
+        if threshold < 0:
+            raise ValueError("attn_aotriton_min_tokens must be non-negative")
+        use_aotriton = threshold > 0 and rows >= threshold
+        runtime = self.runtime or get_hip_runtime()
+        output = np.empty_like(hidden)
+        buffers = []
+        try:
+            hidden_buf = malloc(hidden.nbytes, runtime=runtime)
+            out_buf = malloc(output.nbytes, runtime=runtime)
+            buffers.extend((hidden_buf, out_buf))
+            copy_host_to_device(hidden_buf, host_array_ptr(hidden), runtime=runtime)
+            if use_aotriton:
+                prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(self, rows=rows, runtime=runtime)
+                buffers.extend(prefill_scratch.buffers)
+                self._run_full_attention_prefill_layer_aotriton(layer_id, hidden_buf.ptr, out_buf.ptr, prefill_scratch)
+                mode = "aotriton_v3"
+            else:
+                scratch = _FullStackScratch.allocate(self, runtime=runtime)
+                buffers.extend(scratch.buffers)
+                scratch.zero_states(runtime)
+                hidden_row_nbytes = self.hidden_size * 2
+                for row in range(rows):
+                    scratch.set_full_attention_position(row, runtime)
+                    self._run_full_attention_layer(
+                        layer_id,
+                        hidden_buf.ptr + row * hidden_row_nbytes,
+                        out_buf.ptr + row * hidden_row_nbytes,
+                        scratch,
+                        position=row,
+                    )
+                mode = "native_sequential"
+            runtime.device_synchronize()
+            copy_device_to_host(host_array_ptr(output), out_buf, runtime=runtime)
+        finally:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
+        return Qwen35GGUFFullAttentionPrefillResult(
+            hidden_bits=output,
+            mode=mode,
+            used_aotriton=use_aotriton,
+        )
+
+    def _run_full_attention_prefill_layer_aotriton(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        stream: int = 0,
+    ) -> None:
+        assert self.weights is not None
+        layer = self.weights.layer(layer_id)
+        cfg = self.weights.config
+        runtime = self.runtime or get_hip_runtime()
+        rows = scratch.rows
+        gguf_rmsnorm_bf16_f32_weight(
+            hidden_ptr,
+            layer.weight("attn_norm").allocation().tensor.ptr,
+            scratch.norm.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=cfg.rms_norm_eps,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("attn_q"),
+            scratch.norm.ptr,
+            scratch.full_q.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=2 * self.q_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("attn_k"),
+            scratch.norm.ptr,
+            scratch.full_k.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.kv_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("attn_v"),
+            scratch.norm.ptr,
+            scratch.full_v.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.kv_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_split_qgate_bf16(
+            scratch.full_q.ptr,
+            scratch.full_query_raw.ptr,
+            scratch.full_gate.ptr,
+            rows,
+            cfg.head_count,
+            cfg.key_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        bf16_to_f32(
+            scratch.full_k.ptr,
+            scratch.full_key_raw.ptr,
+            rows * self.kv_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
+            scratch.full_query_raw.ptr,
+            scratch.full_key_raw.ptr,
+            layer.weight("attn_q_norm").allocation().tensor.ptr,
+            layer.weight("attn_k_norm").allocation().tensor.ptr,
+            scratch.cos_table.ptr,
+            scratch.sin_table.ptr,
+            scratch.positions_tensor.ptr,
+            scratch.full_query.ptr,
+            scratch.full_key.ptr,
+            cfg.rms_norm_eps,
+            rows,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.rope_dimension_count,
+            scratch.max_positions,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
+            scratch.full_key.ptr,
+            scratch.full_v.ptr,
+            scratch.key_cache.ptr,
+            scratch.value_cache.ptr,
+            scratch.append_spans,
+            rows,
+            scratch.block_size,
+            cfg.head_count_kv,
+            cfg.key_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        f32_to_bf16(
+            scratch.full_query.ptr,
+            scratch.full_query_bf16.ptr,
+            rows * self.q_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        aotriton_attn_fwd_v3_compact_varlen(
+            aotriton_tensor4(
+                scratch.full_query_bf16.ptr,
+                (1, cfg.head_count, rows, cfg.key_length),
+                (self.q_width * rows, cfg.key_length, self.q_width, 1),
+                DType.BF16,
+            ),
+            aotriton_tensor4(
+                scratch.key_cache.ptr,
+                (1, cfg.head_count_kv, rows, cfg.key_length),
+                (self.kv_width * rows, cfg.key_length, self.kv_width, 1),
+                DType.BF16,
+            ),
+            aotriton_tensor4(
+                scratch.value_cache.ptr,
+                (1, cfg.head_count_kv, rows, cfg.key_length),
+                (self.kv_width * rows, cfg.key_length, self.kv_width, 1),
+                DType.BF16,
+            ),
+            aotriton_tensor1(scratch.cu_q.ptr, (2,), (1,), DType.INT32),
+            aotriton_tensor1(scratch.cu_k.ptr, (2,), (1,), DType.INT32),
+            aotriton_tensor2(scratch.softmax_lse.ptr, (cfg.head_count, rows), (rows, 1), DType.FP32),
+            aotriton_tensor4(
+                scratch.full_attn_bf16.ptr,
+                (1, cfg.head_count, rows, cfg.key_length),
+                (self.q_width * rows, cfg.key_length, self.q_width, 1),
+                DType.BF16,
+            ),
+            persistent_atomic_counter_ptr=scratch.atomic.ptr,
+            max_seqlen_q=rows,
+            max_seqlen_k=rows,
+            sm_scale=cfg.key_length ** -0.5,
+            is_causal=True,
+            stream=stream,
+            runtime=runtime,
+        )
+        gguf_gate_mul_bf16(
+            scratch.full_attn_bf16.ptr,
+            scratch.full_gate.ptr,
+            scratch.full_gated.ptr,
+            rows * self.q_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("attn_output"),
+            scratch.full_gated.ptr,
+            scratch.attn_out.ptr,
+            rows=rows,
+            in_features=self.q_width,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        self._run_post_attention_ffn_rows(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, rows=rows, stream=stream)
+
     def _run_linear_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -606,6 +865,19 @@ class Qwen35GGUFFullStackRunner:
         self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch)
 
     def _run_post_attention_ffn(self, layer_id: int, hidden_ptr: int, attn_out_ptr: int, out_ptr: int, scratch) -> None:
+        self._run_post_attention_ffn_rows(layer_id, hidden_ptr, attn_out_ptr, out_ptr, scratch, rows=1)
+
+    def _run_post_attention_ffn_rows(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        attn_out_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         runtime = self.runtime or get_hip_runtime()
@@ -615,46 +887,58 @@ class Qwen35GGUFFullStackRunner:
             layer.weight("post_attention_norm").allocation().tensor.ptr,
             scratch.post_norm.ptr,
             scratch.residual.ptr,
-            rows=1,
+            rows=rows,
             hidden_size=self.hidden_size,
             eps=self.weights.config.rms_norm_eps,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
             layer.weight("ffn_gate"),
             scratch.post_norm.ptr,
             scratch.ffn_gate_up.ptr,
-            rows=1,
+            rows=rows,
             in_features=self.hidden_size,
             out_features=self.ffn_size,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
             layer.weight("ffn_up"),
             scratch.post_norm.ptr,
-            scratch.ffn_gate_up.ptr + self.ffn_size * 2,
-            rows=1,
+            scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
+            rows=rows,
             in_features=self.hidden_size,
             out_features=self.ffn_size,
+            stream=stream,
             runtime=runtime,
         )
         silu_mul_dual_out_bf16(
             scratch.ffn_gate_up.ptr,
             scratch.ffn_intermediate.ptr,
-            rows=1,
+            rows=rows,
             features=self.ffn_size,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
             layer.weight("ffn_down"),
             scratch.ffn_intermediate.ptr,
             scratch.ffn_down.ptr,
-            rows=1,
+            rows=rows,
             in_features=self.ffn_size,
             out_features=self.hidden_size,
+            stream=stream,
             runtime=runtime,
         )
-        gguf_bf16_add(scratch.residual.ptr, scratch.ffn_down.ptr, out_ptr, self.hidden_size, runtime=runtime)
+        gguf_bf16_add(
+            scratch.residual.ptr,
+            scratch.ffn_down.ptr,
+            out_ptr,
+            rows * self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
 
     def close(self) -> None:
         if self.weights is not None:
@@ -838,6 +1122,158 @@ class Qwen35GGUFResidentSession:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
+
+
+@dataclass(frozen=True)
+class _GGUFFullAttentionPrefillScratch:
+    rows: int
+    norm: object
+    full_q: object
+    full_k: object
+    full_v: object
+    full_query_raw: object
+    full_key_raw: object
+    full_query: object
+    full_key: object
+    full_query_bf16: object
+    full_gate: object
+    full_attn_bf16: object
+    full_gated: object
+    attn_out: object
+    post_norm: object
+    residual: object
+    ffn_gate_up: object
+    ffn_intermediate: object
+    ffn_down: object
+    key_cache: object
+    value_cache: object
+    block_table: object
+    positions: object
+    context_counts: object
+    cos_table_buf: object
+    sin_table_buf: object
+    cu_q: object
+    cu_k: object
+    softmax_lse: object
+    atomic: object
+    block_table_tensor: Tensor
+    positions_tensor: Tensor
+    context_counts_tensor: Tensor
+    append_spans: KVLiveSpans
+    prefill_spans: KVLiveSpans
+    cos_table: Tensor
+    sin_table: Tensor
+    block_size: int
+    blocks: int
+    max_positions: int
+    buffers: tuple[object, ...]
+
+    @classmethod
+    def allocate(cls, runner: Qwen35GGUFFullStackRunner, *, rows: int, runtime: HipRuntime):
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        assert runner.weights is not None
+        cfg = runner.weights.config
+        device = Device("hip", 0)
+        block_size = 256
+        blocks = (int(rows) + block_size - 1) // block_size
+        max_positions = blocks * block_size
+
+        def buf(nbytes: int):
+            return malloc(nbytes, runtime=runtime)
+
+        hidden_bytes = rows * runner.hidden_size * 2
+        q_proj_bytes = rows * 2 * runner.q_width * 2
+        kv_bf16_bytes = rows * runner.kv_width * 2
+        q_f32_bytes = rows * runner.q_width * 4
+        kv_f32_bytes = rows * runner.kv_width * 4
+        ffn_bytes = rows * runner.ffn_size * 2
+        cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2
+        block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
+        positions_arr = np.arange(rows, dtype=np.int64)
+        context_arr = positions_arr + np.int64(1)
+        cu_arr = np.asarray([0, rows], dtype=np.int32)
+        atomic_arr = np.asarray([0], dtype=np.int32)
+        cos_arr, sin_arr = _rope_tables(
+            max_positions=max_positions,
+            rotary_dim=cfg.rope_dimension_count,
+            base=cfg.rope_freq_base,
+        )
+        fields = {
+            "norm": buf(hidden_bytes),
+            "full_q": buf(q_proj_bytes),
+            "full_k": buf(kv_bf16_bytes),
+            "full_v": buf(kv_bf16_bytes),
+            "full_query_raw": buf(q_f32_bytes),
+            "full_key_raw": buf(kv_f32_bytes),
+            "full_query": buf(q_f32_bytes),
+            "full_key": buf(kv_f32_bytes),
+            "full_query_bf16": buf(rows * runner.q_width * 2),
+            "full_gate": buf(rows * runner.q_width * 2),
+            "full_attn_bf16": buf(rows * runner.q_width * 2),
+            "full_gated": buf(rows * runner.q_width * 2),
+            "attn_out": buf(hidden_bytes),
+            "post_norm": buf(hidden_bytes),
+            "residual": buf(hidden_bytes),
+            "ffn_gate_up": buf(2 * ffn_bytes),
+            "ffn_intermediate": buf(ffn_bytes),
+            "ffn_down": buf(hidden_bytes),
+            "key_cache": buf(cache_nbytes),
+            "value_cache": buf(cache_nbytes),
+            "block_table": buf(block_table_arr.nbytes),
+            "positions": buf(positions_arr.nbytes),
+            "context_counts": buf(context_arr.nbytes),
+            "cos_table_buf": buf(cos_arr.nbytes),
+            "sin_table_buf": buf(sin_arr.nbytes),
+            "cu_q": buf(cu_arr.nbytes),
+            "cu_k": buf(cu_arr.nbytes),
+            "softmax_lse": buf(cfg.head_count * rows * 4),
+            "atomic": buf(atomic_arr.nbytes),
+        }
+        copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
+        copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
+        copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
+        copy_host_to_device(fields["cos_table_buf"], host_array_ptr(cos_arr), runtime=runtime)
+        copy_host_to_device(fields["sin_table_buf"], host_array_ptr(sin_arr), runtime=runtime)
+        copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
+        copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
+        copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
+        block_table_tensor = Tensor.from_handle(fields["block_table"].ptr, block_table_arr.shape, DType.INT32, device)
+        positions_tensor = Tensor.from_handle(fields["positions"].ptr, positions_arr.shape, DType.INT64, device)
+        context_tensor = Tensor.from_handle(fields["context_counts"].ptr, context_arr.shape, DType.INT64, device)
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table_tensor,
+            live_counts=positions_tensor,
+            max_live_count=rows - 1,
+            storage_dtype=DType.BF16,
+            row_positions=positions_tensor,
+            span_role="prefill",
+        )
+        prefill_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table_tensor,
+            live_counts=context_tensor,
+            max_live_count=rows,
+            storage_dtype=DType.BF16,
+            row_positions=positions_tensor,
+            span_role="prefill",
+        )
+        cos_table = Tensor.from_handle(fields["cos_table_buf"].ptr, cos_arr.shape, DType.FP32, device)
+        sin_table = Tensor.from_handle(fields["sin_table_buf"].ptr, sin_arr.shape, DType.FP32, device)
+        return cls(
+            **fields,
+            rows=rows,
+            block_table_tensor=block_table_tensor,
+            positions_tensor=positions_tensor,
+            context_counts_tensor=context_tensor,
+            append_spans=append_spans,
+            prefill_spans=prefill_spans,
+            cos_table=cos_table,
+            sin_table=sin_table,
+            block_size=block_size,
+            blocks=blocks,
+            max_positions=max_positions,
+            buffers=tuple(fields.values()),
+        )
 
 
 @dataclass(frozen=True)
@@ -1065,6 +1501,7 @@ def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[n
 
 
 __all__ = [
+    "Qwen35GGUFFullAttentionPrefillResult",
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFNextTokenProbeResult",
     "Qwen35GGUFOneLayerProbe",

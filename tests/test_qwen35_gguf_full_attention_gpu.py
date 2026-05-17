@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.kernels.hip_gfx1100.attention.aotriton import AotritonNotInstalledError, aotriton_runtime_tree
 from hipengine.kernels.hip_gfx1100.fused import gguf_rmsnorm_bf16_f32_weight
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import gguf_q6_k_embedding_bf16_out
 from hipengine.loading.gguf import GGUFReader
@@ -85,6 +86,109 @@ def test_qwen35_gguf_full_attention_gpu_prelude_matches_cpu_oracle() -> None:
             pass
     for buffer in reversed(buffers):
         free(buffer, runtime=runtime)
+
+
+def test_qwen35_gguf_full_attention_prefill_aotriton_threshold_and_oracle() -> None:
+    """AOTriton V3 is selected at threshold and matches the CPU bridge on the final row."""
+
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    try:
+        aotriton_runtime_tree()
+    except AotritonNotInstalledError as exc:
+        pytest.skip(str(exc))
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    reader = GGUFReader(MODEL)
+    q_norm = np.asarray(reader.tensor_data("blk.3.attn_q_norm.weight"), dtype=np.float32)
+    k_norm = np.asarray(reader.tensor_data("blk.3.attn_k_norm.weight"), dtype=np.float32)
+    with Qwen35GGUFFullStackRunner(MODEL) as runner:
+        hidden_rows = _prefix_hidden_rows(runner, (760, 4087), runtime)
+        native = runner.run_full_attention_prefill_layer(3, hidden_rows, attn_aotriton_min_tokens=3)
+        aotriton = runner.run_full_attention_prefill_layer(3, hidden_rows, attn_aotriton_min_tokens=2)
+        assert native.mode == "native_sequential"
+        assert not native.used_aotriton
+        assert aotriton.mode == "aotriton_v3"
+        assert aotriton.used_aotriton
+        cpu_bits = _cpu_bridge_prefill_outputs(runner, hidden_rows, q_norm, k_norm, runtime)
+        # AOTriton returns BF16 attention, while the CPU bridge keeps FP32
+        # attention until the GGUF gate/output projection.  The last prompt row
+        # is the prefill row consumed by generation; require it to stay close and
+        # preserve the lm-head distribution gate.
+        np.testing.assert_allclose(
+            bf16_to_float32(aotriton.hidden_bits[-1:]),
+            bf16_to_float32(cpu_bits[-1:]),
+            rtol=0.20,
+            atol=0.15,
+        )
+        logits_aotriton = _logits_from_host_bits(runner, aotriton.hidden_bits[-1:], runtime=runtime)
+        logits_cpu = _logits_from_host_bits(runner, cpu_bits[-1:], runtime=runtime)
+        assert int(np.argmax(logits_aotriton)) == int(np.argmax(logits_cpu))
+        assert _kl(logits_cpu.reshape(-1), logits_aotriton.reshape(-1)) <= 0.05
+
+
+def _prefix_hidden_rows(runner: Qwen35GGUFFullStackRunner, token_ids: tuple[int, ...], runtime) -> np.ndarray:
+    scratch = gguf_runner._FullStackScratch.allocate(runner, runtime=runtime)
+    token_buf = malloc(np.dtype(np.int64).itemsize, runtime=runtime)
+    hidden_a = malloc(runner.hidden_size * 2, runtime=runtime)
+    hidden_b = malloc(runner.hidden_size * 2, runtime=runtime)
+    hidden_rows = np.empty((len(token_ids), runner.hidden_size), dtype=np.uint16)
+    try:
+        scratch.zero_states(runtime)
+        for position, token_id in enumerate(token_ids):
+            src = _run_prefix_to_first_full_attention(runner, scratch, token_buf, hidden_a, hidden_b, token_id, position, runtime)
+            copy_device_to_host(host_array_ptr(hidden_rows[position : position + 1]), src, runtime=runtime)
+    finally:
+        for buffer in reversed((hidden_b, hidden_a, token_buf, *scratch.buffers)):
+            free(buffer, runtime=runtime)
+    return hidden_rows
+
+
+def _cpu_bridge_prefill_outputs(
+    runner: Qwen35GGUFFullStackRunner,
+    hidden_rows: np.ndarray,
+    q_norm: np.ndarray,
+    k_norm: np.ndarray,
+    runtime,
+) -> np.ndarray:
+    scratch = gguf_runner._FullStackScratch.allocate(runner, runtime=runtime)
+    hidden_buf = malloc(runner.hidden_size * 2, runtime=runtime)
+    out_buf = malloc(runner.hidden_size * 2, runtime=runtime)
+    out = np.empty_like(hidden_rows)
+    histories: dict[int, tuple[list[np.ndarray], list[np.ndarray]]] = {3: ([], [])}
+    try:
+        scratch.zero_states(runtime)
+        for position, row in enumerate(hidden_rows):
+            row_bits = np.ascontiguousarray(row.reshape(1, runner.hidden_size), dtype=np.uint16)
+            copy_host_to_device(hidden_buf, host_array_ptr(row_bits), runtime=runtime)
+            _run_full_attention_layer_cpu_bridge(
+                runner,
+                3,
+                hidden_buf.ptr,
+                out_buf.ptr,
+                scratch,
+                position=position,
+                q_norm=q_norm,
+                k_norm=k_norm,
+                histories=histories,
+                runtime=runtime,
+            )
+            copy_device_to_host(host_array_ptr(out[position : position + 1]), out_buf, runtime=runtime)
+    finally:
+        for buffer in reversed((out_buf, hidden_buf, *scratch.buffers)):
+            free(buffer, runtime=runtime)
+    return out
+
+
+def _logits_from_host_bits(runner: Qwen35GGUFFullStackRunner, hidden_bits: np.ndarray, *, runtime) -> np.ndarray:
+    hidden = np.ascontiguousarray(hidden_bits, dtype=np.uint16)
+    hidden_buf = malloc(hidden.nbytes, runtime=runtime)
+    try:
+        copy_host_to_device(hidden_buf, host_array_ptr(hidden), runtime=runtime)
+        return _lm_head_logits(runner, hidden_buf, runtime=runtime)
+    finally:
+        free(hidden_buf, runtime=runtime)
 
 
 def _run_prefix_to_first_full_attention(

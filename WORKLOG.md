@@ -16133,3 +16133,100 @@ Tracked hipENGINE allocations after steps: `602,835,292 bytes` peak (`0.561 GiB`
 Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json`. Updated `docs/GGUF.md`, `docs/KERNELS.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
 
 Final post-guard E2E rerun for task #45: `env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --repeat 2 --max-new-tokens 4 --json /tmp/gguf_task45_e2e_final.json` passed with outputs `[' 1.\n\n', ' 1.\n\n']`, generated IDs `[220,16,13,271]`, `torch_loaded_by_generate=false`, `/usr/bin/time` elapsed `0:23.37`, exit `0`.
+
+## 2026-05-17 GGUF AOTriton V3 layer prefill
+
+Implemented task #46: added a layer-level GGUF full-attention prefill path that uses the PARO-style `PrefillConfig.attn_aotriton_min_tokens` threshold surface and launches AOTriton V3 compact-varlen attention once rows are eligible.
+
+Code changes:
+
+- Registered `KernelKey("hip_gfx1100", "full_attn_prefill", "gguf_qwen35", "aotriton_attn_fwd_v3")` to the existing AOTriton V3 compact-varlen wrapper.
+- Added GGUF helpers in `gguf_ops`:
+  - `gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(...)` for multi-position F32-weight q/k RMSNorm+RoPE.
+  - `gguf_gate_mul_bf16(...)` for BF16 AOTriton output times BF16 GGUF gate.
+- Added BF16 prompt KV append wrapper `qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(...)` using `KVLiveSpans`.
+- Added `Qwen35GGUFFullStackRunner.run_full_attention_prefill_layer(...)`:
+  - rows below threshold: `native_sequential` fallback over the resident one-token path.
+  - rows at/above threshold: GGUF Q/K/V projection, q/gate split, K BF16->F32 cast, multi-position q/k norm+RoPE, BF16 prompt KV append, query F32->BF16 cast, AOTriton V3 compact-varlen attention, BF16 gate, attention output projection, and batched post-attention FFN.
+- Added `scripts/qwen35_gguf_aotriton_prefill_sweep.py` so threshold-mode evidence has a compact repeatable command.
+
+Threshold sweep command:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_aotriton_prefill_sweep.py \
+    --lengths 1,2,4 --attn-aotriton-min-tokens 3 \
+    --json /tmp/gguf_task46_sweep_script.json
+```
+
+Result:
+
+| Rows | Threshold | Mode | AOTriton | Time |
+| ---: | ---: | --- | --- | ---: |
+| 1 | 3 | `native_sequential` | false | 0.0134 s |
+| 2 | 3 | `native_sequential` | false | 0.0127 s |
+| 4 | 3 | `aotriton_v3` | true | 0.0446 s |
+
+Layer oracle:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 -m pytest tests/test_qwen35_gguf_full_attention_gpu.py -q
+# 2 passed
+```
+
+The new AOTriton test uses layer 3 prefix-hidden rows for fixture tokens `[760,4087]`; rows=2 with threshold 3 selects native fallback and rows=2 with threshold 2 selects `aotriton_v3`. The final prefill row is compared to the old CPU bridge with hidden tolerance (`rtol<=0.20`, `atol<=0.15`), lm-head top-1 equality, and KL <= 0.05. The tolerance is intentionally looser than the P2 decode-path oracle because AOTriton returns BF16 attention while the CPU bridge keeps FP32 attention until the GGUF gate/output projection.
+
+Public E2E gate:
+
+```bash
+/usr/bin/time -f 'elapsed=%E exit=%x' \
+  env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      PYTHONPATH=. \
+      python3 scripts/qwen35_gguf_e2e_correctness.py \
+        --repeat 2 --max-new-tokens 4 --json /tmp/gguf_task46_e2e.json
+```
+
+Result:
+
+```text
+passed=true
+outputs=[' 1.\n\n', ' 1.\n\n']
+generated_token_ids=[220, 16, 13, 271]
+torch_loaded_by_generate=false
+elapsed=0:23.95 exit=0
+```
+
+Targeted tests:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest \
+  tests/test_gguf_ops.py tests/test_qwen35_gguf_full_attention_gpu.py \
+  tests/test_qwen35_gguf_runner.py tests/test_llm_gguf_generate_path.py \
+  tests/test_qwen35_gguf_tokenizer.py tests/test_gguf_e2e_acceptance.py \
+  tests/test_llm_generate.py tests/test_model_quant_and_imports.py \
+  tests/test_aotriton_discovery.py -q
+# 35 passed
+```
+
+Profiler evidence:
+
+```bash
+env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format csv --output-file gguf_task46 \
+    --output-directory /tmp/hipengine-gguf-task46-rocprof.lNVeqC \
+    -- python3 /tmp/profile_gguf_task46_aotriton.py
+```
+
+Result: stdout `{'mode': 'aotriton_v3', 'used_aotriton': True, 'shape': (4, 1024)}`, total dispatches `142`. Expected eligible-prefill kernels in the trace:
+
+| Kernel | Launches |
+| --- | ---: |
+| `bf16_to_f32_kernel` | 1 |
+| `gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel` | 1 |
+| `qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>` | 1 |
+| `f32_to_bf16_kernel` | 1 |
+| `attn_fwd` | 1 |
+| `gguf_gate_mul_bf16_kernel` | 1 |
+
+Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-aotriton-v3-prefill-diagnostic.json`. This is layer-level launch/correctness evidence only (`performance_claim=false`): public `LLM.generate()` still uses the resident token-serial prefill path until linear-attention bulk prefill, scheduler integration, and rows>1 GGUF projection tuning land.

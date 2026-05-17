@@ -710,10 +710,19 @@ runner no longer contains `_host_full_attention` or `_copy_bf16_device_to_f32`.
 
 ### P3: wire AOTriton V3 for GGUF full-attention prefill
 
-Prerequisite: P1 and P2. AOTriton should see BF16/FP16 Q/K/V tensors and paged
-KV/live-span metadata just like PARO; it should not know about GGUF block bytes.
+Status: implemented for a layer-level full-attention prefill path as of
+`benchmarks/results/2026-05-17-hipengine-gguf-aotriton-v3-prefill-diagnostic.json`.
+`Qwen35GGUFFullStackRunner.run_full_attention_prefill_layer(...)` now uses the
+same `PrefillConfig.attn_aotriton_min_tokens` threshold surface as PARO: rows
+below threshold run the resident native sequential fallback, while eligible rows
+run AOTriton V3 compact-varlen attention after GGUF Q/K/V projection and GPU
+q/k norm+RoPE. This is not yet the public full-model prefill scheduler;
+linear-attention bulk prefill and rows>1 projection tuning remain P4 work.
 
-Implementation target:
+Prerequisite: P1 and P2. AOTriton sees BF16 Q/K/V tensors and live-span-shaped
+paged KV metadata; it does not know about GGUF block bytes.
+
+Implemented target:
 
 - Register a GGUF prefill-attention variant through the kernel registry, e.g. a
   `full_attn_prefill` key for the GGUF quant/plugin family with variant
@@ -724,9 +733,14 @@ Implementation target:
 - Add a prompt-length sweep for short prompts, 512-token prompts, and 4K prompts
   so threshold behavior is explicit.
 
-Validation gate: CPU/reference attention checks pass, P0 E2E still passes,
-`rocprofv3` shows AOTriton V3 kernels for eligible prompt lengths, and short
-prompts below threshold still use the intended fallback.
+Validation result: the threshold sweep with `attn_aotriton_min_tokens=3` selected
+`native_sequential` for rows 1/2 and `aotriton_v3` for rows 4. The layer oracle
+compares the final prefill row for layer 3 against the old CPU bridge and checks
+hidden tolerance, lm-head top-1 agreement, and KL <= 0.05. The P0 public E2E
+oracle still passes repeat=2 (`" 1.\n\n"`, IDs `[220, 16, 13, 271]`, no `torch`
+import). `rocprofv3 --kernel-trace` over an eligible rows=4 layer prefill shows
+`attn_fwd` plus the expected GGUF multi-position q/k norm+RoPE, BF16 prompt-KV
+writer, BF16 query cast, and BF16 gate kernels.
 
 ### P4: add rows>1 GGUF projection kernels
 

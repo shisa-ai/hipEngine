@@ -125,6 +125,19 @@ __global__ void gguf_gate_repeat_value_bf16_kernel(
   }
 }
 
+__global__ void gguf_gate_mul_bf16_kernel(
+    const uint16_t* __restrict__ attn,
+    const uint16_t* __restrict__ gate,
+    uint16_t* __restrict__ out,
+    int64_t n) {
+  const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.x;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < n; idx += stride) {
+    const float a = bf16_bits_to_float(attn[idx]);
+    const float g = sigmoidf_stable(bf16_bits_to_float(gate[idx]));
+    out[idx] = float_to_bf16_bits(a * g);
+  }
+}
+
 __device__ __forceinline__ void gguf_head_rmsnorm_partial_rotary_f32_weight_row(
     const float* __restrict__ src,
     const float* __restrict__ weight,
@@ -191,6 +204,54 @@ __global__ void gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel(
   const bool is_query = head < num_q_heads;
   const int64_t local_head = is_query ? head : head - num_q_heads;
   const int64_t offset = local_head * head_dim;
+  const float* src = (is_query ? query : key) + offset;
+  const float* weight = is_query ? q_weight : k_weight;
+  float* dst = (is_query ? query_out : key_out) + offset;
+  const float* cos = cos_table + position * rotary_dim;
+  const float* sin = sin_table + position * rotary_dim;
+  extern __shared__ float partial[];
+  gguf_head_rmsnorm_partial_rotary_f32_weight_row(
+      src,
+      weight,
+      cos,
+      sin,
+      dst,
+      eps,
+      head_dim,
+      rotary_dim,
+      partial);
+}
+
+__global__ void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key,
+    const float* __restrict__ q_weight,
+    const float* __restrict__ k_weight,
+    const float* __restrict__ cos_table,
+    const float* __restrict__ sin_table,
+    const int64_t* __restrict__ positions,
+    float* __restrict__ query_out,
+    float* __restrict__ key_out,
+    float eps,
+    int64_t tokens,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions) {
+  const int64_t head = blockIdx.x;
+  const int64_t token = blockIdx.y;
+  if (head >= num_q_heads + num_kv_heads || token >= tokens) {
+    return;
+  }
+  const int64_t position = positions[token];
+  if (position < 0 || position >= max_positions) {
+    return;
+  }
+  const bool is_query = head < num_q_heads;
+  const int64_t local_head = is_query ? head : head - num_q_heads;
+  const int64_t heads = is_query ? num_q_heads : num_kv_heads;
+  const int64_t offset = (token * heads + local_head) * head_dim;
   const float* src = (is_query ? query : key) + offset;
   const float* weight = is_query ? q_weight : k_weight;
   float* dst = (is_query ? query_out : key_out) + offset;
@@ -298,6 +359,25 @@ extern "C" int hipengine_gguf_gate_repeat_value_bf16(
   return hipGetLastError();
 }
 
+extern "C" int hipengine_gguf_gate_mul_bf16(
+    const uint16_t* attn,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t n,
+    int64_t threads,
+    hipStream_t stream) {
+  if (n <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  const int64_t blocks = (n + threads - 1) / threads;
+  gguf_gate_mul_bf16_kernel<<<static_cast<unsigned int>(blocks), static_cast<unsigned int>(threads), 0, stream>>>(
+      attn, gate, out, n);
+  return hipGetLastError();
+}
+
 extern "C" int hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
     const float* query,
     const float* key,
@@ -338,6 +418,56 @@ extern "C" int hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_we
       query_out,
       key_out,
       eps,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      rotary_dim,
+      max_positions);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
+    const float* query,
+    const float* key,
+    const float* q_weight,
+    const float* k_weight,
+    const float* cos_table,
+    const float* sin_table,
+    const int64_t* positions,
+    float* query_out,
+    float* key_out,
+    float eps,
+    int64_t tokens,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 || rotary_dim <= 0 ||
+      rotary_dim > head_dim || (rotary_dim % 2) != 0 || max_positions <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<<<
+      dim3(static_cast<unsigned int>(num_q_heads + num_kv_heads), static_cast<unsigned int>(tokens)),
+      static_cast<unsigned int>(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(
+      query,
+      key,
+      q_weight,
+      k_weight,
+      cos_table,
+      sin_table,
+      positions,
+      query_out,
+      key_out,
+      eps,
+      tokens,
       num_q_heads,
       num_kv_heads,
       head_dim,
