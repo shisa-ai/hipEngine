@@ -245,6 +245,212 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel(
 }
 
 
+template <typename scalar_t>
+__global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel(
+    const float* conv_out,
+    const scalar_t* gate,
+    const scalar_t* a,
+    const scalar_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    float* recurrent_state,
+    uint16_t* out,
+    float eps,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  extern __shared__ float shared[];
+  float* q_shared = shared;
+  float* k_shared = q_shared + head_k_dim;
+  float* q_partial = k_shared + head_k_dim;
+  float* k_partial = q_partial + blockDim.x;
+  float* out_shared = k_partial + blockDim.x;
+  float* norm_partial = out_shared + head_v_dim;
+
+  const int64_t v_head = blockIdx.x;
+  if (v_head >= num_v_heads) {
+    return;
+  }
+  const int64_t repeat = num_v_heads / num_k_heads;
+  const int64_t k_head = v_head / repeat;
+  const int64_t key_dim = num_k_heads * head_k_dim;
+  const int64_t qkv_width = 2 * key_dim + num_v_heads * head_v_dim;
+  const int64_t value_idx = threadIdx.x;
+  volatile float* recurrent_state_v = recurrent_state;
+
+  for (int64_t token = 0; token < tokens; ++token) {
+    const int64_t conv_base = token * qkv_width;
+    const int64_t q_base = conv_base + k_head * head_k_dim;
+    const int64_t k_base = conv_base + key_dim + k_head * head_k_dim;
+    const int64_t value_offset = conv_base + 2 * key_dim + v_head * head_v_dim;
+
+    float q_sum = 0.0f;
+    float k_sum = 0.0f;
+    for (int64_t idx = threadIdx.x * 8; idx + 7 < head_k_dim; idx += blockDim.x * 8) {
+      const float q0 = conv_out[q_base + idx + 0];
+      const float q1 = conv_out[q_base + idx + 1];
+      const float q2 = conv_out[q_base + idx + 2];
+      const float q3 = conv_out[q_base + idx + 3];
+      const float q4 = conv_out[q_base + idx + 4];
+      const float q5 = conv_out[q_base + idx + 5];
+      const float q6 = conv_out[q_base + idx + 6];
+      const float q7 = conv_out[q_base + idx + 7];
+      const float k0 = conv_out[k_base + idx + 0];
+      const float k1 = conv_out[k_base + idx + 1];
+      const float k2 = conv_out[k_base + idx + 2];
+      const float k3 = conv_out[k_base + idx + 3];
+      const float k4 = conv_out[k_base + idx + 4];
+      const float k5 = conv_out[k_base + idx + 5];
+      const float k6 = conv_out[k_base + idx + 6];
+      const float k7 = conv_out[k_base + idx + 7];
+      q_shared[idx + 0] = q0;
+      q_shared[idx + 1] = q1;
+      q_shared[idx + 2] = q2;
+      q_shared[idx + 3] = q3;
+      q_shared[idx + 4] = q4;
+      q_shared[idx + 5] = q5;
+      q_shared[idx + 6] = q6;
+      q_shared[idx + 7] = q7;
+      k_shared[idx + 0] = k0;
+      k_shared[idx + 1] = k1;
+      k_shared[idx + 2] = k2;
+      k_shared[idx + 3] = k3;
+      k_shared[idx + 4] = k4;
+      k_shared[idx + 5] = k5;
+      k_shared[idx + 6] = k6;
+      k_shared[idx + 7] = k7;
+      q_sum += q0*q0 + q1*q1 + q2*q2 + q3*q3 + q4*q4 + q5*q5 + q6*q6 + q7*q7;
+      k_sum += k0*k0 + k1*k1 + k2*k2 + k3*k3 + k4*k4 + k5*k5 + k6*k6 + k7*k7;
+    }
+    for (int64_t idx = (head_k_dim & ~7) + threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
+      const float q_value = conv_out[q_base + idx];
+      const float k_value = conv_out[k_base + idx];
+      q_shared[idx] = q_value;
+      k_shared[idx] = k_value;
+      q_sum += q_value * q_value;
+      k_sum += k_value * k_value;
+    }
+    q_partial[threadIdx.x] = q_sum;
+    k_partial[threadIdx.x] = k_sum;
+    __syncthreads();
+
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        q_partial[threadIdx.x] += q_partial[threadIdx.x + stride];
+        k_partial[threadIdx.x] += k_partial[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+
+    const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+    const int64_t scalar_idx = token * num_v_heads + v_head;
+    const float beta = sigmoid_f32(scalar_to_float_qwen35(b[scalar_idx]));
+    const float decay = expf(-expf(a_log[v_head]) * softplus_f32(scalar_to_float_qwen35(a[scalar_idx]) + dt_bias[v_head]));
+
+    float out_acc = 0.0f;
+    if (value_idx < head_v_dim) {
+      const int64_t state_col = v_head * head_k_dim * head_v_dim + value_idx;
+      float kv_mem = 0.0f;
+      for (int64_t idx = 0; idx + 7 < head_k_dim; idx += 8) {
+        kv_mem += k_shared[idx + 0] * k_scale * recurrent_state_v[state_col + (idx + 0) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 1] * k_scale * recurrent_state_v[state_col + (idx + 1) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 2] * k_scale * recurrent_state_v[state_col + (idx + 2) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 3] * k_scale * recurrent_state_v[state_col + (idx + 3) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 4] * k_scale * recurrent_state_v[state_col + (idx + 4) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 5] * k_scale * recurrent_state_v[state_col + (idx + 5) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 6] * k_scale * recurrent_state_v[state_col + (idx + 6) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 7] * k_scale * recurrent_state_v[state_col + (idx + 7) * head_v_dim] * decay;
+      }
+      for (int64_t idx = (head_k_dim & ~7); idx < head_k_dim; ++idx) {
+        const float k_norm = k_shared[idx] * k_scale;
+        const float state_value = recurrent_state_v[state_col + idx * head_v_dim] * decay;
+        kv_mem += k_norm * state_value;
+      }
+
+      const float value = conv_out[value_offset + value_idx];
+      const float delta = (value - kv_mem) * beta;
+      for (int64_t idx = 0; idx + 7 < head_k_dim; idx += 8) {
+        const float q_norm0 = q_shared[idx + 0] * q_scale;
+        const float q_norm1 = q_shared[idx + 1] * q_scale;
+        const float q_norm2 = q_shared[idx + 2] * q_scale;
+        const float q_norm3 = q_shared[idx + 3] * q_scale;
+        const float q_norm4 = q_shared[idx + 4] * q_scale;
+        const float q_norm5 = q_shared[idx + 5] * q_scale;
+        const float q_norm6 = q_shared[idx + 6] * q_scale;
+        const float q_norm7 = q_shared[idx + 7] * q_scale;
+        const float k_norm0 = k_shared[idx + 0] * k_scale;
+        const float k_norm1 = k_shared[idx + 1] * k_scale;
+        const float k_norm2 = k_shared[idx + 2] * k_scale;
+        const float k_norm3 = k_shared[idx + 3] * k_scale;
+        const float k_norm4 = k_shared[idx + 4] * k_scale;
+        const float k_norm5 = k_shared[idx + 5] * k_scale;
+        const float k_norm6 = k_shared[idx + 6] * k_scale;
+        const float k_norm7 = k_shared[idx + 7] * k_scale;
+        const int64_t so0 = state_col + (idx + 0) * head_v_dim;
+        const int64_t so1 = state_col + (idx + 1) * head_v_dim;
+        const int64_t so2 = state_col + (idx + 2) * head_v_dim;
+        const int64_t so3 = state_col + (idx + 3) * head_v_dim;
+        const int64_t so4 = state_col + (idx + 4) * head_v_dim;
+        const int64_t so5 = state_col + (idx + 5) * head_v_dim;
+        const int64_t so6 = state_col + (idx + 6) * head_v_dim;
+        const int64_t so7 = state_col + (idx + 7) * head_v_dim;
+        const float ns0 = recurrent_state_v[so0] * decay + k_norm0 * delta;
+        const float ns1 = recurrent_state_v[so1] * decay + k_norm1 * delta;
+        const float ns2 = recurrent_state_v[so2] * decay + k_norm2 * delta;
+        const float ns3 = recurrent_state_v[so3] * decay + k_norm3 * delta;
+        const float ns4 = recurrent_state_v[so4] * decay + k_norm4 * delta;
+        const float ns5 = recurrent_state_v[so5] * decay + k_norm5 * delta;
+        const float ns6 = recurrent_state_v[so6] * decay + k_norm6 * delta;
+        const float ns7 = recurrent_state_v[so7] * decay + k_norm7 * delta;
+        recurrent_state_v[so0] = ns0;
+        recurrent_state_v[so1] = ns1;
+        recurrent_state_v[so2] = ns2;
+        recurrent_state_v[so3] = ns3;
+        recurrent_state_v[so4] = ns4;
+        recurrent_state_v[so5] = ns5;
+        recurrent_state_v[so6] = ns6;
+        recurrent_state_v[so7] = ns7;
+        out_acc += q_norm0 * ns0 + q_norm1 * ns1 + q_norm2 * ns2 + q_norm3 * ns3
+                 + q_norm4 * ns4 + q_norm5 * ns5 + q_norm6 * ns6 + q_norm7 * ns7;
+      }
+      for (int64_t idx = (head_k_dim & ~7); idx < head_k_dim; ++idx) {
+        const float q_norm = q_shared[idx] * q_scale;
+        const float k_norm = k_shared[idx] * k_scale;
+        const int64_t state_offset = state_col + idx * head_v_dim;
+        const float new_state = recurrent_state_v[state_offset] * decay + k_norm * delta;
+        recurrent_state_v[state_offset] = new_state;
+        out_acc += q_norm * new_state;
+      }
+      out_shared[value_idx] = out_acc;
+      norm_partial[threadIdx.x] = out_acc * out_acc;
+    } else {
+      norm_partial[threadIdx.x] = 0.0f;
+    }
+    __syncthreads();
+
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        norm_partial[threadIdx.x] += norm_partial[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+
+    if (value_idx < head_v_dim) {
+      const int64_t pos = v_head * head_v_dim + value_idx;
+      const int64_t out_pos = (token * num_v_heads + v_head) * head_v_dim + value_idx;
+      const float inv_rms = rsqrtf((norm_partial[0] / static_cast<float>(head_v_dim)) + eps);
+      const float gated = out_shared[value_idx] * inv_rms * norm_weight[value_idx] *
+          silu_f32(scalar_to_float_qwen35(gate[token * num_v_heads * head_v_dim + pos]));
+      out[out_pos] = float_to_bf16_bits(gated);
+    }
+    __syncthreads();
+  }
+}
+
 __global__ void qwen35_gdn_prefill_recurrent_kernel(
     const float* query,
     const float* key,
@@ -369,6 +575,7 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
     if (threadIdx.x == 0) {
       out[head_offset * head_v_dim + value_idx] = partial_query[0] + partial_query[1];
     }
+    __syncthreads();
   }
   recurrent_state[state_offset0] = state_value0;
   recurrent_state[state_offset1] = state_value1;
@@ -787,6 +994,52 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16(
       recurrent_state,
       out,
       eps,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    float* recurrent_state,
+    uint16_t* out,
+    float eps,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!valid_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      recurrent_state,
+      out,
+      eps,
+      tokens,
       num_k_heads,
       num_v_heads,
       head_k_dim,

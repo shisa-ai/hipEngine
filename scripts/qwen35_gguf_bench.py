@@ -162,7 +162,7 @@ def main() -> int:
         "notes": [
             "Prefill mode is controlled by --force-bulk-prefill/--no-bulk-prefill; default delegates to Qwen35GGUFResidentSession.prefill().",
             "--bulk-prefill-attention-mode=native preserves row-serial attention while using row-bulk FFN/MoE and is the qwen35moe default when use_bulk is delegated.",
-            "--bulk-prefill-attention-mode=bulk is faster but qwen35moe diagnostic-only until its parity drift is resolved.",
+            "--bulk-prefill-attention-mode=bulk selects the fast fully bulk scheduler; qwen35moe default promotion is tracked separately from this explicit benchmark flag.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
         ],
     }

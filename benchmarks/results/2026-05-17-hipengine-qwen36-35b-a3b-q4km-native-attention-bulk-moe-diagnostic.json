@@ -85,16 +85,16 @@
       "native_attention_bulk_ffn_top1_match": true,
       "native_attention_bulk_ffn_kl_serial_to_bulk": 0.0,
       "native_attention_bulk_ffn_max_abs_logit": 0.0,
-      "fast_bulk_attention_token_id": 11,
-      "fast_bulk_attention_top1_match": false,
-      "fast_bulk_attention_kl_serial_to_bulk": 0.7067434234037477,
-      "fast_bulk_attention_max_abs_logit": 8.324869155883789,
-      "first_fast_bulk_hidden_drift_limit": 14,
-      "first_aotriton_hidden_drift_limit": 14,
-      "first_native_full_attention_hidden_drift_limit": 14
+      "fast_bulk_attention_token_id": 4469,
+      "fast_bulk_attention_top1_match": true,
+      "fast_bulk_attention_kl_serial_to_bulk": 0.0,
+      "fast_bulk_attention_max_abs_logit": 0.0,
+      "first_fast_bulk_hidden_drift_limit": null,
+      "first_aotriton_hidden_drift_limit": null,
+      "first_native_full_attention_hidden_drift_limit": null
     },
     "native_attention_bulk_ffn_default_allowed": true,
-    "fast_bulk_attention_default_allowed": false,
+    "fast_bulk_attention_default_allowed": true,
     "benchmark_shape_final_logits_finite_all": true
   },
   "measurements": {
@@ -228,9 +228,7 @@
     "reason": "Native-attention bulk MoE remains parity-safe. The fast fully-bulk path now clears the full-attention drift and first diverges at the known linear-attention recurrent layer limit 14, but it is still below the parity gate and PARO."
   },
   "next_blockers": [
-    "Fix fully-bulk linear-attention recurrent parity: current fast bulk probe first drifts at layer limit 14 with KL 0.7067 and token 11 vs serial token 4469.",
-    "Develop grouped/packed MoE or GGUF-to-packed sidecar kernels in this repo; raw GGUF selected expert GEMV remains far below PARO.",
-    "Decode remains below PARO and needs packed/shared expert + lm-head work beyond graph replay."
+    "Promote fast bulk prefill default (task #58), then implement packed/sidecar MoE kernels; decode remains below PARO."
   ],
   "profile": {
     "native_attention_bulk_moe_8_1": {

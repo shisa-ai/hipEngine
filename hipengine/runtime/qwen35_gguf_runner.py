@@ -34,6 +34,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
 )
+from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
 from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32, build_lm_head, lm_head_argmax_stage1_blocks
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgate_bf16
 from hipengine.kernels.hip_gfx1100.runtime import (
@@ -50,6 +51,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_k2_f32,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
@@ -861,26 +863,51 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        launch_gguf_linear(
-            layer.weight("ssm_alpha"),
-            scratch.norm.ptr,
-            scratch.linear_alpha.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=cfg.ssm_time_step_rank,
-            stream=stream,
-            runtime=runtime,
-        )
-        launch_gguf_linear(
-            layer.weight("ssm_beta"),
-            scratch.norm.ptr,
-            scratch.linear_beta.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=cfg.ssm_time_step_rank,
-            stream=stream,
-            runtime=runtime,
-        )
+        if cfg.is_moe:
+            # The small dense time-step projections feed the recurrent update.
+            # Use the GEMV-order dense kernel even for multi-row qwen35moe prefill
+            # so BF16 alpha/beta bits match the token-serial path exactly.
+            dense_gemv_out_bf16(
+                scratch.norm.ptr,
+                layer.weight("ssm_alpha").allocation("raw").tensor.ptr,
+                scratch.linear_alpha.ptr,
+                rows,
+                self.hidden_size,
+                cfg.ssm_time_step_rank,
+                stream=stream,
+                runtime=runtime,
+            )
+            dense_gemv_out_bf16(
+                scratch.norm.ptr,
+                layer.weight("ssm_beta").allocation("raw").tensor.ptr,
+                scratch.linear_beta.ptr,
+                rows,
+                self.hidden_size,
+                cfg.ssm_time_step_rank,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            launch_gguf_linear(
+                layer.weight("ssm_alpha"),
+                scratch.norm.ptr,
+                scratch.linear_alpha.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ssm_beta"),
+                scratch.norm.ptr,
+                scratch.linear_beta.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
+                stream=stream,
+                runtime=runtime,
+            )
         bf16_to_f32(
             scratch.linear_qkv.ptr,
             scratch.linear_qkv_f32.ptr,
@@ -899,52 +926,73 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        qwen35_linear_attn_prefill_prepare_f32_bf16(
-            scratch.conv_out.ptr,
-            scratch.linear_alpha.ptr,
-            scratch.linear_beta.ptr,
-            layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-            layer.weight("ssm_a").allocation().tensor.ptr,
-            scratch.prefill_query.ptr,
-            scratch.prefill_key.ptr,
-            scratch.prefill_value.ptr,
-            scratch.prefill_beta.ptr,
-            scratch.prefill_decay.ptr,
-            rows,
-            cfg.ssm_group_count,
-            cfg.ssm_time_step_rank,
-            cfg.ssm_state_size,
-            self.ssm_value_dim,
-            stream=stream,
-            runtime=runtime,
-        )
-        qwen35_gdn_prefill_recurrent_k2_f32(
-            scratch.prefill_query.ptr,
-            scratch.prefill_key.ptr,
-            scratch.prefill_value.ptr,
-            scratch.prefill_beta.ptr,
-            scratch.prefill_decay.ptr,
-            recurrent_state.ptr,
-            scratch.recurrent_out.ptr,
-            rows,
-            cfg.ssm_time_step_rank,
-            cfg.ssm_state_size,
-            self.ssm_value_dim,
-            stream=stream,
-            runtime=runtime,
-        )
-        qwen35_gdn_prefill_rmsnorm_gate_bf16(
-            scratch.recurrent_out.ptr,
-            scratch.linear_z.ptr,
-            layer.weight("ssm_norm").allocation().tensor.ptr,
-            scratch.recurrent_bf16.ptr,
-            cfg.rms_norm_eps,
-            rows,
-            cfg.ssm_time_step_rank,
-            self.ssm_value_dim,
-            stream=stream,
-            runtime=runtime,
-        )
+        if cfg.is_moe:
+            qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order(
+                scratch.conv_out.ptr,
+                scratch.linear_z.ptr,
+                scratch.linear_alpha.ptr,
+                scratch.linear_beta.ptr,
+                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                layer.weight("ssm_a").allocation().tensor.ptr,
+                layer.weight("ssm_norm").allocation().tensor.ptr,
+                recurrent_state.ptr,
+                scratch.recurrent_bf16.ptr,
+                cfg.rms_norm_eps,
+                rows,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            qwen35_linear_attn_prefill_prepare_f32_bf16(
+                scratch.conv_out.ptr,
+                scratch.linear_alpha.ptr,
+                scratch.linear_beta.ptr,
+                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                layer.weight("ssm_a").allocation().tensor.ptr,
+                scratch.prefill_query.ptr,
+                scratch.prefill_key.ptr,
+                scratch.prefill_value.ptr,
+                scratch.prefill_beta.ptr,
+                scratch.prefill_decay.ptr,
+                rows,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+            qwen35_gdn_prefill_recurrent_k2_f32(
+                scratch.prefill_query.ptr,
+                scratch.prefill_key.ptr,
+                scratch.prefill_value.ptr,
+                scratch.prefill_beta.ptr,
+                scratch.prefill_decay.ptr,
+                recurrent_state.ptr,
+                scratch.recurrent_out.ptr,
+                rows,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+            qwen35_gdn_prefill_rmsnorm_gate_bf16(
+                scratch.recurrent_out.ptr,
+                scratch.linear_z.ptr,
+                layer.weight("ssm_norm").allocation().tensor.ptr,
+                scratch.recurrent_bf16.ptr,
+                cfg.rms_norm_eps,
+                rows,
+                cfg.ssm_time_step_rank,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
         launch_gguf_linear(
             layer.weight("ssm_out"),
             scratch.recurrent_bf16.ptr,

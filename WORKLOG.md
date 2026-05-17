@@ -18240,3 +18240,57 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
 Task #56 acceptance is met: the parity probe no longer reports full-attention/AOTriton layer-limit 4 as the first drift source; both fast-bulk and native-full scans now first drift at the known linear-attention recurrent limit 14. Task #55 remains open and the next dependency is task #57: fix fully-bulk linear-attention recurrent parity.
 
 Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-full-attn-parity-fixed-diagnostic.json`.
+
+## 2026-05-17 qwen35moe GGUF task #57 linear-attention recurrent parity fix
+
+Task #57 fixed the remaining fast-bulk qwen35moe GGUF parity drift on the 4-token probe. After task #56, the first drift moved from full-attention layer limit 4 to linear-attention layer limit 14. The root cause was not one issue but the combination of decode-vs-prefill arithmetic order inside linear attention:
+
+- `qwen35_linear_attn_conv_prefill_*` used `(p0+p1)+(p2+p3)` for kernel-size-4 convolution while decode accumulates sequentially; changed prefill conv accumulation to decode order.
+- the dense prefill GEMM path for small `ssm_alpha`/`ssm_beta` projections can produce BF16 bits that differ from token-serial GEMV; qwen35moe bulk now uses GEMV-order dense projection for those time-step heads.
+- the parallel K2 recurrent prefill reduction does not exactly match resident decode recurrence. Added `hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order`, a qwen35moe GGUF decode-order recurrent+RMSNorm+gate prefill kernel that mirrors the resident decode kernel over all prompt rows.
+
+The exact recurrent path is currently qwen35moe-only; non-MoE/dense GGUF keeps the previous K2 path so the existing Qwen3.5-0.8B bulk regression remains intact.
+
+Validation / parity evidence:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bulk_parity.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task57-final-parity-v2.json
+# serial/default/native/fast-bulk token 4469; KL=0.0; max_abs_logit=0.0; first_fast_bulk_hidden_drift_limit=None
+PYTHONPATH=. pytest -q tests/test_qwen35_gguf_full_attention_gpu.py tests/test_llm_gguf_generate_path.py tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt
+# 13 passed
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/gguf_prefill_projection_smoke.py --rows 4 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# selected/raw GGUF projection smoke worst_max_abs=0.0
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 2 \
+  --json /tmp/hipengine-task57-public-correctness.json
+# passed=true; public no-torch qwen35moe smoke still Hello -> izio.
+```
+
+Fast-bulk diagnostic measurements after parity was fixed:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task57-fastbulk-512-128.json
+# prefill/decode 99.949779569 / 49.839088720 tok/s; tracked peak 20.885867577 GiB; final logits finite
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task57-fastbulk-4096-128.json
+# prefill/decode 77.921995435 / 33.188628717 tok/s; tracked peak 22.121930633 GiB; final logits finite
+```
+
+Task #57 acceptance is met: `scripts/qwen35_gguf_bulk_parity.py` reports serial/default/native/fast bulk top-1 match, KL `0.0`, max logit abs `0.0`, and no hidden drift on the probe; public qwen35moe no-torch smoke passes. Task #55 remains open because this is still far below the PARO/llama.cpp-class targets. Next: task #58 can promote the fast-bulk scheduler by default, then task #59/#60 need GGUF-to-packed sidecars/grouped packed MoE kernels to attack the raw GGUF expert bottleneck.
+
+Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-linear-recurrent-parity-fixed-diagnostic.json`.

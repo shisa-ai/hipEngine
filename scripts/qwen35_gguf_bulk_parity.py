@@ -80,7 +80,8 @@ def main(argv: list[str] | None = None) -> int:
         "elapsed_seconds": elapsed,
         "native_attention_bulk_ffn_default_allowed": sample["native_attention_bulk_ffn_comparison"]["top1_match"]
         and sample["native_attention_bulk_ffn_comparison"]["max_abs_logit"] == 0.0,
-        "fast_bulk_attention_default_allowed": False,
+        "fast_bulk_attention_default_allowed": sample["fast_bulk_attention_comparison"]["top1_match"]
+        and sample["fast_bulk_attention_comparison"]["max_abs_logit"] == 0.0,
         "summary": {
             "serial_token_id": sample["serial"]["token_id"],
             "default_token_id": sample["default"]["token_id"],
@@ -105,9 +106,8 @@ def main(argv: list[str] | None = None) -> int:
             "accepted_as_correctness_gate": True,
             "reason": (
                 "The native-attention + row-bulk FFN/MoE scheduler is bit-exact on the sampled "
-                "qwen35moe prompt and preserves token-serial attention state updates, so it can be "
-                "used as the parity-safe qwen35moe bulk default. The faster fully bulk attention "
-                "scheduler remains diagnostic-only until its layer drift is resolved."
+                "qwen35moe prompt and preserves token-serial attention state updates. The fast "
+                "fully bulk scheduler is also accepted when it is bit-exact on the same probe."
             ),
         },
     }
