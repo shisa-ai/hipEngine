@@ -23,10 +23,24 @@ def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
 
     calls = []
 
+    class FakeGraph:
+        def __enter__(self):
+            calls.append(("graph_enter",))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("graph_exit", exc_type is None))
+
+        def replay(self, steps):
+            calls.append(("graph_replay", int(steps)))
+
+        def read_generated_token_ids(self, count):
+            calls.append(("graph_read", int(count)))
+            return [16]
+
     class FakeSession:
         def __init__(self, model_path):
             calls.append(("init", str(model_path)))
-            self.tokens = iter([220, 16])
 
         def __enter__(self):
             calls.append(("enter",))
@@ -37,11 +51,11 @@ def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
 
         def prefill(self, token_ids):
             calls.append(("prefill", tuple(int(token) for token in token_ids)))
-            return type("Result", (), {"token_id": next(self.tokens), "logit": 4.5})()
+            return type("Result", (), {"token_id": 220, "logit": 4.5})()
 
-        def step(self, token_id, position=None):
-            calls.append(("step", int(token_id), position))
-            return type("Result", (), {"token_id": next(self.tokens), "logit": 4.5})()
+        def capture_decode_graph(self, *, position, steps_per_replay, max_replay_steps, record_steps):
+            calls.append(("capture_decode_graph", position, steps_per_replay, max_replay_steps, record_steps))
+            return FakeGraph()
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
 
@@ -52,6 +66,10 @@ def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
         ("init", str(MODEL.resolve())),
         ("enter",),
         ("prefill", (760, 4087, 369)),
-        ("step", 220, None),
+        ("capture_decode_graph", 3, 1, 1, 1),
+        ("graph_enter",),
+        ("graph_replay", 1),
+        ("graph_read", 1),
+        ("graph_exit", True),
         ("exit", True),
     ]

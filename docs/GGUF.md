@@ -1,6 +1,6 @@
 # GGUF Intake and Native-Quant Plan
 
-Date: 2026-05-16  
+Date: 2026-05-17
 Target repo: `~/hipENGINE`  
 Primary references: local llama.cpp checkouts under `~/llama.cpp/` and parent evidence in `~/amd-gpu-tuning/`
 
@@ -16,9 +16,9 @@ local tensor types (`BF16`, `Q8_0`, `Q4_1`, `Q4_K`, `Q5_K`, `Q6_K`, `IQ4_XS`,
 repack for `Q4_K`, on gfx1100 while preserving GGML quant math. Full Qwen GGUF
 model materialization and E2E correctness now work for the Q4_K_M fixture;
 persistent resident decode, all-GPU full attention, layer-level AOTriton prefill,
-and rows>1 measured-equivalent projection surfaces have landed; public full-model
-bulk prefill, decode graph replay, and deeper WMMA/Marlin-style tuning remain
-next steps. BF16 and FP16 output variants are available for the GGUF projection
+rows>1 measured-equivalent projection surfaces, and decode graph replay with GPU
+sampling have landed; public full-model bulk prefill and deeper WMMA/Marlin-style
+tuning remain next steps. BF16 and FP16 output variants are available for the GGUF projection
 kernels used by the planned runtime path. Qwen3.5 GGUF
 tensor-name mapping now validates the local 0.8B Q4_K_M inventory and classifies
 all 24 layers into 18 linear-attention and 6 full-attention blocks. The resident materialization plan covers all 320 tensors:
@@ -33,14 +33,15 @@ Q4_K `attn_gate`, and Q5_K `ssm_out` through native GGUF kernels to produce a
 finite deterministic BF16 hidden-size output. `hipengine.LLM.generate()` now detects
 GGUF files, resolves the `qwen35` model plugin, and routes the target quant key
 through the native GGUF bring-up generator. The bring-up path now also runs the
-tied Q6_K `token_embd.weight` lm-head GEMV to produce FP32 logits and a
-deterministic argmax token. The GGUF tokenizer/detokenizer now parses Qwen3.5
+tied Q6_K `token_embd.weight` lm-head GEMV to produce FP32 logits and uses the
+shared GPU `argmax_f32` sampler for deterministic greedy tokens. The GGUF tokenizer/detokenizer now parses Qwen3.5
 byte-BPE metadata without torch or llama.cpp subprocesses on the hot path. The
 GGUF full-stack runner now executes all 24 mapped layers with native GGUF
 projections, linear-attention state carry-over, CPU-hosted small-context full
 attention, residuals, dense FFN, and final RMSNorm. The public generator runs
-full-stack lm-head argmax repeatedly, detokenizes the generated IDs, and returns
-text through `LLM.generate()`. The hard gate now passes the llama.cpp oracle
+resident prefill once, then replays a captured one-step decode graph for remaining
+greedy tokens, detokenizes the generated IDs, and returns text through
+`LLM.generate()`. The hard gate now passes the llama.cpp oracle
 fixture exactly for the target prompt.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
@@ -50,7 +51,7 @@ The short answer to "can hipENGINE load GGUF quants easily now?" is:
 - **Native GGUF quant execution is not drop-in.** GGUF `Q4_K`, `Q5_K`, `Q6_K`, `Q8_0`, `Q8_K`, and `IQ*` tensors have GGML block layouts and quant math that differ from PARO/AWQ and from the current Marlin-K v0 layout. They need their own quant plugins, CPU oracles, and HIP kernels or a deliberate repack path.
 - **The new PARO/Marlin-K work makes this tractable.** hipENGINE now has the pattern we want: file/checkpoint layout -> host repack -> explicit device layout -> raw-pointer kernel -> registry dispatch. GGUF should use the same architecture, not special-case dispatch.
 
-The intake implementation is now past scanner/GEMV bring-up for the Q4_K_M fixture. The near-term performance path is a resident GGUF session first, then all-GPU full attention, AOTriton/equivalent prefill attention, rows>1 GGUF projections, and decode graph replay.
+The intake implementation is now past scanner/GEMV bring-up for the Q4_K_M fixture. The near-term performance path has resident GGUF decode, all-GPU full attention, AOTriton/equivalent layer prefill attention, rows>1 GGUF projections, and decode graph replay; remaining work is public full-model bulk prefill and retained throughput parity rows.
 
 Do not treat this document as a performance claim. It is an implementation plan. Any hipENGINE GGUF speedup must be measured in hipENGINE after the accelerated runtime pieces land.
 
@@ -626,7 +627,7 @@ resident GGUF session
   -> GPU full-attention prelude + KV append
   -> AOTriton V3 / equivalent full-attention prefill
   -> rows>1 GGUF projection kernels
-  -> decode graph replay + GPU sampling
+  -> decode graph replay + GPU sampling [landed]
   -> benchmark parity rows
 ```
 
@@ -648,9 +649,9 @@ public path, and current GGUF kernel symbols present in the profile.
 Status: implemented for the public Q4_K_M E2E path in
 `Qwen35GGUFResidentSession` as of
 `benchmarks/results/2026-05-17-hipengine-gguf-resident-session-diagnostic.json`.
-The remaining bottlenecks are now P3+ (token-serial rows==1 prefill
-projections, no AOTriton/full-attention prefill path, and no decode graph
-replay).
+The remaining bottlenecks are now public full-model bulk prefill and promoted
+throughput parity rows; layer-level AOTriton, rows>1 projection surfaces, and
+decode graph replay have landed as diagnostics.
 
 Former bottleneck: `Qwen35GGUFFullStackRunner.sample_next_token(context_ids)`
 replayed the entire prompt plus generated history for each decode token, causing
@@ -782,20 +783,39 @@ kernels for eligible layers.
 
 ### P5: add GGUF decode graph replay and GPU sampling
 
-Current bottleneck after resident decode: Python/ctypes launch overhead and host
-sampling still cap one-token latency. PARO's retained decode rows depend on HIP
+Status: implemented for the public Q4_K_M E2E path as of
+`benchmarks/results/2026-05-17-hipengine-gguf-decode-graph-replay-diagnostic.json`.
+`Qwen35GGUFResidentSession.capture_decode_graph(...)` captures a one-step HIP
+graph after prefill. The captured step consumes the current device lm-head argmax
+token, performs GGUF Q6_K embedding lookup from that device scalar, advances
+resident linear/KV state, runs the GGUF Q6_K lm-head to FP32 logits, samples with
+GPU `argmax_f32`, records generated token IDs into a device int64 buffer, and
+advances the device position/context scalar. The public GGUF generator now uses
+this graph for remaining greedy decode tokens.
+
+Former bottleneck after resident decode: Python/ctypes launch overhead and host
+sampling capped one-token latency. PARO's retained decode rows depend on HIP
 graph replay plus device-side token/position state.
 
-Implementation target:
+Implemented target:
 
 - Capture a one-step GGUF decode graph after prefill, including device token
   update, resident layer execution, final norm/lm-head, argmax/sampling, and
   device position/context advancement.
 - Keep eager and graph paths byte-for-byte/token-for-token comparable.
 
-Validation gate: eager vs graph generated IDs match, final logits pass the
-correctness gate, graph timing excludes capture time, and profiler confirms
-replay uses resident state/KV rather than full-context recompute.
+Validation result: `scripts/qwen35_gguf_decode_graph_smoke.py` compares eager
+resident decode to graph replay on the fixture prompt. Both paths generate
+`[220, 16, 13, 271]` / `" 1.\n\n"`; final logits are finite with graph/eager
+top-1 `271`, `max_abs=0.0`, and KL `0.0`. The smoke reports graph capture
+`0.0717 s` separately from graph replay decode `0.0225 s` so capture time is
+excluded. The public E2E gate still passes repeat=2 with no `torch` import.
+`rocprofv3 --kernel-trace` over a prompt+3 graph-replay run reports
+`session.position=6`, three `advance_decode_position_i64_kernel` launches, three
+`record_i64_scalar_indexed_kernel` launches, four GGUF Q6_K lm-head logits
+launches (prefill sample + 3 graph samples), and 36 full-attention KV
+append/decode launches, matching 6 resident token steps across 6 full-attention
+layers rather than full-context recompute per generated token.
 
 ### P6: broaden local GGUF quant coverage
 
@@ -915,10 +935,10 @@ The scanner, quant table, Qwen3.5 tensor-name map, Q4_K_M resident weight materi
 2. Move full-attention q/k norm, RoPE, q/gate split, KV append, and attention history to GPU.
 3. Wire AOTriton V3 or an equivalent full-attention prefill path once Q/K/V are device-resident.
 4. Add rows>1 GGUF projection kernels for native prefill.
-5. Add decode graph replay and GPU sampling.
+5. Add decode graph replay and GPU sampling. [done]
 6. Broaden to Q8_0, Q4_1, and UD-Q4_K_XL only after the resident/runtime gates are reusable.
 7. Promote benchmark rows only after the normal correctness, profiler, artifact, rollup, and changelog gates pass.
 
 ## Bottom line
 
-hipENGINE can now load and execute the Qwen3.5-0.8B Q4_K_M GGUF fixture correctly, but it is not yet a performance path. PARO-level behavior requires the same execution architecture PARO already has: resident state, all-GPU attention/KV, AOTriton or equivalent prefill attention, multirow projection kernels, and decode graph replay. GGUF must keep GGML quant math and its own quant layouts while borrowing PARO's scheduling, registry, and memory-discipline patterns.
+hipENGINE can now load and execute the Qwen3.5-0.8B Q4_K_M GGUF fixture correctly with resident state, all-GPU attention/KV, layer-level AOTriton prefill attention, multirow projection surfaces, and decode graph replay. It is still not a promoted performance path: public full-model bulk prefill and retained throughput parity rows remain. GGUF must keep GGML quant math and its own quant layouts while borrowing PARO's scheduling, registry, and memory-discipline patterns.

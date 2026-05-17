@@ -10,7 +10,7 @@ import numpy as np
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
-from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
     aotriton_attn_fwd_v3_compact_varlen,
@@ -36,7 +36,15 @@ from hipengine.kernels.hip_gfx1100.fused import (
     gguf_rmsnorm_bf16_f32_weight,
     silu_mul_dual_out_bf16,
 )
+from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32, build_lm_head, lm_head_argmax_stage1_blocks
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgate_bf16
+from hipengine.kernels.hip_gfx1100.runtime import (
+    advance_decode_position_i64,
+    build_runtime_state,
+    record_i64_scalar_indexed,
+    set_decode_position_i64,
+    set_i64_scalar,
+)
 from hipengine.kvcache import KVLiveSpans
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import qwen35_linear_attn_conv_decode_bf16
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
@@ -639,7 +647,7 @@ class Qwen35GGUFFullStackRunner:
         )
         self._run_post_attention_ffn_rows(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, rows=rows, stream=stream)
 
-    def _run_linear_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch) -> None:
+    def _run_linear_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
@@ -655,6 +663,7 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             hidden_size=self.hidden_size,
             eps=cfg.rms_norm_eps,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
@@ -664,6 +673,7 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             in_features=self.hidden_size,
             out_features=self.linear_qkv_width,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
@@ -673,6 +683,7 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             in_features=self.hidden_size,
             out_features=cfg.ssm_inner_size,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
@@ -682,6 +693,7 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             in_features=self.hidden_size,
             out_features=cfg.ssm_time_step_rank,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
@@ -691,6 +703,7 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             in_features=self.hidden_size,
             out_features=cfg.ssm_time_step_rank,
+            stream=stream,
             runtime=runtime,
         )
         qwen35_linear_attn_conv_decode_bf16(
@@ -700,6 +713,7 @@ class Qwen35GGUFFullStackRunner:
             scratch.conv_out.ptr,
             self.linear_qkv_width,
             cfg.ssm_conv_kernel,
+            stream=stream,
             runtime=runtime,
         )
         qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
@@ -717,12 +731,14 @@ class Qwen35GGUFFullStackRunner:
             cfg.ssm_time_step_rank,
             cfg.ssm_state_size,
             self.ssm_value_dim,
+            stream=stream,
             runtime=runtime,
         )
         f32_to_bf16(
             scratch.recurrent_out.ptr,
             scratch.recurrent_bf16.ptr,
             cfg.ssm_inner_size,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
@@ -732,9 +748,10 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             in_features=cfg.ssm_inner_size,
             out_features=self.hidden_size,
+            stream=stream,
             runtime=runtime,
         )
-        self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch)
+        self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
 
     def _run_full_attention_layer(
         self,
@@ -744,6 +761,7 @@ class Qwen35GGUFFullStackRunner:
         scratch,
         *,
         position: int,
+        stream: int = 0,
     ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -758,6 +776,7 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             hidden_size=self.hidden_size,
             eps=cfg.rms_norm_eps,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
@@ -767,6 +786,7 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             in_features=self.hidden_size,
             out_features=2 * self.q_width,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
@@ -776,6 +796,7 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             in_features=self.hidden_size,
             out_features=self.kv_width,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
@@ -785,6 +806,7 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             in_features=self.hidden_size,
             out_features=self.kv_width,
+            stream=stream,
             runtime=runtime,
         )
         qwen35_split_qgate_bf16(
@@ -794,12 +816,14 @@ class Qwen35GGUFFullStackRunner:
             1,
             cfg.head_count,
             cfg.key_length,
+            stream=stream,
             runtime=runtime,
         )
         bf16_to_f32(
             scratch.full_k.ptr,
             scratch.full_key_raw.ptr,
             self.kv_width,
+            stream=stream,
             runtime=runtime,
         )
         gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
@@ -818,6 +842,7 @@ class Qwen35GGUFFullStackRunner:
             cfg.key_length,
             cfg.rope_dimension_count,
             scratch.max_positions,
+            stream=stream,
             runtime=runtime,
         )
         key_cache, value_cache = scratch.full_cache(layer_id)
@@ -830,6 +855,7 @@ class Qwen35GGUFFullStackRunner:
             scratch.block_size,
             cfg.head_count_kv,
             cfg.key_length,
+            stream=stream,
             runtime=runtime,
         )
         qwen35_paged_full_attn_decode_context_bf16_spans(
@@ -844,6 +870,7 @@ class Qwen35GGUFFullStackRunner:
             cfg.head_count_kv,
             cfg.key_length,
             cfg.key_length ** -0.5,
+            stream=stream,
             runtime=runtime,
         )
         qwen35_full_attn_gate_mul_bf16(
@@ -851,6 +878,7 @@ class Qwen35GGUFFullStackRunner:
             scratch.full_gate.ptr,
             scratch.full_gated.ptr,
             self.q_width,
+            stream=stream,
             runtime=runtime,
         )
         launch_gguf_linear(
@@ -860,12 +888,13 @@ class Qwen35GGUFFullStackRunner:
             rows=1,
             in_features=self.q_width,
             out_features=self.hidden_size,
+            stream=stream,
             runtime=runtime,
         )
-        self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch)
+        self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
 
-    def _run_post_attention_ffn(self, layer_id: int, hidden_ptr: int, attn_out_ptr: int, out_ptr: int, scratch) -> None:
-        self._run_post_attention_ffn_rows(layer_id, hidden_ptr, attn_out_ptr, out_ptr, scratch, rows=1)
+    def _run_post_attention_ffn(self, layer_id: int, hidden_ptr: int, attn_out_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
+        self._run_post_attention_ffn_rows(layer_id, hidden_ptr, attn_out_ptr, out_ptr, scratch, rows=1, stream=stream)
 
     def _run_post_attention_ffn_rows(
         self,
@@ -958,28 +987,45 @@ class Qwen35GGUFResidentSession:
 
     The session materializes GGUF weights once, owns reusable device scratch, and
     carries linear-attention recurrent state plus paged full-attention K/V cache
-    across decode steps.  Full-attention q/k norm, RoPE, KV append, softmax, and
-    gate application now stay on GPU for the one-token resident path; rows>1
-    prefill and AOTriton are still follow-up work.
+    across decode steps. Full-attention q/k norm, RoPE, KV append, softmax, gate
+    application, lm-head argmax, and one-step decode graph replay stay on GPU for
+    the resident path; public full-model bulk prefill remains follow-up work.
     """
 
     model_path: str | Path
     runtime: HipRuntime | None = None
+    compiler_version: str | None = None
+    require_cached_build: bool = False
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _token_buf: object | None = field(default=None, init=False)
     _hidden_a: object | None = field(default=None, init=False)
     _hidden_b: object | None = field(default=None, init=False)
     _logits_buf: object | None = field(default=None, init=False)
+    _lm_block_values: object | None = field(default=None, init=False)
+    _lm_block_indices: object | None = field(default=None, init=False)
+    _lm_out_index: object | None = field(default=None, init=False)
+    _lm_out_value: object | None = field(default=None, init=False)
+    _runtime_state_library: object | None = field(default=None, init=False)
+    _lm_head_library: object | None = field(default=None, init=False)
     _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
     _logits_host: np.ndarray | None = field(default=None, init=False)
     _buffers: tuple[object, ...] = field(default=(), init=False)
     _position: int = field(default=0, init=False)
+    _lm_head_threads: int = field(default=128, init=False)
+    _lm_head_stage1_blocks: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
         self.runner = Qwen35GGUFFullStackRunner(self.model_path, runtime=self.runtime)
         runtime = self.runtime or get_hip_runtime()
+        build_kwargs = {
+            "load": True,
+            "compiler_version": self.compiler_version,
+            "require_cached": self.require_cached_build,
+        }
+        self._runtime_state_library = build_runtime_state(**build_kwargs)
+        self._lm_head_library = build_lm_head(**build_kwargs)
         self.scratch = _FullStackScratch.allocate(self.runner, runtime=runtime)
         self._token_buf = malloc(self._token_host.nbytes, runtime=runtime)
         hidden_bytes = self.runner.hidden_size * 2
@@ -987,7 +1033,22 @@ class Qwen35GGUFResidentSession:
         self._hidden_b = malloc(hidden_bytes, runtime=runtime)
         self._logits_host = np.empty((1, self.runner.vocab_size), dtype=np.float32)
         self._logits_buf = malloc(self._logits_host.nbytes, runtime=runtime)
-        self._buffers = (self._token_buf, self._hidden_a, self._hidden_b, self._logits_buf)
+        self._lm_head_threads = 128
+        self._lm_head_stage1_blocks = lm_head_argmax_stage1_blocks(self.runner.vocab_size, threads=self._lm_head_threads)
+        self._lm_block_values = malloc(self._lm_head_stage1_blocks * DType.FP32.itemsize, runtime=runtime)
+        self._lm_block_indices = malloc(self._lm_head_stage1_blocks * DType.INT64.itemsize, runtime=runtime)
+        self._lm_out_index = malloc(DType.INT64.itemsize, runtime=runtime)
+        self._lm_out_value = malloc(DType.FP32.itemsize, runtime=runtime)
+        self._buffers = (
+            self._token_buf,
+            self._hidden_a,
+            self._hidden_b,
+            self._logits_buf,
+            self._lm_block_values,
+            self._lm_block_indices,
+            self._lm_out_index,
+            self._lm_out_value,
+        )
         self.reset()
 
     @property
@@ -1031,32 +1092,29 @@ class Qwen35GGUFResidentSession:
         self._position += 1
         return self._sample_from_hidden(hidden_ptr)
 
-    def _run_token_to_final_hidden(self, token_id: int, *, position: int) -> int:
+    def _run_token_to_final_hidden(self, token_id: int, *, position: int, stream: int = 0) -> int:
+        if self._token_buf is None:
+            raise RuntimeError("GGUF resident session buffers are closed")
+        self._set_full_attention_position_device(position, stream=stream)
+        self._set_token_id_device(int(token_id), stream=stream)
+        return self._run_current_hidden_to_final_hidden(position=position, stream=stream)
+
+    def _run_current_hidden_to_final_hidden(self, *, position: int, stream: int = 0) -> int:
         if self.runner is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
-        if self._token_buf is None or self._hidden_a is None or self._hidden_b is None:
+        if self._hidden_a is None or self._hidden_b is None:
             raise RuntimeError("GGUF resident session buffers are closed")
         assert self.runner.weights is not None
         runtime = self.runtime or get_hip_runtime()
-        self.scratch.set_full_attention_position(position, runtime)
-        self._token_host[0] = int(token_id)
-        copy_host_to_device(self._token_buf, host_array_ptr(self._token_host), runtime=runtime)
-        gguf_q6_k_embedding_bf16_out(
-            self._token_buf.ptr,
-            self.runner.weights.root("token_embedding").allocation().tensor.ptr,
-            self._hidden_a.ptr,
-            rows=1,
-            hidden_size=self.runner.hidden_size,
-            vocab_size=self.runner.vocab_size,
-            runtime=runtime,
-        )
+        self.scratch.position_host[0] = int(position)
+        self.scratch.context_host[0] = int(position) + 1
         src = self._hidden_a
         dst = self._hidden_b
         for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
             if layer_type == LINEAR_ATTENTION:
-                self.runner._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch)
+                self.runner._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch, stream=stream)
             elif layer_type == FULL_ATTENTION:
-                self.runner._run_full_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch, position=position)
+                self.runner._run_full_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch, position=position, stream=stream)
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             src, dst = dst, src
@@ -1067,12 +1125,65 @@ class Qwen35GGUFResidentSession:
             rows=1,
             hidden_size=self.runner.hidden_size,
             eps=self.runner.weights.config.rms_norm_eps,
+            stream=stream,
             runtime=runtime,
         )
         return self.scratch.norm.ptr
 
-    def _sample_from_hidden(self, hidden_ptr: int) -> Qwen35GGUFNextTokenProbeResult:
-        if self.runner is None or self._logits_buf is None or self._logits_host is None:
+    def _set_token_id_device(self, token_id: int, *, stream: int = 0) -> None:
+        if self.runner is None or self._token_buf is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if token_id < 0 or token_id >= self.runner.vocab_size:
+            raise ValueError(f"token_id {token_id} outside [0, {self.runner.vocab_size})")
+        set_i64_scalar(
+            self._token_buf.ptr,
+            int(token_id),
+            stream=stream,
+            library=self._runtime_state_library,
+            runtime=self.runtime or get_hip_runtime(),
+        )
+        self._set_token_embedding_from_ptr(self._token_buf.ptr, stream=stream)
+
+    def _set_token_embedding_from_ptr(self, token_id_ptr: int, *, stream: int = 0) -> None:
+        if self.runner is None or self._hidden_a is None:
+            raise RuntimeError("GGUF resident session is closed")
+        assert self.runner.weights is not None
+        gguf_q6_k_embedding_bf16_out(
+            token_id_ptr,
+            self.runner.weights.root("token_embedding").allocation().tensor.ptr,
+            self._hidden_a.ptr,
+            rows=1,
+            hidden_size=self.runner.hidden_size,
+            vocab_size=self.runner.vocab_size,
+            stream=stream,
+            runtime=self.runtime or get_hip_runtime(),
+        )
+
+    def _set_full_attention_position_device(self, position: int, *, stream: int = 0) -> None:
+        if self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if position < 0 or position >= self.scratch.max_positions:
+            raise ValueError(f"GGUF resident full-attention position {position} exceeds cache capacity {self.scratch.max_positions}")
+        self.scratch.position_host[0] = int(position)
+        self.scratch.context_host[0] = int(position) + 1
+        set_decode_position_i64(
+            self.scratch.position_buf.ptr,
+            self.scratch.context_buf.ptr,
+            int(position),
+            stream=stream,
+            library=self._runtime_state_library,
+            runtime=self.runtime or get_hip_runtime(),
+        )
+
+    def _sample_device_from_hidden(self, hidden_ptr: int, *, stream: int = 0) -> None:
+        if (
+            self.runner is None
+            or self._logits_buf is None
+            or self._lm_block_values is None
+            or self._lm_block_indices is None
+            or self._lm_out_index is None
+            or self._lm_out_value is None
+        ):
             raise RuntimeError("GGUF resident session is closed")
         assert self.runner.weights is not None
         runtime = self.runtime or get_hip_runtime()
@@ -1084,19 +1195,183 @@ class Qwen35GGUFResidentSession:
             in_features=self.runner.hidden_size,
             out_features=self.runner.vocab_size,
             output_dtype=GGUF_OUTPUT_F32,
+            stream=stream,
             runtime=runtime,
         )
-        runtime.device_synchronize()
+        argmax_f32(
+            self._logits_buf.ptr,
+            self._lm_block_values.ptr,
+            self._lm_block_indices.ptr,
+            self._lm_out_index.ptr,
+            self._lm_out_value.ptr,
+            self.runner.vocab_size,
+            threads=self._lm_head_threads,
+            stream=stream,
+            library=self._lm_head_library,
+            runtime=runtime,
+        )
+
+    def _sample_from_hidden(self, hidden_ptr: int) -> Qwen35GGUFNextTokenProbeResult:
+        self._sample_device_from_hidden(hidden_ptr)
+        (self.runtime or get_hip_runtime()).device_synchronize()
+        return self._read_sample()
+
+    def _read_sample(self) -> Qwen35GGUFNextTokenProbeResult:
+        if self.runner is None or self._logits_buf is None or self._logits_host is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._lm_out_index is None or self._lm_out_value is None:
+            raise RuntimeError("GGUF resident lm-head buffers are closed")
+        runtime = self.runtime or get_hip_runtime()
+        index_host = np.empty((1,), dtype=np.int64)
+        value_host = np.empty((1,), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(index_host), self._lm_out_index, runtime=runtime)
+        copy_device_to_host(host_array_ptr(value_host), self._lm_out_value, runtime=runtime)
         copy_device_to_host(host_array_ptr(self._logits_host), self._logits_buf, runtime=runtime)
         if not np.all(np.isfinite(self._logits_host)):
             raise FloatingPointError("GGUF resident lm-head logits contain NaN or Inf")
-        flat = self._logits_host.reshape(-1)
-        next_id = int(np.argmax(flat))
+        token_id = int(index_host[0])
         return Qwen35GGUFNextTokenProbeResult(
-            token_id=next_id,
-            logit=float(flat[next_id]),
+            token_id=token_id,
+            logit=float(value_host[0]),
             logits=self._logits_host.copy(),
         )
+
+    def capture_decode_graph(
+        self,
+        *,
+        position: int,
+        steps_per_replay: int = 1,
+        max_replay_steps: int | None = None,
+        record_steps: int = 0,
+    ) -> "Qwen35GGUFDecodeGraph":
+        """Capture one-step resident GGUF decode for graph replay.
+
+        The captured step consumes the current device greedy token in
+        ``_lm_out_index``, gathers the next token embedding from the tied GGUF
+        Q6_K embedding on-device, advances resident linear/KV state once,
+        runs the GGUF Q6_K lm-head into device logits, writes the next greedy
+        token back to ``_lm_out_index``, and advances the device position/context
+        scalar.  Optional recording appends generated token IDs to a device
+        int64 buffer so graph/eager correctness gates do not need host sampling
+        between replayed steps.
+        """
+
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if steps_per_replay <= 0:
+            raise ValueError("steps_per_replay must be positive")
+        if max_replay_steps is not None and max_replay_steps <= 0:
+            raise ValueError("max_replay_steps must be positive")
+        if record_steps < 0:
+            raise ValueError("record_steps must be non-negative")
+        replay_span = int(max_replay_steps) if max_replay_steps is not None else int(steps_per_replay)
+        if position < 0 or position + replay_span - 1 >= self.scratch.max_positions:
+            raise ValueError("decode graph replay span exceeds GGUF resident cache capacity")
+        if position + steps_per_replay - 1 >= self.scratch.max_positions:
+            raise ValueError("decode graph capture span exceeds GGUF resident cache capacity")
+
+        runtime = self.runtime or get_hip_runtime()
+        generated_buf: DeviceBuffer | None = None
+        generated_index_buf: DeviceBuffer | None = None
+        if record_steps:
+            generated_buf = malloc(int(record_steps) * DType.INT64.itemsize, runtime=runtime)
+            generated_index_buf = malloc(DType.INT64.itemsize, runtime=runtime)
+            runtime.memset(generated_buf.ptr, 0xFF, generated_buf.nbytes)
+            zero = np.zeros((1,), dtype=np.int64)
+            copy_host_to_device(generated_index_buf, host_array_ptr(zero), runtime=runtime)
+
+        graph = 0
+        stream = runtime.stream_create()
+        try:
+            self._set_full_attention_position_device(position, stream=stream)
+            runtime.stream_synchronize(stream)
+            runtime.stream_begin_capture(stream)
+            try:
+                for offset in range(steps_per_replay):
+                    self._step_from_device_token(
+                        position=position + offset,
+                        advance_position=True,
+                        stream=stream,
+                        record_output_ptr=None if generated_buf is None else generated_buf.ptr,
+                        record_index_ptr=None if generated_index_buf is None else generated_index_buf.ptr,
+                        record_capacity=record_steps,
+                    )
+                graph = runtime.stream_end_capture(stream)
+            except Exception:
+                try:
+                    runtime.stream_end_capture(stream)
+                except Exception:
+                    pass
+                raise
+            graph_exec = runtime.graph_instantiate(graph)
+        except Exception:
+            if graph:
+                try:
+                    runtime.graph_destroy(graph)
+                except Exception:
+                    pass
+            runtime.stream_destroy(stream)
+            if generated_index_buf is not None:
+                free(generated_index_buf, runtime=runtime)
+            if generated_buf is not None:
+                free(generated_buf, runtime=runtime)
+            raise
+        return Qwen35GGUFDecodeGraph(
+            session=self,
+            graph=graph,
+            graph_exec=graph_exec,
+            stream=stream,
+            position=int(position),
+            steps_per_replay=int(steps_per_replay),
+            max_replay_steps=replay_span,
+            generated=generated_buf,
+            generated_index=generated_index_buf,
+            record_steps=int(record_steps),
+        )
+
+    def _step_from_device_token(
+        self,
+        *,
+        position: int,
+        advance_position: bool,
+        stream: int,
+        record_output_ptr: int | None = None,
+        record_index_ptr: int | None = None,
+        record_capacity: int = 0,
+    ) -> None:
+        if self._lm_out_index is None:
+            raise RuntimeError("GGUF resident lm-head buffers are closed")
+        if self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if position < 0 or position >= self.scratch.max_positions:
+            raise ValueError(f"position {position} outside GGUF resident cache capacity {self.scratch.max_positions}")
+        # Keep host-side guards in the layer helpers aligned with the graph step.
+        # The device scalar is advanced by the captured runtime-state kernel.
+        self.scratch.position_host[0] = int(position)
+        self.scratch.context_host[0] = int(position) + 1
+        self._set_token_embedding_from_ptr(self._lm_out_index.ptr, stream=stream)
+        hidden_ptr = self._run_current_hidden_to_final_hidden(position=position, stream=stream)
+        self._sample_device_from_hidden(hidden_ptr, stream=stream)
+        if record_output_ptr is not None:
+            if record_index_ptr is None:
+                raise ValueError("record_index_ptr is required when recording GGUF decode graph outputs")
+            record_i64_scalar_indexed(
+                self._lm_out_index.ptr,
+                record_output_ptr,
+                record_index_ptr,
+                int(record_capacity),
+                stream=stream,
+                library=self._runtime_state_library,
+                runtime=self.runtime or get_hip_runtime(),
+            )
+        if advance_position:
+            advance_decode_position_i64(
+                self.scratch.position_buf.ptr,
+                self.scratch.context_buf.ptr,
+                stream=stream,
+                library=self._runtime_state_library,
+                runtime=self.runtime or get_hip_runtime(),
+            )
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
@@ -1115,9 +1390,93 @@ class Qwen35GGUFResidentSession:
         self._hidden_a = None
         self._hidden_b = None
         self._logits_buf = None
+        self._lm_block_values = None
+        self._lm_block_indices = None
+        self._lm_out_index = None
+        self._lm_out_value = None
         self._logits_host = None
 
     def __enter__(self) -> "Qwen35GGUFResidentSession":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+@dataclass
+class Qwen35GGUFDecodeGraph:
+    session: Qwen35GGUFResidentSession
+    graph: int
+    graph_exec: int
+    stream: int
+    position: int
+    steps_per_replay: int = 1
+    max_replay_steps: int = 1
+    generated: DeviceBuffer | None = None
+    generated_index: DeviceBuffer | None = None
+    record_steps: int = 0
+    closed: bool = False
+
+    def replay(self, steps: int) -> None:
+        if self.closed:
+            raise RuntimeError("GGUF decode graph is closed")
+        if steps < 0:
+            raise ValueError("steps must be non-negative")
+        if self.steps_per_replay <= 0:
+            raise ValueError("steps_per_replay must be positive")
+        if steps > self.max_replay_steps:
+            raise ValueError("steps exceed captured max_replay_steps")
+        if self.record_steps and steps > self.record_steps:
+            raise ValueError("steps exceed decode graph record capacity")
+        if steps % self.steps_per_replay != 0:
+            raise ValueError("steps must be divisible by steps_per_replay")
+        launches = steps // self.steps_per_replay
+        for _ in range(launches):
+            self.session.runtime.graph_launch(self.graph_exec, self.stream)  # type: ignore[union-attr]
+        self.session.runtime.stream_synchronize(self.stream)  # type: ignore[union-attr]
+        self.session._position = self.position + steps
+        if self.session.scratch is not None:
+            self.session.scratch.position_host[0] = self.session._position
+            self.session.scratch.context_host[0] = self.session._position + 1
+
+    def read_sample(self) -> Qwen35GGUFNextTokenProbeResult:
+        if self.closed:
+            raise RuntimeError("GGUF decode graph is closed")
+        return self.session._read_sample()
+
+    def read_generated_token_ids(self, count: int | None = None) -> list[int]:
+        if self.closed:
+            raise RuntimeError("GGUF decode graph is closed")
+        if self.generated is None:
+            raise RuntimeError("GGUF decode graph was captured without generated-token recording")
+        rows = int(self.record_steps if count is None else count)
+        if rows < 0 or rows > self.record_steps:
+            raise ValueError("count outside decode graph record capacity")
+        host = np.empty((rows,), dtype=np.int64)
+        copy_device_to_host(
+            host_array_ptr(host),
+            DeviceBuffer(self.generated.ptr, rows * DType.INT64.itemsize),
+            runtime=self.session.runtime or get_hip_runtime(),
+        )
+        return [int(item) for item in host.tolist()]
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        runtime = self.session.runtime or get_hip_runtime()
+        runtime.graph_exec_destroy(self.graph_exec)
+        runtime.graph_destroy(self.graph)
+        if self.stream:
+            runtime.stream_destroy(self.stream)
+        if self.generated_index is not None:
+            free(self.generated_index, runtime=runtime)
+            self.generated_index = None
+        if self.generated is not None:
+            free(self.generated, runtime=runtime)
+            self.generated = None
+
+    def __enter__(self) -> "Qwen35GGUFDecodeGraph":
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -1501,6 +1860,7 @@ def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[n
 
 
 __all__ = [
+    "Qwen35GGUFDecodeGraph",
     "Qwen35GGUFFullAttentionPrefillResult",
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFNextTokenProbeResult",

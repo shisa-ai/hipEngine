@@ -16396,3 +16396,122 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pyte
 ```
 
 Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-prefill-projection-diagnostic.json` (`performance_claim=false`).
+
+## 2026-05-17 GGUF decode graph replay and GPU sampling
+
+Implemented task #48: `Qwen35GGUFResidentSession` now has GPU greedy sampling and a one-step HIP decode graph replay path. Public `LLM.generate()` still performs resident token-serial prompt prefill, but after the initial prefill sample it captures/replays a one-step decode graph for the remaining greedy tokens, mirroring the PARO graph replay design.
+
+Code changes:
+
+- Added `Qwen35GGUFResidentSession.capture_decode_graph(...)` and `Qwen35GGUFDecodeGraph`.
+- Moved resident GGUF token and position updates to graph-friendly device helpers:
+  - `set_i64_scalar` for the current generated token scalar.
+  - `set_decode_position_i64` before capture/eager token execution.
+  - `advance_decode_position_i64` inside graph replay.
+  - `record_i64_scalar_indexed` to append generated token IDs to a device int64 buffer.
+- Added GPU sampling for the GGUF tied Q6_K lm-head:
+  - `launch_gguf_linear(..., output_dtype=GGUF_OUTPUT_F32)` writes FP32 logits for `root.lm_head`.
+  - shared `argmax_f32` writes device `lm_out_index` / `lm_out_value`.
+  - eager and graph paths both read the same final logits buffer for correctness gates.
+- Made GGUF full-stack layer helpers stream-aware so graph capture records all decode kernels on the capture stream.
+- Updated `hipengine/generation/qwen35_gguf.py` so the public GGUF generator uses graph replay after the first generated token.
+- Added `scripts/qwen35_gguf_decode_graph_smoke.py` for fixture graph/eager generated-ID and final-logit correctness. The script reports graph capture time separately from graph replay decode time.
+- Added `tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_resident_decode_graph_matches_eager_logits` and updated the public-generator fake-session test to assert graph use.
+
+Graph/eager correctness smoke:
+
+```bash
+/usr/bin/time -f 'elapsed=%E exit=%x' \
+  env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      PYTHONPATH=. \
+      python3 scripts/qwen35_gguf_decode_graph_smoke.py \
+        --json /tmp/gguf_task48_graph_smoke.json
+```
+
+Result:
+
+```text
+passed=true
+eager_generated_token_ids=[220, 16, 13, 271]
+graph_generated_token_ids=[220, 16, 13, 271]
+eager_text=" 1.\n\n"
+graph_text=" 1.\n\n"
+final_logits.shape=[1, 248320]
+final_logits.finite=true
+eager_top1=271
+graph_top1=271
+max_abs=0.0
+mean_abs=0.0
+kl_eager_to_graph=0.0
+eager_prefill=0.2078 s
+eager_decode=0.1996 s
+graph_prefill=0.1885 s
+graph_capture=0.0717 s
+graph_replay_decode_excludes_capture=0.0225 s
+elapsed=0:22.12 exit=0
+```
+
+Public E2E gate after wiring graph replay into `LLM.generate()`:
+
+```bash
+/usr/bin/time -f 'elapsed=%E exit=%x' \
+  env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      PYTHONPATH=. \
+      python3 scripts/qwen35_gguf_e2e_correctness.py \
+        --repeat 2 --max-new-tokens 4 --json /tmp/gguf_task48_e2e.json
+```
+
+Result:
+
+```text
+passed=true
+outputs=[' 1.\n\n', ' 1.\n\n']
+generated_token_ids=[220, 16, 13, 271]
+torch_loaded_by_generate=false
+elapsed=0:23.40 exit=0
+```
+
+Profiler evidence:
+
+```bash
+env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format csv \
+    --output-file gguf_task48_decode_graph \
+    --output-directory /tmp/hipengine-gguf-task48-rocprof.D4qqHI \
+    -- python3 /tmp/profile_gguf_task48_graph.py
+```
+
+Profile stdout:
+
+```text
+{'ids': [220, 16, 13, 271], 'final_token': 271, 'position': 6}
+```
+
+Trace summary: 2399 dispatches, 27 unique kernel names. Key expected resident/graph kernels:
+
+| Kernel | Count | Total duration |
+| --- | ---: | ---: |
+| `gguf_q6_k_embedding_bf16_out_kernel` | 6 | `32001 ns` |
+| `gguf_k_prefill_out_kernel<unsigned short,float,6>` (Q6_K lm-head logits) | 4 | `6461923 ns` |
+| `argmax_stage1_kernel` / `argmax_stage2_kernel` | 4 / 4 | `24440 ns` / `17240 ns` |
+| `set_i64_scalar_kernel` | 3 | `9200 ns` |
+| `advance_decode_position_i64_kernel` | 3 | `7400 ns` |
+| `record_i64_scalar_indexed_kernel` | 3 | `8240 ns` |
+| `qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>` | 36 | `124160 ns` |
+| `qwen35_paged_full_attn_decode_context_tensor_kernel` | 36 | `274602 ns` |
+
+The profile generated prompt length 3 + three graph decode replays and ended with `session.position=6`. The 36 full-attention KV append/decode launches match six resident token steps across six full-attention layers, not prompt recompute per generated token.
+
+Targeted tests:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest \
+  tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_runner.py \
+  tests/test_gguf_e2e_acceptance.py tests/test_llm_generate.py \
+  tests/test_model_quant_and_imports.py tests/test_gguf_ops.py \
+  tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_tokenizer.py \
+  tests/test_aotriton_discovery.py -q
+# 36 passed
+```
+
+Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-decode-graph-replay-diagnostic.json` (`performance_claim=false`). Public full-model prefill remains token-serial until the linear-attention bulk scheduler path lands.

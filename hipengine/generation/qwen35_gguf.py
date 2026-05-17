@@ -39,13 +39,21 @@ class Qwen35GGUFBringupGenerator:
                     raise ValueError("GGUF prompt tokenization produced no token IDs")
                 generated_ids: list[int] = []
                 result = session.prefill(prompt_ids)
-                for index in range(request.max_tokens):
-                    generated_ids.append(result.token_id)
-                    if not request.ignore_eos and result.token_id == self.tokenizer.eos_token_id:
-                        break
-                    if index + 1 >= request.max_tokens:
-                        break
-                    result = session.step(result.token_id)
+                generated_ids.append(result.token_id)
+                if request.ignore_eos or result.token_id != self.tokenizer.eos_token_id:
+                    remaining = request.max_tokens - 1
+                    if remaining > 0:
+                        with session.capture_decode_graph(
+                            position=len(prompt_ids),
+                            steps_per_replay=1,
+                            max_replay_steps=remaining,
+                            record_steps=remaining,
+                        ) as graph:
+                            graph.replay(remaining)
+                            for token_id in graph.read_generated_token_ids(remaining):
+                                generated_ids.append(token_id)
+                                if not request.ignore_eos and token_id == self.tokenizer.eos_token_id:
+                                    break
                 outputs.append(self.tokenizer.decode(generated_ids))
         return outputs
 
