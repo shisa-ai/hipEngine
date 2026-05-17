@@ -1,0 +1,263 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "task": "D4.4 launch_bounds retune after fusion changes",
+  "status": "diagnostic_deferred_noop",
+  "performance_claim": false,
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "summary": "No per-kernel __launch_bounds__ retune was applied. The D1.1-D1.6 fusion sweep did not retain a default rotation/RMSNorm/projection kernel that changes the default resource envelope; D4.2 also rejected the batched-fusion plan. Static launch-bound guards show current wrappers do not bypass source max-thread bounds. Existing parent/hipENGINE probes already rejected the plausible stricter-bound/thread-count levers.",
+  "source_launch_bounds_inventory": [
+    {
+      "path": "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip",
+      "line": 113,
+      "max_threads": 32,
+      "min_blocks_per_cu": 8,
+      "source": "__launch_bounds__(32, 8)"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip",
+      "line": 293,
+      "max_threads": 32,
+      "min_blocks_per_cu": 8,
+      "source": "__launch_bounds__(32, 8)"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip",
+      "line": 497,
+      "max_threads": 128,
+      "min_blocks_per_cu": 4,
+      "source": "__launch_bounds__(128, 4)"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip",
+      "line": 612,
+      "max_threads": 128,
+      "min_blocks_per_cu": 4,
+      "source": "__launch_bounds__(128, 4)"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip",
+      "line": 730,
+      "max_threads": 128,
+      "min_blocks_per_cu": 4,
+      "source": "__launch_bounds__(128, 4)"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip",
+      "line": 912,
+      "max_threads": 128,
+      "min_blocks_per_cu": 4,
+      "source": "__launch_bounds__(128, 4) __global__ void gemv_awq_selected_dual_pack8_strided_kernel("
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip",
+      "line": 1038,
+      "max_threads": 128,
+      "min_blocks_per_cu": 4,
+      "source": "__launch_bounds__(128, 4)"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip",
+      "line": 1154,
+      "max_threads": 128,
+      "min_blocks_per_cu": 4,
+      "source": "__launch_bounds__(128, 4)"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/quant/paro_marlin_k.hip",
+      "line": 79,
+      "max_threads": 128,
+      "min_blocks_per_cu": 4,
+      "source": "__launch_bounds__(128, 4)"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/wmma/paro_awq_wmma.hip",
+      "line": 59,
+      "max_threads": 32,
+      "min_blocks_per_cu": 2,
+      "source": "__launch_bounds__(32, 2)"
+    },
+    {
+      "path": "hipengine/kernels/hip_gfx1100/wmma/paro_awq_wmma.hip",
+      "line": 180,
+      "max_threads": 32,
+      "min_blocks_per_cu": 2,
+      "source": "__launch_bounds__(32, 2)"
+    }
+  ],
+  "wrapper_bound_guard": {
+    "paro_awq_gemv_pack8_and_selected": {
+      "allowed_threads": [
+        64,
+        128
+      ],
+      "launch_bound_max": 128
+    },
+    "paro_marlin_k": {
+      "allowed_threads": [
+        32,
+        64,
+        128
+      ],
+      "launch_bound_max": 128
+    },
+    "paro_awq_wmma_compact": {
+      "allowed_threads": [
+        32
+      ],
+      "launch_bound_max": 32
+    },
+    "fusedw4_prefill": {
+      "allowed_threads": [
+        32
+      ],
+      "launch_bound_max": 32
+    }
+  },
+  "validated_no_bypass": true,
+  "relevant_closed_work": {
+    "D1.1_rotate_staged": {
+      "status": "diagnostic_rejected",
+      "default_runtime_impact": "none; HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED defaults off",
+      "resource_metadata": {
+        "command": "HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d11/rocprof --output-file d11_rotate_fused -- python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 4 --decode-tokens 2 --warmup-decode-tokens 0 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d11/rocprof-bench.json",
+        "csv": "/tmp/hipengine-d11/rocprof/d11_rotate_fused_kernel_trace.csv",
+        "kernel_name_contains": "gemv_awq_dual_pack8_transposed_rotate_staged_kernel<_Float16, true>",
+        "observed_dispatches": 2,
+        "duration_ns": [
+          36320,
+          33761
+        ],
+        "lds_block_size_bytes": 512,
+        "scratch_size_bytes": 0,
+        "vgpr_count": 104,
+        "workgroup_size_x": 128,
+        "grid_size_x": 196608
+      },
+      "decision": "The only rotate-once single-kernel design that preserves pack8 layout needs global scratch plus a device-side barrier. Under one-step graph replay, the removed rotate launch is cheaper than the barrier/spin/global-staging cost; full-attention Q/K also does not reduce launch count because V still needs a separate rotate. Recomputing rotation per output pack remains disallowed by the parent D4 rejection."
+    },
+    "D1.2_D1.3_D1.6_and_D4.2": {
+      "D1.2": "deferred/no-op; no material single-use RMSNorm/add-RMSNorm producer",
+      "D1.3": "rejected/no-op; no remaining same-input projection fusion with arithmetic/data-reuse upside",
+      "D1.6": "rejected as default; K/V route changes pairing, not launch count",
+      "D4.2": "reject_d4_2_batched_d1_plan_as_noop",
+      "D4.2_dispatch_target": {
+        "baseline_dispatches_per_token": 877.0,
+        "target_less_than": 700.0,
+        "minimum_dispatches_to_remove": 178.0,
+        "minimum_percent_reduction": 20.296465222348917
+      }
+    },
+    "D2.1_marlin_k_retained_w4_decode": {
+      "status": "diagnostic_retained",
+      "kernel_trace_smoke": {
+        "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d21-marlin-k-20260517/rocprof_marlin_smoke -- python3 scripts/smoke.py --mode paro-marlin-k-hip --rows 2 --hidden-size 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+        "marlin_kernel_rows": [
+          {
+            "csv": "/tmp/hipengine-d21-marlin-k-20260517/rocprof_marlin_smoke/epyc/1953574_kernel_trace.csv",
+            "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+            "duration_ns": 6720,
+            "workgroup_size": [
+              128,
+              1,
+              1
+            ],
+            "grid_size": [
+              256,
+              2,
+              1
+            ],
+            "vgpr_count": 104,
+            "scratch_size": 0,
+            "lds_block_size": 512
+          }
+        ]
+      },
+      "thread_choice_function": "marlin_k_default_threads(in_features, out_features) returns 128 for Qwen3.5 decode shapes and never exceeds the __launch_bounds__(128, 4) max."
+    },
+    "D5.2_w8a16_thread_probe_stop_condition": {
+      "status": "diagnostic_retained_stop_condition",
+      "winners": {
+        "lm_head_bf16_f32": {
+          "case": "lm_head_bf16_f32",
+          "threads": 128,
+          "blocks_x": 248320,
+          "samples": 5,
+          "median_us": 674.285,
+          "mean_us": 674.3968000000001,
+          "min_us": 673.564,
+          "max_us": 675.685,
+          "vgpr": 24,
+          "sgpr": 128,
+          "lds_block_size": 0
+        },
+        "shared_gate_up_fp16_lowp": {
+          "case": "shared_gate_up_fp16_lowp",
+          "threads": 64,
+          "blocks_x": 1024,
+          "samples": 40,
+          "median_us": 3.22,
+          "mean_us": 3.3760250000000003,
+          "min_us": 3.04,
+          "max_us": 8.6,
+          "vgpr": 24,
+          "sgpr": 128,
+          "lds_block_size": 0
+        },
+        "shared_down_fp16_lowp": {
+          "case": "shared_down_fp16_lowp",
+          "threads": 64,
+          "blocks_x": 2048,
+          "samples": 40,
+          "median_us": 3.44,
+          "mean_us": 3.51505,
+          "min_us": 3.36,
+          "max_us": 4.52,
+          "vgpr": 24,
+          "sgpr": 128,
+          "lds_block_size": 0
+        }
+      },
+      "interpretation": [
+        "The current lm-head W8A16 launch already uses the fastest probed workgroup size: 128 threads. 64 is ~2.1% slower on the isolated kernel; 256 and 512 are much worse from reduction/wave overhead.",
+        "The current legacy shared-expert lowp W8A16 launches already use the fastest probed workgroup size: 64 threads. Larger workgroups regress both gate/up and down shapes.",
+        "The existing fused shared gate/up+SiLU helper was probed as a decode-shape tile/fusion alternative; its best isolated median (~5.04 us at 512 threads) is slower than generic lowp gate/up at 64 threads plus the measured graph shared SiLU (~3.22 us + ~1.28 us), so it is not a c=1 decode replacement.",
+        "Resource metadata shows no scratch, no SGPR/VGPR spills, low VGPR pressure, wave32, and tiny dynamic LDS reductions; the remaining lm-head cost is dominated by the unavoidable ~509 MB int8 weight stream per token, while the small shared linears are already launch/reduction efficient."
+      ]
+    },
+    "prior_negative_launch_bounds_worklog": [
+      {
+        "source": "WORKLOG.md 2026-05-16 \u2014 Prefill multiloop iter 47",
+        "trial": "compact WMMA __launch_bounds__(32, 2) -> __launch_bounds__(32, 4)",
+        "decision": "rejected/reverted; whole-prefill timing regressed, keep __launch_bounds__(32, 2)"
+      },
+      {
+        "source": "WORKLOG.md 2026-05-16 \u2014 Prefill multiloop iter 49",
+        "trial": "awq_fusedw4_prefill_fp16_kernel __launch_bounds__(32, 8) -> __launch_bounds__(32, 16)",
+        "decision": "rejected/reverted; stricter bound caused spills and large bucket regressions, keep __launch_bounds__(32, 8)"
+      }
+    ]
+  },
+  "decision": {
+    "action": "defer_noop_until_default_kernel_resource_envelope_changes",
+    "default_changed": false,
+    "rationale": [
+      "The D1 fusion work that would have changed the default rotation/RMSNorm/W4 fused-kernel resource envelope was rejected, deferred, or launch-count neutral; D4.2 closed the stacked-D1 plan as unsupported.",
+      "Current W4/WMMA source kernels with __launch_bounds__ are launched at or below their max-thread bound: pack8/selected/Marlin-K <=128, compact WMMA/fusedW4 prefill ==32.",
+      "Existing thread-count/resource probes do not identify a safe retune: rotate-staged and Marlin-K show VGPR=104/scratch=0/LDS=512 at workgroup 128, but rotate-staged regresses and Marlin-K is already retained; W8A16 larger workgroups regress; prior stricter WMMA/W4 launch_bounds trials regressed or spilled.",
+      "Per project boundary, new micro-tuning loops belong in ~/amd-gpu-tuning/ and should be ported only after parent evidence identifies a stable launch_bounds change."
+    ],
+    "future_reopen_condition": "Reopen only after a default rotation/RMSNorm/W4 fusion is retained or parent kernel R&D produces a source-level launch_bounds retune with resource metadata and throughput evidence; first rerun the static no-bypass audit and a kernel-trace smoke."
+  },
+  "validation": {
+    "commands": [
+      "python3 /tmp/create_d44_artifact.py",
+      "python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d44-launch-bounds-deferred.json >/tmp/d44.json",
+      "python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/kernels/hip_gfx1100/quant/paro_marlin_k.py hipengine/runtime/qwen35_paro.py"
+    ],
+    "result": "passed; artifact generator asserted source launch_bounds inventory, wrapper thread guards, and no accepted wrapper thread count above the source launch bound"
+  }
+}

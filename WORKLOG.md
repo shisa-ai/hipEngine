@@ -15632,3 +15632,50 @@ PY
 ```
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d42-dispatch-cap-rejected.json`.
+
+---
+
+## 2026-05-17 — D4.4 launch_bounds retune deferred/no-op
+
+Task #26 evaluated `docs/OPTIMIZE.md` D4.4. I did **not** retune any
+`__launch_bounds__` or thread-count defaults.
+
+Reasoning:
+
+- D4.4 was scoped to retuning after retained rotation/RMSNorm/W4 fusion changes.
+  The D1.1-D1.6 sweep did not retain a default fusion that changes the default
+  kernel resource envelope: D1.1 rotate-staged regressed, D1.2 deferred/no-op,
+  D1.3 rejected/no-op, and D1.6 is launch-count neutral and rejected as default.
+- D4.2 also rejected the stacked D1 dispatch plan, so there is no new batched
+  fusion surface whose source bounds need retuning.
+- Static source/wrapper audit confirms current launch sites do not bypass source
+  bounds:
+  - pack8/selected pack8 and Marlin-K launch at `32/64/128` or `64/128` threads
+    under `__launch_bounds__(128,4)`;
+  - compact WMMA and fusedW4 prefill launch at `32` threads under
+    `__launch_bounds__(32,*)`.
+- Existing evidence does not identify a safe retune:
+  - D1.1 rotate-staged and D2.1 Marlin-K traces both show workgroup `128`,
+    `VGPR=104`, scratch `0`, LDS `512`; rotate-staged regressed and remains
+    opt-in/off, while Marlin-K is already the retained default.
+  - D5.2 W8A16 thread probes found current decode thread choices best
+    (`lm_head=128`, shared lowp `64`) and larger workgroups regressed.
+  - Earlier WORKLOG launch-bound trials rejected compact-WMMA
+    `__launch_bounds__(32,2)->(32,4)` and fusedW4 prefill
+    `__launch_bounds__(32,8)->(32,16)` because they regressed/spilled.
+- Per the project boundary, fresh kernel micro-tuning loops belong in
+  `~/amd-gpu-tuning/`; hipENGINE should port only stable parent evidence.
+
+Decision: defer/no-op. Defaults remain unchanged. Reopen only after a default
+fusion is retained or parent kernel R&D produces a source-level launch-bound
+retune with resource metadata and throughput evidence.
+
+Validation:
+
+```bash
+python3 /tmp/create_d44_artifact.py
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d44-launch-bounds-deferred.json >/tmp/d44.json
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/kernels/hip_gfx1100/quant/paro_marlin_k.py hipengine/runtime/qwen35_paro.py
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d44-launch-bounds-deferred.json`.
