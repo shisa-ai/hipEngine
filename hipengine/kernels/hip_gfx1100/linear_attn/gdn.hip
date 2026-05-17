@@ -313,7 +313,8 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
     int64_t num_v_heads,
     int64_t head_k_dim,
     int64_t head_v_dim) {
-  __shared__ float partial[2];
+  __shared__ float partial_update[2];
+  __shared__ float partial_query[2];
   const int64_t v_head = blockIdx.x;
   const int64_t value_idx = blockIdx.y;
   // Wrapper validates head_k_dim == 128 and launches 64 threads, so this k2
@@ -344,15 +345,15 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
       acc += __shfl_down(acc, offset);
     }
     if (lane_id == 0) {
-      partial[warp_id] = acc;
+      partial_update[warp_id] = acc;
     }
     __syncthreads();
     if (threadIdx.x == 0) {
-      partial[0] += partial[1];
+      partial_update[0] += partial_update[1];
     }
     __syncthreads();
     const float delta =
-        (value[head_offset * head_v_dim + value_idx] - partial[0]) * beta[head_offset];
+        (value[head_offset * head_v_dim + value_idx] - partial_update[0]) * beta[head_offset];
     state_value0 += key_value0 * delta;
     state_value1 += key_value1 * delta;
 
@@ -362,13 +363,12 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
       acc += __shfl_down(acc, offset);
     }
     if (lane_id == 0) {
-      partial[warp_id] = acc;
+      partial_query[warp_id] = acc;
     }
     __syncthreads();
     if (threadIdx.x == 0) {
-      out[head_offset * head_v_dim + value_idx] = partial[0] + partial[1];
+      out[head_offset * head_v_dim + value_idx] = partial_query[0] + partial_query[1];
     }
-    __syncthreads();
   }
   recurrent_state[state_offset0] = state_value0;
   recurrent_state[state_offset1] = state_value1;

@@ -173,7 +173,7 @@ def _run_once(
     graph_capture_seconds = 0.0
     try:
         prefill_start = time.perf_counter()
-        first = session.prefill(prompt_tokens)
+        first = session.prefill(prompt_tokens, return_logits=False)
         prefill_seconds = time.perf_counter() - prefill_start
         generated_token_ids.append(first.token_id)
         next_token = first.token_id

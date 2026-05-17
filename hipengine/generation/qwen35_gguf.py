@@ -38,7 +38,7 @@ class Qwen35GGUFBringupGenerator:
                 if not prompt_ids:
                     raise ValueError("GGUF prompt tokenization produced no token IDs")
                 generated_ids: list[int] = []
-                result = session.prefill(prompt_ids)
+                result = session.prefill(prompt_ids, return_logits=False)
                 generated_ids.append(result.token_id)
                 if request.ignore_eos or result.token_id != self.tokenizer.eos_token_id:
                     remaining = request.max_tokens - 1

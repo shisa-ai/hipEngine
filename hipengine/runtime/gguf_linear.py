@@ -8,7 +8,10 @@ from typing import Mapping
 
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import register_dense_gemv_kernels
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import register_gguf_k_gemv_kernels
-from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import register_gguf_q4_k_gemv_kernels
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+    gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
+    register_gguf_q4_k_gemv_kernels,
+)
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
@@ -134,6 +137,45 @@ def launch_gguf_linear(
     _LAUNCH_ABI[dispatch.abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
 
 
+def launch_gguf_linear_pair(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    runtime=None,
+) -> bool:
+    """Launch a supported pair of GGUF projections, returning True when fused."""
+
+    dispatch_a = resolve_gguf_linear_dispatch(weight_a, rows=rows)
+    dispatch_b = resolve_gguf_linear_dispatch(weight_b, rows=rows)
+    q4_prefill = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out")
+    if rows > 1 and dispatch_a.key == q4_prefill and dispatch_b.key == q4_prefill:
+        gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("qweight").tensor.ptr,
+            weight_a.allocation("scales").tensor.ptr,
+            weight_a.allocation("mins").tensor.ptr,
+            weight_b.allocation("qweight").tensor.ptr,
+            weight_b.allocation("scales").tensor.ptr,
+            weight_b.allocation("mins").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+    return False
+
+
 def _launch_pack8(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
@@ -217,5 +259,6 @@ __all__ = [
     "GGUF_OUTPUT_F32",
     "GGUFLinearDispatch",
     "launch_gguf_linear",
+    "launch_gguf_linear_pair",
     "resolve_gguf_linear_dispatch",
 ]

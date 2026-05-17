@@ -336,6 +336,166 @@ __global__ void gguf_q4_k_pack8_prefill_out_kernel(
   }
 }
 
+template <typename scalar_t>
+__launch_bounds__(128, 2)
+__global__ void gguf_q4_k_pack8_dual_prefill_out_kernel(
+    const scalar_t* __restrict__ x,
+    const int32_t* __restrict__ qweight_a,
+    const float* __restrict__ scales_a,
+    const float* __restrict__ mins_a,
+    const int32_t* __restrict__ qweight_b,
+    const float* __restrict__ scales_b,
+    const float* __restrict__ mins_b,
+    scalar_t* __restrict__ out_a,
+    scalar_t* __restrict__ out_b,
+    int rows,
+    int in_features,
+    int out_features,
+    int out_packed) {
+  const int64_t out_pack = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (out_pack >= out_packed || row >= rows) return;
+
+  const int64_t out_col = out_pack << 3;
+  const int64_t x_base = row * static_cast<int64_t>(in_features);
+  const int64_t qw_base = out_pack * static_cast<int64_t>(in_features);
+
+  float a0 = 0.0f, a1 = 0.0f, a2 = 0.0f, a3 = 0.0f;
+  float a4 = 0.0f, a5 = 0.0f, a6 = 0.0f, a7 = 0.0f;
+  float b0 = 0.0f, b1 = 0.0f, b2 = 0.0f, b3 = 0.0f;
+  float b4 = 0.0f, b5 = 0.0f, b6 = 0.0f, b7 = 0.0f;
+
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const int64_t group32 = k_base >> 5;
+    const float* __restrict__ sa = scales_a + group32 * out_features + out_col;
+    const float* __restrict__ ma = mins_a + group32 * out_features + out_col;
+    const float* __restrict__ sb = scales_b + group32 * out_features + out_col;
+    const float* __restrict__ mb = mins_b + group32 * out_features + out_col;
+    const float sa0 = sa[0], sa1 = sa[1], sa2 = sa[2], sa3 = sa[3];
+    const float sa4 = sa[4], sa5 = sa[5], sa6 = sa[6], sa7 = sa[7];
+    const float ma0 = ma[0], ma1 = ma[1], ma2 = ma[2], ma3 = ma[3];
+    const float ma4 = ma[4], ma5 = ma[5], ma6 = ma[6], ma7 = ma[7];
+    const float sb0 = sb[0], sb1 = sb[1], sb2 = sb[2], sb3 = sb[3];
+    const float sb4 = sb[4], sb5 = sb[5], sb6 = sb[6], sb7 = sb[7];
+    const float mb0 = mb[0], mb1 = mb[1], mb2 = mb[2], mb3 = mb[3];
+    const float mb4 = mb[4], mb5 = mb[5], mb6 = mb[6], mb7 = mb[7];
+
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const float xv = scalar_to_float<scalar_t>(x[x_base + k_base + j]);
+      const uint32_t pwa = static_cast<uint32_t>(qweight_a[qw_base + k_base + j]);
+      const uint32_t pwb = static_cast<uint32_t>(qweight_b[qw_base + k_base + j]);
+      const float qa0 = static_cast<float>((pwa >> pack8_shift_for_lane(0)) & 0x0Fu);
+      const float qa1 = static_cast<float>((pwa >> pack8_shift_for_lane(1)) & 0x0Fu);
+      const float qa2 = static_cast<float>((pwa >> pack8_shift_for_lane(2)) & 0x0Fu);
+      const float qa3 = static_cast<float>((pwa >> pack8_shift_for_lane(3)) & 0x0Fu);
+      const float qa4 = static_cast<float>((pwa >> pack8_shift_for_lane(4)) & 0x0Fu);
+      const float qa5 = static_cast<float>((pwa >> pack8_shift_for_lane(5)) & 0x0Fu);
+      const float qa6 = static_cast<float>((pwa >> pack8_shift_for_lane(6)) & 0x0Fu);
+      const float qa7 = static_cast<float>((pwa >> pack8_shift_for_lane(7)) & 0x0Fu);
+      const float qb0 = static_cast<float>((pwb >> pack8_shift_for_lane(0)) & 0x0Fu);
+      const float qb1 = static_cast<float>((pwb >> pack8_shift_for_lane(1)) & 0x0Fu);
+      const float qb2 = static_cast<float>((pwb >> pack8_shift_for_lane(2)) & 0x0Fu);
+      const float qb3 = static_cast<float>((pwb >> pack8_shift_for_lane(3)) & 0x0Fu);
+      const float qb4 = static_cast<float>((pwb >> pack8_shift_for_lane(4)) & 0x0Fu);
+      const float qb5 = static_cast<float>((pwb >> pack8_shift_for_lane(5)) & 0x0Fu);
+      const float qb6 = static_cast<float>((pwb >> pack8_shift_for_lane(6)) & 0x0Fu);
+      const float qb7 = static_cast<float>((pwb >> pack8_shift_for_lane(7)) & 0x0Fu);
+      a0 = fmaf(xv, qa0 * sa0 - ma0, a0); a1 = fmaf(xv, qa1 * sa1 - ma1, a1);
+      a2 = fmaf(xv, qa2 * sa2 - ma2, a2); a3 = fmaf(xv, qa3 * sa3 - ma3, a3);
+      a4 = fmaf(xv, qa4 * sa4 - ma4, a4); a5 = fmaf(xv, qa5 * sa5 - ma5, a5);
+      a6 = fmaf(xv, qa6 * sa6 - ma6, a6); a7 = fmaf(xv, qa7 * sa7 - ma7, a7);
+      b0 = fmaf(xv, qb0 * sb0 - mb0, b0); b1 = fmaf(xv, qb1 * sb1 - mb1, b1);
+      b2 = fmaf(xv, qb2 * sb2 - mb2, b2); b3 = fmaf(xv, qb3 * sb3 - mb3, b3);
+      b4 = fmaf(xv, qb4 * sb4 - mb4, b4); b5 = fmaf(xv, qb5 * sb5 - mb5, b5);
+      b6 = fmaf(xv, qb6 * sb6 - mb6, b6); b7 = fmaf(xv, qb7 * sb7 - mb7, b7);
+    }
+  }
+
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    const int64_t group32 = in_col >> 5;
+    const uint32_t pwa = static_cast<uint32_t>(qweight_a[qw_base + in_col]);
+    const uint32_t pwb = static_cast<uint32_t>(qweight_b[qw_base + in_col]);
+    const float* __restrict__ sa = scales_a + group32 * out_features + out_col;
+    const float* __restrict__ ma = mins_a + group32 * out_features + out_col;
+    const float* __restrict__ sb = scales_b + group32 * out_features + out_col;
+    const float* __restrict__ mb = mins_b + group32 * out_features + out_col;
+    const float xv = scalar_to_float<scalar_t>(x[x_base + in_col]);
+    a0 = fmaf(xv, static_cast<float>((pwa >> pack8_shift_for_lane(0)) & 0x0Fu) * sa[0] - ma[0], a0);
+    a1 = fmaf(xv, static_cast<float>((pwa >> pack8_shift_for_lane(1)) & 0x0Fu) * sa[1] - ma[1], a1);
+    a2 = fmaf(xv, static_cast<float>((pwa >> pack8_shift_for_lane(2)) & 0x0Fu) * sa[2] - ma[2], a2);
+    a3 = fmaf(xv, static_cast<float>((pwa >> pack8_shift_for_lane(3)) & 0x0Fu) * sa[3] - ma[3], a3);
+    a4 = fmaf(xv, static_cast<float>((pwa >> pack8_shift_for_lane(4)) & 0x0Fu) * sa[4] - ma[4], a4);
+    a5 = fmaf(xv, static_cast<float>((pwa >> pack8_shift_for_lane(5)) & 0x0Fu) * sa[5] - ma[5], a5);
+    a6 = fmaf(xv, static_cast<float>((pwa >> pack8_shift_for_lane(6)) & 0x0Fu) * sa[6] - ma[6], a6);
+    a7 = fmaf(xv, static_cast<float>((pwa >> pack8_shift_for_lane(7)) & 0x0Fu) * sa[7] - ma[7], a7);
+    b0 = fmaf(xv, static_cast<float>((pwb >> pack8_shift_for_lane(0)) & 0x0Fu) * sb[0] - mb[0], b0);
+    b1 = fmaf(xv, static_cast<float>((pwb >> pack8_shift_for_lane(1)) & 0x0Fu) * sb[1] - mb[1], b1);
+    b2 = fmaf(xv, static_cast<float>((pwb >> pack8_shift_for_lane(2)) & 0x0Fu) * sb[2] - mb[2], b2);
+    b3 = fmaf(xv, static_cast<float>((pwb >> pack8_shift_for_lane(3)) & 0x0Fu) * sb[3] - mb[3], b3);
+    b4 = fmaf(xv, static_cast<float>((pwb >> pack8_shift_for_lane(4)) & 0x0Fu) * sb[4] - mb[4], b4);
+    b5 = fmaf(xv, static_cast<float>((pwb >> pack8_shift_for_lane(5)) & 0x0Fu) * sb[5] - mb[5], b5);
+    b6 = fmaf(xv, static_cast<float>((pwb >> pack8_shift_for_lane(6)) & 0x0Fu) * sb[6] - mb[6], b6);
+    b7 = fmaf(xv, static_cast<float>((pwb >> pack8_shift_for_lane(7)) & 0x0Fu) * sb[7] - mb[7], b7);
+  }
+
+  {
+    GGUF_Q4K_PACK8_REDUCE(a0, a1, a2, a3, a4, a5, a6, a7, ar0, ar1, ar2, ar3, ar4, ar5, ar6, ar7);
+    if (tid == 0) {
+      const int64_t out_base = row * static_cast<int64_t>(out_features) + out_col;
+      store_output<scalar_t>(out_a, out_base + 0, ar0); store_output<scalar_t>(out_a, out_base + 1, ar1);
+      store_output<scalar_t>(out_a, out_base + 2, ar2); store_output<scalar_t>(out_a, out_base + 3, ar3);
+      store_output<scalar_t>(out_a, out_base + 4, ar4); store_output<scalar_t>(out_a, out_base + 5, ar5);
+      store_output<scalar_t>(out_a, out_base + 6, ar6); store_output<scalar_t>(out_a, out_base + 7, ar7);
+    }
+  }
+  __syncthreads();
+  {
+    GGUF_Q4K_PACK8_REDUCE(b0, b1, b2, b3, b4, b5, b6, b7, br0, br1, br2, br3, br4, br5, br6, br7);
+    if (tid == 0) {
+      const int64_t out_base = row * static_cast<int64_t>(out_features) + out_col;
+      store_output<scalar_t>(out_b, out_base + 0, br0); store_output<scalar_t>(out_b, out_base + 1, br1);
+      store_output<scalar_t>(out_b, out_base + 2, br2); store_output<scalar_t>(out_b, out_base + 3, br3);
+      store_output<scalar_t>(out_b, out_base + 4, br4); store_output<scalar_t>(out_b, out_base + 5, br5);
+      store_output<scalar_t>(out_b, out_base + 6, br6); store_output<scalar_t>(out_b, out_base + 7, br7);
+    }
+  }
+}
+
+template <typename scalar_t>
+int launch_gguf_q4_k_pack8_dual_gemv_out(
+    const scalar_t* x,
+    const int32_t* qweight_a,
+    const float* scales_a,
+    const float* mins_a,
+    const int32_t* qweight_b,
+    const float* scales_b,
+    const float* mins_b,
+    scalar_t* out_a,
+    scalar_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight_a == nullptr || scales_a == nullptr || mins_a == nullptr ||
+      qweight_b == nullptr || scales_b == nullptr || mins_b == nullptr || out_a == nullptr || out_b == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % 8) != 0 || (threads != 32 && threads != 64 && threads != 128)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(static_cast<unsigned int>(out_packed), static_cast<unsigned int>(rows));
+  gguf_q4_k_pack8_dual_prefill_out_kernel<scalar_t><<<grid, block, 0, stream>>>(
+      x, qweight_a, scales_a, mins_a, qweight_b, scales_b, mins_b, out_a, out_b,
+      static_cast<int>(rows), static_cast<int>(in_features), static_cast<int>(out_features), static_cast<int>(out_packed));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t, typename out_t>
 int launch_gguf_q4_k_pack8_gemv_out(
     const scalar_t* x,
@@ -351,7 +511,7 @@ int launch_gguf_q4_k_pack8_gemv_out(
   if (x == nullptr || qweight == nullptr || scales == nullptr || mins == nullptr ||
       out == nullptr || rows <= 0 || in_features <= 0 || out_features <= 0 ||
       (in_features % QK_K) != 0 || (out_features % 8) != 0 ||
-      (threads != 64 && threads != 128)) {
+      (threads != 32 && threads != 64 && threads != 128)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int64_t out_packed = out_features >> 3;
@@ -521,6 +681,38 @@ extern "C" int hipengine_gguf_q4_k_pack8_gemv_fp16_fp16_out(
     hipStream_t stream) {
   return launch_gguf_q4_k_pack8_gemv_out<half_t, half_t>(
       x, qweight, scales, mins, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_pack8_dual_gemv_bf16_bf16_out(
+    const uint16_t* x,
+    const int32_t* qweight_a,
+    const float* scales_a,
+    const float* mins_a,
+    const int32_t* qweight_b,
+    const float* scales_b,
+    const float* mins_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_pack8_dual_gemv_out<uint16_t>(
+      x,
+      qweight_a,
+      scales_a,
+      mins_a,
+      qweight_b,
+      scales_b,
+      mins_b,
+      out_a,
+      out_b,
+      rows,
+      in_features,
+      out_features,
+      threads,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_pack8_gemv_bf16_f32_out(

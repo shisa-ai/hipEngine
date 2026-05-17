@@ -49,8 +49,8 @@ def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
         def __exit__(self, exc_type, exc, tb):
             calls.append(("exit", exc_type is None))
 
-        def prefill(self, token_ids):
-            calls.append(("prefill", tuple(int(token) for token in token_ids)))
+        def prefill(self, token_ids, *, return_logits=True):
+            calls.append(("prefill", tuple(int(token) for token in token_ids), bool(return_logits)))
             return type("Result", (), {"token_id": 220, "logit": 4.5})()
 
         def capture_decode_graph(self, *, position, steps_per_replay, max_replay_steps, record_steps):
@@ -65,7 +65,7 @@ def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
     assert calls == [
         ("init", str(MODEL.resolve())),
         ("enter",),
-        ("prefill", (760, 4087, 369)),
+        ("prefill", (760, 4087, 369), False),
         ("capture_decode_graph", 3, 1, 1, 1),
         ("graph_enter",),
         ("graph_replay", 1),

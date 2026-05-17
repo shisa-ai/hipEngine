@@ -25,6 +25,7 @@ _SYMBOL_PACK8_FP16_FP16_OUT = "hipengine_gguf_q4_k_pack8_gemv_fp16_fp16_out"
 _SYMBOL_PACK8_BF16_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_f32_out"
 _SYMBOL_PACK8_BF16_FP16_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_fp16_out"
 _SYMBOL_PACK8_BF16_BF16_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_bf16_out"
+_SYMBOL_PACK8_DUAL_BF16_BF16_OUT = "hipengine_gguf_q4_k_pack8_dual_gemv_bf16_bf16_out"
 _ALLOWED_THREADS = {64, 128, 256}
 _Q4_K_BLOCK = 256
 
@@ -459,9 +460,70 @@ def _launch_pack8(
     _check_launch(runtime, err)
 
 
+def gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
+    x_ptr: int,
+    qweight_a_ptr: int,
+    scales_a_ptr: int,
+    mins_a_ptr: int,
+    qweight_b_ptr: int,
+    scales_b_ptr: int,
+    mins_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    launch_threads = _pack8_threads(in_features, threads)
+    _validate(rows, in_features, out_features, launch_threads, require_pack8=True)
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PACK8_DUAL_BF16_BF16_OUT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(scales_a_ptr),
+        ctypes.c_void_p(mins_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(scales_b_ptr),
+        ctypes.c_void_p(mins_b_ptr),
+        ctypes.c_void_p(out_a_ptr),
+        ctypes.c_void_p(out_b_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(launch_threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _pack8_threads(in_features: int, threads: int) -> int:
     if threads == 0:
-        return 64 if in_features <= 1024 else 128
+        return 32
     return threads
 
 
@@ -483,7 +545,7 @@ def _validate(
         raise ValueError("in_features must be divisible by GGUF Q4_K block size 256")
     if require_pack8 and out_features % 8 != 0:
         raise ValueError("out_features must be divisible by 8 for GGUF Q4_K pack8")
-    allowed_threads = {64, 128} if require_pack8 else _ALLOWED_THREADS
+    allowed_threads = {32, 64, 128} if require_pack8 else _ALLOWED_THREADS
     if threads not in allowed_threads:
         allowed = ", ".join(str(value) for value in sorted(allowed_threads))
         raise ValueError(f"threads must be one of {allowed}")
@@ -572,6 +634,7 @@ __all__ = [
     "gguf_q4_k_gemv_f32_fp16_out",
     "gguf_q4_k_gemv_fp16_f32_out",
     "gguf_q4_k_gemv_fp16_fp16_out",
+    "gguf_q4_k_pack8_dual_prefill_bf16_bf16_out",
     "gguf_q4_k_pack8_gemv_bf16_bf16_out",
     "gguf_q4_k_pack8_gemv_bf16_f32_out",
     "gguf_q4_k_pack8_gemv_bf16_fp16_out",

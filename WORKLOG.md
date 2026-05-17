@@ -17783,3 +17783,46 @@ bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipc
 ```
 
 Loop metric: `2142.8408 tok/s` for 512-token prefill (`0.9374 GiB` tracked peak). This improves over the retained iteration-5 metric (`1977.1244 tok/s`) but remains below the Qwen3.6 packed PARO target (`2451.2 tok/s`).
+
+## 2026-05-17 GGUF bulk prefill iteration 8 rejected
+
+Tried forcing Q4_K pack8 prefill to 128-thread blocks after the 16x8x32 dense-tile change. The 512-token one-run loop metric regressed to `2100.2265 tok/s` from `2142.8408 tok/s`, so the experiment was reverted before spending a full correctness guard. Retained code kept the existing width-based pack8 launch heuristic.
+
+## 2026-05-17 GGUF bulk prefill iteration 9 rejected
+
+Tried a Q4_K pack8 BF16 WMMA prefill variant. It passed the narrow 4-token bulk-vs-serial smoke but regressed the 512-token loop metric to `1826.2710 tok/s`, so the experiment was reverted before the full guard. Retained code kept the scalar pack8 BF16 prefill path.
+
+## 2026-05-17 GGUF bulk prefill iteration 10
+
+Retained a combined public-prefill overhead reduction:
+
+- Added `return_logits=False` for public GGUF `LLM.generate()` and the benchmark harness so prefill timing no longer copies/checks the full 248k-vocab logits vector when only the sampled token is needed. Default runner/probe behavior still returns logits.
+- Added a Q4_K pack8 dual BF16 prefill launch for the FFN gate/up pair, with an unfused fallback if registry-dispatched layouts differ.
+- Switched Q4_K pack8 rows>1 default to 32 threads, dense BF16 prefill tile to 32x8x32, and split the GDN K2 shared reduction scratch.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/runtime/gguf_linear.py hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py scripts/qwen35_gguf_bench.py tests/test_llm_gguf_generate_path.py
+bash -lc 'set -euo pipefail; hipcc --version > /tmp/hipengine-hipcc-version.txt; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<"PY"
+from hipengine.kernels.hip_gfx1100.linear.dense_gemv import build_dense_gemv
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import build_gguf_q4_k_gemv
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import build_qwen35_linear_attn_gdn
+for fn in (build_dense_gemv, build_gguf_q4_k_gemv, build_qwen35_linear_attn_gdn):
+    fn(load=True, require_cached=False)
+PY'
+# builds succeeded
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt tests/test_llm_gguf_generate_path.py -q
+# 3 passed
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --json /tmp/hipengine-gguf-bulk-loop-e2e.json >/tmp/hipengine-gguf-bulk-loop-e2e.out; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q'
+# 13 passed; E2E expected text/token IDs matched and torch_loaded_by_generate=false
+```
+
+Loop metric:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-runs 0 --measured-runs 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-bulk-loop-512.json
+# prefill_tok_s=2271.7421, decode_tok_s=89.4692, tracked_peak_gib=0.9374, finite_final_logits_all=true
+```
+
+This improves the retained 512-token metric from `2142.8408` to `2271.7421 tok/s`, but remains below the Qwen3.6 packed PARO target (`2451.2 tok/s` 512; `2666.7 tok/s` 4K). Next likely bottleneck is still rows>1 projection/linear-attention prefill throughput.

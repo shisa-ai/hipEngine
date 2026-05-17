@@ -63,7 +63,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
 )
 from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
-from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
+from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear, launch_gguf_linear_pair
 from hipengine.runtime.prefill import PrefillConfig
 
 
@@ -1077,26 +1077,38 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        launch_gguf_linear(
+        if not launch_gguf_linear_pair(
             layer.weight("ffn_gate"),
-            scratch.post_norm.ptr,
-            scratch.ffn_gate_up.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=self.ffn_size,
-            stream=stream,
-            runtime=runtime,
-        )
-        launch_gguf_linear(
             layer.weight("ffn_up"),
             scratch.post_norm.ptr,
+            scratch.ffn_gate_up.ptr,
             scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
             rows=rows,
             in_features=self.hidden_size,
             out_features=self.ffn_size,
             stream=stream,
             runtime=runtime,
-        )
+        ):
+            launch_gguf_linear(
+                layer.weight("ffn_gate"),
+                scratch.post_norm.ptr,
+                scratch.ffn_gate_up.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.ffn_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ffn_up"),
+                scratch.post_norm.ptr,
+                scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.ffn_size,
+                stream=stream,
+                runtime=runtime,
+            )
         silu_mul_separate_out_bf16(
             scratch.ffn_gate_up.ptr,
             scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
@@ -1249,12 +1261,15 @@ class Qwen35GGUFResidentSession:
         token_ids: list[int] | tuple[int, ...],
         *,
         use_bulk: bool | None = None,
+        return_logits: bool = True,
     ) -> Qwen35GGUFNextTokenProbeResult:
-        """Consume prompt tokens once and return greedy next-token logits.
+        """Consume prompt tokens once and return the greedy next token.
 
         Prompts at least as long as the linear-attention convolution kernel use
         the native bulk prefill scheduler by default. Short prompts keep the
-        token-serial path as a correctness/bisect fallback.
+        token-serial path as a correctness/bisect fallback. Set
+        ``return_logits=False`` for public generation paths that only need the
+        sampled token and should avoid copying full logits back to the host.
         """
 
         if not token_ids:
@@ -1268,7 +1283,7 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
                 )
-            return self._run_bulk_prefill_and_sample(token_ids)
+            return self._run_bulk_prefill_and_sample(token_ids, return_logits=return_logits)
 
         self.reset()
         hidden_ptr = None
@@ -1276,13 +1291,14 @@ class Qwen35GGUFResidentSession:
             hidden_ptr = self._run_token_to_final_hidden(int(token_id), position=self._position)
             self._position += 1
         assert hidden_ptr is not None
-        return self._sample_from_hidden(hidden_ptr)
+        return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
 
     def _run_bulk_prefill_and_sample(
         self,
         token_ids: list[int] | tuple[int, ...],
         *,
         stream: int = 0,
+        return_logits: bool = True,
     ) -> Qwen35GGUFNextTokenProbeResult:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -1349,7 +1365,6 @@ class Qwen35GGUFResidentSession:
             stream=stream,
             runtime=runtime,
         )
-        runtime.stream_synchronize(stream)
         self._position = rows
         self.scratch.position_host[0] = rows
         self.scratch.context_host[0] = rows + 1
@@ -1362,7 +1377,7 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         last_hidden_ptr = bulk_scratch.norm.ptr + (rows - 1) * self.runner.hidden_size * 2
-        return self._sample_from_hidden(last_hidden_ptr)
+        return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
 
     def step(self, token_id: int, position: int | None = None) -> Qwen35GGUFNextTokenProbeResult:
         """Consume one generated token and return the next greedy token.
@@ -1496,29 +1511,34 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
 
-    def _sample_from_hidden(self, hidden_ptr: int) -> Qwen35GGUFNextTokenProbeResult:
+    def _sample_from_hidden(self, hidden_ptr: int, *, return_logits: bool = True) -> Qwen35GGUFNextTokenProbeResult:
         self._sample_device_from_hidden(hidden_ptr)
         (self.runtime or get_hip_runtime()).device_synchronize()
-        return self._read_sample()
+        return self._read_sample(return_logits=return_logits)
 
-    def _read_sample(self) -> Qwen35GGUFNextTokenProbeResult:
+    def _read_sample(self, *, return_logits: bool = True) -> Qwen35GGUFNextTokenProbeResult:
         if self.runner is None or self._logits_buf is None or self._logits_host is None:
             raise RuntimeError("GGUF resident session is closed")
         if self._lm_out_index is None or self._lm_out_value is None:
             raise RuntimeError("GGUF resident lm-head buffers are closed")
         runtime = self.runtime or get_hip_runtime()
         index_host = np.empty((1,), dtype=np.int64)
-        value_host = np.empty((1,), dtype=np.float32)
         copy_device_to_host(host_array_ptr(index_host), self._lm_out_index, runtime=runtime)
-        copy_device_to_host(host_array_ptr(value_host), self._lm_out_value, runtime=runtime)
-        copy_device_to_host(host_array_ptr(self._logits_host), self._logits_buf, runtime=runtime)
-        if not np.all(np.isfinite(self._logits_host)):
-            raise FloatingPointError("GGUF resident lm-head logits contain NaN or Inf")
+        logits = np.empty((0,), dtype=np.float32)
+        logit = 0.0
+        if return_logits:
+            value_host = np.empty((1,), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(value_host), self._lm_out_value, runtime=runtime)
+            logit = float(value_host[0])
+            copy_device_to_host(host_array_ptr(self._logits_host), self._logits_buf, runtime=runtime)
+            if not np.all(np.isfinite(self._logits_host)):
+                raise FloatingPointError("GGUF resident lm-head logits contain NaN or Inf")
+            logits = self._logits_host.copy()
         token_id = int(index_host[0])
         return Qwen35GGUFNextTokenProbeResult(
             token_id=token_id,
-            logit=float(value_host[0]),
-            logits=self._logits_host.copy(),
+            logit=logit,
+            logits=logits,
         )
 
     def capture_decode_graph(
