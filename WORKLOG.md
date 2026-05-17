@@ -16744,3 +16744,30 @@ python3 scripts/smoke.py --mode smoke-add-plan && \
 rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
 # pytest: 299 passed; fixtures/smokes passed; torch audit only found allowed docs/comments/diagnostic subprocess text.
 ```
+
+## 2026-05-18 - K1 INT8 KV metadata and policy plumbing
+
+Completed task #6: added host/storage metadata for dense paged `int8_per_token_head` KV without adding engine/backend branches.
+
+Implementation notes:
+
+- Added `DType.INT8_PER_TOKEN_HEAD` with payload itemsize `1`.
+- Added `KVScaleMetadata` for separate K/V scale tensors with `scale_dtype in {fp16, fp32}` and `granularity="per_token_head"`.
+- `KVLiveSpans` now carries optional scale metadata and requires it when `storage_dtype="int8_per_token_head"`; BF16 spans reject stray scale metadata.
+- `KVReservation` / `FixedPagedKVPolicy.register(...)` / `batch_spans(...)` now preserve INT8 scale metadata so the scheduler-facing policy can produce uniform INT8 spans through the existing `KVLiveSpans` ABI.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_kvcache_spans.py tests/test_kvcache_policy.py -q
+# 16 passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures && \
+python3 scripts/smoke.py --mode smoke-add-plan && \
+rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
+# pytest: 304 passed; fixtures/smokes passed; torch audit only found allowed docs/comments/diagnostic subprocess text.
+```

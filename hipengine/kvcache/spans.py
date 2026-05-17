@@ -14,6 +14,38 @@ from hipengine.core.dtype import DType
 from hipengine.core.tensor import Tensor
 
 _SPAN_ROLES = {"prefill", "decode", "verify_chain", "verify_tree"}
+_SCALE_GRANULARITIES = {"per_token_head"}
+_SCALE_DTYPES = {DType.FP16, DType.FP32}
+
+
+@dataclass(frozen=True, slots=True)
+class KVScaleMetadata:
+    """Scale tensors associated with a quantized KV arena."""
+
+    k_scale: Tensor
+    v_scale: Tensor
+    scale_dtype: DType = DType.FP16
+    granularity: str = "per_token_head"
+
+    def __post_init__(self) -> None:
+        if self.k_scale.device != self.v_scale.device:
+            raise ValueError("k_scale and v_scale must be on the same device")
+        if self.k_scale.shape != self.v_scale.shape:
+            raise ValueError("k_scale and v_scale must have the same shape")
+        if self.k_scale.numel <= 0:
+            raise ValueError("scale tensors must not be empty")
+        parsed = DType.parse(self.scale_dtype)
+        object.__setattr__(self, "scale_dtype", parsed)
+        if parsed not in _SCALE_DTYPES:
+            raise ValueError("scale_dtype must be fp16 or fp32")
+        if self.k_scale.dtype != parsed or self.v_scale.dtype != parsed:
+            raise ValueError("scale tensor dtypes must match scale_dtype")
+        if self.granularity not in _SCALE_GRANULARITIES:
+            raise ValueError("scale granularity must be per_token_head")
+
+    @property
+    def device(self):  # intentionally mirrors Tensor.device without importing Device here
+        return self.k_scale.device
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +70,7 @@ class KVLiveSpans:
     request_ids: Tensor | None = None
     row_positions: Tensor | None = None
     span_role: str = "decode"
+    scale_metadata: KVScaleMetadata | None = None
 
     def __post_init__(self) -> None:
         if self.base_offsets.device != self.live_counts.device:
@@ -50,6 +83,8 @@ class KVLiveSpans:
             raise ValueError("request_ids must be on the same device as base_offsets")
         if self.row_positions is not None and self.row_positions.device != self.base_offsets.device:
             raise ValueError("row_positions must be on the same device as base_offsets")
+        if self.scale_metadata is not None and self.scale_metadata.device != self.base_offsets.device:
+            raise ValueError("scale metadata must be on the same device as base_offsets")
         if self.base_offsets.dtype != DType.INT32:
             raise ValueError("base_offsets must be int32")
         if self.live_counts.dtype not in {DType.INT32, DType.INT64}:
@@ -70,7 +105,12 @@ class KVLiveSpans:
             raise ValueError("spans_mode must be 'uniform' or 'per_head_variable'")
         if self.span_role not in _SPAN_ROLES:
             raise ValueError("span_role must be one of prefill, decode, verify_chain, verify_tree")
-        DType.parse(self.storage_dtype)
+        storage = DType.parse(self.storage_dtype)
+        object.__setattr__(self, "storage_dtype", storage)
+        if storage == DType.INT8_PER_TOKEN_HEAD and self.scale_metadata is None:
+            raise ValueError("int8_per_token_head spans require scale metadata")
+        if storage != DType.INT8_PER_TOKEN_HEAD and self.scale_metadata is not None:
+            raise ValueError("scale metadata is only valid for int8_per_token_head spans")
 
     @classmethod
     def paged_uniform(
@@ -83,6 +123,7 @@ class KVLiveSpans:
         request_ids: Tensor | None = None,
         row_positions: Tensor | None = None,
         span_role: str = "decode",
+        scale_metadata: KVScaleMetadata | None = None,
     ) -> "KVLiveSpans":
         """Build uniform fixed-page spans for parent paged kernels.
 
@@ -102,6 +143,7 @@ class KVLiveSpans:
             request_ids=request_ids,
             row_positions=row_positions,
             span_role=span_role,
+            scale_metadata=scale_metadata,
         )
 
     @property

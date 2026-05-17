@@ -7,7 +7,7 @@ from typing import Any, Protocol, Sequence, runtime_checkable
 
 from hipengine.core.dtype import DType
 from hipengine.core.tensor import Tensor
-from hipengine.kvcache.spans import KVLiveSpans
+from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
 
 
 def _validate_unique_request_ids(request_ids: Sequence[int]) -> None:
@@ -25,6 +25,7 @@ class KVReservation:
     max_live_count: int
     capacity_tokens: int
     storage_dtype: DType
+    scale_metadata: KVScaleMetadata | None = None
 
     def __post_init__(self) -> None:
         if self.request_id < 0:
@@ -41,7 +42,14 @@ class KVReservation:
             raise ValueError("capacity_tokens must be positive")
         if self.max_live_count > self.capacity_tokens:
             raise ValueError("max_live_count cannot exceed capacity_tokens")
-        DType.parse(self.storage_dtype)
+        storage = DType.parse(self.storage_dtype)
+        object.__setattr__(self, "storage_dtype", storage)
+        if storage == DType.INT8_PER_TOKEN_HEAD and self.scale_metadata is None:
+            raise ValueError("int8_per_token_head reservations require scale metadata")
+        if storage != DType.INT8_PER_TOKEN_HEAD and self.scale_metadata is not None:
+            raise ValueError("scale metadata is only valid for int8_per_token_head reservations")
+        if self.scale_metadata is not None and self.scale_metadata.device != self.block_table.device:
+            raise ValueError("scale metadata must be on the same device as block_table")
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +157,7 @@ class FixedPagedKVPolicy:
         live_counts: Tensor,
         max_live_count: int,
         capacity_tokens: int | None = None,
+        scale_metadata: KVScaleMetadata | None = None,
     ) -> KVReservation:
         rid = int(request_id)
         if rid in self._reservations:
@@ -161,6 +170,7 @@ class FixedPagedKVPolicy:
             max_live_count=int(max_live_count),
             capacity_tokens=capacity,
             storage_dtype=self.storage_dtype,
+            scale_metadata=scale_metadata,
         )
         self._reservations[rid] = reservation
         return reservation
@@ -179,6 +189,7 @@ class FixedPagedKVPolicy:
         request_ids: Tensor | None = None,
         row_positions: Tensor | None = None,
         max_live_count: int | None = None,
+        scale_metadata: KVScaleMetadata | None = None,
     ) -> KVLiveSpans:
         request_ids_tuple = tuple(_request_id(item) for item in batch)
         if not request_ids_tuple:
@@ -189,6 +200,7 @@ class FixedPagedKVPolicy:
             block_table = reservation.block_table
             live_counts = reservation.live_counts
             max_live_count = reservation.max_live_count if max_live_count is None else max_live_count
+            scale_metadata = reservation.scale_metadata if scale_metadata is None else scale_metadata
         elif block_table is None or live_counts is None:
             raise ValueError("c>1 batch_spans requires packed block_table and live_counts tensors")
         if max_live_count is None:
@@ -201,6 +213,7 @@ class FixedPagedKVPolicy:
             request_ids=request_ids,
             row_positions=row_positions,
             span_role=role,
+            scale_metadata=scale_metadata,
         )
 
     def begin_transaction(self, seqs: Sequence[Any], draft: Any) -> KVTransaction:
@@ -306,4 +319,4 @@ def _request_id(seq: Any) -> int:
     return rid
 
 
-__all__ = ["FixedPagedKVPolicy", "KVPolicy", "KVReservation", "KVTransaction"]
+__all__ = ["FixedPagedKVPolicy", "KVPolicy", "KVReservation", "KVScaleMetadata", "KVTransaction"]

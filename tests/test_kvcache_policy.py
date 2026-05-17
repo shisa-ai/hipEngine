@@ -7,19 +7,28 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import WorkItem, WorkKind
-from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVTransaction
+from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata, KVTransaction
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str, device: Device | None = None) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, device or Device("hip", 0))
 
 
+def _scale_metadata(ptr_base: int, *, shape: tuple[int, ...] = (4, 16, 2)) -> KVScaleMetadata:
+    return KVScaleMetadata(
+        k_scale=_tensor(ptr_base, shape, "fp16"),
+        v_scale=_tensor(ptr_base + 0x100, shape, "fp16"),
+    )
+
+
 def _register(policy: FixedPagedKVPolicy, request_id: int, *, ptr_base: int) -> None:
+    scale_metadata = _scale_metadata(ptr_base + 0x200) if policy.storage_dtype.value == "int8_per_token_head" else None
     policy.register(
         request_id,
         block_table=_tensor(ptr_base, (4,), "int32"),
         live_counts=_tensor(ptr_base + 0x100, (1,), "int64"),
         max_live_count=3,
+        scale_metadata=scale_metadata,
     )
 
 
@@ -79,6 +88,36 @@ def test_fixed_paged_policy_c1_spans_and_admission_cap() -> None:
     assert spans.max_live_count == 3
     assert spans.span_role == "decode"
     assert policy.admission_cap(req) == 64 - 3
+
+
+def test_fixed_paged_policy_accepts_int8_scale_metadata() -> None:
+    policy = FixedPagedKVPolicy(block_size=16, storage_dtype="int8_per_token_head")
+    metadata = _scale_metadata(0x3000)
+    reservation = policy.register(
+        202,
+        block_table=_tensor(0x1000, (4,), "int32"),
+        live_counts=_tensor(0x2000, (1,), "int64"),
+        max_live_count=3,
+        scale_metadata=metadata,
+    )
+    spans = policy.batch_spans([202])
+
+    assert reservation.storage_dtype.value == "int8_per_token_head"
+    assert reservation.scale_metadata is metadata
+    assert spans.storage_dtype.value == "int8_per_token_head"
+    assert spans.scale_metadata is metadata
+    assert policy.admission_cap(202) == 64 - 3
+
+
+def test_fixed_paged_policy_requires_int8_scale_metadata() -> None:
+    policy = FixedPagedKVPolicy(block_size=16, storage_dtype="int8_per_token_head")
+    with pytest.raises(ValueError, match="require scale metadata"):
+        policy.register(
+            303,
+            block_table=_tensor(0x1000, (4,), "int32"),
+            live_counts=_tensor(0x2000, (1,), "int64"),
+            max_live_count=3,
+        )
 
 
 def test_fixed_paged_policy_requires_packed_metadata_for_c_gt_1() -> None:
