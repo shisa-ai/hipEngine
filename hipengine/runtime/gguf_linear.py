@@ -15,6 +15,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
 
 GGUF_ACTIVATION_BF16 = "bf16"
 GGUF_OUTPUT_BF16 = "bf16"
+GGUF_OUTPUT_FP16 = "fp16"
 GGUF_OUTPUT_F32 = "f32"
 
 
@@ -31,12 +32,20 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
         KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_bf16_out"),
         "pack8",
     ),
+    (LAYOUT_Q4_K_PACK8, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_fp16_out"),
+        "pack8",
+    ),
     (LAYOUT_Q4_K_PACK8, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_f32_out"),
         "pack8",
     ),
     (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_bf16_out"),
+        "raw",
+    ),
+    (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_fp16_out"),
         "raw",
     ),
     (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
@@ -52,6 +61,7 @@ def resolve_gguf_linear_dispatch(
     activation_dtype: str = GGUF_ACTIVATION_BF16,
     output_dtype: str = GGUF_OUTPUT_BF16,
     backend: str = "hip_gfx1100",
+    rows: int = 1,
 ) -> GGUFLinearDispatch:
     """Resolve a GGUF linear launch without model/engine quant branches."""
 
@@ -64,8 +74,9 @@ def resolve_gguf_linear_dispatch(
             f"layout={weight.spec.layout!r}, activation={activation_dtype!r}, output={output_dtype!r}"
         ) from exc
     quant = weight.spec.quant_key if dispatch.key.quant == "<from-weight>" else dispatch.key.quant
+    variant = _variant_for_rows(dispatch.key.variant, rows=rows)
     return GGUFLinearDispatch(
-        KernelKey(backend, dispatch.key.layer, quant, dispatch.key.variant),
+        KernelKey(backend, dispatch.key.layer, quant, variant),
         dispatch.abi,
     )
 
@@ -97,6 +108,7 @@ def launch_gguf_linear(
         activation_dtype=activation_dtype,
         output_dtype=output_dtype,
         backend=backend,
+        rows=rows,
     )
     fn = resolve(
         backend=dispatch.key.backend,
@@ -139,6 +151,18 @@ def _launch_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwa
     )
 
 
+def _variant_for_rows(variant: str, *, rows: int) -> str:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if rows == 1:
+        return variant
+    if variant.startswith("pack8_"):
+        return f"pack8_prefill_{variant[len('pack8_') :]}"
+    if variant.startswith("gemv_"):
+        return f"prefill_{variant[len('gemv_') :]}"
+    return variant
+
+
 _LAUNCH_ABI = {
     "pack8": _launch_pack8,
     "raw": _launch_raw,
@@ -148,6 +172,7 @@ _LAUNCH_ABI = {
 __all__ = [
     "GGUF_ACTIVATION_BF16",
     "GGUF_OUTPUT_BF16",
+    "GGUF_OUTPUT_FP16",
     "GGUF_OUTPUT_F32",
     "GGUFLinearDispatch",
     "launch_gguf_linear",

@@ -6,7 +6,7 @@ Primary references: local llama.cpp checkouts under `~/llama.cpp/` and parent ev
 
 ## Executive summary
 
-Implementation status as of 2026-05-16: the first intake slice has landed in
+Implementation status as of 2026-05-17: the first intake slice has landed in
 `hipengine/loading/gguf.py`, `hipengine/quant/gguf.py`, and
 `scripts/inspect_gguf.py`. hipENGINE can now scan local GGUF v3 files, expose
 lazy raw tensor views, and CPU-dequantize tiny fallback samples for the target
@@ -15,9 +15,11 @@ local tensor types (`BF16`, `Q8_0`, `Q4_1`, `Q4_K`, `Q5_K`, `Q6_K`, `IQ4_XS`,
 `Q8_0`, `Q5_K`, `Q6_K`, and `Q4_K` raw bytes, plus a lossless PARO-style pack8
 repack for `Q4_K`, on gfx1100 while preserving GGML quant math. Full Qwen GGUF
 model materialization and E2E correctness now work for the Q4_K_M fixture;
-persistent resident decode, all-GPU full attention, AOTriton/WMMA prefill, and
-deeper Marlin-style tuning remain next steps. BF16 output variants are available
-for the GGUF GEMV kernels used by the planned runtime path. Qwen3.5 GGUF
+persistent resident decode, all-GPU full attention, layer-level AOTriton prefill,
+and rows>1 measured-equivalent projection surfaces have landed; public full-model
+bulk prefill, decode graph replay, and deeper WMMA/Marlin-style tuning remain
+next steps. BF16 and FP16 output variants are available for the GGUF projection
+kernels used by the planned runtime path. Qwen3.5 GGUF
 tensor-name mapping now validates the local 0.8B Q4_K_M inventory and classifies
 all 24 layers into 18 linear-attention and 6 full-attention blocks. The resident materialization plan covers all 320 tensors:
 98 Q4_K weights use lossless pack8 records, 89 Q5_K/Q6_K/Q8_0 weights keep raw
@@ -717,7 +719,7 @@ same `PrefillConfig.attn_aotriton_min_tokens` threshold surface as PARO: rows
 below threshold run the resident native sequential fallback, while eligible rows
 run AOTriton V3 compact-varlen attention after GGUF Q/K/V projection and GPU
 q/k norm+RoPE. This is not yet the public full-model prefill scheduler;
-linear-attention bulk prefill and rows>1 projection tuning remain P4 work.
+linear-attention bulk prefill and scheduler integration remain follow-up work.
 
 Prerequisite: P1 and P2. AOTriton sees BF16 Q/K/V tensors and live-span-shaped
 paged KV metadata; it does not know about GGUF block bytes.
@@ -744,11 +746,18 @@ writer, BF16 query cast, and BF16 gate kernels.
 
 ### P4: add rows>1 GGUF projection kernels
 
-Current bottleneck after P3: prefill projections still use rows==1 GEMV loops.
-PARO's high prefill rows depend on packed rows>1 projection surfaces and compact
-WMMA/GEMM-style execution.
+Status: implemented as measured-equivalent row-grid prefill projection surfaces in
+`benchmarks/results/2026-05-17-hipengine-gguf-prefill-projection-diagnostic.json`.
+`launch_gguf_linear(...)` now routes `rows > 1` to registered `prefill_*` variants
+for Q4_K pack8 and raw Q8_0/Q5_K/Q6_K without model-dispatch backend/quant
+branches. These kernels keep exact GGML quant math and add BF16/FP16 output
+surfaces; they are not yet WMMA/GEMM-tiled throughput kernels.
 
-Implementation target:
+Former bottleneck after P3: rows>1 layer prefill projections still resolved to
+GEMV variant names and lacked FP16-output surfaces for follow-on attention /
+linear-attention experiments.
+
+Implemented target:
 
 - Add batched prefill kernels for Q4_K pack8 and raw Q5_K/Q6_K/Q8_0, with the
   BF16/FP16 output variants required by attention and linear-attention layers.
@@ -757,8 +766,19 @@ Implementation target:
   unless the benchmark win justifies it.
 - Keep GGML quant math exact; do not relabel GGUF Q4_K as PARO Marlin-K.
 
-Validation gate: kernel smokes vs CPU dequant oracles, profiler confirms rows>1
-kernels replace per-token GEMV loops in native prefill, and P0 E2E remains exact.
+Validation result: `scripts/gguf_prefill_projection_smoke.py --rows 4` passes
+Q4_K pack8 and raw Q8_0/Q5_K/Q6_K BF16->F32/BF16->FP16/BF16->BF16 checks vs CPU
+references with `worst_max_abs=0.0`. `rocprofv3 --kernel-trace` over that smoke
+shows `gguf_q4_k_pack8_prefill_out_kernel<unsigned short,{float,_Float16,unsigned short}>`
+and `gguf_k_prefill_out_kernel<unsigned short,{float,_Float16,unsigned short},8/5/6>`.
+A native Qwen3.5-0.8B GGUF rows=4 layer-3 prefill profile shows six
+`gguf_q4_k_pack8_prefill_out_kernel<unsigned short,unsigned short>` launches
+with `Grid_Size_Y=4`, one raw Q6_K prefill projection, and AOTriton `attn_fwd`.
+The public P0 E2E gate remains exact repeat=2 (`" 1.\n\n"`, IDs
+`[220, 16, 13, 271]`, no `torch` import). Public full-model prefill is still
+resident token-serial until the linear-attention bulk scheduler path is wired,
+but the native layer-level GGUF prefill path no longer loops rows==1 projection
+kernels for eligible layers.
 
 ### P5: add GGUF decode graph replay and GPU sampling
 

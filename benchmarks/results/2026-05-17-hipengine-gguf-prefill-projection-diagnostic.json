@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "task": 47,
+  "title": "GGUF rows>1 projection surfaces for Qwen3.5-0.8B Q4_K_M prefill",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "architecture": "qwen35",
+    "quant": "gguf_q4_k_m"
+  },
+  "change": {
+    "summary": "Rows>1 GGUF linear dispatch now selects prefill variants for Q4_K pack8 and raw Q8_0/Q5_K/Q6_K. The kernels retain exact GGML quant math and use a measured-equivalent row-grid implementation rather than WMMA.",
+    "implemented": [
+      "added FP16-output wrappers for Q4_K pack8/raw and raw Q8_0/Q5_K/Q6_K",
+      "registered pack8_prefill_* and prefill_* variants for rows > 1",
+      "updated launch_gguf_linear(...) to route rows > 1 to prefill variants without backend/quant model-dispatch branches",
+      "renamed row-grid device kernels to gguf_q4_k_pack8_prefill_out_kernel / gguf_k_prefill_out_kernel so profiler traces distinguish rows>1 prefill launches",
+      "added scripts/gguf_prefill_projection_smoke.py for CPU-reference rows>1 Q4_K pack8 + raw Q8_0/Q5_K/Q6_K smokes"
+    ],
+    "caveats": [
+      "This is a correctness/profiler diagnostic, not a promoted throughput row.",
+      "The implementation is a row-grid measured-equivalent prefill surface; WMMA/GEMM tiling remains a future optimization if profiling justifies it.",
+      "Public LLM.generate still uses token-serial full-model prefill until the linear-attention bulk scheduler path lands, but the native layer-level Qwen3.5 GGUF AOTriton prefill path now dispatches rows>1 projection variants."
+    ]
+  },
+  "kernel_smoke": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_prefill_projection_smoke.py --rows 4 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "rows": 4,
+    "result": "worst_max_abs=0.0",
+    "cases": {
+      "Q4_K_PACK8": {
+        "bf16_f32_out_max_abs": 0.0,
+        "bf16_fp16_out_max_abs": 0.0,
+        "bf16_bf16_out_max_abs": 0.0,
+        "bit_mismatch": 0
+      },
+      "Q8_0": {
+        "bf16_f32_out_max_abs": 0.0,
+        "bf16_fp16_out_max_abs": 0.0,
+        "bf16_bf16_out_max_abs": 0.0,
+        "bit_mismatch": 0
+      },
+      "Q5_K": {
+        "bf16_f32_out_max_abs": 0.0,
+        "bf16_fp16_out_max_abs": 0.0,
+        "bf16_bf16_out_max_abs": 0.0,
+        "bit_mismatch": 0
+      },
+      "Q6_K": {
+        "bf16_f32_out_max_abs": 0.0,
+        "bf16_fp16_out_max_abs": 0.0,
+        "bf16_bf16_out_max_abs": 0.0,
+        "bit_mismatch": 0
+      }
+    }
+  },
+  "compat_smokes": [
+    {
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/smoke.py --mode gguf-q4-k-pack8-gemv-hip --rows 4 --hidden-size 512 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "result": "f32/fp16/bf16/bf16_out max_abs=0.0, bf16_out_bit_mismatch=0"
+    },
+    {
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/smoke.py --mode gguf-q4-k-gemv-hip --rows 4 --hidden-size 512 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "result": "f32/fp16/bf16/bf16_out max_abs=0.0, bf16_out_bit_mismatch=0"
+    },
+    {
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_k_gemv_smoke.py --rows 4 --out-features 7 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "result": "Q8_0/Q5_K/Q6_K f32/fp16/bf16/bf16_out max_abs=0.0, bf16_out_bit_mismatch=0"
+    }
+  ],
+  "threshold_sweep": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_aotriton_prefill_sweep.py --lengths 1,2,4 --attn-aotriton-min-tokens 3 --json /tmp/gguf_task47_sweep.json",
+    "rows": [
+      {
+        "rows": 1,
+        "mode": "native_sequential",
+        "used_aotriton": false,
+        "seconds": 0.013961304997792467
+      },
+      {
+        "rows": 2,
+        "mode": "native_sequential",
+        "used_aotriton": false,
+        "seconds": 0.012050504010403529
+      },
+      {
+        "rows": 4,
+        "mode": "aotriton_v3",
+        "used_aotriton": true,
+        "seconds": 0.04674972500652075
+      }
+    ]
+  },
+  "rocprof_microbench": {
+    "command": "env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file gguf_task47_prefill_projection --output-directory /tmp/hipengine-gguf-task47-rocprof.FUj6VM -- python3 scripts/gguf_prefill_projection_smoke.py --rows 4 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "profile_dir": "/tmp/hipengine-gguf-task47-rocprof.FUj6VM",
+    "total_dispatches": 34,
+    "kernel_counts": {
+      "gguf_q4_k_pack8_prefill_out_kernel<unsigned short,float>": 1,
+      "gguf_q4_k_pack8_prefill_out_kernel<unsigned short,_Float16>": 1,
+      "gguf_q4_k_pack8_prefill_out_kernel<unsigned short,unsigned short>": 1,
+      "gguf_k_prefill_out_kernel<unsigned short,float,8>": 1,
+      "gguf_k_prefill_out_kernel<unsigned short,_Float16,8>": 1,
+      "gguf_k_prefill_out_kernel<unsigned short,unsigned short,8>": 1,
+      "gguf_k_prefill_out_kernel<unsigned short,float,5>": 1,
+      "gguf_k_prefill_out_kernel<unsigned short,_Float16,5>": 1,
+      "gguf_k_prefill_out_kernel<unsigned short,unsigned short,5>": 1,
+      "gguf_k_prefill_out_kernel<unsigned short,float,6>": 1,
+      "gguf_k_prefill_out_kernel<unsigned short,_Float16,6>": 1,
+      "gguf_k_prefill_out_kernel<unsigned short,unsigned short,6>": 1
+    },
+    "duration_ns": {
+      "q4_pack8_bf16_f32": 6239,
+      "q4_pack8_bf16_fp16": 6280,
+      "q4_pack8_bf16_bf16": 6479,
+      "q8_0_bf16_f32": 3440,
+      "q8_0_bf16_fp16": 2920,
+      "q8_0_bf16_bf16": 2880,
+      "q5_k_bf16_f32": 5479,
+      "q5_k_bf16_fp16": 4759,
+      "q5_k_bf16_bf16": 4720,
+      "q6_k_bf16_f32": 4880,
+      "q6_k_bf16_fp16": 4600,
+      "q6_k_bf16_bf16": 4280
+    }
+  },
+  "qwen35_layer_prefill_profile": {
+    "command": "env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file gguf_task47_qwen_prefill --output-directory /tmp/hipengine-gguf-task47-qwen-rocprof.sUd4I7 -- python3 /tmp/profile_gguf_task47_qwen_prefill.py",
+    "profile_dir": "/tmp/hipengine-gguf-task47-qwen-rocprof.sUd4I7",
+    "stdout": "{'mode': 'aotriton_v3', 'used_aotriton': True, 'shape': (4, 1024)}",
+    "total_dispatches": 142,
+    "expected_kernel_counts": {
+      "gguf_q4_k_pack8_prefill_out_kernel<unsigned short,unsigned short>": 6,
+      "gguf_k_prefill_out_kernel<unsigned short,unsigned short,6>": 1,
+      "attn_fwd": 1
+    },
+    "notes": "Grid_Size_Y=4 for the Q4_K pack8 prefill projection launches, confirming the layer-level native Qwen3.5 GGUF prefill path no longer loops rows==1 GEMV for those projections."
+  },
+  "e2e_gate": {
+    "command": "/usr/bin/time -f 'elapsed=%E exit=%x' env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --repeat 2 --max-new-tokens 4 --json /tmp/gguf_task47_e2e.json",
+    "elapsed_wall": "0:23.70",
+    "passed": true,
+    "outputs": [" 1.\n\n", " 1.\n\n"],
+    "generated_token_ids": [220, 16, 13, 271],
+    "torch_loaded_by_generate": false
+  },
+  "validation": {
+    "targeted_tests_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_gguf_linear_dispatch.py tests/test_gguf_ops.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_runner.py tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_tokenizer.py tests/test_gguf_e2e_acceptance.py tests/test_llm_generate.py tests/test_model_quant_and_imports.py tests/test_aotriton_discovery.py -q",
+    "targeted_tests_result": "40 passed"
+  }
+}

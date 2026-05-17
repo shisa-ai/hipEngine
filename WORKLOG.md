@@ -16230,3 +16230,169 @@ Result: stdout `{'mode': 'aotriton_v3', 'used_aotriton': True, 'shape': (4, 1024
 | `gguf_gate_mul_bf16_kernel` | 1 |
 
 Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-aotriton-v3-prefill-diagnostic.json`. This is layer-level launch/correctness evidence only (`performance_claim=false`): public `LLM.generate()` still uses the resident token-serial prefill path until linear-attention bulk prefill, scheduler integration, and rows>1 GGUF projection tuning land.
+
+## 2026-05-17 GGUF rows>1 prefill projection surfaces
+
+Implemented task #47: `launch_gguf_linear(..., rows>1)` now selects registered rows>1 GGUF projection variants for Q4_K pack8 and raw Q8_0/Q5_K/Q6_K instead of resolving the old GEMV variant names. The device implementation is a measured-equivalent row-grid prefill surface (not yet WMMA/GEMM tiled), preserving exact GGML quant math and avoiding duplicate qweight residency.
+
+Code changes:
+
+- Added `GGUF_OUTPUT_FP16` and rows-aware dispatch in `hipengine/runtime/gguf_linear.py`:
+  - rows==1 keeps existing `pack8_*` / `gemv_*` variants.
+  - rows>1 maps `pack8_*` -> `pack8_prefill_*` and `gemv_*` -> `prefill_*` without backend/quant branches in model dispatch.
+- Added FP16-output wrappers and registry variants for:
+  - Q4_K raw: `gemv_*_fp16_out`, `prefill_*_fp16_out`.
+  - Q4_K pack8: `pack8_*_fp16_out`, `pack8_prefill_*_fp16_out`.
+  - raw Q8_0/Q5_K/Q6_K: `gemv_*_fp16_out`, `prefill_*_fp16_out`.
+- Renamed profiler-visible row-grid device bodies from `*_gemv_out_kernel` to:
+  - `gguf_q4_k_prefill_out_kernel`
+  - `gguf_q4_k_pack8_prefill_out_kernel`
+  - `gguf_k_prefill_out_kernel`
+- Added `scripts/gguf_prefill_projection_smoke.py` for rows>1 CPU-reference smokes across Q4_K pack8 and raw Q8_0/Q5_K/Q6_K with BF16->F32/BF16->FP16/BF16->BF16 outputs.
+- Updated `tests/test_gguf_linear_dispatch.py` so rows>1 dispatch resolves prefill variants and FP16 output is accepted.
+
+Kernel smokes:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/gguf_prefill_projection_smoke.py \
+    --rows 4 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Result:
+
+```text
+Q4_K_PACK8 prefill_bf16_f32_out max_abs=0.0 bit_mismatch=0
+Q4_K_PACK8 prefill_bf16_fp16_out max_abs=0.0 bit_mismatch=0
+Q4_K_PACK8 prefill_bf16_bf16_out max_abs=0.0 bit_mismatch=0
+Q8_0 prefill_bf16_f32_out max_abs=0.0 bit_mismatch=0
+Q8_0 prefill_bf16_fp16_out max_abs=0.0 bit_mismatch=0
+Q8_0 prefill_bf16_bf16_out max_abs=0.0 bit_mismatch=0
+Q5_K prefill_bf16_f32_out max_abs=0.0 bit_mismatch=0
+Q5_K prefill_bf16_fp16_out max_abs=0.0 bit_mismatch=0
+Q5_K prefill_bf16_bf16_out max_abs=0.0 bit_mismatch=0
+Q6_K prefill_bf16_f32_out max_abs=0.0 bit_mismatch=0
+Q6_K prefill_bf16_fp16_out max_abs=0.0 bit_mismatch=0
+Q6_K prefill_bf16_bf16_out max_abs=0.0 bit_mismatch=0
+worst_max_abs=0.0
+```
+
+Compatibility smokes after the kernel rename:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/smoke.py --mode gguf-q4-k-pack8-gemv-hip \
+    --rows 4 --hidden-size 512 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+# f32/fp16/bf16/bf16_out max_abs=0.0, bf16_out_bit_mismatch=0
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/smoke.py --mode gguf-q4-k-gemv-hip \
+    --rows 4 --hidden-size 512 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+# f32/fp16/bf16/bf16_out max_abs=0.0, bf16_out_bit_mismatch=0
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/gguf_k_gemv_smoke.py \
+    --rows 4 --out-features 7 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+# Q8_0/Q5_K/Q6_K worst_max_abs=0.0
+```
+
+Threshold sweep after rows-aware projection dispatch:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_aotriton_prefill_sweep.py \
+    --lengths 1,2,4 --attn-aotriton-min-tokens 3 \
+    --json /tmp/gguf_task47_sweep.json
+```
+
+Result:
+
+| Rows | Threshold | Mode | AOTriton | Time |
+| ---: | ---: | --- | --- | ---: |
+| 1 | 3 | `native_sequential` | false | 0.0140 s |
+| 2 | 3 | `native_sequential` | false | 0.0121 s |
+| 4 | 3 | `aotriton_v3` | true | 0.0467 s |
+
+rocprof microbench evidence:
+
+```bash
+env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format csv \
+    --output-file gguf_task47_prefill_projection \
+    --output-directory /tmp/hipengine-gguf-task47-rocprof.FUj6VM \
+    -- python3 scripts/gguf_prefill_projection_smoke.py \
+      --rows 4 \
+      --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+      --require-cached-build
+```
+
+Trace summary: 34 total dispatches, 12 expected rows>1 projection kernel launches:
+
+| Kernel family | Launches | Durations |
+| --- | ---: | --- |
+| `gguf_q4_k_pack8_prefill_out_kernel<unsigned short,{float,_Float16,unsigned short}>` | 3 | 6239 / 6280 / 6479 ns |
+| `gguf_k_prefill_out_kernel<unsigned short,{float,_Float16,unsigned short},8>` | 3 | 3440 / 2920 / 2880 ns |
+| `gguf_k_prefill_out_kernel<unsigned short,{float,_Float16,unsigned short},5>` | 3 | 5479 / 4759 / 4720 ns |
+| `gguf_k_prefill_out_kernel<unsigned short,{float,_Float16,unsigned short},6>` | 3 | 4880 / 4600 / 4280 ns |
+
+Native Qwen3.5 GGUF layer-level prefill profile:
+
+```bash
+env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format csv \
+    --output-file gguf_task47_qwen_prefill \
+    --output-directory /tmp/hipengine-gguf-task47-qwen-rocprof.sUd4I7 \
+    -- python3 /tmp/profile_gguf_task47_qwen_prefill.py
+```
+
+Result: stdout `{'mode': 'aotriton_v3', 'used_aotriton': True, 'shape': (4, 1024)}`, total dispatches `142`. Expected projection/attention kernels in the trace:
+
+| Kernel | Launches | Evidence |
+| --- | ---: | --- |
+| `gguf_q4_k_pack8_prefill_out_kernel<unsigned short,unsigned short>` | 6 | `Grid_Size_Y=4`, total `309282 ns` |
+| `gguf_k_prefill_out_kernel<unsigned short,unsigned short,6>` | 1 | `Grid_Size_Y=4`, `22520 ns` |
+| `attn_fwd` | 1 | `37720 ns` |
+
+This confirms the native layer-level Qwen3.5-0.8B GGUF AOTriton prefill path now uses rows>1 projection kernels instead of per-token GEMV loops for eligible rows. Public `LLM.generate()` full-model prefill is still token-serial until the linear-attention bulk scheduler path lands.
+
+Public E2E gate:
+
+```bash
+/usr/bin/time -f 'elapsed=%E exit=%x' \
+  env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      PYTHONPATH=. \
+      python3 scripts/qwen35_gguf_e2e_correctness.py \
+        --repeat 2 --max-new-tokens 4 --json /tmp/gguf_task47_e2e.json
+```
+
+Result:
+
+```text
+passed=true
+outputs=[' 1.\n\n', ' 1.\n\n']
+generated_token_ids=[220, 16, 13, 271]
+torch_loaded_by_generate=false
+elapsed=0:23.70 exit=0
+```
+
+Targeted tests:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest \
+  tests/test_gguf_linear_dispatch.py tests/test_gguf_ops.py \
+  tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_runner.py \
+  tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_tokenizer.py \
+  tests/test_gguf_e2e_acceptance.py tests/test_llm_generate.py \
+  tests/test_model_quant_and_imports.py tests/test_aotriton_discovery.py -q
+# 40 passed
+```
+
+Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-prefill-projection-diagnostic.json` (`performance_claim=false`).

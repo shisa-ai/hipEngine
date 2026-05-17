@@ -12,6 +12,7 @@ from hipengine.loading.qwen35_gguf_materialize import LAYOUT_Q4_K_PACK8, LAYOUT_
 from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_BF16,
     GGUF_OUTPUT_F32,
+    GGUF_OUTPUT_FP16,
     launch_gguf_linear,
     resolve_gguf_linear_dispatch,
 )
@@ -49,6 +50,12 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     assert resolve_gguf_linear_dispatch(q6, output_dtype=GGUF_OUTPUT_F32).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q6_k", "gemv_bf16_f32_out"
     )
+    assert resolve_gguf_linear_dispatch(q4, rows=4).key == KernelKey(
+        "hip_gfx1100", "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out"
+    )
+    assert resolve_gguf_linear_dispatch(q5, rows=4, output_dtype=GGUF_OUTPUT_FP16).key == KernelKey(
+        "hip_gfx1100", "linear", "gguf_q5_k", "prefill_bf16_fp16_out"
+    )
 
 
 @pytest.mark.parametrize(
@@ -57,19 +64,19 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
         (
             _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k"),
             GGUF_OUTPUT_BF16,
-            KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_bf16_out"),
+            KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out"),
             (100, 11, 12, 13, 200, 2, 1024, 2048),
         ),
         (
             _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k"),
             GGUF_OUTPUT_BF16,
-            KernelKey("hip_gfx1100", "linear", "gguf_q5_k", "gemv_bf16_bf16_out"),
+            KernelKey("hip_gfx1100", "linear", "gguf_q5_k", "prefill_bf16_bf16_out"),
             (100, 10, 200, 2, 1024, 2048),
         ),
         (
             _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q6_k"),
             GGUF_OUTPUT_F32,
-            KernelKey("hip_gfx1100", "linear", "gguf_q6_k", "gemv_bf16_f32_out"),
+            KernelKey("hip_gfx1100", "linear", "gguf_q6_k", "prefill_bf16_f32_out"),
             (100, 10, 200, 2, 1024, 2048),
         ),
     ],
@@ -109,4 +116,4 @@ def test_launch_gguf_linear_calls_registry_kernel_with_expected_abi(
 def test_gguf_linear_dispatch_rejects_unsupported_dtype() -> None:
     weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
     with pytest.raises(ValueError, match="unsupported GGUF linear dispatch"):
-        resolve_gguf_linear_dispatch(weight, output_dtype="fp16")
+        resolve_gguf_linear_dispatch(weight, output_dtype="int8")

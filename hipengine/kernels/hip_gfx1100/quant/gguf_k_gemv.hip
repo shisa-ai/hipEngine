@@ -156,7 +156,7 @@ __device__ inline float reduce_block_sum(float acc) {
 
 template <typename scalar_t, typename out_t, int qtype>
 __launch_bounds__(256, 2)
-__global__ void gguf_k_gemv_out_kernel(
+__global__ void gguf_k_prefill_out_kernel(
     const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ qweight,
     out_t* __restrict__ out,
@@ -218,7 +218,7 @@ int launch_gguf_k_gemv_out(
   }
   const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows));
-  gguf_k_gemv_out_kernel<scalar_t, out_t, qtype><<<grid, block, 0, stream>>>(
+  gguf_k_prefill_out_kernel<scalar_t, out_t, qtype><<<grid, block, 0, stream>>>(
       x,
       qweight,
       out,
@@ -237,16 +237,34 @@ extern "C" int hipengine_##NAME##_gemv_f32_f32_out( \
   return launch_gguf_k_gemv_out<float, float, QTYPE>( \
       x, qweight, out, rows, in_features, out_features, threads, stream); \
 } \
+extern "C" int hipengine_##NAME##_gemv_f32_fp16_out( \
+    const float* x, const uint8_t* qweight, half_t* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_out<float, half_t, QTYPE>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+} \
 extern "C" int hipengine_##NAME##_gemv_fp16_f32_out( \
     const half_t* x, const uint8_t* qweight, float* out, int64_t rows, \
     int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
   return launch_gguf_k_gemv_out<half_t, float, QTYPE>( \
       x, qweight, out, rows, in_features, out_features, threads, stream); \
 } \
+extern "C" int hipengine_##NAME##_gemv_fp16_fp16_out( \
+    const half_t* x, const uint8_t* qweight, half_t* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_out<half_t, half_t, QTYPE>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+} \
 extern "C" int hipengine_##NAME##_gemv_bf16_f32_out( \
     const uint16_t* x, const uint8_t* qweight, float* out, int64_t rows, \
     int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
   return launch_gguf_k_gemv_out<uint16_t, float, QTYPE>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+} \
+extern "C" int hipengine_##NAME##_gemv_bf16_fp16_out( \
+    const uint16_t* x, const uint8_t* qweight, half_t* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_out<uint16_t, half_t, QTYPE>( \
       x, qweight, out, rows, in_features, out_features, threads, stream); \
 } \
 extern "C" int hipengine_##NAME##_gemv_bf16_bf16_out( \
