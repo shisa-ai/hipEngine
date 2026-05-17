@@ -18639,3 +18639,140 @@ Next required work before reopening the PARO-range target:
 2. Add grouped-by-expert/tiled selected-MoE kernels that reuse packed expert data across selected rows rather than launching one row/output dot product per block.
 3. Solve sidecar residency: either omit raw expert weights once sidecar decode fallback exists, or stream sidecars in a way that avoids multi-second H2D/allocation overhead.
 4. Preserve deterministic qwen35moe correctness when changing reductions; simple thread-count retunes can alter logits/tokens.
+
+## 2026-05-17 qwen35moe GGUF task #62 512/128 decode profile
+
+Task #62 profiled qwen35moe GGUF decode after the fast-bulk prefill work. Outcome: retained blocker with wall-clock and rocprof evidence. Decode is below the PARO-class target, graph replay is mandatory, but graph replay granularity is not the current limiter; device kernels dominate.
+
+Correctness gates:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bulk_parity.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task62/bulk-parity.json
+# serial/default/native/fast token 4469, KL 0, max logit diff 0
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json \
+  --json /tmp/hipengine-task62/public-e2e.json
+# passed=true; output izio.; IDs [43482, 13]; torch_loaded_by_generate=false
+```
+
+Wall-clock graph decode (attached RX 7900 XTX/gfx1100, cached HIP builds):
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task62/default-512-128-graph1-3run.json
+# decode tok/s samples: 49.901139, 49.863626, 49.828388; median 49.863626
+# decode seconds median: 2.567001; 20.0547 ms/token
+# prefill median: 99.898 tok/s; graph capture median: 0.1595 s
+# tracked peak: 20.885868 GiB; HIP sampled peak: 21.345703 GiB
+# final token id 11 in all runs
+```
+
+Target comparison:
+
+- vs 100 tok/s decode floor: `49.864`, `-50.14%`, needs `2.01x`.
+- vs retained PARO 512/128 decode `116.05 tok/s`: `-57.03%`, needs `2.33x`.
+- vs llama.cpp HIP UD-Q4_K_M 512/128 decode `85.487 tok/s`: `-41.67%`, needs `1.71x`.
+
+Host/graph replay check:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task62/default-512-128-eager-1run.json
+# eager decode: 6.469566 tok/s, 154.57 ms/token, final token 11
+```
+
+Graph replay gives `7.71x` over eager by removing per-token host sync/sample overhead. Increasing captured steps per replay did not help:
+
+- steps/replay 1: `49.864 tok/s`, capture median `0.1595 s`.
+- 2: `49.866 tok/s`, capture `0.3186 s`.
+- 4: `49.812 tok/s`, capture `0.6255 s`.
+- 8: `49.735 tok/s`, capture `1.2093 s`.
+- 16: `49.756 tok/s`, capture `2.4047 s`.
+
+Interpretation: graph-launch granularity is not the current bottleneck; the graph contains ~908 device dispatches/token and the device work dominates. Larger `steps_per_replay` only increases capture time for this shape.
+
+rocprof decode traces:
+
+- Direct 512/128 graph replay tracing with rocprofv3 timed out for 64/128 tokens in this environment. The retained profile therefore uses:
+  - 512-token prefill-only trace for subtraction:
+    ```bash
+    HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+      rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task62/rocprof-prefill-only-512 -- \
+      python3 scripts/qwen35_gguf_bench.py \
+        --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+        --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 \
+        --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 \
+        --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+        --json /tmp/hipengine-task62/default-512-prefill-only-rocprof-run.json
+    ```
+  - 512/128 eager trace for exact 128-token decode dispatch counts:
+    ```bash
+    HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+      rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task62/rocprof-eager-512-128 -- \
+      python3 scripts/qwen35_gguf_bench.py \
+        --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+        --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 \
+        --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode \
+        --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+        --json /tmp/hipengine-task62/default-512-128-eager-rocprof-run.json
+    ```
+  - 512/16 graph trace to verify the captured graph has the same per-token kernel DAG:
+    ```bash
+    HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+      rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task62/rocprof-graph1-512-16 -- \
+      python3 scripts/qwen35_gguf_bench.py \
+        --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+        --prompt-length 512 --decode-tokens 16 --warmup-decode-tokens 0 \
+        --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 \
+        --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+        --json /tmp/hipengine-task62/default-512-16-graph1-rocprof-run.json
+    ```
+
+128-token eager decode delta after subtracting the prefill-only trace by kernel name:
+
+| Family | Total ms | Share | Dispatches/token | ms/token |
+| --- | ---: | ---: | ---: | ---: |
+| dense/shared Q8_0 GGUF GEMV | 1003.213 | 29.47% | 250 | 7.838 |
+| selected expert Q4_K gate/up GEMV | 791.860 | 23.26% | 80 | 6.186 |
+| selected expert Q5_K down GEMV | 458.687 | 13.47% | 37 | 3.583 |
+| selected expert Q6_K down GEMV | 28.691 | 0.84% | 3 | 0.224 |
+| lm_head/output Q6_K GEMV | 397.127 | 11.66% | 1 | 3.103 |
+| full-attention/cache | 331.536 | 9.74% | 50 | 2.590 |
+| router/topk | 107.825 | 3.17% | 120 | 0.842 |
+| rmsnorm/add_norm | 91.312 | 2.68% | 81 | 0.713 |
+| linear-attn GDN recurrent | 74.253 | 2.18% | 30 | 0.580 |
+
+The corresponding 16-token graph trace has the same per-token dispatch counts for all major families (`250` Q8_0, `120` selected expert, `1` lm-head, `50` full-attn/cache per token), confirming the eager trace is a valid kernel-family inventory even though eager wall-clock includes host overhead.
+
+Bottleneck assessment:
+
+- **Selected expert kernels:** Q4/Q5/Q6 selected expert GEMVs total `1279.238 ms` over 128 profiled tokens (`37.6%`, `9.99 ms/token`, `120 dispatches/token`). This is the largest actionable decode family.
+- **Shared/dense Q8_0:** Q8_0 GGUF family totals `1003.213 ms` (`29.5%`, `7.84 ms/token`, `250 dispatches/token`). rocprof names do not expose tensor names, so this bucket includes shared-expert Q8_0 gate/up/down plus other Q8_0 dense projections.
+- **lm_head/output projection:** tied Q6_K lm-head costs `397.127 ms` (`11.7%`, `3.10 ms/token`) with only one dispatch/token; argmax is negligible (`1.731 ms` total).
+- **Cache/attention:** full-attention/cache is `331.536 ms` (`9.7%`, `2.59 ms/token`, `50 dispatches/token`), material but below MoE/dense/lm-head.
+- **Memory:** graph replay peaks at `20.886 GiB` tracked / `21.346 GiB` HIP sampled and has no material decode-time allocation growth beyond tiny graph recording buffers. Memory pressure is not the immediate 512/128 decode limiter, though sidecar residency remains constrained.
+
+Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-decode-profile-diagnostic.json`.
+
+Next likely work:
+
+1. Selected-MoE decode: grouped/tiled sidecar or packed decode path for c=1 selected experts to shrink 120 dispatches/token and reuse expert data.
+2. Q8_0 dense/shared: add wrapper counters or profiling markers by tensor so the 250 dispatches/token can be split into shared expert vs attention/linear projections, then replace the biggest subfamily.
+3. lm-head/output: optimize Q6_K lm-head and consider top-k/argmax integration; argmax alone is not worth chasing.
+4. Deprioritize graph replay granularity and memory for 512/128 decode until the device kernel families above move.

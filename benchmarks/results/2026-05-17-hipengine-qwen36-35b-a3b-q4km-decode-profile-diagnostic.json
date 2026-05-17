@@ -1,0 +1,2013 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained_blocked",
+  "performance_claim": false,
+  "timestamp": "2026-05-17T23:53:32.444985+00:00",
+  "run_tag": "hipengine-qwen36-q4km-512-128-decode-profile",
+  "task": "#62 Profile qwen35moe GGUF decode after fast prefill",
+  "summary": "512/128 qwen35moe GGUF decode remains below PARO-class target. One-step graph replay reaches ~49.864 tok/s (20.05 ms/token), about half of the ~100 tok/s floor and 57% below the PARO 116.05 tok/s row. Eager decode is only 6.47 tok/s, so graph replay is mandatory; however graph replay granularity from 1 to 16 steps does not materially change decode, indicating device kernel work rather than graph-launch overhead is the limiter. rocprof decode deltas show selected expert GEMVs, dense/shared Q8_0 GEMVs, lm_head Q6_K output projection, and full-attention/cache kernels dominate.",
+  "hardware": {
+    "gpu": "attached RX 7900 XTX / gfx1100 in this session; project default claims remain W7900/gfx1100 unless separately verified",
+    "device_total_gib": 23.984375
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "commit_before_commit": "4a91925",
+    "git_status_at_artifact": "## gguf-bulk-prefill\n"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "architecture": "qwen35moe",
+    "config": {
+      "architecture": "qwen35moe",
+      "block_count": 40,
+      "hidden_size": 2048,
+      "vocab_size": 248320,
+      "context_length": 262144,
+      "full_attention_interval": 4,
+      "expert_count": 256,
+      "expert_used_count": 8,
+      "expert_feed_forward_length": 512,
+      "expert_shared_feed_forward_length": 512
+    },
+    "tensor_count_by_type": {
+      "F32": 361,
+      "Q4_K": 80,
+      "Q5_K": 37,
+      "Q6_K": 4,
+      "Q8_0": 251
+    }
+  },
+  "targets": {
+    "decode_floor_tok_s": 100.0,
+    "source_lineage_paro_512_128_decode_tok_s": 116.05,
+    "llamacpp_hip_ud_q4_k_m_512_128_decode_tok_s": 85.487
+  },
+  "commands": {
+    "bulk_parity_gate": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bulk_parity.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task62/bulk-parity.json",
+    "public_generate_gate": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --json /tmp/hipengine-task62/public-e2e.json",
+    "wall_graph1_512_128_3run": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task62/default-512-128-graph1-3run.json",
+    "wall_eager_512_128_1run": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task62/default-512-128-eager-1run.json",
+    "wall_graph_granularity": "For steps_per_replay in 2,4,8,16: same qwen35_gguf_bench.py command as graph1 with --graph-steps-per-replay ${s} and one measured run, JSON under /tmp/hipengine-task62/default-512-128-graph${s}-1run.json",
+    "rocprof_prefill_only": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task62/rocprof-prefill-only-512 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task62/default-512-prefill-only-rocprof-run.json",
+    "rocprof_eager_512_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task62/rocprof-eager-512-128 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task62/default-512-128-eager-rocprof-run.json",
+    "rocprof_graph_512_16": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task62/rocprof-graph1-512-16 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 16 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task62/default-512-16-graph1-rocprof-run.json"
+  },
+  "correctness": {
+    "bulk_parity_passed": true,
+    "bulk_parity_summary": {
+      "serial_token_id": 4469,
+      "default_token_id": 4469,
+      "default_top1_match": true,
+      "default_kl_serial_to_default": 0.0,
+      "default_max_abs_logit": 0.0,
+      "native_attention_bulk_ffn_token_id": 4469,
+      "native_attention_bulk_ffn_top1_match": true,
+      "native_attention_bulk_ffn_kl_serial_to_bulk": 0.0,
+      "native_attention_bulk_ffn_max_abs_logit": 0.0,
+      "fast_bulk_attention_token_id": 4469,
+      "fast_bulk_attention_top1_match": true,
+      "fast_bulk_attention_kl_serial_to_bulk": 0.0,
+      "fast_bulk_attention_max_abs_logit": 0.0,
+      "first_fast_bulk_hidden_drift_limit": null,
+      "first_aotriton_hidden_drift_limit": null,
+      "first_native_full_attention_hidden_drift_limit": null
+    },
+    "public_generate_passed": true,
+    "public_outputs": [
+      "izio."
+    ],
+    "public_generated_token_ids": [
+      43482,
+      13
+    ],
+    "torch_loaded_by_generate": false,
+    "benchmark_graph1_finite_final_logits_all": true,
+    "benchmark_graph1_final_token_ids": [
+      11,
+      11,
+      11
+    ],
+    "benchmark_eager_final_token_ids": [
+      11
+    ],
+    "graph_granularity_final_token_ids": {
+      "2": [
+        11
+      ],
+      "4": [
+        11
+      ],
+      "8": [
+        11
+      ],
+      "16": [
+        11
+      ]
+    }
+  },
+  "wall_clock": {
+    "graph_replay_steps1_512_128": {
+      "decode_tok_s": {
+        "samples": [
+          49.9011390204747,
+          49.86362608025813,
+          49.82838848076467
+        ],
+        "median": 49.86362608025813,
+        "p95": 49.86362608025813,
+        "min": 49.82838848076467,
+        "max": 49.9011390204747,
+        "stdev": 0.03638119965461521,
+        "stdev_pct_of_median": 0.07296139995125456
+      },
+      "decode_seconds": {
+        "samples": [
+          2.565071710036136,
+          2.5670014409697615,
+          2.568816770974081
+        ],
+        "median": 2.5670014409697615,
+        "p95": 2.5670014409697615,
+        "min": 2.565071710036136,
+        "max": 2.568816770974081,
+        "stdev": 0.0018728216648368212,
+        "stdev_pct_of_median": 0.07295756188314825
+      },
+      "decode_ms_per_token_median": 20.05469875757626,
+      "prefill_tok_s": {
+        "samples": [
+          99.89800181856906,
+          99.90268910327087,
+          99.82227879375759
+        ],
+        "median": 99.89800181856906,
+        "p95": 99.89800181856906,
+        "min": 99.82227879375759,
+        "max": 99.90268910327087,
+        "stdev": 0.04513270248296657,
+        "stdev_pct_of_median": 0.04517878402106067
+      },
+      "graph_capture_seconds": {
+        "samples": [
+          0.16996732103871182,
+          0.1595377610065043,
+          0.1583408759906888
+        ],
+        "median": 0.1595377610065043,
+        "p95": 0.1595377610065043,
+        "min": 0.1583408759906888,
+        "max": 0.16996732103871182,
+        "stdev": 0.0063950824944015,
+        "stdev_pct_of_median": 4.008507110827996
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          20.885867577046156,
+          20.885867577046156,
+          20.885867577046156
+        ],
+        "median": 20.885867577046156,
+        "p95": 20.885867577046156,
+        "min": 20.885867577046156,
+        "max": 20.885867577046156,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "samples": [
+          21.34375,
+          21.345703125,
+          21.34765625
+        ],
+        "median": 21.345703125,
+        "p95": 21.345703125,
+        "min": 21.34375,
+        "max": 21.34765625,
+        "stdev": 0.001953125,
+        "stdev_pct_of_median": 0.009149967975112087
+      }
+    },
+    "eager_512_128": {
+      "decode_tok_s": {
+        "samples": [
+          6.469565973586937
+        ],
+        "median": 6.469565973586937,
+        "p95": 6.469565973586937,
+        "min": 6.469565973586937,
+        "max": 6.469565973586937,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "decode_seconds": {
+        "samples": [
+          19.784943923994433
+        ],
+        "median": 19.784943923994433,
+        "p95": 19.784943923994433,
+        "min": 19.784943923994433,
+        "max": 19.784943923994433,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "decode_ms_per_token": 154.5698744062065,
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          20.88586661592126
+        ],
+        "median": 20.88586661592126,
+        "p95": 20.88586661592126,
+        "min": 20.88586661592126,
+        "max": 20.88586661592126,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      }
+    },
+    "graph_replay_granularity": {
+      "1": {
+        "decode_tok_s": 49.86362608025813,
+        "capture_seconds": 0.1595377610065043,
+        "final_token_ids": [
+          11,
+          11,
+          11
+        ]
+      },
+      "2": {
+        "decode_tok_s": 49.86626067586352,
+        "capture_seconds": 0.3185838410281576,
+        "final_token_ids": [
+          11
+        ]
+      },
+      "4": {
+        "decode_tok_s": 49.811904780866826,
+        "capture_seconds": 0.6254949509748258,
+        "final_token_ids": [
+          11
+        ]
+      },
+      "8": {
+        "decode_tok_s": 49.73520236120558,
+        "capture_seconds": 1.209262120013591,
+        "final_token_ids": [
+          11
+        ]
+      },
+      "16": {
+        "decode_tok_s": 49.75621708257433,
+        "capture_seconds": 2.4046591549995355,
+        "final_token_ids": [
+          11
+        ]
+      }
+    }
+  },
+  "comparisons": {
+    "graph_vs_100_tok_s_floor": {
+      "decode_tok_s": 49.86362608025813,
+      "target_tok_s": 100.0,
+      "delta_pct": -50.13637391974187,
+      "speedup_needed": 2.005469875757626
+    },
+    "graph_vs_paro_512_128": {
+      "decode_tok_s": 49.86362608025813,
+      "target_tok_s": 116.05,
+      "delta_pct": -57.03263586362935,
+      "speedup_needed": 2.327347790816725
+    },
+    "graph_vs_llamacpp_hip_q4km_512_128": {
+      "decode_tok_s": 49.86362608025813,
+      "target_tok_s": 85.487,
+      "delta_pct": -41.671100775254565,
+      "speedup_needed": 1.7144160326889217
+    },
+    "graph_vs_eager": {
+      "graph_decode_tok_s": 49.86362608025813,
+      "eager_decode_tok_s": 6.469565973586937,
+      "speedup": 7.707414420663543,
+      "eager_ms_per_token": 154.5698744062065,
+      "graph_ms_per_token": 20.05469875757626
+    }
+  },
+  "rocprof": {
+    "method": "The 128-token graph-replay trace timed out under rocprofv3, so the retained profile uses a 512/128 eager decode trace for exact 128-token kernel dispatch counts plus a 512/16 graph-replay trace to verify the captured graph has the same per-token kernel DAG. Decode deltas subtract a 512-token prefill-only trace by kernel name.",
+    "failed_graph_trace_attempts": [
+      {
+        "attempt": "graph1_512_128",
+        "stderr_tail": [
+          "W20260517 20:44:23.232754 136381146049984 simple_timer.cpp:55] [rocprofv3] tool initialization ::     0.000500 sec",
+          "W20260517 20:44:23.233013 136381146049984 simple_timer.cpp:55] [rocprofv3] 'python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task62/default-512-128-graph1-rocprof-run.json' ::     0.000001 sec",
+          "W20260517 20:44:23.400880 136381146049984 tool.cpp:2693] HSA version 1.21.0 initialized (instance=0)"
+        ],
+        "note": "timed out without benchmark JSON; rocprof graph replay trace was reduced to 16 decode tokens for graph-internal kernel visibility, while 128-token eager trace supplies dispatch counts."
+      },
+      {
+        "attempt": "graph1_512_64",
+        "stderr_tail": [
+          "W20260517 22:45:33.394299 125957107588544 simple_timer.cpp:55] [rocprofv3] tool initialization ::     0.000563 sec",
+          "W20260517 22:45:33.394526 125957107588544 simple_timer.cpp:55] [rocprofv3] 'python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 64 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task62/default-512-64-graph1-rocprof-run.json' ::     0.000001 sec",
+          "W20260517 22:45:33.567586 125957107588544 tool.cpp:2693] HSA version 1.21.0 initialized (instance=0)"
+        ],
+        "note": "timed out without benchmark JSON; rocprof graph replay trace was reduced to 16 decode tokens for graph-internal kernel visibility, while 128-token eager trace supplies dispatch counts."
+      }
+    ],
+    "prefill_only": {
+      "csv": "/tmp/hipengine-task62/rocprof-prefill-only-512/rocm/807098_kernel_trace.csv",
+      "dispatches": 1175,
+      "total_kernel_ms": 5105.501543,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 1911.16958,
+          "share_pct": 37.43353251200849,
+          "count": 250,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 1460.945712,
+          "share_pct": 28.61512624559009,
+          "count": 80,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 930.513148,
+          "share_pct": 18.225695167515887,
+          "count": 37,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "total_ms": 662.023739,
+          "share_pct": 12.966869825114065,
+          "count": 30,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 63.476159,
+          "share_pct": 1.243289390187929,
+          "count": 3,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 38.889336,
+          "share_pct": 0.7617143129320958,
+          "count": 10,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+          "total_ms": 13.945157,
+          "share_pct": 0.27313980580653796,
+          "count": 80,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+          "total_ms": 4.576,
+          "share_pct": 0.08962880456424534,
+          "count": 1,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+          "total_ms": 4.112236,
+          "share_pct": 0.08054519160097333,
+          "count": 30,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long, long)",
+          "total_ms": 4.048554,
+          "share_pct": 0.07929787046193044,
+          "count": 40,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 3.18114,
+          "share_pct": 0.062308080277863505,
+          "count": 60,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 1.65529,
+          "share_pct": 0.032421692287401584,
+          "count": 40,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "__amd_rocclr_copyBuffer",
+          "total_ms": 1.387805,
+          "share_pct": 0.02718254001710719,
+          "count": 249,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
+          "total_ms": 1.21037,
+          "share_pct": 0.023707171368100004,
+          "count": 10,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 1.171571,
+          "share_pct": 0.022947226440589483,
+          "count": 80,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 0.965563,
+          "share_pct": 0.01891220660434144,
+          "count": 40,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "total_ms": 0.904892,
+          "share_pct": 0.017723861062008104,
+          "count": 40,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 0.698887,
+          "share_pct": 0.013688899985902912,
+          "count": 41,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "total_ms": 0.304602,
+          "share_pct": 0.0059661523443789895,
+          "count": 10,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+          "total_ms": 0.180402,
+          "share_pct": 0.00353348243028824,
+          "count": 10,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)",
+          "total_ms": 0.11076,
+          "share_pct": 0.002169424474111847,
+          "count": 30,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 0.01684,
+          "share_pct": 0.0003298402685449938,
+          "count": 1,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "total_ms": 0.00796,
+          "share_pct": 0.0001559102457017904,
+          "count": 1,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "total_ms": 0.00352,
+          "share_pct": 6.894523428018873e-05,
+          "count": 1,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+          "total_ms": 0.00232,
+          "share_pct": 4.544117713921529e-05,
+          "count": 1,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        }
+      ],
+      "buckets": [
+        {
+          "bucket": "dense/shared Q8_0 GGUF GEMV",
+          "total_ms": 1911.16958,
+          "share_pct": 37.43353251200849,
+          "count": 250,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "selected expert Q4_K gate/up GEMV",
+          "total_ms": 1460.945712,
+          "share_pct": 28.61512624559009,
+          "count": 80,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "selected expert Q5_K down GEMV",
+          "total_ms": 930.513148,
+          "share_pct": 18.225695167515887,
+          "count": 37,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "rmsnorm/add_norm",
+          "total_ms": 664.377916,
+          "share_pct": 13.01298041738737,
+          "count": 111,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "selected expert Q6_K down GEMV",
+          "total_ms": 63.476159,
+          "share_pct": 1.243289390187929,
+          "count": 3,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "full-attention/cache",
+          "total_ms": 40.58471,
+          "share_pct": 0.7949211190748631,
+          "count": 40,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "router/topk",
+          "total_ms": 14.91072,
+          "share_pct": 0.2920520124108794,
+          "count": 120,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "other",
+          "total_ms": 5.127888,
+          "share_pct": 0.1004384771370933,
+          "count": 100,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "lm_head/output Q6_K GEMV",
+          "total_ms": 4.576,
+          "share_pct": 0.08962880456424534,
+          "count": 1,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "moe combine/scatter",
+          "total_ms": 4.048554,
+          "share_pct": 0.07929787046193044,
+          "count": 40,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "dense BF16 GEMV (alpha/beta)",
+          "total_ms": 3.18114,
+          "share_pct": 0.062308080277863505,
+          "count": 60,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "hip memcpy/fill",
+          "total_ms": 1.387805,
+          "share_pct": 0.02718254001710719,
+          "count": 249,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "activation",
+          "total_ms": 1.171571,
+          "share_pct": 0.022947226440589483,
+          "count": 80,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "embedding",
+          "total_ms": 0.01684,
+          "share_pct": 0.0003298402685449938,
+          "count": 1,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "lm_head argmax",
+          "total_ms": 0.01148,
+          "share_pct": 0.00022485547998197912,
+          "count": 2,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "runtime state/record",
+          "total_ms": 0.00232,
+          "share_pct": 4.544117713921529e-05,
+          "count": 1,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        }
+      ]
+    },
+    "eager_512_128_total": {
+      "csv": "/tmp/hipengine-task62/rocprof-eager-512-128/rocm/801623_kernel_trace.csv",
+      "dispatches": 117400,
+      "total_kernel_ms": 8509.924558,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 2914.382385,
+          "share_pct": 34.246865117743624,
+          "count": 32250,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 2252.805588,
+          "share_pct": 26.472685775835522,
+          "count": 10320,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 1389.199713,
+          "share_pct": 16.324465669840077,
+          "count": 4773,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "total_ms": 663.715317,
+          "share_pct": 7.799309059397657,
+          "count": 30,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+          "total_ms": 401.703088,
+          "share_pct": 4.720407158279299,
+          "count": 129,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "total_ms": 311.465925,
+          "share_pct": 3.6600315652293003,
+          "count": 1280,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 92.167193,
+          "share_pct": 1.0830553475747982,
+          "count": 387,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "total_ms": 74.252639,
+          "share_pct": 0.8725416834652978,
+          "count": 3840,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 59.100696,
+          "share_pct": 0.6944914211306454,
+          "count": 5160,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short>(unsigned short const*, unsigned short const*, float*, long, long)",
+          "total_ms": 49.59015,
+          "share_pct": 0.582733133084962,
+          "count": 10240,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 48.102013,
+          "share_pct": 0.5652460567911888,
+          "count": 5160,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 43.872699,
+          "share_pct": 0.5155474493455551,
+          "count": 5289,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 39.227018,
+          "share_pct": 0.4609561193245069,
+          "count": 10,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 33.661449,
+          "share_pct": 0.39555519876325557,
+          "count": 7740,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 33.248995,
+          "share_pct": 0.3907084577940626,
+          "count": 10320,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 20.397634,
+          "share_pct": 0.2396923011594106,
+          "count": 5120,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>(unsigned short const*, float*, float const*, float*, long, long)",
+          "total_ms": 17.061177,
+          "share_pct": 0.20048564336520644,
+          "count": 3840,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+          "total_ms": 14.044697,
+          "share_pct": 0.16503903065505884,
+          "count": 80,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "total_ms": 11.762661,
+          "share_pct": 0.13822285873195164,
+          "count": 3840,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)",
+          "total_ms": 6.749779,
+          "share_pct": 0.07931655508807861,
+          "count": 1280,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "total_ms": 5.459325,
+          "share_pct": 0.06415244885887741,
+          "count": 1290,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "total_ms": 4.843279,
+          "share_pct": 0.05691330125185347,
+          "count": 1320,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+          "total_ms": 4.303913,
+          "share_pct": 0.05057521921218423,
+          "count": 30,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long, long)",
+          "total_ms": 4.09743,
+          "share_pct": 0.048148840475302365,
+          "count": 40,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "total_ms": 3.934748,
+          "share_pct": 0.04623716665385743,
+          "count": 1280,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "total_ms": 3.890951,
+          "share_pct": 0.04572250874236246,
+          "count": 1280,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "__amd_rocclr_copyBuffer",
+          "total_ms": 1.840771,
+          "share_pct": 0.02163087331096878,
+          "count": 378,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
+          "total_ms": 1.212169,
+          "share_pct": 0.014244180330135425,
+          "count": 10,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "total_ms": 0.89169,
+          "share_pct": 0.010478236251363017,
+          "count": 129,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "total_ms": 0.850327,
+          "share_pct": 0.009992180238550124,
+          "count": 129,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+          "total_ms": 0.845526,
+          "share_pct": 0.009935763757213792,
+          "count": 129,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 0.569726,
+          "share_pct": 0.006694841959138317,
+          "count": 129,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::set_i64_scalar_kernel(long*, long)",
+          "total_ms": 0.399126,
+          "share_pct": 0.004690123834585468,
+          "count": 128,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+          "total_ms": 0.16352,
+          "share_pct": 0.0019215211472853576,
+          "count": 10,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)",
+          "total_ms": 0.111241,
+          "share_pct": 0.0013071913768662577,
+          "count": 30,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        }
+      ],
+      "buckets": [
+        {
+          "bucket": "dense/shared Q8_0 GGUF GEMV",
+          "total_ms": 2914.382385,
+          "share_pct": 34.246865117743624,
+          "count": 32250,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "selected expert Q4_K gate/up GEMV",
+          "total_ms": 2252.805588,
+          "share_pct": 26.472685775835522,
+          "count": 10320,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "selected expert Q5_K down GEMV",
+          "total_ms": 1389.199713,
+          "share_pct": 16.324465669840077,
+          "count": 4773,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "rmsnorm/add_norm",
+          "total_ms": 755.690029,
+          "share_pct": 8.8801025655344,
+          "count": 10479,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "lm_head/output Q6_K GEMV",
+          "total_ms": 401.703088,
+          "share_pct": 4.720407158279299,
+          "count": 129,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "full-attention/cache",
+          "total_ms": 372.103435,
+          "share_pct": 4.372582065374404,
+          "count": 6440,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "router/topk",
+          "total_ms": 122.735543,
+          "share_pct": 1.4422635848706662,
+          "count": 15480,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "selected expert Q6_K down GEMV",
+          "total_ms": 92.167193,
+          "share_pct": 1.0830553475747982,
+          "count": 387,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "linear-attn GDN recurrent",
+          "total_ms": 74.252639,
+          "share_pct": 0.8725416834652978,
+          "count": 3840,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "dense BF16 GEMV (alpha/beta)",
+          "total_ms": 33.661449,
+          "share_pct": 0.39555519876325557,
+          "count": 7740,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "activation",
+          "total_ms": 33.248995,
+          "share_pct": 0.3907084577940626,
+          "count": 10320,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "linear-attn conv/state",
+          "total_ms": 28.823838,
+          "share_pct": 0.3387085020971581,
+          "count": 7680,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "moe combine/scatter",
+          "total_ms": 24.495064,
+          "share_pct": 0.28784114163471297,
+          "count": 5160,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "other",
+          "total_ms": 9.258433,
+          "share_pct": 0.10879571184090396,
+          "count": 1380,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "hip memcpy/fill",
+          "total_ms": 1.840771,
+          "share_pct": 0.02163087331096878,
+          "count": 378,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "lm_head argmax",
+          "total_ms": 1.742017,
+          "share_pct": 0.02047041648991314,
+          "count": 258,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "runtime state/record",
+          "total_ms": 1.244652,
+          "share_pct": 0.01462588759179926,
+          "count": 257,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        },
+        {
+          "bucket": "embedding",
+          "total_ms": 0.569726,
+          "share_pct": 0.006694841959138317,
+          "count": 129,
+          "ms_per_token": null,
+          "dispatches_per_token": null
+        }
+      ]
+    },
+    "eager_decode_delta_128": {
+      "csv": "/tmp/hipengine-task62/rocprof-eager-512-128/rocm/801623_kernel_trace.csv",
+      "dispatches": 116225,
+      "total_kernel_ms": 3404.439897,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 1003.212805,
+          "share_pct": 29.467778411480648,
+          "count": 32000,
+          "ms_per_token": 7.8376000390625,
+          "dispatches_per_token": 250.0
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 791.859876,
+          "share_pct": 23.259622726716035,
+          "count": 10240,
+          "ms_per_token": 6.18640528125,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 458.686565,
+          "share_pct": 13.473187334110248,
+          "count": 4736,
+          "ms_per_token": 3.5834887890625,
+          "dispatches_per_token": 37.0
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+          "total_ms": 397.127088,
+          "share_pct": 11.664975738004635,
+          "count": 128,
+          "ms_per_token": 3.102555375,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "total_ms": 311.465925,
+          "share_pct": 9.14881550044295,
+          "count": 1280,
+          "ms_per_token": 2.4333275390625,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "total_ms": 74.252639,
+          "share_pct": 2.181053014489449,
+          "count": 3840,
+          "ms_per_token": 0.5800987421875,
+          "dispatches_per_token": 30.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 58.135133,
+          "share_pct": 1.7076269447796335,
+          "count": 5120,
+          "ms_per_token": 0.4541807265625,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short>(unsigned short const*, unsigned short const*, float*, long, long)",
+          "total_ms": 49.59015,
+          "share_pct": 1.4566316780536779,
+          "count": 10240,
+          "ms_per_token": 0.387423046875,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 46.446723,
+          "share_pct": 1.3642985162090526,
+          "count": 5120,
+          "ms_per_token": 0.3628650234375,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 43.173812,
+          "share_pct": 1.2681619680830571,
+          "count": 5248,
+          "ms_per_token": 0.33729540625,
+          "dispatches_per_token": 41.0
+        },
+        {
+          "name": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 32.077424,
+          "share_pct": 0.9422232428972148,
+          "count": 10240,
+          "ms_per_token": 0.250604875,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "name": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 30.480309,
+          "share_pct": 0.8953105333673042,
+          "count": 7680,
+          "ms_per_token": 0.2381274140625,
+          "dispatches_per_token": 60.0
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 28.691034,
+          "share_pct": 0.8427534298749877,
+          "count": 384,
+          "ms_per_token": 0.224148703125,
+          "dispatches_per_token": 3.0
+        },
+        {
+          "name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 20.397634,
+          "share_pct": 0.5991480130982615,
+          "count": 5120,
+          "ms_per_token": 0.159356515625,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>(unsigned short const*, float*, float const*, float*, long, long)",
+          "total_ms": 17.061177,
+          "share_pct": 0.5011449024268088,
+          "count": 3840,
+          "ms_per_token": 0.1332904453125,
+          "dispatches_per_token": 30.0
+        },
+        {
+          "name": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "total_ms": 11.762661,
+          "share_pct": 0.3455094334420556,
+          "count": 3840,
+          "ms_per_token": 0.0918957890625,
+          "dispatches_per_token": 30.0
+        },
+        {
+          "name": "gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)",
+          "total_ms": 6.749779,
+          "share_pct": 0.19826400830127505,
+          "count": 1280,
+          "ms_per_token": 0.0527326484375,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "total_ms": 5.154723,
+          "share_pct": 0.15141177861716265,
+          "count": 1280,
+          "ms_per_token": 0.0402712734375,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "total_ms": 3.938387,
+          "share_pct": 0.11568384577652598,
+          "count": 1280,
+          "ms_per_token": 0.0307686484375,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "total_ms": 3.934748,
+          "share_pct": 0.11557695594706514,
+          "count": 1280,
+          "ms_per_token": 0.03074021875,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "total_ms": 3.890951,
+          "share_pct": 0.1142904888239829,
+          "count": 1280,
+          "ms_per_token": 0.0303980546875,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "total_ms": 1.691578,
+          "share_pct": 0.04968740971137785,
+          "count": 0,
+          "ms_per_token": 0.013215453125,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "total_ms": 0.88817,
+          "share_pct": 0.026088579233919135,
+          "count": 128,
+          "ms_per_token": 0.006938828125,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+          "total_ms": 0.843206,
+          "share_pct": 0.024767833344422823,
+          "count": 128,
+          "ms_per_token": 0.006587546875,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "total_ms": 0.842367,
+          "share_pct": 0.024743189055629847,
+          "count": 128,
+          "ms_per_token": 0.0065809921875,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 0.552886,
+          "share_pct": 0.016240145713460954,
+          "count": 128,
+          "ms_per_token": 0.004319421875,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "__amd_rocclr_copyBuffer",
+          "total_ms": 0.452966,
+          "share_pct": 0.013305154847913591,
+          "count": 129,
+          "ms_per_token": 0.003538796875,
+          "dispatches_per_token": 1.0078125
+        },
+        {
+          "name": "(anonymous namespace)::set_i64_scalar_kernel(long*, long)",
+          "total_ms": 0.399126,
+          "share_pct": 0.011723690594500161,
+          "count": 128,
+          "ms_per_token": 0.003118171875,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 0.337682,
+          "share_pct": 0.009918870951358728,
+          "count": 0,
+          "ms_per_token": 0.002638140625,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+          "total_ms": 0.191677,
+          "share_pct": 0.005630206606640528,
+          "count": 0,
+          "ms_per_token": 0.0014974765625,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+          "total_ms": 0.09954,
+          "share_pct": 0.0029238289707424377,
+          "count": 0,
+          "ms_per_token": 0.00077765625,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long, long)",
+          "total_ms": 0.048876,
+          "share_pct": 0.0014356546591722662,
+          "count": 0,
+          "ms_per_token": 0.00038184375,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
+          "total_ms": 0.001799,
+          "share_pct": 5.284275987910031e-05,
+          "count": 0,
+          "ms_per_token": 1.40546875e-05,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)",
+          "total_ms": 0.000481,
+          "share_pct": 1.4128608950443164e-05,
+          "count": 0,
+          "ms_per_token": 3.7578125e-06,
+          "dispatches_per_token": 0.0
+        }
+      ],
+      "buckets": [
+        {
+          "bucket": "dense/shared Q8_0 GGUF GEMV",
+          "total_ms": 1003.212805,
+          "share_pct": 29.467778411480648,
+          "count": 32000,
+          "ms_per_token": 7.8376000390625,
+          "dispatches_per_token": 250.0
+        },
+        {
+          "bucket": "selected expert Q4_K gate/up GEMV",
+          "total_ms": 791.859876,
+          "share_pct": 23.259622726716035,
+          "count": 10240,
+          "ms_per_token": 6.18640528125,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "bucket": "selected expert Q5_K down GEMV",
+          "total_ms": 458.686565,
+          "share_pct": 13.473187334110248,
+          "count": 4736,
+          "ms_per_token": 3.5834887890625,
+          "dispatches_per_token": 37.0
+        },
+        {
+          "bucket": "lm_head/output Q6_K GEMV",
+          "total_ms": 397.127088,
+          "share_pct": 11.664975738004635,
+          "count": 128,
+          "ms_per_token": 3.102555375,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "bucket": "full-attention/cache",
+          "total_ms": 331.535607,
+          "share_pct": 9.738330445843674,
+          "count": 6400,
+          "ms_per_token": 2.5901219296875,
+          "dispatches_per_token": 50.0
+        },
+        {
+          "bucket": "router/topk",
+          "total_ms": 107.824823,
+          "share_pct": 3.1671824518040537,
+          "count": 15360,
+          "ms_per_token": 0.8423814296875,
+          "dispatches_per_token": 120.0
+        },
+        {
+          "bucket": "rmsnorm/add_norm",
+          "total_ms": 91.312113,
+          "share_pct": 2.6821478940034877,
+          "count": 10368,
+          "ms_per_token": 0.7133758828125,
+          "dispatches_per_token": 81.0
+        },
+        {
+          "bucket": "linear-attn GDN recurrent",
+          "total_ms": 74.252639,
+          "share_pct": 2.181053014489449,
+          "count": 3840,
+          "ms_per_token": 0.5800987421875,
+          "dispatches_per_token": 30.0
+        },
+        {
+          "bucket": "activation",
+          "total_ms": 32.077424,
+          "share_pct": 0.9422232428972148,
+          "count": 10240,
+          "ms_per_token": 0.250604875,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "bucket": "dense BF16 GEMV (alpha/beta)",
+          "total_ms": 30.480309,
+          "share_pct": 0.8953105333673042,
+          "count": 7680,
+          "ms_per_token": 0.2381274140625,
+          "dispatches_per_token": 60.0
+        },
+        {
+          "bucket": "linear-attn conv/state",
+          "total_ms": 28.823838,
+          "share_pct": 0.8466543358688644,
+          "count": 7680,
+          "ms_per_token": 0.225186234375,
+          "dispatches_per_token": 60.0
+        },
+        {
+          "bucket": "selected expert Q6_K down GEMV",
+          "total_ms": 28.691034,
+          "share_pct": 0.8427534298749877,
+          "count": 384,
+          "ms_per_token": 0.224148703125,
+          "dispatches_per_token": 3.0
+        },
+        {
+          "bucket": "moe combine/scatter",
+          "total_ms": 20.44651,
+          "share_pct": 0.6005836677574338,
+          "count": 5120,
+          "ms_per_token": 0.159738359375,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "bucket": "other",
+          "total_ms": 4.130545,
+          "share_pct": 0.12132818099211695,
+          "count": 1280,
+          "ms_per_token": 0.0322698828125,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "bucket": "lm_head argmax",
+          "total_ms": 1.730537,
+          "share_pct": 0.05083176828954898,
+          "count": 256,
+          "ms_per_token": 0.0135198203125,
+          "dispatches_per_token": 2.0
+        },
+        {
+          "bucket": "runtime state/record",
+          "total_ms": 1.242332,
+          "share_pct": 0.036491523938922986,
+          "count": 256,
+          "ms_per_token": 0.00970571875,
+          "dispatches_per_token": 2.0
+        },
+        {
+          "bucket": "embedding",
+          "total_ms": 0.552886,
+          "share_pct": 0.016240145713460954,
+          "count": 128,
+          "ms_per_token": 0.004319421875,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "bucket": "hip memcpy/fill",
+          "total_ms": 0.452966,
+          "share_pct": 0.013305154847913591,
+          "count": 129,
+          "ms_per_token": 0.003538796875,
+          "dispatches_per_token": 1.0078125
+        }
+      ]
+    },
+    "graph_decode_delta_16": {
+      "csv": "/tmp/hipengine-task62/rocprof-graph1-512-16/rocm/688240_kernel_trace.csv",
+      "dispatches": 14518,
+      "total_kernel_ms": 300.864147,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 104.292422,
+          "share_pct": 34.66429052445388,
+          "count": 4000,
+          "ms_per_token": 6.518276375,
+          "dispatches_per_token": 250.0
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 65.364463,
+          "share_pct": 21.725574034582458,
+          "count": 1280,
+          "ms_per_token": 4.0852789375,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 34.742559,
+          "share_pct": 11.547590281669553,
+          "count": 592,
+          "ms_per_token": 2.1714099375,
+          "dispatches_per_token": 37.0
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+          "total_ms": 32.486441,
+          "share_pct": 10.797710968199876,
+          "count": 16,
+          "ms_per_token": 2.0304025625,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "total_ms": 24.661839,
+          "share_pct": 8.197001618807043,
+          "count": 160,
+          "ms_per_token": 1.5413649375,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "total_ms": 6.578064,
+          "share_pct": 2.186390125108526,
+          "count": 480,
+          "ms_per_token": 0.411129,
+          "dispatches_per_token": 30.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 4.898336,
+          "share_pct": 1.628088972661804,
+          "count": 640,
+          "ms_per_token": 0.306146,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short>(unsigned short const*, unsigned short const*, float*, long, long)",
+          "total_ms": 4.322118,
+          "share_pct": 1.4365679802984301,
+          "count": 1280,
+          "ms_per_token": 0.270132375,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 4.200806,
+          "share_pct": 1.3962467917455117,
+          "count": 640,
+          "ms_per_token": 0.262550375,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 3.578231,
+          "share_pct": 1.1893178484972489,
+          "count": 656,
+          "ms_per_token": 0.2236394375,
+          "dispatches_per_token": 41.0
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 3.028325,
+          "share_pct": 1.0065423315460715,
+          "count": 48,
+          "ms_per_token": 0.1892703125,
+          "dispatches_per_token": 3.0
+        },
+        {
+          "name": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 2.537111,
+          "share_pct": 0.8432746225491601,
+          "count": 960,
+          "ms_per_token": 0.1585694375,
+          "dispatches_per_token": 60.0
+        },
+        {
+          "name": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 2.106137,
+          "share_pct": 0.7000292394427442,
+          "count": 1280,
+          "ms_per_token": 0.1316335625,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 1.852895,
+          "share_pct": 0.6158576947355578,
+          "count": 640,
+          "ms_per_token": 0.1158059375,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>(unsigned short const*, float*, float const*, float*, long, long)",
+          "total_ms": 1.466419,
+          "share_pct": 0.4874023756642562,
+          "count": 480,
+          "ms_per_token": 0.0916511875,
+          "dispatches_per_token": 30.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "total_ms": 1.188332,
+          "share_pct": 0.39497295103095154,
+          "count": 0,
+          "ms_per_token": 0.07427075,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "total_ms": 0.751322,
+          "share_pct": 0.2497213468243526,
+          "count": 480,
+          "ms_per_token": 0.046957625,
+          "dispatches_per_token": 30.0
+        },
+        {
+          "name": "gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)",
+          "total_ms": 0.678369,
+          "share_pct": 0.22547352576377272,
+          "count": 160,
+          "ms_per_token": 0.0423980625,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "total_ms": 0.551283,
+          "share_pct": 0.18323319860375387,
+          "count": 160,
+          "ms_per_token": 0.0344551875,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "total_ms": 0.440045,
+          "share_pct": 0.14626036514746305,
+          "count": 160,
+          "ms_per_token": 0.0275028125,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "total_ms": 0.272555,
+          "share_pct": 0.09059072100073128,
+          "count": 160,
+          "ms_per_token": 0.0170346875,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "total_ms": 0.265362,
+          "share_pct": 0.08819994095208693,
+          "count": 160,
+          "ms_per_token": 0.016585125,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 0.14852,
+          "share_pct": 0.0493644727964213,
+          "count": 0,
+          "ms_per_token": 0.0092825,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
+          "total_ms": 0.147688,
+          "share_pct": 0.04908793602449414,
+          "count": 0,
+          "ms_per_token": 0.0092305,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "total_ms": 0.072801,
+          "share_pct": 0.024197299919554723,
+          "count": 16,
+          "ms_per_token": 0.0045500625,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "total_ms": 0.049441,
+          "share_pct": 0.016432998246215094,
+          "count": 16,
+          "ms_per_token": 0.0030900625,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 0.04368,
+          "share_pct": 0.014518180526176155,
+          "count": 16,
+          "ms_per_token": 0.00273,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
+          "total_ms": 0.040293,
+          "share_pct": 0.013392423258727469,
+          "count": 0,
+          "ms_per_token": 0.0025183125,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "(anonymous namespace)::record_i64_scalar_indexed_kernel(long const*, long*, long*, long)",
+          "total_ms": 0.03548,
+          "share_pct": 0.011792697918240155,
+          "count": 16,
+          "ms_per_token": 0.0022175,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "total_ms": 0.031041,
+          "share_pct": 0.010317281174748947,
+          "count": 16,
+          "ms_per_token": 0.0019400625,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
+          "total_ms": 0.016524,
+          "share_pct": 0.005492179830918837,
+          "count": 0,
+          "ms_per_token": 0.00103275,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+          "total_ms": 0.005721,
+          "share_pct": 0.0019015226829270555,
+          "count": 0,
+          "ms_per_token": 0.0003575625,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "__amd_rocclr_fillBufferAligned",
+          "total_ms": 0.0044,
+          "share_pct": 0.0014624540823071218,
+          "count": 1,
+          "ms_per_token": 0.000275,
+          "dispatches_per_token": 0.0625
+        },
+        {
+          "name": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+          "total_ms": 0.0026,
+          "share_pct": 0.0008641774122723902,
+          "count": 1,
+          "ms_per_token": 0.0001625,
+          "dispatches_per_token": 0.0625
+        },
+        {
+          "name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long, long)",
+          "total_ms": 0.002524,
+          "share_pct": 0.0008389168417598126,
+          "count": 0,
+          "ms_per_token": 0.00015775,
+          "dispatches_per_token": 0.0
+        },
+        {
+          "name": "__amd_rocclr_copyBuffer",
+          "total_ms": 0.0,
+          "share_pct": 0.0,
+          "count": 4,
+          "ms_per_token": 0.0,
+          "dispatches_per_token": 0.25
+        }
+      ],
+      "buckets": [
+        {
+          "bucket": "dense/shared Q8_0 GGUF GEMV",
+          "total_ms": 104.292422,
+          "share_pct": 34.66429052445388,
+          "count": 4000,
+          "ms_per_token": 6.518276375,
+          "dispatches_per_token": 250.0
+        },
+        {
+          "bucket": "selected expert Q4_K gate/up GEMV",
+          "total_ms": 65.364463,
+          "share_pct": 21.725574034582458,
+          "count": 1280,
+          "ms_per_token": 4.0852789375,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "bucket": "selected expert Q5_K down GEMV",
+          "total_ms": 34.742559,
+          "share_pct": 11.547590281669553,
+          "count": 592,
+          "ms_per_token": 2.1714099375,
+          "dispatches_per_token": 37.0
+        },
+        {
+          "bucket": "lm_head/output Q6_K GEMV",
+          "total_ms": 32.486441,
+          "share_pct": 10.797710968199876,
+          "count": 16,
+          "ms_per_token": 2.0304025625,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "bucket": "full-attention/cache",
+          "total_ms": 26.767663,
+          "share_pct": 8.896926824584387,
+          "count": 800,
+          "ms_per_token": 1.6729789375,
+          "dispatches_per_token": 50.0
+        },
+        {
+          "bucket": "router/topk",
+          "total_ms": 9.260747,
+          "share_pct": 3.078049376218962,
+          "count": 1920,
+          "ms_per_token": 0.5787966875,
+          "dispatches_per_token": 120.0
+        },
+        {
+          "bucket": "rmsnorm/add_norm",
+          "total_ms": 8.967369,
+          "share_pct": 2.980537591273712,
+          "count": 1296,
+          "ms_per_token": 0.5604605625,
+          "dispatches_per_token": 81.0
+        },
+        {
+          "bucket": "linear-attn GDN recurrent",
+          "total_ms": 6.578064,
+          "share_pct": 2.186390125108526,
+          "count": 480,
+          "ms_per_token": 0.411129,
+          "dispatches_per_token": 30.0
+        },
+        {
+          "bucket": "selected expert Q6_K down GEMV",
+          "total_ms": 3.028325,
+          "share_pct": 1.0065423315460715,
+          "count": 48,
+          "ms_per_token": 0.1892703125,
+          "dispatches_per_token": 3.0
+        },
+        {
+          "bucket": "dense BF16 GEMV (alpha/beta)",
+          "total_ms": 2.537111,
+          "share_pct": 0.8432746225491601,
+          "count": 960,
+          "ms_per_token": 0.1585694375,
+          "dispatches_per_token": 60.0
+        },
+        {
+          "bucket": "linear-attn conv/state",
+          "total_ms": 2.217741,
+          "share_pct": 0.7371237224886088,
+          "count": 960,
+          "ms_per_token": 0.1386088125,
+          "dispatches_per_token": 60.0
+        },
+        {
+          "bucket": "activation",
+          "total_ms": 2.106137,
+          "share_pct": 0.7000292394427442,
+          "count": 1280,
+          "ms_per_token": 0.1316335625,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "bucket": "moe combine/scatter",
+          "total_ms": 1.855419,
+          "share_pct": 0.6166966115773177,
+          "count": 640,
+          "ms_per_token": 0.1159636875,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "bucket": "other",
+          "total_ms": 0.420243,
+          "share_pct": 0.13967865702522542,
+          "count": 160,
+          "ms_per_token": 0.0262651875,
+          "dispatches_per_token": 10.0
+        },
+        {
+          "bucket": "lm_head argmax",
+          "total_ms": 0.122242,
+          "share_pct": 0.04063029816576982,
+          "count": 32,
+          "ms_per_token": 0.007640125,
+          "dispatches_per_token": 2.0
+        },
+        {
+          "bucket": "runtime state/record",
+          "total_ms": 0.069121,
+          "share_pct": 0.02297415650526149,
+          "count": 33,
+          "ms_per_token": 0.0043200625,
+          "dispatches_per_token": 2.0625
+        },
+        {
+          "bucket": "embedding",
+          "total_ms": 0.04368,
+          "share_pct": 0.014518180526176155,
+          "count": 16,
+          "ms_per_token": 0.00273,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "bucket": "hip memcpy/fill",
+          "total_ms": 0.0044,
+          "share_pct": 0.0014624540823071218,
+          "count": 5,
+          "ms_per_token": 0.000275,
+          "dispatches_per_token": 0.3125
+        }
+      ]
+    },
+    "headline_buckets": {
+      "selected_expert_total": {
+        "total_ms": 1279.237475,
+        "share_pct": 37.57556349070127,
+        "dispatches": 15360,
+        "ms_per_token": 9.9940427734375,
+        "dispatches_per_token": 120.0
+      },
+      "dense_shared_q8_0": {
+        "bucket": "dense/shared Q8_0 GGUF GEMV",
+        "total_ms": 1003.212805,
+        "share_pct": 29.467778411480648,
+        "count": 32000,
+        "ms_per_token": 7.8376000390625,
+        "dispatches_per_token": 250.0
+      },
+      "lm_head_output_projection_plus_argmax": {
+        "total_ms": 398.85762500000004,
+        "share_pct": 11.715807506294185,
+        "dispatches": 384,
+        "ms_per_token": 3.1160751953125003,
+        "dispatches_per_token": 3.0
+      },
+      "full_attention_cache": {
+        "bucket": "full-attention/cache",
+        "total_ms": 331.535607,
+        "share_pct": 9.738330445843674,
+        "count": 6400,
+        "ms_per_token": 2.5901219296875,
+        "dispatches_per_token": 50.0
+      },
+      "linear_attention_gdn": {
+        "bucket": "linear-attn GDN recurrent",
+        "total_ms": 74.252639,
+        "share_pct": 2.181053014489449,
+        "count": 3840,
+        "ms_per_token": 0.5800987421875,
+        "dispatches_per_token": 30.0
+      }
+    }
+  },
+  "bottleneck_assessment": {
+    "selected_expert_kernels": "Selected expert Q4/Q5/Q6 row-GEMV kernels are the largest single decode family: 1279.237 ms over 128 eager-profiled tokens (37.58%, 9.99 ms/token, 120.0 dispatches/token). This remains a priority for grouped/tiled MoE.",
+    "shared_expert_q8_0": "The Q8_0 GGUF kernel family (which includes shared-expert gate/up/down and other Q8_0 dense projections; rocprof names do not expose tensor names) is 1003.213 ms (29.47%, 7.84 ms/token, 250 dispatches/token). This is the second-largest family.",
+    "lm_head_output_projection": "The tied Q6_K lm_head/output projection is one dispatch/token but 397.127 ms total (3.10 ms/token, 11.66%); argmax itself is only 1.731 ms total. Output projection bandwidth/quant kernel matters, argmax does not.",
+    "graph_replay_granularity": "Graph replay is mandatory: eager wall decode is 6.470 tok/s (154.6 ms/token), while graph replay is 49.864 tok/s (20.1 ms/token), a 7.71x speedup. Increasing steps_per_replay from 1 to 16 keeps decode between 49.735 and 49.866 tok/s while capture time grows, so graph-launch granularity is not the current limiter.",
+    "host_overhead": "Eager decode synchronizes and copies the sampled token each step and collapses to 6.47 tok/s. In graph replay, wall time is close to device kernel time; remaining host/graph overhead is not enough to close the 2.0x gap to 100 tok/s.",
+    "cache_attention": "Full-attention/cache kernels are 331.536 ms (9.74%, 2.59 ms/token, 50 dispatches/token), material but smaller than MoE/dense/lm_head.",
+    "memory_pressure": "512/128 graph replay peaks at 20.886 GiB tracked / 21.346 GiB HIP sampled on a 23.984 GiB device, with no decode-time allocation growth beyond the tiny graph recording buffers. Memory pressure is not the immediate decode limiter, although headroom is too small for duplicate raw+packed expert residency."
+  },
+  "blocker": {
+    "accepted_target_met": false,
+    "summary": "Decode is device-kernel dominated under graph replay and needs roughly 2.0x speedup to reach 100 tok/s / 2.33x to reach the retained PARO 116.05 tok/s. The largest actionable families are selected expert row-GEMV, Q8_0 dense/shared row-GEMV, and Q6_K lm_head/output projection; graph replay granularity and memory are not primary blockers at 512/128.",
+    "next_actions": [
+      "Replace selected expert c=1 row-GEMV with grouped/tiled kernels or reuse the expert sidecar for decode so the 120 selected-expert dispatches/token shrink and reuse data.",
+      "Audit Q8_0 dense/shared call sites by tensor or add named profiling markers/wrapper counters; rocprof only exposes the kernel family, but it accounts for 250 dispatches/token.",
+      "Optimize or fuse the Q6_K lm_head/output projection and consider top-k/argmax integration; argmax alone is negligible.",
+      "Investigate full-attention/cache only after MoE/dense/lm_head, because it is under 10% of profiled decode kernel time at 512 context."
+    ]
+  }
+}
