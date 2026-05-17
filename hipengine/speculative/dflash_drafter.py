@@ -89,7 +89,7 @@ class DFlashRootQueryPlan:
             noise = [int(config.mask_token_id)] * int(config.block_size)
             noise[0] = int(req.root_token)
             noise_rows.append(tuple(noise))
-            start = int(req.context_length)
+            start = int(req.root_position)
             positions.append(tuple(range(start, start + int(config.block_size))))
         return cls(
             request_ids=tuple(int(req.request_id) for req in reqs),
@@ -102,6 +102,65 @@ class DFlashRootQueryPlan:
             position_ids=tuple(positions),
             target_hidden_concat_size=concat,
         )
+
+
+def prepare_dflash_noise_inputs_bf16(
+    root_tokens: Tensor,
+    root_positions: Tensor,
+    embed_tokens: Tensor,
+    noise_token_ids: Tensor,
+    position_ids: Tensor,
+    noise_embeddings: Tensor,
+    *,
+    block_size: int,
+    mask_token_id: int,
+    stream: int = 0,
+    library: object | None = None,
+    threads: int = 256,
+) -> Tensor:
+    """Materialize root+mask token ids, positions, and BF16 embeddings on device.
+
+    ``root_tokens`` and ``root_positions`` are compact int32 vectors of length
+    ``request_count``.  Outputs are request-major slabs with shape
+    ``[request_count, block_size]`` for ids/positions and
+    ``[request_count, block_size, hidden_size]`` for embeddings.  The first row
+    per request uses the root token; the remaining rows use ``mask_token_id``.
+    ``embed_tokens`` may be BF16 (copied as bits) or FP16 (converted to BF16),
+    matching the current shisa packed target artifact.
+    """
+
+    request_count, hidden_size, vocab_size = _validate_noise_input_tensors(
+        root_tokens,
+        root_positions,
+        embed_tokens,
+        noise_token_ids,
+        position_ids,
+        noise_embeddings,
+        block_size=block_size,
+    )
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
+        dflash_prepare_noise_inputs_bf16_i32,
+        dflash_prepare_noise_inputs_f16_to_bf16_i32,
+    )
+
+    prepare = dflash_prepare_noise_inputs_bf16_i32 if embed_tokens.dtype == DType.BF16 else dflash_prepare_noise_inputs_f16_to_bf16_i32
+    prepare(
+        root_tokens.ptr,
+        root_positions.ptr,
+        embed_tokens.ptr,
+        noise_token_ids.ptr,
+        position_ids.ptr,
+        noise_embeddings.ptr,
+        request_count,
+        block_size,
+        hidden_size,
+        vocab_size,
+        mask_token_id,
+        threads=threads,
+        stream=stream,
+        library=library,  # type: ignore[arg-type]
+    )
+    return noise_embeddings
 
 
 def project_dflash_target_hidden_bf16(
@@ -193,6 +252,45 @@ def draft_batch_from_topk(
     return compile_dflash_chain(requests, candidate_budget=candidate_budget, pad_token_id=pad_token_id)
 
 
+def _validate_noise_input_tensors(
+    root_tokens: Tensor,
+    root_positions: Tensor,
+    embed_tokens: Tensor,
+    noise_token_ids: Tensor,
+    position_ids: Tensor,
+    noise_embeddings: Tensor,
+    *,
+    block_size: int,
+) -> tuple[int, int, int]:
+    if root_tokens.ndim != 1 or root_positions.ndim != 1:
+        raise ValueError("root token and position tensors must be rank-1")
+    if root_tokens.shape != root_positions.shape:
+        raise ValueError("root token and position tensors must have matching shape")
+    if root_tokens.dtype != DType.INT32 or root_positions.dtype != DType.INT32:
+        raise ValueError("root token and position tensors must be int32")
+    if embed_tokens.ndim != 2 or embed_tokens.dtype not in {DType.BF16, DType.FP16}:
+        raise ValueError("embed_tokens must have BF16 or FP16 shape (vocab_size, hidden_size)")
+    request_count = root_tokens.shape[0]
+    vocab_size, hidden_size = embed_tokens.shape
+    expected_ids = (request_count, int(block_size))
+    expected_embeddings = (request_count, int(block_size), hidden_size)
+    for name, tensor in (("noise_token_ids", noise_token_ids), ("position_ids", position_ids)):
+        if tensor.shape != expected_ids:
+            raise ValueError(f"{name} must have shape {expected_ids}")
+        if tensor.dtype != DType.INT32:
+            raise ValueError(f"{name} must be int32")
+        if tensor.device != root_tokens.device:
+            raise ValueError(f"{name} must live on the root token device")
+    if noise_embeddings.shape != expected_embeddings:
+        raise ValueError(f"noise_embeddings must have shape {expected_embeddings}")
+    if noise_embeddings.dtype != DType.BF16:
+        raise ValueError("noise_embeddings must use BF16 storage")
+    for name, tensor in (("root_positions", root_positions), ("embed_tokens", embed_tokens), ("noise_embeddings", noise_embeddings)):
+        if tensor.device != root_tokens.device:
+            raise ValueError(f"{name} must live on the root token device")
+    return int(request_count), int(hidden_size), int(vocab_size)
+
+
 def _validate_projection_tensors(
     target_hidden_concat: Tensor,
     out_projected: Tensor,
@@ -223,5 +321,6 @@ __all__ = [
     "DFlashRootQueryPlan",
     "DFlashRootQueryRequest",
     "draft_batch_from_topk",
+    "prepare_dflash_noise_inputs_bf16",
     "project_dflash_target_hidden_bf16",
 ]

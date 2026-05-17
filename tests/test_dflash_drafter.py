@@ -5,7 +5,13 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.loading.dflash import dflash_draft_config_from_hf
-from hipengine.speculative import DFlashRootQueryPlan, DFlashRootQueryRequest, TargetVerifyBatch, draft_batch_from_topk
+from hipengine.speculative import (
+    DFlashRootQueryPlan,
+    DFlashRootQueryRequest,
+    TargetVerifyBatch,
+    draft_batch_from_topk,
+    prepare_dflash_noise_inputs_bf16,
+)
 
 
 def test_dflash_root_query_plan_prepares_root_and_mask_rows() -> None:
@@ -25,7 +31,7 @@ def test_dflash_root_query_plan_prepares_root_and_mask_rows() -> None:
     assert plan.root_positions == (12,)
     assert plan.context_lengths == (5,)
     assert plan.noise_token_ids == ((17, 99, 99, 99),)
-    assert plan.position_ids == ((5, 6, 7, 8),)
+    assert plan.position_ids == ((12, 13, 14, 15),)
     assert plan.target_hidden_concat_size == 32
 
 
@@ -86,8 +92,33 @@ def test_dflash_draft_batch_from_topk_can_select_nonzero_rank() -> None:
         draft_batch_from_topk(plan, topk_token_ids=(((101,),),), candidate_budget=2, topk_rank=1)
 
 
-def _tensor(ptr: int, shape: tuple[int, ...]) -> Tensor:
-    return Tensor.from_handle(ptr, shape, "bf16", Device("hip", 0))
+def test_prepare_dflash_noise_inputs_validates_tensor_abi_before_loading_hip() -> None:
+    with pytest.raises(ValueError, match="root token"):
+        prepare_dflash_noise_inputs_bf16(
+            _tensor(0x1000, (2,), dtype="int64"),
+            _tensor(0x1100, (2,), dtype="int32"),
+            _tensor(0x1200, (100, 16), dtype="bf16"),
+            _tensor(0x1300, (2, 4), dtype="int32"),
+            _tensor(0x1400, (2, 4), dtype="int32"),
+            _tensor(0x1500, (2, 4, 16), dtype="bf16"),
+            block_size=4,
+            mask_token_id=99,
+        )
+    with pytest.raises(ValueError, match="noise_embeddings"):
+        prepare_dflash_noise_inputs_bf16(
+            _tensor(0x1000, (2,), dtype="int32"),
+            _tensor(0x1100, (2,), dtype="int32"),
+            _tensor(0x1200, (100, 16), dtype="bf16"),
+            _tensor(0x1300, (2, 4), dtype="int32"),
+            _tensor(0x1400, (2, 4), dtype="int32"),
+            _tensor(0x1500, (2, 4, 15), dtype="bf16"),
+            block_size=4,
+            mask_token_id=99,
+        )
+
+
+def _tensor(ptr: int, shape: tuple[int, ...], *, dtype: str = "bf16") -> Tensor:
+    return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 
 
 def _config() -> dict:

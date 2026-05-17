@@ -17233,3 +17233,60 @@ git diff --check
 ### Remaining D12 blocker
 
 - Full native DFlash decoder block execution (q/k/v projection + q/k norm + YaRN rotary + full attention over projected target context + root/query rows + MLP + final norm + target lm-head top1/topk) is not wired yet, so Task #14 is intentionally left open until native top1/topk parity with the parent/PyTorch harness fixture is available.
+
+## 2026-05-18 — DFlash drafter root/mask input prep (partial D12)
+
+### Scope
+
+- Added `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.{hip,py}` and registered `dflash_prepare_noise_inputs_bf16_i32` for `hip_gfx1100` / `hip_gfx1151` alias coverage.
+- The new root/query prep kernel materializes request-major DFlash drafter inputs on device:
+  - `noise_token_ids[:,0]=root_token`, `noise_token_ids[:,1:]=mask_token_id`;
+  - `position_ids[:,i]=root_position+i` using absolute root positions (matching parent full-position semantics for query rows);
+  - BF16 `noise_embeddings` copied from BF16 target embedding rows or converted from FP16 target embedding rows for the shisa packed target artifact.
+- Added a high-level `prepare_dflash_noise_inputs_bf16()` validator in `hipengine/speculative/dflash_drafter.py` and fixed `DFlashRootQueryPlan` to use absolute `root_position` rather than retained-context length for query positions.
+- Updated tests and docs. Full native DFlash decoder block forward remains the D12 blocker.
+
+### Validation
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_drafter.py \
+  hipengine/speculative/__init__.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+python3 -m pytest -q \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_dflash_metadata.py \
+  tests/test_dflash_chain_compiler.py \
+  tests/test_speculative_interfaces.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+import numpy as np
+from hipengine.core.hip import get_hip_runtime
+from hipengine.core.memory import malloc, free, copy_host_to_device, copy_device_to_host, host_array_ptr
+from hipengine.kernels.hip_gfx1100.speculative import build_dflash_drafter, dflash_prepare_noise_inputs_bf16_i32
+rt=get_hip_runtime()
+compiler_version=open('/tmp/hipengine-hipcc-version.txt').read()
+lib=build_dflash_drafter(load=True, compiler_version=compiler_version, require_cached=True)
+roots=np.array([3,5], dtype=np.int32); pos=np.array([7,11], dtype=np.int32)
+vocab=9; hidden=6; block=4
+embed=np.arange(vocab*hidden, dtype=np.uint16).reshape(vocab, hidden) + np.uint16(100)
+ids=np.empty((2,block), dtype=np.int32); pos_out=np.empty((2,block), dtype=np.int32); emb=np.empty((2,block,hidden), dtype=np.uint16)
+# allocate/copy, launch, copy back ...
+PY
+python3 scripts/check_lineage.py --kind kernel --diff stat
+! grep -RInE 'import torch|torch\.' \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_drafter.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+git diff --check
+# pytest: 37 passed
+# gfx1151 prep smoke: ids [[3,8,8,8],[5,8,8,8]], positions [[7,8,9,10],[11,12,13,14]], BF16 rows copied from embedding rows 3/8/5 and FP16 rows converted to BF16 bits.
+# lineage: expected pre-existing baseline drift; DFlash R1 tree entries clean.
+```
+
+### Remaining D12 blocker
+
+- Still missing full native DFlash decoder block execution and parent/PyTorch fixture parity for top1/topk: q/k/v projections, q/k norm, YaRN rotary over context+query rows, non-causal GQA attention, o-proj, residual/add, MLP, final norm, and target lm-head top1/topk.

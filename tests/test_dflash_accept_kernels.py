@@ -15,10 +15,14 @@ from hipengine.kernels.hip_gfx1100.linear import (
 from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_accept_chain_i32,
     dflash_commit_chain_i32,
+    dflash_prepare_noise_inputs_bf16_i32,
+    dflash_prepare_noise_inputs_f16_to_bf16_i32,
     plan_dflash_accept_build,
     plan_dflash_commit_build,
+    plan_dflash_drafter_build,
     register_dflash_accept_kernels,
     register_dflash_commit_kernels,
+    register_dflash_drafter_kernels,
 )
 from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.kernels.registry import resolve
@@ -30,19 +34,23 @@ def test_dflash_accept_and_row_argmax_build_plans_include_native_arch(monkeypatc
     lm_head = plan_lm_head_build(compiler_version="hipcc:test")
     accept = plan_dflash_accept_build(compiler_version="hipcc:test")
     commit = plan_dflash_commit_build(compiler_version="hipcc:test")
+    drafter = plan_dflash_drafter_build(compiler_version="hipcc:test")
 
     assert "--offload-arch=gfx1151" in lm_head.command
     assert "--offload-arch=gfx1151" in accept.command
     assert "--offload-arch=gfx1151" in commit.command
+    assert "--offload-arch=gfx1151" in drafter.command
     assert lm_head.target_arch == "gfx1151"
     assert accept.target_arch == "gfx1151"
     assert commit.target_arch == "gfx1151"
+    assert drafter.target_arch == "gfx1151"
 
 
 def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
     register_lm_head_kernels(replace=True)
     register_dflash_accept_kernels(replace=True)
     register_dflash_commit_kernels(replace=True)
+    register_dflash_drafter_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
 
     assert (
@@ -67,6 +75,14 @@ def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
         resolve(backend="hip_gfx1151", layer="dflash_commit_chain", quant="w4_paro", variant="i32")
         is dflash_commit_chain_i32
     )
+    assert (
+        resolve(backend="hip_gfx1151", layer="dflash_prepare_noise_inputs", quant="w4_paro", variant="bf16_i32")
+        is dflash_prepare_noise_inputs_bf16_i32
+    )
+    assert (
+        resolve(backend="hip_gfx1151", layer="dflash_prepare_noise_inputs", quant="w4_paro", variant="f16_to_bf16_i32")
+        is dflash_prepare_noise_inputs_f16_to_bf16_i32
+    )
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
@@ -80,6 +96,20 @@ def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hi
         lm_head_fp16_argmax_bf16_rows_i32(0, 0, 0, 0, 0, 0, None, rows=1, hidden_size=8, vocab_size=0)
     with pytest.raises(ValueError, match="top_k"):
         topk_f32_rows_i32(0, None, 0, rows=1, vocab_size=16, top_k=9)
+    with pytest.raises(ValueError, match="mask_token_id"):
+        dflash_prepare_noise_inputs_bf16_i32(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            request_count=1,
+            block_size=4,
+            hidden_size=16,
+            vocab_size=10,
+            mask_token_id=10,
+        )
     with pytest.raises(ValueError, match="request_count"):
         dflash_accept_chain_i32(
             0,

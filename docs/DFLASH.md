@@ -433,9 +433,11 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
 
 - **Partial landed 2026-05-18:** load z-lab DFlash drafter BF16 weights through
   hipEngine loaders via raw safetensors payload offsets (no torch/NumPy BF16
-  dependency), expose root/query request planning, and run native
-  target-hidden projection (`fc + hidden_norm`) with `dense_gemv_out_bf16` +
-  `paro_rmsnorm_out_bf16`.
+  dependency), expose root/query request planning, materialize root+mask token
+  ids/absolute positions/BF16 embeddings with `dflash_prepare_noise_inputs_bf16_i32`
+  or FP16 target-embedding conversion with `dflash_prepare_noise_inputs_f16_to_bf16_i32`,
+  and run native target-hidden projection (`fc + hidden_norm`) with
+  `dense_gemv_out_bf16` + `paro_rmsnorm_out_bf16`.
 - Materialize committed target hidden rows into draft KV cache incrementally.
 - Draft forward computes only root/query rows; context K/V are read from draft KV.
 - **Partial landed 2026-05-18:** add compact draft lm-head top-k primitive
