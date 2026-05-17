@@ -453,16 +453,17 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
         accepted_counts=_tensor(0x3B00, (2,), "int32"),
         commit_rows=_tensor(0x3C00, (2,), "int32"),
         commit_positions=_tensor(0x3D00, (2,), "int32"),
+        parent_rows=_tensor(0x3D80, (5,), "int32"),
         linear_state_src=_tensor(0x3E00, (5, 40, 128), "bf16"),
         linear_state_dst=_tensor(0x3F00, (2, 40, 128), "bf16"),
         kv_rows_src=_tensor(0x4000, (5, 8, 128), "bf16"),
         kv_rows_dst=_tensor(0x4100, (3, 8, 128), "bf16"),
     )
     assert state_buffers.transaction_id == plan.transaction_id
-    assert session.commit_verified_state(plan, state_buffers) is state_buffers
+    assert session.commit_verified_state(plan, state_buffers, execute_copies=False) is state_buffers
     wrong_transaction_buffers = replace(state_buffers, transaction_id=plan.transaction_id + 1)
     with pytest.raises(ValueError, match="transaction_id"):
-        session.commit_verified_state(plan, wrong_transaction_buffers)
+        session.commit_verified_state(plan, wrong_transaction_buffers, execute_copies=False)
     short_linear_src = TargetStateCommitBuffers.for_plan(
         plan,
         accepted_counts=_tensor(0x4200, (2,), "int32"),
@@ -472,17 +473,18 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
         linear_state_dst=_tensor(0x4600, (2, 40, 128), "bf16"),
     )
     with pytest.raises(ValueError, match="selected commit rows"):
-        session.commit_verified_state(plan, short_linear_src)
+        session.commit_verified_state(plan, short_linear_src, execute_copies=False)
     short_kv_dst = TargetStateCommitBuffers.for_plan(
         plan,
         accepted_counts=_tensor(0x4700, (2,), "int32"),
         commit_rows=_tensor(0x4800, (2,), "int32"),
         commit_positions=_tensor(0x4900, (2,), "int32"),
+        parent_rows=_tensor(0x4980, (5,), "int32"),
         kv_rows_src=_tensor(0x4A00, (5, 8, 128), "bf16"),
         kv_rows_dst=_tensor(0x4B00, (2, 8, 128), "bf16"),
     )
     with pytest.raises(ValueError, match="accepted token rows"):
-        session.commit_verified_state(plan, short_kv_dst)
+        session.commit_verified_state(plan, short_kv_dst, execute_copies=False)
     with pytest.raises(ValueError, match="request_ids"):
         session.commit_verified_state(
             TargetCommitPlan(
@@ -496,6 +498,7 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
                 mode="verify_tree",
             ),
             state_buffers,
+            execute_copies=False,
         )
 
     with pytest.raises(ValueError, match="row tensors"):
@@ -522,6 +525,45 @@ def test_qwen35_resident_target_verify_batch_materializes_metadata_only() -> Non
         session.target_verify_batch(draft, root_tokens=(9, 100), root_positions=(5, 3))
 
 
+def test_qwen35_resident_commit_verified_state_launches_copy_kernel(monkeypatch) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.device = Device("hip", 0)
+    session.runtime = object()
+    plan = TargetCommitPlan(
+        transaction_id=12,
+        request_ids=(1, 2),
+        accepted_counts=(0, 1),
+        commit_rows=(0, 2),
+        commit_tokens=(9, 20),
+        commit_positions=(5, 8),
+        candidate_counts=(1, 1),
+        mode="verify_chain",
+    )
+    buffers = TargetStateCommitBuffers.for_plan(
+        plan,
+        accepted_counts=_tensor(0x5000, (2,), "int32"),
+        commit_rows=_tensor(0x5100, (2,), "int32"),
+        commit_positions=_tensor(0x5200, (2,), "int32"),
+        parent_rows=_tensor(0x5300, (3,), "int32"),
+        linear_state_src=_tensor(0x5400, (3, 4), "bf16"),
+        linear_state_dst=_tensor(0x5500, (2, 4), "bf16"),
+        kv_rows_src=_tensor(0x5600, (3, 2, 4), "bf16"),
+        kv_rows_dst=_tensor(0x5700, (1, 2, 4), "bf16"),
+        last_positions_dst=_tensor(0x5800, (2,), "int32"),
+        context_lengths_dst=_tensor(0x5900, (2,), "int32"),
+    )
+    calls = []
+
+    def fake_commit(copy_buffers, *, target_rows, accepted_rows, stream, library, runtime):
+        calls.append((copy_buffers, target_rows, accepted_rows, stream, library, runtime))
+
+    monkeypatch.setattr(runner_module, "dflash_commit_chain_i32", fake_commit)
+
+    assert session.commit_verified_state(plan, buffers, stream=7, library="lib") is buffers
+    assert calls == [(buffers, 3, 1, 7, "lib", session.runtime)]
+
+
 def test_qwen35_resident_speculative_execution_metadata_stays_blocked() -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
 
@@ -532,10 +574,10 @@ def test_qwen35_resident_speculative_execution_metadata_stays_blocked() -> None:
     assert metadata.verify_speculative_batch_metadata
     assert metadata.commit_verified_state_metadata
     assert not metadata.native_target_verify_executes_kernels
-    assert not metadata.commit_verified_state_executes_copies
+    assert metadata.commit_verified_state_executes_copies
     assert not metadata.native_target_verify_ready
     assert not metadata.throughput_claim_eligible
-    assert any("metadata-only" in blocker for blocker in metadata.blockers)
+    assert any("target forward" in blocker for blocker in metadata.blockers)
     payload = metadata.to_json_dict()
     assert payload["native_target_verify_batch"]
     assert payload["speculative_verify_batch"]

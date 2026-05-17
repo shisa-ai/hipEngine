@@ -564,10 +564,20 @@ def test_target_state_commit_buffers_validate_copy_contract() -> None:
         accepted_counts=_tensor(0x4000, (2,), "int32"),
         commit_rows=_tensor(0x4100, (2,), "int32"),
         commit_positions=_tensor(0x4200, (2,), "int32"),
+        parent_rows=_tensor(0x4250, (5,), "int32"),
         linear_state_src=_tensor(0x4300, (5, 40, 128), "bf16"),
         linear_state_dst=_tensor(0x4400, (2, 40, 128), "bf16"),
         kv_rows_src=_tensor(0x4500, (5, 8, 128), "bf16"),
         kv_rows_dst=_tensor(0x4600, (3, 8, 128), "bf16"),
+        hidden_taps_src=_tensor(0x4700, (2, 5, 128), "bf16"),
+        hidden_taps_dst=_tensor(0x4800, (2, 2, 128), "bf16"),
+        next_tokens_src=_tensor(0x4880, (2,), "int32"),
+        committed_output_ids_src=_tensor(0x4900, (2, 5), "int32"),
+        committed_output_lengths_src=_tensor(0x4A00, (2,), "int32"),
+        output_ids_dst=_tensor(0x4B00, (2, 5), "int32"),
+        output_lengths_dst=_tensor(0x4C00, (2,), "int32"),
+        last_positions_dst=_tensor(0x4D00, (2,), "int32"),
+        context_lengths_dst=_tensor(0x4E00, (2,), "int32"),
     )
 
     assert buffers.request_ids == (1, 2)
@@ -576,6 +586,10 @@ def test_target_state_commit_buffers_validate_copy_contract() -> None:
     assert str(buffers.device) == "hip:0"
     assert buffers.has_linear_state
     assert buffers.has_kv_rows
+    assert buffers.has_hidden_taps
+    assert buffers.has_output_ring
+    assert buffers.next_tokens_src is not None
+    assert buffers.has_context_metadata
     assert buffers.mode == "verify_tree"
 
     with pytest.raises(ValueError, match="transaction_id"):
@@ -594,8 +608,36 @@ def test_target_state_commit_buffers_validate_copy_contract() -> None:
             accepted_counts=_tensor(0x4000, (2,), "int32"),
             commit_rows=_tensor(0x4100, (2,), "int32"),
             commit_positions=_tensor(0x4200, (2,), "int32"),
+            parent_rows=_tensor(0x4250, (5,), "int32"),
             kv_rows_src=_tensor(0x4500, (5, 8, 128), "bf16"),
             kv_rows_dst=_tensor(0x4600, (3, 4, 128), "bf16"),
+        )
+    with pytest.raises(ValueError, match="parent_rows"):
+        TargetStateCommitBuffers.for_plan(
+            plan,
+            accepted_counts=_tensor(0x4000, (2,), "int32"),
+            commit_rows=_tensor(0x4100, (2,), "int32"),
+            commit_positions=_tensor(0x4200, (2,), "int32"),
+            kv_rows_src=_tensor(0x4500, (5, 8, 128), "bf16"),
+            kv_rows_dst=_tensor(0x4600, (3, 8, 128), "bf16"),
+        )
+    with pytest.raises(ValueError, match="hidden_taps"):
+        TargetStateCommitBuffers.for_plan(
+            plan,
+            accepted_counts=_tensor(0x4000, (2,), "int32"),
+            commit_rows=_tensor(0x4100, (2,), "int32"),
+            commit_positions=_tensor(0x4200, (2,), "int32"),
+            hidden_taps_src=_tensor(0x4700, (2, 5, 128), "bf16"),
+            hidden_taps_dst=_tensor(0x4800, (1, 2, 128), "bf16"),
+        )
+    with pytest.raises(ValueError, match="output ring"):
+        TargetStateCommitBuffers.for_plan(
+            plan,
+            accepted_counts=_tensor(0x4000, (2,), "int32"),
+            commit_rows=_tensor(0x4100, (2,), "int32"),
+            commit_positions=_tensor(0x4200, (2,), "int32"),
+            committed_output_ids_src=_tensor(0x4900, (2, 5), "int32"),
+            output_ids_dst=_tensor(0x4B00, (2, 5), "int32"),
         )
 
 
@@ -916,8 +958,8 @@ def test_qwen35_dflash_blocker_payload_records_missing_native_verifier(tmp_path)
     assert payload["implementation_status"]["resident_api"]["commit_verified_state_transaction_id_checked"]
     assert payload["implementation_status"]["resident_api"]["commit_verified_state_row_coverage_checked"]
     assert not payload["implementation_status"]["resident_api"]["native_target_verify_executes_kernels"]
-    assert not payload["implementation_status"]["resident_api"]["commit_verified_state_executes_copies"]
+    assert payload["implementation_status"]["resident_api"]["commit_verified_state_executes_copies"]
     assert not payload["implementation_status"]["native_target_verify_ready"]
     assert payload["evidence"]["batch_execution"]["path"] == "scheduler_serial_slot_bridge"
-    assert any("commit_verified_state" in blocker for blocker in payload["blockers"])
+    assert any("native verifier loop" in blocker for blocker in payload["blockers"])
     assert any("throughput_claim_eligible=false" in blocker for blocker in payload["blockers"])

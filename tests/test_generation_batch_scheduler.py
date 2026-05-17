@@ -285,6 +285,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
         accepted_counts=_tensor(0x3B00, (len(work.target_batch.request_ids),), "int32"),
         commit_rows=_tensor(0x3C00, (len(work.target_batch.request_ids),), "int32"),
         commit_positions=_tensor(0x3D00, (len(work.target_batch.request_ids),), "int32"),
+        parent_rows=_tensor(0x3D80, (work.target_batch.rows,), "int32"),
         linear_state_src=_tensor(0x3E00, (work.target_batch.rows, 4), "bf16"),
         linear_state_dst=_tensor(0x3F00, (len(work.target_batch.request_ids), 4), "bf16"),
         kv_rows_src=_tensor(0x4000, (work.target_batch.rows, 2, 4), "bf16"),
@@ -307,6 +308,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
         accepted_counts=_tensor(0x4200, (len(work.target_batch.request_ids),), "int32"),
         commit_rows=_tensor(0x4300, (len(work.target_batch.request_ids),), "int32"),
         commit_positions=_tensor(0x4400, (len(work.target_batch.request_ids),), "int32"),
+        parent_rows=_tensor(0x4480, (work.target_batch.rows,), "int32"),
         kv_rows_src=_tensor(0x4500, (work.target_batch.rows, 2, 4), "bf16"),
         kv_rows_dst=_tensor(0x4600, (len(work.target_batch.request_ids), 2, 4), "bf16"),
     )

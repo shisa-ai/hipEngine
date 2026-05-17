@@ -678,16 +678,26 @@ class ResidentBatchScheduler:
             raise ValueError("state commit buffers mode must match speculative commit plan")
         if buffers.device != plan.verify_plan.buffers.device:
             raise ValueError("state commit buffers must live on target verify device")
-        if not buffers.has_linear_state and not buffers.has_kv_rows:
-            raise ValueError("state commit buffers must include linear state or KV rows")
+        if not (
+            buffers.has_linear_state
+            or buffers.has_kv_rows
+            or buffers.has_hidden_taps
+            or buffers.has_output_ring
+            or buffers.has_context_metadata
+        ):
+            raise ValueError("state commit buffers must include state, KV, hidden taps, output ring, or context metadata")
         target_rows = plan.verify_plan.plan.target_batch.rows
         accepted_rows = sum(commit.accepted_counts)
         if buffers.linear_state_src is not None and buffers.linear_state_src.shape[0] < target_rows:
             raise ValueError("linear state source rows must cover target verify rows")
         if buffers.kv_rows_src is not None and buffers.kv_rows_src.shape[0] < target_rows:
             raise ValueError("KV source rows must cover target verify rows")
+        if buffers.kv_rows_src is not None and buffers.parent_rows is None:
+            raise ValueError("parent_rows are required when committing KV rows")
         if buffers.kv_rows_dst is not None and buffers.kv_rows_dst.shape[0] < accepted_rows:
             raise ValueError("KV destination rows must cover accepted token rows")
+        if buffers.hidden_taps_src is not None and buffers.hidden_taps_src.shape[1] < target_rows:
+            raise ValueError("hidden tap source rows must cover target verify rows")
         return SpeculativeStateCommitPlan(commit_plan=plan, buffers=buffers)
 
     def commit_speculative_kv_transaction(self, kv_policy, plan: SpeculativeStateCommitPlan) -> KVTransaction:

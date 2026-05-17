@@ -33,6 +33,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16,
 )
+from hipengine.kernels.hip_gfx1100.speculative import dflash_commit_chain_i32
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
 from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16
 from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16, paro_rmsnorm_out_fp16
@@ -1072,13 +1073,19 @@ class Qwen35ParoResidentSession:
         self,
         plan: TargetCommitPlan,
         buffers: TargetStateCommitBuffers,
+        *,
+        execute_copies: bool = True,
+        stream: int = 0,
+        library=None,
     ) -> TargetStateCommitBuffers:
-        """Validate resident buffers for future verified state/KV commit.
+        """Commit accepted verifier state/KV rows with device copy kernels.
 
-        This metadata-only bridge checks that a transaction-scoped commit plan
-        matches the device Tensor handles that a future state/KV copy kernel
-        would consume.  It does not copy recurrent state, mutate KV, or mark the
-        transaction committed.
+        The fast path consumes the compact accept-summary buffers already on
+        device.  It selects the final linear-attention/hidden-tap row for each
+        request, compacts accepted full-attention K/V path rows, updates
+        position/context metadata, and copies committed output-ring ids without
+        re-forwarding accepted prefixes.  Tests may pass ``execute_copies=False``
+        to exercise validation with synthetic pointer handles only.
         """
 
         if getattr(self, "closed", False):
@@ -1089,19 +1096,39 @@ class Qwen35ParoResidentSession:
             raise ValueError("commit plan transaction_id must match state commit buffers")
         if plan.mode != buffers.mode:
             raise ValueError("commit plan mode must match state commit buffers")
-        if not buffers.has_linear_state and not buffers.has_kv_rows:
-            raise ValueError("state commit buffers must include linear state or KV rows")
+        if not (
+            buffers.has_linear_state
+            or buffers.has_kv_rows
+            or buffers.has_hidden_taps
+            or buffers.has_output_ring
+            or buffers.has_context_metadata
+        ):
+            raise ValueError("state commit buffers must include state, KV, hidden taps, output ring, or context metadata")
         device = getattr(self, "device", None)
         if device is not None and buffers.device != device:
             raise ValueError("state commit buffers must live on the resident device")
         required_src_rows = max(plan.commit_rows) + 1
         accepted_rows = sum(plan.accepted_counts)
+        target_rows = buffers.parent_rows.shape[0] if buffers.parent_rows is not None else required_src_rows
+        if target_rows < required_src_rows:
+            raise ValueError("parent_rows must cover selected commit rows")
         if buffers.linear_state_src is not None and buffers.linear_state_src.shape[0] < required_src_rows:
             raise ValueError("linear state source rows must cover selected commit rows")
         if buffers.kv_rows_src is not None and buffers.kv_rows_src.shape[0] < required_src_rows:
             raise ValueError("KV source rows must cover selected commit rows")
         if buffers.kv_rows_dst is not None and buffers.kv_rows_dst.shape[0] < accepted_rows:
             raise ValueError("KV destination rows must cover accepted token rows")
+        if buffers.hidden_taps_src is not None and buffers.hidden_taps_src.shape[1] < required_src_rows:
+            raise ValueError("hidden tap source rows must cover selected commit rows")
+        if execute_copies:
+            dflash_commit_chain_i32(
+                buffers,
+                target_rows=target_rows,
+                accepted_rows=accepted_rows,
+                stream=stream,
+                library=library,
+                runtime=getattr(self, "runtime", None),
+            )
         return buffers
 
     def speculative_execution_metadata(self) -> Qwen35ParoResidentSpeculativeExecution:
@@ -1111,13 +1138,11 @@ class Qwen35ParoResidentSession:
         verify_api = hasattr(type(self), "verify_speculative_batch")
         commit_api = hasattr(type(self), "commit_verified_state")
         executes_kernels = False
-        executes_copies = False
+        executes_copies = True
         ready = bool(target_api and verify_api and commit_api and executes_kernels and executes_copies)
         blockers = (
-            "target_verify_batch/verify_speculative_batch/commit_verified_state are metadata-only",
             "native root+candidate target forward kernels are not wired",
-            "GPU accept-summary kernels are not wired",
-            "verified state/KV copy kernels are not wired",
+            "integrated native verifier still must wire GPU target-top1/accept summaries into the runtime loop",
         )
         return Qwen35ParoResidentSpeculativeExecution(
             target_verify_batch_metadata=target_api,

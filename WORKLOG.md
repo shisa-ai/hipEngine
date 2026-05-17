@@ -17070,3 +17070,76 @@ git diff --check
 # argmax_rows_stage2_i32_kernel count=6 DurationNs 1683–6893 Scratch_Size=0;
 # dflash_accept_chain_i32_kernel count=5 DurationNs 4007–17032 Scratch_Size=0.
 ```
+
+## 2026-05-18 — DFlash verified state/KV/output commit copies
+
+### Scope
+
+- Added `hipengine/kernels/hip_gfx1100/speculative/dflash_commit.{hip,py}` and registered `dflash_commit_chain_i32` for `hip_gfx1100` / `hip_gfx1151` alias coverage.
+- `dflash_commit_chain_i32` consumes compact GPU accept-summary tensors and copy/selects only accepted verifier rows:
+  - final selected row -> canonical linear-attention state destination;
+  - accepted parent-chain K/V rows -> compact canonical K/V destination prefix;
+  - selected hidden tap rows -> drafter context tap destination;
+  - committed output ids plus optional next-token bonus/correction -> output ring, clearing rejected suffix slots to `-1`;
+  - `commit_position` -> last-position/context-length metadata.
+- Extended `TargetStateCommitBuffers` with `parent_rows`, hidden-tap buffers, output-ring buffers, optional `next_tokens_src`, and position/context metadata destinations. Existing scheduler/resident validations now require row coverage and parent rows for K/V commits.
+- Replaced the metadata-only resident `commit_verified_state()` path with an executable copy/select call. `execute_copies=False` remains a test-only validation mode for synthetic pointer handles; the default path launches `dflash_commit_chain_i32` and does not re-forward accepted prefixes.
+- Added `scripts/dflash_commit_chain_smoke.py`, a torch-free gfx1151 smoke covering reject, partial, full, budgeted no-bonus, and multi-request prefix-offset commits. The smoke seeds rejected rows with distinct payloads and proves they do not leak into canonical linear state, K/V rows, hidden taps, or output ids.
+- Updated `docs/DFLASH.md` and `docs/KERNELS.md` with D11 status and rocprof evidence.
+
+### Validation
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# Expected pre-existing drift: baseline Qwen/PARO catalog files report DRIFT; DFlash R1 tree Conv/GDN entries are clean.
+python3 -m py_compile \
+  hipengine/speculative/interfaces.py \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_commit.py \
+  hipengine/runtime/qwen35_paro_runner.py \
+  hipengine/generation/batch_scheduler.py \
+  scripts/dflash_commit_chain_smoke.py \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_speculative_interfaces.py \
+  scripts/qwen35_dflash_ddtree_blocker.py
+python3 -m pytest -q \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_speculative_interfaces.py \
+  tests/test_generation_batch_scheduler.py \
+  tests/test_qwen35_resident_batch_layout.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_commit_chain_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+rm -rf /tmp/hipengine-dflash-commit-prof && mkdir -p /tmp/hipengine-dflash-commit-prof
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  /opt/rocm/bin/rocprofv3 --kernel-trace --output-format csv \
+    --output-file /tmp/hipengine-dflash-commit-prof/commit -- \
+    python3 scripts/dflash_commit_chain_smoke.py \
+      --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+      --require-cached-build
+python3 - <<'PY'
+import csv
+from pathlib import Path
+path=Path('/tmp/hipengine-dflash-commit-prof/commit_kernel_trace.csv')
+rows=list(csv.DictReader(path.open()))
+for name in sorted({r['Kernel_Name'] for r in rows if 'dflash_accept' in r['Kernel_Name'] or 'dflash_commit' in r['Kernel_Name']}):
+    vals=[]; scratch=[]
+    for r in rows:
+        if r['Kernel_Name']==name:
+            vals.append(int(float(r['DurationNs'])) if r.get('DurationNs') else int(float(r['End_Timestamp']))-int(float(r['Start_Timestamp'])))
+            if r.get('Scratch_Size'):
+                scratch.append(int(float(r['Scratch_Size'])))
+    print(name, len(vals), min(vals), max(vals), sorted(set(scratch)))
+PY
+! grep -RInE 'import torch|torch\.' \
+  hipengine/kernels/hip_gfx1100/speculative \
+  hipengine/speculative \
+  hipengine/runtime/qwen35_paro_runner.py \
+  hipengine/generation/batch_scheduler.py \
+  scripts/dflash_commit_chain_smoke.py \
+  tests/test_dflash_accept_kernels.py
+git diff --check
+# pytest: 58 passed
+# smoke: reject accepted=[0] output_lengths=[2]; partial accepted=[1] output_lengths=[3]; full accepted=[2] output_lengths=[4]; budgeted no-bonus output_lengths=[3]; multi-prefix accepted=[2,1] output_lengths=[4,3].
+# rocprofv3 1.1.0 / gfx1151: dflash_accept_chain_i32_kernel count=5 DurationNs 3767–14948 Scratch_Size=0; dflash_commit_chain_i32_kernel count=5 DurationNs 3206–11903 Scratch_Size=0.
+```

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from hipengine.core.device import Device
+from hipengine.core.tensor import Tensor
+from hipengine.speculative import TargetCommitPlan, TargetStateCommitBuffers
 from hipengine.kernels.hip_gfx1100.linear import (
     argmax_f32_rows_i32,
     lm_head_fp16_argmax_bf16_rows_i32,
@@ -10,8 +13,11 @@ from hipengine.kernels.hip_gfx1100.linear import (
 )
 from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_accept_chain_i32,
+    dflash_commit_chain_i32,
     plan_dflash_accept_build,
+    plan_dflash_commit_build,
     register_dflash_accept_kernels,
+    register_dflash_commit_kernels,
 )
 from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.kernels.registry import resolve
@@ -22,16 +28,20 @@ def test_dflash_accept_and_row_argmax_build_plans_include_native_arch(monkeypatc
 
     lm_head = plan_lm_head_build(compiler_version="hipcc:test")
     accept = plan_dflash_accept_build(compiler_version="hipcc:test")
+    commit = plan_dflash_commit_build(compiler_version="hipcc:test")
 
     assert "--offload-arch=gfx1151" in lm_head.command
     assert "--offload-arch=gfx1151" in accept.command
+    assert "--offload-arch=gfx1151" in commit.command
     assert lm_head.target_arch == "gfx1151"
     assert accept.target_arch == "gfx1151"
+    assert commit.target_arch == "gfx1151"
 
 
 def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
     register_lm_head_kernels(replace=True)
     register_dflash_accept_kernels(replace=True)
+    register_dflash_commit_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
 
     assert (
@@ -51,6 +61,14 @@ def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
         resolve(backend="hip_gfx1151", layer="dflash_accept_chain", quant="w4_paro", variant="i32")
         is dflash_accept_chain_i32
     )
+    assert (
+        resolve(backend="hip_gfx1151", layer="dflash_commit_chain", quant="w4_paro", variant="i32")
+        is dflash_commit_chain_i32
+    )
+
+
+def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
+    return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 
 
 def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hip() -> None:
@@ -100,3 +118,39 @@ def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hi
             request_count=1,
             output_stride=0,
         )
+
+
+def test_dflash_commit_wrapper_validates_shape_before_loading_hip() -> None:
+    plan = TargetCommitPlan(
+        transaction_id=4,
+        request_ids=(1,),
+        accepted_counts=(1,),
+        commit_rows=(1,),
+        commit_tokens=(11,),
+        commit_positions=(6,),
+        candidate_counts=(1,),
+    )
+    buffers = TargetStateCommitBuffers.for_plan(
+        plan,
+        accepted_counts=_tensor(0x1000, (1,), "int32"),
+        commit_rows=_tensor(0x1100, (1,), "int32"),
+        commit_positions=_tensor(0x1200, (1,), "int32"),
+        parent_rows=_tensor(0x1300, (2,), "int32"),
+        linear_state_src=_tensor(0x1400, (2, 4), "bf16"),
+        linear_state_dst=_tensor(0x1500, (1, 4), "bf16"),
+    )
+
+    with pytest.raises(ValueError, match="target_rows"):
+        dflash_commit_chain_i32(buffers, target_rows=0)
+    with pytest.raises(ValueError, match="parent_rows"):
+        dflash_commit_chain_i32(buffers, target_rows=3)
+    int64_summary = TargetStateCommitBuffers.for_plan(
+        plan,
+        accepted_counts=_tensor(0x1600, (1,), "int64"),
+        commit_rows=_tensor(0x1700, (1,), "int32"),
+        commit_positions=_tensor(0x1800, (1,), "int32"),
+        linear_state_src=_tensor(0x1900, (2, 4), "bf16"),
+        linear_state_dst=_tensor(0x1A00, (1, 4), "bf16"),
+    )
+    with pytest.raises(ValueError, match="accepted_counts"):
+        dflash_commit_chain_i32(int64_summary, target_rows=2)

@@ -823,10 +823,20 @@ class TargetStateCommitBuffers:
     accepted_counts: Tensor
     commit_rows: Tensor
     commit_positions: Tensor
+    parent_rows: Tensor | None = None
     linear_state_src: Tensor | None = None
     linear_state_dst: Tensor | None = None
     kv_rows_src: Tensor | None = None
     kv_rows_dst: Tensor | None = None
+    hidden_taps_src: Tensor | None = None
+    hidden_taps_dst: Tensor | None = None
+    next_tokens_src: Tensor | None = None
+    committed_output_ids_src: Tensor | None = None
+    committed_output_lengths_src: Tensor | None = None
+    output_ids_dst: Tensor | None = None
+    output_lengths_dst: Tensor | None = None
+    last_positions_dst: Tensor | None = None
+    context_lengths_dst: Tensor | None = None
     mode: str = "verify_chain"
 
     def __post_init__(self) -> None:
@@ -844,8 +854,31 @@ class TargetStateCommitBuffers:
                 raise ValueError("state commit summary tensors must be int32 or int64")
             if tensor.device != self.commit_rows.device:
                 raise ValueError("state commit buffers must live on one device")
+        if self.parent_rows is not None:
+            if self.parent_rows.ndim != 1 or self.parent_rows.shape[0] <= 0:
+                raise ValueError("parent_rows must be a non-empty row tensor")
+            if self.parent_rows.dtype not in {DType.INT32, DType.INT64}:
+                raise ValueError("parent_rows must be int32 or int64")
+            if self.parent_rows.device != self.device:
+                raise ValueError("parent_rows must live on the state commit device")
         self._validate_optional_pair("linear_state", self.linear_state_src, self.linear_state_dst, count)
-        self._validate_optional_pair("kv_rows", self.kv_rows_src, self.kv_rows_dst, count)
+        self._validate_optional_pair("kv_rows", self.kv_rows_src, self.kv_rows_dst, count, min_dst_rows=0)
+        if self.kv_rows_src is not None and self.parent_rows is None:
+            raise ValueError("parent_rows are required when committing KV rows")
+        self._validate_hidden_taps_pair(count)
+        self._validate_output_ring(count)
+        for name, tensor in (
+            ("last_positions_dst", self.last_positions_dst),
+            ("context_lengths_dst", self.context_lengths_dst),
+        ):
+            if tensor is None:
+                continue
+            if tensor.shape != (count,):
+                raise ValueError(f"{name} must have shape (request_count,)")
+            if tensor.dtype not in {DType.INT32, DType.INT64}:
+                raise ValueError(f"{name} must be int32 or int64")
+            if tensor.device != self.device:
+                raise ValueError(f"{name} must live on the state commit device")
         if self.mode not in {"verify_chain", "verify_tree"}:
             raise ValueError("mode must be verify_chain or verify_tree")
 
@@ -857,10 +890,20 @@ class TargetStateCommitBuffers:
         accepted_counts: Tensor,
         commit_rows: Tensor,
         commit_positions: Tensor,
+        parent_rows: Tensor | None = None,
         linear_state_src: Tensor | None = None,
         linear_state_dst: Tensor | None = None,
         kv_rows_src: Tensor | None = None,
         kv_rows_dst: Tensor | None = None,
+        hidden_taps_src: Tensor | None = None,
+        hidden_taps_dst: Tensor | None = None,
+        next_tokens_src: Tensor | None = None,
+        committed_output_ids_src: Tensor | None = None,
+        committed_output_lengths_src: Tensor | None = None,
+        output_ids_dst: Tensor | None = None,
+        output_lengths_dst: Tensor | None = None,
+        last_positions_dst: Tensor | None = None,
+        context_lengths_dst: Tensor | None = None,
     ) -> "TargetStateCommitBuffers":
         return cls(
             request_ids=plan.request_ids,
@@ -868,10 +911,20 @@ class TargetStateCommitBuffers:
             accepted_counts=accepted_counts,
             commit_rows=commit_rows,
             commit_positions=commit_positions,
+            parent_rows=parent_rows,
             linear_state_src=linear_state_src,
             linear_state_dst=linear_state_dst,
             kv_rows_src=kv_rows_src,
             kv_rows_dst=kv_rows_dst,
+            hidden_taps_src=hidden_taps_src,
+            hidden_taps_dst=hidden_taps_dst,
+            next_tokens_src=next_tokens_src,
+            committed_output_ids_src=committed_output_ids_src,
+            committed_output_lengths_src=committed_output_lengths_src,
+            output_ids_dst=output_ids_dst,
+            output_lengths_dst=output_lengths_dst,
+            last_positions_dst=last_positions_dst,
+            context_lengths_dst=context_lengths_dst,
             mode=plan.mode,
         )
 
@@ -891,7 +944,27 @@ class TargetStateCommitBuffers:
     def has_kv_rows(self) -> bool:
         return self.kv_rows_src is not None
 
-    def _validate_optional_pair(self, name: str, src: Tensor | None, dst: Tensor | None, request_count: int) -> None:
+    @property
+    def has_hidden_taps(self) -> bool:
+        return self.hidden_taps_src is not None
+
+    @property
+    def has_output_ring(self) -> bool:
+        return self.committed_output_ids_src is not None
+
+    @property
+    def has_context_metadata(self) -> bool:
+        return self.last_positions_dst is not None or self.context_lengths_dst is not None
+
+    def _validate_optional_pair(
+        self,
+        name: str,
+        src: Tensor | None,
+        dst: Tensor | None,
+        request_count: int,
+        *,
+        min_dst_rows: int | None = None,
+    ) -> None:
         if (src is None) != (dst is None):
             raise ValueError(f"{name} buffers must be provided as a src/dst pair")
         if src is None or dst is None:
@@ -904,8 +977,69 @@ class TargetStateCommitBuffers:
             raise ValueError(f"{name} buffers must be row-major tensors")
         if src.shape[1:] != dst.shape[1:]:
             raise ValueError(f"{name} source and destination row tail shape must match")
-        if src.shape[0] <= 0 or dst.shape[0] < request_count:
+        required_dst_rows = request_count if min_dst_rows is None else int(min_dst_rows)
+        if src.shape[0] <= 0 or dst.shape[0] < required_dst_rows:
             raise ValueError(f"{name} buffers must contain enough rows")
+
+    def _validate_hidden_taps_pair(self, request_count: int) -> None:
+        if (self.hidden_taps_src is None) != (self.hidden_taps_dst is None):
+            raise ValueError("hidden_taps buffers must be provided as a src/dst pair")
+        if self.hidden_taps_src is None or self.hidden_taps_dst is None:
+            return
+        src = self.hidden_taps_src
+        dst = self.hidden_taps_dst
+        if src.device != self.device or dst.device != self.device:
+            raise ValueError("hidden_taps buffers must live on the state commit device")
+        if src.dtype != dst.dtype:
+            raise ValueError("hidden_taps source and destination buffers must share dtype")
+        if src.ndim != 3 or dst.ndim != 3:
+            raise ValueError("hidden_taps buffers must have shape (tap_count, rows, hidden_size)")
+        if src.shape[0] != dst.shape[0] or src.shape[2] != dst.shape[2]:
+            raise ValueError("hidden_taps source and destination tap/hidden shapes must match")
+        if src.shape[1] <= 0 or dst.shape[1] < request_count:
+            raise ValueError("hidden_taps buffers must contain enough rows")
+
+    def _validate_output_ring(self, request_count: int) -> None:
+        output_tensors = (
+            self.committed_output_ids_src,
+            self.committed_output_lengths_src,
+            self.output_ids_dst,
+            self.output_lengths_dst,
+        )
+        if any(tensor is not None for tensor in output_tensors) and not all(tensor is not None for tensor in output_tensors):
+            raise ValueError("output ring buffers must include ids/lengths source and destination tensors")
+        if self.committed_output_ids_src is None:
+            if self.next_tokens_src is not None:
+                raise ValueError("next_tokens_src requires output ring buffers")
+            return
+        ids_src = self.committed_output_ids_src
+        lengths_src = self.committed_output_lengths_src
+        ids_dst = self.output_ids_dst
+        lengths_dst = self.output_lengths_dst
+        assert lengths_src is not None and ids_dst is not None and lengths_dst is not None
+        for name, tensor in (
+            ("committed_output_ids_src", ids_src),
+            ("committed_output_lengths_src", lengths_src),
+            ("output_ids_dst", ids_dst),
+            ("output_lengths_dst", lengths_dst),
+            ("next_tokens_src", self.next_tokens_src),
+        ):
+            if tensor is None:
+                continue
+            if tensor.device != self.device:
+                raise ValueError(f"{name} must live on the state commit device")
+            if tensor.dtype not in {DType.INT32, DType.INT64}:
+                raise ValueError(f"{name} must be int32 or int64")
+        if ids_src.ndim != 2 or ids_dst.ndim != 2:
+            raise ValueError("output id buffers must be 2D request-major tensors")
+        if ids_src.shape[0] != request_count or ids_dst.shape[0] != request_count:
+            raise ValueError("output id buffers must have request_count rows")
+        if ids_src.shape[1] <= 0 or ids_dst.shape[1] <= 0:
+            raise ValueError("output id buffers must have a positive stride")
+        if lengths_src.shape != (request_count,) or lengths_dst.shape != (request_count,):
+            raise ValueError("output length buffers must have shape (request_count,)")
+        if self.next_tokens_src is not None and self.next_tokens_src.shape != (request_count,):
+            raise ValueError("next_tokens_src must have shape (request_count,)")
 
 
 def _target_path_tokens(target: TargetVerifyBatch, selected_row: int, accepted_count: int) -> tuple[int, ...]:

@@ -56,11 +56,14 @@ It records:
   `scheduler_serial_slot_bridge`, `serial_c1_layer_path`, and
   `throughput_claim_eligible=false`;
 - `Qwen35ParoResidentSession` exposes `step_batch_serial()`, batch metadata,
-  `speculative_execution_metadata()`, and metadata-only `target_verify_batch()`,
-  `verify_speculative_batch()`, and `commit_verified_state()` layout helpers;
-  target-verifier buffers are validated against the resident transaction id and
-  device, and state/KV commit buffers are checked against commit-row/accepted-row coverage,
-  but no native verifier execution or state/KV copy kernels are wired;
+  `speculative_execution_metadata()`, metadata-only `target_verify_batch()` /
+  `verify_speculative_batch()` layout helpers, and a `commit_verified_state()`
+  copy/select path; target-verifier buffers are validated against the resident
+  transaction id and device, and state/KV commit buffers are checked against
+  commit-row/accepted-row coverage before `dflash_commit_chain_i32` copies
+  selected linear state, accepted K/V path rows, hidden taps, output-ring tokens,
+  and position/context metadata. Native root+candidate verifier execution is
+  still not wired;
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
 - speculative metadata and KV transactions reject duplicate request ids,
@@ -88,11 +91,13 @@ It records:
   scheduler `WorkItem` metadata, and derives verify graph shape keys from the
   target row topology, the torch-free target-verify ladder comparator can
   compare serial c=1 vs bulk verify-chain row snapshots at each layer-family
-  boundary with first-failing-stage diagnostics, and the gfx1151 GPU top1 +
+  boundary with first-failing-stage diagnostics, the gfx1151 GPU top1 +
   `dflash_accept_chain_i32` smoke matches `TargetVerifyBatch.accept_from_top1`
   for reject/partial/full, multi-request real verifier rows, and budgeted
-  no-bonus cases without full-logit host copies in the accept fast path, but no
-  device-side state/KV commit is wired yet;
+  no-bonus cases without full-logit host copies in the accept fast path, and the
+  gfx1151 `dflash_commit_chain_i32` smoke proves reject/partial/full plus
+  multi-request copy/select commits do not leak rejected suffix rows into
+  canonical linear state, KV, hidden taps, output ids, or context metadata;
 - no speculative throughput claim is allowed until Task #15 lands a native
   compact/c-aware target verifier with selectable per-row state and GPU accept
   summaries.
@@ -394,8 +399,10 @@ native target runtime with selectable state commit.
   wrapper style.
 - Wire full-attention verify to write K/V rows into tree K/V scratch, not live
   cache first.
-- Implement commit for chain: install final accepted row's Conv/GDN state and
-  compact/copy accepted full-attention K/V rows.
+- **Landed 2026-05-18:** implement commit for chain: install final accepted
+  row's Conv/GDN-style linear state, compact/copy accepted full-attention K/V
+  path rows, copy hidden taps/output ids, and update position/context metadata
+  with `dflash_commit_chain_i32`.
 - Correctness gate: same-session exact greedy equality on synthetic candidates
   where accepted length is forced to 0, partial, and full.
 
@@ -416,8 +423,9 @@ Status 2026-05-18: row-wise `argmax_f32_rows_i32`, row `lm_head_fp16_argmax_bf16
 and `dflash_accept_chain_i32` are landed for gfx1100/gfx1151 registration. The gfx1151 smoke
 `HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/dflash_accept_chain_smoke.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --debug-top1-readback`
 passes CPU-oracle parity for crafted reject/partial/full chains, multi-request `TargetVerifyBatch`
-rows from `compile_dflash_chain`, and remaining-budget no-bonus outputs. Integrated target-forward
-state/KV commit remains Phase D1/D3 follow-up work.
+rows from `compile_dflash_chain`, and remaining-budget no-bonus outputs. The follow-on
+`dflash_commit_chain_i32` smoke commits those summaries into canonical state/KV/output buffers
+without accepted-prefix target re-forward; integrated target-forward execution remains Phase D3/D5 work.
 
 ### Phase D3 — Native DFlash drafter and draft context KV
 
@@ -599,6 +607,8 @@ Do not start these before D1-D6 establish a winning native chain path.
    persistent node state rings and K/V scratch.
 7. **Landed 2026-05-18:** add GPU top1 + chain accept summary (`argmax_f32_rows_i32`,
    row lm-head, `dflash_accept_chain_i32`) with gfx1151 smoke parity vs CPU oracle.
-8. Benchmark HumanEval/code chain N=1/2/4/8 against same-session packed-target
+8. **Landed 2026-05-18:** add `dflash_commit_chain_i32` verified state/KV/output
+   copy-select with reject/partial/full and multi-request non-leakage smoke.
+9. Benchmark HumanEval/code chain N=1/2/4/8 against same-session packed-target
    AR on native `gfx1151`.
-9. Only after chain > AR: add DDTree budget=4 compiler and tree accept/commit.
+10. Only after chain > AR: add DDTree budget=4 compiler and tree accept/commit.

@@ -542,11 +542,12 @@ def _resident_state_commit_transaction_id_checked() -> bool:
         accepted_counts=Tensor.from_handle(0x1B00, (1,), "int32", session.device),
         commit_rows=Tensor.from_handle(0x1C00, (1,), "int32", session.device),
         commit_positions=Tensor.from_handle(0x1D00, (1,), "int32", session.device),
+        parent_rows=Tensor.from_handle(0x1D80, (2,), "int32", session.device),
         kv_rows_src=Tensor.from_handle(0x1E00, (2, 8, 128), "bf16", session.device),
         kv_rows_dst=Tensor.from_handle(0x1F00, (1, 8, 128), "bf16", session.device),
     )
     try:
-        session.commit_verified_state(plan, replace(buffers, transaction_id=1))
+        session.commit_verified_state(plan, replace(buffers, transaction_id=1), execute_copies=False)
     except ValueError as exc:
         return "transaction_id" in str(exc)
     return False
@@ -571,11 +572,12 @@ def _resident_state_commit_row_coverage_checked() -> bool:
         accepted_counts=Tensor.from_handle(0x2000, (2,), "int32", session.device),
         commit_rows=Tensor.from_handle(0x2100, (2,), "int32", session.device),
         commit_positions=Tensor.from_handle(0x2200, (2,), "int32", session.device),
+        parent_rows=Tensor.from_handle(0x2280, (5,), "int32", session.device),
         kv_rows_src=Tensor.from_handle(0x2300, (5, 8, 128), "bf16", session.device),
         kv_rows_dst=Tensor.from_handle(0x2400, (2, 8, 128), "bf16", session.device),
     )
     try:
-        session.commit_verified_state(plan, buffers)
+        session.commit_verified_state(plan, buffers, execute_copies=False)
     except ValueError as exc:
         return "accepted token rows" in str(exc)
     return False
@@ -640,6 +642,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         accepted_counts=Tensor.from_handle(0x3C00, (len(target.request_ids),), "int32", device),
         commit_rows=Tensor.from_handle(0x3D00, (len(target.request_ids),), "int32", device),
         commit_positions=Tensor.from_handle(0x3E00, (len(target.request_ids),), "int32", device),
+        parent_rows=Tensor.from_handle(0x3E80, (target.rows,), "int32", device),
         linear_state_src=Tensor.from_handle(0x3F00, (target.rows, 40, 128), "bf16", device),
         linear_state_dst=Tensor.from_handle(0x4000, (len(target.request_ids), 40, 128), "bf16", device),
         kv_rows_src=Tensor.from_handle(0x4100, (target.rows, 8, 128), "bf16", device),
@@ -702,6 +705,7 @@ def _kv_transaction_status() -> dict[str, Any]:
         accepted_counts=state_buffers.accepted_counts,
         commit_rows=state_buffers.commit_rows,
         commit_positions=state_buffers.commit_positions,
+        parent_rows=state_buffers.parent_rows,
         linear_state_src=state_buffers.linear_state_src,
         linear_state_dst=state_buffers.linear_state_dst,
         kv_rows_src=state_buffers.kv_rows_src,
@@ -901,8 +905,8 @@ def build_payload(*, batch_artifact: Path, prefill_artifact: Path, argv: Sequenc
     blockers = [
         *(f"resident speculative status: {blocker}" for blocker in resident_api.get("blockers", ())),
         "step_batch_serial is still the only c>N target path and executes rows through the c=1 layer path",
-        "exact selectable per-row target state for linear-attention Conv/GDN state and full-attention K/V commit is not exposed",
-        "GPU accept-summary and state/KV commit kernels are not wired; only host-side DraftBatch/AcceptResult metadata and KVTransaction bookkeeping exist",
+        "exact selectable per-row target state from a native root+candidate target forward is not exposed",
+        "GPU accept-summary and state/KV commit kernels exist but are not yet wired into an integrated native verifier loop",
         "native compact/full-attention prefill remains incomplete, so speculative verify rows cannot share the final c>N target forward required by DFlash/DDTree",
     ]
     if batch_execution.get("throughput_claim_eligible") is False:
@@ -943,8 +947,8 @@ def build_payload(*, batch_artifact: Path, prefill_artifact: Path, argv: Sequenc
         "required_next_actions": [
             "Complete Task #15 native compact/c-aware target path first: batched verify rows must not execute through step_batch_serial.",
             "Wire Qwen35ParoResidentSession.verify_speculative_batch metadata into an actual native root+candidate target forward over TargetVerifyBuffers.",
-            "Replace metadata-only commit_verified_state with device-side selectable linear-state and full-attention K/V row copies through KVTransaction/state transactions without target re-forward.",
-            "Add GPU top1/accept-summary buffers and deterministic equality gates before any speculative throughput artifact can be accepted.",
+            "Wire Qwen35ParoResidentSession.commit_verified_state into the integrated native verifier loop with real verifier scratch buffers.",
+            "Connect GPU top1/accept-summary buffers and deterministic equality gates before any speculative throughput artifact can be accepted.",
         ],
         "decision": {
             "accepted": False,
