@@ -15,6 +15,7 @@ from hipengine.kernels.hip_gfx1100.linear import (
 from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_accept_chain_i32,
     dflash_commit_chain_i32,
+    dflash_gqa_attention_f32_bf16,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
     plan_dflash_accept_build,
@@ -83,6 +84,10 @@ def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
         resolve(backend="hip_gfx1151", layer="dflash_prepare_noise_inputs", quant="w4_paro", variant="f16_to_bf16_i32")
         is dflash_prepare_noise_inputs_f16_to_bf16_i32
     )
+    assert (
+        resolve(backend="hip_gfx1151", layer="dflash_gqa_attention", quant="w4_paro", variant="f32_bf16")
+        is dflash_gqa_attention_f32_bf16
+    )
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
@@ -96,6 +101,19 @@ def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hi
         lm_head_fp16_argmax_bf16_rows_i32(0, 0, 0, 0, 0, 0, None, rows=1, hidden_size=8, vocab_size=0)
     with pytest.raises(ValueError, match="top_k"):
         topk_f32_rows_i32(0, None, 0, rows=1, vocab_size=16, top_k=9)
+    with pytest.raises(ValueError, match="num_q_heads"):
+        dflash_gqa_attention_f32_bf16(
+            0,
+            0,
+            0,
+            0,
+            batch_size=1,
+            query_len=1,
+            kv_len=1,
+            num_q_heads=3,
+            num_kv_heads=2,
+            head_dim=8,
+        )
     with pytest.raises(ValueError, match="mask_token_id"):
         dflash_prepare_noise_inputs_bf16_i32(
             0,

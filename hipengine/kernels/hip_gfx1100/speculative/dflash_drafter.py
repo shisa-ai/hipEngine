@@ -13,6 +13,7 @@ _SOURCE = Path(__file__).with_name("dflash_drafter.hip")
 _OUTPUT_NAME = "dflash_drafter.so"
 _SYMBOL_PREPARE_NOISE_BF16 = "hipengine_dflash_prepare_noise_inputs_bf16_i32"
 _SYMBOL_PREPARE_NOISE_F16_TO_BF16 = "hipengine_dflash_prepare_noise_inputs_f16_to_bf16_i32"
+_SYMBOL_GQA_ATTENTION = "hipengine_dflash_gqa_attention_f32_bf16"
 _ALLOWED_THREADS = {64, 128, 256}
 
 
@@ -134,6 +135,72 @@ def dflash_prepare_noise_inputs_f16_to_bf16_i32(
     )
 
 
+def dflash_gqa_attention_f32_bf16(
+    query_f32_ptr: int,
+    key_f32_ptr: int,
+    value_bf16_ptr: int,
+    out_bf16_ptr: int,
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    scale: float | None = None,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch slow-but-deterministic non-causal DFlash GQA attention.
+
+    Inputs are row-major ``query[batch, query_len, q_heads, head_dim]``,
+    ``key/value[batch, kv_len, kv_heads, head_dim]``. The output is BF16 bits in
+    ``out[batch, query_len, q_heads, head_dim]``. This correctness-first kernel
+    is intended for the native drafter root/query harness, not final throughput.
+    """
+
+    _check_attention_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, threads)
+    scale_value = float(head_dim ** -0.5 if scale is None else scale)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GQA_ATTENTION)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_f32_ptr),
+        ctypes.c_void_p(key_f32_ptr),
+        ctypes.c_void_p(value_bf16_ptr),
+        ctypes.c_void_p(out_bf16_ptr),
+        ctypes.c_int64(batch_size),
+        ctypes.c_int64(query_len),
+        ctypes.c_int64(kv_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale_value),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dflash_prepare_noise_inputs", "w4_paro", "bf16_i32"),
@@ -143,6 +210,11 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dflash_prepare_noise_inputs", "w4_paro", "f16_to_bf16_i32"),
         dflash_prepare_noise_inputs_f16_to_bf16_i32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_gqa_attention", "w4_paro", "f32_bf16"),
+        dflash_gqa_attention_f32_bf16,
         replace=replace,
     )
 
@@ -205,6 +277,31 @@ def _launch_prepare_noise_inputs(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def _check_attention_shape(
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    threads: int,
+) -> None:
+    for name, value in (
+        ("batch_size", batch_size),
+        ("query_len", query_len),
+        ("kv_len", kv_len),
+        ("num_q_heads", num_q_heads),
+        ("num_kv_heads", num_kv_heads),
+        ("head_dim", head_dim),
+    ):
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+    if num_q_heads % num_kv_heads != 0:
+        raise ValueError("num_q_heads must be divisible by num_kv_heads")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64, 128, or 256")
 
 
 def _check_shape(request_count: int, block_size: int, hidden_size: int, vocab_size: int, threads: int) -> None:

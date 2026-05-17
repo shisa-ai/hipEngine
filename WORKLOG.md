@@ -17290,3 +17290,67 @@ git diff --check
 ### Remaining D12 blocker
 
 - Still missing full native DFlash decoder block execution and parent/PyTorch fixture parity for top1/topk: q/k/v projections, q/k norm, YaRN rotary over context+query rows, non-causal GQA attention, o-proj, residual/add, MLP, final norm, and target lm-head top1/topk.
+
+## 2026-05-18 — DFlash drafter non-causal GQA attention primitive (partial D12)
+
+### Scope
+
+- Added correctness-first `dflash_gqa_attention_f32_bf16` to the DFlash drafter HIP package and registered it for `hip_gfx1100` / `hip_gfx1151` alias coverage.
+- The kernel consumes pre-projected/rotated `query[batch, query_len, q_heads, head_dim]` and `key[batch, kv_len, kv_heads, head_dim]` in FP32 plus BF16 `value[batch, kv_len, kv_heads, head_dim]`, then writes BF16 non-causal grouped-query attention output. It uses one block per `(batch, query_row, q_head)` and shared-memory softmax over `kv_len`; this is for root/query correctness harnesses, not the final throughput path.
+- Added high-level `dflash_gqa_attention_bf16()` tensor validation and `scripts/dflash_drafter_root_query_smoke.py`, which now covers BF16 root/mask input prep, FP16-target-embedding to BF16 conversion, and GQA attention vs a NumPy BF16 oracle.
+- Updated `docs/KERNELS.md` / `docs/DFLASH.md`. Full DFlash decoder block execution remains open: q/k/v projection, q/k norm, YaRN rotary, o-proj, residual/add, MLP, final norm, lm-head top1/topk, and parent-oracle parity.
+
+### Validation
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_drafter.py \
+  hipengine/speculative/__init__.py \
+  scripts/dflash_drafter_root_query_smoke.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+python3 -m pytest -q \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_dflash_metadata.py \
+  tests/test_dflash_chain_compiler.py \
+  tests/test_speculative_interfaces.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_drafter_root_query_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+rm -rf /tmp/hipengine-dflash-drafter-prof && mkdir -p /tmp/hipengine-dflash-drafter-prof
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  /opt/rocm/bin/rocprofv3 --kernel-trace --output-format csv \
+    --output-file /tmp/hipengine-dflash-drafter-prof/drafter -- \
+    python3 scripts/dflash_drafter_root_query_smoke.py \
+      --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+      --require-cached-build
+python3 - <<'PY'
+import csv
+from pathlib import Path
+path=Path('/tmp/hipengine-dflash-drafter-prof/drafter_kernel_trace.csv')
+rows=list(csv.DictReader(path.open()))
+for name in sorted({r['Kernel_Name'] for r in rows if 'dflash' in r['Kernel_Name']}):
+    vals=[]; scratch=[]
+    for r in rows:
+        if r['Kernel_Name']==name:
+            vals.append(int(float(r['DurationNs'])) if r.get('DurationNs') else int(float(r['End_Timestamp']))-int(float(r['Start_Timestamp'])))
+            if r.get('Scratch_Size'):
+                scratch.append(int(float(r['Scratch_Size'])))
+    print(name, len(vals), min(vals), max(vals), sorted(set(scratch)))
+PY
+python3 scripts/check_lineage.py --kind kernel --diff stat
+! grep -RInE 'import torch|torch\.' \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_drafter.py \
+  scripts/dflash_drafter_root_query_smoke.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+git diff --check
+# pytest: 38 passed
+# smoke: BF16 prep + FP16→BF16 prep passed; GQA attention max_abs=0.0 vs NumPy BF16 oracle.
+# rocprofv3 1.1.0 / gfx1151: BF16 prep DurationNs=3767 Scratch_Size=0; FP16→BF16 prep DurationNs=6372 Scratch_Size=0; dflash_gqa_attention_f32_bf16_kernel DurationNs=4329 Scratch_Size=0.
+# lineage: expected pre-existing baseline drift; DFlash R1 tree entries clean.
+```

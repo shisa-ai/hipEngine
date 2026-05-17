@@ -210,6 +210,47 @@ def project_dflash_target_hidden_bf16(
     return out_projected
 
 
+def dflash_gqa_attention_bf16(
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
+    out: Tensor,
+    *,
+    scale: float | None = None,
+    stream: int = 0,
+    library: object | None = None,
+    threads: int = 128,
+) -> Tensor:
+    """Run correctness-first non-causal DFlash GQA attention.
+
+    ``query`` has shape ``[batch, query_len, q_heads, head_dim]`` with F32
+    storage. ``key`` has shape ``[batch, kv_len, kv_heads, head_dim]`` with F32
+    storage and ``value`` has the same tail shape with BF16 storage. ``out`` is
+    BF16 ``[batch, query_len, q_heads, head_dim]``.
+    """
+
+    batch, query_len, kv_len, q_heads, kv_heads, head_dim = _validate_attention_tensors(query, key, value, out)
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_gqa_attention_f32_bf16
+
+    dflash_gqa_attention_f32_bf16(
+        query.ptr,
+        key.ptr,
+        value.ptr,
+        out.ptr,
+        batch,
+        query_len,
+        kv_len,
+        q_heads,
+        kv_heads,
+        head_dim,
+        scale=scale,
+        threads=threads,
+        stream=stream,
+        library=library,  # type: ignore[arg-type]
+    )
+    return out
+
+
 def draft_batch_from_topk(
     plan: DFlashRootQueryPlan,
     topk_token_ids: Sequence[Sequence[int]],
@@ -250,6 +291,29 @@ def draft_batch_from_topk(
             )
         )
     return compile_dflash_chain(requests, candidate_budget=candidate_budget, pad_token_id=pad_token_id)
+
+
+def _validate_attention_tensors(query: Tensor, key: Tensor, value: Tensor, out: Tensor) -> tuple[int, int, int, int, int, int]:
+    if query.ndim != 4 or key.ndim != 4 or value.ndim != 4 or out.ndim != 4:
+        raise ValueError("DFlash attention tensors must be rank-4")
+    if query.dtype != DType.FP32 or key.dtype != DType.FP32:
+        raise ValueError("query and key must use FP32 storage")
+    if value.dtype != DType.BF16 or out.dtype != DType.BF16:
+        raise ValueError("value and output must use BF16 storage")
+    batch, query_len, q_heads, head_dim = query.shape
+    key_batch, kv_len, kv_heads, key_dim = key.shape
+    if (key_batch, key_dim) != (batch, head_dim):
+        raise ValueError("key batch/head_dim must match query")
+    if value.shape != (batch, kv_len, kv_heads, head_dim):
+        raise ValueError("value shape must match key shape")
+    if out.shape != (batch, query_len, q_heads, head_dim):
+        raise ValueError("out shape must match query shape")
+    if q_heads % kv_heads != 0:
+        raise ValueError("query heads must be divisible by KV heads")
+    for name, tensor in (("key", key), ("value", value), ("out", out)):
+        if tensor.device != query.device:
+            raise ValueError(f"{name} must live on the query device")
+    return int(batch), int(query_len), int(kv_len), int(q_heads), int(kv_heads), int(head_dim)
 
 
 def _validate_noise_input_tensors(
@@ -320,6 +384,7 @@ def _validate_projection_tensors(
 __all__ = [
     "DFlashRootQueryPlan",
     "DFlashRootQueryRequest",
+    "dflash_gqa_attention_bf16",
     "draft_batch_from_topk",
     "prepare_dflash_noise_inputs_bf16",
     "project_dflash_target_hidden_bf16",

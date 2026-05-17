@@ -9,6 +9,7 @@ from hipengine.speculative import (
     DFlashRootQueryPlan,
     DFlashRootQueryRequest,
     TargetVerifyBatch,
+    dflash_gqa_attention_bf16,
     draft_batch_from_topk,
     prepare_dflash_noise_inputs_bf16,
 )
@@ -90,6 +91,23 @@ def test_dflash_draft_batch_from_topk_can_select_nonzero_rank() -> None:
     assert draft.candidate_tokens == (201, 202)
     with pytest.raises(ValueError, match="topk_rank"):
         draft_batch_from_topk(plan, topk_token_ids=(((101,),),), candidate_budget=2, topk_rank=1)
+
+
+def test_dflash_gqa_attention_validates_tensor_abi_before_loading_hip() -> None:
+    with pytest.raises(ValueError, match="rank-4"):
+        dflash_gqa_attention_bf16(
+            _tensor(0x1000, (1, 2, 4), dtype="fp32"),
+            _tensor(0x1100, (1, 3, 2, 8), dtype="fp32"),
+            _tensor(0x1200, (1, 3, 2, 8), dtype="bf16"),
+            _tensor(0x1300, (1, 2, 4, 8), dtype="bf16"),
+        )
+    with pytest.raises(ValueError, match="divisible"):
+        dflash_gqa_attention_bf16(
+            _tensor(0x1000, (1, 2, 3, 8), dtype="fp32"),
+            _tensor(0x1100, (1, 3, 2, 8), dtype="fp32"),
+            _tensor(0x1200, (1, 3, 2, 8), dtype="bf16"),
+            _tensor(0x1300, (1, 2, 3, 8), dtype="bf16"),
+        )
 
 
 def test_prepare_dflash_noise_inputs_validates_tensor_abi_before_loading_hip() -> None:

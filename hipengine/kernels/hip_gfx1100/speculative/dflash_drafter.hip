@@ -13,6 +13,15 @@ using half_t = _Float16;
 
 namespace {
 
+__device__ inline float bf16_bits_to_float(uint16_t value) {
+  union {
+    uint32_t u32;
+    float f32;
+  } out;
+  out.u32 = static_cast<uint32_t>(value) << 16;
+  return out.f32;
+}
+
 __device__ inline uint16_t float_to_bf16_bits(float value) {
   union {
     float f32;
@@ -77,6 +86,92 @@ bool valid_threads(int64_t threads) {
   return threads == 64 || threads == 128 || threads == 256;
 }
 
+__global__ void dflash_gqa_attention_f32_bf16_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key,
+    const uint16_t* __restrict__ value,
+    uint16_t* __restrict__ out,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale) {
+  const int64_t q_head = static_cast<int64_t>(blockIdx.x);
+  const int64_t q_row = static_cast<int64_t>(blockIdx.y);
+  const int64_t batch = static_cast<int64_t>(blockIdx.z);
+  if (batch >= batch_size || q_row >= query_len || q_head >= num_q_heads) {
+    return;
+  }
+  extern __shared__ float shared[];
+  float* partial = shared;
+  float* scores = shared + blockDim.x;
+  const int64_t group_size = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / group_size;
+  const int64_t q_base = ((batch * query_len + q_row) * num_q_heads + q_head) * head_dim;
+
+  for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+    const int64_t k_base = ((batch * kv_len + kv_row) * num_kv_heads + kv_head) * head_dim;
+    float dot = 0.0f;
+    for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+      dot += query[q_base + dim] * key[k_base + dim];
+    }
+    partial[threadIdx.x] = dot;
+    __syncthreads();
+    for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        partial[threadIdx.x] += partial[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+      scores[kv_row] = partial[0] * scale;
+    }
+    __syncthreads();
+  }
+
+  if (threadIdx.x == 0) {
+    float max_score = -3.4028234663852886e+38F;
+    for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+      max_score = fmaxf(max_score, scores[kv_row]);
+    }
+    float denom = 0.0f;
+    for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+      const float prob = expf(scores[kv_row] - max_score);
+      scores[kv_row] = prob;
+      denom += prob;
+    }
+    const float inv_denom = denom > 0.0f ? 1.0f / denom : 0.0f;
+    for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+      scores[kv_row] *= inv_denom;
+    }
+  }
+  __syncthreads();
+
+  const int64_t out_base = ((batch * query_len + q_row) * num_q_heads + q_head) * head_dim;
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    float acc = 0.0f;
+    for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+      const int64_t v_base = ((batch * kv_len + kv_row) * num_kv_heads + kv_head) * head_dim;
+      acc += scores[kv_row] * bf16_bits_to_float(value[v_base + dim]);
+    }
+    out[out_base + dim] = float_to_bf16_bits(acc);
+  }
+}
+
+bool valid_attention_shape(
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t threads) {
+  return batch_size > 0 && query_len > 0 && kv_len > 0 && num_q_heads > 0 && num_kv_heads > 0 &&
+         head_dim > 0 && (num_q_heads % num_kv_heads) == 0 && valid_threads(threads);
+}
+
 }  // namespace
 
 extern "C" int hipengine_dflash_prepare_noise_inputs_bf16_i32(
@@ -113,6 +208,44 @@ extern "C" int hipengine_dflash_prepare_noise_inputs_bf16_i32(
       hidden_size,
       vocab_size,
       mask_token_id);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_gqa_attention_f32_bf16(
+    const float* query,
+    const float* key,
+    const uint16_t* value,
+    uint16_t* out,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_attention_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const size_t smem = static_cast<size_t>(threads + kv_len) * sizeof(float);
+  hipLaunchKernelGGL(
+      dflash_gqa_attention_f32_bf16_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(query_len), static_cast<unsigned int>(batch_size)),
+      dim3(static_cast<unsigned int>(threads)),
+      smem,
+      stream,
+      query,
+      key,
+      value,
+      out,
+      batch_size,
+      query_len,
+      kv_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
   return static_cast<int>(hipGetLastError());
 }
 

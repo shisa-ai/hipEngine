@@ -16,6 +16,7 @@ from hipengine.speculative.dflash import (
 from hipengine.speculative.dflash_drafter import (
     DFlashRootQueryPlan,
     DFlashRootQueryRequest,
+    dflash_gqa_attention_bf16,
     draft_batch_from_topk,
     prepare_dflash_noise_inputs_bf16,
     project_dflash_target_hidden_bf16,
@@ -55,6 +56,7 @@ __all__ = [
     "DFlashRootQueryPlan",
     "DFlashRootQueryRequest",
     "compile_dflash_chain",
+    "dflash_gqa_attention_bf16",
     "draft_batch_from_topk",
     "prepare_dflash_noise_inputs_bf16",
     "project_dflash_target_hidden_bf16",
