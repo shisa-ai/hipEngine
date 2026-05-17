@@ -43,7 +43,7 @@ projections, linear-attention state carry-over, CPU-hosted small-context full
 attention, residuals, dense FFN, and final RMSNorm. The public generator runs
 resident prefill once, then replays a captured one-step decode graph for remaining
 greedy tokens, detokenizes the generated IDs, and returns text through
-`LLM.generate()`. The hard gate now passes all local dense-Qwen GGUF quant fixtures for the target prompt with no `torch` import on the generate path. A minimal `qwen35moe` GGUF public-generation bring-up also now works for `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`: it maps the untied `output.weight` lm-head, keeps rank-3 expert tensors in raw GGUF layout, and runs a deterministic c=1 public smoke. That MoE path is correctness-first and still uses serial prefill plus host-routed expert selection; performance parity with packed PARO is follow-up work.
+`LLM.generate()`. The hard gate now passes all local dense-Qwen GGUF quant fixtures for the target prompt with no `torch` import on the generate path. A minimal `qwen35moe` GGUF public-generation bring-up also now works for `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`: it maps the untied `output.weight` lm-head, keeps rank-3 expert tensors in raw GGUF layout for the default path, and runs a deterministic public smoke. The qwen35moe long-prompt default now uses parity-accepted fully bulk prefill, while performance parity with packed PARO still needs packed/grouped expert kernels. Task #59 adds an explicit GGUF expert pack8 sidecar cache for the rank-3 `ffn_gate_exps`, `ffn_up_exps`, and `ffn_down_exps` tensors; the sidecar is opt-in and generated under a cache directory, not committed.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
@@ -216,6 +216,41 @@ Q5_K: block 256 values, type size 176 bytes = Q4_K plus 32 high-bit bytes
 Q6_K: block 256 values, type size 210 bytes = low 4 bits + high 2 bits + int8 scales + fp16 super-scale
 Q8_K: block 256 values, type size 292 bytes = float scale + 256 int8 quants + 16 int16 block sums
 ```
+
+### qwen35moe expert sidecar layout
+
+Task #59 introduced `hipengine.loading.qwen35_gguf_expert_sidecar` and
+`scripts/qwen35_gguf_build_expert_sidecar.py` as the explicit bridge from GGUF
+rank-3 expert tensors to future grouped MoE kernels. Normal materialization still
+keeps `ffn_gate_exps`, `ffn_up_exps`, and `ffn_down_exps` as raw GGUF device
+allocations; the materialization plan only marks them with the optional
+`gguf_expert_pack8_v1` sidecar layout. Callers must build or load the sidecar
+explicitly:
+
+```bash
+PYTHONPATH=. python3 scripts/qwen35_gguf_build_expert_sidecar.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --layers 0 --slots ffn_gate_exps,ffn_up_exps,ffn_down_exps \
+  --cache-dir /tmp/hipengine-gguf-sidecars
+```
+
+The generated `.npz` files live under the requested cache directory (or
+`HIPENGINE_GGUF_SIDECAR_CACHE`, then `~/.cache/hipengine/gguf_sidecars`) and are
+not repository artifacts. The v1 layout packs eight adjacent output channels per
+input position:
+
+- `Q4_K`: `qweight_low:int32[E, O/8, I]`, `scales:fp32[E, I/32, O]`,
+  `mins:fp32[E, I/32, O]`.
+- `Q5_K`: the same low-four-bit/scales/mins arrays plus
+  `qweight_high:uint8[E, O/8, I]` with one high bit per lane.
+- `Q6_K`: `qweight_low:int32[E, O/8, I]`,
+  `qweight_high:uint16[E, O/8, I]` with two high bits per lane, and
+  `scales:fp32[E, I/16, O]` (no min term).
+
+CPU oracle tests dequantize from the packed sidecar bytes/scales and compare
+against the raw GGUF dequantizers for synthetic `Q4_K`, `Q5_K`, and `Q6_K`
+expert tensors. Future task #60 should consume this sidecar through registered
+MoE kernels rather than adding backend/quant branches in model dispatch.
 
 ### Parent workspace evidence
 

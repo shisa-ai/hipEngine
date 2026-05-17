@@ -18345,3 +18345,56 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
 Acceptance is met: public qwen35moe `LLM.generate()` correctness remains torch-free, the parity probe accepts fast default, and 512/128 default prefill is `99.851 tok/s`, up from the prior parity-safe native-attention row's `15.469 tok/s`. Task #55 remains open; next work is task #59/#60 to create GGUF-to-packed sidecars/grouped packed MoE kernels, then task #61 for the 512/128 optimization loop and decode profiling.
 
 Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-fast-bulk-default-promoted-diagnostic.json`.
+
+## 2026-05-17 qwen35moe GGUF task #59 expert sidecar layout
+
+Task #59 implemented the explicit qwen35moe GGUF expert pack8 sidecar foundation for future grouped/packed MoE kernels. The default runtime still materializes rank-3 expert tensors as raw GGUF bytes; the materialization plan now marks `ffn_gate_exps`, `ffn_up_exps`, and `ffn_down_exps` as eligible for optional `gguf_expert_pack8_v1` sidecars without adding model-dispatch backend/quant branches.
+
+Implementation:
+
+- Added `hipengine/loading/qwen35_gguf_expert_sidecar.py`:
+  - host pack8 sidecar layout for rank-3 `Q4_K`, `Q5_K`, and `Q6_K` GGUF expert tensors.
+  - `Q4_K`: `qweight_low:int32[E,O/8,I]`, `scales:fp32[E,I/32,O]`, `mins:fp32[E,I/32,O]`.
+  - `Q5_K`: same plus `qweight_high:uint8[E,O/8,I]` with one high bit per packed lane.
+  - `Q6_K`: `qweight_low:int32[E,O/8,I]`, `qweight_high:uint16[E,O/8,I]`, `scales:fp32[E,I/16,O]`.
+  - CPU dequant oracle from sidecar bytes/scales and atomic `.npz` save/load helpers.
+  - explicit cache helpers under `HIPENGINE_GGUF_SIDECAR_CACHE` or `~/.cache/hipengine/gguf_sidecars`.
+- Added `scripts/qwen35_gguf_build_expert_sidecar.py` to explicitly build/load sidecars for selected layers/slots; normal `LLM.generate()` does not build generated sidecar files.
+- Exported the sidecar API through `hipengine.loading` and documented it in `docs/GGUF.md`.
+- Added synthetic CPU-reference parity tests for packed `Q4_K`, `Q5_K`, and `Q6_K` sidecar dequantization, plus save/load roundtrip coverage and a qwen35moe plan assertion.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/loading/qwen35_gguf_expert_sidecar.py \
+  hipengine/loading/qwen35_gguf_materialize.py \
+  hipengine/loading/__init__.py \
+  scripts/qwen35_gguf_build_expert_sidecar.py
+PYTHONPATH=. pytest -q \
+  tests/test_qwen35_gguf_expert_sidecar.py \
+  tests/test_qwen35_gguf_materialize.py \
+  tests/test_gguf_quant_layout.py \
+  tests/test_llm_gguf_generate_path.py
+# 21 passed
+```
+
+Real-model explicit cache smoke (generated under `/tmp` and removed afterward, not staged/committed):
+
+```bash
+rm -rf /tmp/hipengine-task59-sidecar
+PYTHONPATH=. python3 scripts/qwen35_gguf_build_expert_sidecar.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --layers 0 --slots ffn_gate_exps \
+  --cache-dir /tmp/hipengine-task59-sidecar \
+  --json /tmp/hipengine-task59-sidecar.json
+# layer 0 ffn_gate_exps: gguf_q4_k shape=(256,512,2048), out_packed=64, 192.0 MiB packed arrays
+PYTHONPATH=. python3 scripts/qwen35_gguf_build_expert_sidecar.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --layers 0 --slots ffn_gate_exps \
+  --cache-dir /tmp/hipengine-task59-sidecar --require-cached
+# loaded the same cached sidecar successfully
+rm -rf /tmp/hipengine-task59-sidecar
+```
+
+Task #59 acceptance is met: build/cache is explicit, generated sidecar files are not repository artifacts, packed bytes/scales have CPU-reference parity tests, and model dispatch remains free of new backend/quant conditionals. Task #60 can now add grouped packed MoE kernels against `gguf_expert_pack8_v1`.

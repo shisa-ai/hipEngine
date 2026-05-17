@@ -12,6 +12,7 @@ from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     materialize_qwen35_gguf_weights,
@@ -71,9 +72,12 @@ def test_qwen35moe_gguf_materialization_plan_keeps_experts_raw() -> None:
     assert layer0["ffn_gate_inp_shexp"].layout == LAYOUT_DENSE_BF16
     assert layer0["ffn_gate_exps"].layout == LAYOUT_RAW_GGUF
     assert layer0["ffn_gate_exps"].quant_key == "gguf_q4_k"
+    assert layer0["ffn_gate_exps"].sidecar_layouts == (LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,)
     assert layer0["ffn_up_exps"].layout == LAYOUT_RAW_GGUF
+    assert layer0["ffn_up_exps"].sidecar_layouts == (LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,)
     assert layer0["ffn_down_exps"].layout == LAYOUT_RAW_GGUF
     assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k"
+    assert layer0["ffn_down_exps"].sidecar_layouts == (LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,)
     assert layer0["ffn_gate_shexp"].layout == LAYOUT_RAW_GGUF
     assert layer0["ffn_down_shexp"].layout == LAYOUT_RAW_GGUF
 

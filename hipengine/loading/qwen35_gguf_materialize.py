@@ -29,6 +29,7 @@ LAYOUT_DENSE_F32 = "dense_f32"
 LAYOUT_DENSE_BF16 = "dense_bf16"
 LAYOUT_RAW_GGUF = "raw_gguf"
 LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
+LAYOUT_GGUF_EXPERT_PACK8_SIDECAR = "gguf_expert_pack8_v1"
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ class Qwen35GGUFWeightSpec:
     quant_key: str
     layout: str
     allocation_names: tuple[str, ...]
+    sidecar_layouts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -235,6 +237,7 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
                 quant_key="gguf_q4_k",
                 layout=LAYOUT_RAW_GGUF,
                 allocation_names=("raw",),
+                sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
             )
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
@@ -250,6 +253,7 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
             quant_key="gguf_q5_k",
             layout=LAYOUT_RAW_GGUF if len(tensor.shape) != 2 else LAYOUT_DENSE_BF16,
             allocation_names=("raw",),
+            sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
     if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
         return Qwen35GGUFWeightSpec(
@@ -258,6 +262,7 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
             quant_key="gguf_q6_k",
             layout=LAYOUT_RAW_GGUF if len(tensor.shape) != 2 else LAYOUT_DENSE_BF16,
             allocation_names=("raw",),
+            sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
     if qtype in (GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0):
         return Qwen35GGUFWeightSpec(
@@ -286,6 +291,17 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
             allocation_names=("raw",),
         )
     raise ValueError(f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r}: {tensor.name}")
+
+
+def _sidecar_layouts_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> tuple[str, ...]:
+    if (
+        len(tensor.shape) == 3
+        and slot_path.endswith((".ffn_gate_exps", ".ffn_up_exps", ".ffn_down_exps"))
+        and GGMLQuantizationType(tensor.ggml_type)
+        in (GGMLQuantizationType.Q4_K, GGMLQuantizationType.Q5_K, GGMLQuantizationType.Q6_K)
+    ):
+        return (LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,)
+    return ()
 
 
 def _materialize_or_alias(
@@ -390,6 +406,7 @@ def _materialize_spec(
 __all__ = [
     "LAYOUT_DENSE_BF16",
     "LAYOUT_DENSE_F32",
+    "LAYOUT_GGUF_EXPERT_PACK8_SIDECAR",
     "LAYOUT_Q4_K_PACK8",
     "LAYOUT_RAW_GGUF",
     "Qwen35GGUFDeviceWeight",
