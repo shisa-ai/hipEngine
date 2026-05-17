@@ -839,12 +839,7 @@ class Qwen35ParoResidentSession:
         self.compiler_version = compiler_version
         self.require_cached_build = bool(require_cached_build)
         self.requested_prefill_config = prefill_config or PrefillConfig()
-        total_memory_bytes = self._prefill_tuning_total_memory_bytes(self.requested_prefill_config)
-        self.prefill_config, self.prefill_chunk_tuning = resolve_prefill_config_for_sequence(
-            self.requested_prefill_config,
-            max_sequence_length=self.max_sequence_length,
-            total_memory_bytes=total_memory_bytes,
-        )
+        self._resolve_prefill_config_for_length(self.max_sequence_length)
         decode_context_capacity = self.decode_chunk_size * self.max_splits
         self.blocks = (max(self.max_sequence_length, decode_context_capacity) + self.block_size - 1) // self.block_size
         self.batch_layout = Qwen35ParoResidentBatchLayout(
@@ -881,11 +876,12 @@ class Qwen35ParoResidentSession:
         self.closed = False
         self._build()
 
-    def _prefill_tuning_total_memory_bytes(self, config: PrefillConfig) -> int:
+    def _prefill_tuning_total_memory_bytes(self, config: PrefillConfig, *, sequence_length: int | None = None) -> int:
+        length = self.max_sequence_length if sequence_length is None else int(sequence_length)
         if (
             not config.auto_tune_chunk_sizes
             or config.chunk_tune_memory_budget_gib > 0.0
-            or self.max_sequence_length < config.chunk_tune_min_tokens
+            or length < config.chunk_tune_min_tokens
         ):
             return 0
         try:
@@ -893,6 +889,19 @@ class Qwen35ParoResidentSession:
         except Exception:
             return 0
         return int(total_bytes)
+
+    def _resolve_prefill_config_for_length(self, sequence_length: int) -> None:
+        length = int(sequence_length)
+        requested = getattr(self, "requested_prefill_config", getattr(self, "prefill_config", PrefillConfig()))
+        total_memory_bytes = self._prefill_tuning_total_memory_bytes(
+            requested,
+            sequence_length=length,
+        )
+        self.prefill_config, self.prefill_chunk_tuning = resolve_prefill_config_for_sequence(
+            requested,
+            max_sequence_length=length,
+            total_memory_bytes=total_memory_bytes,
+        )
 
     def close(self) -> None:
         if self.closed:
@@ -1158,6 +1167,7 @@ class Qwen35ParoResidentSession:
         """
 
         tokens = self._validate_prefill_tokens(token_ids, require_min_prompt=True)
+        self._resolve_prefill_config_for_length(len(tokens))
         if not self._resolve_require_full_native(require_full_native):
             self.last_prefill_execution = {
                 "path": "legacy_native_linear_prefix_serial_suffix_oracle",
@@ -1197,6 +1207,7 @@ class Qwen35ParoResidentSession:
             raise ValueError("compact prompt slab block_count exceeds session block capacity")
         if slab.block_size != self.block_size:
             raise ValueError("compact prompt slab block_size must match session block_size")
+        self._resolve_prefill_config_for_length(max(len(row) for row in slab.token_rows))
         native_prefill_plan = self.native_prefill_plan()
         if not native_prefill_plan.full_layer_limit_native:
             raise NotImplementedError(

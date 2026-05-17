@@ -142,39 +142,39 @@ def test_prefill_config_validates_chunk_sizes_and_defaults_to_full_native() -> N
         PrefillConfig(attn_aotriton_min_tokens=-1)
 
 
-def test_prefill_config_autotunes_long_context_chunks_from_budget() -> None:
+def test_prefill_config_autotunes_gt1k_chunks_from_budget() -> None:
     short, short_tuning = resolve_prefill_config_for_sequence(
         PrefillConfig(),
-        max_sequence_length=4096,
+        max_sequence_length=1024,
         total_memory_bytes=48 * 1024**3,
     )
     assert short.linear_chunk_size == 0
     assert short_tuning["reason"] == "below_min_tokens"
 
-    long, long_tuning = resolve_prefill_config_for_sequence(
+    mid, mid_tuning = resolve_prefill_config_for_sequence(
         PrefillConfig(),
-        max_sequence_length=32768 + 129,
+        max_sequence_length=1025,
         total_memory_bytes=48 * 1024**3,
     )
-    assert (long.linear_chunk_size, long.moe_chunk_size, long.full_attn_query_chunk_size) == (1024, 1024, 4096)
-    assert long.full_attn_post_chunk_size == 1024
-    assert long.full_attn_rope_chunk_size == 1024
-    assert long_tuning["reason"] == "long_context_static_budget"
+    assert (mid.linear_chunk_size, mid.moe_chunk_size, mid.full_attn_query_chunk_size) == (1024, 1024, 4096)
+    assert mid.full_attn_post_chunk_size == 1024
+    assert mid.full_attn_rope_chunk_size == 1024
+    assert mid_tuning["reason"] == "manual_long_equiv_gt1k"
 
     very_long, very_long_tuning = resolve_prefill_config_for_sequence(
         PrefillConfig(),
         max_sequence_length=131072 + 129,
         total_memory_bytes=48 * 1024**3,
     )
-    assert very_long.full_attn_query_chunk_size == 8192
-    assert very_long_tuning["reason"] == "very_long_context_query8192_budget"
+    assert very_long.full_attn_query_chunk_size == 4096
+    assert very_long_tuning["reason"] == "manual_long_equiv_gt1k"
 
     budget_limited, budget_tuning = resolve_prefill_config_for_sequence(
         PrefillConfig(chunk_tune_memory_budget_gib=24.0),
         max_sequence_length=131072 + 129,
     )
     assert budget_limited.full_attn_query_chunk_size == 4096
-    assert budget_tuning["reason"] == "long_context_static_budget"
+    assert budget_tuning["reason"] == "manual_long_equiv_gt1k"
 
     manual, manual_tuning = resolve_prefill_config_for_sequence(
         PrefillConfig(linear_chunk_size=2048),

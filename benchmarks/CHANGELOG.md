@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-18
+
+- [diagnostic retained] hipEngine / Qwen3.5-35B-A3B-PARO / >1K prefill chunk policy: old P5.2 default kept <32K unchunked and used q8192 at 128K -> new default resolves actual prompt length, keeps `<=1024` unchunked, and uses manual-long chunks `1024/1024/4096/1024/1024` for `>1024`; manual-long vs prior baseline prefill improves 1.5K median `+0.64%`, 2K `+3.01%`, 4K `+6.55%`, 8K `+8.46%`, 12K `+9.96%`, 16K `+11.04%`, while retained manual-long peaks stay under 24 GiB (16K `19.85 GiB`); linear-only faster points are not special-cased because they cost more memory; `benchmarks/results/2026-05-18-hipengine-qwen35-gt1k-prefill-chunk-policy-diagnostic.json`.
+
 ## 2026-05-17
 
 - [diagnostic retained] hipEngine / shisa-ai Qwen3.6-35B-A3B-PARO-full4096-e5-packed / w4_paro / gfx1151 chunk256 sweep 512/128 + 4K/128 + 32K/128 + 128K/128 + 4K/4K: default-chunk prefill `881.143 / 630.585 / 598.663 / 371.722 / 621.551` -> chunk256 `983.206 / 1029.402 / 792.296 / 413.489 / 1001.266 tok/s` (`+11.6% / +63.2% / +32.3% / +11.2% / +61.1%`) with decode `62.060 / 63.605 / 50.629 / 30.245 / 62.438 tok/s`; chunk256 fixes the 4K prefill gap vs upstream HIP while keeping better decode; `performance_claim=false` pending shisa KL/top-1 and repeated-run gates; `benchmarks/results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-chunk256-sweep-diagnostic.json`.

@@ -5,15 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 _GIB = 1024 ** 3
-_LONG_CONTEXT_MIN_TOKENS = 32768
-_VERY_LONG_CONTEXT_MIN_TOKENS = 131072
-_LONG_CONTEXT_LINEAR_CHUNK = 1024
-_LONG_CONTEXT_MOE_CHUNK = 1024
-_LONG_CONTEXT_FULL_ATTN_QUERY_CHUNK = 4096
-_VERY_LONG_CONTEXT_FULL_ATTN_QUERY_CHUNK = 8192
-_LONG_CONTEXT_FULL_ATTN_POST_CHUNK = 1024
-_LONG_CONTEXT_FULL_ATTN_ROPE_CHUNK = 1024
-_VERY_LONG_QUERY_MIN_BUDGET_GIB = 24.5
+_CHUNKED_PREFILL_MIN_TOKENS = 1025
+_PREFILL_LINEAR_CHUNK = 1024
+_PREFILL_MOE_CHUNK = 1024
+_PREFILL_FULL_ATTN_QUERY_CHUNK = 4096
+_PREFILL_FULL_ATTN_POST_CHUNK = 1024
+_PREFILL_FULL_ATTN_ROPE_CHUNK = 1024
 _DEFAULT_BUDGET_FRACTION = 0.55
 
 
@@ -24,11 +21,11 @@ class PrefillConfig:
     The defaults describe the final retained path: full-native prefill is
     required unless a caller explicitly opts into bring-up/oracle behavior.
     Chunk sizes of ``0`` mean "no manual override", matching the parent
-    environment-knob convention; with ``auto_tune_chunk_sizes`` enabled, long
-    sessions resolve those zeros to a profile-derived memory-budget policy at
-    session construction.  AOTriton is a baseline vendored runtime dependency
-    for the gfx1100 Qwen3.5/PARO path; the measured crossover policy uses
-    AOTriton attention once prompts reach 512 tokens.
+    environment-knob convention; with ``auto_tune_chunk_sizes`` enabled,
+    prompts above 1K resolve those zeros to the retained 1024/4096 chunk
+    policy.  AOTriton is a baseline vendored runtime dependency for the gfx1100
+    Qwen3.5/PARO path; the measured crossover policy uses AOTriton attention
+    once prompts reach 512 tokens.
     """
 
     linear_chunk_size: int = 0
@@ -38,7 +35,7 @@ class PrefillConfig:
     moe_chunk_size: int = 0
     attn_aotriton_min_tokens: int = 512
     auto_tune_chunk_sizes: bool = True
-    chunk_tune_min_tokens: int = _LONG_CONTEXT_MIN_TOKENS
+    chunk_tune_min_tokens: int = _CHUNKED_PREFILL_MIN_TOKENS
     chunk_tune_memory_budget_gib: float = 0.0
     moe_grouped_device_gather: bool = True
     moe_stacked_compact: bool = True
@@ -74,12 +71,12 @@ def resolve_prefill_config_for_sequence(
     max_sequence_length: int,
     total_memory_bytes: int = 0,
 ) -> tuple[PrefillConfig, dict[str, object]]:
-    """Resolve profile-derived chunk sizes for long single-request prefill.
+    """Resolve profile-derived chunk sizes for single-request prefill.
 
     Explicit non-zero chunk sizes are treated as manual overrides.  With the
-    default auto policy, short/mid prompts stay unchunked while long contexts use
-    the retained parent-style 1024/4096 policy; very long contexts can use a
-    larger full-attention query chunk when the memory budget allows it.
+    default auto policy, prompts up to 1K stay unchunked while prompts above 1K
+    use the retained 1024/4096 policy across linear attention, MoE, full-attn
+    query, post, and RoPE stages.
     """
 
     max_sequence = int(max_sequence_length)
@@ -90,7 +87,7 @@ def resolve_prefill_config_for_sequence(
         "applied": False,
         "reason": "disabled",
         "max_sequence_length": max_sequence,
-        "source": "p5.2_profile_derived",
+        "source": "chunk_sweep_2026_05_midcontext_manual_long_equiv",
         "memory_budget_gib": 0.0,
     }
     if not config.auto_tune_chunk_sizes:
@@ -103,21 +100,16 @@ def resolve_prefill_config_for_sequence(
         return config, tuning
 
     budget_gib = _chunk_memory_budget_gib(config, total_memory_bytes=total_memory_bytes)
-    query_chunk = _LONG_CONTEXT_FULL_ATTN_QUERY_CHUNK
-    estimated_peak_gib = 23.3
-    reason = "long_context_static_budget"
-    if max_sequence >= _VERY_LONG_CONTEXT_MIN_TOKENS and budget_gib >= _VERY_LONG_QUERY_MIN_BUDGET_GIB:
-        query_chunk = _VERY_LONG_CONTEXT_FULL_ATTN_QUERY_CHUNK
-        estimated_peak_gib = _VERY_LONG_QUERY_MIN_BUDGET_GIB
-        reason = "very_long_context_query8192_budget"
+    estimated_peak_gib = 20.0
+    reason = "manual_long_equiv_gt1k"
 
     tuned = replace(
         config,
-        linear_chunk_size=_LONG_CONTEXT_LINEAR_CHUNK,
-        moe_chunk_size=_LONG_CONTEXT_MOE_CHUNK,
-        full_attn_query_chunk_size=query_chunk,
-        full_attn_post_chunk_size=_LONG_CONTEXT_FULL_ATTN_POST_CHUNK,
-        full_attn_rope_chunk_size=_LONG_CONTEXT_FULL_ATTN_ROPE_CHUNK,
+        linear_chunk_size=_PREFILL_LINEAR_CHUNK,
+        moe_chunk_size=_PREFILL_MOE_CHUNK,
+        full_attn_query_chunk_size=_PREFILL_FULL_ATTN_QUERY_CHUNK,
+        full_attn_post_chunk_size=_PREFILL_FULL_ATTN_POST_CHUNK,
+        full_attn_rope_chunk_size=_PREFILL_FULL_ATTN_ROPE_CHUNK,
     )
     tuning.update(
         {

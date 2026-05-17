@@ -15814,6 +15814,8 @@ print('markdown links OK')
 PY
 python3 -m pytest -q
 # full suite passed
+```
+
 ## 2026-05-17 — Initial gfx1151 backend port
 
 Ported the current gfx11 Qwen3.5/PARO implementation to a Strix Halo backend key without forking kernel bodies.
@@ -16503,3 +16505,94 @@ Do not spend more time on global 64/128/512/1024 or broad full-factorial combina
 - `uvx --from twine twine check /tmp/hipengine-dist-check/*` passed.
 - `(cd /tmp && uv run --isolated --with '/tmp/hipengine-dist-check/hipengine-0.1.0-py3-none-manylinux_2_39_x86_64.whl[server]' hipengine-server --help)` passed.
 - `git diff --check` passed.
+
+## 2026-05-18 — Qwen3.5 >1K prefill chunk policy default
+
+Decision from W7900/gfx1100 chunk sweeps: keep the policy simple and make the
+manual long-context-equivalent chunks the default above the 1K prompt seam.
+`PrefillConfig.auto_tune_chunk_sizes=True` now leaves actual prompt lengths
+`<=1024` unchunked and resolves prompts `>1024` to:
+
+- linear attention: `1024`
+- MoE: `1024`
+- full-attn query: `4096`
+- full-attn post: `1024`
+- full-attn RoPE: `1024`
+
+Manual non-zero chunk sizes still override the resolver.  I changed the resident
+runner to re-resolve chunk sizes from the actual prefill prompt length (not only
+session capacity), so a 1K prompt remains unchunked even when the decode-capacity
+headroom makes `max_sequence_length > 1024`.
+
+Evidence sources from the sweep series:
+
+- `/tmp/hipengine-chunk-sweep-stage7-short-single-20260518-013706`: 512/128 has
+  no useful chunk gain; 1K is noise-level.
+- `/tmp/hipengine-chunk-sweep-stage8-1k-seam-20260518-014326`: three repeats show
+  1K median manual-long `-0.04%` vs baseline/noise, while 1.5K manual-long is
+  `+0.64%` and saves `0.09 GiB` tracked peak.
+- `/tmp/hipengine-chunk-sweep-stage6-sub8k-single-20260518-012148`: manual-long
+  wins 2K-4K; linear-only wins 6K/7K but by small margins and higher memory.
+- `/tmp/hipengine-chunk-sweep-stage5-low-mid-single-20260518-011119`: manual-long
+  wins 8K/12K/15K/16K, stays near `19.6-19.9 GiB` tracked peak, and keeps 12K+
+  under the 24 GiB guardrail where unchunked baseline crosses it.
+- `/tmp/hipengine-chunk-sweep-stage4-binary-seam-20260518-005115`: linear-only is
+  rejected from 17K upward vs full long chunks because memory is `+4.24 GiB` or
+  worse for equal/slower prefill.
+
+Selected retained measurements (Qwen3.5-35B-A3B-PARO w4_paro, max_layers=40,
+token id 9707, W7900/gfx1100):
+
+- 1.5K/128 median manual-long `2594.862 tok/s`, `+0.64%` vs baseline, tracked
+  peak `18.620 GiB`.
+- 2K/128 manual-long `2627.75 tok/s`, `+3.01%`, peak `18.80 GiB`.
+- 4K/128 manual-long `2620.14 tok/s`, `+6.55%`, peak `19.51 GiB`.
+- 8K/128 manual-long `2546.37 tok/s`, `+8.46%`, peak `19.62 GiB`.
+- 12K/128 manual-long `2419.67 tok/s`, `+9.96%`, peak `19.74 GiB` vs baseline
+  peak `24.33 GiB`.
+- 16K/128 manual-long `2280.31 tok/s`, `+11.04%`, peak `19.85 GiB` vs baseline
+  peak `26.47 GiB`.
+
+Post-code validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_paro_runner.py \
+  scripts/qwen35_paro_bench.py scripts/qwen35_native_prefill_fixture_gate.py
+# passed
+
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q --tb=short
+# 27 passed
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 \
+  --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --json /tmp/hipengine-default-gt1k-manual-long-fixture.json
+# passed=True, generated_match=True, expected_match=True, max_kl=0.0395688706, top1=1.0
+
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --prompt-length 512 --token-id 9707 --decode-tokens 16 --warmup-decode-tokens 1 \
+  --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --json /tmp/hipengine-default-gt1k-512.json
+# chunks all zero, prefill=2289.648 tok/s, decode=115.768 tok/s, peak=18.175 GiB
+
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --json /tmp/hipengine-default-gt1k-4k.json
+# chunks 1024/1024/4096/1024/1024, prefill=2674.598 tok/s, decode=117.367 tok/s, peak=19.507 GiB
+```
+
+Benchmark artifact and rollup update:
+
+- `benchmarks/results/2026-05-18-hipengine-qwen35-gt1k-prefill-chunk-policy-diagnostic.json`
+- `benchmarks/README.md` P5.3 row
+- `benchmarks/CHANGELOG.md` 2026-05-18 entry
