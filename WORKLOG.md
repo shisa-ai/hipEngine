@@ -17878,3 +17878,23 @@ Artifacts/rollup updated:
 - `benchmarks/results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`
 - `benchmarks/README.md`
 - `benchmarks/CHANGELOG.md`
+
+## 2026-05-17 Qwen3.6 35B-A3B GGUF Q4_K_M intake diagnostic
+
+Verified the local Qwen3.6 35B-A3B GGUF target exists at `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (21G file, GGUF v3, `general.architecture=qwen35moe`, `file_type=MOSTLY_Q4_K_M`). `scripts/inspect_gguf.py --check-dequant --smoke-rows 1` found 733 tensors / 22,123,538,944 tensor bytes with no unsupported CPU dequant types: `F32=361`, `Q4_K=80`, `Q5_K=37`, `Q6_K=4`, `Q8_0=251`. Metadata reports 40 blocks, hidden 2048, 256 experts with 8 active experts/token, full-attention interval 4, and SSM inner size 4096.
+
+Tokenizer smoke through the existing GGUF tokenizer passed for the shared Qwen3.5 byte-BPE metadata: `"The answer is" -> [760, 4087, 369] -> "The answer is"` with vocab size 248,320.
+
+The public hipENGINE `LLM.generate()` attempt was intentionally run as a narrow support test and currently fails before weight load:
+
+```bash
+PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --max-new-tokens 1 --repeat 1 --skip-tokenize-check \
+  --json /tmp/hipengine-qwen36-35b-q4km-e2e-attempt.json
+# MissingModelError: model architecture 'qwen35moe' not registered; known: HipEngineToyForCausalLM, Qwen3_5MoeForCausalLM, Qwen3_5MoeForConditionalGeneration, qwen35, qwen3_5_gguf, qwen3_5_moe_paro, toy_one_layer
+```
+
+Next implementation blocker: add a GGUF MoE model/generator path for `qwen35moe`. The current Qwen3.5 GGUF mapper is dense/linear-attention focused, rejects `qwen35moe`, expects tied `lm_head=token_embd.weight` while this file has separate `output.weight`, and does not materialize/dispatch rank-3 MoE expert tensors such as `blk.0.ffn_gate_exps.weight [256, 512, 2048]` and `blk.0.ffn_down_exps.weight [256, 2048, 512]`.
+
+Diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-intake-diagnostic.json`.
