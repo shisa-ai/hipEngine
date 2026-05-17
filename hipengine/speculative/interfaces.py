@@ -409,6 +409,9 @@ class TargetVerifyBuffers:
     commit_tokens: Tensor
     commit_positions: Tensor
     next_tokens: Tensor | None = None
+    full_accept: Tensor | None = None
+    committed_output_ids: Tensor | None = None
+    committed_output_lengths: Tensor | None = None
     mode: str = "verify_chain"
     transaction_id: int | None = None
     candidate_counts: tuple[int, ...] | None = None
@@ -449,21 +452,37 @@ class TargetVerifyBuffers:
             self.target_top1,
         )
         summary_tensors = (self.accepted_counts, self.commit_rows, self.commit_tokens, self.commit_positions)
-        optional_summary_tensors = () if self.next_tokens is None else (self.next_tokens,)
+        optional_summary_tensors = tuple(
+            tensor for tensor in (self.next_tokens, self.committed_output_lengths) if tensor is not None
+        )
+        optional_device_tensors = tuple(
+            tensor for tensor in (self.full_accept, self.committed_output_ids) if tensor is not None
+        )
         for tensor in row_tensors:
             if tensor.shape != (self.rows,):
                 raise ValueError("row tensors must have shape (rows,)")
         for tensor in (*summary_tensors, *optional_summary_tensors):
             if tensor.shape != (len(self.request_ids),):
                 raise ValueError("summary tensors must have shape (request_count,)")
-        for tensor in (*row_tensors, *summary_tensors, *optional_summary_tensors):
+        if self.full_accept is not None and self.full_accept.shape != (len(self.request_ids),):
+            raise ValueError("full_accept tensor must have shape (request_count,)")
+        if self.committed_output_ids is not None:
+            if self.committed_output_ids.ndim != 2 or self.committed_output_ids.shape[0] != len(self.request_ids):
+                raise ValueError("committed_output_ids tensor must have shape (request_count, output_stride)")
+            if self.committed_output_ids.shape[1] <= 0:
+                raise ValueError("committed_output_ids output_stride must be positive")
+        for tensor in (*row_tensors, *summary_tensors, *optional_summary_tensors, *optional_device_tensors):
             if tensor.device != self.token_ids.device:
                 raise ValueError("target verify buffers must live on one device")
         for tensor in (self.token_ids, self.positions, self.parent_rows, self.draft_depths, self.row_to_request, self.target_top1, *summary_tensors, *optional_summary_tensors):
             if tensor.dtype not in {DType.INT32, DType.INT64}:
                 raise ValueError("target verify integer buffers must be int32 or int64")
+        if self.committed_output_ids is not None and self.committed_output_ids.dtype not in {DType.INT32, DType.INT64}:
+            raise ValueError("committed_output_ids buffer must be int32 or int64")
         if self.active_mask.dtype != DType.BOOL:
             raise ValueError("active_mask buffer must be bool")
+        if self.full_accept is not None and self.full_accept.dtype != DType.BOOL:
+            raise ValueError("full_accept buffer must be bool")
         if self.mode not in {"verify_chain", "verify_tree"}:
             raise ValueError("mode must be verify_chain or verify_tree")
 
@@ -484,6 +503,9 @@ class TargetVerifyBuffers:
         commit_tokens: Tensor,
         commit_positions: Tensor,
         next_tokens: Tensor | None = None,
+        full_accept: Tensor | None = None,
+        committed_output_ids: Tensor | None = None,
+        committed_output_lengths: Tensor | None = None,
         transaction_id: int | None = None,
         candidate_counts: Sequence[int] | None = None,
         draft_depth: int | None = None,
@@ -505,6 +527,9 @@ class TargetVerifyBuffers:
             commit_tokens=commit_tokens,
             commit_positions=commit_positions,
             next_tokens=next_tokens,
+            full_accept=full_accept,
+            committed_output_ids=committed_output_ids,
+            committed_output_lengths=committed_output_lengths,
             mode=batch.mode,
             transaction_id=transaction_id,
             candidate_counts=batch.candidate_counts if candidate_counts is None else tuple(int(count) for count in candidate_counts),

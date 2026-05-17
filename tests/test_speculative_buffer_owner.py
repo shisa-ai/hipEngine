@@ -91,6 +91,9 @@ def test_target_verify_buffer_owner_allocates_stable_bucket_buffers() -> None:
     assert owner.token_ids.shape == (10,)
     assert owner.positions.dtype == DType.INT32
     assert owner.active_mask.dtype == DType.BOOL
+    assert owner.full_accept.dtype == DType.BOOL
+    assert owner.committed_output_ids.shape == (2, 10)
+    assert owner.committed_output_lengths.shape == (2,)
     assert owner.hidden_taps is not None
     assert owner.hidden_taps.shape == (5, 10, 2048)
     assert owner.scratch_tensors["layer0.conv_state"].shape == (10, 16, 128)
@@ -133,6 +136,14 @@ def test_target_verify_buffer_owner_binds_exact_batch_views_without_reallocating
     assert buffers.accepted_counts.shape == (2,)
     assert buffers.next_tokens is not None
     assert buffers.next_tokens.ptr == owner.next_tokens.ptr
+    assert buffers.full_accept is not None
+    assert buffers.full_accept.ptr == owner.full_accept.ptr
+    assert buffers.committed_output_ids is not None
+    assert buffers.committed_output_ids.ptr == owner.committed_output_ids.ptr
+    assert buffers.committed_output_ids.shape == (2, 10)
+    assert buffers.committed_output_ids.strides == (10, 1)
+    assert buffers.committed_output_lengths is not None
+    assert buffers.committed_output_lengths.ptr == owner.committed_output_lengths.ptr
 
     small = _small_target_batch()
     small_buffers = owner.bind(small)
@@ -141,6 +152,9 @@ def test_target_verify_buffer_owner_binds_exact_batch_views_without_reallocating
     assert small_buffers.token_ids.ptr == owner.token_ids.ptr
     assert small_buffers.token_ids.shape == (3,)
     assert small_buffers.accepted_counts.shape == (1,)
+    assert small_buffers.committed_output_ids is not None
+    assert small_buffers.committed_output_ids.shape == (1, 3)
+    assert small_buffers.committed_output_ids.strides == (10, 1)
 
 
 def test_target_verify_buffer_owner_rejects_wrong_capacity_mode_or_workspace() -> None:
@@ -171,6 +185,12 @@ def test_target_verify_buffer_owner_validates_base_tensor_shapes_dtypes_and_scra
 
     with pytest.raises(ValueError, match="active_mask tensor dtype"):
         replace(owner, active_mask=Tensor.from_handle(0xA100, (10,), DType.INT32, Device("hip", 0)))
+
+    with pytest.raises(ValueError, match="full_accept tensor dtype"):
+        replace(owner, full_accept=Tensor.from_handle(0xA180, (2,), DType.INT32, Device("hip", 0)))
+
+    with pytest.raises(ValueError, match="committed_output_ids tensor shape"):
+        replace(owner, committed_output_ids=Tensor.from_handle(0xA190, (2, 9), DType.INT32, Device("hip", 0)))
 
     with pytest.raises(ValueError, match="hidden_taps tensor is required"):
         replace(owner, hidden_taps=None)

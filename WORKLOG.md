@@ -16995,3 +16995,78 @@ git diff --check
 # pytest: 33 passed
 # no torch/transformers imports in hipengine/speculative
 ```
+
+## 2026-05-18 — DFlash GPU top1 and chain accept summary
+
+### Scope
+
+- Extended `hipengine/kernels/hip_gfx1100/linear/lm_head.{hip,py}` with row-wise verifier top-1 primitives:
+  - `argmax_f32_rows_i32(...)` consumes device logits `[rows, vocab]` and writes compact int32 `target_top1[rows]` without copying logits to host.
+  - `lm_head_fp16_argmax_bf16_rows_i32(...)` computes FP16 lm-head logits for BF16 verifier hidden rows and runs the same row-wise argmax.
+- Added `hipengine/kernels/hip_gfx1100/speculative/dflash_accept.{hip,py}` and registered `dflash_accept_chain_i32` for `hip_gfx1100` plus the `hip_gfx1151` alias backend.
+- `dflash_accept_chain_i32` consumes root-prefixed `TargetVerifyBatch` metadata (`token_ids`, `positions`, `parent_rows`, `draft_depths`, `active_mask`) plus device `target_top1`, follows accepted chain edges per request, and writes compact per-request summaries: `accepted_counts`, `commit_rows`, `commit_tokens`, `commit_positions`, `next_tokens`/bonus (`-1` when a remaining-decode budget is exhausted), `full_accept`, committed output ids `[root, accepted draft ...]`, and output lengths.
+- Extended `TargetVerifyBufferOwner` / `TargetVerifyBuffers` with fixed `full_accept`, `committed_output_ids`, and `committed_output_lengths` buffers so downstream state/KV commit work can bind stable accept-summary outputs.
+- Added `scripts/dflash_accept_chain_smoke.py`, a torch-free gfx1151 smoke that validates row lm-head top1, row argmax→accept fast path, crafted reject/partial/full chains, multi-request `compile_dflash_chain` verifier rows, and remaining-budget no-bonus outputs against `TargetVerifyBatch.accept_from_top1` / `TargetAcceptSummary.from_accept_result`.
+- Updated `docs/DFLASH.md` and `docs/KERNELS.md` with the D2 status and gfx1151 smoke/rocprof evidence.
+
+### Validation
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/linear/lm_head.py \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_accept.py \
+  hipengine/kernels/hip_gfx1100/speculative/__init__.py \
+  hipengine/speculative/interfaces.py \
+  hipengine/speculative/buffers.py \
+  tests/test_dflash_accept_kernels.py \
+  scripts/dflash_accept_chain_smoke.py
+python3 -m pytest -q \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_speculative_interfaces.py \
+  tests/test_speculative_buffer_owner.py \
+  tests/test_dflash_chain_compiler.py \
+  tests/test_qwen35_resident_batch_layout.py \
+  tests/test_kernel_registry.py \
+  tests/test_model_quant_and_imports.py
+! grep -RInE 'import torch|torch\.' \
+  hipengine/kernels/hip_gfx1100/speculative \
+  hipengine/kernels/hip_gfx1100/linear/lm_head.py \
+  hipengine/speculative \
+  scripts/dflash_accept_chain_smoke.py \
+  tests/test_dflash_accept_kernels.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_accept_chain_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build \
+    --debug-top1-readback
+rm -rf /tmp/hipengine-dflash-accept-prof && mkdir -p /tmp/hipengine-dflash-accept-prof
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  /opt/rocm/bin/rocprofv3 --kernel-trace --output-format csv \
+    --output-file /tmp/hipengine-dflash-accept-prof/accept -- \
+    python3 scripts/dflash_accept_chain_smoke.py \
+      --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+      --require-cached-build \
+      --debug-top1-readback
+python3 - <<'PY'
+import csv
+from pathlib import Path
+path=Path('/tmp/hipengine-dflash-accept-prof/accept_kernel_trace.csv')
+rows=list(csv.DictReader(path.open()))
+for name in sorted({r['Kernel_Name'] for r in rows if 'dflash_accept' in r['Kernel_Name'] or 'argmax_rows' in r['Kernel_Name'] or 'lm_head_fp16_logits_rows' in r['Kernel_Name']}):
+    vals=[]; scratch=[]
+    for r in rows:
+        if r['Kernel_Name']==name:
+            vals.append(int(float(r['DurationNs'])) if r.get('DurationNs') else int(float(r['End_Timestamp']))-int(float(r['Start_Timestamp'])))
+            if r.get('Scratch_Size'):
+                scratch.append(int(float(r['Scratch_Size'])))
+    print(name, len(vals), min(vals), max(vals), sorted(set(scratch)))
+PY
+git diff --check
+# pytest: 64 passed
+# smoke: lm_head_rows_top1 ids=[4, 6, 6, 16]; single reject/partial/full, multi real layout, and budgeted layout passed.
+# rocprofv3 1.1.0 / gfx1151: lm_head_fp16_logits_rows_kernel DurationNs=3687 Scratch_Size=0;
+# argmax_rows_stage1_i32_kernel count=6 DurationNs 1883–9538 Scratch_Size=0;
+# argmax_rows_stage2_i32_kernel count=6 DurationNs 1683–6893 Scratch_Size=0;
+# dflash_accept_chain_i32_kernel count=5 DurationNs 4007–17032 Scratch_Size=0.
+```

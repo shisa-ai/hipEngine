@@ -29,6 +29,7 @@ _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.rotary",
     "hipengine.kernels.hip_gfx1100.runtime",
     "hipengine.kernels.hip_gfx1100.smoke",
+    "hipengine.kernels.hip_gfx1100.speculative",
     "hipengine.kernels.hip_gfx1100.wmma",
 )
 

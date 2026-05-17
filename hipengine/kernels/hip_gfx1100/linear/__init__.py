@@ -11,9 +11,11 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
+    argmax_f32_rows_i32,
     build_lm_head,
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16,
+    lm_head_fp16_argmax_bf16_rows_i32,
     plan_lm_head_build,
     register_lm_head_kernels,
 )
@@ -27,9 +29,11 @@ __all__ = [
     "plan_dense_gemv_build",
     "register_dense_gemv_kernels",
     "argmax_f32",
+    "argmax_f32_rows_i32",
     "build_lm_head",
     "lm_head_argmax_stage1_blocks",
     "lm_head_fp16_argmax_bf16",
+    "lm_head_fp16_argmax_bf16_rows_i32",
     "plan_lm_head_build",
     "register_lm_head_kernels",
 ]

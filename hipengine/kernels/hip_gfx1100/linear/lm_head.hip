@@ -26,13 +26,13 @@ __global__ void lm_head_fp16_logits_kernel(
     float* __restrict__ logits,
     int64_t hidden_size,
     int64_t vocab_size) {
-  const int64_t row = static_cast<int64_t>(blockIdx.x);
-  if (row >= vocab_size) {
+  const int64_t vocab_row = static_cast<int64_t>(blockIdx.x);
+  if (vocab_row >= vocab_size) {
     return;
   }
   const int tid = threadIdx.x;
   const __half* weight = reinterpret_cast<const __half*>(weight_fp16);
-  const int64_t weight_base = row * hidden_size;
+  const int64_t weight_base = vocab_row * hidden_size;
   float acc = 0.0f;
   const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
   const int64_t main_end = (hidden_size / vec_stride) * vec_stride;
@@ -60,7 +60,54 @@ __global__ void lm_head_fp16_logits_kernel(
     __syncthreads();
   }
   if (tid == 0) {
-    logits[row] = partial[0];
+    logits[vocab_row] = partial[0];
+  }
+}
+
+__global__ void lm_head_fp16_logits_rows_kernel(
+    const uint16_t* __restrict__ hidden_bf16,
+    const uint16_t* __restrict__ weight_fp16,
+    float* __restrict__ logits,
+    int64_t rows,
+    int64_t hidden_size,
+    int64_t vocab_size) {
+  const int64_t vocab_row = static_cast<int64_t>(blockIdx.x);
+  const int64_t verify_row = static_cast<int64_t>(blockIdx.y);
+  if (vocab_row >= vocab_size || verify_row >= rows) {
+    return;
+  }
+  const int tid = threadIdx.x;
+  const __half* weight = reinterpret_cast<const __half*>(weight_fp16);
+  const int64_t hidden_base = verify_row * hidden_size;
+  const int64_t weight_base = vocab_row * hidden_size;
+  float acc = 0.0f;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (hidden_size / vec_stride) * vec_stride;
+  for (int64_t k = static_cast<int64_t>(tid) * 8; k < main_end; k += vec_stride) {
+    acc = fmaf(bf16_bits_to_float(hidden_bf16[hidden_base + k + 0]), __half2float(weight[weight_base + k + 0]), acc);
+    acc = fmaf(bf16_bits_to_float(hidden_bf16[hidden_base + k + 1]), __half2float(weight[weight_base + k + 1]), acc);
+    acc = fmaf(bf16_bits_to_float(hidden_bf16[hidden_base + k + 2]), __half2float(weight[weight_base + k + 2]), acc);
+    acc = fmaf(bf16_bits_to_float(hidden_bf16[hidden_base + k + 3]), __half2float(weight[weight_base + k + 3]), acc);
+    acc = fmaf(bf16_bits_to_float(hidden_bf16[hidden_base + k + 4]), __half2float(weight[weight_base + k + 4]), acc);
+    acc = fmaf(bf16_bits_to_float(hidden_bf16[hidden_base + k + 5]), __half2float(weight[weight_base + k + 5]), acc);
+    acc = fmaf(bf16_bits_to_float(hidden_bf16[hidden_base + k + 6]), __half2float(weight[weight_base + k + 6]), acc);
+    acc = fmaf(bf16_bits_to_float(hidden_bf16[hidden_base + k + 7]), __half2float(weight[weight_base + k + 7]), acc);
+  }
+  for (int64_t k = main_end + tid; k < hidden_size; k += blockDim.x) {
+    acc = fmaf(bf16_bits_to_float(hidden_bf16[hidden_base + k]), __half2float(weight[weight_base + k]), acc);
+  }
+
+  extern __shared__ float partial[];
+  partial[tid] = acc;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    logits[verify_row * vocab_size + vocab_row] = partial[0];
   }
 }
 
@@ -135,6 +182,101 @@ __global__ void argmax_stage2_kernel(
   if (tid == 0) {
     *out_index = indices[0];
     *out_value = values[0];
+  }
+}
+
+__device__ inline bool better_pair_i32(float value, int32_t index, float best_value, int32_t best_index) {
+  return value > best_value || (value == best_value && index < best_index);
+}
+
+__global__ void argmax_rows_stage1_i32_kernel(
+    const float* __restrict__ logits,
+    float* __restrict__ block_values,
+    int32_t* __restrict__ block_indices,
+    int64_t rows,
+    int64_t vocab_size,
+    int64_t stage1_blocks) {
+  extern __shared__ unsigned char shared_raw[];
+  float* values = reinterpret_cast<float*>(shared_raw);
+  int32_t* indices = reinterpret_cast<int32_t*>(values + blockDim.x);
+  const int tid = threadIdx.x;
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t chunk = static_cast<int64_t>(blockDim.x) * 4;
+  const int64_t begin = static_cast<int64_t>(blockIdx.x) * chunk;
+  const int64_t end = min(begin + chunk, vocab_size);
+  const int64_t logits_base = row * vocab_size;
+
+  float best_value = -3.4028234663852886e+38F;
+  int32_t best_index = INT32_MAX;
+  for (int64_t i = begin + tid; i < end; i += blockDim.x) {
+    const float value = logits[logits_base + i];
+    const int32_t index = static_cast<int32_t>(i);
+    if (better_pair_i32(value, index, best_value, best_index)) {
+      best_value = value;
+      best_index = index;
+    }
+  }
+  values[tid] = best_value;
+  indices[tid] = best_index;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride && better_pair_i32(values[tid + stride], indices[tid + stride], values[tid], indices[tid])) {
+      values[tid] = values[tid + stride];
+      indices[tid] = indices[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    const int64_t block_offset = row * stage1_blocks + static_cast<int64_t>(blockIdx.x);
+    block_values[block_offset] = values[0];
+    block_indices[block_offset] = indices[0];
+  }
+}
+
+__global__ void argmax_rows_stage2_i32_kernel(
+    const float* __restrict__ block_values,
+    const int32_t* __restrict__ block_indices,
+    int32_t* __restrict__ out_indices,
+    float* __restrict__ out_values,
+    int64_t rows,
+    int64_t num_blocks) {
+  extern __shared__ unsigned char shared_raw[];
+  float* values = reinterpret_cast<float*>(shared_raw);
+  int32_t* indices = reinterpret_cast<int32_t*>(values + blockDim.x);
+  const int tid = threadIdx.x;
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t block_base = row * num_blocks;
+  float best_value = -3.4028234663852886e+38F;
+  int32_t best_index = INT32_MAX;
+  for (int64_t i = tid; i < num_blocks; i += blockDim.x) {
+    const float value = block_values[block_base + i];
+    const int32_t index = block_indices[block_base + i];
+    if (better_pair_i32(value, index, best_value, best_index)) {
+      best_value = value;
+      best_index = index;
+    }
+  }
+  values[tid] = best_value;
+  indices[tid] = best_index;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride && better_pair_i32(values[tid + stride], indices[tid + stride], values[tid], indices[tid])) {
+      values[tid] = values[tid + stride];
+      indices[tid] = indices[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    out_indices[row] = indices[0];
+    if (out_values != nullptr) {
+      out_values[row] = values[0];
+    }
   }
 }
 
@@ -249,4 +391,98 @@ extern "C" int hipengine_lm_head_fp16_argmax_bf16(
       out_index,
       out_value);
   return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_argmax_f32_rows_i32(
+    const float* logits,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    int64_t rows,
+    int64_t vocab_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int t = static_cast<unsigned int>(threads);
+  const int64_t stage1_blocks = (vocab_size + threads * 4 - 1) / (threads * 4);
+  const size_t argmax_smem = static_cast<size_t>(threads) * (sizeof(float) + sizeof(int32_t));
+  hipLaunchKernelGGL(
+      argmax_rows_stage1_i32_kernel,
+      dim3(static_cast<unsigned int>(stage1_blocks), static_cast<unsigned int>(rows)),
+      dim3(t),
+      argmax_smem,
+      stream,
+      logits,
+      block_values,
+      block_indices,
+      rows,
+      vocab_size,
+      stage1_blocks);
+  hipError_t err = hipGetLastError();
+  if (err != hipSuccess) {
+    return static_cast<int>(err);
+  }
+
+  hipLaunchKernelGGL(
+      argmax_rows_stage2_i32_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(t),
+      argmax_smem,
+      stream,
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      rows,
+      stage1_blocks);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_lm_head_fp16_argmax_bf16_rows_i32(
+    const uint16_t* hidden_bf16,
+    const uint16_t* weight_fp16,
+    float* logits,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    int64_t rows,
+    int64_t hidden_size,
+    int64_t vocab_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int t = static_cast<unsigned int>(threads);
+  hipLaunchKernelGGL(
+      lm_head_fp16_logits_rows_kernel,
+      dim3(static_cast<unsigned int>(vocab_size), static_cast<unsigned int>(rows)),
+      dim3(t),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      hidden_bf16,
+      weight_fp16,
+      logits,
+      rows,
+      hidden_size,
+      vocab_size);
+  hipError_t err = hipGetLastError();
+  if (err != hipSuccess) {
+    return static_cast<int>(err);
+  }
+
+  return hipengine_argmax_f32_rows_i32(
+      logits,
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      rows,
+      vocab_size,
+      threads,
+      stream);
 }

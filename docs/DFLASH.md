@@ -40,7 +40,7 @@ but DFlash is the first native block-verifier target. See [`MTP.md`](MTP.md) for
 the target-attached multi-token predictor plan that reuses this verifier/commit
 infrastructure after DFlash lands.
 
-## Current hipEngine status (2026-05-15)
+## Current hipEngine status (2026-05-18)
 
 The API scaffolding exists (`DraftBatch`, `TargetVerifyBatch`,
 `TargetVerifyBuffers`, `TargetStateCommitBuffers`, `AcceptResult`,
@@ -86,10 +86,13 @@ It records:
   summary to a transaction-scoped commit plan, validates target-verifier and
   state-commit device buffer shapes/dtypes, projects candidate rows into
   scheduler `WorkItem` metadata, and derives verify graph shape keys from the
-  target row topology, and the torch-free target-verify ladder comparator can
+  target row topology, the torch-free target-verify ladder comparator can
   compare serial c=1 vs bulk verify-chain row snapshots at each layer-family
-  boundary with first-failing-stage diagnostics, but no device-side state/KV
-  commit is wired yet;
+  boundary with first-failing-stage diagnostics, and the gfx1151 GPU top1 +
+  `dflash_accept_chain_i32` smoke matches `TargetVerifyBatch.accept_from_top1`
+  for reject/partial/full, multi-request real verifier rows, and budgeted
+  no-bonus cases without full-logit host copies in the accept fast path, but no
+  device-side state/KV commit is wired yet;
 - no speculative throughput claim is allowed until Task #15 lands a native
   compact/c-aware target verifier with selectable per-row state and GPU accept
   summaries.
@@ -409,6 +412,13 @@ Goal: remove host acceptance work from the measured loop.
 - Correctness gate: device accept summary equals CPU reference for crafted
   accept patterns and real DFlash outputs.
 
+Status 2026-05-18: row-wise `argmax_f32_rows_i32`, row `lm_head_fp16_argmax_bf16_rows_i32`,
+and `dflash_accept_chain_i32` are landed for gfx1100/gfx1151 registration. The gfx1151 smoke
+`HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/dflash_accept_chain_smoke.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --debug-top1-readback`
+passes CPU-oracle parity for crafted reject/partial/full chains, multi-request `TargetVerifyBatch`
+rows from `compile_dflash_chain`, and remaining-budget no-bonus outputs. Integrated target-forward
+state/KV commit remains Phase D1/D3 follow-up work.
+
 ### Phase D3 — Native DFlash drafter and draft context KV
 
 Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
@@ -587,7 +597,8 @@ Do not start these before D1-D6 establish a winning native chain path.
    `hipengine/kernels/hip_gfx1100/linear_attn/` with `gfx1151` alias coverage.
 6. Wire chain verify through the Qwen3.6/Qwen3.5 PARO target runtime with
    persistent node state rings and K/V scratch.
-7. Add GPU top1 + chain accept summary.
+7. **Landed 2026-05-18:** add GPU top1 + chain accept summary (`argmax_f32_rows_i32`,
+   row lm-head, `dflash_accept_chain_i32`) with gfx1151 smoke parity vs CPU oracle.
 8. Benchmark HumanEval/code chain N=1/2/4/8 against same-session packed-target
    AR on native `gfx1151`.
 9. Only after chain > AR: add DDTree budget=4 compiler and tree accept/commit.

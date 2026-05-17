@@ -102,6 +102,10 @@ class TargetVerifyBufferSpec:
         return (self.max_requests,)
 
     @property
+    def committed_output_shape(self) -> tuple[int, ...]:
+        return (self.max_requests, self.max_rows)
+
+    @property
     def hidden_tap_shape(self) -> tuple[int, ...] | None:
         if self.hidden_tap_count == 0:
             return None
@@ -135,6 +139,9 @@ class TargetVerifyBufferOwner:
     commit_tokens: Tensor
     commit_positions: Tensor
     next_tokens: Tensor
+    full_accept: Tensor
+    committed_output_ids: Tensor
+    committed_output_lengths: Tensor
     hidden_taps: Tensor | None = None
     scratch: tuple[TargetVerifyScratchHandle, ...] = ()
 
@@ -152,6 +159,9 @@ class TargetVerifyBufferOwner:
         self._validate_tensor("active_mask", self.active_mask, self.spec.row_shape, dtype=DType.BOOL)
         for name, tensor in self.summary_tensors.items():
             self._validate_tensor(name, tensor, self.spec.summary_shape, integer=True)
+        self._validate_tensor("full_accept", self.full_accept, self.spec.summary_shape, dtype=DType.BOOL)
+        self._validate_tensor("committed_output_ids", self.committed_output_ids, self.spec.committed_output_shape, integer=True)
+        self._validate_tensor("committed_output_lengths", self.committed_output_lengths, self.spec.summary_shape, integer=True)
         hidden_shape = self.spec.hidden_tap_shape
         if hidden_shape is None:
             if self.hidden_taps is not None:
@@ -214,6 +224,9 @@ class TargetVerifyBufferOwner:
             commit_tokens=reserve("commit_tokens", spec.summary_shape, spec.metadata_dtype),
             commit_positions=reserve("commit_positions", spec.summary_shape, spec.metadata_dtype),
             next_tokens=reserve("next_tokens", spec.summary_shape, spec.metadata_dtype),
+            full_accept=reserve("full_accept", spec.summary_shape, DType.BOOL),
+            committed_output_ids=reserve("committed_output_ids", spec.committed_output_shape, spec.metadata_dtype),
+            committed_output_lengths=reserve("committed_output_lengths", spec.summary_shape, spec.metadata_dtype),
             hidden_taps=hidden_taps,
             scratch=scratch,
         )
@@ -238,6 +251,7 @@ class TargetVerifyBufferOwner:
             "commit_tokens": self.commit_tokens,
             "commit_positions": self.commit_positions,
             "next_tokens": self.next_tokens,
+            "committed_output_lengths": self.committed_output_lengths,
         }
 
     @property
@@ -273,6 +287,9 @@ class TargetVerifyBufferOwner:
             commit_tokens=self._view_1d(self.commit_tokens, request_count),
             commit_positions=self._view_1d(self.commit_positions, request_count),
             next_tokens=self._view_1d(self.next_tokens, request_count),
+            full_accept=self._view_1d(self.full_accept, request_count),
+            committed_output_ids=self._view_2d_prefix(self.committed_output_ids, request_count, row_count),
+            committed_output_lengths=self._view_1d(self.committed_output_lengths, request_count),
             transaction_id=transaction_id,
         )
 
@@ -300,6 +317,7 @@ class TargetVerifyBufferOwner:
             "address_digest_sha256": hashlib.sha256(payload).hexdigest(),
             "row_tensors": {name: self._tensor_metadata(tensor) for name, tensor in self.row_tensors.items()},
             "summary_tensors": {name: self._tensor_metadata(tensor) for name, tensor in self.summary_tensors.items()},
+            "accept_tensors": {name: self._tensor_metadata(tensor) for name, tensor in self.accept_tensors.items()},
             "scratch_tensors": {name: self._tensor_metadata(tensor) for name, tensor in self.scratch_tensors.items()},
         }
         if self.hidden_taps is not None:
@@ -308,8 +326,19 @@ class TargetVerifyBufferOwner:
             metadata["address_signature"] = signature
         return metadata
 
+    @property
+    def accept_tensors(self) -> dict[str, Tensor]:
+        return {
+            "full_accept": self.full_accept,
+            "committed_output_ids": self.committed_output_ids,
+        }
+
     def _named_tensors(self) -> tuple[tuple[str, Tensor], ...]:
-        named: list[tuple[str, Tensor]] = [*self.row_tensors.items(), *self.summary_tensors.items()]
+        named: list[tuple[str, Tensor]] = [
+            *self.row_tensors.items(),
+            *self.summary_tensors.items(),
+            *self.accept_tensors.items(),
+        ]
         if self.hidden_taps is not None:
             named.append(("hidden_taps", self.hidden_taps))
         named.extend((f"scratch.{handle.name}", handle.tensor) for handle in self.scratch)
@@ -341,6 +370,20 @@ class TargetVerifyBufferOwner:
         if length < 0 or length > tensor.shape[0]:
             raise ValueError("view length exceeds tensor capacity")
         return Tensor.from_handle(tensor.ptr, (length,), tensor.dtype, tensor.device)
+
+    @staticmethod
+    def _view_2d_prefix(tensor: Tensor, rows: int, cols: int) -> Tensor:
+        if tensor.ndim != 2:
+            raise ValueError("only two-dimensional tensors can be narrowed as verifier ABI views")
+        if rows < 0 or cols < 0 or rows > tensor.shape[0] or cols > tensor.shape[1]:
+            raise ValueError("view shape exceeds tensor capacity")
+        return Tensor.from_handle(
+            tensor.ptr,
+            (rows, cols),
+            tensor.dtype,
+            tensor.device,
+            strides=(tensor.shape[1], 1),
+        )
 
     @staticmethod
     def _tensor_nbytes(tensor: Tensor) -> int:

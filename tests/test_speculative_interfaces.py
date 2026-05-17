@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.core.device import Device
+from hipengine.core.dtype import DType
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import ActiveBatch, RequestState
 from hipengine.kvcache import FixedPagedKVPolicy
@@ -222,6 +223,9 @@ def test_target_verify_buffers_validate_device_abi() -> None:
         commit_tokens=_tensor(0x3900, (2,), "int32"),
         commit_positions=_tensor(0x3A00, (2,), "int32"),
         next_tokens=_tensor(0x3B00, (2,), "int32"),
+        full_accept=_tensor(0x3C00, (2,), "bool"),
+        committed_output_ids=_tensor(0x3D00, (2, 5), "int32"),
+        committed_output_lengths=_tensor(0x3E00, (2,), "int32"),
         transaction_id=7,
     )
 
@@ -236,6 +240,12 @@ def test_target_verify_buffers_validate_device_abi() -> None:
     assert str(buffers.device) == "hip:0"
     assert buffers.next_tokens is not None
     assert buffers.next_tokens.shape == (2,)
+    assert buffers.full_accept is not None
+    assert buffers.full_accept.dtype == DType.BOOL
+    assert buffers.committed_output_ids is not None
+    assert buffers.committed_output_ids.shape == (2, 5)
+    assert buffers.committed_output_lengths is not None
+    assert buffers.committed_output_lengths.shape == (2,)
     assert buffers.mode == "verify_tree"
 
     with pytest.raises(ValueError, match="transaction_id"):
@@ -249,7 +259,15 @@ def test_target_verify_buffers_validate_device_abi() -> None:
     with pytest.raises(ValueError, match="summary tensors"):
         replace(buffers, next_tokens=_tensor(0x3C00, (1,), "int32"))
     with pytest.raises(ValueError, match="integer buffers"):
-        replace(buffers, next_tokens=_tensor(0x3D00, (2,), "fp16"))
+        replace(buffers, next_tokens=_tensor(0x3F00, (2,), "fp16"))
+    with pytest.raises(ValueError, match="full_accept"):
+        replace(buffers, full_accept=_tensor(0x4000, (1,), "bool"))
+    with pytest.raises(ValueError, match="full_accept"):
+        replace(buffers, full_accept=_tensor(0x4100, (2,), "int32"))
+    with pytest.raises(ValueError, match="committed_output_ids"):
+        replace(buffers, committed_output_ids=_tensor(0x4200, (2,), "int32"))
+    with pytest.raises(ValueError, match="committed_output_ids"):
+        replace(buffers, committed_output_ids=_tensor(0x4300, (2, 5), "fp16"))
     with pytest.raises(ValueError, match="row tensors"):
         TargetVerifyBuffers.for_batch(
             target,

@@ -12,7 +12,9 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("lm_head.hip")
 _OUTPUT_NAME = "lm_head.so"
 _SYMBOL = "hipengine_lm_head_fp16_argmax_bf16"
+_SYMBOL_ROWS_I32 = "hipengine_lm_head_fp16_argmax_bf16_rows_i32"
 _SYMBOL_ARGMAX = "hipengine_argmax_f32"
+_SYMBOL_ARGMAX_ROWS_I32 = "hipengine_argmax_f32_rows_i32"
 _ALLOWED_THREADS = {128, 256, 512}
 
 
@@ -107,6 +109,64 @@ def lm_head_fp16_argmax_bf16(
         runtime.check(int(err))
 
 
+def lm_head_fp16_argmax_bf16_rows_i32(
+    hidden_bf16_ptr: int,
+    weight_fp16_ptr: int,
+    logits_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int | None,
+    rows: int,
+    hidden_size: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16 lm-head projection and row-wise GPU argmax for BF16 hidden rows."""
+
+    _check_rows(rows)
+    _check_shape(hidden_size, vocab_size, threads)
+    _check_i32_vocab(vocab_size)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ROWS_I32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_bf16_ptr),
+        ctypes.c_void_p(weight_fp16_ptr),
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def argmax_f32(
     logits_f32_ptr: int,
     block_values_f32_ptr: int,
@@ -149,6 +209,55 @@ def argmax_f32(
         runtime.check(int(err))
 
 
+def argmax_f32_rows_i32(
+    logits_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int | None,
+    rows: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Write row-wise top-1 ids for ``logits[rows, vocab_size]`` without host logits."""
+
+    _check_rows(rows)
+    _check_shape(1, vocab_size, threads)
+    _check_i32_vocab(vocab_size)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ARGMAX_ROWS_I32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def lm_head_argmax_stage1_blocks(vocab_size: int, *, threads: int = 256) -> int:
     _check_shape(1, vocab_size, threads)
     return (int(vocab_size) + int(threads) * 4 - 1) // (int(threads) * 4)
@@ -161,8 +270,18 @@ def register_lm_head_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "lm_head", "w4_paro", "fp16_argmax_bf16_rows_i32"),
+        lm_head_fp16_argmax_bf16_rows_i32,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "argmax", "w4_paro", "f32"),
         argmax_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "argmax", "w4_paro", "f32_rows_i32"),
+        argmax_f32_rows_i32,
         replace=replace,
     )
 
@@ -174,6 +293,16 @@ def _check_shape(hidden_size: int, vocab_size: int, threads: int) -> None:
         raise ValueError("vocab_size must be positive")
     if threads not in _ALLOWED_THREADS:
         raise ValueError("threads must be one of 128, 256, or 512")
+
+
+def _check_rows(rows: int) -> None:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+
+
+def _check_i32_vocab(vocab_size: int) -> None:
+    if vocab_size > 2**31 - 1:
+        raise ValueError("vocab_size must fit int32 row-wise argmax outputs")
 
 
 register_lm_head_kernels()
