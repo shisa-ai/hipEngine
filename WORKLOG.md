@@ -18127,3 +18127,62 @@ Result copied to `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bu
 - native-full layer scan first hidden drift at layer limit `14` (last layer type `linear_attention`, max hidden abs `0.0625`)
 
 Interpretation: the explicit bulk-MoE-prefill performance path remains diagnostic-only. There are two separable correctness questions to resolve before enabling it by default: (1) full-attention bulk numerical drift versus the token-serial decode-context path, and (2) later linear-attention prefill recurrent drift even when full-attention is forced through the native per-row path. Matching retained PARO still needs grouped/packed MoE kernel work, but that work should not be promoted in hipENGINE until the long-prompt qwen35moe bulk oracle/parity gate is stronger.
+
+## 2026-05-17 qwen35moe GGUF task #55 native-attention bulk-MoE default
+
+Resolved one correctness blocker for qwen35moe GGUF bulk prefill by splitting the two previous drift sources. The new scheduler mode preserves the resident token-serial attention kernels/state updates row-by-row, then runs the existing row-bulk post-attention FFN/MoE combine for the whole prompt. This makes qwen35moe long-prompt public/default prefill use `bulk_attention_mode="native"` when `use_bulk=None`; the faster fully bulk attention path remains opt-in/diagnostic via `bulk_attention_mode="bulk"` or `scripts/qwen35_gguf_bench.py --force-bulk-prefill --bulk-prefill-attention-mode bulk`.
+
+Implementation notes:
+
+- factored `_run_linear_attention_attn_only()` and `_run_full_attention_attn_only()` from the one-token layer paths
+- added `_run_native_attention_bulk_ffn_layer_rows()` to loop native attention over prompt rows while batching `_run_post_attention_ffn_rows()`
+- extended `Qwen35GGUFResidentSession.prefill(..., bulk_attention_mode={"bulk","native"})`
+- extended `scripts/qwen35_gguf_bench.py --bulk-prefill-attention-mode {bulk,native}`
+- updated `scripts/qwen35_gguf_bulk_parity.py` to compare serial, parity-safe native-attention bulk, and faster fully-bulk attention in one artifact
+
+Correctness/parity evidence:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bulk_parity.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-qwen36-task55-native-bulk-parity.json
+# serial token 4469; default token 4469; native-attention bulk token 4469; KL=0.0; max_abs_logit=0.0
+# fast fully-bulk token 101478; KL=3.0287284520191466; max_abs_logit=14.37797737121582
+# fully-bulk drift remains: AOTriton full attention first at layer limit 4, native-full linear attention first at limit 14
+PYTHONPATH=. pytest -q tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt tests/test_llm_gguf_generate_path.py tests/test_gguf_linear_dispatch.py
+# 11 passed
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 2 \
+  --json /tmp/hipengine-qwen36-task55-native-default-correctness.json
+# passed=true; Hello -> izio.; ids [43482,13]; finite logits; torch_loaded_by_generate=false
+```
+
+Requested shape measurements for the parity-safe native-attention bulk-MoE path:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode native --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-qwen36-task55-nativebulk-512-128.json
+# prefill/decode 15.469383477 / 49.814408385 tok/s; tracked peak 20.885867577 GiB; final logits finite
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode native --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-qwen36-task55-nativebulk-4096-128.json
+# prefill/decode 14.205192371 / 33.164422705 tok/s; tracked peak 22.121930633 GiB; final logits finite
+```
+
+A short rocprof probe on 8/1 native-attention bulk-MoE showed dispatches `4888` and kernel total `184.158 ms`. That sits between the selected-device-expert serial-prefill profile (`8389` dispatches, `219.125 ms`) and the faster fully-bulk non-parity profile (`2178` dispatches, `141.864 ms`). Top native profile time is still raw GGUF Q8_0 prefill (`34.6%`), selected Q4_K expert prefill (`31.3%`), and selected Q5_K expert prefill (`17.4%`).
+
+Deltas vs the selected-device-expert serial-prefill diagnostic: 512/128 `+130%` prefill and roughly unchanged decode; 4K/128 `+110%` prefill and roughly unchanged decode. This is correctness-safe but far below PARO: prefill remains `-99.43%/-99.48%`, decode remains `-57.08%/-70.66%`. Task #55 remains open. The next two blockers are unchanged but now sharper: fix fully-bulk attention/recurrent parity if the `~103-116 tok/s` prefill path is to be accepted, then move grouped/packed MoE or GGUF-to-packed sidecar R&D to `~/amd-gpu-tuning/` before porting stable kernels back.
+
+Retained progress artifacts:
+
+- `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-native-attention-bulk-moe-diagnostic.json`
+- `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bulk-parity-diagnostic.json`

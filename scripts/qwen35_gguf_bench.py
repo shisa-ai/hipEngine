@@ -3,8 +3,9 @@
 
 The harness measures the public GGUF resident execution surface directly: a
 single persistent ``Qwen35GGUFResidentSession`` per run, default resident prefill
-(native bulk when supported, token-serial fallback for short prompts), one
-optional warmup decode token, and one-step HIP graph replay for measured
+(native bulk when supported, token-serial fallback for short prompts; qwen35moe
+uses parity-safe native-attention bulk by default), one optional warmup decode
+token, and one-step HIP graph replay for measured
 decode.  It is intentionally shape-driven so the retained artifacts can compare
 512/128 and 4K/128 against PARO resident diagnostics and llama.cpp GGUF rows.
 """
@@ -52,6 +53,12 @@ def main() -> int:
         "--no-bulk-prefill",
         action="store_true",
         help="Pass use_bulk=False to Qwen35GGUFResidentSession.prefill().",
+    )
+    parser.add_argument(
+        "--bulk-prefill-attention-mode",
+        choices=("bulk", "native"),
+        default="bulk",
+        help="When bulk prefill is forced/selected, use fully bulk attention or native row-serial attention with row-bulk FFN/MoE.",
     )
     parser.add_argument(
         "--graph-replay-decode",
@@ -108,6 +115,7 @@ def main() -> int:
             graph_replay_decode=args.graph_replay_decode,
             graph_steps_per_replay=args.graph_steps_per_replay,
             use_bulk_prefill=use_bulk_prefill,
+            bulk_attention_mode=args.bulk_prefill_attention_mode,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
             measured=measured,
@@ -129,7 +137,11 @@ def main() -> int:
         "model": str(args.model),
         "quant": args.quant,
         "backend": "hip_gfx1100",
-        "mode": _mode_name(graph_replay_decode=args.graph_replay_decode, use_bulk_prefill=use_bulk_prefill),
+        "mode": _mode_name(
+            graph_replay_decode=args.graph_replay_decode,
+            use_bulk_prefill=use_bulk_prefill,
+            bulk_attention_mode=args.bulk_prefill_attention_mode,
+        ),
         "prompt_source": "repeated_token_id",
         "token_id": int(args.token_id),
         "prompt_length": int(args.prompt_length),
@@ -141,6 +153,7 @@ def main() -> int:
         "graph_replay_decode": bool(args.graph_replay_decode),
         "graph_steps_per_replay": int(args.graph_steps_per_replay if args.graph_replay_decode else 0),
         "use_bulk_prefill": use_bulk_prefill,
+        "bulk_prefill_attention_mode": args.bulk_prefill_attention_mode,
         "require_cached_build": bool(args.require_cached_build),
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
         "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
@@ -148,7 +161,8 @@ def main() -> int:
         "summary": _summary(measured_runs),
         "notes": [
             "Prefill mode is controlled by --force-bulk-prefill/--no-bulk-prefill; default delegates to Qwen35GGUFResidentSession.prefill().",
-            "qwen35moe GGUF bulk prefill is diagnostic-only until stronger long-prompt parity/oracle gates land.",
+            "--bulk-prefill-attention-mode=native preserves row-serial attention while using row-bulk FFN/MoE and is the qwen35moe default when use_bulk is delegated.",
+            "--bulk-prefill-attention-mode=bulk is faster but qwen35moe diagnostic-only until its parity drift is resolved.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
         ],
     }
@@ -160,9 +174,9 @@ def main() -> int:
     return 0
 
 
-def _mode_name(*, graph_replay_decode: bool, use_bulk_prefill: bool | None) -> str:
+def _mode_name(*, graph_replay_decode: bool, use_bulk_prefill: bool | None, bulk_attention_mode: str) -> str:
     if use_bulk_prefill is True:
-        prefill = "bulk_prefill"
+        prefill = f"bulk_prefill_{bulk_attention_mode}_attention"
     elif use_bulk_prefill is False:
         prefill = "token_serial_prefill"
     else:
@@ -182,6 +196,7 @@ def _run_once(
     graph_replay_decode: bool,
     graph_steps_per_replay: int,
     use_bulk_prefill: bool | None,
+    bulk_attention_mode: str,
     compiler_version: str | None,
     require_cached_build: bool,
     measured: bool,
@@ -206,7 +221,12 @@ def _run_once(
     graph_capture_seconds = 0.0
     try:
         prefill_start = time.perf_counter()
-        first = session.prefill(prompt_tokens, use_bulk=use_bulk_prefill, return_logits=False)
+        first = session.prefill(
+            prompt_tokens,
+            use_bulk=use_bulk_prefill,
+            bulk_attention_mode=bulk_attention_mode,
+            return_logits=False,
+        )
         prefill_seconds = time.perf_counter() - prefill_start
         generated_token_ids.append(first.token_id)
         next_token = first.token_id
@@ -262,6 +282,7 @@ def _run_once(
         "decode_tokens": int(decode_tokens),
         "warmup_decode_tokens": int(warmup_decode_tokens),
         "use_bulk_prefill": use_bulk_prefill,
+        "bulk_prefill_attention_mode": bulk_attention_mode,
         "timings": {
             "load_seconds": load_seconds,
             "prefill_seconds": prefill_seconds,

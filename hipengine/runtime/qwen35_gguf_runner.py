@@ -690,6 +690,18 @@ class Qwen35GGUFFullStackRunner:
         self._run_post_attention_ffn_rows(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, rows=rows, stream=stream)
 
     def _run_linear_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
+        self._run_linear_attention_attn_only(layer_id, hidden_ptr, scratch.attn_out.ptr, scratch, stream=stream)
+        self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
+
+    def _run_linear_attention_attn_only(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        attn_out_ptr: int,
+        scratch,
+        *,
+        stream: int = 0,
+    ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
@@ -786,14 +798,55 @@ class Qwen35GGUFFullStackRunner:
         launch_gguf_linear(
             layer.weight("ssm_out"),
             scratch.recurrent_bf16.ptr,
-            scratch.attn_out.ptr,
+            attn_out_ptr,
             rows=1,
             in_features=cfg.ssm_inner_size,
             out_features=self.hidden_size,
             stream=stream,
             runtime=runtime,
         )
-        self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
+
+    def _run_native_attention_bulk_ffn_layer_rows(
+        self,
+        layer_id: int,
+        layer_type: str,
+        hidden_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        decode_scratch,
+        stream: int = 0,
+    ) -> None:
+        """Run row-serial attention followed by the row-bulk GGUF FFN/MoE path.
+
+        This parity-safe scheduler preserves the resident token-serial attention
+        kernels/state updates while still exercising the multi-row MoE path. It
+        is slower than the fully bulk prefill scheduler, but gives a correctness
+        baseline for qwen35moe GGUF bulk MoE work.
+        """
+
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        row_nbytes = self.hidden_size * DType.BF16.itemsize
+        for row in range(rows):
+            hidden_row = hidden_ptr + row * row_nbytes
+            attn_row = scratch.attn_out.ptr + row * row_nbytes
+            if layer_type == LINEAR_ATTENTION:
+                self._run_linear_attention_attn_only(layer_id, hidden_row, attn_row, decode_scratch, stream=stream)
+            elif layer_type == FULL_ATTENTION:
+                decode_scratch.set_full_attention_position(row, self.runtime or get_hip_runtime())
+                self._run_full_attention_attn_only(
+                    layer_id,
+                    hidden_row,
+                    attn_row,
+                    decode_scratch,
+                    position=row,
+                    stream=stream,
+                )
+            else:
+                raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+        self._run_post_attention_ffn_rows(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, rows=rows, stream=stream)
 
     def _run_linear_attention_prefill_layer_rows(
         self,
@@ -952,6 +1005,19 @@ class Qwen35GGUFFullStackRunner:
         position: int,
         stream: int = 0,
     ) -> None:
+        self._run_full_attention_attn_only(layer_id, hidden_ptr, scratch.attn_out.ptr, scratch, position=position, stream=stream)
+        self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
+
+    def _run_full_attention_attn_only(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        attn_out_ptr: int,
+        scratch,
+        *,
+        position: int,
+        stream: int = 0,
+    ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
@@ -1073,14 +1139,13 @@ class Qwen35GGUFFullStackRunner:
         launch_gguf_linear(
             layer.weight("attn_output"),
             scratch.full_gated.ptr,
-            scratch.attn_out.ptr,
+            attn_out_ptr,
             rows=1,
             in_features=self.q_width,
             out_features=self.hidden_size,
             stream=stream,
             runtime=runtime,
         )
-        self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
 
     def _run_post_attention_ffn(self, layer_id: int, hidden_ptr: int, attn_out_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
         self._run_post_attention_ffn_rows(layer_id, hidden_ptr, attn_out_ptr, out_ptr, scratch, rows=1, stream=stream)
@@ -1640,12 +1705,16 @@ class Qwen35GGUFResidentSession:
         token_ids: list[int] | tuple[int, ...],
         *,
         use_bulk: bool | None = None,
+        bulk_attention_mode: str = "bulk",
         return_logits: bool = True,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume prompt tokens once and return the greedy next token.
 
         Prompts at least as long as the linear-attention convolution kernel use
-        the native bulk prefill scheduler by default. Short prompts keep the
+        native bulk prefill by default. qwen35moe defaults to a parity-safe
+        scheduler that preserves row-serial attention state updates and batches
+        only the FFN/MoE rows; the faster fully bulk attention scheduler remains
+        opt-in via ``bulk_attention_mode='bulk'``. Short prompts keep the
         token-serial path as a correctness/bisect fallback. Set
         ``return_logits=False`` for public generation paths that only need the
         sampled token and should avoid copying full logits back to the host.
@@ -1656,11 +1725,13 @@ class Qwen35GGUFResidentSession:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
+        selected_bulk_attention_mode = bulk_attention_mode
         if self.runner.weights.config.is_moe and use_bulk is None:
-            # qwen35moe bulk GGUF prefill is available as an explicit diagnostic
-            # path, but it is not the public default until a stronger long-prompt
-            # oracle closes the remaining serial-vs-bulk drift.
-            run_bulk = False
+            # qwen35moe defaults to the parity-safe bulk scheduler: resident
+            # row-serial attention kernels preserve token-serial state semantics,
+            # then MoE/FFN work is batched over prompt rows.
+            selected_bulk_attention_mode = "native"
+            run_bulk = len(token_ids) >= min_bulk_tokens
         else:
             run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
         if run_bulk:
@@ -1668,7 +1739,11 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
                 )
-            return self._run_bulk_prefill_and_sample(token_ids, return_logits=return_logits)
+            return self._run_bulk_prefill_and_sample(
+                token_ids,
+                bulk_attention_mode=selected_bulk_attention_mode,
+                return_logits=return_logits,
+            )
 
         self.reset()
         hidden_ptr = None
@@ -1683,6 +1758,7 @@ class Qwen35GGUFResidentSession:
         token_ids: list[int] | tuple[int, ...],
         *,
         stream: int = 0,
+        bulk_attention_mode: str = "bulk",
         return_logits: bool = True,
     ) -> Qwen35GGUFNextTokenProbeResult:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
@@ -1696,6 +1772,8 @@ class Qwen35GGUFResidentSession:
             raise ValueError("token_ids must be non-empty")
         if rows > self.scratch.max_positions:
             raise ValueError(f"GGUF bulk prefill rows {rows} exceed cache capacity {self.scratch.max_positions}")
+        if bulk_attention_mode not in {"bulk", "native"}:
+            raise ValueError("bulk_attention_mode must be 'bulk' or 'native'")
         runtime = self.runtime or get_hip_runtime()
         tokens = np.asarray([int(token) for token in token_ids], dtype=np.int64)
         for token in tokens.tolist():
@@ -1717,7 +1795,18 @@ class Qwen35GGUFResidentSession:
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
         for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
-            if layer_type == LINEAR_ATTENTION:
+            if bulk_attention_mode == "native":
+                self.runner._run_native_attention_bulk_ffn_layer_rows(
+                    layer_id,
+                    layer_type,
+                    src.ptr,
+                    dst.ptr,
+                    bulk_scratch,
+                    rows=rows,
+                    stream=stream,
+                    decode_scratch=self.scratch,
+                )
+            elif layer_type == LINEAR_ATTENTION:
                 self.runner._run_linear_attention_prefill_layer_rows(
                     layer_id,
                     src.ptr,
