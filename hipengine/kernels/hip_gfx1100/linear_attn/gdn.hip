@@ -1,5 +1,6 @@
-// Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed.
-// Qwen3.5 GDN recurrent RMSNorm+gate lowp kernel body is preserved; wrapper is hipEngine C ABI.
+// Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip.
+// Baseline GDN decode/prefill kernels track @ 59195ed; DFlash tree t-loop
+// variants track @ b95eaa5. Wrappers are hipEngine raw-pointer C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
@@ -694,6 +695,191 @@ __global__ void qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16_kernel(
   }
 }
 
+// One-launch parent-indexed tree GatedDeltaNet recurrence.
+//
+// Ported from nano-vllm-amd@b95eaa5. Each block owns one (v_head, dv) pair
+// and walks t=0..N in topological order. RMSNorm+gate finalization is a second
+// raw-pointer kernel over the fixed acc_buf supplied by the runtime.
+template <typename scalar_t>
+__global__ void qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel(
+    const float* __restrict__ conv_out,
+    const scalar_t* __restrict__ /* gate */,
+    const scalar_t* __restrict__ a,
+    const scalar_t* __restrict__ b,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a_log,
+    const float* __restrict__ /* norm_weight */,
+    const float* __restrict__ base_recurrent_state,
+    float* __restrict__ tree_recurrent_state,
+    const int64_t* __restrict__ parent_ids,
+    float* __restrict__ acc_buf,
+    int64_t max_nodes,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  constexpr int BLOCK = 64;
+  constexpr int DK_MAX = 4;
+  __shared__ float partial[BLOCK];
+
+  const int64_t v_head = blockIdx.x;
+  const int64_t dv_idx = blockIdx.y;
+  if (v_head >= num_v_heads || dv_idx >= head_v_dim) {
+    return;
+  }
+  const int64_t repeat = num_v_heads / num_k_heads;
+  const int64_t k_head = v_head / repeat;
+  const int64_t key_dim = num_k_heads * head_k_dim;
+  const int64_t value_dim = num_v_heads * head_v_dim;
+  const int64_t conv_stride = (2 * key_dim) + value_dim;
+  const int64_t state_stride = num_v_heads * head_k_dim * head_v_dim;
+  const int64_t state_head_base = v_head * head_k_dim * head_v_dim;
+  const float a_log_v = a_log[v_head];
+  const float dt_bias_v = dt_bias[v_head];
+  const int tid = static_cast<int>(threadIdx.x);
+  const int dk_per_thread = static_cast<int>(head_k_dim / BLOCK);
+
+  for (int64_t t = 0; t < max_nodes; ++t) {
+    const int64_t parent = parent_ids[t];
+    const int64_t conv_row = t * conv_stride;
+    const int64_t q_base = conv_row + k_head * head_k_dim;
+    const int64_t k_base = conv_row + key_dim + k_head * head_k_dim;
+    const int64_t value_offset = conv_row + 2 * key_dim + v_head * head_v_dim;
+    const float* parent_state = parent < 0
+        ? base_recurrent_state + state_head_base
+        : tree_recurrent_state + parent * state_stride + state_head_base;
+    float* node_state = tree_recurrent_state + t * state_stride + state_head_base;
+
+    float q_local[DK_MAX];
+    float k_local[DK_MAX];
+    float ps_local[DK_MAX];
+    float q_sum_local = 0.0f;
+    float k_sum_local = 0.0f;
+    #pragma unroll
+    for (int i = 0; i < DK_MAX; ++i) {
+      const int dk = tid * dk_per_thread + i;
+      if (i < dk_per_thread && dk < head_k_dim) {
+        q_local[i] = conv_out[q_base + dk];
+        k_local[i] = conv_out[k_base + dk];
+        ps_local[i] = parent_state[dk * head_v_dim + dv_idx];
+        q_sum_local += q_local[i] * q_local[i];
+        k_sum_local += k_local[i] * k_local[i];
+      } else {
+        q_local[i] = 0.0f;
+        k_local[i] = 0.0f;
+        ps_local[i] = 0.0f;
+      }
+    }
+
+    partial[tid] = q_sum_local;
+    __syncthreads();
+    #pragma unroll
+    for (int stride = BLOCK / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        partial[tid] += partial[tid + stride];
+      }
+      __syncthreads();
+    }
+    const float q_sum = partial[0];
+    __syncthreads();
+    partial[tid] = k_sum_local;
+    __syncthreads();
+    #pragma unroll
+    for (int stride = BLOCK / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        partial[tid] += partial[tid + stride];
+      }
+      __syncthreads();
+    }
+    const float k_sum = partial[0];
+    __syncthreads();
+
+    const float q_scale = rsqrtf(q_sum + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = rsqrtf(k_sum + 1.0e-6f);
+    const float beta = sigmoid_f32(scalar_to_float_qwen35(b[t * num_v_heads + v_head]));
+    const float decay = expf(-expf(a_log_v) * softplus_f32(scalar_to_float_qwen35(a[t * num_v_heads + v_head]) + dt_bias_v));
+
+    float kv_local = 0.0f;
+    #pragma unroll
+    for (int i = 0; i < DK_MAX; ++i) {
+      if (i < dk_per_thread) {
+        const float kn = k_local[i] * k_scale;
+        const float ds = ps_local[i] * decay;
+        kv_local += kn * ds;
+      }
+    }
+    partial[tid] = kv_local;
+    __syncthreads();
+    #pragma unroll
+    for (int stride = BLOCK / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        partial[tid] += partial[tid + stride];
+      }
+      __syncthreads();
+    }
+    const float kv_mem = partial[0];
+    __syncthreads();
+
+    const float value = conv_out[value_offset + dv_idx];
+    const float delta = (value - kv_mem) * beta;
+    float out_local = 0.0f;
+    #pragma unroll
+    for (int i = 0; i < DK_MAX; ++i) {
+      const int dk = tid * dk_per_thread + i;
+      if (i < dk_per_thread && dk < head_k_dim) {
+        const float new_state = ps_local[i] * decay + k_local[i] * k_scale * delta;
+        node_state[dk * head_v_dim + dv_idx] = new_state;
+        out_local += new_state * (q_local[i] * q_scale);
+      }
+    }
+    partial[tid] = out_local;
+    __syncthreads();
+    #pragma unroll
+    for (int stride = BLOCK / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        partial[tid] += partial[tid + stride];
+      }
+      __syncthreads();
+    }
+    if (tid == 0) {
+      acc_buf[(t * num_v_heads + v_head) * head_v_dim + dv_idx] = partial[0];
+    }
+    __syncthreads();
+  }
+}
+
+template <typename scalar_t>
+__global__ void qwen35_gdn_tree_rmsnorm_gate_finalize_kernel(
+    const float* __restrict__ acc_buf,
+    const scalar_t* __restrict__ gate,
+    const float* __restrict__ norm_weight,
+    float* __restrict__ out,
+    float eps,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  extern __shared__ float shared[];
+  float* partial = shared;
+  const int64_t v_head = blockIdx.x;
+  const int64_t t = blockIdx.y;
+  const int64_t tid = threadIdx.x;
+  const int64_t value_dim = num_v_heads * head_v_dim;
+  const float* row = acc_buf + (t * num_v_heads + v_head) * head_v_dim;
+  const float val = (tid < head_v_dim) ? row[tid] : 0.0f;
+  partial[tid] = val * val;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid < head_v_dim) {
+    const float inv_rms = rsqrtf(partial[0] / static_cast<float>(head_v_dim) + eps);
+    const int64_t pos = v_head * head_v_dim + tid;
+    out[t * value_dim + pos] = val * inv_rms * norm_weight[tid] * silu_f32(scalar_to_float_qwen35(gate[t * value_dim + pos]));
+  }
+}
+
 bool valid_gdn_shape(int64_t num_k_heads, int64_t num_v_heads, int64_t head_k_dim, int64_t head_v_dim) {
   return num_k_heads > 0 && num_v_heads > 0 && (num_v_heads % num_k_heads) == 0 &&
       head_k_dim > 0 && head_v_dim > 0 && head_v_dim <= 128;
@@ -792,6 +978,160 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16(
       head_k_dim,
       head_v_dim);
   return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t>
+int launch_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop(
+    const float* conv_out,
+    const scalar_t* gate,
+    const scalar_t* a,
+    const scalar_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    const float* base_recurrent_state,
+    float* tree_recurrent_state,
+    const int64_t* parent_ids,
+    float* acc_buf,
+    float* out,
+    float eps,
+    int64_t max_nodes,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (max_nodes <= 0 || !valid_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim) ||
+      head_k_dim > 256 || (head_k_dim % 64) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 64;
+  hipLaunchKernelGGL(
+      (qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel<scalar_t>),
+      dim3(static_cast<unsigned int>(num_v_heads), static_cast<unsigned int>(head_v_dim)),
+      dim3(threads),
+      0,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      base_recurrent_state,
+      tree_recurrent_state,
+      parent_ids,
+      acc_buf,
+      max_nodes,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  int err = static_cast<int>(hipGetLastError());
+  if (err != static_cast<int>(hipSuccess)) {
+    return err;
+  }
+  const int finalize_threads = 128;
+  const size_t finalize_shared = static_cast<size_t>(finalize_threads) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_tree_rmsnorm_gate_finalize_kernel<scalar_t>),
+      dim3(static_cast<unsigned int>(num_v_heads), static_cast<unsigned int>(max_nodes)),
+      dim3(finalize_threads),
+      finalize_shared,
+      stream,
+      acc_buf,
+      gate,
+      norm_weight,
+      out,
+      eps,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_bf16(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    const float* base_recurrent_state,
+    float* tree_recurrent_state,
+    const int64_t* parent_ids,
+    float* acc_buf,
+    float* out,
+    float eps,
+    int64_t max_nodes,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  return launch_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop<uint16_t>(
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      base_recurrent_state,
+      tree_recurrent_state,
+      parent_ids,
+      acc_buf,
+      out,
+      eps,
+      max_nodes,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16(
+    const float* conv_out,
+    const half_t* gate,
+    const half_t* a,
+    const half_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    const float* base_recurrent_state,
+    float* tree_recurrent_state,
+    const int64_t* parent_ids,
+    float* acc_buf,
+    float* out,
+    float eps,
+    int64_t max_nodes,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  return launch_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop<half_t>(
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      base_recurrent_state,
+      tree_recurrent_state,
+      parent_ids,
+      acc_buf,
+      out,
+      eps,
+      max_nodes,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim,
+      stream);
 }
 
 extern "C" int hipengine_qwen35_gdn_prefill_recurrent_f32(

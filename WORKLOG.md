@@ -16915,3 +16915,57 @@ python3 -m pytest tests/test_speculative_buffer_owner.py tests/test_dflash_chain
 git diff --check
 # pytest: 30 passed
 ```
+
+## 2026-05-18 — DFlash tree Conv/GDN t-loop kernel port
+
+### Scope
+
+- Ported the corrected parent-indexed DFlash tree Conv1D and GDN t-loop kernels from `nano-vllm-amd/csrc/amd/qwen35_expert.hip` (`b95eaa5`) into `hipengine/kernels/hip_gfx1100/linear_attn/{conv,gdn}.hip` with raw-pointer C ABI wrappers.
+- Added BF16/FP16 Python wrappers for `linear_attn_tree_conv_decode` and `gdn_tree_recurrent_rmsnorm_gate`, registered under both `hip_gfx1100` and `hip_gfx1151` plugin keys.
+- GDN tree recurrence writes the fixed verifier `acc_buf` and launches a raw-pointer RMSNorm+gate finalize kernel on the same stream; finalize uses 128 threads so non-power-of-two `head_v_dim <= 128` remains valid.
+- Added `scripts/qwen35_linear_attn_tree_tloop_smoke.py`, a deterministic NumPy oracle smoke covering topological parent chains/trees for N={2,4,8} and BF16+FP16 variants without torch.
+- Updated `docs/KERNELS.md` catalog, DFlash lineage row, inventory counts, and gfx1151 smoke/rocprof evidence.
+
+### Validation
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/linear_attn/conv.py \
+  hipengine/kernels/hip_gfx1100/linear_attn/gdn.py \
+  hipengine/kernels/hip_gfx1100/linear_attn/__init__.py \
+  scripts/qwen35_linear_attn_tree_tloop_smoke.py
+python3 -m pytest \
+  tests/test_qwen35_linear_attn_conv_plan.py \
+  tests/test_qwen35_linear_attn_gdn_plan.py \
+  tests/test_kernel_registry.py \
+  tests/test_model_quant_and_imports.py -q
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_linear_attn_tree_tloop_smoke.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build
+rm -rf /tmp/hipengine-dflash-tree-prof && mkdir -p /tmp/hipengine-dflash-tree-prof
+HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace -f csv \
+  -d /tmp/hipengine-dflash-tree-prof -o tree_tloop -- \
+  python3 scripts/qwen35_linear_attn_tree_tloop_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+python3 - <<'PY'
+import csv
+from collections import defaultdict
+p='/tmp/hipengine-dflash-tree-prof/tree_tloop_kernel_trace.csv'
+by=defaultdict(list)
+with open(p) as f:
+    for r in csv.DictReader(f):
+        if 'tree' in r['Kernel_Name']:
+            by[r['Kernel_Name']].append(int(r['End_Timestamp'])-int(r['Start_Timestamp']))
+for name, vals in by.items():
+    print(f'{name}: count={len(vals)} min={min(vals)} max={max(vals)}')
+PY
+git diff --check
+# pytest: 16 passed
+# smoke: N=2/4/8 BF16+FP16 conv/gdn max_abs=4.77e-07 on gfx1151
+# rocprofv3 1.1.0 / gfx1151: tree conv count=3 per dtype, DurationNs 2966–5851, Scratch_Size=0;
+# tree GDN recurrent count=3 per dtype, DurationNs 6492–18475, Scratch_Size=0;
+# tree GDN finalize count=3 per dtype, DurationNs 1723–2244.
+```

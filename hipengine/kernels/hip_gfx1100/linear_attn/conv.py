@@ -14,6 +14,8 @@ _OUTPUT_NAME = "qwen35_linear_attn_conv.so"
 _SYMBOL_F32 = "hipengine_qwen35_linear_attn_conv_decode_f32"
 _SYMBOL_BF16 = "hipengine_qwen35_linear_attn_conv_decode_bf16"
 _SYMBOL_FP16 = "hipengine_qwen35_linear_attn_conv_decode_fp16"
+_SYMBOL_TREE_BF16_TLOOP = "hipengine_qwen35_linear_attn_tree_conv_decode_bf16_tloop"
+_SYMBOL_TREE_FP16_TLOOP = "hipengine_qwen35_linear_attn_tree_conv_decode_fp16_tloop"
 _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
 _SYMBOL_PREFILL_FP16 = "hipengine_qwen35_linear_attn_conv_prefill_fp16"
 _SYMBOL_PREFILL_SEGMENTS_F32 = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32"
@@ -133,6 +135,74 @@ def qwen35_linear_attn_conv_decode_fp16(
         conv_state_ptr,
         conv_weight_ptr,
         out_ptr,
+        channels,
+        kernel_size,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_linear_attn_tree_conv_decode_bf16_tloop(
+    hidden_states_ptr: int,
+    base_conv_state_ptr: int,
+    tree_conv_state_ptr: int,
+    conv_weight_ptr: int,
+    parent_ids_ptr: int,
+    out_ptr: int,
+    max_nodes: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16-input parent-indexed tree convolution t-loop."""
+
+    _launch_tree_conv_tloop(
+        _SYMBOL_TREE_BF16_TLOOP,
+        hidden_states_ptr,
+        base_conv_state_ptr,
+        tree_conv_state_ptr,
+        conv_weight_ptr,
+        parent_ids_ptr,
+        out_ptr,
+        max_nodes,
+        channels,
+        kernel_size,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_linear_attn_tree_conv_decode_fp16_tloop(
+    hidden_states_ptr: int,
+    base_conv_state_ptr: int,
+    tree_conv_state_ptr: int,
+    conv_weight_ptr: int,
+    parent_ids_ptr: int,
+    out_ptr: int,
+    max_nodes: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16-input parent-indexed tree convolution t-loop."""
+
+    _launch_tree_conv_tloop(
+        _SYMBOL_TREE_FP16_TLOOP,
+        hidden_states_ptr,
+        base_conv_state_ptr,
+        tree_conv_state_ptr,
+        conv_weight_ptr,
+        parent_ids_ptr,
+        out_ptr,
+        max_nodes,
         channels,
         kernel_size,
         stream=stream,
@@ -274,6 +344,17 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
         qwen35_linear_attn_conv_prefill_segments_f32,
         replace=replace,
     )
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        register(
+            KernelKey(backend, "linear_attn_tree_conv_decode", "w4_paro", "bf16_tloop"),
+            qwen35_linear_attn_tree_conv_decode_bf16_tloop,
+            replace=replace,
+        )
+        register(
+            KernelKey(backend, "linear_attn_tree_conv_decode", "w4_paro", "fp16_tloop"),
+            qwen35_linear_attn_tree_conv_decode_fp16_tloop,
+            replace=replace,
+        )
 
 
 def _launch_conv(
@@ -308,6 +389,57 @@ def _launch_conv(
         ctypes.c_void_p(conv_state_ptr),
         ctypes.c_void_p(conv_weight_ptr),
         ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(channels),
+        ctypes.c_int64(kernel_size),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_tree_conv_tloop(
+    symbol: str,
+    hidden_states_ptr: int,
+    base_conv_state_ptr: int,
+    tree_conv_state_ptr: int,
+    conv_weight_ptr: int,
+    parent_ids_ptr: int,
+    out_ptr: int,
+    max_nodes: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(max_nodes, "max_nodes")
+    _check_conv_shape(channels, kernel_size)
+    if kernel_size < 2:
+        raise ValueError("tree conv requires kernel_size >= 2")
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_states_ptr),
+        ctypes.c_void_p(base_conv_state_ptr),
+        ctypes.c_void_p(tree_conv_state_ptr),
+        ctypes.c_void_p(conv_weight_ptr),
+        ctypes.c_void_p(parent_ids_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(max_nodes),
         ctypes.c_int64(channels),
         ctypes.c_int64(kernel_size),
         ctypes.c_void_p(stream),

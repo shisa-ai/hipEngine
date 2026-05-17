@@ -1,5 +1,6 @@
-// Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed.
-// Qwen3.5 linear-attention decode convolution kernel bodies are preserved; wrappers are hipEngine C ABI.
+// Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip.
+// Baseline decode/prefill convolution kernels track @ 59195ed; DFlash tree
+// t-loop variants track @ b95eaa5. Wrappers are hipEngine raw-pointer C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
@@ -334,6 +335,49 @@ __global__ void qwen35_linear_attn_conv_prefill_segments_state_kernel(
   }
 }
 
+// One-launch parent-indexed linear-attention conv update for an N-node tree.
+//
+// Ported from nano-vllm-amd@b95eaa5. Each thread owns one channel and walks
+// t=0..N in topological order, so parent_ids[t] < t references a state row
+// written earlier by the same thread. No host depth loop or cross-thread sync
+// is required.
+template <typename scalar_t>
+__global__ void qwen35_linear_attn_tree_conv_decode_lowp_tloop_kernel(
+    const scalar_t* __restrict__ hidden_states,
+    const float* __restrict__ base_conv_state,
+    float* __restrict__ tree_conv_state,
+    const float* __restrict__ conv_weight,
+    const int64_t* __restrict__ parent_ids,
+    float* __restrict__ out,
+    int64_t max_nodes,
+    int64_t channels,
+    int64_t kernel_size) {
+  const int64_t channel = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (channel >= channels) {
+    return;
+  }
+  const int64_t state_stride = channels * kernel_size;
+  const int64_t channel_base = channel * kernel_size;
+  const float* weight = conv_weight + channel_base;
+  for (int64_t t = 0; t < max_nodes; ++t) {
+    const int64_t parent = parent_ids[t];
+    const float* parent_state = parent < 0
+        ? base_conv_state + channel_base
+        : tree_conv_state + parent * state_stride + channel_base;
+    float* node_state = tree_conv_state + t * state_stride + channel_base;
+    float acc = 0.0f;
+    for (int64_t k = 0; k + 1 < kernel_size; ++k) {
+      const float value = parent_state[k + 1];
+      node_state[k] = value;
+      acc += value * weight[k];
+    }
+    const float token_value = scalar_to_float_qwen35(hidden_states[t * channels + channel]);
+    node_state[kernel_size - 1] = token_value;
+    acc += token_value * weight[kernel_size - 1];
+    out[t * channels + channel] = silu_f32(acc);
+  }
+}
+
 bool valid_conv_shape(int64_t channels, int64_t kernel_size) {
   return channels > 0 && kernel_size > 0;
 }
@@ -419,6 +463,74 @@ extern "C" int hipengine_qwen35_linear_attn_conv_decode_fp16(
       conv_state,
       conv_weight,
       out,
+      channels,
+      kernel_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_tree_conv_decode_bf16_tloop(
+    const uint16_t* hidden_states,
+    const float* base_conv_state,
+    float* tree_conv_state,
+    const float* conv_weight,
+    const int64_t* parent_ids,
+    float* out,
+    int64_t max_nodes,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  if (max_nodes <= 0 || !valid_conv_shape(channels, kernel_size) || kernel_size < 2) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((channels + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      (qwen35_linear_attn_tree_conv_decode_lowp_tloop_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      hidden_states,
+      base_conv_state,
+      tree_conv_state,
+      conv_weight,
+      parent_ids,
+      out,
+      max_nodes,
+      channels,
+      kernel_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_tree_conv_decode_fp16_tloop(
+    const half_t* hidden_states,
+    const float* base_conv_state,
+    float* tree_conv_state,
+    const float* conv_weight,
+    const int64_t* parent_ids,
+    float* out,
+    int64_t max_nodes,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  if (max_nodes <= 0 || !valid_conv_shape(channels, kernel_size) || kernel_size < 2) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((channels + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      (qwen35_linear_attn_tree_conv_decode_lowp_tloop_kernel<half_t>),
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      hidden_states,
+      base_conv_state,
+      tree_conv_state,
+      conv_weight,
+      parent_ids,
+      out,
+      max_nodes,
       channels,
       kernel_size);
   return static_cast<int>(hipGetLastError());

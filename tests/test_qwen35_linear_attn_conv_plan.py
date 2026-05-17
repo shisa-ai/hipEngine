@@ -10,6 +10,8 @@ from hipengine.kernels.hip_gfx1100.linear_attn import (
     qwen35_linear_attn_conv_prefill_f32,
     qwen35_linear_attn_conv_prefill_fp16,
     qwen35_linear_attn_conv_prefill_segments_f32,
+    qwen35_linear_attn_tree_conv_decode_bf16_tloop,
+    qwen35_linear_attn_tree_conv_decode_fp16_tloop,
     register_qwen35_linear_attn_conv_kernels,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
@@ -76,6 +78,25 @@ def test_qwen35_linear_attn_conv_registers_decode_and_prefill_variants() -> None
         )
         is qwen35_linear_attn_conv_prefill_segments_f32
     )
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        assert (
+            resolve(
+                backend=backend,
+                layer="linear_attn_tree_conv_decode",
+                quant="w4_paro",
+                variant="bf16_tloop",
+            )
+            is qwen35_linear_attn_tree_conv_decode_bf16_tloop
+        )
+        assert (
+            resolve(
+                backend=backend,
+                layer="linear_attn_tree_conv_decode",
+                quant="w4_paro",
+                variant="fp16_tloop",
+            )
+            is qwen35_linear_attn_tree_conv_decode_fp16_tloop
+        )
 
 
 def test_qwen35_linear_attn_conv_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -108,3 +129,7 @@ def test_qwen35_linear_attn_conv_wrappers_validate_before_gpu_load() -> None:
         qwen35_linear_attn_conv_prefill_fp16(0, 0, 0, 0, 2, 4, 4)
     with pytest.raises(ValueError, match="segments must be positive"):
         qwen35_linear_attn_conv_prefill_segments_f32(0, 0, 0, 0, 0, 0, 4, 0, 4, 4)
+    with pytest.raises(ValueError, match="max_nodes must be positive"):
+        qwen35_linear_attn_tree_conv_decode_bf16_tloop(0, 0, 0, 0, 0, 0, 0, 4, 4)
+    with pytest.raises(ValueError, match="tree conv requires kernel_size >= 2"):
+        qwen35_linear_attn_tree_conv_decode_fp16_tloop(0, 0, 0, 0, 0, 0, 1, 4, 1)
