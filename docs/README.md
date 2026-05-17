@@ -13,6 +13,7 @@ working on.
 | --- | --- |
 | [`PLAN.md`](PLAN.md) | Source of truth for architecture, plugin boundaries, phase roadmap, LoC budgets, and invariants. |
 | [`IMPLEMENTATION.md`](IMPLEMENTATION.md) | Current implementation status, concrete milestones, and integration notes. |
+| [`API.md`](API.md) | OpenAI-compatible FastAPI server usage, endpoint support, and current limitations. |
 | [`OPTIMIZE.md`](OPTIMIZE.md) | Active optimization board and accepted/rejected/deferred candidate decisions. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
 

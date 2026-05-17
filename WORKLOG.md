@@ -15764,3 +15764,54 @@ if a future M.4-style profile shows GDN growing materially after other lanes
 change.
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d51-gdn-decode-audit.json`.
+
+2026-05-17 — Added optional FastAPI / OpenAI-compatible server layer for v0.1.
+
+Implemented `hipengine.server` as an optional `[server]` surface that adapts
+OpenAI-style requests to the existing torch-free `LLM.generate()` API. The app
+factory is `hipengine.server.create_app(ServerConfig(...))`; the CLI is
+`python -m hipengine.server` / `hipengine-server`. Endpoints landed:
+
+- `GET /health`
+- `GET /v1/models`
+- `POST /v1/completions`
+- `POST /v1/chat/completions`
+
+Current behavior/limits are explicit: single-process requests are serialized
+behind an async lock because the runnable runtime is still c=1; streaming is a
+compatibility one-chunk SSE plus `[DONE]`; `n>1`, `logprobs`, and non-text chat
+content parts are rejected; token `usage` is exact only for an injected engine
+with `count_tokens`, otherwise the public `LLM` path returns zero placeholders
+until tokenizer accounting is exposed.
+
+Docs updated: root README server quickstart, new `docs/API.md`, docs index, and
+`docs/IMPLEMENTATION.md` Phase 1 server checkbox. Packaging updated with
+`hipengine-server` console script and dev extra server-test deps.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/server/api.py hipengine/server/__init__.py hipengine/server/__main__.py
+python3 -m pytest tests/test_server_api.py tests/test_llm_generate.py tests/test_model_quant_and_imports.py -q --tb=short
+# 15 passed
+python3 -m hipengine.server --help
+python3 - <<'PY'
+from pathlib import Path
+import re, urllib.parse, sys
+fail=[]
+for md in [Path('README.md'), Path('docs/README.md'), Path('docs/API.md')]:
+    text=md.read_text()
+    for m in re.finditer(r'\[[^\]]+\]\(([^)]+)\)', text):
+        target=m.group(1).split('#',1)[0]
+        if not target or '://' in target or target.startswith('mailto:'):
+            continue
+        path=(md.parent / urllib.parse.unquote(target)).resolve()
+        if not path.exists():
+            fail.append((str(md), target))
+if fail:
+    raise SystemExit(fail)
+print('markdown links OK')
+PY
+python3 -m pytest -q
+# full suite passed
+```

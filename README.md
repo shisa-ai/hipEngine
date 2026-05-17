@@ -166,6 +166,24 @@ registered in `hipengine.generation`; unsupported `(model, backend, quant)`
 combinations fail loudly rather than falling back to a generic torch path. See
 [`docs/PLAN.md`](docs/PLAN.md) for the model / quant roadmap.
 
+## OpenAI-compatible server
+
+Install the optional server extra and run the FastAPI layer:
+
+```bash
+pip install -e ".[server]"
+python -m hipengine.server \
+  --model /path/to/model \
+  --backend hip_gfx1100 \
+  --quant w4_paro \
+  --served-model-name qwen-paro
+```
+
+Supported v0.1 endpoints: `GET /v1/models`, `POST /v1/completions`, and
+`POST /v1/chat/completions` (including one-chunk SSE for `stream=true`). See
+[`docs/API.md`](docs/API.md) for request examples, bearer-token auth, and
+current limitations.
+
 ## Documentation
 
 | File | Purpose |
@@ -176,6 +194,7 @@ combinations fail loudly rather than falling back to a generic torch path. See
 | [`docs/KERNELS.md`](docs/KERNELS.md) | Kernel catalog, source-lineage drift workflow, JIT cache gotchas, build profiles |
 | [`docs/ROOFLINE.md`](docs/ROOFLINE.md) | RDNA3 / W7900 performance model and decision tree |
 | [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) | Implementation status and concrete milestones |
+| [`docs/API.md`](docs/API.md) | OpenAI-compatible server usage and endpoint support |
 | [`docs/PREFILL.md`](docs/PREFILL.md) | Native prefill implementation spec |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |
 | [`docs/DFLASH.md`](docs/DFLASH.md) | DFlash draft-model speculative decode plan |
