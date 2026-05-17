@@ -83,6 +83,40 @@ def test_plan_hip_build_can_disable_unroll600_for_diagnostics(
     assert "-mcumode" in no_unroll.flags
 
 
+def test_plan_hip_build_can_enable_prefill_mcumode_for_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" __global__ void smoke() {}\n")
+
+    default = plan_hip_build(
+        sources=[source],
+        family="smoke",
+        profile="prefill",
+        cache_root=tmp_path / "cache",
+        compiler_version="hipcc test version",
+    )
+    monkeypatch.setenv("HIPENGINE_PREFILL_MCUMODE", "1")
+    with_mcumode = plan_hip_build(
+        sources=[source],
+        family="smoke",
+        profile="prefill",
+        cache_root=tmp_path / "cache",
+        compiler_version="hipcc test version",
+    )
+    decode = plan_hip_build(
+        sources=[source],
+        family="smoke",
+        profile="decode",
+        cache_root=tmp_path / "cache",
+        compiler_version="hipcc test version",
+    )
+
+    assert default.cache_key != with_mcumode.cache_key
+    assert "-mcumode" not in default.flags
+    assert with_mcumode.flags[-1] == "-mcumode"
+    assert decode.flags.count("-mcumode") == 1
+
+
 def test_build_hip_dry_run_does_not_create_cache_or_run_compiler(tmp_path: Path) -> None:
     source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
 

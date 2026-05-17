@@ -14987,3 +14987,86 @@ python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen36-shisa-packed
 python3 -m pytest tests/test_qwen35_paro_layout.py -q --tb=short
 # 20 passed
 ```
+
+## 2026-05-17 — P1.6 selective prefill `-mcumode` build-profile sweep
+
+Task #17 evaluated `docs/OPTIMIZE.md` P1.6 after the P1.5 unroll-600 default. I
+added a diagnostic-only build knob, `HIPENGINE_PREFILL_MCUMODE=1`, which appends
+`-mcumode` only to artifacts built with the `prefill` profile and does not
+duplicate the flag on libraries that already request it. Dry-run audit of the
+surface with `/tmp/hipengine-hipcc-version.txt`:
+
+- default `aotriton_wrap`: `-mllvm -amdgpu-unroll-threshold-local=600` plus
+  include/linker flags, no `-mcumode`.
+- default `qwen35_moe_group_scatter`: `-mllvm -amdgpu-unroll-threshold-local=600`.
+- default `paro_awq_wmma`: already includes `-mcumode`.
+- with `HIPENGINE_PREFILL_MCUMODE=1`, only `aotriton_wrap` and
+  `qwen35_moe_group_scatter` gain `-mcumode`; compact WMMA and most dual-use
+  decode/prefill libraries were already CU-mode builds.
+
+Benchmark protocol on W7900/gfx1100, current `HEAD=5336924`, uncommitted P1.6
+knob/tests/artifact docs pending. All measured rows used cache-only HIP builds
+after this prebuild:
+
+```bash
+HIPENGINE_PREFILL_MCUMODE=1 python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --max-layers 4 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p16-mcumode-20260517/prebuild-prefill-mcumode-l4.json
+```
+
+Measured commands were two repetitions of default vs `HIPENGINE_PREFILL_MCUMODE=1`
+for z-lab Qwen3.5 legacy and shisa Qwen3.6 forced-packed at 512/128 and 4K/128:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-or-shisa-unstripped> --shared-expert-format {auto,packed_paro_w4} \
+  --prompt-length {512,4096} --token-id 9707 --decode-tokens 128 \
+  --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p16-mcumode-20260517/<mode>-<model>-<prompt>-128-runN.json
+
+HIPENGINE_PREFILL_MCUMODE=1 python3 scripts/qwen35_paro_bench.py ...same args...
+```
+
+Two-run median results, `HIPENGINE_PREFILL_MCUMODE=1` vs default:
+
+| model | workload | default prefill | mcumode prefill | Δ | default decode | mcumode decode | Δ | peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab Qwen3.5 legacy | 512/128 | `2213.547` | `2218.591` | `+0.23%` | `115.429` | `115.295` | `-0.12%` | `18.176` |
+| z-lab Qwen3.5 legacy | 4K/128 | `2467.088` | `2463.313` | `-0.15%` | `116.718` | `116.701` | `-0.01%` | `20.047` |
+| shisa Qwen3.6 packed | 512/128 | `2423.833` | `2437.094` | `+0.55%` | `111.547` | `111.634` | `+0.08%` | `18.123` |
+| shisa Qwen3.6 packed | 4K/128 | `2675.662` | `2681.342` | `+0.21%` | `112.463` | `112.630` | `+0.15%` | `19.995` |
+
+Correctness/sanity:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_PREFILL_MCUMODE=1 \
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p16-mcumode-20260517/prefill-mcumode-native-prefill-fixture-gate.json
+# passed=True, max_kl=0.039568870612619614, top1_agreement=1.0, generated_match=True
+```
+
+Default and P1.6 rows produced identical first-two generated token IDs and logits
+(max logit delta `0.0`) across every repetition. Decision: reject P1.6 as a
+default build-profile change because the measured surface is neutral/noisy
+(prefill `-0.15%..+0.55%`, decode `-0.12%..+0.15%`, memory unchanged). Keep
+`HIPENGINE_PREFILL_MCUMODE=1` only as a future compiler diagnostic knob.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p16-prefill-mcumode-rejected.json`.
+
+Post-update validation:
+
+```bash
+python3 -m py_compile hipengine/core/build.py scripts/qwen35_paro_bench.py
+python3 -m pytest tests/test_build.py tests/test_qwen35_paro_layout.py -q --tb=short
+# 27 passed
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p16-prefill-mcumode-rejected.json >/tmp/p16-artifact-check.json
+git diff --check
+```
