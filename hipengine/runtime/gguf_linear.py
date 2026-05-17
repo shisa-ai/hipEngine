@@ -118,7 +118,7 @@ def launch_gguf_linear(
         backend=backend,
         rows=rows,
     )
-    _ensure_linear_kernels_registered()
+    _ensure_linear_kernel_registered(dispatch.key)
     fn = resolve(
         backend=dispatch.key.backend,
         layer=dispatch.key.layer,
@@ -184,9 +184,18 @@ def _variant_for_rows(variant: str, *, rows: int) -> str:
     return variant
 
 
-def _ensure_linear_kernels_registered() -> None:
+def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     # Registry plan tests clear global registrations; keep GGUF runtime dispatch
-    # independent of previous test/import order.
+    # independent of previous test/import order without overwriting tests that
+    # deliberately replace one dispatch key with a fixture kernel.
+    if resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+        missing="none",
+    ) is not None:
+        return
     register_dense_gemv_kernels()
     register_gguf_k_gemv_kernels()
     register_gguf_q4_k_gemv_kernels()

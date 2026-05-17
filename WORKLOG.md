@@ -17642,3 +17642,29 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pyte
 ```
 
 Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-q4km-parity-benchmark-diagnostic.json`. Raw per-run JSON stays under `/tmp/hipengine-gguf-task50/`.
+
+## 2026-05-17 GGUF bulk prefill loop bootstrap
+
+Started `pi-multiloop` lane `gguf-prefill/run-20260517-080922` on branch `gguf-bulk-prefill` targeting Qwen3.6 packed PARO prefill rows: 512/128 >2451.2 tok/s and 4K/128 >2666.7 tok/s, with Q4_K_M public GGUF correctness/no-torch gates.
+
+Baseline verify command:
+
+```bash
+bash -lc 'set -euo pipefail; hipcc --version > /tmp/hipengine-hipcc-version.txt; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-runs 0 --measured-runs 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-bulk-loop-512.json >/tmp/hipengine-gguf-bulk-loop-512.out; python3 -c "import json; print(json.load(open(\"/tmp/hipengine-gguf-bulk-loop-512.json\"))[\"summary\"][\"prefill_tok_s\"][\"median\"])"'
+```
+
+Initial metric: `12.4936 tok/s`, but guard failed because the merge-era defensive GGUF linear dispatch re-registration overwrote `tests/test_gguf_linear_dispatch.py` fake registry kernels, causing the test to call HIP wrappers with `runtime='runtime-sentinel'`.
+
+Iteration 1 fixed `hipengine/runtime/gguf_linear.py` and `hipengine/runtime/gguf_embedding.py` to re-register built-in kernels only when the requested dispatch key is missing. This preserves runtime robustness after registry-clearing tests without overwriting deliberate registry test doubles.
+
+Post-fix validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/gguf_linear.py hipengine/runtime/gguf_embedding.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_gguf_linear_dispatch.py tests/test_gguf_embedding_dispatch.py -q
+# 8 passed
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --json /tmp/hipengine-gguf-bulk-loop-e2e.json >/tmp/hipengine-gguf-bulk-loop-e2e.out; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q'
+# 12 passed
+```
+
+Post-fix loop metric: `16.0414 tok/s` for 512-token prefill, back in the known token-serial baseline band. No bulk prefill scheduler has landed yet.
