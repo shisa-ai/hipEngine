@@ -14906,3 +14906,84 @@ python3 -m pytest \
   tests/test_qwen35_resident_batch_layout.py -q --tb=short
 # 76 passed
 ```
+
+## 2026-05-17 — Shisa Qwen3.6 packed-vs-legacy PARO refresh and compare tables
+
+Refreshed the shisa-ai Qwen3.6 PARO packed-vs-legacy diagnostic after the latest
+approved decode/prefill defaults, and updated `scripts/qwen35_compare_tables.py`
+so packed PARO sidecars are the least-surprising default comparison A:
+
+- `python3 scripts/qwen35_compare_tables.py --target shisa --against-target`
+  prints packed A vs legacy B.
+- `python3 scripts/qwen35_compare_tables.py --target legacy --against-target`
+  flips the A/B direction for decode-focused diagnostics.
+- `python3 scripts/qwen35_compare_tables.py --target shisa all` compares the
+  packed shisa row against external baselines.
+
+Benchmark protocol on W7900/gfx1100, cache-only HIP builds, graph replay decode:
+
+```bash
+# short rows
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 \
+  --shared-expert-format {packed_paro_w4,legacy_fp16} \
+  --prompt-length {512,4096} --token-id 9707 --decode-tokens 128 \
+  --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa36-packed-legacy-20260517/<label>.json
+
+# long rows add parent-style chunks
+python3 scripts/qwen35_paro_bench.py ... \
+  --prompt-length {32768,131072} \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024
+
+# packed-only stripped checkpoint sanity at 512/4K
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --shared-expert-format auto --prompt-length {512,4096} ...
+```
+
+Results (packed A vs legacy B):
+
+| workload | packed prefill | legacy prefill | packed Δ | packed decode | legacy decode | packed Δ | packed peak |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | `2518.836` | `2272.088` | `+10.9%` | `111.738` | `115.324` | `-3.1%` | `18.123 GiB` |
+| 4K/128 | `2711.013` | `2487.298` | `+9.0%` | `113.231` | `116.688` | `-3.0%` | `19.995 GiB` |
+| 32K/128 | `2130.562` | `1974.833` | `+7.9%` | `97.779` | `99.746` | `-2.0%` | `20.267 GiB` |
+| 128K/128 | `1048.543` | `1002.841` | `+4.6%` | `62.014` | `63.190` | `-1.9%` | `23.235 GiB` |
+
+Packed saves ~`0.052 GiB` tracked peak at every shape relative to legacy by
+omitting legacy W8A16 shared-expert buffers. Generated previews for all rows
+remain repeated token `9707`. Stripped packed-only auto rows at 512/4K match the
+forced-packed token previews and memory, with timing differing only by single-run
+noise.
+
+Packed-path approved-optimization audit:
+
+- Applicable and integrated: P1.4 compact WMMA prefill threshold=2, P2.3
+  AOTriton threshold=512, D2.1 Marlin-K non-expert decode default,
+  D3.1-D3.3 grouped-GQA long decode/default threshold, and packed shared-expert
+  decode fusion (`paro_rotate2` gate/up + fused SiLU+down-rotate).
+- Accepted legacy-only optimizations P1.2/P1.3 are deliberately not applicable
+  to packed sidecars; the refresh shows packed still wins prefill and memory.
+- `docs/OPTIMIZE.md` was corrected so D2.1 is no longer stale/pending.
+
+Created follow-up task entries for the remaining pending `docs/OPTIMIZE.md`
+items to process as accept/reject/defer decisions: P1.6, P3.1-P3.3, P5.2,
+D1.2, D1.3, D1.6, D4.2, D4.4, and D5.1.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json`.
+
+Verification for the shisa refresh/doc unit:
+
+```bash
+python3 -m py_compile scripts/qwen35_compare_tables.py
+python3 scripts/qwen35_compare_tables.py --target shisa --against-target >/tmp/compare-shisa.md
+python3 scripts/qwen35_compare_tables.py nano-vllm-amd >/tmp/compare-qwen35.md
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json >/tmp/shisa-artifact-check.json
+python3 -m pytest tests/test_qwen35_paro_layout.py -q --tb=short
+# 20 passed
+```

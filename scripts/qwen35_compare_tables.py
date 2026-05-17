@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print hardcoded Qwen3.5/PARO comparison tables.
+"""Print hardcoded Qwen/PARO comparison tables.
 
 The values here are intentionally static: they summarize the current retained
 resident-runner hipENGINE diagnostics and the external comparison rows we use
@@ -22,7 +22,7 @@ class Row:
 
 
 @dataclass(frozen=True)
-class Baseline:
+class Series:
     key: str
     display: str
     source: str
@@ -30,34 +30,74 @@ class Baseline:
     rows: tuple[Row, ...]
 
 
-HIPENGINE_SOURCE = "benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json"
-HIPENGINE_NOTES = (
-    "hipENGINE rows are Qwen3.5-35B-A3B-PARO w4_paro resident-runner diagnostics "
-    "with --attn-aotriton-min-tokens 512 --graph-replay-decode and parent-style chunk flags "
-    "(linear/MoE/post/RoPE 1024, full-attn query 4096)."
-)
+QWEN35_SOURCE = "benchmarks/results/2026-05-17-hipengine-qwen35-d31-d33-grouped-gqa-long-context-diagnostic.json"
+SHISA_SOURCE = "benchmarks/results/2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json"
 
-HIPENGINE_ROWS: tuple[Row, ...] = (
-    Row("512/128", 2216.487, 109.105, 18.581),
-    Row("4K/128", 2504.959, 110.117, 19.875),
-    Row("32K/128", 1886.344, 93.923, 20.688),
-    Row("128K/128", 1002.409, 61.051, 23.656),
-)
+TARGETS: dict[str, Series] = {
+    "qwen35-current": Series(
+        key="qwen35-current",
+        display="hipENGINE Qwen3.5 current",
+        source=QWEN35_SOURCE,
+        notes=(
+            "Qwen3.5-35B-A3B-PARO w4_paro resident-runner diagnostic with current defaults: "
+            "AOTriton prefill threshold 512, graph-replay decode, Marlin-K decode, and D3.1-D3.3 "
+            "grouped-GQA long-context decode. Long rows use parent-style chunk flags."
+        ),
+        rows=(
+            Row("512/128", 2177.649, 115.627, 18.176),
+            Row("4K/128", 2449.055, 116.263, 20.047),
+            Row("32K/128", 1964.345, 99.560, 20.320),
+            Row("128K/128", 1015.761, 63.368, 23.288),
+        ),
+    ),
+    "shisa-packed": Series(
+        key="shisa-packed",
+        display="hipENGINE shisa Qwen3.6 packed PARO",
+        source=SHISA_SOURCE,
+        notes=(
+            "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5 unstripped checkpoint forced to "
+            "shared_expert_format=packed_paro_w4; packed is the default A-side for shisa comparisons. "
+            "512/4K rows are no-chunk short rows; 32K/128K rows use parent-style chunk flags."
+        ),
+        rows=(
+            Row("512/128", 2518.836, 111.738, 18.123),
+            Row("4K/128", 2711.013, 113.231, 19.995),
+            Row("32K/128", 2130.562, 97.779, 20.267),
+            Row("128K/128", 1048.543, 62.014, 23.235),
+        ),
+    ),
+    "shisa-legacy": Series(
+        key="shisa-legacy",
+        display="hipENGINE shisa Qwen3.6 legacy shared expert",
+        source=SHISA_SOURCE,
+        notes=(
+            "same shisa unstripped checkpoint forced to shared_expert_format=legacy_fp16. "
+            "Use --target shisa-legacy to make legacy the A-side, or --against-target with no value "
+            "to compare packed A against legacy B."
+        ),
+        rows=(
+            Row("512/128", 2272.088, 115.324, 18.176),
+            Row("4K/128", 2487.298, 116.688, 20.047),
+            Row("32K/128", 1974.833, 99.746, 20.320),
+            Row("128K/128", 1002.841, 63.190, 23.288),
+        ),
+    ),
+}
 
-BASELINES: dict[str, Baseline] = {
-    "nano-vllm-amd": Baseline(
+BASELINES: dict[str, Series] = {
+    "nano-vllm-amd": Series(
         key="nano-vllm-amd",
         display="nano-vllm-amd parent",
-        source="~/amd-gpu-tuning/docs/OPTIMAL.md Latest Results (2026-05-13)",
+        source="~/amd-gpu-tuning/docs/OPTIMAL.md Latest Results plus local 2026-05-13 reruns",
         notes="Qwen3.5-35B-A3B-PARO parent compact-WMMA + graph-replay rows, graph/step true.",
         rows=(
-            Row("512/128", 2557.0, 115.7, 18.86),
-            Row("4K/128", 2703.0, 112.0, 21.64),
+            Row("512/128", 2696.4, 116.05, 18.80),
+            Row("4K/128", 2741.5, 113.05, 21.64),
             Row("32K/128", 1880.0, 98.8, 21.37),
             Row("128K/128", 914.0, 62.6, 27.42),
         ),
     ),
-    "llama.cpp-hip": Baseline(
+    "llama.cpp-hip": Series(
         key="llama.cpp-hip",
         display="llama.cpp HIP",
         source="~/amd-gpu-tuning/PLAN-LONGCONTEXT.md split rows",
@@ -72,7 +112,7 @@ BASELINES: dict[str, Baseline] = {
             Row("128K/128", 710.213, 57.341, 23.605),
         ),
     ),
-    "llama.cpp-vulkan": Baseline(
+    "llama.cpp-vulkan": Series(
         key="llama.cpp-vulkan",
         display="llama.cpp Vulkan",
         source="~/amd-gpu-tuning/PLAN-LONGCONTEXT.md split rows",
@@ -89,7 +129,7 @@ BASELINES: dict[str, Baseline] = {
     ),
 }
 
-ALIASES = {
+BASELINE_ALIASES = {
     "nano": "nano-vllm-amd",
     "nano-vllm": "nano-vllm-amd",
     "nano-vllm-amd": "nano-vllm-amd",
@@ -104,14 +144,52 @@ ALIASES = {
     "vulkan": "llama.cpp-vulkan",
 }
 
+TARGET_ALIASES = {
+    "qwen35": "qwen35-current",
+    "qwen3.5": "qwen35-current",
+    "qwen35-current": "qwen35-current",
+    "current": "qwen35-current",
+    "hipengine": "qwen35-current",
+    "shisa": "shisa-packed",
+    "qwen36": "shisa-packed",
+    "qwen3.6": "shisa-packed",
+    "packed": "shisa-packed",
+    "packed-paro": "shisa-packed",
+    "packed-paro-w4": "shisa-packed",
+    "packed_paro_w4": "shisa-packed",
+    "shisa-packed": "shisa-packed",
+    "legacy": "shisa-legacy",
+    "legacy-fp16": "shisa-legacy",
+    "legacy_fp16": "shisa-legacy",
+    "unpacked": "shisa-legacy",
+    "shisa-legacy": "shisa-legacy",
+}
+
+
+def _normalized_key(value: str) -> str:
+    return " ".join(value.strip().lower().replace("_", "-").split())
+
 
 def _normalize_baseline(value: str) -> str:
-    key = " ".join(value.strip().lower().replace("_", "-").split())
-    key = ALIASES.get(key, key)
+    key = _normalized_key(value)
+    key = BASELINE_ALIASES.get(key, key)
     if key not in BASELINES and key != "all":
         valid = ", ".join(["nano-vllm-amd", "llama.cpp-hip", "llama.cpp-vulkan", "all"])
         raise SystemExit(f"unknown baseline {value!r}; choose one of: {valid}")
     return key
+
+
+def _normalize_target(value: str) -> str:
+    key = _normalized_key(value)
+    key = TARGET_ALIASES.get(key, key)
+    if key not in TARGETS:
+        valid = ", ".join(["qwen35-current", "shisa-packed", "shisa-legacy"])
+        raise SystemExit(f"unknown target {value!r}; choose one of: {valid}")
+    return key
+
+
+def _auto_compare_target(target_key: str) -> str:
+    return "shisa-packed" if target_key == "shisa-legacy" else "shisa-legacy"
 
 
 def _row_map(rows: Iterable[Row]) -> dict[str, Row]:
@@ -147,25 +225,30 @@ def _print_table(title: str, headers: tuple[str, ...], rows: list[tuple[str, ...
     print()
 
 
-def print_comparison(baseline: Baseline) -> None:
-    hip = _row_map(HIPENGINE_ROWS)
-    base = _row_map(baseline.rows)
-    workloads = [row.workload for row in HIPENGINE_ROWS]
+def _shared_workloads(left: Series, right: Series) -> list[str]:
+    right_workloads = set(_row_map(right.rows))
+    return [row.workload for row in left.rows if row.workload in right_workloads]
 
-    print(f"## hipENGINE vs {baseline.display}\n")
-    print(f"hipENGINE source: {HIPENGINE_SOURCE}")
-    print(f"baseline source: {baseline.source}")
-    print(f"notes: {HIPENGINE_NOTES} {baseline.notes}\n")
+
+def print_comparison(target: Series, baseline: Series) -> None:
+    left = _row_map(target.rows)
+    right = _row_map(baseline.rows)
+    workloads = _shared_workloads(target, baseline)
+
+    print(f"## {target.display} vs {baseline.display}\n")
+    print(f"A target source: {target.source}")
+    print(f"B baseline source: {baseline.source}")
+    print(f"notes: {target.notes} {baseline.notes}\n")
 
     _print_table(
         "Prefill",
-        ("Workload", "hipENGINE tok/s", f"{baseline.display} tok/s", "Delta"),
+        ("Workload", f"{target.display} tok/s", f"{baseline.display} tok/s", "Delta A vs B"),
         [
             (
                 workload,
-                _fmt_rate(hip[workload].prefill_tok_s),
-                _fmt_rate(base[workload].prefill_tok_s),
-                _fmt_pct(hip[workload].prefill_tok_s, base[workload].prefill_tok_s),
+                _fmt_rate(left[workload].prefill_tok_s),
+                _fmt_rate(right[workload].prefill_tok_s),
+                _fmt_pct(left[workload].prefill_tok_s, right[workload].prefill_tok_s),
             )
             for workload in workloads
         ],
@@ -173,13 +256,13 @@ def print_comparison(baseline: Baseline) -> None:
 
     _print_table(
         "Decode",
-        ("Workload", "hipENGINE tok/s", f"{baseline.display} tok/s", "Delta"),
+        ("Workload", f"{target.display} tok/s", f"{baseline.display} tok/s", "Delta A vs B"),
         [
             (
                 workload,
-                _fmt_rate(hip[workload].decode_tok_s),
-                _fmt_rate(base[workload].decode_tok_s),
-                _fmt_pct(hip[workload].decode_tok_s, base[workload].decode_tok_s),
+                _fmt_rate(left[workload].decode_tok_s),
+                _fmt_rate(right[workload].decode_tok_s),
+                _fmt_pct(left[workload].decode_tok_s, right[workload].decode_tok_s),
             )
             for workload in workloads
         ],
@@ -187,13 +270,67 @@ def print_comparison(baseline: Baseline) -> None:
 
     _print_table(
         "Memory / peak GiB",
-        ("Workload", "hipENGINE tracked peak GiB", f"{baseline.display} peak GiB", "Delta"),
+        ("Workload", f"{target.display} peak GiB", f"{baseline.display} peak GiB", "Delta A vs B"),
         [
             (
                 workload,
-                _fmt_gib(hip[workload].peak_gib),
-                _fmt_gib(base[workload].peak_gib),
-                _fmt_gib_delta(hip[workload].peak_gib, base[workload].peak_gib),
+                _fmt_gib(left[workload].peak_gib),
+                _fmt_gib(right[workload].peak_gib),
+                _fmt_gib_delta(left[workload].peak_gib, right[workload].peak_gib),
+            )
+            for workload in workloads
+        ],
+    )
+
+
+def print_target_comparison(target: Series, compare_target: Series) -> None:
+    left = _row_map(target.rows)
+    right = _row_map(compare_target.rows)
+    workloads = _shared_workloads(target, compare_target)
+
+    print(f"## {target.display} (A) vs {compare_target.display} (B)\n")
+    print(f"A source: {target.source}")
+    print(f"B source: {compare_target.source}")
+    print(f"A notes: {target.notes}")
+    print(f"B notes: {compare_target.notes}\n")
+
+    _print_table(
+        "Prefill",
+        ("Workload", "A tok/s", "B tok/s", "Delta A vs B"),
+        [
+            (
+                workload,
+                _fmt_rate(left[workload].prefill_tok_s),
+                _fmt_rate(right[workload].prefill_tok_s),
+                _fmt_pct(left[workload].prefill_tok_s, right[workload].prefill_tok_s),
+            )
+            for workload in workloads
+        ],
+    )
+
+    _print_table(
+        "Decode",
+        ("Workload", "A tok/s", "B tok/s", "Delta A vs B"),
+        [
+            (
+                workload,
+                _fmt_rate(left[workload].decode_tok_s),
+                _fmt_rate(right[workload].decode_tok_s),
+                _fmt_pct(left[workload].decode_tok_s, right[workload].decode_tok_s),
+            )
+            for workload in workloads
+        ],
+    )
+
+    _print_table(
+        "Memory / peak GiB",
+        ("Workload", "A peak GiB", "B peak GiB", "Delta A vs B"),
+        [
+            (
+                workload,
+                _fmt_gib(left[workload].peak_gib),
+                _fmt_gib(right[workload].peak_gib),
+                _fmt_gib_delta(left[workload].peak_gib, right[workload].peak_gib),
             )
             for workload in workloads
         ],
@@ -208,7 +345,26 @@ def parse_args() -> argparse.Namespace:
         default="all",
         help=(
             "Comparison baseline: nano-vllm-amd, llama.cpp-hip, llama.cpp-vulkan, or all. "
-            "Aliases with spaces such as 'llama.cpp HIP' are accepted. Default: all."
+            "Ignored when --against-target is set. Default: all."
+        ),
+    )
+    parser.add_argument(
+        "--target",
+        default="qwen35-current",
+        help=(
+            "A-side hipENGINE target: qwen35-current, shisa-packed, or shisa-legacy. "
+            "Aliases: qwen35, shisa/packed, legacy/unpacked. Default: qwen35-current."
+        ),
+    )
+    parser.add_argument(
+        "--against-target",
+        "--compare-target",
+        nargs="?",
+        const="auto",
+        default=None,
+        help=(
+            "Compare the A-side target against another hipENGINE target instead of external baselines. "
+            "With no value, uses legacy when A is packed/shisa and packed when A is legacy."
         ),
     )
     return parser.parse_args()
@@ -216,14 +372,22 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    target_key = _normalize_target(args.target)
+    target = TARGETS[target_key]
+
+    if args.against_target is not None:
+        compare_key = _auto_compare_target(target_key) if args.against_target == "auto" else _normalize_target(args.against_target)
+        print_target_comparison(target, TARGETS[compare_key])
+        return
+
     key = _normalize_baseline(args.baseline)
     if key == "all":
         for index, baseline in enumerate(BASELINES.values()):
             if index:
                 print("---\n")
-            print_comparison(baseline)
+            print_comparison(target, baseline)
     else:
-        print_comparison(BASELINES[key])
+        print_comparison(target, BASELINES[key])
 
 
 if __name__ == "__main__":
