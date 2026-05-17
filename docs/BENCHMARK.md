@@ -149,6 +149,29 @@ Initial protocol shapes:
 
 Report both aggregate tok/s and per-request tok/s. Do not compare a c=N aggregate row against c=1 without explicitly showing `aggregate/c1` and `per_request/c1` ratios. SpecDec must be disabled for these rows; SpecDec has a separate acceptance protocol because generated-token equality depends on target verification and KV commit semantics.
 
+### Speculative decode / DFlash rows
+
+DFlash and later MTP rows use `scripts/dflash_speculative_bench.py` as the
+schema-normalizing artifact driver. Future native runners should emit one raw row
+per `(prompt, draft config)` containing same-session AR and speculative results;
+the driver computes the common fields ported from the parent `~/amd-gpu-tuning`
+harnesses:
+
+- same-session AR decode tok/s and generated-token sample;
+- speculative tok/s, exact equality vs AR, finite AR/draft/verify logits;
+- acceptance histograms and cumulative `>=N` rates;
+- target-verify rows/output token and verify ETA vs AR per row;
+- draft / target-verify / commit split;
+- scalar/vector device-to-host readback counts, with full-logit readbacks called
+  out explicitly;
+- graph capture/replay status and bucket key;
+- peak memory fields and target/drafter model paths.
+
+A speculative row is promotable only when every row is exact/finite and aggregate
+speculative decode is >1.10× same-session AR. The checked-in
+`benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json`
+is a synthetic schema fixture, not a performance claim.
+
 ### OPTIMAL MoE/PARO parity rows
 
 For the Qwen3.5-35B-A3B-PARO exercise, first keep source-lineage parent rows and hipEngine attempts as separate artifacts:

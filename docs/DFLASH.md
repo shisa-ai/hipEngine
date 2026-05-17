@@ -556,7 +556,7 @@ Do not start these before D1-D6 establish a winning native chain path.
 
 1. Refresh `docs/MTP.md`/this plan for the `gfx1151` + shisa packed target and
    port the parent benchmark metric schema without inheriting PyTorch hot-loop
-   assumptions.
+   assumptions (`scripts/dflash_speculative_bench.py` owns the artifact shape).
 2. Add DFlash source-lineage entries and fixtures for corrected tree Conv/GDN
    plus z-lab DFlash drafter metadata.
 3. Validate packed target and drafter safetensors/config metadata offline.

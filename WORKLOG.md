@@ -16737,3 +16737,45 @@ git diff --check
 git diff -- docs/DFLASH.md docs/MTP.md WORKLOG.md
 # Re-read docs/DFLASH.md and docs/MTP.md end-to-end; docs-only review, no GPU run required
 ```
+
+## 2026-05-18 — DFlash benchmark contract driver
+
+### Scope
+
+- Ported the parent DFlash/MTP benchmark metric shape into a torch-free hipEngine artifact path instead of copying the PyTorch/HF hot loops.
+- Added `hipengine/benchmark/speculative.py` with row normalization and aggregation for:
+  - same-session AR decode tok/s and generated-token equality;
+  - DFlash/MTP speculative decode tok/s;
+  - finite AR/draft/verify logit gates;
+  - acceptance histograms and cumulative `>=N` rates;
+  - target-verify rows/output and verify ETA vs AR per row;
+  - draft / target-verify / commit timing split;
+  - scalar/vector D2H counters plus full-logit readback count;
+  - graph capture/replay status and bucket key;
+  - peak memory and target/drafter model path metadata.
+- Added `scripts/dflash_speculative_bench.py`, an ingest/schema driver that writes schema-2 artifacts under `benchmarks/results/` from raw future runner rows or JSONL.
+- Added `benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json` as a synthetic schema fixture only (`performance_claim=false`), exercising the required fields before native DFlash exists.
+- Documented the speculative benchmark contract in `docs/BENCHMARK.md` and pointed `docs/DFLASH.md` at the new driver.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/benchmark/__init__.py hipengine/benchmark/speculative.py scripts/dflash_speculative_bench.py
+python3 -m pytest tests/test_speculative_benchmark.py tests/test_model_quant_and_imports.py -q
+python3 scripts/dflash_speculative_bench.py \
+  --emit-schema-fixture --status diagnostic \
+  --run-tag dflash-benchmark-contract-fixture \
+  --summary "DFlash speculative benchmark metric contract fixture for gfx1151 packed target" \
+  --json benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json \
+  --decision-reason "schema fixture only; native DFlash runtime rows not implemented yet" \
+  --note "Synthetic row exercises same-session AR, DFlash tok/s, exact equality, finite logits, acceptance histogram, rows/output, phase split, D2H counters, graph status, and peak memory fields."
+python3 -m json.tool benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json >/tmp/hipengine-dflash-benchmark-contract.json
+python3 scripts/dflash_speculative_bench.py \
+  --rows-json benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json \
+  --json /tmp/hipengine-dflash-contract-ingest.json \
+  --run-tag dflash-contract-ingest-smoke \
+  --summary "DFlash contract ingest smoke" \
+  --status diagnostic
+python3 -m json.tool /tmp/hipengine-dflash-contract-ingest.json >/tmp/hipengine-dflash-contract-ingest.pretty.json
+# pytest: 11 passed
+```
