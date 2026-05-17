@@ -15372,3 +15372,62 @@ python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-p52-prefill-
 ```
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-p52-prefill-chunk-autotune-accepted.json`.
+
+---
+
+## 2026-05-17 — D1.2 RMSNorm/add-RMSNorm producer fusion deferred
+
+Task #22 evaluated `docs/OPTIMIZE.md` D1.2. I did **not** implement a new
+producer-into-projection kernel because the M.4 decode profile and the current
+Qwen3.5/PARO dataflow do not expose a material single-use RMSNorm/add-RMSNorm
+producer while preserving the pack8/repacked projection layout.
+
+M.4 selected-region decode evidence (`benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`):
+
+| workload | RMSNorm bucket share | calls/token | ms/token |
+| --- | ---: | ---: | ---: |
+| 512/128 | `3.303%` | `91` | `0.239940` |
+| 4K/128 | `3.365%` | `91` | `0.243179` |
+| 32K/128 | `2.968%` | `91` | `0.255358` |
+
+Breakdown from the same M.4 top-kernel rows:
+
+| producer family | calls/token | avg us/call at 512 | dataflow result |
+| --- | ---: | ---: | --- |
+| `paro_rmsnorm_out` | `41` | `2.525` | 40 input layernorms feed multiple attention projections; one final norm feeds lm-head |
+| `paro_add_rmsnorm_out` | `40` | `2.657` | post-attention MLP input fans out to router, selected-MoE, shared expert, and residual combine |
+| head RMSNorm+RoPE | `10` | `3.015` | already a fused full-attention helper; not a `paro_rmsnorm`/`add_rmsnorm` producer |
+
+Static dataflow conclusion:
+
+- Input RMSNorm is not single-use: linear-attention layers consume it through
+  QKV/Z rotate+pack8 plus dense A/B, while full-attention layers consume it
+  through Q/K/V rotations/projections.
+- Post-attention add-RMSNorm is not single-use: `mlp_input` feeds router,
+  selected-MoE gate/up, and shared-expert gate/up; residual output feeds combine.
+- The only clear single-use producer is final RMSNorm -> lm-head, but that is
+  one tiny `paro_rmsnorm_out` call per token (~`0.04%` of 512/128 kernel time).
+  Folding it into W8A16 lm-head would need a new row-staged design to avoid
+  recomputing RMS per vocab tile.
+
+Decision: defer/no-op. Revisit only after D1.3/D1.6 if there is a row-staged
+multi-consumer pack8/W8A16 design that stages RMS once per row without the D1.1
+rotate-staged barrier regression. Defaults remain unchanged.
+
+Validation (no math/runtime code changed):
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+# hip OK
+python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+# BF16/FP16 norm/add_norm/residual mismatches all 0
+python3 -m pytest tests/test_qwen35_rmsnorm_plan.py tests/test_qwen35_paro_layout.py -q --tb=short
+# 23 passed
+python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short
+# 49 passed
+python3 -m py_compile scripts/qwen35_rocprof_audit.py scripts/smoke.py
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d12-rmsnorm-producer-fusion-deferred.json >/tmp/d12.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d12-rmsnorm-producer-fusion-deferred.json`.
