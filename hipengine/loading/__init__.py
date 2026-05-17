@@ -1,5 +1,19 @@
 """Torch-free model loading helpers."""
 
+from hipengine.loading.dflash import (
+    DFLASH_DRAFTER_MODEL,
+    DFLASH_PACKED_TARGET_MODEL,
+    DFlashArtifactValidation,
+    DFlashDraftConfig,
+    DFlashTargetConfig,
+    TensorRequirement,
+    dflash_draft_config_from_hf,
+    dflash_drafter_tensor_requirements,
+    dflash_target_tensor_requirements,
+    validate_dflash_artifact_pair,
+    validate_dflash_drafter_metadata,
+    validate_dflash_target_metadata,
+)
 from hipengine.loading.materialize import (
     DeviceTensorAllocation,
     DeviceWeightMap,
@@ -57,6 +71,11 @@ from hipengine.loading.safetensors import (
 )
 
 __all__ = [
+    "DFLASH_DRAFTER_MODEL",
+    "DFLASH_PACKED_TARGET_MODEL",
+    "DFlashArtifactValidation",
+    "DFlashDraftConfig",
+    "DFlashTargetConfig",
     "MissingConfigError",
     "MissingTensorError",
     "DeviceTensorAllocation",
@@ -66,7 +85,11 @@ __all__ = [
     "Qwen35ParoLayerDeviceWeights",
     "Qwen35ParoLayoutValidation",
     "TensorInfo",
+    "TensorRequirement",
     "WeightIndex",
+    "dflash_draft_config_from_hf",
+    "dflash_drafter_tensor_requirements",
+    "dflash_target_tensor_requirements",
     "discover_safetensor_shards",
     "dtype_from_safetensors",
     "materialize_qwen35_paro_full_attention_dense_c1_runtime_layer",
@@ -101,6 +124,9 @@ __all__ = [
     "required_moe_c1_tensor_names",
     "runtime_linear_attention_dense_c1_tensor_names",
     "runtime_linear_attention_moe_c1_tensor_names",
+    "validate_dflash_artifact_pair",
+    "validate_dflash_drafter_metadata",
+    "validate_dflash_target_metadata",
     "validate_qwen35_paro_full_attention_dense_c1_layout",
     "validate_qwen35_paro_full_attention_moe_c1_layout",
     "validate_qwen35_paro_linear_attention_dense_c1_layout",

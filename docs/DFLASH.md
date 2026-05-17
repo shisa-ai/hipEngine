@@ -226,6 +226,24 @@ The current branch starts from the gfx1151 roofline in
 - The first benchmark question is whether chain DFlash on the packed target can
   beat same-session AR. DDTree and MTP remain follow-ons on the same verifier.
 
+## Artifact metadata gate
+
+Before materializing tensors or launching a DFlash benchmark, run the torch-free
+metadata validator:
+
+```bash
+python3 scripts/dflash_validate_artifacts.py \
+  --target-model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --drafter-model /models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --json /tmp/hipengine-dflash-artifact-validation.json
+```
+
+The validator reads only `config.json` plus safetensors headers. It checks the
+packed target's PARO shared-expert sidecars and the DFlash drafter's `fc`,
+`hidden_norm`, draft-layer attention/MLP tensors, block size, mask token, target
+hidden tap ids, hidden/head dimensions, KV heads, and vocab size. It must pass
+before benchmark rows are considered comparable.
+
 ## Non-negotiable design rules
 
 1. **Native hot loop.**

@@ -16812,3 +16812,41 @@ grep -E 'tracked_sources:|changed_or_dirty:' /tmp/hipengine-lineage-dflash.txt /
 git diff --check
 # pytest: 2 passed
 ```
+
+## 2026-05-18 — DFlash artifact metadata validation
+
+### Scope
+
+- Added `hipengine/loading/dflash.py`, a torch-free metadata validator for the current DFlash lane.
+- The drafter validator parses `z-lab/Qwen3.6-35B-A3B-DFlash` config fields and safetensors headers without tensor materialization:
+  - `block_size`, `mask_token_id`, `target_layer_ids`, `num_target_layers`;
+  - hidden/intermediate sizes, draft layer count, attention heads/KV heads/head dim, vocab size;
+  - `fc.weight`, `hidden_norm`, final norm, and every draft layer attention/MLP tensor shape/dtype.
+- The target validator checks the shisa packed PARO target config plus packed shared-expert sidecars across target layers; it verifies `embed_tokens`, `lm_head`, PARO shared-expert `qweight/qzeros/scales/theta/pairs/channel_scales`, quant method, vocab, hidden size, and layer count.
+- Added `scripts/dflash_validate_artifacts.py` for offline local/HF-cache validation and JSON output. Defaults point to the shisa packed target and z-lab DFlash model names, not the old Quark+MTP-BF16 bring-up artifact.
+- Added focused tests with fake safetensors manifests plus an optional local cached snapshot test. The local cached validation passed on:
+  - target snapshot `501ef8635e5cfb5a7497d232358ca8d1afc0c66e`
+  - drafter snapshot `42d3b34d588423cdae7ba8f53a8cf7789346a719`
+  - present metadata counts: target `722`, drafter `91`.
+- Documented the metadata gate in `docs/DFLASH.md`.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/loading/dflash.py hipengine/loading/__init__.py scripts/dflash_validate_artifacts.py
+python3 -m pytest tests/test_dflash_metadata.py tests/test_loading_safetensors.py tests/test_model_quant_and_imports.py -q
+python3 scripts/dflash_validate_artifacts.py \
+  --target-model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --drafter-model /models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --json /tmp/hipengine-dflash-artifact-validation.json >/tmp/hipengine-dflash-artifact-validation.stdout
+python3 -m json.tool /tmp/hipengine-dflash-artifact-validation.json >/tmp/hipengine-dflash-artifact-validation.pretty.json
+python3 - <<'PY'
+import json
+p=json.load(open('/tmp/hipengine-dflash-artifact-validation.json'))
+assert p['passed'] is True
+print('artifact validation passed', p['target']['present_count'], p['drafter']['present_count'])
+PY
+git diff --check
+# pytest: 16 passed
+# artifact validation passed 722 91
+```
