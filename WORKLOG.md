@@ -15869,3 +15869,52 @@ python3 -m pytest tests/test_gguf_ops.py tests/test_qwen35_gguf_runner.py \
 ```
 
 Retained correctness/profile artifact: `benchmarks/results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json`. This is a correctness-only diagnostic; no hipENGINE throughput row is promoted because the full-attention prompt context still uses a CPU-hosted small-context bridge and the timing is not a tuned benchmark protocol.
+
+## 2026-05-16 GGUF vs PARO diagnostic timing/memory comparison
+
+Recorded requested diagnostic comparison artifact `benchmarks/results/2026-05-16-hipengine-gguf-vs-paro-diagnostic.json`. This is context only, **not** an accepted throughput row and not apples-to-apples: GGUF is Qwen3.5-0.8B-Q4_K_M while PARO retained rows are Qwen3.5-35B-A3B-PARO.
+
+GGUF probe command used cached compiler-version metadata to avoid repeated `hipcc --version` subprocesses:
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY'
+# constructs Qwen35GGUFFullStackRunner('/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf'),
+# records materialization time, resident-byte estimate, run_prompt_hidden(),
+# lm-head time, and four sample_next_token() steps for prompt "The answer is".
+PY
+```
+
+GGUF load/memory result:
+
+| Metric | Value |
+| --- | ---: |
+| file size | 532,517,120 bytes / 0.496 GiB |
+| runner init + resident materialize | 10.870 s |
+| close/free | 0.068 s |
+| resident estimate total | 380,980,480 bytes / 0.355 GiB |
+| raw GGUF K-family bytes | 350,871,552 bytes |
+| Q4_K pack8 records | 28,114,944 bytes |
+| dense F32 small tensors | 1,993,984 bytes |
+
+GGUF timing result for fixture prompt `The answer is` (`[760, 4087, 369]`):
+
+| Phase | Time | Throughput |
+| --- | ---: | ---: |
+| full-stack hidden prefill, 3 tokens | 0.190979 s | 15.709 tok/s |
+| tied Q6_K lm-head logits | 0.002302 s | n/a |
+| decode step 1, ctx len 3 -> token 220 `' '` | 0.179100 s | 5.583 tok/s |
+| decode step 2, ctx len 4 -> token 16 `'1'` | 0.237122 s | 4.217 tok/s |
+| decode step 3, ctx len 5 -> token 13 `'.'` | 0.294018 s | 3.401 tok/s |
+| decode step 4, ctx len 6 -> token 271 `'\n\n'` | 0.354783 s | 2.819 tok/s |
+
+PARO comparison rows were sourced from retained artifacts, not rerun:
+
+| Row | Model | Workload | Prefill | Decode | Memory |
+| --- | --- | --- | ---: | ---: | ---: |
+| hipENGINE native fixture | Qwen3.5-35B-A3B-PARO | 512/32 | 46.956 tok/s | 101.607 tok/s | owned 1.514 GiB |
+| hipENGINE AOTriton V3 diagnostic | Qwen3.5-35B-A3B-PARO | 512/128 | 2183.260 tok/s | 101.462 tok/s | owned 1.514 GiB fixture accounting |
+| hipENGINE AOTriton V3 diagnostic | Qwen3.5-35B-A3B-PARO | 4K/128 | 2377.940 tok/s | 102.860 tok/s | owned 1.514 GiB fixture accounting |
+| parent lineage target | Qwen3.5-35B-A3B-PARO | fixture/parent | 2682.660 tok/s | 116.258 tok/s | peak allocated 18.797 GiB |
+
+Interpretation: current GGUF is correctness-first and much smaller in resident bytes, but very slow. Main reasons remain CPU-hosted small-context full-attention bridge, context recomputation per generated token, no persistent public-API resident runner/cache, and many Python/ctypes launches. No performance claim is made.
