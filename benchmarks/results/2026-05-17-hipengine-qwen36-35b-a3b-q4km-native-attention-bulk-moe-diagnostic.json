@@ -2,7 +2,7 @@
   "schema": 2,
   "status": "diagnostic_retained",
   "performance_claim": false,
-  "timestamp": "2026-05-17T17:23:55.718177+00:00",
+  "timestamp": "2026-05-17T18:10:44.129262+00:00",
   "run_tag": "hipengine-qwen36-q4km-native-attention-bulk-moe-prefill",
   "summary": "qwen35moe GGUF parity-safe bulk default: row-serial native attention plus row-bulk MoE/FFN.",
   "hardware": {
@@ -13,8 +13,8 @@
   },
   "software": {
     "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
-    "hipengine_commit_before_commit": "8417ae9",
-    "hipengine_status_at_artifact": "## gguf-bulk-prefill\n M benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bulk-parity-diagnostic.json\n M hipengine/runtime/qwen35_gguf_runner.py\n M scripts/qwen35_gguf_bench.py\n M scripts/qwen35_gguf_bulk_parity.py"
+    "hipengine_commit_before_commit": "23bbe08",
+    "hipengine_status_at_artifact": "## gguf-bulk-prefill\n M benchmarks/CHANGELOG.md\n M benchmarks/README.md\n M benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bulk-parity-diagnostic.json\n M benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-native-attention-bulk-moe-diagnostic.json\n M hipengine/kernels/hip_gfx1100/attention/__init__.py\n M hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip\n M hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py\n M hipengine/runtime/qwen35_gguf_runner.py\n M scripts/qwen35_gguf_bulk_parity.py\n M tests/test_qwen35_gguf_full_attention_gpu.py"
   },
   "workload": {
     "model": "Qwen3.6-35B-A3B",
@@ -85,11 +85,12 @@
       "native_attention_bulk_ffn_top1_match": true,
       "native_attention_bulk_ffn_kl_serial_to_bulk": 0.0,
       "native_attention_bulk_ffn_max_abs_logit": 0.0,
-      "fast_bulk_attention_token_id": 101478,
+      "fast_bulk_attention_token_id": 11,
       "fast_bulk_attention_top1_match": false,
-      "fast_bulk_attention_kl_serial_to_bulk": 3.0287284520191466,
-      "fast_bulk_attention_max_abs_logit": 14.37797737121582,
-      "first_aotriton_hidden_drift_limit": 4,
+      "fast_bulk_attention_kl_serial_to_bulk": 0.7067434234037477,
+      "fast_bulk_attention_max_abs_logit": 8.324869155883789,
+      "first_fast_bulk_hidden_drift_limit": 14,
+      "first_aotriton_hidden_drift_limit": 14,
       "first_native_full_attention_hidden_drift_limit": 14
     },
     "native_attention_bulk_ffn_default_allowed": true,
@@ -224,11 +225,11 @@
     "accepted": false,
     "retained_as_diagnostic": true,
     "public_default_changed": true,
-    "reason": "Native-attention bulk MoE is parity-safe on the probe and improves prefill over serial selected-device-expert path, but it is much slower than fast bulk and remains far below PARO."
+    "reason": "Native-attention bulk MoE remains parity-safe. The fast fully-bulk path now clears the full-attention drift and first diverges at the known linear-attention recurrent layer limit 14, but it is still below the parity gate and PARO."
   },
   "next_blockers": [
-    "Resolve fully bulk attention/recurrent drift if the 100+ tok/s fast prefill path is to become correctness-accepted.",
-    "Develop grouped/packed MoE or GGUF-to-packed sidecar kernels in ~/amd-gpu-tuning; raw GGUF selected expert GEMV remains far below PARO.",
+    "Fix fully-bulk linear-attention recurrent parity: current fast bulk probe first drifts at layer limit 14 with KL 0.7067 and token 11 vs serial token 4469.",
+    "Develop grouped/packed MoE or GGUF-to-packed sidecar kernels in this repo; raw GGUF selected expert GEMV remains far below PARO.",
     "Decode remains below PARO and needs packed/shared expert + lm-head work beyond graph replay."
   ],
   "profile": {

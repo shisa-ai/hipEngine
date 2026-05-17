@@ -8,7 +8,7 @@
     369,
     220
   ],
-  "elapsed_seconds": 17.2187747140415,
+  "elapsed_seconds": 17.18865783000365,
   "native_attention_bulk_ffn_default_allowed": true,
   "fast_bulk_attention_default_allowed": false,
   "summary": {
@@ -21,24 +21,25 @@
     "native_attention_bulk_ffn_top1_match": true,
     "native_attention_bulk_ffn_kl_serial_to_bulk": 0.0,
     "native_attention_bulk_ffn_max_abs_logit": 0.0,
-    "fast_bulk_attention_token_id": 101478,
+    "fast_bulk_attention_token_id": 11,
     "fast_bulk_attention_top1_match": false,
-    "fast_bulk_attention_kl_serial_to_bulk": 3.0287284520191466,
-    "fast_bulk_attention_max_abs_logit": 14.37797737121582,
-    "first_aotriton_hidden_drift_limit": 4,
+    "fast_bulk_attention_kl_serial_to_bulk": 0.7067434234037477,
+    "fast_bulk_attention_max_abs_logit": 8.324869155883789,
+    "first_fast_bulk_hidden_drift_limit": 14,
+    "first_aotriton_hidden_drift_limit": 14,
     "first_native_full_attention_hidden_drift_limit": 14
   },
   "sample": {
     "serial": {
       "token_id": 4469,
       "logit": 9.824976921081543,
-      "seconds": 0.6392151390318759,
+      "seconds": 0.647498172998894,
       "finite_logits": true
     },
     "default": {
       "token_id": 4469,
       "logit": 9.824976921081543,
-      "seconds": 0.3603888290235773,
+      "seconds": 0.36264764302177355,
       "finite_logits": true
     },
     "default_comparison": {
@@ -53,7 +54,7 @@
     "native_attention_bulk_ffn": {
       "token_id": 4469,
       "logit": 9.824976921081543,
-      "seconds": 0.35888052597874776,
+      "seconds": 0.36243714101146907,
       "finite_logits": true
     },
     "native_attention_bulk_ffn_comparison": {
@@ -66,24 +67,24 @@
       "finite": true
     },
     "fast_bulk_attention": {
-      "token_id": 101478,
-      "logit": 10.96621322631836,
-      "seconds": 0.22525191400200129,
+      "token_id": 11,
+      "logit": 9.463704109191895,
+      "seconds": 0.17507648601895198,
       "finite_logits": true
     },
     "fast_bulk_attention_comparison": {
       "top1_match": false,
       "serial_argmax": 4469,
-      "bulk_argmax": 101478,
-      "kl_serial_to_bulk": 3.0287284520191466,
-      "max_abs_logit": 14.37797737121582,
-      "mean_abs_logit": 2.2172529697418213,
+      "bulk_argmax": 11,
+      "kl_serial_to_bulk": 0.7067434234037477,
+      "max_abs_logit": 8.324869155883789,
+      "mean_abs_logit": 0.9357913732528687,
       "finite": true
     }
   },
   "layer_scan": {
     "aotriton_full_attention": {
-      "first_drift_limit": 4,
+      "first_drift_limit": 14,
       "entries": [
         {
           "layer_limit": 0,
@@ -120,50 +121,50 @@
         {
           "layer_limit": 4,
           "last_layer_type": "full_attention",
-          "bit_equal": false,
-          "max_abs": 0.0625,
-          "mean_abs": 0.006726614199578762,
-          "nonzero_count": 1189
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
         },
         {
           "layer_limit": 8,
           "last_layer_type": "full_attention",
-          "bit_equal": false,
-          "max_abs": 0.1875,
-          "mean_abs": 0.020219523459672928,
-          "nonzero_count": 1662
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
         },
         {
           "layer_limit": 12,
           "last_layer_type": "full_attention",
-          "bit_equal": false,
-          "max_abs": 0.9609375,
-          "mean_abs": 0.2059604525566101,
-          "nonzero_count": 2021
+          "bit_equal": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "nonzero_count": 0
         },
         {
           "layer_limit": 14,
           "last_layer_type": "linear_attention",
           "bit_equal": false,
-          "max_abs": 1.548828125,
-          "mean_abs": 0.2901036739349365,
-          "nonzero_count": 2016
+          "max_abs": 0.0625,
+          "mean_abs": 0.0026392543222755194,
+          "nonzero_count": 672
         },
         {
           "layer_limit": 20,
           "last_layer_type": "full_attention",
           "bit_equal": false,
-          "max_abs": 2.734375,
-          "mean_abs": 0.5807837247848511,
-          "nonzero_count": 2029
+          "max_abs": 0.171875,
+          "mean_abs": 0.02647370472550392,
+          "nonzero_count": 1763
         },
         {
           "layer_limit": 40,
           "last_layer_type": "full_attention",
           "bit_equal": false,
-          "max_abs": 14.53125,
-          "mean_abs": 2.295808792114258,
-          "nonzero_count": 2047
+          "max_abs": 5.8125,
+          "mean_abs": 1.1585248708724976,
+          "nonzero_count": 2046
         }
       ]
     },

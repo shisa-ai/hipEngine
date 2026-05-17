@@ -18186,3 +18186,57 @@ Retained progress artifacts:
 
 - `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-native-attention-bulk-moe-diagnostic.json`
 - `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bulk-parity-diagnostic.json`
+
+## 2026-05-17 qwen35moe GGUF task #56 full-attention bulk parity fix
+
+Task #56 resolved the first fast-bulk qwen35moe GGUF parity blocker. The old fully-bulk path used AOTriton BF16 attention output for full-attention prefill; that produced small attention-output differences (`~9.8e-4`) that amplified through the MoE layer and made the parity probe first drift at layer limit 4. I replaced that full-attention prefill segment with a native causal GQA prefill kernel that mirrors the resident decode numerics: F32 query, BF16 key/value cache, the same warp-per-token dot/softmax pattern, BF16 gate input, and BF16 gated output. The fast-bulk scheduler still batches full-attention rows; it just no longer uses the AOTriton BF16-output path for qwen35moe GGUF full attention.
+
+Implementation notes:
+
+- added `hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans` in `paged_attn_decode.hip/.py`
+- wired `_run_full_attention_prefill_layer_aotriton()` to call the native BF16-gate GQA prefill kernel over `scratch.prefill_spans`
+- updated the layer-level threshold mode to report `native_gqa_bf16` instead of `aotriton_v3`
+- updated `scripts/qwen35_gguf_bulk_parity.py` to include `first_fast_bulk_hidden_drift_limit` while retaining the legacy `first_aotriton_hidden_drift_limit` key for artifact compatibility
+
+Validation / parity evidence:
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bulk_parity.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task56-final-parity.json
+# serial/default/native-attention-bulk token 4469; KL=0.0; max_abs=0.0
+# fast fully-bulk token 11; KL=0.7067434234037477; max_abs=8.324869155883789
+# first_fast_bulk_hidden_drift_limit=14; first_native_full_attention_hidden_drift_limit=14
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 2 \
+  --json /tmp/hipengine-task56-public-correctness.json
+# passed=true; public no-torch qwen35moe smoke still Hello -> izio.
+PYTHONPATH=. pytest -q tests/test_qwen35_gguf_full_attention_gpu.py tests/test_llm_gguf_generate_path.py tests/test_gguf_linear_dispatch.py
+# 12 passed
+```
+
+Fast-bulk diagnostic measurements after the full-attention parity fix (still not correctness-accepted because task #57 linear-attention recurrent drift remains):
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task56-fastbulk-512-128.json
+# prefill/decode 115.176599783 / 49.868995162 tok/s; tracked peak 20.885867577 GiB; final logits finite
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task56-fastbulk-4096-128.json
+# prefill/decode 88.275357214 / 33.205097176 tok/s; tracked peak 22.121930633 GiB; final logits finite
+```
+
+Task #56 acceptance is met: the parity probe no longer reports full-attention/AOTriton layer-limit 4 as the first drift source; both fast-bulk and native-full scans now first drift at the known linear-attention recurrent limit 14. Task #55 remains open and the next dependency is task #57: fix fully-bulk linear-attention recurrent parity.
+
+Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-full-attn-parity-fixed-diagnostic.json`.

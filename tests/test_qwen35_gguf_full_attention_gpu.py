@@ -7,7 +7,6 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
-from hipengine.kernels.hip_gfx1100.attention.aotriton import AotritonNotInstalledError, aotriton_runtime_tree
 from hipengine.kernels.hip_gfx1100.fused import gguf_rmsnorm_bf16_f32_weight
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import gguf_q6_k_embedding_bf16_out
 from hipengine.loading.gguf import GGUFReader
@@ -88,15 +87,11 @@ def test_qwen35_gguf_full_attention_gpu_prelude_matches_cpu_oracle() -> None:
         free(buffer, runtime=runtime)
 
 
-def test_qwen35_gguf_full_attention_prefill_aotriton_threshold_and_oracle() -> None:
-    """AOTriton V3 is selected at threshold and matches the CPU bridge on the final row."""
+def test_qwen35_gguf_full_attention_prefill_threshold_and_oracle() -> None:
+    """Native GQA prefill is selected at threshold and matches the CPU bridge on the final row."""
 
     if not _hip_available():
         pytest.skip("HIP runtime is not available")
-    try:
-        aotriton_runtime_tree()
-    except AotritonNotInstalledError as exc:
-        pytest.skip(str(exc))
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
@@ -106,26 +101,26 @@ def test_qwen35_gguf_full_attention_prefill_aotriton_threshold_and_oracle() -> N
     with Qwen35GGUFFullStackRunner(MODEL) as runner:
         hidden_rows = _prefix_hidden_rows(runner, (760, 4087), runtime)
         native = runner.run_full_attention_prefill_layer(3, hidden_rows, attn_aotriton_min_tokens=3)
-        aotriton = runner.run_full_attention_prefill_layer(3, hidden_rows, attn_aotriton_min_tokens=2)
+        bulk = runner.run_full_attention_prefill_layer(3, hidden_rows, attn_aotriton_min_tokens=2)
         assert native.mode == "native_sequential"
         assert not native.used_aotriton
-        assert aotriton.mode == "aotriton_v3"
-        assert aotriton.used_aotriton
+        assert bulk.mode == "native_gqa_bf16"
+        assert not bulk.used_aotriton
         cpu_bits = _cpu_bridge_prefill_outputs(runner, hidden_rows, q_norm, k_norm, runtime)
-        # AOTriton returns BF16 attention, while the CPU bridge keeps FP32
-        # attention until the GGUF gate/output projection.  The last prompt row
-        # is the prefill row consumed by generation; require it to stay close and
+        # The native GQA prefill kernel mirrors the resident decode attention
+        # numerics, including BF16 gate/output projection. The last prompt row is
+        # the prefill row consumed by generation; require it to stay close and
         # preserve the lm-head distribution gate.
         np.testing.assert_allclose(
-            bf16_to_float32(aotriton.hidden_bits[-1:]),
+            bf16_to_float32(bulk.hidden_bits[-1:]),
             bf16_to_float32(cpu_bits[-1:]),
             rtol=0.20,
             atol=0.15,
         )
-        logits_aotriton = _logits_from_host_bits(runner, aotriton.hidden_bits[-1:], runtime=runtime)
+        logits_bulk = _logits_from_host_bits(runner, bulk.hidden_bits[-1:], runtime=runtime)
         logits_cpu = _logits_from_host_bits(runner, cpu_bits[-1:], runtime=runtime)
-        assert int(np.argmax(logits_aotriton)) == int(np.argmax(logits_cpu))
-        assert _kl(logits_cpu.reshape(-1), logits_aotriton.reshape(-1)) <= 0.05
+        assert int(np.argmax(logits_bulk)) == int(np.argmax(logits_cpu))
+        assert _kl(logits_cpu.reshape(-1), logits_bulk.reshape(-1)) <= 0.05
 
 
 def _prefix_hidden_rows(runner: Qwen35GGUFFullStackRunner, token_ids: tuple[int, ...], runtime) -> np.ndarray:

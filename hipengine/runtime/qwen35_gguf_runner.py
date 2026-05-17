@@ -12,15 +12,10 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
-from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
-    aotriton_attn_fwd_v3_compact_varlen,
-    tensor1 as aotriton_tensor1,
-    tensor2 as aotriton_tensor2,
-    tensor4 as aotriton_tensor4,
-)
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_full_attn_gate_mul_bf16,
     qwen35_paged_full_attn_decode_context_bf16_spans,
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     qwen35_write_paged_kv_mixed_value_bf16_prompt_spans,
@@ -30,7 +25,6 @@ from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused import (
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_bf16_add,
-    gguf_gate_mul_bf16,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
@@ -462,10 +456,10 @@ class Qwen35GGUFFullStackRunner:
         """Run one GGUF full-attention layer over multiple prompt rows.
 
         This is the layer-level native prefill path used to validate the GGUF
-        AOTriton V3 wiring before the full model prefill scheduler is promoted.
-        Rows below the threshold use the existing resident one-token path in a
-        loop; rows at/above the threshold use the compact-varlen AOTriton V3
-        attention path after GGUF Q/K/V projection and GPU q/k norm+RoPE.
+        full-attention prefill wiring before the full-model scheduler is
+        promoted. Rows below the threshold use the existing resident one-token
+        path in a loop; rows at/above the threshold use a native causal GQA
+        prefill kernel after GGUF Q/K/V projection and GPU q/k norm+RoPE.
         """
 
         if self.weights is None:
@@ -495,7 +489,7 @@ class Qwen35GGUFFullStackRunner:
                 prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(self, rows=rows, runtime=runtime)
                 buffers.extend(prefill_scratch.buffers)
                 self._run_full_attention_prefill_layer_aotriton(layer_id, hidden_buf.ptr, out_buf.ptr, prefill_scratch)
-                mode = "aotriton_v3"
+                mode = "native_gqa_bf16"
             else:
                 scratch = _FullStackScratch.allocate(self, runtime=runtime)
                 buffers.extend(scratch.buffers)
@@ -519,7 +513,7 @@ class Qwen35GGUFFullStackRunner:
         return Qwen35GGUFFullAttentionPrefillResult(
             hidden_bits=output,
             mode=mode,
-            used_aotriton=use_aotriton,
+            used_aotriton=(mode == "aotriton_v3"),
         )
 
     def _run_full_attention_prefill_layer_aotriton(
@@ -626,54 +620,22 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        f32_to_bf16(
+        qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
             scratch.full_query.ptr,
-            scratch.full_query_bf16.ptr,
-            rows * self.q_width,
-            stream=stream,
-            runtime=runtime,
-        )
-        aotriton_attn_fwd_v3_compact_varlen(
-            aotriton_tensor4(
-                scratch.full_query_bf16.ptr,
-                (1, cfg.head_count, rows, cfg.key_length),
-                (self.q_width * rows, cfg.key_length, self.q_width, 1),
-                DType.BF16,
-            ),
-            aotriton_tensor4(
-                scratch.key_cache.ptr,
-                (1, cfg.head_count_kv, rows, cfg.key_length),
-                (self.kv_width * rows, cfg.key_length, self.kv_width, 1),
-                DType.BF16,
-            ),
-            aotriton_tensor4(
-                scratch.value_cache.ptr,
-                (1, cfg.head_count_kv, rows, cfg.key_length),
-                (self.kv_width * rows, cfg.key_length, self.kv_width, 1),
-                DType.BF16,
-            ),
-            aotriton_tensor1(scratch.cu_q.ptr, (2,), (1,), DType.INT32),
-            aotriton_tensor1(scratch.cu_k.ptr, (2,), (1,), DType.INT32),
-            aotriton_tensor2(scratch.softmax_lse.ptr, (cfg.head_count, rows), (rows, 1), DType.FP32),
-            aotriton_tensor4(
-                scratch.full_attn_bf16.ptr,
-                (1, cfg.head_count, rows, cfg.key_length),
-                (self.q_width * rows, cfg.key_length, self.q_width, 1),
-                DType.BF16,
-            ),
-            persistent_atomic_counter_ptr=scratch.atomic.ptr,
-            max_seqlen_q=rows,
-            max_seqlen_k=rows,
-            sm_scale=cfg.key_length ** -0.5,
-            is_causal=True,
-            stream=stream,
-            runtime=runtime,
-        )
-        gguf_gate_mul_bf16(
-            scratch.full_attn_bf16.ptr,
+            scratch.key_cache.ptr,
+            scratch.value_cache.ptr,
             scratch.full_gate.ptr,
             scratch.full_gated.ptr,
-            rows * self.q_width,
+            scratch.prefill_spans,
+            rows,
+            rows,
+            scratch.block_size,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.key_length,
+            1,
+            cfg.key_length ** -0.5,
             stream=stream,
             runtime=runtime,
         )

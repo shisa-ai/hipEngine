@@ -95,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
             "fast_bulk_attention_top1_match": sample["fast_bulk_attention_comparison"]["top1_match"],
             "fast_bulk_attention_kl_serial_to_bulk": sample["fast_bulk_attention_comparison"]["kl_serial_to_bulk"],
             "fast_bulk_attention_max_abs_logit": sample["fast_bulk_attention_comparison"]["max_abs_logit"],
+            "first_fast_bulk_hidden_drift_limit": layer_scan["aotriton_full_attention"]["first_drift_limit"],
             "first_aotriton_hidden_drift_limit": layer_scan["aotriton_full_attention"]["first_drift_limit"],
             "first_native_full_attention_hidden_drift_limit": layer_scan["native_full_attention"]["first_drift_limit"],
         },
@@ -207,6 +208,9 @@ def _scan_layer_drift(model: str | Path, token_ids: list[int], layer_limits: Ite
             limit: runner.run_prompt_hidden(token_ids, layer_limit=limit)
             for limit in limits
         }
+        # The legacy "aotriton" label now means the fast fully-bulk scheduler
+        # selected by bulk_attention_mode="bulk"; the implementation may use a
+        # native GQA prefill kernel for parity-sensitive full-attention layers.
         for mode in ("aotriton", "native"):
             entries = []
             first_drift: int | None = None
