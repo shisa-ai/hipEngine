@@ -16896,3 +16896,22 @@ python3 -m pytest tests/test_dflash_chain_compiler.py tests/test_speculative_int
 git diff --check
 # pytest: 26 passed
 ```
+
+## 2026-05-18 — Target verify fixed buffer owner
+
+### Scope
+
+- Added `hipengine/speculative/buffers.py` with `TargetVerifyBufferSpec`, `TargetVerifyScratchSpec`, and `TargetVerifyBufferOwner`.
+- The owner reserves fixed root+candidate verifier tensors once per `(backend, device, bucket, mode)` workspace prefix: `token_ids`, `positions`, `parent_rows`, `draft_depths`, `row_to_request`, `active_mask`, `target_top1`, accept-summary/commit tensors, `next_tokens`, hidden taps, and named per-layer scratch handles.
+- `TargetVerifyBufferOwner.bind()` narrows the stable base tensors to exact `TargetVerifyBatch` row/request views and returns the existing `TargetVerifyBuffers` ABI, preserving dtype/shape/device validation without reallocating.
+- Added compact benchmark metadata (`compact_metadata`) with total bytes, row/summary/scratch tensor shapes/dtypes, hidden-tap shape, stable-address count, and address digest; pointer signatures are opt-in for debug artifacts.
+- Added CPU tests with a fake torch-free workspace proving stable addresses across repeated allocations, exact bind views, capacity/mode/device rejection, and base tensor/scratch validation.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/speculative/buffers.py hipengine/speculative/__init__.py tests/test_speculative_buffer_owner.py
+python3 -m pytest tests/test_speculative_buffer_owner.py tests/test_dflash_chain_compiler.py tests/test_speculative_interfaces.py tests/test_model_quant_and_imports.py -q
+git diff --check
+# pytest: 30 passed
+```

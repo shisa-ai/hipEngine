@@ -1,5 +1,11 @@
 """Speculative decoding plugin interfaces."""
 
+from hipengine.speculative.buffers import (
+    TargetVerifyBufferOwner,
+    TargetVerifyBufferSpec,
+    TargetVerifyScratchHandle,
+    TargetVerifyScratchSpec,
+)
 from hipengine.speculative.dflash import (
     DFLASH_CHAIN_CANDIDATE_BUDGETS,
     DFlashChainCompiler,
@@ -21,6 +27,10 @@ from hipengine.speculative.interfaces import (
 )
 
 __all__ = [
+    "TargetVerifyBufferOwner",
+    "TargetVerifyBufferSpec",
+    "TargetVerifyScratchHandle",
+    "TargetVerifyScratchSpec",
     "DFLASH_CHAIN_CANDIDATE_BUDGETS",
     "DFlashChainCompiler",
     "DFlashDraftProvider",
