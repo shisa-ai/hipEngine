@@ -15918,3 +15918,29 @@ PARO comparison rows were sourced from retained artifacts, not rerun:
 | parent lineage target | Qwen3.5-35B-A3B-PARO | fixture/parent | 2682.660 tok/s | 116.258 tok/s | peak allocated 18.797 GiB |
 
 Interpretation: current GGUF is correctness-first and much smaller in resident bytes, but very slow. Main reasons remain CPU-hosted small-context full-attention bridge, context recomputation per generated token, no persistent public-API resident runner/cache, and many Python/ctypes launches. No performance claim is made.
+
+## 2026-05-16 GGUF performance parity plan vs PARO
+
+Documented the concrete GGUF acceleration dependency plan in `docs/GGUF.md` under `Performance parity plan vs PARO`. This is docs/planning only; no new benchmark claim.
+
+Compared the current GGUF diagnostic row from `benchmarks/results/2026-05-16-hipengine-gguf-vs-paro-diagnostic.json` against retained PARO/AOTriton/graph replay artifacts:
+
+| Path | Diagnostic result | Interpretation |
+| --- | ---: | --- |
+| GGUF Qwen3.5-0.8B-Q4_K_M, 3-token hidden prefill | 15.7 tok/s | correctness bridge; token-serial, rows==1 projections, CPU full-attention bridge |
+| GGUF Qwen3.5-0.8B-Q4_K_M, decode steps 1 -> 4 | 5.6 -> 2.8 tok/s | `sample_next_token(context_ids)` recomputes the full context per generated token |
+| PARO Qwen3.5-35B-A3B AOTriton V3 512/128 | 2183.3 prefill / 101.5 decode tok/s | resident session plus native prefill/AOTriton attention |
+| PARO Qwen3.5-35B-A3B graph replay 512/128 | 2312.8 prefill / 109.3 decode tok/s | AOTriton prefill plus HIP graph decode/GPU sampling |
+
+Plan order recorded in docs:
+
+1. Lock current Q4_K_M E2E fixture and profiler gate.
+2. Add persistent GGUF resident session (`prefill()` + `step()`) to stop full-context replay.
+3. Move full-attention q/k norm, RoPE, q/gate split, KV append, and attention state to GPU via `KVLiveSpans`.
+4. Wire AOTriton V3/equivalent GGUF full-attention prefill only after Q/K/V and KV are resident on device.
+5. Add rows>1 GGUF projection kernels for Q4_K pack8 and raw Q5_K/Q6_K/Q8_0 so prefill is not GEMV-per-token.
+6. Add decode HIP graph replay and GPU sampling.
+7. Broaden local GGUF quant support for Q8_0, Q4_1, and UD-Q4_K_XL.
+8. Benchmark parity rows only after resident decode, all-GPU full attention, AOTriton/equivalent prefill, rows>1 projections, and graph replay are in place.
+
+Validation gates in the plan preserve the llama.cpp oracle prompt `The answer is` -> generated IDs `[220, 16, 13, 271]`, the no-`torch` public hot path invariant, CPU/reference layer checks for new full-attention GPU work, profiler evidence for AOTriton/graph paths, and the normal artifact/rollup/changelog policy for any retained benchmark row.
