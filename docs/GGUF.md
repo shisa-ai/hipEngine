@@ -640,11 +640,17 @@ public path, and current GGUF kernel symbols present in the profile.
 
 ### P1: add a persistent GGUF resident session
 
-Current bottleneck: `Qwen35GGUFFullStackRunner.sample_next_token(context_ids)`
-replays the entire prompt plus generated history for each decode token. This is
-why decode slows as context length grows.
+Status: implemented for the public Q4_K_M E2E path in
+`Qwen35GGUFResidentSession` as of
+`benchmarks/results/2026-05-17-hipengine-gguf-resident-session-diagnostic.json`.
+The remaining bottlenecks are still P2+ (CPU-hosted full-attention bridge,
+token-serial rows==1 prefill projections, and no decode graph replay).
 
-Implementation target:
+Former bottleneck: `Qwen35GGUFFullStackRunner.sample_next_token(context_ids)`
+replayed the entire prompt plus generated history for each decode token, causing
+decode to slow as context length grew.
+
+Implemented target:
 
 - Add a session API next to the bring-up runner, e.g.
   `Qwen35GGUFResidentSession.prefill(prompt_ids)` and
@@ -655,9 +661,12 @@ Implementation target:
 - Update the public generator to call session `prefill()` once and `step()` for
   decode, not `sample_next_token(context_ids)`.
 
-Validation gate: generated IDs/text match the P0 oracle, repeated calls remain
-deterministic, and a timing probe shows decode cost no longer grows because of
-full-context replay for the first few generated tokens.
+Validation result: the public `LLM.generate()` gate passes repeat=2 with the P0
+oracle (`" 1.\n\n"`, IDs `[220, 16, 13, 271]`, `torch_loaded_by_generate=false`).
+A resident timing probe on the fixture prompt measured prefill `0.190 s` and
+three decode steps `0.060/0.060/0.060 s`, replacing the old full-replay decode
+trend `0.179/0.237/0.294/0.355 s`. This remains diagnostic only and is not a
+promoted throughput row.
 
 ### P2: move full-attention prelude and KV append to GPU
 

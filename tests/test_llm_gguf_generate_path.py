@@ -18,12 +18,12 @@ def test_qwen35_gguf_model_plugin_resolves_architecture() -> None:
     assert plugin.default_quant == "gguf_q4_k_m"
 
 
-def test_llm_generate_gguf_path_reaches_full_stack_runner(monkeypatch) -> None:
+def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
     import hipengine.generation.qwen35_gguf as qwen35_gguf
 
     calls = []
 
-    class FakeRunner:
+    class FakeSession:
         def __init__(self, model_path):
             calls.append(("init", str(model_path)))
             self.tokens = iter([220, 16])
@@ -35,11 +35,15 @@ def test_llm_generate_gguf_path_reaches_full_stack_runner(monkeypatch) -> None:
         def __exit__(self, exc_type, exc, tb):
             calls.append(("exit", exc_type is None))
 
-        def sample_next_token(self, token_ids):
-            calls.append(("sample_next_token", tuple(int(token) for token in token_ids)))
+        def prefill(self, token_ids):
+            calls.append(("prefill", tuple(int(token) for token in token_ids)))
             return type("Result", (), {"token_id": next(self.tokens), "logit": 4.5})()
 
-    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeRunner)
+        def step(self, token_id, position=None):
+            calls.append(("step", int(token_id), position))
+            return type("Result", (), {"token_id": next(self.tokens), "logit": 4.5})()
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
 
     llm = LLM(str(MODEL), backend="hip_gfx1100", quant="gguf_q4_k_m")
     assert llm.generate("The answer is", SamplingParams(max_tokens=2)) == [" 1"]
@@ -47,7 +51,7 @@ def test_llm_generate_gguf_path_reaches_full_stack_runner(monkeypatch) -> None:
     assert calls == [
         ("init", str(MODEL.resolve())),
         ("enter",),
-        ("sample_next_token", (760, 4087, 369)),
-        ("sample_next_token", (760, 4087, 369, 220)),
+        ("prefill", (760, 4087, 369)),
+        ("step", 220, None),
         ("exit", True),
     ]

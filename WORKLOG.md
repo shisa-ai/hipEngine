@@ -15944,3 +15944,92 @@ Plan order recorded in docs:
 8. Benchmark parity rows only after resident decode, all-GPU full attention, AOTriton/equivalent prefill, rows>1 projections, and graph replay are in place.
 
 Validation gates in the plan preserve the llama.cpp oracle prompt `The answer is` -> generated IDs `[220, 16, 13, 271]`, the no-`torch` public hot path invariant, CPU/reference layer checks for new full-attention GPU work, profiler evidence for AOTriton/graph paths, and the normal artifact/rollup/changelog policy for any retained benchmark row.
+
+## 2026-05-17 GGUF resident session public path
+
+Implemented task #44: `Qwen35GGUFResidentSession` now owns the public GGUF generation state instead of having `hipengine.LLM.generate()` call `Qwen35GGUFFullStackRunner.sample_next_token(context_ids)` for every generated token.
+
+Code changes:
+
+- Added `Qwen35GGUFResidentSession` in `hipengine/runtime/qwen35_gguf_runner.py`.
+  - Materializes `Qwen35GGUFFullStackRunner` weights once.
+  - Allocates reusable token/hidden/logit buffers and `_FullStackScratch` once.
+  - Persists linear-attention conv/recurrent state and the current full-attention host K/V histories across tokens.
+  - Exposes `prefill(prompt_ids)` and `step(token_id, position=None)`; explicit position is validated against the session cursor.
+- Updated `hipengine/generation/qwen35_gguf.py` so public `LLM.generate()` calls resident `prefill()` once, then `step()` for follow-up tokens. It no longer builds/extends `context_ids` and full-replays the prompt for each token.
+- Exported `Qwen35GGUFResidentSession` from `hipengine/runtime/__init__.py`.
+- Updated the public-path unit test to assert resident `prefill()`/`step()` calls instead of `sample_next_token(context_ids)`.
+- Retained the old runner `sample_next_token` as a compatibility/probe surface for explicit full-context replay comparisons.
+
+Correctness gate:
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+/usr/bin/time -f 'elapsed=%E exit=%x' \
+  env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      PYTHONPATH=. \
+      python3 scripts/qwen35_gguf_e2e_correctness.py \
+        --repeat 2 --max-new-tokens 4 --json /tmp/gguf_resident_e2e.json
+```
+
+Result:
+
+```text
+passed=true
+outputs=[' 1.\n\n', ' 1.\n\n']
+generated_token_ids=[220, 16, 13, 271]
+torch_loaded_by_generate=false
+elapsed=0:25.52 exit=0
+```
+
+Resident timing/memory diagnostic command:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY'
+import json, time
+from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+model='/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf'
+prompt=[760,4087,369]
+reset_memory_stats()
+t0=time.perf_counter(); session=Qwen35GGUFResidentSession(model); load=time.perf_counter()-t0
+mem_after_load=memory_stats()
+rows=[]
+t0=time.perf_counter(); result=session.prefill(prompt); rows.append({'phase':'prefill','position_after':session.position,'token_id':result.token_id,'seconds':time.perf_counter()-t0})
+for i in range(3):
+    prev=result.token_id
+    t0=time.perf_counter(); result=session.step(result.token_id); rows.append({'phase':f'step_{i+1}','input_token_id':prev,'position_after':session.position,'token_id':result.token_id,'seconds':time.perf_counter()-t0})
+mem_after_steps=memory_stats()
+t0=time.perf_counter(); session.close(); close=time.perf_counter()-t0
+print(json.dumps({'load_s':load,'close_s':close,'rows':rows,'memory_after_load':mem_after_load,'memory_after_steps':mem_after_steps,'memory_after_close':memory_stats()}, indent=2))
+PY
+```
+
+Result (diagnostic only, no throughput row promoted):
+
+| Phase | Time | Token / position |
+| --- | ---: | --- |
+| load/materialize + scratch/session allocation | 10.794 s | — |
+| resident prefill, prompt `[760,4087,369]` | 0.190 s / 15.76 tok/s | next token 220, position 3 |
+| resident step after token 220 | 0.0603 s / 16.59 tok/s | next token 16, position 4 |
+| resident step after token 16 | 0.0599 s / 16.71 tok/s | next token 13, position 5 |
+| resident step after token 13 | 0.0596 s / 16.77 tok/s | next token 271, position 6 |
+| close/free | 0.068 s | active allocations return to 0 |
+
+Tracked hipENGINE allocations after session load/steps: `599,525,704 bytes` peak (`0.558 GiB`), `574` active allocations; after `close()`, active allocations returned to 0. This is larger than the earlier weight-only resident estimate because it includes reusable session scratch/logit/state buffers. The old pre-resident public path from `benchmarks/results/2026-05-16-hipengine-gguf-vs-paro-diagnostic.json` had full-replay decode trend `5.58 -> 2.82 tok/s`; resident follow-up steps are flat at ~`16.6-16.8 tok/s` for this tiny fixture. The path still uses the CPU-hosted small-context full-attention bridge and rows==1 GGUF GEMV prefill, so this remains diagnostic context only.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/generation/qwen35_gguf.py hipengine/runtime/__init__.py
+python3 -m pytest tests/test_llm_gguf_generate_path.py tests/test_model_quant_and_imports.py -q
+# 10 passed
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest \
+  tests/test_gguf_ops.py tests/test_qwen35_gguf_runner.py \
+  tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_tokenizer.py \
+  tests/test_gguf_e2e_acceptance.py tests/test_llm_generate.py \
+  tests/test_model_quant_and_imports.py -q
+# 21 passed
+```
+
+Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-resident-session-diagnostic.json`; benchmark rollup/changelog updated as diagnostic-only (`performance_claim=false`).

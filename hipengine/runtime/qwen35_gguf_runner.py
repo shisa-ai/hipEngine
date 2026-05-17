@@ -206,14 +206,12 @@ class Qwen35GGUFOneLayerProbe:
 
 @dataclass
 class Qwen35GGUFFullStackRunner:
-    """One-token GGUF Qwen3.5 decode stack over resident native GGUF weights.
+    """GGUF Qwen3.5 full-stack primitive runner over resident native weights.
 
-    This runner executes all mapped layers for a single selected token with zeroed
-    decode state.  It is the task-34 replacement for the one-layer projection
-    probe: every layer runs input RMSNorm, the linear-attention or full-attention
-    projection path, residuals, dense FFN, and the final output RMSNorm.  It is
-    still a one-token decode bring-up path; prompt prefill/state carry-over for
-    llama.cpp parity lands in the follow-up E2E task.
+    The public generator uses :class:`Qwen35GGUFResidentSession` so decode state
+    persists across tokens.  This lower-level runner remains as a deterministic
+    compatibility/probe surface and still provides ``sample_next_token`` for
+    tests that intentionally compare against the old full-context replay path.
     """
 
     model_path: str | Path
@@ -652,6 +650,178 @@ class Qwen35GGUFFullStackRunner:
         self.close()
 
 
+@dataclass
+class Qwen35GGUFResidentSession:
+    """Persistent GGUF Qwen3.5 session for public greedy generation.
+
+    The session materializes GGUF weights once, owns reusable device scratch, and
+    carries linear-attention recurrent state plus the current full-attention
+    history across decode steps.  Full-attention math is still the existing
+    CPU-hosted small-context bridge until the follow-up GPU KV/AOTriton work, but
+    the public path no longer recomputes the full prompt/context for every new
+    token.
+    """
+
+    model_path: str | Path
+    runtime: HipRuntime | None = None
+    runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
+    scratch: object | None = field(default=None, init=False)
+    _token_buf: object | None = field(default=None, init=False)
+    _hidden_a: object | None = field(default=None, init=False)
+    _hidden_b: object | None = field(default=None, init=False)
+    _logits_buf: object | None = field(default=None, init=False)
+    _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
+    _logits_host: np.ndarray | None = field(default=None, init=False)
+    _buffers: tuple[object, ...] = field(default=(), init=False)
+    _position: int = field(default=0, init=False)
+
+    def __post_init__(self) -> None:
+        self.runtime = self.runtime or get_hip_runtime()
+        self.runner = Qwen35GGUFFullStackRunner(self.model_path, runtime=self.runtime)
+        runtime = self.runtime or get_hip_runtime()
+        self.scratch = _FullStackScratch.allocate(self.runner, runtime=runtime)
+        self._token_buf = malloc(self._token_host.nbytes, runtime=runtime)
+        hidden_bytes = self.runner.hidden_size * 2
+        self._hidden_a = malloc(hidden_bytes, runtime=runtime)
+        self._hidden_b = malloc(hidden_bytes, runtime=runtime)
+        self._logits_host = np.empty((1, self.runner.vocab_size), dtype=np.float32)
+        self._logits_buf = malloc(self._logits_host.nbytes, runtime=runtime)
+        self._buffers = (self._token_buf, self._hidden_a, self._hidden_b, self._logits_buf)
+        self.reset()
+
+    @property
+    def position(self) -> int:
+        """Next token position that will be consumed by :meth:`step`."""
+
+        return int(self._position)
+
+    def reset(self) -> None:
+        """Reset sequence state without freeing resident weights or scratch."""
+
+        if self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        self.scratch.zero_states(runtime)
+        self._position = 0
+
+    def prefill(self, token_ids: list[int] | tuple[int, ...]) -> Qwen35GGUFNextTokenProbeResult:
+        """Consume prompt tokens once and return greedy next-token logits."""
+
+        if not token_ids:
+            raise ValueError("token_ids must be non-empty")
+        self.reset()
+        hidden_ptr = None
+        for token_id in token_ids:
+            hidden_ptr = self._run_token_to_final_hidden(int(token_id), position=self._position)
+            self._position += 1
+        assert hidden_ptr is not None
+        return self._sample_from_hidden(hidden_ptr)
+
+    def step(self, token_id: int, position: int | None = None) -> Qwen35GGUFNextTokenProbeResult:
+        """Consume one generated token and return the next greedy token.
+
+        ``position`` is optional because the session tracks its own decode
+        cursor.  When supplied, it is validated to catch caller/context drift.
+        """
+
+        if position is not None and int(position) != self._position:
+            raise ValueError(f"position {position} does not match session cursor {self._position}")
+        hidden_ptr = self._run_token_to_final_hidden(int(token_id), position=self._position)
+        self._position += 1
+        return self._sample_from_hidden(hidden_ptr)
+
+    def _run_token_to_final_hidden(self, token_id: int, *, position: int) -> int:
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._token_buf is None or self._hidden_a is None or self._hidden_b is None:
+            raise RuntimeError("GGUF resident session buffers are closed")
+        assert self.runner.weights is not None
+        runtime = self.runtime or get_hip_runtime()
+        self._token_host[0] = int(token_id)
+        copy_host_to_device(self._token_buf, host_array_ptr(self._token_host), runtime=runtime)
+        gguf_q6_k_embedding_bf16_out(
+            self._token_buf.ptr,
+            self.runner.weights.root("token_embedding").allocation().tensor.ptr,
+            self._hidden_a.ptr,
+            rows=1,
+            hidden_size=self.runner.hidden_size,
+            vocab_size=self.runner.vocab_size,
+            runtime=runtime,
+        )
+        src = self._hidden_a
+        dst = self._hidden_b
+        for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+            if layer_type == LINEAR_ATTENTION:
+                self.runner._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch)
+            elif layer_type == FULL_ATTENTION:
+                self.runner._run_full_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch, position=position)
+            else:
+                raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            src, dst = dst, src
+        gguf_rmsnorm_bf16_f32_weight(
+            src.ptr,
+            self.runner.weights.root("output_norm").allocation().tensor.ptr,
+            self.scratch.norm.ptr,
+            rows=1,
+            hidden_size=self.runner.hidden_size,
+            eps=self.runner.weights.config.rms_norm_eps,
+            runtime=runtime,
+        )
+        return self.scratch.norm.ptr
+
+    def _sample_from_hidden(self, hidden_ptr: int) -> Qwen35GGUFNextTokenProbeResult:
+        if self.runner is None or self._logits_buf is None or self._logits_host is None:
+            raise RuntimeError("GGUF resident session is closed")
+        assert self.runner.weights is not None
+        runtime = self.runtime or get_hip_runtime()
+        launch_gguf_linear(
+            self.runner.weights.root("lm_head"),
+            hidden_ptr,
+            self._logits_buf.ptr,
+            rows=1,
+            in_features=self.runner.hidden_size,
+            out_features=self.runner.vocab_size,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(self._logits_host), self._logits_buf, runtime=runtime)
+        if not np.all(np.isfinite(self._logits_host)):
+            raise FloatingPointError("GGUF resident lm-head logits contain NaN or Inf")
+        flat = self._logits_host.reshape(-1)
+        next_id = int(np.argmax(flat))
+        return Qwen35GGUFNextTokenProbeResult(
+            token_id=next_id,
+            logit=float(flat[next_id]),
+            logits=self._logits_host.copy(),
+        )
+
+    def close(self) -> None:
+        runtime = self.runtime or get_hip_runtime()
+        for buffer in reversed(self._buffers):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        self._buffers = ()
+        if self.scratch is not None:
+            for buffer in reversed(self.scratch.buffers):
+                free(buffer, runtime=runtime)
+            self.scratch = None
+        if self.runner is not None:
+            self.runner.close()
+            self.runner = None
+        self._token_buf = None
+        self._hidden_a = None
+        self._hidden_b = None
+        self._logits_buf = None
+        self._logits_host = None
+
+    def __enter__(self) -> "Qwen35GGUFResidentSession":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
 @dataclass(frozen=True)
 class _FullStackScratch:
     norm: object
@@ -809,4 +979,5 @@ __all__ = [
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFNextTokenProbeResult",
     "Qwen35GGUFOneLayerProbe",
+    "Qwen35GGUFResidentSession",
 ]

@@ -9,7 +9,11 @@ from hipengine.runtime.gguf_linear import (
     resolve_gguf_linear_dispatch,
 )
 from hipengine.runtime.prefill import PrefillConfig
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner, Qwen35GGUFOneLayerProbe
+from hipengine.runtime.qwen35_gguf_runner import (
+    Qwen35GGUFFullStackRunner,
+    Qwen35GGUFOneLayerProbe,
+    Qwen35GGUFResidentSession,
+)
 from hipengine.runtime.qwen35_paro import (
     Qwen35ParoAttentionScratch,
     Qwen35ParoDecodeState,
@@ -35,6 +39,7 @@ __all__ = [
     "PrefillConfig",
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFOneLayerProbe",
+    "Qwen35GGUFResidentSession",
     "Qwen35ParoAttentionScratch",
     "Qwen35ParoDecodeState",
     "Qwen35ParoGroupedMoeScratch",

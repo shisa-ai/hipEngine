@@ -8,13 +8,13 @@ from typing import Any
 
 from hipengine.generation.registry import GenerationRequest, register_text_generator
 from hipengine.loading.gguf import GGUFModelInfo
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
 
 @dataclass
 class Qwen35GGUFBringupGenerator:
-    """Public API GGUF greedy generator over the native full-stack runner."""
+    """Public API GGUF greedy generator over a persistent resident session."""
 
     model_path: str | Path
     weight_index: GGUFModelInfo
@@ -32,19 +32,20 @@ class Qwen35GGUFBringupGenerator:
         if request.max_tokens == 0:
             return ["" for _ in request.prompts]
         outputs: list[str] = []
-        with Qwen35GGUFFullStackRunner(self.model_path) as runner:
+        with Qwen35GGUFResidentSession(self.model_path) as session:
             for prompt in request.prompts:
                 prompt_ids = self.tokenizer.encode(prompt)
                 if not prompt_ids:
                     raise ValueError("GGUF prompt tokenization produced no token IDs")
                 generated_ids: list[int] = []
-                context_ids = list(prompt_ids)
-                for _ in range(request.max_tokens):
-                    result = runner.sample_next_token(context_ids)
+                result = session.prefill(prompt_ids)
+                for index in range(request.max_tokens):
                     generated_ids.append(result.token_id)
-                    context_ids.append(result.token_id)
                     if not request.ignore_eos and result.token_id == self.tokenizer.eos_token_id:
                         break
+                    if index + 1 >= request.max_tokens:
+                        break
+                    result = session.step(result.token_id)
                 outputs.append(self.tokenizer.decode(generated_ids))
         return outputs
 
