@@ -609,6 +609,91 @@ __global__ void qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel(
   }
 }
 
+__global__ void qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16_kernel(
+    const float* __restrict__ recurrent,
+    const half_t* __restrict__ gate,
+    const float* __restrict__ norm_weight,
+    half_t* __restrict__ out_rot,
+    const int16_t* __restrict__ pairs,
+    const half_t* __restrict__ theta,
+    const half_t* __restrict__ scales,
+    float eps,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_v_dim,
+    int group_size,
+    int krot) {
+  extern __shared__ float shared[];
+  float* partial = shared;
+  float* buf = partial + blockDim.x;
+  const int64_t token = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  const int lane = threadIdx.x;
+  if (token >= tokens || v_head >= num_v_heads) {
+    return;
+  }
+
+  const int half_group = group_size / 2;
+  const int64_t recurrent_base = (token * num_v_heads + v_head) * head_v_dim;
+  float sumsq = 0.0f;
+  for (int64_t idx = lane; idx < head_v_dim; idx += blockDim.x) {
+    const float x = recurrent[recurrent_base + idx];
+    sumsq += x * x;
+  }
+  partial[lane] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (lane < stride) {
+      partial[lane] += partial[lane + stride];
+    }
+    __syncthreads();
+  }
+
+  const float inv_rms = rsqrtf((partial[0] / static_cast<float>(head_v_dim)) + eps);
+  const int group = static_cast<int>(v_head);
+  const int base = group * group_size;
+  const int64_t hidden = num_v_heads * head_v_dim;
+  const int64_t row_base = token * hidden;
+  if (lane < half_group) {
+    const int local0 = lane;
+    const int local1 = lane + half_group;
+    const int col0 = base + local0;
+    const int col1 = base + local1;
+    const float gated0 = recurrent[recurrent_base + local0] * inv_rms * norm_weight[local0] *
+        silu_f32(static_cast<float>(gate[recurrent_base + local0]));
+    const float gated1 = recurrent[recurrent_base + local1] * inv_rms * norm_weight[local1] *
+        silu_f32(static_cast<float>(gate[recurrent_base + local1]));
+    const half_t rounded0 = static_cast<half_t>(gated0);
+    const half_t rounded1 = static_cast<half_t>(gated1);
+    buf[local0] = static_cast<float>(rounded0) * static_cast<float>(scales[col0]);
+    buf[local1] = static_cast<float>(rounded1) * static_cast<float>(scales[col1]);
+  }
+  __syncthreads();
+
+  for (int r = 0; r < krot; ++r) {
+    if (lane < half_group) {
+      const int pair_base = r * static_cast<int>(hidden) + base + 2 * lane;
+      const int i = static_cast<int>(pairs[pair_base + 0]);
+      const int j = static_cast<int>(pairs[pair_base + 1]);
+      const float angle = static_cast<float>(theta[r * (hidden / 2) + group * half_group + lane]);
+      float s, c;
+      sincosf(angle, &s, &c);
+      const float xi = buf[i];
+      const float xj = buf[j];
+      buf[i] = fmaf(xj, s, xi * c);
+      buf[j] = fmaf(xi, -s, xj * c);
+    }
+    __syncthreads();
+  }
+
+  if (lane < half_group) {
+    const int col0 = base + lane;
+    const int col1 = col0 + half_group;
+    out_rot[row_base + col0] = static_cast<half_t>(buf[lane]);
+    out_rot[row_base + col1] = static_cast<half_t>(buf[lane + half_group]);
+  }
+}
+
 bool valid_gdn_shape(int64_t num_k_heads, int64_t num_v_heads, int64_t head_k_dim, int64_t head_v_dim) {
   return num_k_heads > 0 && num_v_heads > 0 && (num_v_heads % num_k_heads) == 0 &&
       head_k_dim > 0 && head_v_dim > 0 && head_v_dim <= 128;
@@ -979,5 +1064,48 @@ extern "C" int hipengine_qwen35_gdn_prefill_rmsnorm_gate_fp16(
       tokens,
       num_v_heads,
       head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16(
+    const float* recurrent,
+    const half_t* gate,
+    const float* norm_weight,
+    half_t* out_rot,
+    const int16_t* pairs,
+    const half_t* theta,
+    const half_t* scales,
+    float eps,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_v_dim,
+    int64_t group_size,
+    int64_t krot,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_v_heads <= 0 || head_v_dim <= 0 || group_size <= 0 || krot < 0 ||
+      group_size != head_v_dim || (group_size % 2) != 0 || group_size > 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = (static_cast<size_t>(threads) + static_cast<size_t>(group_size)) * sizeof(float);
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16_kernel,
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      recurrent,
+      gate,
+      norm_weight,
+      out_rot,
+      pairs,
+      theta,
+      scales,
+      eps,
+      tokens,
+      num_v_heads,
+      head_v_dim,
+      static_cast<int>(group_size),
+      static_cast<int>(krot));
   return static_cast<int>(hipGetLastError());
 }

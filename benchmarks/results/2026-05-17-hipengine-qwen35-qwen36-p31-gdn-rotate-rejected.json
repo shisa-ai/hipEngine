@@ -1,0 +1,527 @@
+{
+  "schema": 1,
+  "status": "diagnostic_rejected",
+  "decision": "Reject P3.1 as a default fusion. Keep HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 as a diagnostic opt-in only.",
+  "performance_claim": false,
+  "reason_not_promoted": "The fused RMSNorm+gate+rotate tail is bit-exact and passes the Qwen3.5 fixture gate, but two-run 4K medians improve only about +0.5%, 32K medians regress about -0.3% to -0.4%, decode is neutral/slightly lower at 32K, and tracked peak memory is unchanged because the current resident scratch still reserves recurrent_bf16.",
+  "date": "2026-05-17",
+  "git_head_at_run": "9fecaa052682d8ac7284fcf0b1d3f4cd7d0b2c46",
+  "working_tree_at_run": "uncommitted P3.1 fused GDN rotate diagnostic kernel/runtime/docs/artifact updates pending",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "software": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "compiler_version": "HIP version: 7.2.53211-d40244d\nAMD clang version 22.0.0git (/startdir/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "rocprof": "not used for this E2E diagnostic"
+  },
+  "bench_script": "scripts/qwen35_paro_bench.py",
+  "common_args": "--token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512",
+  "long_context_chunk_args": "--prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024",
+  "ablation": {
+    "default": "Current two-kernel prefill tail: qwen35_gdn_prefill_rmsnorm_gate_fp16 -> paro_rotate1_fp16 -> awq_fusedw4_prefill_strided_fp16.",
+    "fused": "HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 routes single-request FP16 prefill through qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16, which writes out_rot directly before the unchanged awq_fusedw4_prefill_strided_fp16 projection.",
+    "default_policy_after_decision": "env flag default remains false; existing fallback remains the production path."
+  },
+  "models": {
+    "zlab": {
+      "display": "z-lab/Qwen3.5-35B-A3B-PARO",
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "resolved_shared_expert_format": "legacy_fp16"
+    },
+    "shisa": {
+      "display": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5 forced packed sidecars",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+      "resolved_shared_expert_format": "packed_paro_w4"
+    }
+  },
+  "validation": {
+    "per_tail_kernel_smoke": {
+      "command": "python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "passed": true,
+      "output": "conv_out_max_abs=1.49e-08 conv_state_max_abs=0 fp16_conv_out_max_abs=1.49e-08 fp16_conv_state_max_abs=0 prepare_max_abs=5.96e-08 gdn_out_max_abs=9.31e-10 gdn_state_max_abs=1.12e-08 gdn_k2_out_max_abs=9.31e-10 gdn_k2_state_max_abs=1.12e-08 gated_mismatch=0 fp16_prepare_max_abs=5.96e-08 fp16_gdn_k2_out_max_abs=1.4e-09 fp16_gdn_k2_state_max_abs=1.12e-08 fp16_gated_mismatch=0 fused_rotate_mismatch=0"
+    },
+    "native_prefill_fixture_gate_fused": {
+      "command": "HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/qwen35_native_prefill_fixture_gate.py --model <zlab> --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p31-gdn-rotate-20260517/fused-native-prefill-fixture-gate.json",
+      "passed": true,
+      "max_kl": 0.039568870612619614,
+      "top1_agreement": 1.0,
+      "generated_match": true,
+      "artifact": "/tmp/hipengine-p31-gdn-rotate-20260517/fused-native-prefill-fixture-gate.json"
+    },
+    "generated_preview_sanity": "For every workload and repetition, default and fused generated the same first two token IDs with max logit delta 0.0.",
+    "unit_tests": "python3 -m py_compile hipengine/kernels/hip_gfx1100/linear_attn/gdn.py hipengine/kernels/hip_gfx1100/linear_attn/__init__.py hipengine/runtime/qwen35_paro.py scripts/smoke.py tests/test_qwen35_linear_attn_gdn_plan.py && python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build && python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py tests/test_qwen35_paro_layout.py -q --tb=short -> 23 passed; python3 -m json.tool artifact passed; git diff --check passed."
+  },
+  "summary": {
+    "prefill_delta_pct_min": -0.3959763134442351,
+    "prefill_delta_pct_max": 0.5312849172136591,
+    "decode_delta_pct_min": -0.5394075095690565,
+    "decode_delta_pct_max": 0.15654566810849868,
+    "tracked_peak_changed": false
+  },
+  "measurements": [
+    {
+      "model_key": "zlab",
+      "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "workload": "4096/128",
+      "shared_expert_format": "auto",
+      "command_default_template": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --shared-expert-format auto --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p31-gdn-rotate-20260517/default-zlab-4096-128-runN.json",
+      "command_fused_template": "HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --shared-expert-format auto --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p31-gdn-rotate-20260517/fused-zlab-4096-128-runN.json",
+      "median": {
+        "default_prefill_tok_s": 2454.5974753869614,
+        "fused_prefill_tok_s": 2467.638381552,
+        "prefill_delta_pct": 0.5312849172136591,
+        "default_decode_tok_s": 116.47334775387739,
+        "fused_decode_tok_s": 116.46370484120125,
+        "decode_delta_pct": -0.008279072304606672,
+        "default_tracked_peak_gib": 20.047133021987975,
+        "fused_tracked_peak_gib": 20.047133021987975
+      },
+      "runs": {
+        "default": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2480.5205509224297,
+            "decode_tok_s": 116.8611572317736,
+            "prefill_seconds": 1.651266303146258,
+            "decode_seconds": 1.0953168959822506,
+            "tracked_peak_gib": 20.047133021987975,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.182941436767578
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.50152015686035
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/default-zlab-4096-128-run1.json",
+            "log": "/tmp/hipengine-p31-default-zlab-4096-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2428.6743998514935,
+            "decode_tok_s": 116.0855382759812,
+            "prefill_seconds": 1.6865167270880193,
+            "decode_seconds": 1.1026351938489825,
+            "tracked_peak_gib": 20.047133021987975,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.182941436767578
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.50152015686035
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/default-zlab-4096-128-run2.json",
+            "log": "/tmp/hipengine-p31-default-zlab-4096-128-run2.out"
+          }
+        ],
+        "fused": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2488.4872634342646,
+            "decode_tok_s": 116.68492927729064,
+            "prefill_seconds": 1.645979893160984,
+            "decode_seconds": 1.096971140941605,
+            "tracked_peak_gib": 20.047133021987975,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.182941436767578
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.50152015686035
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/fused-zlab-4096-128-run1.json",
+            "log": "/tmp/hipengine-p31-fused-zlab-4096-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2446.789499669735,
+            "decode_tok_s": 116.24248040511186,
+            "prefill_seconds": 1.6740303980186582,
+            "decode_seconds": 1.1011464961338788,
+            "tracked_peak_gib": 20.047133021987975,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.182941436767578
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.50152015686035
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/fused-zlab-4096-128-run2.json",
+            "log": "/tmp/hipengine-p31-fused-zlab-4096-128-run2.out"
+          }
+        ]
+      },
+      "sanity": {
+        "default_vs_fused_first_two_tokens_match": true,
+        "default_vs_fused_first_two_max_logit_delta": 0.0
+      }
+    },
+    {
+      "model_key": "zlab",
+      "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "workload": "32768/128",
+      "shared_expert_format": "auto",
+      "command_default_template": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --shared-expert-format auto --prompt-length 32768 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/hipengine-p31-gdn-rotate-20260517/default-zlab-32768-128-runN.json",
+      "command_fused_template": "HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --shared-expert-format auto --prompt-length 32768 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/hipengine-p31-gdn-rotate-20260517/fused-zlab-32768-128-runN.json",
+      "median": {
+        "default_prefill_tok_s": 1950.3305140013845,
+        "fused_prefill_tok_s": 1942.6076671320639,
+        "prefill_delta_pct": -0.3959763134442351,
+        "default_decode_tok_s": 98.92328796418943,
+        "fused_decode_tok_s": 98.4883604213443,
+        "decode_delta_pct": -0.4396614303828761,
+        "default_tracked_peak_gib": 20.319676571525633,
+        "fused_tracked_peak_gib": 20.319676571525633
+      },
+      "runs": {
+        "default": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 1966.1869683713837,
+            "decode_tok_s": 99.47712383554412,
+            "prefill_seconds": 16.6657599338796,
+            "decode_seconds": 1.2867279939819127,
+            "tracked_peak_gib": 20.319676571525633,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.163585662841797
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.391733169555664
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/default-zlab-32768-128-run1.json",
+            "log": "/tmp/hipengine-p31-default-zlab-32768-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 1934.4740596313852,
+            "decode_tok_s": 98.36945209283475,
+            "prefill_seconds": 16.938971001887694,
+            "decode_seconds": 1.3012169660069048,
+            "tracked_peak_gib": 20.319676571525633,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.163585662841797
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.391733169555664
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/default-zlab-32768-128-run2.json",
+            "log": "/tmp/hipengine-p31-default-zlab-32768-128-run2.out"
+          }
+        ],
+        "fused": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 1953.149296186762,
+            "decode_tok_s": 98.96821462401374,
+            "prefill_seconds": 16.777007299941033,
+            "decode_seconds": 1.2933445398230106,
+            "tracked_peak_gib": 20.319676571525633,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.163585662841797
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.391733169555664
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/fused-zlab-32768-128-run1.json",
+            "log": "/tmp/hipengine-p31-fused-zlab-32768-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 1932.0660380773659,
+            "decode_tok_s": 98.00850621867485,
+            "prefill_seconds": 16.960082809906453,
+            "decode_seconds": 1.3060090898070484,
+            "tracked_peak_gib": 20.319676571525633,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.163585662841797
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.391733169555664
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/fused-zlab-32768-128-run2.json",
+            "log": "/tmp/hipengine-p31-fused-zlab-32768-128-run2.out"
+          }
+        ]
+      },
+      "sanity": {
+        "default_vs_fused_first_two_tokens_match": true,
+        "default_vs_fused_first_two_max_logit_delta": 0.0
+      }
+    },
+    {
+      "model_key": "shisa",
+      "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+      "workload": "4096/128",
+      "shared_expert_format": "packed_paro_w4",
+      "command_default_template": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p31-gdn-rotate-20260517/default-shisa-4096-128-runN.json",
+      "command_fused_template": "HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p31-gdn-rotate-20260517/fused-shisa-4096-128-runN.json",
+      "median": {
+        "default_prefill_tok_s": 2658.3310395703293,
+        "fused_prefill_tok_s": 2672.1254880497268,
+        "prefill_delta_pct": 0.5189138701712226,
+        "default_decode_tok_s": 112.39971769063449,
+        "fused_decode_tok_s": 112.57567457964535,
+        "decode_delta_pct": 0.15654566810849868,
+        "default_tracked_peak_gib": 19.994833522476256,
+        "fused_tracked_peak_gib": 19.994833522476256
+      },
+      "runs": {
+        "default": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2670.225155427936,
+            "decode_tok_s": 112.57179750253876,
+            "prefill_seconds": 1.5339530420023948,
+            "decode_seconds": 1.1370521110948175,
+            "tracked_peak_gib": 19.994833522476256,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.685245513916016
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.744184494018555
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/default-shisa-4096-128-run1.json",
+            "log": "/tmp/hipengine-p31-default-shisa-4096-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2646.436923712722,
+            "decode_tok_s": 112.22763787873022,
+            "prefill_seconds": 1.54774140403606,
+            "decode_seconds": 1.1405390189029276,
+            "tracked_peak_gib": 19.994833522476256,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.685245513916016
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.744184494018555
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/default-shisa-4096-128-run2.json",
+            "log": "/tmp/hipengine-p31-default-shisa-4096-128-run2.out"
+          }
+        ],
+        "fused": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2677.419964261068,
+            "decode_tok_s": 112.55644570825905,
+            "prefill_seconds": 1.5298309770878404,
+            "decode_seconds": 1.137207195861265,
+            "tracked_peak_gib": 19.994833522476256,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.685245513916016
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.744184494018555
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/fused-shisa-4096-128-run1.json",
+            "log": "/tmp/hipengine-p31-fused-shisa-4096-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2666.8310118383856,
+            "decode_tok_s": 112.59490345103164,
+            "prefill_seconds": 1.535905343014747,
+            "decode_seconds": 1.1368187731131911,
+            "tracked_peak_gib": 19.994833522476256,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.685245513916016
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.744184494018555
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/fused-shisa-4096-128-run2.json",
+            "log": "/tmp/hipengine-p31-fused-shisa-4096-128-run2.out"
+          }
+        ]
+      },
+      "sanity": {
+        "default_vs_fused_first_two_tokens_match": true,
+        "default_vs_fused_first_two_max_logit_delta": 0.0
+      }
+    },
+    {
+      "model_key": "shisa",
+      "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+      "workload": "32768/128",
+      "shared_expert_format": "packed_paro_w4",
+      "command_default_template": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 32768 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/hipengine-p31-gdn-rotate-20260517/default-shisa-32768-128-runN.json",
+      "command_fused_template": "HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 32768 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/hipengine-p31-gdn-rotate-20260517/fused-shisa-32768-128-runN.json",
+      "median": {
+        "default_prefill_tok_s": 2067.608519879503,
+        "fused_prefill_tok_s": 2061.326304499451,
+        "prefill_delta_pct": -0.3038396930390985,
+        "default_decode_tok_s": 96.21905888338483,
+        "fused_decode_tok_s": 95.70004605413118,
+        "decode_delta_pct": -0.5394075095690565,
+        "default_tracked_peak_gib": 20.267377072013915,
+        "fused_tracked_peak_gib": 20.267377072013915
+      },
+      "runs": {
+        "default": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2075.3976599396537,
+            "decode_tok_s": 96.30670665474108,
+            "prefill_seconds": 15.788781414041296,
+            "decode_seconds": 1.329087084857747,
+            "tracked_peak_gib": 20.267377072013915,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.928117752075195
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 29.008821487426758
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/default-shisa-32768-128-run1.json",
+            "log": "/tmp/hipengine-p31-default-shisa-32768-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2059.8193798193524,
+            "decode_tok_s": 96.1314111120286,
+            "prefill_seconds": 15.90819094190374,
+            "decode_seconds": 1.331510673975572,
+            "tracked_peak_gib": 20.267377072013915,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.928117752075195
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 29.008821487426758
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/default-shisa-32768-128-run2.json",
+            "log": "/tmp/hipengine-p31-default-shisa-32768-128-run2.out"
+          }
+        ],
+        "fused": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2067.099036468259,
+            "decode_tok_s": 95.92648179773802,
+            "prefill_seconds": 15.852167420089245,
+            "decode_seconds": 1.334355202037841,
+            "tracked_peak_gib": 20.267377072013915,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.928117752075195
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 29.008821487426758
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/fused-shisa-32768-128-run1.json",
+            "log": "/tmp/hipengine-p31-fused-shisa-32768-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2055.5535725306436,
+            "decode_tok_s": 95.47361031052432,
+            "prefill_seconds": 15.941204567905515,
+            "decode_seconds": 1.340684609953314,
+            "tracked_peak_gib": 20.267377072013915,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.928117752075195
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 29.008821487426758
+              }
+            ],
+            "json": "/tmp/hipengine-p31-gdn-rotate-20260517/fused-shisa-32768-128-run2.json",
+            "log": "/tmp/hipengine-p31-fused-shisa-32768-128-run2.out"
+          }
+        ]
+      },
+      "sanity": {
+        "default_vs_fused_first_two_tokens_match": true,
+        "default_vs_fused_first_two_max_logit_delta": 0.0
+      }
+    }
+  ]
+}

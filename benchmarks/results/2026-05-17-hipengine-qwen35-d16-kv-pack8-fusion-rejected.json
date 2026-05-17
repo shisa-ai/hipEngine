@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "status": "diagnostic_rejected",
+  "blocked_reason": "Opt-in full-attention K/V dual-pack8 route is correct but decode is neutral at 512 and regresses at 4K; default remains the retained Q/K dual + V single path.",
+  "performance_claim": false,
+  "date": "2026-05-17",
+  "task": "D1.6 decode k_proj + v_proj fused launch",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "implementation": {
+    "runtime_gate": "HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1",
+    "default": "off",
+    "surface": "full-attention rows==1 decode projection route only",
+    "default_route": "rotate3 -> dual pack8 q_proj+k_proj -> single v_proj",
+    "opt_in_route": "rotate3 -> single q_proj -> dual pack8 k_proj+v_proj with contiguous kv scratch",
+    "notes": [
+      "The opt-in scratch aliases key and value into a contiguous attn.kv_proj buffer so the existing dual-pack8 wrapper can write K||V without copy kernels.",
+      "The route intentionally disables the D1.1 rotate-staged full-attention path when K/V fusion is enabled, because rotate-staged only fills V scratch before the fused Q/K kernel.",
+      "Pack8/repacked qweight layout is preserved; no kernel body was changed."
+    ]
+  },
+  "correctness": {
+    "unit_tests": {
+      "command": "python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py -q --tb=short",
+      "result": "passed, 71 tests"
+    },
+    "graph_fixture_gate": {
+      "command": "HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1 python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --max-new-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-d16/graph-fixture-optin.json",
+      "status": "accepted",
+      "passed": true,
+      "generated_match": true,
+      "expected_match": true,
+      "final_kl": 0.0,
+      "final_top1_match": true,
+      "json": "/tmp/hipengine-d16/graph-fixture-optin.json"
+    }
+  },
+  "benchmarks": {
+    "command": "python3 scripts/qwen35_paro_bench.py --prompt-length {512,4096} --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json <path>",
+    "default_env": "unset HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED",
+    "opt_in_env": "HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1",
+    "512_default": {
+      "json": "/tmp/hipengine-d16/bench/512-default-1.json",
+      "prefill_tok_s": 2276.2762354579872,
+      "decode_tok_s": 115.49513936813686,
+      "peak_gib": 18.17562458757311,
+      "decode_seconds": 1.1082717480603606,
+      "decode_step_median_s": 0.008658373031721567,
+      "generated_preview": [
+        9707,
+        9707
+      ]
+    },
+    "512_kv_fused": {
+      "json": "/tmp/hipengine-d16/bench/512-kv-1.json",
+      "prefill_tok_s": 2244.5077998602565,
+      "decode_tok_s": 115.6272115962441,
+      "peak_gib": 18.176122405566275,
+      "decode_seconds": 1.1070058529730886,
+      "decode_step_median_s": 0.008648483226352255,
+      "generated_preview": [
+        9707,
+        9707
+      ]
+    },
+    "4k_default": {
+      "json": "/tmp/hipengine-d16/bench/4k-default-1.json",
+      "prefill_tok_s": 2487.220456476083,
+      "decode_tok_s": 117.30112603381609,
+      "peak_gib": 20.047133021987975,
+      "decode_seconds": 1.0912086211610585,
+      "decode_step_median_s": 0.00852506735282077,
+      "generated_preview": [
+        9707,
+        9707
+      ]
+    },
+    "4k_kv_fused": {
+      "json": "/tmp/hipengine-d16/bench/4k-kv-1.json",
+      "prefill_tok_s": 2487.113780043628,
+      "decode_tok_s": 117.05322049772033,
+      "peak_gib": 20.05104880873114,
+      "decode_seconds": 1.0935196781065315,
+      "decode_step_median_s": 0.008543122485207277,
+      "generated_preview": [
+        9707,
+        9707
+      ]
+    },
+    "512_delta": {
+      "prefill_percent": -1.3956318263516398,
+      "decode_percent": 0.1143530618083144,
+      "peak_gib": 0.0004978179931640625
+    },
+    "4k_delta": {
+      "prefill_percent": -0.004288981789990487,
+      "decode_percent": -0.2113411392353437,
+      "peak_gib": 0.0039157867431640625
+    }
+  },
+  "decision": {
+    "action": "reject_default_keep_opt_in_for_diagnostic_evidence",
+    "rationale": [
+      "D1.6 changes pairing, not launch count: default Q/K+V and opt-in Q+K/V both use two projection launches per full-attention layer.",
+      "The hoped-for benefit was replacing the large Q leg of the Q/K dual pack8 launch with a single-projection path while pairing the two small KV projections; measured graph replay did not show a robust win.",
+      "512/128 decode moved only +0.11%, within noise; 4K/128 decode regressed -0.21%.",
+      "Tracked peak increased slightly because opt-in contiguous KV scratch is larger than the default key/value scratch arrangement at prefill sizes."
+    ],
+    "default_runtime_impact": "none; HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED defaults off"
+  },
+  "validation": {
+    "commands": [
+      "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\"",
+      "python3 -m py_compile hipengine/runtime/qwen35_paro.py scripts/qwen35_paro_bench.py scripts/qwen35_decode_graph_fixture_gate.py",
+      "python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py -q --tb=short",
+      "python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d16-kv-pack8-fusion-rejected.json >/tmp/d16.json"
+    ],
+    "result": "passed"
+  }
+}

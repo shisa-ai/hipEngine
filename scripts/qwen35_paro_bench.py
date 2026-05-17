@@ -90,6 +90,18 @@ def main() -> int:
     parser.add_argument("--prefill-full-attn-post-chunk-size", type=int, default=0, help="Limit full-attention post/MoE chunk rows (0 disables).")
     parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0, help="Limit full-attention RoPE/norm chunk rows (0 disables).")
     parser.add_argument(
+        "--prefill-chunk-autotune",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Auto-select long-context prefill chunk sizes from the memory budget (default; use --no-prefill-chunk-autotune for unchunked diagnostics).",
+    )
+    parser.add_argument(
+        "--prefill-chunk-memory-budget-gib",
+        type=float,
+        default=0.0,
+        help="Optional resident high-water budget for long-context chunk tuning; 0 derives a budget from device VRAM.",
+    )
+    parser.add_argument(
         "--native-prefill",
         action="store_true",
         help="Deprecated compatibility no-op: native single-request prefill is the default.",
@@ -126,6 +138,8 @@ def main() -> int:
     ):
         if int(getattr(args, name)) < 0:
             raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
+    if args.prefill_chunk_memory_budget_gib < 0.0:
+        raise ValueError("--prefill-chunk-memory-budget-gib must be non-negative")
     if args.native_prefill and args.serial_prefill_diagnostic:
         raise ValueError("--native-prefill cannot be combined with --serial-prefill-diagnostic")
 
@@ -159,6 +173,8 @@ def main() -> int:
                 full_attn_post_chunk_size=args.prefill_full_attn_post_chunk_size,
                 full_attn_rope_chunk_size=args.prefill_full_attn_rope_chunk_size,
                 attn_aotriton_min_tokens=args.attn_aotriton_min_tokens,
+                auto_tune_chunk_sizes=args.prefill_chunk_autotune,
+                chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
             ),
         )
     load_seconds = time.perf_counter() - load_start
@@ -265,12 +281,22 @@ def main() -> int:
         "serial_prefill_diagnostic": bool(args.serial_prefill_diagnostic),
         "allow_rejected_native_prefill": bool(args.allow_rejected_native_prefill),
         "attn_aotriton_min_tokens": args.attn_aotriton_min_tokens,
-        "prefill_chunk_sizes": {
+        "requested_prefill_chunk_sizes": {
             "linear": args.prefill_linear_chunk_size,
             "moe": args.prefill_moe_chunk_size,
             "full_attn_query": args.prefill_full_attn_query_chunk_size,
             "full_attn_post": args.prefill_full_attn_post_chunk_size,
             "full_attn_rope": args.prefill_full_attn_rope_chunk_size,
+        },
+        "prefill_chunk_autotune": bool(args.prefill_chunk_autotune),
+        "prefill_chunk_memory_budget_gib": float(args.prefill_chunk_memory_budget_gib),
+        "prefill_chunk_tuning": session.prefill_chunk_tuning,
+        "prefill_chunk_sizes": {
+            "linear": session.prefill_config.linear_chunk_size,
+            "moe": session.prefill_config.moe_chunk_size,
+            "full_attn_query": session.prefill_config.full_attn_query_chunk_size,
+            "full_attn_post": session.prefill_config.full_attn_post_chunk_size,
+            "full_attn_rope": session.prefill_config.full_attn_rope_chunk_size,
         },
         "graph_replay": bool(args.graph_replay_decode),
         "graph_steps_per_replay": args.graph_steps_per_replay if args.graph_replay_decode else 0,

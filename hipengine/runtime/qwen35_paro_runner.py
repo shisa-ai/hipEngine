@@ -62,7 +62,7 @@ from hipengine.loading.materialize import (
     load_host_array_to_device_as_dtype,
     load_tensor_info_to_device,
 )
-from hipengine.runtime.prefill import PrefillConfig
+from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
 from hipengine.runtime.qwen35_paro import (
     Qwen35ParoAttentionScratch,
     Qwen35ParoDecodeState,
@@ -801,7 +801,13 @@ class Qwen35ParoResidentSession:
         self.max_batch_size = int(max_batch_size)
         self.compiler_version = compiler_version
         self.require_cached_build = bool(require_cached_build)
-        self.prefill_config = prefill_config or PrefillConfig()
+        self.requested_prefill_config = prefill_config or PrefillConfig()
+        total_memory_bytes = self._prefill_tuning_total_memory_bytes(self.requested_prefill_config)
+        self.prefill_config, self.prefill_chunk_tuning = resolve_prefill_config_for_sequence(
+            self.requested_prefill_config,
+            max_sequence_length=self.max_sequence_length,
+            total_memory_bytes=total_memory_bytes,
+        )
         decode_context_capacity = self.decode_chunk_size * self.max_splits
         self.blocks = (max(self.max_sequence_length, decode_context_capacity) + self.block_size - 1) // self.block_size
         self.batch_layout = Qwen35ParoResidentBatchLayout(
@@ -837,6 +843,19 @@ class Qwen35ParoResidentSession:
         self.tokenizer = _load_tokenizer(self.model)
         self.closed = False
         self._build()
+
+    def _prefill_tuning_total_memory_bytes(self, config: PrefillConfig) -> int:
+        if (
+            not config.auto_tune_chunk_sizes
+            or config.chunk_tune_memory_budget_gib > 0.0
+            or self.max_sequence_length < config.chunk_tune_min_tokens
+        ):
+            return 0
+        try:
+            _free_bytes, total_bytes = self.runtime.mem_get_info()
+        except Exception:
+            return 0
+        return int(total_bytes)
 
     def close(self) -> None:
         if self.closed:

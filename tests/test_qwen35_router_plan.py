@@ -11,6 +11,8 @@ from hipengine.kernels.hip_gfx1100.moe import (
     qwen35_router_topk_shared_coop_out_fp16,
     qwen35_router_topk_shared_out_bf16,
     qwen35_router_topk_shared_out_fp16,
+    qwen35_router_topk_shared_sigmoid_out_bf16,
+    qwen35_router_topk_shared_sigmoid_out_fp16,
     register_qwen35_router_kernels,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
@@ -43,6 +45,19 @@ def test_qwen35_router_registers_bf16_and_w4_paro() -> None:
         is qwen35_router_topk_shared_out_fp16
     )
     assert (
+        resolve(backend="hip_gfx1100", layer="router_topk_shared", quant="w4_paro", variant="prefill_sigmoid_out")
+        is qwen35_router_topk_shared_sigmoid_out_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="router_topk_shared",
+            quant="w4_paro",
+            variant="prefill_sigmoid_out_fp16_hidden",
+        )
+        is qwen35_router_topk_shared_sigmoid_out_fp16
+    )
+    assert (
         resolve(backend="hip_gfx1100", layer="router_topk_shared", quant="w4_paro", variant="coop_out")
         is qwen35_router_topk_shared_coop_out_bf16
     )
@@ -53,6 +68,10 @@ def test_qwen35_router_registers_bf16_and_w4_paro() -> None:
     assert (
         resolve(backend="hip_gfx1100", layer="router_topk_shared", quant="fp16", variant="out")
         is qwen35_router_topk_shared_out_fp16
+    )
+    assert (
+        resolve(backend="hip_gfx1100", layer="router_topk_shared", quant="fp16", variant="prefill_sigmoid_out")
+        is qwen35_router_topk_shared_sigmoid_out_fp16
     )
     assert (
         resolve(backend="hip_gfx1100", layer="router_topk_shared", quant="fp16", variant="coop_out")
@@ -92,6 +111,10 @@ def test_qwen35_router_wrappers_validate_shape_before_gpu_load() -> None:
         qwen35_router_topk_shared_out_bf16(0, 0, 0, 0, 0, 1, 16, 8, 8, 4)
     with pytest.raises(ValueError, match="num_experts must be smaller"):
         qwen35_router_topk_shared_out_fp16(0, 0, 0, 0, 0, 1, 16, 8, 8, 4)
+    with pytest.raises(ValueError, match="prefill shared-gate sigmoid"):
+        qwen35_router_topk_shared_sigmoid_out_fp16(0, 0, 0, 0, 0, 1, 16, 9, 8, 4)
+    with pytest.raises(ValueError, match="num_experts must be smaller"):
+        qwen35_router_topk_shared_sigmoid_out_bf16(0, 0, 0, 0, 0, 2, 16, 8, 8, 4)
     with pytest.raises(ValueError, match="decode-only"):
         qwen35_router_topk_shared_coop_out_bf16(0, 0, 0, 0, 0, 2, 16, 9, 8, 4)
     with pytest.raises(ValueError, match="num_experts must be smaller"):

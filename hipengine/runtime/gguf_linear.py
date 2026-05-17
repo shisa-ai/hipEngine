@@ -6,7 +6,9 @@ import ctypes
 from dataclasses import dataclass
 from typing import Mapping
 
-import hipengine.kernels.hip_gfx1100.linear.dense_gemv  # noqa: F401 - register dense BF16 fallback
+from hipengine.kernels.hip_gfx1100.linear.dense_gemv import register_dense_gemv_kernels
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import register_gguf_k_gemv_kernels
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import register_gguf_q4_k_gemv_kernels
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
@@ -116,6 +118,7 @@ def launch_gguf_linear(
         backend=backend,
         rows=rows,
     )
+    _ensure_linear_kernels_registered()
     fn = resolve(
         backend=dispatch.key.backend,
         layer=dispatch.key.layer,
@@ -179,6 +182,14 @@ def _variant_for_rows(variant: str, *, rows: int) -> str:
     if variant.startswith("gemv_"):
         return f"prefill_{variant[len('gemv_') :]}"
     return variant
+
+
+def _ensure_linear_kernels_registered() -> None:
+    # Registry plan tests clear global registrations; keep GGUF runtime dispatch
+    # independent of previous test/import order.
+    register_dense_gemv_kernels()
+    register_gguf_k_gemv_kernels()
+    register_gguf_q4_k_gemv_kernels()
 
 
 _LAUNCH_ABI = {

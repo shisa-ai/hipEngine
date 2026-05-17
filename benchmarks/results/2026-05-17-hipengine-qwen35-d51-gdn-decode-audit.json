@@ -1,0 +1,158 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "task": "D5.1 GDN recurrent decode kernel audit",
+  "status": "diagnostic_retained_stop_condition",
+  "performance_claim": false,
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "summary": "Audit found no immediate vec8/thread/occupancy retune for qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel on c=1 decode. The hot Qwen3.5 shape already uses 8-way unrolled head-k loops, 128 threads for 128 value lanes, VGPR=56, and Scratch_Size=0. No runtime/kernel default changed; keep the existing kernel and close D5.1 with a stop condition.",
+  "m4_decode_profile": {
+    "source": "benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json",
+    "linear_attention_gdn_decode": [
+      {
+        "workload": "512-128",
+        "dispatches_per_token": 877.0,
+        "kernel_time_ms_per_token": 7.2650249375,
+        "gdn_calls_per_token": 30.0,
+        "gdn_ms_per_token": 0.3798934375,
+        "gdn_share_percent": 5.229072725395583
+      },
+      {
+        "workload": "4k-128",
+        "dispatches_per_token": 877.0,
+        "kernel_time_ms_per_token": 7.2263065,
+        "gdn_calls_per_token": 30.0,
+        "gdn_ms_per_token": 0.3892911875,
+        "gdn_share_percent": 5.387139163001182
+      },
+      {
+        "workload": "32k-128",
+        "dispatches_per_token": 877.0,
+        "kernel_time_ms_per_token": 8.603044125,
+        "gdn_calls_per_token": 30.0,
+        "gdn_ms_per_token": 0.416294125,
+        "gdn_share_percent": 4.838916538743197
+      }
+    ]
+  },
+  "probe": {
+    "script": "scripts/gdn_decode_probe.py",
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d51-gdn-probe --output-file gdn_decode_probe -- python3 scripts/gdn_decode_probe.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --reps 100 --warmup 4",
+    "raw_csv": "/tmp/hipengine-d51-gdn-probe/gdn_decode_probe_kernel_trace.csv",
+    "shape": {
+      "num_k_heads": 16,
+      "num_v_heads": 32,
+      "head_k_dim": 128,
+      "head_v_dim": 128,
+      "threads": 128,
+      "blocks": 32,
+      "dynamic_shared_bytes_from_wrapper": 3072,
+      "note": "rocprof reports Grid_Size_X as total work-items (32 blocks * 128 threads = 4096). LDS_Block_Size is reported as 0 for this dynamic-shared launch, so the wrapper-computed dynamic shared byte count is recorded separately."
+    },
+    "summary": [
+      {
+        "case": "gdn_recurrent_bf16",
+        "samples_after_warmup": 100,
+        "median_ns": 8760.0,
+        "mean_ns": 8803.29,
+        "min_ns": 8600,
+        "max_ns": 10681,
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+        "vgpr_count": 56,
+        "accum_vgpr_count": 0,
+        "sgpr_count": 128,
+        "scratch_size": 0,
+        "lds_block_size_reported": 0,
+        "workgroup_size_x": 128,
+        "grid_size_x": 4096
+      },
+      {
+        "case": "gdn_recurrent_fp16",
+        "samples_after_warmup": 100,
+        "median_ns": 8720.0,
+        "mean_ns": 8746.9,
+        "min_ns": 8600,
+        "max_ns": 10360,
+        "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+        "vgpr_count": 56,
+        "accum_vgpr_count": 0,
+        "sgpr_count": 128,
+        "scratch_size": 0,
+        "lds_block_size_reported": 0,
+        "workgroup_size_x": 128,
+        "grid_size_x": 4096
+      }
+    ]
+  },
+  "source_static_audit": {
+    "kernel": "hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel",
+    "wrapper": "hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip::hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_{bf16,fp16}",
+    "current_structure": [
+      "Q/K RMS load loop is already 8-way unrolled over head_k_dim: for idx = threadIdx.x * 8; idx += blockDim.x * 8.",
+      "KV memory accumulation and recurrent-state update loops are already 8-way unrolled over head_k_dim.",
+      "For Qwen3.5 c=1 decode, head_v_dim is 128 and the kernel maps value_idx = threadIdx.x, so 128 threads exactly cover one value lane per thread.",
+      "The C ABI wrapper fixes threads=128 and computes dynamic shared as (2 * head_k_dim + 3 * threads + head_v_dim) * sizeof(float) = 3072 bytes for the Qwen3.5 shape.",
+      "The kernel uses shared q/k staging and reductions with barriers. Removing barriers is explicitly disallowed without a new correctness proof because prior GDN barrier-removal attempts corrupted recurrent state."
+    ],
+    "headroom_assessment": [
+      "A 64-thread retune would not cover all 128 output value lanes without a new multi-value-per-thread ownership scheme and changed reductions.",
+      "A 256-thread retune would add idle value lanes and larger reductions without new work; D5.2 showed the same reduction-overhead pattern for larger workgroups on small decode kernels.",
+      "Vectorizing across value lanes would require strided recurrent-state writes/reads and multiple value accumulators per thread, raising VGPR pressure; the local vec8 target over head_k_dim is already present.",
+      "VGPR=56 and Scratch_Size=0 are below ROOFLINE occupancy concern thresholds (<=96 VGPR is in the max-occupancy band; scratch on hot decode would be a bug)."
+    ]
+  },
+  "correctness": {
+    "micro_smoke": {
+      "command": "python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "status": "passed",
+      "out_max_abs": 2.98e-08,
+      "state_max_abs": 1.49e-08,
+      "fp16_out_max_abs": 2.98e-08,
+      "fp16_state_max_abs": 1.49e-08
+    },
+    "unit_tests": {
+      "command": "python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py -q --tb=short",
+      "status": "passed",
+      "tests": 3
+    },
+    "decode_graph_fixture_gate": {
+      "command": "python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --graph-steps-per-replay 1 --max-new-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-d51-gdn/graph-fixture-default.json",
+      "status": "accepted",
+      "passed": true,
+      "generated_match": true,
+      "expected_match": true,
+      "final_kl": 0.0,
+      "final_top1_match": true,
+      "json": "/tmp/hipengine-d51-gdn/graph-fixture-default.json"
+    }
+  },
+  "decision": {
+    "action": "stop_no_code_change_keep_current_gdn_decode_kernel",
+    "default_changed": false,
+    "rationale": [
+      "M.4 makes GDN decode visible but bounded: 30 calls/token and 5.23%/5.39%/4.84% of decode kernel time at 512/4K/32K.",
+      "The current kernel already implements the requested local vec8 head-k unroll; the remaining per-value recurrence is sequential state math, not a simple vector-width miss.",
+      "Resource metadata is clean on the representative Qwen3.5 c=1 shape: VGPR=56, Scratch_Size=0, 128-thread workgroups, and ~8.7 us median dispatch time for both BF16 and FP16 lowp variants.",
+      "Thread-count retuning is structurally unsafe/no-op without a new kernel: 128 threads exactly match head_v_dim=128; smaller workgroups miss lanes and larger ones add idle reduction participants.",
+      "Any deeper change (multi-value per thread, barrier removal, adjacent fusion) crosses into kernel R&D and needs parent-workspace evidence plus a stronger oracle before porting."
+    ],
+    "future_reopen_condition": "Reopen only if parent kernel R&D produces a correct multi-value/thread or barrier-reduced GDN design with rocprof resource metadata and E2E decode improvement, or if M.4-style profiling shows GDN decode growing into a multi-percent larger bucket after other lanes change."
+  },
+  "validation": {
+    "commands": [
+      "python3 -m py_compile scripts/gdn_decode_probe.py",
+      "python3 - <<'PY'\nfrom pathlib import Path\nfrom hipengine.kernels.hip_gfx1100.linear_attn import build_qwen35_linear_attn_gdn\ncv = Path('/tmp/hipengine-hipcc-version.txt').read_text()\nbuild_qwen35_linear_attn_gdn(load=True, compiler_version=cv, require_cached=False)\nprint('gdn build OK')\nPY",
+      "python3 scripts/gdn_decode_probe.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --reps 2 --warmup 1",
+      "python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py -q --tb=short",
+      "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d51-gdn-probe --output-file gdn_decode_probe -- python3 scripts/gdn_decode_probe.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --reps 100 --warmup 4",
+      "python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --max-new-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-d51-gdn/graph-fixture-default.json",
+      "python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d51-gdn-decode-audit.json >/tmp/d51.json"
+    ],
+    "result": "passed"
+  }
+}

@@ -17,6 +17,10 @@ __device__ inline float bf16_bits_to_float(uint16_t value) {
   return out.f32;
 }
 
+__device__ inline float sigmoid_f32(float value) {
+  return 1.0f / (1.0f + expf(-value));
+}
+
 template <typename scalar_t>
 __device__ inline float scalar_to_float_qwen35(scalar_t value) {
   return static_cast<float>(value);
@@ -329,6 +333,30 @@ __global__ void qwen35_router_select_kernel(
       top_k);
 }
 
+__global__ void qwen35_router_select_sigmoid_shared_kernel(
+    float* __restrict__ logits,
+    int64_t* __restrict__ selected,
+    float* __restrict__ routing,
+    int64_t logits_stride,
+    int64_t num_experts,
+    int64_t top_k) {
+  extern __shared__ float shared_logits[];
+  const int64_t token = blockIdx.x;
+  qwen35_router_select_from_logits(
+      logits + token * logits_stride,
+      selected,
+      routing,
+      shared_logits,
+      token,
+      logits_stride,
+      num_experts,
+      top_k);
+  if (threadIdx.x == 0) {
+    float* shared_gate = logits + token * logits_stride + num_experts;
+    *shared_gate = sigmoid_f32(*shared_gate);
+  }
+}
+
 template <typename scalar_t>
 __global__ void qwen35_router_topk_shared_coop_out_kernel(
     const scalar_t* __restrict__ hidden,
@@ -555,6 +583,96 @@ extern "C" int hipengine_qwen35_router_topk_shared_coop_out_fp16(
       selected,
       routing,
       hidden_size,
+      num_rows,
+      num_experts,
+      top_k);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_router_topk_shared_sigmoid_out_bf16(
+    const uint16_t* hidden,
+    const uint16_t* combined_weight,
+    float* logits,
+    int64_t* selected,
+    float* routing,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 1 || hidden_size <= 0 || num_rows <= 0 || num_experts <= 0 ||
+      num_experts >= num_rows || top_k <= 0 || top_k > 16 || top_k > num_experts ||
+      !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const hipError_t logits_err = launch_qwen35_router_logits(
+      hidden,
+      combined_weight,
+      logits,
+      tokens,
+      hidden_size,
+      num_rows,
+      threads,
+      stream);
+  if (logits_err != hipSuccess) {
+    return static_cast<int>(logits_err);
+  }
+  hipLaunchKernelGGL(
+      qwen35_router_select_sigmoid_shared_kernel,
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(num_experts) * sizeof(float),
+      stream,
+      logits,
+      selected,
+      routing,
+      num_rows,
+      num_experts,
+      top_k);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_router_topk_shared_sigmoid_out_fp16(
+    const half_t* hidden,
+    const uint16_t* combined_weight,
+    float* logits,
+    int64_t* selected,
+    float* routing,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 1 || hidden_size <= 0 || num_rows <= 0 || num_experts <= 0 ||
+      num_experts >= num_rows || top_k <= 0 || top_k > 16 || top_k > num_experts ||
+      !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const hipError_t logits_err = launch_qwen35_router_logits(
+      hidden,
+      combined_weight,
+      logits,
+      tokens,
+      hidden_size,
+      num_rows,
+      threads,
+      stream);
+  if (logits_err != hipSuccess) {
+    return static_cast<int>(logits_err);
+  }
+  hipLaunchKernelGGL(
+      qwen35_router_select_sigmoid_shared_kernel,
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(num_experts) * sizeof(float),
+      stream,
+      logits,
+      selected,
+      routing,
       num_rows,
       num_experts,
       top_k);

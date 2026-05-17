@@ -37,18 +37,45 @@ supported GPUs and models.
 
 ## Status
 
-**Early — Phase 0 in progress.** The runtime hot path is torch-free by
-construction; kernel families and registry plumbing are landing under
-[`hipengine/kernels/hip_gfx1100/`](hipengine/kernels/hip_gfx1100/); Qwen3.5 /
-PARO bring-up paths are the first end-to-end target. Treat any Qwen3.5/PARO
-numbers as **single-request decode** unless a benchmark explicitly says
-otherwise — concurrent decode (c>1), continuous batching, and speculative
-decoding are designed in (`KVLiveSpans`, plugin boundaries) but not yet
-implemented.
+**v0.1.x.** The runtime hot path is torch-free by construction; kernel
+families and registry plumbing are landing under
+[`hipengine/kernels/hip_gfx1100/`](hipengine/kernels/hip_gfx1100/). Current
+single-model tuning targets
+[shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed)
+(19.07 GiB, 4.68 bpw) in packed
+[ParoQuant](https://github.com/shisa-ai/paroquant) format.
 
-No `LLM.generate()` end-to-end throughput benchmark has been accepted yet; see
-[`benchmarks/README.md`](benchmarks/README.md) for the current scoreboard and
-source-lineage targets we are aiming to reproduce or beat.
+While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipENGINE/blob/main/docs/ROOFLINE.md), currently, our implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`):
+
+### Prefill tok/s
+
+| Workload | hipENGINE shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: |
+| 512/128 | **2518.836** | 2436.049 | 1816.927 |
+| 4K/128 | **2711.013** | 2176.905 | 1705.093 |
+| 32K/128 | **2130.562** | 1496.409 | 1128.554 |
+| 128K/128 | **1048.543** | 710.213 | 480.539 |
+
+### Decode tok/s
+
+| Workload | hipENGINE shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: |
+| 512/128 | 111.738 | 85.487 | **127.515** |
+| 4K/128 | 113.231 | 87.375 | **120.163** |
+| 32K/128 | 97.779 | 76.994 | **98.073** |
+| 128K/128 | 62.014 | 57.341 | **64.478** |
+
+### Peak GiB
+
+| Workload | hipENGINE shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: |
+| 512/128 | **18.123** | 21.125 | 20.844 |
+| 4K/128 | **19.995** | 21.197 | 20.969 |
+| 32K/128 | **20.267** | 21.738 | 21.533 |
+| 128K/128 | **23.235** | 23.605 | 23.596 |
+
+See [`benchmarks/README.md`](benchmarks/README.md) for full protocol details,
+correctness status, source-lineage targets, and external comparison baselines.
 
 ## Hardware targets
 
@@ -139,6 +166,24 @@ registered in `hipengine.generation`; unsupported `(model, backend, quant)`
 combinations fail loudly rather than falling back to a generic torch path. See
 [`docs/PLAN.md`](docs/PLAN.md) for the model / quant roadmap.
 
+## OpenAI-compatible server
+
+Install the optional server extra and run the FastAPI layer:
+
+```bash
+pip install -e ".[server]"
+python -m hipengine.server \
+  --model /path/to/model \
+  --backend hip_gfx1100 \
+  --quant w4_paro \
+  --served-model-name qwen-paro
+```
+
+Supported v0.1 endpoints: `GET /v1/models`, `POST /v1/completions`, and
+`POST /v1/chat/completions` (including one-chunk SSE for `stream=true`). See
+[`docs/API.md`](docs/API.md) for request examples, bearer-token auth, and
+current limitations.
+
 ## Documentation
 
 | File | Purpose |
@@ -149,6 +194,7 @@ combinations fail loudly rather than falling back to a generic torch path. See
 | [`docs/KERNELS.md`](docs/KERNELS.md) | Kernel catalog, source-lineage drift workflow, JIT cache gotchas, build profiles |
 | [`docs/ROOFLINE.md`](docs/ROOFLINE.md) | RDNA3 / W7900 performance model and decision tree |
 | [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) | Implementation status and concrete milestones |
+| [`docs/API.md`](docs/API.md) | OpenAI-compatible server usage and endpoint support |
 | [`docs/PREFILL.md`](docs/PREFILL.md) | Native prefill implementation spec |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |
 | [`docs/DFLASH.md`](docs/DFLASH.md) | DFlash draft-model speculative decode plan |

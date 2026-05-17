@@ -6,8 +6,10 @@ import ctypes
 from dataclasses import dataclass
 from typing import Mapping
 
-import hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding  # noqa: F401 - register raw GGUF embedding kernels
-import hipengine.kernels.hip_gfx1100.runtime.state  # noqa: F401 - register dense BF16 embedding fallback
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
+    register_gguf_q6_k_embedding_kernels,
+)
+from hipengine.kernels.hip_gfx1100.runtime.state import register_runtime_state_kernels
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
@@ -73,6 +75,7 @@ def launch_gguf_embedding(
         output_dtype=output_dtype,
         backend=backend,
     )
+    _ensure_embedding_kernels_registered()
     fn = resolve(
         backend=dispatch.key.backend,
         layer=dispatch.key.layer,
@@ -109,6 +112,14 @@ def _launch_dense_bf16(fn, weight, token_ids_ptr, out_ptr, rows, hidden_size, vo
         vocab_size,
         **kwargs,
     )
+
+
+def _ensure_embedding_kernels_registered() -> None:
+    # Some registry-focused tests intentionally clear global registrations after
+    # module import. Re-register at dispatch time so the runtime path does not
+    # depend on import order.
+    register_gguf_q6_k_embedding_kernels()
+    register_runtime_state_kernels()
 
 
 _LAUNCH_ABI = {

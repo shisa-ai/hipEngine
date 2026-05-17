@@ -225,6 +225,7 @@ def test_qwen35_decode_state_reserves_full_attention_split_k_scratch() -> None:
     assert scratch.query.shape == (1, 16, 256)
     assert scratch.key.shape == (1, 2, 256)
     assert scratch.value.shape == (1, 2, 256)
+    assert scratch.kv_proj is None
     assert scratch.gate.shape == (1, 16, 256)
     assert scratch.partial_out.shape == (16, 2, 256)
     assert scratch.partial_m.shape == (16, 2)
@@ -234,6 +235,20 @@ def test_qwen35_decode_state_reserves_full_attention_split_k_scratch() -> None:
     assert scratch.gated_attn.dtype is DType.BF16
     assert scratch.o_rot.shape == (1, 4096)
     assert scratch.o_proj.shape == (1, 4096)
+
+
+def test_qwen35_decode_state_reserves_full_attention_kv_fused_scratch(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED", "1")
+    runtime = FakeRuntime()
+    state = _state(runtime)
+
+    scratch = state.reserve_full_attention_scratch(tokens=1, num_splits=1, activation_dtype="fp16")
+
+    assert scratch.kv_proj is not None
+    assert scratch.kv_proj.shape == (1, 1024)
+    assert scratch.key_bf16.ptr == scratch.kv_proj.ptr
+    assert scratch.value.ptr == scratch.kv_proj.ptr + 512 * DType.FP16.itemsize
+    assert scratch.value.shape == (1, 2, 256)
 
 
 def test_qwen35_decode_state_projects_full_attention_qkv_fp16_tokens_split_layout(monkeypatch) -> None:
@@ -282,6 +297,50 @@ def test_qwen35_decode_state_projects_full_attention_qkv_fp16_tokens_split_layou
     assert calls[0][1][8] == scratch.q_proj.ptr
     assert calls[0][1][9] == scratch.key_bf16.ptr
     assert calls[1][1][4] == scratch.value.ptr
+
+
+def test_qwen35_decode_state_projects_full_attention_qkv_fp16_with_kv_fusion(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED", "1")
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights())
+    scratch = state.reserve_full_attention_scratch(tokens=1, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
+    calls = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_pack8_strided_fp16",
+        lambda *args, **kwargs: calls.append(("single_q", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_dual_pack8_transposed_fp16",
+        lambda *args, **kwargs: calls.append(("dual_kv", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_dual_pack8_transposed_rotate_staged_fp16",
+        lambda *args, **kwargs: calls.append(("unexpected_rotate_fused", args, kwargs)),
+    )
+
+    q_proj, key, value = state.project_full_attention_qkv_fp16(scratch, tokens=1)
+
+    assert q_proj is scratch.q_proj
+    assert key is scratch.key_bf16
+    assert value is scratch.value
+    assert [kind for kind, _args, _kwargs in calls] == ["single_q", "dual_kv"]
+    assert calls[0][1][:5] == (scratch.q_rot.ptr, 0x8230, 0x8240, 0x8250, scratch.q_proj.ptr)
+    assert calls[1][1][:9] == (
+        scratch.k_rot.ptr,
+        scratch.v_rot.ptr,
+        0x8338,
+        0x8340,
+        0x8350,
+        0x8438,
+        0x8440,
+        0x8450,
+        scratch.key_bf16.ptr,
+    )
+    assert calls[1][1][9:14] == (1, 4096, 64, 64, 128)
 
 
 def test_qwen35_decode_state_projects_linear_qkv_z_fp16_with_fused_rotation_when_deferred(monkeypatch) -> None:
@@ -755,6 +814,9 @@ def _full_attention_weights() -> DeviceWeightMap:
             f"{prefix}.v_proj.theta": _allocation(f"{prefix}.v_proj.theta", 0x8410, (8, 2048), "bf16"),
             f"{prefix}.v_proj.channel_scales": _allocation(f"{prefix}.v_proj.channel_scales", 0x8420, (1, 4096), "bf16"),
             f"{prefix}.v_proj.qweight": _allocation(f"{prefix}.v_proj.qweight", 0x8430, (4096, 64), "int32"),
+            f"{prefix}.v_proj.qweight_pack8_decode": _allocation(
+                f"{prefix}.v_proj.qweight_pack8_decode", 0x8438, (64, 4096), "int32"
+            ),
             f"{prefix}.v_proj.qzeros": _allocation(f"{prefix}.v_proj.qzeros", 0x8440, (32, 64), "int32"),
             f"{prefix}.v_proj.scales": _allocation(f"{prefix}.v_proj.scales", 0x8450, (32, 512), "bf16"),
             f"{prefix}.o_proj.pairs": _allocation(f"{prefix}.o_proj.pairs", 0x8500, (8, 4096), "int16"),
@@ -1534,6 +1596,51 @@ def test_qwen35_decode_state_routes_moe_topk_shared_coop_when_enabled(monkeypatc
 
 
 
+def test_qwen35_decode_state_routes_prefill_sigmoid_only_for_legacy_fp16(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED", "1")
+    runtime = FakeRuntime()
+    hidden = _tensor(0xCA00, (2, 4096), "fp16")
+    calls = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_router_topk_shared_out_fp16",
+        lambda *args, **kwargs: calls.append(("raw", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_router_topk_shared_sigmoid_out_fp16",
+        lambda *args, **kwargs: calls.append(("sigmoid", args, kwargs)),
+    )
+
+    legacy = _state(runtime, _legacy_prepared_moe_weights())
+    legacy_scratch = legacy.reserve_moe_grouped_prefill_scratch(tokens=2, activation_dtype="fp16")
+    selected, weights = legacy.route_moe_topk_shared_fp16(hidden, legacy_scratch, tokens=2, stream=0x77)
+    assert selected is legacy_scratch.selected_experts
+    assert weights is legacy_scratch.routing_weights
+
+    packed = _state(runtime, _prepared_moe_weights())
+    packed_scratch = packed.reserve_moe_grouped_prefill_scratch(tokens=2, activation_dtype="fp16")
+    packed.route_moe_topk_shared_fp16(hidden, packed_scratch, tokens=2, stream=0x78)
+
+    assert [kind for kind, _args, _kwargs in calls] == ["sigmoid", "raw"]
+    legacy_args, legacy_kwargs = calls[0][1], calls[0][2]
+    assert legacy_args == (
+        hidden.ptr,
+        0xB000,
+        legacy_scratch.router_logits.ptr,
+        legacy_scratch.selected_experts.ptr,
+        legacy_scratch.routing_weights.ptr,
+        2,
+        4096,
+        129,
+        128,
+        8,
+    )
+    assert legacy_kwargs == {"threads": 256, "stream": 0x77, "library": None, "runtime": runtime}
+
+
+
 def test_qwen35_decode_state_activates_and_rotates_moe_down(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
@@ -1874,6 +1981,50 @@ def test_qwen35_decode_state_uses_token_tiled_legacy_shared_down_prefill(monkeyp
         129,
     )
     assert tiled_kwargs == {"token_tile": 4, "threads": 64, "stream": 0x55, "library": None, "runtime": runtime}
+
+
+def test_qwen35_decode_state_skips_legacy_shared_gate_sigmoid_when_router_fused(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _legacy_prepared_moe_weights())
+    scratch = state.reserve_moe_grouped_prefill_scratch(tokens=4, activation_dtype="fp16")
+    residual = _tensor(0xD100, (4, 4096), "fp16")
+    calls = []
+
+    monkeypatch.setenv("HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE", "4")
+    monkeypatch.setattr(qwen_runtime, "w8a16_shared_gate_sigmoid_fp32", lambda *a, **k: pytest.fail("unexpected sigmoid"))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "w8a16_shared_down_combine_residual_fp16_token_tiled",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(qwen_runtime, "w8a16_shared_down_combine_residual_fp16", lambda *a, **k: pytest.fail("unexpected fallback"))
+
+    out = state.shared_expert_down_combine_residual_fp16(
+        scratch,
+        residual,
+        tokens=4,
+        shared_gate_already_sigmoid=True,
+        stream=0x56,
+    )
+
+    assert out is scratch.moe_out
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    shared_gate_logits_ptr = scratch.router_logits.ptr + 128 * 4
+    assert args[:11] == (
+        scratch.shared_intermediate.ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_weight_w8a16").ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_weight_w8a16_scale").ptr,
+        scratch.selected_out.ptr,
+        shared_gate_logits_ptr,
+        residual.ptr,
+        scratch.moe_out.ptr,
+        4,
+        4096,
+        768,
+        129,
+    )
+    assert kwargs == {"token_tile": 4, "threads": 64, "stream": 0x56, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_combine(monkeypatch) -> None:

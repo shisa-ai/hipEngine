@@ -26,6 +26,8 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_topk_shared_coop_out_fp16,
     qwen35_router_topk_shared_out_bf16,
     qwen35_router_topk_shared_out_fp16,
+    qwen35_router_topk_shared_sigmoid_out_bf16,
+    qwen35_router_topk_shared_sigmoid_out_fp16,
     register_qwen35_router_kernels,
 )
 
@@ -49,6 +51,8 @@ __all__ = [
     "qwen35_router_topk_shared_coop_out_fp16",
     "qwen35_router_topk_shared_out_bf16",
     "qwen35_router_topk_shared_out_fp16",
+    "qwen35_router_topk_shared_sigmoid_out_bf16",
+    "qwen35_router_topk_shared_sigmoid_out_fp16",
     "register_qwen35_moe_group_scatter_kernels",
     "register_qwen35_moe_prefill_kernels",
     "register_qwen35_router_kernels",

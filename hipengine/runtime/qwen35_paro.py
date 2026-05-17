@@ -69,6 +69,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_prefill_rmsnorm_gate_fp16,
+    qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
@@ -100,6 +101,7 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_topk_shared_coop_out_fp16,
     qwen35_router_topk_shared_out_bf16,
     qwen35_router_topk_shared_out_fp16,
+    qwen35_router_topk_shared_sigmoid_out_fp16,
 )
 from hipengine.kernels.hip_gfx1100.quant.paro_marlin_k import gemv_paro_marlin_k_fma_fp16, marlin_k_default_threads
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
@@ -161,6 +163,7 @@ class Qwen35ParoAttentionScratch:
     query: Tensor
     key: Tensor
     value: Tensor
+    kv_proj: Tensor | None
     gate: Tensor
     partial_out: Tensor
     partial_m: Tensor
@@ -321,6 +324,18 @@ class Qwen35ParoDecodeState:
             lowp,
             q_proj_key.device,
         )
+        kv_proj = None
+        if _full_attn_kv_pack8_fused_enabled():
+            kv_proj = self.workspace.reserve_tensor("attn.kv_proj", (tokens, 2 * kv_width), lowp)
+            key_bf16 = Tensor.from_handle(kv_proj.ptr, (tokens, kv_width), lowp, kv_proj.device)
+            value = Tensor.from_handle(
+                kv_proj.ptr + tokens * kv_width * lowp.itemsize,
+                (tokens, cfg.num_key_value_heads, cfg.head_dim),
+                lowp,
+                kv_proj.device,
+            )
+        else:
+            value = self.workspace.reserve_tensor("attn.value", (tokens, cfg.num_key_value_heads, cfg.head_dim), lowp)
         return Qwen35ParoAttentionScratch(
             attn_input=self.workspace.reserve_tensor("attn.input", (tokens, cfg.hidden_size), lowp),
             q_rot=self.workspace.reserve_tensor("attn.q_rot", (tokens, cfg.hidden_size), lowp),
@@ -334,7 +349,8 @@ class Qwen35ParoDecodeState:
             key_raw=self.workspace.reserve_tensor("attn.key_raw", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
             query=self.workspace.reserve_tensor("attn.query", (tokens, cfg.num_attention_heads, cfg.head_dim), DType.FP32),
             key=self.workspace.reserve_tensor("attn.key", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
-            value=self.workspace.reserve_tensor("attn.value", (tokens, cfg.num_key_value_heads, cfg.head_dim), lowp),
+            value=value,
+            kv_proj=kv_proj,
             gate=self.workspace.reserve_tensor("attn.gate", (tokens, cfg.num_attention_heads, cfg.head_dim), gated),
             partial_out=self.workspace.reserve_tensor(
                 "attn.partial_out",
@@ -530,7 +546,12 @@ class Qwen35ParoDecodeState:
         q_pairs = self.tensor(f"{q}.pairs")
         k_pairs = self.tensor(f"{k}.pairs")
         v_pairs = self.tensor(f"{v}.pairs")
-        if tokens == 1 and hidden.ptr == scratch.attn_input.ptr and _rotate_dual_pack8_fused_enabled():
+        if (
+            tokens == 1
+            and hidden.ptr == scratch.attn_input.ptr
+            and _rotate_dual_pack8_fused_enabled()
+            and not _full_attn_kv_pack8_fused_enabled()
+        ):
             self._rotate_fuse_ready.add(scratch.rotate_fuse_barrier.ptr)
             paro_rotate1_bf16(
                 hidden.ptr,
@@ -584,14 +605,48 @@ class Qwen35ParoDecodeState:
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
         q = f"{prefix}.q_proj"
         k = f"{prefix}.k_proj"
+        v = f"{prefix}.v_proj"
         q_qweight = self.tensor(f"{q}.qweight_pack8_decode")
         k_qweight = self.tensor(f"{k}.qweight_pack8_decode")
         q_out_packed = _out_packed_from_generic_transposed_qweight(q_qweight)
         k_out_packed = _out_packed_from_generic_transposed_qweight(k_qweight)
         awq_library = _library_for(library, "awq")
+        kv_fused = False
         if tokens == 1:
             use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
-            if use_rotate_fused:
+            if scratch.kv_proj is not None and not use_rotate_fused:
+                v_qweight = self.tensor(f"{v}.qweight_pack8_decode")
+                v_out_packed = _out_packed_from_generic_transposed_qweight(v_qweight)
+                self.project_pack8_bf16(
+                    scratch.q_rot,
+                    scratch.q_proj,
+                    weight_prefix=q,
+                    rows=tokens,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                gemv_awq_dual_pack8_transposed_bf16(
+                    scratch.k_rot.ptr,
+                    scratch.v_rot.ptr,
+                    k_qweight.ptr,
+                    self.tensor(f"{k}.qzeros").ptr,
+                    self.tensor(f"{k}.scales").ptr,
+                    v_qweight.ptr,
+                    self.tensor(f"{v}.qzeros").ptr,
+                    self.tensor(f"{v}.scales").ptr,
+                    scratch.key_bf16.ptr,
+                    tokens,
+                    scratch.k_rot.shape[-1],
+                    k_out_packed,
+                    v_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+                kv_fused = True
+            elif use_rotate_fused:
                 gemv_awq_dual_pack8_transposed_rotate_staged_bf16(
                     scratch.attn_input.ptr,
                     scratch.q_rot.ptr,
@@ -670,15 +725,16 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
-        self.project_pack8_bf16(
-            scratch.v_rot,
-            scratch.value,
-            weight_prefix=f"{prefix}.v_proj",
-            rows=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
-        )
+        if not kv_fused:
+            self.project_pack8_bf16(
+                scratch.v_rot,
+                scratch.value,
+                weight_prefix=f"{prefix}.v_proj",
+                rows=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         return scratch.q_proj, scratch.key_bf16, scratch.value
 
     def prepare_full_attention_qkv_bf16(
@@ -1839,7 +1895,12 @@ class Qwen35ParoDecodeState:
         q_pairs = self.tensor(f"{q}.pairs")
         k_pairs = self.tensor(f"{k}.pairs")
         v_pairs = self.tensor(f"{v}.pairs")
-        if tokens == 1 and hidden.ptr == scratch.attn_input.ptr and _rotate_dual_pack8_fused_enabled():
+        if (
+            tokens == 1
+            and hidden.ptr == scratch.attn_input.ptr
+            and _rotate_dual_pack8_fused_enabled()
+            and not _full_attn_kv_pack8_fused_enabled()
+        ):
             self._rotate_fuse_ready.add(scratch.rotate_fuse_barrier.ptr)
             paro_rotate1_fp16(
                 hidden.ptr,
@@ -1893,14 +1954,48 @@ class Qwen35ParoDecodeState:
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
         q = f"{prefix}.q_proj"
         k = f"{prefix}.k_proj"
+        v = f"{prefix}.v_proj"
         q_qweight = self.tensor(f"{q}.qweight_pack8_decode")
         k_qweight = self.tensor(f"{k}.qweight_pack8_decode")
         q_out_packed = _out_packed_from_generic_transposed_qweight(q_qweight)
         k_out_packed = _out_packed_from_generic_transposed_qweight(k_qweight)
         awq_library = _library_for(library, "awq")
+        kv_fused = False
         if tokens == 1:
             use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
-            if use_rotate_fused:
+            if scratch.kv_proj is not None and not use_rotate_fused:
+                v_qweight = self.tensor(f"{v}.qweight_pack8_decode")
+                v_out_packed = _out_packed_from_generic_transposed_qweight(v_qweight)
+                self.project_pack8_fp16(
+                    scratch.q_rot,
+                    scratch.q_proj,
+                    weight_prefix=q,
+                    rows=tokens,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                gemv_awq_dual_pack8_transposed_fp16(
+                    scratch.k_rot.ptr,
+                    scratch.v_rot.ptr,
+                    k_qweight.ptr,
+                    self.tensor(f"{k}.qzeros").ptr,
+                    self.tensor(f"{k}.scales").ptr,
+                    v_qweight.ptr,
+                    self.tensor(f"{v}.qzeros").ptr,
+                    self.tensor(f"{v}.scales").ptr,
+                    scratch.key_bf16.ptr,
+                    tokens,
+                    scratch.k_rot.shape[-1],
+                    k_out_packed,
+                    v_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+                kv_fused = True
+            elif use_rotate_fused:
                 gemv_awq_dual_pack8_transposed_rotate_staged_fp16(
                     scratch.attn_input.ptr,
                     scratch.q_rot.ptr,
@@ -1971,16 +2066,17 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
-        self.project_pack8_fp16(
-            scratch.v_rot,
-            scratch.value,
-            weight_prefix=f"{prefix}.v_proj",
-            rows=tokens,
-            group_size=group_size,
-            threads=64 if tokens > 1 else 128,
-            library=library,
-            stream=stream,
-        )
+        if not kv_fused:
+            self.project_pack8_fp16(
+                scratch.v_rot,
+                scratch.value,
+                weight_prefix=f"{prefix}.v_proj",
+                rows=tokens,
+                group_size=group_size,
+                threads=64 if tokens > 1 else 128,
+                library=library,
+                stream=stream,
+            )
         return scratch.q_proj, scratch.key_bf16, scratch.value
 
     def prepare_full_attention_qkv_fp16(
@@ -3303,14 +3399,13 @@ class Qwen35ParoDecodeState:
         )
         return scratch.recurrent_out
 
-    def run_linear_attention_prefill_conv_gdn_fp16(
+    def run_linear_attention_prefill_recurrent_fp16(
         self,
         scratch: Qwen35ParoLinearAttentionScratch,
         *,
         conv_state: Tensor,
         recurrent_state: Tensor,
         tokens: int,
-        eps: float | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3319,7 +3414,6 @@ class Qwen35ParoDecodeState:
             raise ValueError("native linear-attention prefill requires tokens >= linear_conv_kernel_dim")
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
         qkv_width = _linear_qkv_width(cfg)
-        z_width = _linear_value_width(cfg)
         qwen35_linear_attn_conv_prefill_fp16(
             scratch.qkv.ptr,
             conv_state.ptr,
@@ -3367,6 +3461,30 @@ class Qwen35ParoDecodeState:
             stream=stream,
             library=_library_for(library, "linear_gdn"),
             runtime=self.runtime,
+        )
+        return scratch.recurrent_out
+
+    def run_linear_attention_prefill_conv_gdn_fp16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        tokens: int,
+        eps: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        cfg = self.config
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        z_width = _linear_value_width(cfg)
+        self.run_linear_attention_prefill_recurrent_fp16(
+            scratch,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            tokens=tokens,
+            library=library,
+            stream=stream,
         )
         qwen35_gdn_prefill_rmsnorm_gate_fp16(
             scratch.recurrent_out.ptr,
@@ -3572,6 +3690,50 @@ class Qwen35ParoDecodeState:
         )
         return scratch.out_proj
 
+    def project_linear_attention_prefill_gdn_rotate_out_fp16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        out_prefix = f"{prefix}.out_proj"
+        width = _linear_value_width(self.config)
+        pairs = self.tensor(f"{out_prefix}.pairs")
+        qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16(
+            scratch.recurrent_out.ptr,
+            scratch.z.ptr,
+            self.tensor(f"{prefix}.norm.weight").ptr,
+            scratch.out_rot.ptr,
+            pairs.ptr,
+            self.tensor(f"{out_prefix}.theta").ptr,
+            self.tensor(f"{out_prefix}.channel_scales").ptr,
+            self.config.rms_norm_eps,
+            tokens,
+            self.config.linear_num_value_heads,
+            self.config.linear_value_head_dim,
+            group_size,
+            _rotation_krot(pairs),
+            stream=stream,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        self.project_pack8_fp16(
+            scratch.out_rot,
+            scratch.out_proj,
+            weight_prefix=out_prefix,
+            rows=tokens,
+            in_features=width,
+            group_size=group_size,
+            threads=64 if tokens > 1 else 128,
+            library=library,
+            stream=stream,
+        )
+        return scratch.out_proj
+
     def run_linear_attention_state_fp16(
         self,
         hidden: Tensor,
@@ -3669,6 +3831,25 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        if _use_linear_gdn_prefill_rotate_fused(self.config, tokens=tokens, group_size=group_size):
+            self.rotate_linear_attention_inputs_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            self.project_linear_attention_qkv_z_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            self.project_linear_attention_ab_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+            self.run_linear_attention_prefill_recurrent_fp16(
+                scratch,
+                conv_state=conv_state,
+                recurrent_state=recurrent_state,
+                tokens=tokens,
+                library=library,
+                stream=stream,
+            )
+            return self.project_linear_attention_prefill_gdn_rotate_out_fp16(
+                scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         self.run_linear_attention_prefill_state_fp16(
             hidden,
             conv_state=conv_state,
@@ -3944,11 +4125,15 @@ class Qwen35ParoDecodeState:
         combined = self.tensor(f"layers.{self.layer_weights.layer_id}.mlp.router_shared_gate.weight")
         prefill_threads = 256 if tokens > 1 else threads
         router_library = _library_for(library, "router")
-        router_fn = (
-            qwen35_router_topk_shared_coop_out_fp16
-            if tokens == 1 and _router_topk_coop_enabled()
-            else qwen35_router_topk_shared_out_fp16
-        )
+        if _use_prefill_router_shared_gate_sigmoid_fused(
+            tokens=tokens,
+            legacy_shared=self._shared_expert_is_legacy_w8a16(),
+        ):
+            router_fn = qwen35_router_topk_shared_sigmoid_out_fp16
+        elif tokens == 1 and _router_topk_coop_enabled():
+            router_fn = qwen35_router_topk_shared_coop_out_fp16
+        else:
+            router_fn = qwen35_router_topk_shared_out_fp16
         router_fn(
             hidden.ptr,
             combined.ptr,
@@ -4132,25 +4317,28 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         threads: int = 64,
+        shared_gate_already_sigmoid: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
         w8a16_library = _library_for(library, "w8a16")
         shared_gate_logits_ptr = scratch.router_logits.ptr + self.config.num_experts * DType.FP32.itemsize
-        # Overwrite the shared-gate logit column in place with sigmoid(logit).
-        # Router top-k/weights have already been materialized, and this avoids
-        # recomputing the same expf once per hidden row tile below.
-        w8a16_shared_gate_sigmoid_fp32(
-            shared_gate_logits_ptr,
-            shared_gate_logits_ptr,
-            tokens,
-            self.config.num_experts + 1,
-            threads=128,
-            stream=stream,
-            library=w8a16_library,
-            runtime=self.runtime,
-        )
+        if not shared_gate_already_sigmoid:
+            # Overwrite the shared-gate logit column in place with sigmoid(logit).
+            # Router top-k/weights have already been materialized, and this avoids
+            # recomputing the same expf once per hidden row tile below.  The P3.2
+            # diagnostic path can do this in the prefill router select kernel instead.
+            w8a16_shared_gate_sigmoid_fp32(
+                shared_gate_logits_ptr,
+                shared_gate_logits_ptr,
+                tokens,
+                self.config.num_experts + 1,
+                threads=128,
+                stream=stream,
+                library=w8a16_library,
+                runtime=self.runtime,
+            )
         token_tile = _use_shared_down_combine_prefill_token_tiled(tokens)
         if token_tile:
             w8a16_shared_down_combine_residual_fp16_token_tiled(
@@ -4732,6 +4920,10 @@ class Qwen35ParoDecodeState:
                 scratch,
                 residual,
                 tokens=tokens,
+                shared_gate_already_sigmoid=_use_prefill_router_shared_gate_sigmoid_fused(
+                    tokens=tokens,
+                    legacy_shared=True,
+                ),
                 library=library,
                 stream=stream,
             )
@@ -5530,6 +5722,14 @@ def _rotate_dual_pack8_fused_enabled() -> bool:
 
 
 
+def _full_attn_kv_pack8_fused_enabled() -> bool:
+    value = os.environ.get("HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED")
+    if value is None or value.strip() == "":
+        return False
+    return value.strip().lower() not in {"0", "false", "off", "no"}
+
+
+
 def _router_topk_coop_enabled() -> bool:
     value = os.environ.get("HIPENGINE_PARO_ROUTER_TOPK_COOP")
     if value is None or value.strip() == "":
@@ -5653,6 +5853,22 @@ def _linear_ab_prefill_rocblas_min_tokens() -> int:
 def _use_linear_ab_prefill_rocblas(tokens: int) -> bool:
     threshold = _linear_ab_prefill_rocblas_min_tokens()
     return threshold > 0 and tokens >= threshold
+
+
+def _use_linear_gdn_prefill_rotate_fused(config, *, tokens: int, group_size: int) -> bool:
+    return (
+        tokens > 1
+        and _env_flag("HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED", False)
+        and int(group_size) == int(config.linear_value_head_dim)
+    )
+
+
+def _use_prefill_router_shared_gate_sigmoid_fused(*, tokens: int, legacy_shared: bool) -> bool:
+    return (
+        tokens > 1
+        and legacy_shared
+        and _env_flag("HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED", False)
+    )
 
 
 def _shared_gate_up_prefill_token_tile() -> int:

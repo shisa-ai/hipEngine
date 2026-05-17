@@ -78,7 +78,9 @@ def plan_hip_build(
         raise ValueError("at least one source is required")
     compiler_version = compiler_version or f"{compiler}:unprobed"
     include_flags = tuple(f"-I{Path(path).expanduser()}" for path in include_dirs)
-    flags = _maybe_disable_unroll600((*build_profile.flags, *include_flags, *tuple(extra_flags)))
+    flags = (*build_profile.flags, *include_flags, *tuple(extra_flags))
+    flags = _maybe_enable_prefill_mcumode(flags, build_profile)
+    flags = _maybe_disable_unroll600(flags)
     cache_key = _cache_key(
         sources=source_paths,
         flags=flags,
@@ -219,6 +221,22 @@ def _compiler_env_prefix(compiler: str) -> str:
     basename = Path(compiler).name or compiler
     safe = "".join(char if char.isalnum() else "_" for char in basename).upper()
     return f"HIPENGINE_{safe}"
+
+
+def _maybe_enable_prefill_mcumode(flags: tuple[str, ...], profile: BuildProfile) -> tuple[str, ...]:
+    """Diagnostic P1.6 ablation: add ``-mcumode`` to prefill-profile builds.
+
+    Most dual-use decode/prefill libraries already build with the decode profile,
+    and the compact-WMMA prefill library adds ``-mcumode`` explicitly.  This knob
+    isolates the remaining prefill-profile surfaces without changing decode
+    kernels or duplicating the flag on libraries that already request it.
+    """
+
+    if profile.name != "prefill" or not _env_truthy(os.environ.get("HIPENGINE_PREFILL_MCUMODE")):
+        return flags
+    if "-mcumode" in flags:
+        return flags
+    return (*flags, "-mcumode")
 
 
 def _maybe_disable_unroll600(flags: tuple[str, ...]) -> tuple[str, ...]:
