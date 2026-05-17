@@ -18,6 +18,7 @@ _SYMBOL_FP16_FP16_OUT = "hipengine_gguf_q4_k_gemv_fp16_fp16_out"
 _SYMBOL_BF16_F32_OUT = "hipengine_gguf_q4_k_gemv_bf16_f32_out"
 _SYMBOL_BF16_FP16_OUT = "hipengine_gguf_q4_k_gemv_bf16_fp16_out"
 _SYMBOL_BF16_BF16_OUT = "hipengine_gguf_q4_k_gemv_bf16_bf16_out"
+_SYMBOL_SELECTED_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_gemv_bf16_bf16_out"
 _SYMBOL_PACK8_F32_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_f32_f32_out"
 _SYMBOL_PACK8_F32_FP16_OUT = "hipengine_gguf_q4_k_pack8_gemv_f32_fp16_out"
 _SYMBOL_PACK8_FP16_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_fp16_f32_out"
@@ -411,6 +412,57 @@ def _launch(
     _check_launch(runtime, err)
 
 
+def _launch_selected(
+    symbol: str,
+    x_ptr: int,
+    selected_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _validate_selected(x_rows, rows, num_experts, in_features, out_features, threads)
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(x_rows),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def _launch_pack8(
     symbol: str,
     x_ptr: int,
@@ -527,6 +579,23 @@ def _pack8_threads(in_features: int, threads: int) -> int:
     return threads
 
 
+def _validate_selected(
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    threads: int,
+) -> None:
+    if x_rows <= 0:
+        raise ValueError("x_rows must be positive")
+    if rows <= 0 or rows % x_rows != 0:
+        raise ValueError("rows must be positive and divisible by x_rows")
+    if num_experts <= 0:
+        raise ValueError("num_experts must be positive")
+    _validate(rows, in_features, out_features, threads)
+
+
 def _validate(
     rows: int,
     in_features: int,
@@ -578,6 +647,18 @@ def _make_pack8_wrapper(symbol: str):
     return wrapper
 
 
+def _make_selected_wrapper(symbol: str):
+    def wrapper(*args, **kwargs) -> None:
+        kwargs.setdefault("threads", 128)
+        kwargs.setdefault("stream", 0)
+        kwargs.setdefault("library", None)
+        kwargs.setdefault("runtime", None)
+        _launch_selected(symbol, *args, **kwargs)
+
+    return wrapper
+
+
+gguf_q4_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper(_SYMBOL_SELECTED_BF16_BF16_OUT)
 gguf_q4_k_gemv_f32_fp16_out = _make_raw_wrapper(_SYMBOL_F32_FP16_OUT)
 gguf_q4_k_gemv_fp16_fp16_out = _make_raw_wrapper(_SYMBOL_FP16_FP16_OUT)
 gguf_q4_k_gemv_bf16_fp16_out = _make_raw_wrapper(_SYMBOL_BF16_FP16_OUT)
@@ -630,6 +711,7 @@ __all__ = [
     "gguf_q4_k_gemv_bf16_bf16_out",
     "gguf_q4_k_gemv_bf16_f32_out",
     "gguf_q4_k_gemv_bf16_fp16_out",
+    "gguf_q4_k_selected_gemv_bf16_bf16_out",
     "gguf_q4_k_gemv_f32_f32_out",
     "gguf_q4_k_gemv_f32_fp16_out",
     "gguf_q4_k_gemv_fp16_f32_out",

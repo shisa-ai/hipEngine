@@ -17996,3 +17996,57 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
 Comparison against retained rows: vs source-lineage PARO target (W7900/gfx1100) this qwen35moe GGUF bring-up path is `-99.895%/-99.896%` prefill and `-97.581%/-97.566%` decode at 512/4K. Vs retained llama.cpp HIP UD-Q4_K_M rows it is ~`-99.9%` prefill and `-96.7%/-96.9%` decode. Memory is in the same broad 21-22 GiB band but 4K HIP sampled peak is above the retained llama.cpp HIP row (`22.389` vs `21.197 GiB`). Comparisons are directional because this session ran on RX 7900 XTX/gfx1100 while retained PARO/llama.cpp rows are W7900/gfx1100.
 
 Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bench-paro-comparison-diagnostic.json`. This is a task #55 optimization baseline, not a performance claim. Current bottlenecks are serial qwen35moe prefill and eager host-routed selected expert dispatch.
+
+## 2026-05-17 qwen35moe GGUF task #55 selected-device-expert iteration
+
+Profiled the initial qwen35moe GGUF path with `rocprofv3 --kernel-trace` on a short 8/1 run. Wall throughput was `2.577/2.550 tok/s`; kernel trace showed only `286.855 ms` GPU kernel time for `3.50 s` wall and `18,829` dispatches. The largest avoidable pathology was host-routed selected expert dispatch: every MoE layer copied top-k expert IDs to host, then launched gate/up/down raw GGUF kernels per selected lane.
+
+Implemented the first optimization iteration in hipENGINE (stable enough to keep here, not micro-tuning): selected raw GGUF expert kernels for Q4_K/Q5_K/Q6_K/Q8_0 read the device `selected` vector directly and offset the rank-3 `[expert, out, bytes]` raw GGUF weight tensor in-kernel. qwen35moe decode now launches selected gate, selected up, one top-k SiLU, and selected down instead of copying IDs to host and looping 8 lanes in Python. With no host copy, qwen35moe decode graph capture is enabled again.
+
+Kernel/correctness gates:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/gguf_prefill_projection_smoke.py --rows 4 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# Q4_K_SELECTED/Q8_0_SELECTED/Q5_K_SELECTED/Q6_K_SELECTED selected_bf16_bf16_out all max_abs=0.0, bit_mismatch=0; worst_max_abs=0.0
+PYTHONPATH=. pytest -q tests/test_gguf_e2e_acceptance.py tests/test_qwen35_gguf_tokenizer.py tests/test_qwen35_gguf_mapping.py tests/test_qwen35_gguf_materialize.py tests/test_llm_gguf_generate_path.py tests/test_gguf_linear_dispatch.py
+# 32 passed
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json \
+  --repeat 2 --json /tmp/hipengine-qwen36-task55-selected-final-correctness.json
+# passed=true; outputs=["izio.", "izio."]; ids [43482,13]; finite logits argmax=43482; torch_loaded_by_generate=false
+```
+
+Post-change profile, same 8/1 no-graph short run:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen36-task55-profile-selected-8-1 -- \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-qwen36-task55-profile-selected-8-1.json
+# wall throughput 6.109/6.147 tok/s; dispatches 18,829 -> 8,389 (-55.4%); kernel total 286.855 -> 219.125 ms (-23.6%)
+```
+
+Full requested shapes after the iteration (cached builds, c=1, graph replay decode enabled, one measured run because serial prefill remains slow):
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-qwen36-task55-selected-512-128.json
+# prefill/decode 6.729692634 / 49.832161368 tok/s; tracked peak 20.841118317 GiB; final logits finite
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-qwen36-task55-selected-4096-128.json
+# prefill/decode 6.750184665 / 33.168213536 tok/s; tracked peak 21.868351493 GiB; final logits finite
+```
+
+Deltas vs prior hipENGINE diagnostic: 512/128 `+137%` prefill and `+1675%` decode; 4K/128 `+138%` prefill and `+1105%` decode. Still not close to retained PARO: prefill remains `-99.8%` and decode remains `-57.1%/-70.7%` at 512/4K. Task #55 therefore remains open. Next required architecture work is qwen35moe bulk prefill with row-strided shared-router logits plus rows*top_k selected expert dispatch; further raw-GGUF kernel micro-tuning/grouped-MoE R&D should move to `~/amd-gpu-tuning/` per `docs/KERNELS.md` before porting stable kernels back.
+
+Retained progress artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-selected-device-experts-diagnostic.json`.

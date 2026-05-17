@@ -1,0 +1,457 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "timestamp": "2026-05-17T15:47:29.204534+00:00",
+  "run_tag": "hipengine-qwen36-q4km-selected-device-experts-progress",
+  "summary": "First qwen35moe GGUF optimization iteration: device-selected raw GGUF expert kernels and graph-captured decode.",
+  "hardware": {
+    "measured_gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "vram_total_gib_observed": 23.984375,
+    "note": "This session is on the attached RX 7900 XTX/gfx1100 card; retained PARO/llama.cpp baseline rows are W7900/gfx1100, so comparisons are directional rather than strict same-card claims."
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "hipengine_commit_before_commit": "ea337d0",
+    "hipengine_status_at_artifact": "## gguf-bulk-prefill\n M hipengine/generation/qwen35_gguf.py\n M hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip\n M hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py\n M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip\n M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py\n M hipengine/runtime/qwen35_gguf_runner.py\n M scripts/gguf_prefill_projection_smoke.py"
+  },
+  "workload": {
+    "model": "Qwen3.6-35B-A3B",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "architecture": "qwen35moe",
+    "quant": "gguf_q4_k_m / GGUF MOSTLY_Q4_K_M",
+    "concurrency": 1,
+    "prompt_source": "repeated token id 9707",
+    "shapes": [
+      "512/128",
+      "4K/128"
+    ],
+    "path": "serial token prefill; selected raw GGUF expert gate/up/down run from device selected IDs; graph replay decode enabled"
+  },
+  "commands": {
+    "profile_baseline_8_1": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen36-task55-profile-8-1 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-task55-profile-8-1.json",
+    "profile_selected_8_1": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-qwen36-task55-profile-selected-8-1 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-task55-profile-selected-8-1.json",
+    "kernel_correctness": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_prefill_projection_smoke.py --rows 4 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "public_correctness": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 2 --json /tmp/hipengine-qwen36-task55-selected-final-correctness.json",
+    "benchmark_512_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-task55-selected-512-128.json",
+    "benchmark_4k_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-task55-selected-4096-128.json"
+  },
+  "correctness": {
+    "public_gate_passed": true,
+    "outputs": [
+      "izio.",
+      "izio."
+    ],
+    "generated_token_ids": [
+      43482,
+      13
+    ],
+    "torch_loaded_by_generate": false,
+    "finite_logits": {
+      "prompt_ids": [
+        9419
+      ],
+      "shape": [
+        1,
+        248320
+      ],
+      "dtype": "float32",
+      "finite": true,
+      "argmax_token_id": 43482,
+      "argmax_recomputed_token_id": 43482,
+      "argmax_logit": 10.306183815002441,
+      "expected_first_token_id": 43482,
+      "expected_first_token_match": true,
+      "min_logit": -9.574250221252441,
+      "max_logit": 10.306183815002441,
+      "memory_stats": {
+        "current_allocated_bytes": 22220443100,
+        "peak_allocated_bytes": 22220443116,
+        "total_allocated_bytes": 66661329332,
+        "total_freed_bytes": 44440886232,
+        "active_allocations": 903,
+        "peak_allocations": 905
+      },
+      "passed": true
+    },
+    "kernel_selected_smoke": "worst_max_abs=0.0; selected Q4_K/Q8_0/Q5_K/Q6_K BF16 outputs bit-exact vs CPU BF16 expectation",
+    "benchmark_shape_final_logits_finite_all": true
+  },
+  "profile": {
+    "baseline_8_1": {
+      "raw_csv": "/tmp/hipengine-qwen36-task55-profile-8-1/rocm/4139053_kernel_trace.csv",
+      "dispatches": 18829,
+      "unique_kernels": 27,
+      "total_kernel_ms": 286.854569,
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 100.520182,
+          "pct": 35.04221053561117,
+          "dispatches": 5760,
+          "max_ms": 0.418443,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 91.789509,
+          "pct": 31.998621921897993,
+          "dispatches": 2250,
+          "max_ms": 0.370763,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 41.384263,
+          "pct": 14.426914357428275,
+          "dispatches": 2664,
+          "max_ms": 0.236202,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 10.487778,
+          "pct": 3.656130713399932,
+          "dispatches": 3240,
+          "max_ms": 0.312322,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+          "total_ms": 6.500176,
+          "pct": 2.2660179416560036,
+          "dispatches": 2,
+          "max_ms": 3.250988,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "total_ms": 6.258327,
+          "pct": 2.181707274810742,
+          "dispatches": 270,
+          "max_ms": 0.06632,
+          "vgpr": 56,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short>(unsigned short const*, unsigned short const*, float*, long, long)",
+          "total_ms": 4.324589,
+          "pct": 1.5075893736243748,
+          "dispatches": 720,
+          "max_ms": 0.04672,
+          "vgpr": 24,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 4.221788,
+          "pct": 1.471752050078031,
+          "dispatches": 360,
+          "max_ms": 0.02056,
+          "vgpr": 32,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 3.639466,
+          "pct": 1.2687495314045356,
+          "dispatches": 360,
+          "max_ms": 0.01784,
+          "vgpr": 24,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        },
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 3.439944,
+          "pct": 1.1991944252420117,
+          "dispatches": 369,
+          "max_ms": 0.016281,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 2.964864,
+          "pct": 1.0335774013765142,
+          "dispatches": 216,
+          "max_ms": 0.321162,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "__amd_rocclr_copyBuffer",
+          "total_ms": 2.671776,
+          "pct": 0.9314043730640386,
+          "dispatches": 607,
+          "max_ms": 0.0154,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        }
+      ]
+    },
+    "selected_device_experts_8_1": {
+      "raw_csv": "/tmp/hipengine-qwen36-task55-profile-selected-8-1/rocm/4165338_kernel_trace.csv",
+      "dispatches": 8389,
+      "unique_kernels": 27,
+      "total_kernel_ms": 219.124764,
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 81.251235,
+          "pct": 37.07989618188476,
+          "dispatches": 2250,
+          "max_ms": 0.327604,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 61.947431,
+          "pct": 28.27039256959565,
+          "dispatches": 720,
+          "max_ms": 0.141482,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 34.776757,
+          "pct": 15.870756168846347,
+          "dispatches": 333,
+          "max_ms": 0.152721,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+          "total_ms": 6.342946,
+          "pct": 2.89467328302519,
+          "dispatches": 2,
+          "max_ms": 3.251114,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "total_ms": 5.760346,
+          "pct": 2.6287973549169457,
+          "dispatches": 270,
+          "max_ms": 0.048761,
+          "vgpr": 56,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 4.130046,
+          "pct": 1.8847919900098558,
+          "dispatches": 360,
+          "max_ms": 0.01468,
+          "vgpr": 32,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        },
+        {
+          "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 3.951682,
+          "pct": 1.8033936136948903,
+          "dispatches": 360,
+          "max_ms": 0.302883,
+          "vgpr": 24,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short>(unsigned short const*, unsigned short const*, float*, long, long)",
+          "total_ms": 3.83644,
+          "pct": 1.7508016574520988,
+          "dispatches": 720,
+          "max_ms": 0.02256,
+          "vgpr": 24,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        },
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 3.165206,
+          "pct": 1.4444766270233154,
+          "dispatches": 369,
+          "max_ms": 0.016041,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 2.22402,
+          "pct": 1.0149560275168168,
+          "dispatches": 720,
+          "max_ms": 0.00384,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 0
+        },
+        {
+          "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 2.097461,
+          "pct": 0.9571994336523278,
+          "dispatches": 540,
+          "max_ms": 0.00712,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 1024
+        },
+        {
+          "kernel": "void (anonymous namespace)::gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 2.00298,
+          "pct": 0.9140819884693635,
+          "dispatches": 27,
+          "max_ms": 0.076081,
+          "vgpr": 16,
+          "scratch_size": 0,
+          "lds_block_size": 512
+        }
+      ]
+    },
+    "dispatch_count_delta_pct": -55.44638589409953,
+    "kernel_total_ms_delta_pct": -23.611199652880554,
+    "short_wall_prefill_tok_s_delta_pct": 137.05987370682186,
+    "short_wall_decode_tok_s_delta_pct": 141.07768255770324
+  },
+  "measurements": {
+    "rows": [
+      {
+        "workload": "512/128",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "prefill_tok_s": 6.729692633794028,
+        "decode_tok_s": 49.83216136812153,
+        "prefill_seconds": 76.08074066101108,
+        "decode_seconds": 2.568622280989075,
+        "graph_capture_seconds": 0.1600252109928988,
+        "tracked_peak_gib": 20.841118317097425,
+        "hip_used_peak_sampled_gib": 21.296875,
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          238350
+        ],
+        "mode": "resident_token_serial_prefill_graph_decode"
+      },
+      {
+        "workload": "4K/128",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "prefill_tok_s": 6.750184664656379,
+        "decode_tok_s": 33.16821353614463,
+        "prefill_seconds": 606.7982141950051,
+        "decode_seconds": 3.8591164959943853,
+        "graph_capture_seconds": 0.15893321399926208,
+        "tracked_peak_gib": 21.868351493030787,
+        "hip_used_peak_sampled_gib": 22.390625,
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          85873
+        ],
+        "mode": "resident_token_serial_prefill_graph_decode"
+      }
+    ]
+  },
+  "comparisons": {
+    "512/128": {
+      "vs_previous_hipengine_diagnostic": {
+        "prefill_delta_pct": 137.21477767169068,
+        "decode_delta_pct": 1675.0477284824829,
+        "tracked_peak_delta_gib": 2.0988285541534424e-05,
+        "previous": {
+          "prefill_tok_s": 2.836961803074528,
+          "decode_tok_s": 2.8073702226995247,
+          "tracked_peak_gib": 20.841097328811884
+        }
+      },
+      "vs_paro_parent": {
+        "prefill_delta_pct": -99.75041935047493,
+        "decode_delta_pct": -57.059748928805234,
+        "tracked_peak_delta_gib": 2.0411183170974248,
+        "baseline": {
+          "prefill_tok_s": 2696.4,
+          "decode_tok_s": 116.05,
+          "peak_gib": 18.8
+        }
+      },
+      "vs_llamacpp_hip": {
+        "prefill_delta_pct": -99.72374559650507,
+        "decode_delta_pct": -41.70790720446204,
+        "tracked_peak_delta_gib": -0.28388168290257454,
+        "baseline": {
+          "prefill_tok_s": 2436.049,
+          "decode_tok_s": 85.487,
+          "peak_gib": 21.125
+        }
+      }
+    },
+    "4K/128": {
+      "vs_previous_hipengine_diagnostic": {
+        "prefill_delta_pct": 137.89151369471665,
+        "decode_delta_pct": 1105.3854140000367,
+        "tracked_peak_delta_gib": 2.0988285541534424e-05,
+        "previous": {
+          "prefill_tok_s": 2.8375054493615983,
+          "decode_tok_s": 2.751668731918438,
+          "tracked_peak_gib": 21.868330504745245
+        }
+      },
+      "vs_paro_parent": {
+        "prefill_delta_pct": -99.75377768868661,
+        "decode_delta_pct": -70.66058068452487,
+        "tracked_peak_delta_gib": 0.22835149303078595,
+        "baseline": {
+          "prefill_tok_s": 2741.5,
+          "decode_tok_s": 113.05,
+          "peak_gib": 21.64
+        }
+      },
+      "vs_llamacpp_hip": {
+        "prefill_delta_pct": -99.68991827090954,
+        "decode_delta_pct": -62.03924058810344,
+        "tracked_peak_delta_gib": 0.6713514930307873,
+        "baseline": {
+          "prefill_tok_s": 2176.905,
+          "decode_tok_s": 87.375,
+          "peak_gib": 21.197
+        }
+      }
+    }
+  },
+  "decision": {
+    "accepted": false,
+    "retained_as_diagnostic": true,
+    "reason": "Decode improved substantially but both prefill and decode remain below retained PARO/llama.cpp targets; serial prefill is still the dominant blocker."
+  },
+  "next_blockers": [
+    "Implement qwen35moe bulk prefill with row-strided shared-router logits and rows*top_k selected expert dispatch.",
+    "Reduce raw GGUF Q8_0 shared expert and lm-head cost or use a dense/packed layout where memory allows.",
+    "Move further kernel micro-tuning/grouped MoE R&D to ~/amd-gpu-tuning per docs/KERNELS.md before porting stable kernels back."
+  ]
+}

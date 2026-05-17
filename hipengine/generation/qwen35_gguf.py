@@ -68,10 +68,8 @@ class Qwen35GGUFBringupGenerator:
 def _session_uses_host_routed_decode(session: Qwen35GGUFResidentSession) -> bool:
     """Return True for GGUF paths whose decode step cannot be graph-captured yet."""
 
-    runner = getattr(session, "runner", None)
-    weights = getattr(runner, "weights", None)
-    config = getattr(weights, "config", None)
-    return bool(getattr(config, "is_moe", False))
+    _ = session
+    return False
 
 
 def make_qwen35_gguf_bringup_generator(

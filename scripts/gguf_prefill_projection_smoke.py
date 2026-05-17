@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.cpu_reference import (
+    gguf_q4_k_gemv,
     gguf_q4_k_pack8_gemv,
     gguf_q5_k_gemv,
     gguf_q6_k_gemv,
@@ -27,18 +28,22 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_prefill_bf16_bf16_out,
     gguf_q5_k_prefill_bf16_f32_out,
     gguf_q5_k_prefill_bf16_fp16_out,
+    gguf_q5_k_selected_gemv_bf16_bf16_out,
     gguf_q6_k_prefill_bf16_bf16_out,
     gguf_q6_k_prefill_bf16_f32_out,
     gguf_q6_k_prefill_bf16_fp16_out,
+    gguf_q6_k_selected_gemv_bf16_bf16_out,
     gguf_q8_0_prefill_bf16_bf16_out,
     gguf_q8_0_prefill_bf16_f32_out,
     gguf_q8_0_prefill_bf16_fp16_out,
+    gguf_q8_0_selected_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
     gguf_q4_k_pack8_prefill_bf16_bf16_out,
     gguf_q4_k_pack8_prefill_bf16_f32_out,
     gguf_q4_k_pack8_prefill_bf16_fp16_out,
+    gguf_q4_k_selected_gemv_bf16_bf16_out,
 )
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import bf16_to_float32
@@ -102,6 +107,14 @@ def main(argv: list[str] | None = None) -> int:
     ]
     for case in raw_cases:
         results.extend(_run_raw_case(args.rows, *case))
+    selected_cases = [
+        ("Q4_K_SELECTED", _make_smoke_q4_k_weight, gguf_q4_k_gemv, gguf_q4_k_selected_gemv_bf16_bf16_out, 512, q4_lib),
+        ("Q8_0_SELECTED", make_q8_0_weight, gguf_q8_0_gemv, gguf_q8_0_selected_gemv_bf16_bf16_out, 64, raw_lib),
+        ("Q5_K_SELECTED", make_q5_k_weight, gguf_q5_k_gemv, gguf_q5_k_selected_gemv_bf16_bf16_out, 512, raw_lib),
+        ("Q6_K_SELECTED", make_q6_k_weight, gguf_q6_k_gemv, gguf_q6_k_selected_gemv_bf16_bf16_out, 512, raw_lib),
+    ]
+    for case in selected_cases:
+        results.append(_run_selected_raw_case(*case))
     worst = max(results)
     print(f"worst_max_abs={worst}")
     return 0 if worst <= 1e-4 else 1
@@ -176,6 +189,65 @@ def _run_raw_case(
             ),
         },
     )
+
+
+def _run_selected_raw_case(
+    name: str,
+    make_weight: Callable[[int, int], np.ndarray],
+    reference: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    launch_selected: Callable,
+    in_features: int,
+    library,
+) -> float:
+    runtime = get_hip_runtime()
+    x_rows = 3
+    lanes_per_row = 2
+    rows = x_rows * lanes_per_row
+    num_experts = 3
+    out_features = 7
+    flat_weight = make_weight(num_experts * out_features, in_features)
+    qweight = flat_weight.reshape(num_experts, out_features, flat_weight.shape[-1]).copy()
+    selected = np.asarray([0, 2, 1, 2, 0, 1], dtype=np.int64)
+    x_host, x_ref = _x_bf16(x_rows, in_features)
+    expected = np.empty((rows, out_features), dtype=np.float32)
+    for row, expert in enumerate(selected.tolist()):
+        x_row = row // lanes_per_row
+        expected[row] = reference(x_ref[x_row : x_row + 1], qweight[expert])[0]
+    expected_bf16 = float_array_to_bf16_bits(expected)
+    actual = np.empty_like(expected_bf16)
+    buffers = []
+    try:
+        x_dev = malloc(x_host.nbytes, runtime=runtime)
+        selected_dev = malloc(selected.nbytes, runtime=runtime)
+        qweight_dev = malloc(qweight.nbytes, runtime=runtime)
+        out_dev = malloc(actual.nbytes, runtime=runtime)
+        buffers.extend((x_dev, selected_dev, qweight_dev, out_dev))
+        copy_host_to_device(x_dev, host_array_ptr(np.ascontiguousarray(x_host)), runtime=runtime)
+        copy_host_to_device(selected_dev, host_array_ptr(selected), runtime=runtime)
+        copy_host_to_device(qweight_dev, host_array_ptr(np.ascontiguousarray(qweight)), runtime=runtime)
+        launch_selected(
+            x_dev.ptr,
+            selected_dev.ptr,
+            qweight_dev.ptr,
+            out_dev.ptr,
+            x_rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            threads=128,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual), out_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    max_abs = float(np.max(np.abs(bf16_to_float32(actual) - bf16_to_float32(expected_bf16))))
+    bit_mismatch = int(np.count_nonzero(actual != expected_bf16))
+    print(f"{name} selected_bf16_bf16_out max_abs={max_abs} bit_mismatch={bit_mismatch}")
+    return max_abs if bit_mismatch == 0 else float("inf")
 
 
 def _run_outputs(
