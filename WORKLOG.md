@@ -14343,3 +14343,77 @@ HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
 - 512/128 graph replay completed diagnostically but was slower under this shared-GPU run (`817.879` prefill / `103.403` decode tok/s).
 - 4K/1 graph replay smoke completed (`2029.344` prefill / `117.796` decode tok/s).
 - 4K/128 graph replay blocked/hung in two clean post-commit attempts (1200s/3600s timeouts, no JSON). Eager decode is the reported path until generic split-K graph replay is debugged.
+
+## 2026-05-17 — gfx1151 large PARO diagnostic benchmarks
+
+Ran the requested follow-up diagnostics for the larger local PARO checkpoints on clean commit `37c61ad3ade38cb0b44ac6d8668ec051e795f83b`.
+
+### Models and environment
+
+- `z-lab/Qwen3.5-35B-A3B-PARO`: `/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd`, MoE config (`40` layers, hidden `2048`, `16q/2kv`, `256` experts, top-k `8`).
+- `z-lab/Qwen3.6-27B-PARO`: `/models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/f0797088d8e0312aac0b5969bec1e6e5c6fb3ff3`, dense config (`64` layers, hidden `5120`, `24q/4kv`, intermediate `17408`).
+- GPU: `AMD RYZEN AI MAX+ 395 w/ Radeon 8060S`, target `gfx1151`.
+- HIP compiler: `HIP version: 7.2.53211-e1a6bc5663`.
+- Benchmark env: `HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151`.
+
+### Smoke
+
+Before full rows, both checkpoints passed `--max-layers 1 --prompt-length 8 --decode-tokens 1 --no-graph-replay-decode` smokes with finite generated previews:
+
+- 35B-A3B: prefill `94.787 tok/s`, decode `257.412 tok/s`, tracked peak `1.850 GiB`.
+- 27B: prefill `73.513 tok/s`, decode `107.022 tok/s`, tracked peak `3.913 GiB`.
+
+### Results
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-35b-qwen36-27b-gfx1151-diagnostic.json`.
+
+These rows are **diagnostic only** (`performance_claim=false`): single measured run on shared/busy gfx1151, generated previews finite, but no current KL/top-1 gate was run for these benchmark rows and 27B has no committed oracle fixture yet.
+
+#### Qwen3.5-35B-A3B-PARO
+
+| Workload | Decode mode | Prefill tok/s | Decode tok/s | Tracked peak | hipMemGetInfo sampled peak |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 512/128 | graph replay | 450.436 | 44.393 | 18.587 GiB | 18.564 GiB |
+| 4K/128 | graph replay | 495.460 | 49.458 | 20.458 GiB | 19.034 GiB |
+| 4K/4K | eager (`--no-graph-replay-decode`) | 494.467 | 45.522 | 20.572 GiB | 19.152 GiB |
+
+35B 4K/4K graph replay attempt timed out after 3600s with no JSON (`/tmp/qwen35-35b-a3b-paro-gfx1151-4096-4096-graph.stdout` was empty), so the retained 4K/4K row uses eager decode.
+
+#### Qwen3.6-27B-PARO
+
+| Workload | Decode mode | Prefill tok/s | Decode tok/s | Tracked peak | hipMemGetInfo sampled peak |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 512/128 | eager | 86.568 | 10.385 | 26.484 GiB | 27.258 GiB |
+| 4K/128 | eager + 1024-row prefill chunks | 98.190 | 9.724 | 27.223 GiB | 27.692 GiB |
+| 4K/4K | eager + 1024-row prefill chunks | 96.988 | 8.777 | 27.557 GiB | 28.032 GiB |
+
+27B unchunked 4K rows aborted with GPU memory-access faults / `HSA_STATUS_ERROR_EXCEPTION`; 1024-row chunks completed for both 4K/128 and 4K/4K.
+
+### Command templates
+
+35B graph rows:
+
+```bash
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/qwen35_paro_bench.py \
+    --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+    --backend hip_gfx1151 --prompt-length {512|4096} --decode-tokens 128 \
+    --warmup-decode-tokens 4 --attn-aotriton-min-tokens 512 --graph-replay-decode \
+    --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build \
+    --json /tmp/qwen35-35b-a3b-paro-gfx1151-...json
+```
+
+27B 4K chunked rows:
+
+```bash
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/qwen35_paro_bench.py \
+    --model /models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/f0797088d8e0312aac0b5969bec1e6e5c6fb3ff3 \
+    --backend hip_gfx1151 --prompt-length 4096 --decode-tokens {128|4096} \
+    --warmup-decode-tokens 4 --attn-aotriton-min-tokens 512 --no-graph-replay-decode \
+    --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+    --prefill-full-attn-query-chunk-size 1024 --prefill-full-attn-post-chunk-size 1024 \
+    --prefill-full-attn-rope-chunk-size 1024 \
+    --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build \
+    --json /tmp/qwen36-27b-paro-gfx1151-...json
+```

@@ -1,0 +1,468 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "timestamp": "2026-05-17T12:55:00+09:00",
+  "run_tag": "qwen-large-paro-gfx1151-diagnostic",
+  "summary": "gfx1151 diagnostic benchmarks for Qwen3.5-35B-A3B-PARO and Qwen3.6-27B-PARO",
+  "hardware": {
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "arch": "gfx1151",
+    "rocminfo_names": [
+      "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+      "gfx1151",
+      "amdgcn-amd-amdhsa--gfx1151",
+      "amdgcn-amd-amdhsa--gfx11-generic"
+    ],
+    "hip_mem_total_gib": 120.0,
+    "rocm_smi_vram_total_bytes": 536870912,
+    "note": "APU/unified-memory system; rocm-smi reports a 512 MiB VRAM aperture, while hipMemGetInfo reports 120 GiB total.",
+    "environment_capture_path": "/tmp/hipengine-gfx1151-large-bench-env.txt",
+    "environment_capture_excerpt": "--- rocminfo names ---\n  Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Vendor Name:             CPU                                \n  Name:                    gfx1151                            \n  Marketing Name:          Radeon 8060S Graphics              \n  Vendor Name:             AMD                                \n      Name:                    amdgcn-amd-amdhsa--gfx1151         \n      Name:                    amdgcn-amd-amdhsa--gfx11-generic   \n  Name:                    aie2p                              \n  Marketing Name:          RyzenAI-npu5                       \n  Vendor Name:             AMD                                \n--- rocm-smi ---\n\n\n============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 70.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 7\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 536870912\nGPU[0]\t\t: VRAM Total Used Memory (B): 403980288\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n--- hipcc ---\nHIP version: 7.2.53211-e1a6bc5663\nAMD clang version 22.0.0git (https://github.com/ROCm/llvm-project.git 08a72fce79ea9208f36b7845aa37aedfbaac39ee+PATCHED:f3b5643f91ad4def7b92cd48247bc11f1f39fb5c)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/lib/python3.11/site-packages/_rocm_sdk_core/lib/llvm/bin\n--- python/torch ---\npython 3.11.10\ntorch 2.10.0+cpu None\n"
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-e1a6bc5663\nAMD clang version 22.0.0git (https://github.com/ROCm/llvm-project.git 08a72fce79ea9208f36b7845aa37aedfbaac39ee+PATCHED:f3b5643f91ad4def7b92cd48247bc11f1f39fb5c)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/lib/python3.11/site-packages/_rocm_sdk_core/lib/llvm/bin\n",
+    "python": "3.11.10",
+    "torch": "2.10.0+cpu (not used by hipENGINE runtime)",
+    "hipengine_commit": "37c61ad3ade38cb0b44ac6d8668ec051e795f83b",
+    "hipengine_dirty_before_artifact": false
+  },
+  "models": {
+    "35b": {
+      "name": "Qwen3.5-35B-A3B-PARO",
+      "hf": "z-lab/Qwen3.5-35B-A3B-PARO",
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "revision": "dca2736e88e9f70855128fc81a8e918043a163cd",
+      "architecture": "Qwen3_5MoeForConditionalGeneration / qwen3_5_moe_text",
+      "layers": 40,
+      "hidden_size": 2048,
+      "num_attention_heads": 16,
+      "num_key_value_heads": 2,
+      "head_dim": 256,
+      "num_experts": 256,
+      "num_experts_per_tok": 8,
+      "moe_intermediate_size": 512,
+      "shared_expert_intermediate_size": 512,
+      "mode": "moe"
+    },
+    "27b": {
+      "name": "Qwen3.6-27B-PARO",
+      "hf": "z-lab/Qwen3.6-27B-PARO",
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/f0797088d8e0312aac0b5969bec1e6e5c6fb3ff3",
+      "revision": "f0797088d8e0312aac0b5969bec1e6e5c6fb3ff3",
+      "architecture": "Qwen3_5ForConditionalGeneration / qwen3_5_text",
+      "layers": 64,
+      "hidden_size": 5120,
+      "intermediate_size": 17408,
+      "num_attention_heads": 24,
+      "num_key_value_heads": 4,
+      "head_dim": 256,
+      "num_experts": 0,
+      "mode": "dense"
+    }
+  },
+  "common": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "quant": "w4_paro / paroquant",
+    "attn_aotriton_min_tokens": 512,
+    "concurrency": 1,
+    "prompt_source": "repeated token id 9707",
+    "warmup_runs": 0,
+    "measured_runs": 1,
+    "env": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151"
+  },
+  "smokes": [
+    {
+      "name": "35B-A3B max_layers=1",
+      "json_path": "/tmp/qwen-paro-35b-a3b-gfx1151-smoke-max1.json",
+      "prefill_tok_s": 94.78719929788964,
+      "decode_tok_s": 257.41198097378344,
+      "tracked_peak_allocated_gib": 1.8499514618888497,
+      "generated_preview": [
+        {
+          "token_id": 627,
+          "token_text": "ie",
+          "logit": 6.679727077484131
+        }
+      ]
+    },
+    {
+      "name": "27B max_layers=1",
+      "json_path": "/tmp/qwen-paro-27b-gfx1151-smoke-max1.json",
+      "prefill_tok_s": 73.51283489580801,
+      "decode_tok_s": 107.02187708283103,
+      "tracked_peak_allocated_gib": 3.9130315640941262,
+      "generated_preview": [
+        {
+          "token_id": 220,
+          "token_text": " ",
+          "logit": 5.1901750564575195
+        }
+      ]
+    }
+  ],
+  "measurements": {
+    "workloads": [
+      {
+        "name": "35B-A3B 512/128",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "prompt_tokens": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "decode_mode": "graph_replay",
+        "chunked_prefill": false,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --backend hip_gfx1151 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --attn-aotriton-min-tokens 512 --graph-replay-decode --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/qwen35-35b-a3b-paro-gfx1151-512-128-graph.json",
+        "json_path": "/tmp/qwen35-35b-a3b-paro-gfx1151-512-128-graph.json",
+        "load_seconds": 284.42230971506797,
+        "prefill_seconds": 1.1366771459579468,
+        "warmup_decode_seconds": 0.09174158098176122,
+        "decode_seconds": 2.8833583199884742,
+        "prefill_tok_s": 450.4357299877852,
+        "decode_tok_s": 44.39267888165619,
+        "tracked_peak_allocated_gib": 18.586924933828413,
+        "owned_session_peak_gib": 1.5545939141884446,
+        "hip_used_peak_sampled_gib": 18.56442642211914,
+        "tracked_current_gib_before_close": 18.373167389072478,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "graph_replay": true,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.35698890686035
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.380905151367188
+          }
+        ]
+      },
+      {
+        "name": "35B-A3B 4K/128",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "prompt_tokens": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "decode_mode": "graph_replay",
+        "chunked_prefill": false,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --backend hip_gfx1151 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --attn-aotriton-min-tokens 512 --graph-replay-decode --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/qwen35-35b-a3b-paro-gfx1151-4096-128-graph.json",
+        "json_path": "/tmp/qwen35-35b-a3b-paro-gfx1151-4096-128-graph.json",
+        "load_seconds": 192.62096022896003,
+        "prefill_seconds": 8.267071786918677,
+        "warmup_decode_seconds": 0.08744414302054793,
+        "decode_seconds": 2.588031808962114,
+        "prefill_tok_s": 495.4595902362027,
+        "decode_tok_s": 49.458433840244105,
+        "tracked_peak_allocated_gib": 20.458433368243277,
+        "owned_session_peak_gib": 1.9300734484568238,
+        "hip_used_peak_sampled_gib": 19.034427642822266,
+        "tracked_current_gib_before_close": 18.748646923340857,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "graph_replay": true,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.164628982543945
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.5994815826416
+          }
+        ]
+      },
+      {
+        "name": "35B-A3B 4K/4K",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "prompt_tokens": 4096,
+        "decode_tokens": 4096,
+        "warmup_decode_tokens": 4,
+        "decode_mode": "eager_no_graph_replay",
+        "chunked_prefill": false,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --backend hip_gfx1151 --prompt-length 4096 --decode-tokens 4096 --warmup-decode-tokens 4 --attn-aotriton-min-tokens 512 --no-graph-replay-decode --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/qwen35-35b-a3b-paro-gfx1151-4096-4096-eager.json",
+        "json_path": "/tmp/qwen35-35b-a3b-paro-gfx1151-4096-4096-eager.json",
+        "load_seconds": 240.98633577197324,
+        "prefill_seconds": 8.283674391917884,
+        "warmup_decode_seconds": 0.09297673497349024,
+        "decode_seconds": 89.97932945098728,
+        "prefill_tok_s": 494.46656232605375,
+        "decode_tok_s": 45.521566175164,
+        "tracked_peak_allocated_gib": 20.572012999095023,
+        "owned_session_peak_gib": 2.0436530793085694,
+        "hip_used_peak_sampled_gib": 19.15160369873047,
+        "tracked_current_gib_before_close": 18.862226554192603,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "graph_replay": false,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.154109954833984
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.18343734741211
+          }
+        ]
+      },
+      {
+        "name": "27B 512/128",
+        "model": "Qwen3.6-27B-PARO",
+        "prompt_tokens": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "decode_mode": "eager_no_graph_replay",
+        "chunked_prefill": false,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/f0797088d8e0312aac0b5969bec1e6e5c6fb3ff3 --backend hip_gfx1151 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --attn-aotriton-min-tokens 512 --no-graph-replay-decode --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-paro-gfx1151-512-128-eager.json",
+        "json_path": "/tmp/qwen36-27b-paro-gfx1151-512-128-eager.json",
+        "load_seconds": 259.21764573000837,
+        "prefill_seconds": 5.914392141974531,
+        "warmup_decode_seconds": 0.39113157894462347,
+        "decode_seconds": 12.325418927008286,
+        "prefill_tok_s": 86.56849050747383,
+        "decode_tok_s": 10.385042549711459,
+        "tracked_peak_allocated_gib": 26.48424665722996,
+        "owned_session_peak_gib": 3.8893558839336038,
+        "hip_used_peak_sampled_gib": 27.257675170898438,
+        "tracked_current_gib_before_close": 26.13431476149708,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 64,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "graph_replay": false,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 24.383275985717773
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 24.388103485107422
+          }
+        ]
+      },
+      {
+        "name": "27B 4K/128",
+        "model": "Qwen3.6-27B-PARO",
+        "prompt_tokens": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "decode_mode": "eager_no_graph_replay",
+        "chunked_prefill": true,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 1024,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/f0797088d8e0312aac0b5969bec1e6e5c6fb3ff3 --backend hip_gfx1151 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --attn-aotriton-min-tokens 512 --no-graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 1024 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-paro-gfx1151-4096-128-eager-chunk1024.json",
+        "json_path": "/tmp/qwen36-27b-paro-gfx1151-4096-128-eager-chunk1024.json",
+        "load_seconds": 231.52882163703907,
+        "prefill_seconds": 41.715073811938055,
+        "warmup_decode_seconds": 0.4376964350230992,
+        "decode_seconds": 13.163048046990298,
+        "prefill_tok_s": 98.18992574400775,
+        "decode_tok_s": 9.724191505117762,
+        "tracked_peak_allocated_gib": 27.22294116113335,
+        "owned_session_peak_gib": 4.278164447285235,
+        "hip_used_peak_sampled_gib": 27.69192123413086,
+        "tracked_current_gib_before_close": 26.52312332484871,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 64,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "graph_replay": false,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 25.98161506652832
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 26.353782653808594
+          }
+        ]
+      },
+      {
+        "name": "27B 4K/4K",
+        "model": "Qwen3.6-27B-PARO",
+        "prompt_tokens": 4096,
+        "decode_tokens": 4096,
+        "warmup_decode_tokens": 4,
+        "decode_mode": "eager_no_graph_replay",
+        "chunked_prefill": true,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 1024,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/f0797088d8e0312aac0b5969bec1e6e5c6fb3ff3 --backend hip_gfx1151 --prompt-length 4096 --decode-tokens 4096 --warmup-decode-tokens 4 --attn-aotriton-min-tokens 512 --no-graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 1024 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-paro-gfx1151-4096-4096-eager-chunk1024.json",
+        "json_path": "/tmp/qwen36-27b-paro-gfx1151-4096-4096-eager-chunk1024.json",
+        "load_seconds": 266.762120372965,
+        "prefill_seconds": 42.232240373967215,
+        "warmup_decode_seconds": 0.41702960804104805,
+        "decode_seconds": 466.6753752360819,
+        "prefill_tok_s": 96.987513892937,
+        "decode_tok_s": 8.776979068003994,
+        "tracked_peak_allocated_gib": 27.557250619865954,
+        "owned_session_peak_gib": 4.61247390601784,
+        "hip_used_peak_sampled_gib": 28.03176498413086,
+        "tracked_current_gib_before_close": 26.857432783581316,
+        "native_prefill_execution": "single_request_native_full",
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 64,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "graph_replay": false,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 25.988142013549805
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 26.34833526611328
+          }
+        ]
+      }
+    ]
+  },
+  "correctness": {
+    "passed": false,
+    "status": "sanity_only_no_current_kl_top1_gate",
+    "max_layers_1_smokes_passed": true,
+    "finite_generated_logits": true,
+    "kl_mean": null,
+    "top1_agreement": null,
+    "reason_not_accepted": "No current gfx1151 KL/top-1 CPU-reference gate was run for these benchmark rows; 27B has no committed oracle fixture. Rows are single-run diagnostics on shared/busy GPU."
+  },
+  "blocked_or_fallbacks": [
+    {
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "workload": "4K/4K graph replay",
+      "status": "blocked_timeout",
+      "symptom": "--graph-replay-decode attempt produced no JSON before 3600s timeout; eager decode completed and is reported for 4K/4K.",
+      "stdout_path": "/tmp/qwen35-35b-a3b-paro-gfx1151-4096-4096-graph.stdout"
+    },
+    {
+      "model": "Qwen3.6-27B-PARO",
+      "workload": "4K/128 unchunked prefill",
+      "status": "blocked_gpu_memory_fault",
+      "symptom": "GPU memory access fault / HSA_STATUS_ERROR_EXCEPTION before JSON; rerun with 1024-row prefill chunking completed.",
+      "stdout_path": "/tmp/qwen36-27b-paro-gfx1151-4096-128-eager.stdout"
+    },
+    {
+      "model": "Qwen3.6-27B-PARO",
+      "workload": "4K/4K unchunked prefill",
+      "status": "blocked_gpu_memory_fault",
+      "symptom": "GPU memory access fault / HSA_STATUS_ERROR_EXCEPTION before JSON; rerun with 1024-row prefill chunking completed.",
+      "stdout_path": "/tmp/qwen36-27b-paro-gfx1151-4096-4096-eager.stdout"
+    }
+  ],
+  "memory": {
+    "summary": "See per-workload tracked_peak_allocated_gib, owned_session_peak_gib, and hip_used_peak_sampled_gib.",
+    "notes": [
+      "tracked peak is hipENGINE allocator high-water mark",
+      "hip peak is phase-sampled hipMemGetInfo, not continuous device-wide peak",
+      "owned_session excludes external HIP/AOTriton internals"
+    ]
+  },
+  "profiler": {
+    "status": "not_captured",
+    "reason": "Quick user-requested diagnostic throughput/memory pass; no accepted performance claim."
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "Diagnostic retained only due missing current KL/top-1 gate, single measured run, and graph/chunking fallbacks."
+  },
+  "notes": [
+    "Raw benchmark JSON outputs are in /tmp and are not committed.",
+    "35B 512/128 and 4K/128 use decode graph replay; 35B 4K/4K uses eager because graph replay timed out.",
+    "27B dense rows use eager decode; 4K rows require 1024-row prefill chunking to avoid GPU memory access fault."
+  ]
+}
