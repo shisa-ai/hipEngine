@@ -17696,3 +17696,19 @@ bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipc
 ```
 
 Metric improved from the token-serial baseline band (`16.0414 tok/s`) to `910.4869 tok/s` for 512-token prefill, but this is still below the Qwen3.6 packed PARO target (`2451.2 tok/s`). Next likely bottleneck is GGUF rows>1 projection throughput: current Q4_K/Q5_K/Q6_K rows>1 kernels are row-grid equivalents, not WMMA/GEMM-tiled kernels.
+
+## 2026-05-17 GGUF bulk prefill iteration 3
+
+Moved bulk prefill token/hidden buffers and `_GGUFFullAttentionPrefillScratch` allocation from the timed `prefill()` call into `Qwen35GGUFResidentSession.__post_init__`. The scratch now exposes active row views (`for_rows`) so a capacity-sized resident slab can be reused for shorter prompts while preserving `KVLiveSpans` row shapes and AOTriton `cu_seqlens=[0, rows]` metadata.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt -q
+# 1 passed
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --json /tmp/hipengine-gguf-bulk-loop-e2e.json >/tmp/hipengine-gguf-bulk-loop-e2e.out; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q'
+# 13 passed
+```
+
+Loop metric: `919.9459 tok/s` for 512-token prefill. This is only +1.0% over iteration 2 (`910.4869 tok/s`), so per-prefill allocation was not the dominant bottleneck. The likely bottleneck remains GGUF rows>1 projection throughput.
