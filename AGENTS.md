@@ -1,6 +1,6 @@
-# hipENGINE - Agent Guide
+# hipEngine - Agent Guide
 
-hipENGINE is a ROCm-native inference engine built around a clean Python host and the proven gfx1100 kernel lineage from `nano-vllm-amd`. See [docs/PLAN.md](docs/PLAN.md) for architecture, phase roadmap, and LoC budgets.
+hipEngine is a ROCm-native inference engine built around a clean Python host and the proven gfx1100 kernel lineage from `nano-vllm-amd`. See [docs/PLAN.md](docs/PLAN.md) for architecture, phase roadmap, and LoC budgets.
 
 This `AGENTS.md` (`CLAUDE.md` symlinked) is read every session. It covers only ground rules that apply to every review / coding / benchmarking task. Activity-specific playbooks live in `docs/`.
 
@@ -15,12 +15,12 @@ Instruction precedence: if this file conflicts with platform / system / develope
 - **Benchmark rollup stays current.** Every retained benchmark updates `benchmarks/README.md` (`Last updated` plus table row), `benchmarks/CHANGELOG.md` (dated one-liner with old→new metric, % delta, reason, artifact/source), and a compact artifact under `benchmarks/results/`.
 - **Correctness gate for any new/ported kernel:** KL ≤ 0.05 AND top-1 agreement ≥ 90% vs `kernels/cpu_reference/` on fixture inputs.
 - **Default hardware:** AMD Radeon Pro W7900, gfx1100/RDNA3. Claims about other backends require the corresponding hardware or are marked explicitly unverified.
-- **Kernel R&D lives in `~/amd-gpu-tuning/`**, not here. hipENGINE ingests *stable* kernels via port; micro-tuning, `rocprofv3` iteration loops, and the device-code gotcha catalog stay in the parent workspace.
+- **Kernel R&D lives in `~/amd-gpu-tuning/`**, not here. hipEngine ingests *stable* kernels via port; micro-tuning, `rocprofv3` iteration loops, and the device-code gotcha catalog stay in the parent workspace.
 - **Kernel catalog must stay current.** Before any kernel port, check `docs/KERNELS.md` and run `scripts/check_lineage.py`; update the catalog/path map if parent kernels or dispatch changed.
 
 ## Architectural Invariants
 
-Do not drift these casually. They define what hipENGINE is.
+Do not drift these casually. They define what hipEngine is.
 
 - **Torch-free runtime.** `import torch` is **not** allowed in any module reached by `hipengine.LLM.generate()`. Torch lives behind the optional `hipengine[torch]` extra and appears only as a dlpack bridge at the user boundary. Adding `import torch` anywhere on the hot path is an architectural change, not a refactor.
 - **Four-axis plugin registry.** Kernels are keyed by `(backend, layer, quant, variant)`. Models, quant schemes, and layers are plugins. **Never** add `if backend == "hip_gfx1100"` or `if quant == "..."` branches in dispatch / engine / model code; register against a registry key instead. See `docs/PLAN.md` "Extensibility Design" for mechanics.
@@ -148,7 +148,7 @@ Working tree is shared state. Other agents or the human may be editing concurren
 
 ## External Reference Repos
 
-Read-only peers under `/home/lhl/`. Do not edit as part of a hipENGINE task. When porting, record source file + commit in the commit message. If an external reference disagrees with `docs/PLAN.md`, `docs/PLAN.md` wins unless we explicitly decide the reference is correct and update `docs/PLAN.md`.
+Read-only peers under `/home/lhl/`. Do not edit as part of a hipEngine task. When porting, record source file + commit in the commit message. If an external reference disagrees with `docs/PLAN.md`, `docs/PLAN.md` wins unless we explicitly decide the reference is correct and update `docs/PLAN.md`.
 
 - `~/amd-gpu-tuning/` — parent workspace; **kernel R&D home**, benchmark history, `LESSONS-LEARNED.md`.
 - `~/amd-gpu-tuning/nano-vllm-amd/` — kernel source of truth for the Phase-0 port.

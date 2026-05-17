@@ -2,7 +2,7 @@
 """Emit the current Qwen3.5/PARO native-prefill coverage plan.
 
 This is a planning/blocker artifact helper, not a benchmark.  It reads the HF
-config only, computes the resident native-prefill prefix that hipENGINE can run
+config only, computes the resident native-prefill prefix that hipEngine can run
 without falling back to ``step_batch_serial``, and records the first layer that
 requires the native compact/full-attention prefill port.
 """

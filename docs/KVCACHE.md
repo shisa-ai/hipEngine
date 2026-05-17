@@ -2,7 +2,7 @@
 
 _Status: planning document. Last updated: 2026-05-17._
 
-This document is the focused plan for extending hipENGINE's KV-cache stack past
+This document is the focused plan for extending hipEngine's KV-cache stack past
 current dense BF16 paged KV. It turns the current 128K-under-24GiB milestone
 into a two-step roadmap:
 
@@ -166,7 +166,7 @@ metadata block before DMS rows can be quality claims.
 ### FastDMS reference map
 
 Use `~/FastDMS` as the semantic and optimization reference, but port to
-hipENGINE's torch-free HIP/plugin design rather than copying Triton/PyTorch
+hipEngine's torch-free HIP/plugin design rather than copying Triton/PyTorch
 host code directly.
 
 | FastDMS file | What to reuse |
@@ -186,10 +186,10 @@ FastDMS performance evidence to keep in mind:
   theoretical KV compression, but HIGGS speed did not hold; FastDMS promoted
   compact DMS without HIGGS/AQUA for the serving path.
 - Streaming pack was important because it eliminates a persistent dense KV
-  scratch. hipENGINE should start with the streaming/no-shadow shape, not a
+  scratch. hipEngine should start with the streaming/no-shadow shape, not a
   sidecar compact cache that still reserves dense pages.
 
-### hipENGINE DMS shape
+### hipEngine DMS shape
 
 DMS should register as a `KVPolicy` and compact attention kernel family:
 

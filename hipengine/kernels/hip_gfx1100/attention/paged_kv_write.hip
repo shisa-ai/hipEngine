@@ -1,5 +1,5 @@
 // Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed.
-// Qwen3.5 paged KV write kernel bodies are preserved; public wrappers use hipENGINE KVLiveSpans.
+// Qwen3.5 paged KV write kernel bodies are preserved; public wrappers use hipEngine KVLiveSpans.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>

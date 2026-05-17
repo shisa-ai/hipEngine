@@ -539,7 +539,7 @@ def _memory_summary(snapshots: dict[str, Any]) -> dict[str, Any]:
         "hip_used_peak_sampled_bytes": hip_used_peak,
         "hip_used_peak_sampled_gib": _bytes_to_gib(hip_used_peak) if hip_used_peak is not None else None,
         "notes": [
-            "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+            "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
             "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
             "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations.",
         ],

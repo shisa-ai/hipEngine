@@ -1,6 +1,6 @@
 """AOTriton runtime discovery for gfx11 attention wrappers.
 
-hipENGINE vendors the manifest-pinned, pruned AOTriton runtime/images needed by
+hipEngine vendors the manifest-pinned, pruned AOTriton runtime/images needed by
 its Qwen3.5/PARO inference paths.  The C++ wrapper
 (``aotriton_wrap.cc``) builds against that tree by default.  Developer/system
 lookup hooks remain for explicit override or for refreshing the vendored pin,

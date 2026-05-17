@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-14T18:34:04+09:00",
   "run_tag": "qwen35-paro-512-128-actual-c1-graph-diagnostic",
-  "summary": "hipENGINE Qwen3.5/PARO actual autoregressive c=1 diagnostic with one-step HIP graph replay for measured decode; native batched prefill and accepted correctness gates still missing.",
+  "summary": "hipEngine Qwen3.5/PARO actual autoregressive c=1 diagnostic with one-step HIP graph replay for measured decode; native batched prefill and accepted correctness gates still missing.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100"

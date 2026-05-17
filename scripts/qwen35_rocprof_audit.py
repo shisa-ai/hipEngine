@@ -91,7 +91,7 @@ def main() -> int:
         "model_path": args.model,
         "quant": "w4_paro",
         "backend": "hip_gfx1100",
-        "purpose": "hipENGINE-local rocprofv3 selected-region Amdahl baseline for docs/OPTIMIZE.md M.3/M.4",
+        "purpose": "hipEngine-local rocprofv3 selected-region Amdahl baseline for docs/OPTIMIZE.md M.3/M.4",
         "profile_method": (
             "rocprofv3 --kernel-trace --selected-regions, with qwen35_paro_bench.py "
             "calling roctxProfilerResume/Pause around prefill and measured_decode_graph. "

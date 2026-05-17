@@ -1,9 +1,9 @@
-# hipENGINE Documentation Index
+# hipEngine Documentation Index
 
 Last updated: 2026-05-17
 
 This directory contains the project architecture, validation, benchmarking, and
-optimization notes for hipENGINE. If you are new to the repo, start with
+optimization notes for hipEngine. If you are new to the repo, start with
 [`PLAN.md`](PLAN.md), then use the reading paths below for the task you are
 working on.
 

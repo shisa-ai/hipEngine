@@ -83,12 +83,12 @@ def host_buffer_ptr(buffer: ctypes.Array) -> int:
 
 
 def memory_stats() -> dict[str, int]:
-    """Return process-local hipENGINE device allocation counters.
+    """Return process-local hipEngine device allocation counters.
 
     The counters cover allocations made through :func:`malloc`, which is the
-    torch-free path used by hipENGINE runtime/model buffers.  They do not include
+    torch-free path used by hipEngine runtime/model buffers.  They do not include
     allocations made internally by HIP/AOTriton libraries, but they do preserve a
-    real high-water mark for hipENGINE-owned buffers even after temporary
+    real high-water mark for hipEngine-owned buffers even after temporary
     workspaces are released.
     """
 

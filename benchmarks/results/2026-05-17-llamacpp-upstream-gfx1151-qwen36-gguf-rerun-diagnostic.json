@@ -4,7 +4,7 @@
   "performance_claim": false,
   "timestamp": "2026-05-17T21:20:00+09:00",
   "run_tag": "llamacpp-upstream-gfx1151-qwen36-gguf-rerun",
-  "summary": "Upstream llama.cpp HIP and Vulkan rerun for Qwen3.6-35B-A3B UD-Q4_K_M on Strix Halo gfx1151, compared to existing hipENGINE shisa packed sweep.",
+  "summary": "Upstream llama.cpp HIP and Vulkan rerun for Qwen3.6-35B-A3B UD-Q4_K_M on Strix Halo gfx1151, compared to existing hipEngine shisa packed sweep.",
   "hardware": {
     "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
     "arch": "gfx1151",

@@ -8,7 +8,7 @@
   "quant": "w4_paro",
   "backend": "hip_gfx1100",
   "hardware": "AMD Radeon Pro W7900 / gfx1100",
-  "summary": "No per-kernel __launch_bounds__ retune was applied. The D1.1-D1.6 fusion sweep did not retain a default rotation/RMSNorm/projection kernel that changes the default resource envelope; D4.2 also rejected the batched-fusion plan. Static launch-bound guards show current wrappers do not bypass source max-thread bounds. Existing parent/hipENGINE probes already rejected the plausible stricter-bound/thread-count levers.",
+  "summary": "No per-kernel __launch_bounds__ retune was applied. The D1.1-D1.6 fusion sweep did not retain a default rotation/RMSNorm/projection kernel that changes the default resource envelope; D4.2 also rejected the batched-fusion plan. Static launch-bound guards show current wrappers do not bypass source max-thread bounds. Existing parent/hipEngine probes already rejected the plausible stricter-bound/thread-count levers.",
   "source_launch_bounds_inventory": [
     {
       "path": "hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip",

@@ -8,7 +8,7 @@
   "quant": "w4_paro",
   "backend": "hip_gfx1100",
   "source_commit_before_artifact": "6688836",
-  "change": "Long-shape checkpoint for current hipENGINE opt-in AOTriton threshold-512 plus one-step decode graph replay: 4K/4K, 32K/128, and attempted 128K/128.",
+  "change": "Long-shape checkpoint for current hipEngine opt-in AOTriton threshold-512 plus one-step decode graph replay: 4K/4K, 32K/128, and attempted 128K/128.",
   "validation": {
     "rocm_smoke": "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\" && rocminfo | grep -E 'Name:|gfx'",
     "correctness_context": "No new long-context oracle fixture was run. This checkpoint inherits the threshold-512 gates from benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json: native prefill fixture max_kl=0.039568870612619614/top1=1.0 and decode graph final_kl=0.0 on the 512/32 fixture.",
@@ -106,16 +106,16 @@
         "source": "~/amd-gpu-tuning/docs/OPTIMAL.md",
         "source_commit": "59195ed"
       },
-      "note": "Parent long-context rows require chunking overrides; hipENGINE PrefillConfig exposes chunk-size fields but the current single-request path does not apply them, so the unchunked 128K prefill scratch exceeds W7900 VRAM."
+      "note": "Parent long-context rows require chunking overrides; hipEngine PrefillConfig exposes chunk-size fields but the current single-request path does not apply them, so the unchunked 128K prefill scratch exceeds W7900 VRAM."
     }
   ],
   "decision": {
-    "summary": "hipENGINE is competitive at 4K/4K decode and trails parent docs by ~8.6% prefill / ~4.9% decode at 32K/128, but current unchunked prefill cannot run 128K/128 on W7900.",
-    "next_work": "Implement and wire long-context prefill chunking (linear, MoE, full-attn post/RoPE/query chunks) before using 128K as a hipENGINE checkpoint shape; then profile the remaining 32K prefill gap."
+    "summary": "hipEngine is competitive at 4K/4K decode and trails parent docs by ~8.6% prefill / ~4.9% decode at 32K/128, but current unchunked prefill cannot run 128K/128 on W7900.",
+    "next_work": "Implement and wire long-context prefill chunking (linear, MoE, full-attn post/RoPE/query chunks) before using 128K as a hipEngine checkpoint shape; then profile the remaining 32K prefill gap."
   },
   "notes": [
-    "All hipENGINE measured rows use --attn-aotriton-min-tokens 512 and --graph-replay-decode.",
+    "All hipEngine measured rows use --attn-aotriton-min-tokens 512 and --graph-replay-decode.",
     "performance_claim=false: single runs, limited long-context correctness coverage, and one requested shape is blocked by OOM.",
-    "tracked_peak_allocated_gib is hipENGINE allocator high-water; hip_used_peak_sampled_gib is sampled at phase boundaries and can under-report transient prefill workspace peaks."
+    "tracked_peak_allocated_gib is hipEngine allocator high-water; hip_used_peak_sampled_gib is sampled at phase boundaries and can under-report transient prefill workspace peaks."
   ]
 }

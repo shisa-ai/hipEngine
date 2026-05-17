@@ -1,7 +1,7 @@
 # Marlin-K / Vulkan-Style W4 Layout Port Analysis
 
 Date: 2026-05-16  
-Target repo: `~/hipENGINE`  
+Target repo: `~/hipEngine`
 Parent evidence repo: `~/amd-gpu-tuning` / `nano-vllm-amd` branch `gfx1100-qwen3.5`
 
 ## Executive summary
@@ -23,7 +23,7 @@ Measured retained impact in `~/amd-gpu-tuning`:
 
 The important memory result is that the earlier duplicate-buffer overhead is gone: 35B 512/128 Marlin-K peak overhead moved from the diagnostic `+0.621 GiB` row to `+0.023 GiB`. The remaining overhead is zero/scale metadata, not duplicate W4 qweight residency.
 
-This is exciting for hipENGINE because it is a stable, evidence-backed parent path with a small but real decode gain and a cleaner memory story. It is also a good test case for hipENGINE's raw-pointer port discipline: the kernel is self-contained, shape-specialized, and narrow enough to port without touching the whole runtime first.
+This is exciting for hipEngine because it is a stable, evidence-backed parent path with a small but real decode gain and a cleaner memory story. It is also a good test case for hipEngine's raw-pointer port discipline: the kernel is self-contained, shape-specialized, and narrow enough to port without touching the whole runtime first.
 
 ## What "Marlin-K" means here
 
@@ -51,7 +51,7 @@ qzeros_mk = qzeros.contiguous().transpose(0, 1).contiguous()
 scales_mk = scales.contiguous().view(groups, n8, 8).permute(1, 0, 2).contiguous()
 ```
 
-Constraints that should become hipENGINE validation checks:
+Constraints that should become hipEngine validation checks:
 
 - `bits == 4`
 - `group_size == 128`
@@ -65,7 +65,7 @@ Constraints that should become hipENGINE validation checks:
 
 ### Source files and commits
 
-Current source-of-truth parent checkout observed by `python3 scripts/check_lineage.py --file '*paroquant*' --diff stat` from hipENGINE:
+Current source-of-truth parent checkout observed by `python3 scripts/check_lineage.py --file '*paroquant*' --diff stat` from hipEngine:
 
 - Repo: `/home/lhl/amd-gpu-tuning/nano-vllm-amd`
 - Branch: `gfx1100-qwen3.5`
@@ -98,9 +98,9 @@ Use these as the direct port anchors:
   - `_MARLIN_K_FMA_SRC`
   - `gemv_paro_marlin_k_fma_kernel`
   - `gemv_paro_marlin_k_fma(...)` wrapper shape checks and thread selection
-  - `gemv_paro_marlin_k_q8_fma(...)` and `gemv_paro_marlin_k_sudot4(...)` are useful negative references but should not be promoted in hipENGINE yet.
+  - `gemv_paro_marlin_k_q8_fma(...)` and `gemv_paro_marlin_k_sudot4(...)` are useful negative references but should not be promoted in hipEngine yet.
 - `/home/lhl/amd-gpu-tuning/tools/paro_marlin_k_repack_reference.py`
-  - Repack/reference helper to use when writing hipENGINE's torch-free NumPy repack tests.
+  - Repack/reference helper to use when writing hipEngine's torch-free NumPy repack tests.
 - `/home/lhl/amd-gpu-tuning/scripts/check_paro_marlin_k_fma_correctness.py`
   - Parent micro correctness gate for FMA/Q8/SUDOT4 parity.
 - `/home/lhl/amd-gpu-tuning/scripts/bench_paro_gemv.py`
@@ -139,7 +139,7 @@ Use these as the direct port anchors:
   - `2026-05-16 05:15 UTC — OPTIMAL.md refreshed for qweight-neutral Marlin-K`
     - Documents the optimal flag update and retained result rows.
   - Multiloop entries on 2026-05-15/16 for A3, B1-B7, C1-C4, D1-D6, E1-E6, F1-F4.
-    - These are the negative evidence base; do not resurrect those changes as hipENGINE defaults without a new parent-side audit.
+    - These are the negative evidence base; do not resurrect those changes as hipEngine defaults without a new parent-side audit.
 
 ### Parent artifacts
 
@@ -187,7 +187,7 @@ The retained FMA kernel has the following structure:
   - shared-memory exchange for multiple 32-lane groups.
   - thread 0 writes the eight output channels.
 
-Important: several attempts to outsmart this loop were tried and rejected. For the hipENGINE first port, preserve the retained kernel, not the experiments.
+Important: several attempts to outsmart this loop were tried and rejected. For the hipEngine first port, preserve the retained kernel, not the experiments.
 
 ## Why qweight-neutral matters
 
@@ -201,15 +201,15 @@ qweight_pack8 view:      [out_packed, in_features]
 qweight_pack8 storage:   same allocation as qweight_mk
 ```
 
-In hipENGINE this is more than a Python convenience: `DeviceWeightMap.free()` currently frees every `DeviceTensorAllocation` it owns. A zero-copy view must therefore be represented as either:
+In hipEngine this is more than a Python convenience: `DeviceWeightMap.free()` currently frees every `DeviceTensorAllocation` it owns. A zero-copy view must therefore be represented as either:
 
 1. a `Tensor` alias that is not separately owned/freed, or
 2. a named view stored outside the owning allocation map, or
 3. an enhanced allocation map that distinguishes owning allocations from aliases.
 
-Do **not** create two owning `DeviceTensorAllocation` entries with the same pointer; that risks double-free. This is one of the main hipENGINE-specific design points for the port.
+Do **not** create two owning `DeviceTensorAllocation` entries with the same pointer; that risks double-free. This is one of the main hipEngine-specific design points for the port.
 
-## hipENGINE port surface
+## hipEngine port surface
 
 ### Preferred first implementation files
 
@@ -264,7 +264,7 @@ Likely runtime work:
 
 ### Build-system notes
 
-The C ABI wrapper should follow existing hipENGINE raw-pointer wrappers:
+The C ABI wrapper should follow existing hipEngine raw-pointer wrappers:
 
 - Use `hipengine.core.build.plan_hip_build(...)` / `build_hip(...)`.
 - Family name suggestion: `paro_marlin_k`.
@@ -276,7 +276,7 @@ The C ABI wrapper should follow existing hipENGINE raw-pointer wrappers:
 hipengine_gemv_paro_marlin_k_fma_fp16
 ```
 
-BF16 can be added if the current hipENGINE resident path needs it, but the parent optimal path and hipENGINE PARO path are increasingly FP16 for parent-parity activation streams.
+BF16 can be added if the current hipEngine resident path needs it, but the parent optimal path and hipEngine PARO path are increasingly FP16 for parent-parity activation streams.
 
 ### C ABI contract sketch
 
@@ -300,13 +300,13 @@ extern "C" int hipengine_gemv_paro_marlin_k_fma_fp16(
 
 Wrapper checks should enforce the layout constraints listed above before launch. In Python, mirror the style in `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py`: `ctypes` argtypes, `HIP_SUCCESS` check, optional `library`, optional `runtime`, and `stream=0` default.
 
-## Suggested hipENGINE validation plan
+## Suggested hipEngine validation plan
 
 ### RED/GREEN unit tests
 
 1. **Repack reference test**
    - Use small deterministic int32 qweight/qzeros and FP16 scales.
-   - Compare NumPy hipENGINE repack against the formula above and, if convenient, against `/home/lhl/amd-gpu-tuning/tools/paro_marlin_k_repack_reference.py`.
+   - Compare NumPy hipEngine repack against the formula above and, if convenient, against `/home/lhl/amd-gpu-tuning/tools/paro_marlin_k_repack_reference.py`.
 
 2. **Kernel plan/build test**
    - `plan_paro_marlin_k_build(...)` returns a `BuildArtifact` with expected family/output.
@@ -318,7 +318,7 @@ Wrapper checks should enforce the layout constraints listed above before launch.
    - Require exact or tight lowp parity consistent with existing pack8 tests.
 
 4. **Parent parity micro gate**
-   - Port enough fixture generation to compare Marlin-K output against hipENGINE's existing pack8 GEMV for the same qweight/qzeros/scales.
+   - Port enough fixture generation to compare Marlin-K output against hipEngine's existing pack8 GEMV for the same qweight/qzeros/scales.
    - This mirrors parent `check_paro_marlin_k_fma_correctness.py`.
 
 ### Kernel smoke / profiler gate
@@ -336,13 +336,13 @@ Record the kernel name, plausible duration, `VGPR_Count`, `Scratch_Size`, `LDS_B
 
 ### Performance gate before promotion
 
-The first port should **not** claim the parent speedups until hipENGINE measures them. Parent numbers are evidence for prioritizing the port, not a hipENGINE benchmark row.
+The first port should **not** claim the parent speedups until hipEngine measures them. Parent numbers are evidence for prioritizing the port, not a hipEngine benchmark row.
 
 Promotion should require:
 
 - Correctness vs CPU reference fixture gate from `docs/TESTING.md`.
 - Same generated sample / KL / top-1 gate at the model level if wired into Qwen3.5 runtime.
-- A comparison against the existing hipENGINE pack8/fusedw4 path on the same W7900, model, quantization, prompt/decode shape, and command.
+- A comparison against the existing hipEngine pack8/fusedw4 path on the same W7900, model, quantization, prompt/decode shape, and command.
 - Benchmark rollup updates per `AGENTS.md` if and only if the path is retained as faster:
   - `benchmarks/README.md`
   - `benchmarks/CHANGELOG.md`
@@ -350,9 +350,9 @@ Promotion should require:
 
 ## What not to port as default
 
-The parent §12 punchlist closed with zero additional promoted wins beyond qweight-neutral Marlin-K. Keep these out of the first hipENGINE port:
+The parent §12 punchlist closed with zero additional promoted wins beyond qweight-neutral Marlin-K. Keep these out of the first hipEngine port:
 
-| Item | Parent result | hipENGINE action |
+| Item | Parent result | hipEngine action |
 | --- | --- | --- |
 | A3 multi-row Marlin-K gate | Rejected; rows>1 had shape-dependent regressions. | Keep rows==1 first. |
 | B1 qweight int4 vector load | Correctness passed but only ~1.5% kernel avg and 0.8B regressions. | Do not port. |
@@ -371,9 +371,9 @@ The parent §12 punchlist closed with zero additional promoted wins beyond qweig
 | F1 Triton GEMV | 0 winning shapes, much slower. | No Triton dependency. |
 | F2 c=1 WMMA | Padded c=1 loses; M16 useful only when all rows useful. | Reserve for future grouped/prefill work. |
 
-## Relationship to current hipENGINE state
+## Relationship to current hipEngine state
 
-hipENGINE already has the pack8/fusedw4 side of the story:
+hipEngine already has the pack8/fusedw4 side of the story:
 
 - `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip`
 - `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py`
@@ -388,7 +388,7 @@ prefill / fused pack8 / paired projections -> existing pack8/fusedw4 via qweight
 selected/grouped MoE active surfaces       -> existing grouped WMMA/fused MoE/W8A16 paths
 ```
 
-That hybrid is the design to reproduce in hipENGINE.
+That hybrid is the design to reproduce in hipEngine.
 
 ## Open design choices for the port
 
@@ -402,15 +402,15 @@ That hybrid is the design to reproduce in hipENGINE.
 
 3. **Host repack timing.**
    - Parent repacks with torch tensors during module init.
-   - hipENGINE should repack torch-free on host with NumPy during load unless a future HIP repack kernel is needed for load-time memory pressure.
+   - hipEngine should repack torch-free on host with NumPy during load unless a future HIP repack kernel is needed for load-time memory pressure.
 
 4. **Scale dtype coverage.**
-   - Existing hipENGINE PARO path has both BF16 and FP16 wrapper coverage in many kernels.
+   - Existing hipEngine PARO path has both BF16 and FP16 wrapper coverage in many kernels.
    - Start with FP16 if the target resident path is FP16; add BF16 if a current smoke/runtime path consumes BF16 scales/activations for this surface.
 
 5. **Benchmark scope.**
-   - Parent speedups were measured in nano-vllm-amd, not hipENGINE.
-   - hipENGINE promotion needs its own pack8-vs-Marlin measurement after runtime integration.
+   - Parent speedups were measured in nano-vllm-amd, not hipEngine.
+   - hipEngine promotion needs its own pack8-vs-Marlin measurement after runtime integration.
 
 ## Proposed first port checklist
 
@@ -421,13 +421,13 @@ That hybrid is the design to reproduce in hipENGINE.
 5. Run `rocprofv3 --kernel-trace` smoke and record kernel metadata.
 6. Update `docs/KERNELS.md` and `docs/source_lineage.json` only when the port lands, not while this is analysis-only.
 7. Integrate qweight-neutral aliasing into `loading/qwen35_paro.py` and runtime rows==1 dispatch.
-8. Measure hipENGINE pack8 vs hipENGINE Marlin-K before claiming any hipENGINE speedup.
+8. Measure hipEngine pack8 vs hipEngine Marlin-K before claiming any hipEngine speedup.
 
 ## Bottom line
 
-Porting Marlin-K to hipENGINE is worth doing now. The parent path has the two things we wanted before importing it into this repo:
+Porting Marlin-K to hipEngine is worth doing now. The parent path has the two things we wanted before importing it into this repo:
 
 1. **A retained implementation with correctness and memory evidence**, not just a kernel microbench.
-2. **A closed negative-evidence punchlist**, so the first hipENGINE port can be narrow and conservative.
+2. **A closed negative-evidence punchlist**, so the first hipEngine port can be narrow and conservative.
 
-The first hipENGINE milestone should be a standalone raw-pointer Marlin-K FMA kernel + repack/oracle tests. Runtime promotion should follow only after we reproduce the parent hybrid memory story: Marlin-K for rows==1 non-expert GEMV, zero-copy pack8 view for existing fused paths, and no duplicate large W4 qweight buffer.
+The first hipEngine milestone should be a standalone raw-pointer Marlin-K FMA kernel + repack/oracle tests. Runtime promotion should follow only after we reproduce the parent hybrid memory story: Marlin-K for rows==1 non-expert GEMV, zero-copy pack8 view for existing fused paths, and no duplicate large W4 qweight buffer.

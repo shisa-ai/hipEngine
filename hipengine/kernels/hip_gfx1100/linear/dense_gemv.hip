@@ -1,5 +1,5 @@
 // Ported from nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py @ 59195ed.
-// dense_gemv_out kernel body is preserved; wrappers are hipENGINE C ABI.
+// dense_gemv_out kernel body is preserved; wrappers are hipEngine C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>

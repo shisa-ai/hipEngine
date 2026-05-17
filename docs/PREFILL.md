@@ -1,4 +1,4 @@
-# hipENGINE Native Bulk Prefill Plan
+# hipEngine Native Bulk Prefill Plan
 
 > Status: final implementation spec, corrected 2026-05-15. This document is
 > the authoritative prefill punchlist for Qwen3.5-35B-A3B-PARO. `docs/PLAN.md`
@@ -7,9 +7,9 @@
 
 ## TL;DR
 
-We are **not** landing throwaway intermediate prefill paths. hipENGINE already
+We are **not** landing throwaway intermediate prefill paths. hipEngine already
 has correct reference implementations: the original `nano-vllm-amd` native bulk
-engine and hipENGINE's validated serial resident path. Use those as oracles and
+engine and hipEngine's validated serial resident path. Use those as oracles and
 build the complete native path directly.
 
 Final target:
@@ -85,7 +85,7 @@ activations, W4 PARO weights):
 | 4096 / 4096 | 2155.60 | 56.79 | bulk, lm_head dense GEMV, 24GB path |
 | 512 / 32 | 2682.66 | 116.26 | parent fixture row recorded in `fixtures/qwen35_paro/parent_512_32_seed1234.json` |
 
-hipENGINE current rows on the same 35B fixture:
+hipEngine current rows on the same 35B fixture:
 
 | Shape | Prefill tok/s | Decode tok/s | Artifact / notes |
 | --- | ---: | ---: | --- |
@@ -117,16 +117,16 @@ Reference files:
 
 ### 2026-05-16 AOTriton V3 parent-gap audit
 
-Latest single-request diagnostic rows use hipENGINE's AOTriton V3
+Latest single-request diagnostic rows use hipEngine's AOTriton V3
 compact-varlen GQA path (`--attn-aotriton-min-tokens 512`) and real
-hipENGINE-owned memory accounting.  They supersede the older bring-up rows above
+hipEngine-owned memory accounting.  They supersede the older bring-up rows above
 for the current parent-parity gap discussion.  AOTriton is now a mandatory,
 vendored baseline runtime dependency for the gfx1100 Qwen3.5/PARO path, and the
 `LLM.generate()`/benchmark defaults select the threshold-512 policy plus decode
 HIP graph replay.  `attn_aotriton_min_tokens=0` is retained only as an explicit
 native-attention diagnostic override.
 
-| Workload | Parent prefill tok/s | hipENGINE AOTriton V3 prefill tok/s | Prefill delta | Parent decode tok/s | hipENGINE decode tok/s | Decode delta | Peak allocated delta |
+| Workload | Parent prefill tok/s | hipEngine AOTriton V3 prefill tok/s | Prefill delta | Parent decode tok/s | hipEngine decode tok/s | Decode delta | Peak allocated delta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 512 / 128 | 2696.4 | 2333.4 | -13.5% | 116.05 | 101.30 | -12.7% | -0.17 GiB |
 | 4096 / 128 | 2741.5 | 2379.7 | -13.2% | 113.05 | 102.41 | -9.4% | -0.84 GiB |
@@ -136,17 +136,17 @@ Source artifacts:
 - Parent: `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json`
   and `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json`
   (`nano-vllm-amd@59195ed`, OPTIMAL flags, decode graph replay).
-- hipENGINE original AOTriton audit: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-memory-diagnostic.json`
+- hipEngine original AOTriton audit: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-memory-diagnostic.json`
   (`a00c244`, no decode graph replay, AOTriton opt-in threshold 512).
-- hipENGINE decode-graph follow-up: `benchmarks/results/2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json`
+- hipEngine decode-graph follow-up: `benchmarks/results/2026-05-16-hipengine-qwen35-decode-graph-replay-diagnostic.json`
   (same opt-in threshold, one-step HIP graph replay, graph-vs-eager fixture gate).
-- hipENGINE threshold sweep: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json`
+- hipEngine threshold sweep: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json`
   (32/64/128/256/512/1024/4096 prompt sweep, threshold-512 fixture and graph gates).
 
 The important shape signal is that the residual prefill gap is almost the same
 at 512 and 4K after AOTriton V3: the old 4K native-attention cliff is closed, so
 the remaining gap is unlikely to be the quadratic attention core.  The decode
-follow-up moved hipENGINE decode to `109.34` tok/s at 512 and `110.30` tok/s at
+follow-up moved hipEngine decode to `109.34` tok/s at 512 and `110.30` tok/s at
 4K, narrowing the parent decode gap to `-5.8%` and `-2.4%`; it does not change
 the prefill diagnosis.  The threshold sweep moved the AOTriton policy from
 "pending" to "recommended opt-in threshold 512".  The remaining prefill gap
@@ -155,7 +155,7 @@ points at per-layer non-attention bulk work and launch/cast glue.
 #### AOTriton threshold sweep (2026-05-16)
 
 Single-run diagnostic sweep on W7900/gfx1100, repeated token id `9707`,
-`max_layers=40`, cached HIP builds, real hipENGINE memory accounting.  Short
+`max_layers=40`, cached HIP builds, real hipEngine memory accounting.  Short
 prompt rows use `--decode-tokens 0 --warmup-decode-tokens 0` to isolate prefill;
 512/128 and 4K/128 rows use one-step decode graph replay.  Correctness gates:
 `qwen35_native_prefill_fixture_gate.py` with `--attn-aotriton-min-tokens 512`
@@ -194,14 +194,14 @@ Follow-up diagnostic checkpoint with the same baseline AOTriton policy
 No new long-context oracle fixture was run; this row inherits the threshold-512
 fixture gates above and is not a promoted performance claim.
 
-| Workload | hipENGINE prefill tok/s | hipENGINE decode tok/s | hipENGINE tracked peak GiB | Parent/source comparison | Notes |
+| Workload | hipEngine prefill tok/s | hipEngine decode tok/s | hipEngine tracked peak GiB | Parent/source comparison | Notes |
 | --- | ---: | ---: | ---: | --- | --- |
-| 4K / 4K | 2379.818 | 108.930 | 20.529 | Local parent rerun: 2728.305 prefill / 104.963 decode / 21.719 GiB | hipENGINE prefill -12.8% vs parent, decode +3.8%; parent 4K/4K replay row has known graph/eager divergence at token 581, so it is comparison context only. |
-| 32K / 128 | 1718.308 | 93.933 | 35.100 | `~/amd-gpu-tuning/docs/OPTIMAL.md`: 1880 prefill / 98.8 decode / 21.37 GiB | Pre-chunk checkpoint: hipENGINE -8.6% prefill, -4.9% decode, but much higher tracked peak because it lacked the parent's long-context chunking. |
+| 4K / 4K | 2379.818 | 108.930 | 20.529 | Local parent rerun: 2728.305 prefill / 104.963 decode / 21.719 GiB | hipEngine prefill -12.8% vs parent, decode +3.8%; parent 4K/4K replay row has known graph/eager divergence at token 581, so it is comparison context only. |
+| 32K / 128 | 1718.308 | 93.933 | 35.100 | `~/amd-gpu-tuning/docs/OPTIMAL.md`: 1880 prefill / 98.8 decode / 21.37 GiB | Pre-chunk checkpoint: hipEngine -8.6% prefill, -4.9% decode, but much higher tracked peak because it lacked the parent's long-context chunking. |
 | 128K / 128 | blocked: OOM | — | — | `~/amd-gpu-tuning/docs/OPTIMAL.md`: 914 prefill / 62.6 decode / 27.42 GiB | Pre-chunk attempt reserved unchunked linear-attention scratch and failed at `linear_attn.out_rot`; replace with chunked retest tables. |
 
 Parent long-context rows use chunking overrides (`NANOVLLM_PARO_PREFILL_LINEAR_CHUNK_SIZE`,
-`NANOVLLM_PARO_MOE_CHUNK_SIZE`, and full-attention query/post/RoPE chunks).  hipENGINE's
+`NANOVLLM_PARO_MOE_CHUNK_SIZE`, and full-attention query/post/RoPE chunks).  hipEngine's
 `PrefillConfig` now exposes and wires matching knobs in the single-request path:
 linear layers run as contiguous chunks, full-attention chunks append KV then run
 bottom-right-aligned causal AOTriton over the cached prefix.
@@ -211,7 +211,7 @@ Retained chunking checkpoint:
 Companion quick-table artifact:
 `benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json`.
 Run `python3 scripts/qwen35_compare_tables.py {nano-vllm-amd,llama.cpp-hip,llama.cpp-vulkan,all}`
-to print separate prefill/decode/memory comparison tables.  All hipENGINE rows use
+to print separate prefill/decode/memory comparison tables.  All hipEngine rows use
 `--attn-aotriton-min-tokens 512 --graph-replay-decode`; the chunked policy mirrors
 parent long-context knobs: linear/MoE/post/RoPE chunks `1024`, full-attention query
 chunk `4096`.
@@ -229,27 +229,27 @@ resident-runner diagnostic, while decode remains slightly behind parent.  The
 512/128 no-op-chunk row remains a short-context prefill gap and is included so
 the quick comparison script covers the same context set for every baseline.
 
-#### Parent vs hipENGINE prefill call structure
+#### Parent vs hipEngine prefill call structure
 
-| Stage | nano-vllm-amd OPTIMAL parent | hipENGINE AOTriton V3 path | Audit finding |
+| Stage | nano-vllm-amd OPTIMAL parent | hipEngine AOTriton V3 path | Audit finding |
 | --- | --- | --- | --- |
 | Layer mix | 40 layers: 30 linear-attention, 10 full-attention. | Same model layer sequence. | Layer coverage is not the gap. |
 | Full-attention core | `ParoQuantFullAttentionLayer.prefill_native(...)` projects Q/K/V, applies head norm/RoPE, appends KV, then calls `torch.nn.functional.scaled_dot_product_attention(..., enable_gqa=True)` on BF16 Q/K/V. | `run_full_attention_moe_prefill_layer_fp16(...)` does the same prelude, then calls `v3::flash::attn_fwd` compact-varlen GQA with BF16 Q/K/V and a separate BF16-output gate post-pass. | Attention launch fanout is fixed; remaining attention overhead is now casts/post-pass around AOTriton, not the core SDPA algorithm. |
-| Linear-attention A/B dense projections | Multi-row prefill falls through `ParoQuantDenseLinear.forward(...)` to `F.linear(...)` (`native_aux_dense_linear_calls` appears in parent ledgers). | `project_linear_attention_ab_fp16(...)` launches two row-wise `dense_gemv_out_fp16(...)` kernels for `tokens > 1`. | Likely prefill gap: parent uses rocBLAS/Tensile-style bulk GEMM; hipENGINE uses scalar row/column GEMV kernels for a bulk matrix problem. |
-| Shared expert during prefill | `ParoQuantSharedExpert.forward(...)` uses W8A16 only for `x.shape[0] == 1`; multi-row prefill uses dense `F.linear(...)` gate/up and down (`native_shared_expert_dense_calls` in parent ledgers). | `shared_expert_gate_up_silu_fp16(...)` and `shared_expert_down_combine_residual_fp16(...)` use custom W8A16 row/column kernels for all `tokens > 1`. | Likely prefill gap and also explains hipENGINE's slightly lower peak memory: hipENGINE quantizes this branch but does not yet have a tiled bulk W8A16/dense-GEMM implementation. |
+| Linear-attention A/B dense projections | Multi-row prefill falls through `ParoQuantDenseLinear.forward(...)` to `F.linear(...)` (`native_aux_dense_linear_calls` appears in parent ledgers). | `project_linear_attention_ab_fp16(...)` launches two row-wise `dense_gemv_out_fp16(...)` kernels for `tokens > 1`. | Likely prefill gap: parent uses rocBLAS/Tensile-style bulk GEMM; hipEngine uses scalar row/column GEMV kernels for a bulk matrix problem. |
+| Shared expert during prefill | `ParoQuantSharedExpert.forward(...)` uses W8A16 only for `x.shape[0] == 1`; multi-row prefill uses dense `F.linear(...)` gate/up and down (`native_shared_expert_dense_calls` in parent ledgers). | `shared_expert_gate_up_silu_fp16(...)` and `shared_expert_down_combine_residual_fp16(...)` use custom W8A16 row/column kernels for all `tokens > 1`. | Likely prefill gap and also explains hipEngine's slightly lower peak memory: hipEngine quantizes this branch but does not yet have a tiled bulk W8A16/dense-GEMM implementation. |
 | Grouped routed MoE | Compact stacked MoE, compact WMMA tile map, dual gate/up WMMA, fused SiLU+down-rotate, single down WMMA, weighted-lane accumulation. | Same compact WMMA route is ported and wired in `run_moe_grouped_compact_fp16(...)`. | Probably not the first gap unless a matched profile disproves parity. |
-| Full-attention Q/K/V/O W4 projections | Parent multi-row W4 projections use pack8 replacement and bulk AWQ prefill paths once row count exceeds GEMV thresholds. | hipENGINE uses fused W4 prefill kernels for dual Q/K, QKV/Z, and single V/O/out projections. | Needs profiler verification, but current source structure does not show an obvious missing parent optimization here. |
-| Decode | Parent retained rows use `--decode-use-step-graph-replay`. | hipENGINE now has one-step HIP graph replay with device token/position state and fixture validation (`qwen35_decode_graph_fixture_gate.py`). | Explains most prior decode delta; remaining decode gap is small at 4K and separate from the prefill gap. |
+| Full-attention Q/K/V/O W4 projections | Parent multi-row W4 projections use pack8 replacement and bulk AWQ prefill paths once row count exceeds GEMV thresholds. | hipEngine uses fused W4 prefill kernels for dual Q/K, QKV/Z, and single V/O/out projections. | Needs profiler verification, but current source structure does not show an obvious missing parent optimization here. |
+| Decode | Parent retained rows use `--decode-use-step-graph-replay`. | hipEngine now has one-step HIP graph replay with device token/position state and fixture validation (`qwen35_decode_graph_fixture_gate.py`). | Explains most prior decode delta; remaining decode gap is small at 4K and separate from the prefill gap. |
 
 #### Prioritized prefill gap table
 
 | Priority | Gap / hypothesis | Evidence | Why it can explain 512 and 4K | Next action |
 | --- | --- | --- | --- | --- |
-| P0 | Replace bulk dense GEMV-style kernels with real bulk GEMM/WMMA for linear-attention A/B and shared-expert prefill. | Parent source uses `F.linear(...)` for multi-row `ParoQuantDenseLinear` and multi-row `ParoQuantSharedExpert`; parent ledgers show `native_aux_dense_linear_calls=280` and `native_shared_expert_dense_calls=80`. hipENGINE source uses `dense_gemv_out_fp16(...)` for A/B and scalar W8A16 shared kernels. | These costs scale roughly linearly with prompt rows and occur in every layer/MoE layer, matching the near-constant -13% residual gap at both 512 and 4K. | Capture a matched 512/128 ROCTX+`rocprofv3` profile first; if confirmed, add a torch-free rocBLAS/hipBLAS or tiled WMMA bulk dense path, starting with shared expert gate/up+down and linear A/B. |
+| P0 | Replace bulk dense GEMV-style kernels with real bulk GEMM/WMMA for linear-attention A/B and shared-expert prefill. | Parent source uses `F.linear(...)` for multi-row `ParoQuantDenseLinear` and multi-row `ParoQuantSharedExpert`; parent ledgers show `native_aux_dense_linear_calls=280` and `native_shared_expert_dense_calls=80`. hipEngine source uses `dense_gemv_out_fp16(...)` for A/B and scalar W8A16 shared kernels. | These costs scale roughly linearly with prompt rows and occur in every layer/MoE layer, matching the near-constant -13% residual gap at both 512 and 4K. | Capture a matched 512/128 ROCTX+`rocprofv3` profile first; if confirmed, add a torch-free rocBLAS/hipBLAS or tiled WMMA bulk dense path, starting with shared expert gate/up+down and linear A/B. |
 | P1 | Avoid or fuse AOTriton dtype/post-pass glue. | **Landed as diagnostics:** single-request AOTriton prefill writes BF16 Q directly from head-norm/RoPE, reuses the already-appended BF16 paged KV cache for K/V, fuses BF16 attention × FP16 gate into PARO rotate1, and aliases the old gated scratch as BF16 AOTriton output. | These changes remove Q/K/V cast launches plus the separate gate launch and reduce 4K tracked peak memory by ~0.39 GiB cumulatively, but single-run throughput stayed neutral/slightly negative; this is no longer a leading explanation for the -13% residual gap. | Keep the cast-glue and gate-rotate artifacts as evidence; prioritize the P0 bulk dense/shared-expert gap unless matched profiler attribution says attention post-pass still dominates. |
 | P2 | Keep AOTriton threshold policy evidence-backed. | **Sweep landed as diagnostic:** forced AOTriton is slower at 32/64/128/256 and faster at 512/1024/4096; threshold 512 is the first tested policy that avoids short-prompt regressions while keeping the fixed 4K path. | Not a gap for current comparison, but it determines the default full-attention path without hurting short prompts. | Keep code default `512` now that AOTriton is vendored through Git LFS; use `0` only for native-attention diagnostics and rerun the sweep when AOTriton or the prelude changes. |
 | P2 | Decode graph replay parity. | **Landed as diagnostic:** one-step HIP graph replay records generated IDs on device for the fixture gate and reaches 109.34 tok/s (512/128) / 110.30 tok/s (4K/128), reducing the parent decode gap to -5.8% / -2.4%. | Decode delta is separate from prefill, but it affects end-to-end comparison tables. | Keep the graph gate in the benchmark protocol; remaining decode work should wait until prefill default/threshold and P0 bulk kernels are settled. |
-| P3 | Matched profiler attribution. | This audit is source/ledger based; no matched hipENGINE-vs-parent prefill kernel-time table exists yet. | Prevents tuning the wrong family if dense/shared kernels are not the top residual. | Retain compact 512/128 and 4K/128 profiler summaries with ROCTX ranges before landing invasive kernel work. |
+| P3 | Matched profiler attribution. | This audit is source/ledger based; no matched hipEngine-vs-parent prefill kernel-time table exists yet. | Prevents tuning the wrong family if dense/shared kernels are not the top residual. | Retain compact 512/128 and 4K/128 profiler summaries with ROCTX ranges before landing invasive kernel work. |
 
 #### Additional low-risk prefill fusion audit (2026-05-16)
 
@@ -257,13 +257,13 @@ Source audit only; no new GPU measurement in this pass.  The goal was to find
 small launch/materialization cleanups left after the AOTriton Q/K/V cast and
 gate+rotate work, not to replace the P0 bulk dense/shared-expert gap.
 
-| Rank | Area | Current hipENGINE prefill sequence | Parent/source comparison | Candidate | Risk / why not already done |
+| Rank | Area | Current hipEngine prefill sequence | Parent/source comparison | Candidate | Risk / why not already done |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Linear-attention output tail | `qwen35_gdn_prefill_rmsnorm_gate_fp16(...) -> paro_rotate1_fp16(...) -> awq_fusedw4_prefill_strided_fp16(...)` in `run_linear_attention_prefill_*_fp16`. | Parent computes `hidden_outputs = rmsnorm(recurrent) * silu(z)` then calls PARO `out_proj`; hipENGINE already owns both lowp GDN gate and PARO rotate kernels. | Add a FP16 `gdn_prefill_rmsnorm_gate_rotate` kernel that computes per-value-head RMSNorm+SiLU gate into LDS, applies the PARO rotate1 group, and writes `out_rot` directly. Removes one launch and the `recurrent_bf16` materialization on all 30 linear-attention layers. | Low/medium. Safe when `head_v_dim == group_size` (Qwen3.5/PARO uses the natural 128-wide groups); keep the existing two-kernel path as fallback for other shapes. |
-| 2 | MoE shared gate | `route_moe_topk_shared_fp16(...)` writes the shared-gate logit, then grouped prefill launches `w8a16_shared_gate_sigmoid_fp32(...)`, then `w8a16_shared_down_combine_residual_fp16(...)` consumes the sigmoid. | Parent's c=1 fused shared-gate combine computes sigmoid inside combine; hipENGINE precomputes it once to avoid recomputing `expf` per hidden tile. | Add a prefill-only router variant (or select-kernel flag) that overwrites the shared-gate column with `sigmoid(logit)` after top-k selection. Then grouped prefill can skip `w8a16_shared_gate_sigmoid_fp32(...)` without recomputing sigmoid inside shared down. | Low. Must not change the c=1 route because `weighted_sum_shared_gate_combine_residual_*` expects raw shared-gate logits and applies sigmoid itself. |
-| 3 | Full-attention Q/gate + K prelude | `qwen35_split_qgate_fp16(...)`, `fp16_to_f32(key)`, then `qwen35_head_rmsnorm_partial_rotary_positions_*` for Q/K head norm + RoPE. | Parent's torch graph views/chunks Q and normalizes/rotates Q/K; hipENGINE has explicit split/cast launch glue because the raw-pointer ABI needs materialized FP32 Q/K inputs. | Add an AOTriton-first fused prelude that reads FP16 `q_proj` (`Q|gate`) and FP16 K projection directly, writes gate FP16, BF16 Q, and FP32 K (or BF16 K if appending directly) while doing head RMSNorm + vector-position RoPE. Removes split and key-cast launches plus `query_raw`/`key_raw` scratch for the AOTriton path. | Medium. More pointer/stride plumbing than math risk; keep native non-AOTriton path unchanged until the AOTriton fixture is green. |
+| 1 | Linear-attention output tail | `qwen35_gdn_prefill_rmsnorm_gate_fp16(...) -> paro_rotate1_fp16(...) -> awq_fusedw4_prefill_strided_fp16(...)` in `run_linear_attention_prefill_*_fp16`. | Parent computes `hidden_outputs = rmsnorm(recurrent) * silu(z)` then calls PARO `out_proj`; hipEngine already owns both lowp GDN gate and PARO rotate kernels. | Add a FP16 `gdn_prefill_rmsnorm_gate_rotate` kernel that computes per-value-head RMSNorm+SiLU gate into LDS, applies the PARO rotate1 group, and writes `out_rot` directly. Removes one launch and the `recurrent_bf16` materialization on all 30 linear-attention layers. | Low/medium. Safe when `head_v_dim == group_size` (Qwen3.5/PARO uses the natural 128-wide groups); keep the existing two-kernel path as fallback for other shapes. |
+| 2 | MoE shared gate | `route_moe_topk_shared_fp16(...)` writes the shared-gate logit, then grouped prefill launches `w8a16_shared_gate_sigmoid_fp32(...)`, then `w8a16_shared_down_combine_residual_fp16(...)` consumes the sigmoid. | Parent's c=1 fused shared-gate combine computes sigmoid inside combine; hipEngine precomputes it once to avoid recomputing `expf` per hidden tile. | Add a prefill-only router variant (or select-kernel flag) that overwrites the shared-gate column with `sigmoid(logit)` after top-k selection. Then grouped prefill can skip `w8a16_shared_gate_sigmoid_fp32(...)` without recomputing sigmoid inside shared down. | Low. Must not change the c=1 route because `weighted_sum_shared_gate_combine_residual_*` expects raw shared-gate logits and applies sigmoid itself. |
+| 3 | Full-attention Q/gate + K prelude | `qwen35_split_qgate_fp16(...)`, `fp16_to_f32(key)`, then `qwen35_head_rmsnorm_partial_rotary_positions_*` for Q/K head norm + RoPE. | Parent's torch graph views/chunks Q and normalizes/rotates Q/K; hipEngine has explicit split/cast launch glue because the raw-pointer ABI needs materialized FP32 Q/K inputs. | Add an AOTriton-first fused prelude that reads FP16 `q_proj` (`Q|gate`) and FP16 K projection directly, writes gate FP16, BF16 Q, and FP32 K (or BF16 K if appending directly) while doing head RMSNorm + vector-position RoPE. Removes split and key-cast launches plus `query_raw`/`key_raw` scratch for the AOTriton path. | Medium. More pointer/stride plumbing than math risk; keep native non-AOTriton path unchanged until the AOTriton fixture is green. |
 | 4 | Packed linear-attention segment conv | Compact c>N path casts `qkv` FP16 to `qkv_f32` before `qwen35_linear_attn_conv_prefill_segments_f32(...)`; single-request prefill already has the lowp-input `qwen35_linear_attn_conv_prefill_fp16(...)`. | Parent segment path is newer than the original c=1 prefill and does not expose this exact torch-free split. | Add a templated/FP16-input segment conv wrapper to remove the `fp16_to_f32(...)` cast and `qkv_f32` scratch in packed prefill. | Low, but affects compact c>N more than the current c=1 benchmark, so schedule after c=1 launch cleanups. |
-| 5 | MoE metadata fanout | `_prepare_grouped_moe_prefill_metadata(...)` uses memset/count/prefix/tile-map/memset/scatter launches before expert WMMA. | Parent uses torch-side grouping plus native compact WMMA; hipENGINE's explicit metadata kernels are correct but launch-heavy. | Combine `group_prefix` + `wmma_tile_map` and initialize `scatter_offsets`/`tile_expert` in the same small metadata kernel. | Low math risk but small payoff; do after profiler confirms metadata is visible. |
+| 5 | MoE metadata fanout | `_prepare_grouped_moe_prefill_metadata(...)` uses memset/count/prefix/tile-map/memset/scatter launches before expert WMMA. | Parent uses torch-side grouping plus native compact WMMA; hipEngine's explicit metadata kernels are correct but launch-heavy. | Combine `group_prefix` + `wmma_tile_map` and initialize `scatter_offsets`/`tile_expert` in the same small metadata kernel. | Low math risk but small payoff; do after profiler confirms metadata is visible. |
 
 Defer for now: fusing input RMSNorm with PARO input rotation (requires a
 row-wide reduction before group-local rotations), fusing rotate into generic W4
@@ -278,7 +278,7 @@ Q/gate+K prelude fusion.  Re-run the 512/32 fixture gate after each and keep
 512/128 + 4K/128 rows diagnostic-only unless repeated runs show a real
 throughput improvement.
 
-## Current hipENGINE inventory
+## Current hipEngine inventory
 
 `docs/KERNELS.md` is authoritative for exact landed kernels and gates. If this
 section disagrees with `docs/KERNELS.md`, `docs/KERNELS.md` wins and the follow-up
@@ -572,7 +572,7 @@ correctness oracle:
   `full_attn_prefill` CPU reference for tiny causal-GQA fixtures using
   pre-appended K/V.
 - Add CPU-reference or row-by-row c1 oracle coverage for grouped MoE stages.
-- Use hipENGINE's serial resident path and the parent `nano-vllm-amd` native bulk
+- Use hipEngine's serial resident path and the parent `nano-vllm-amd` native bulk
   path as external stage/e2e oracles.
 - Row-loop full-attention and c1 selected-row MoE may be implemented as test-only
   helpers if useful, but they must not be wired into generation or retained
@@ -682,12 +682,12 @@ reproduce the decision without re-running the audit.
 Measured with the standard bench command on the parent 512/32 fixture and the
 4K/128 repeated-token diagnostic; both runs use `require_full_native=True`.
 
-| Shape          | hipENGINE | nano-vllm-amd (parent) | parent / hipENGINE |
+| Shape          | hipEngine | nano-vllm-amd (parent) | parent / hipEngine |
 | -------------- | --------: | ---------------------: | -----------------: |
 | 512 prefill    | 2039 tok/s | 2589 tok/s              | +27 %              |
 | 4K prefill     |  659 tok/s | 1681 tok/s              | +155 %             |
 
-The 4K gap is the load-bearing one. At T=4K, hipENGINE spends 6.21 s in
+The 4K gap is the load-bearing one. At T=4K, hipEngine spends 6.21 s in
 prefill vs the parent's ≈ 2.44 s. Multiloop iters 1–49 optimized only the 512
 metric and treated 4K as a no-regression guard; that left the long-context
 path structurally unexamined.
@@ -699,7 +699,7 @@ From `rocprofv3 --kernel-trace` on `qwen35_paro_bench.py` with
 flags from `~/amd-gpu-tuning/scripts/run_moe2_baselines.py::COMMON_ENV` on the
 parent side. Numbers are summed across the 40 layers.
 
-Top kernel buckets, hipENGINE 512 prefill (total kernel time 229.77 ms):
+Top kernel buckets, hipEngine 512 prefill (total kernel time 229.77 ms):
 
 | ms      | calls | avg us  | kernel                                                |
 | ------: | ----: | ------: | ----------------------------------------------------- |
@@ -714,7 +714,7 @@ Top kernel buckets, hipENGINE 512 prefill (total kernel time 229.77 ms):
 |    9.24 |    80 |   115.5 | `paro_rotate1_kernel<_Float16>`                       |
 |    8.62 |    40 |   215.5 | `qwen35_router_logits_token_tile_kernel<_Float16,4>`  |
 
-Top kernel buckets, hipENGINE 4K prefill (total kernel time 6171.07 ms):
+Top kernel buckets, hipEngine 4K prefill (total kernel time 6171.07 ms):
 
 | ms       | calls | avg us    | kernel                                                |
 | -------: | ----: | --------: | ----------------------------------------------------- |
@@ -750,7 +750,7 @@ Key observations:
    Multiloop iters 36–37 were working against a real ceiling there; further
    grinding on that bucket is unlikely to pay.
 5. **MoE compact-WMMA + W8A16 shared family scales ~6–8×** as expected for
-   linear MoE work. Combined hipENGINE MoE+shared kernel time is ≈ 1.27× the
+   linear MoE work. Combined hipEngine MoE+shared kernel time is ≈ 1.27× the
    nano-vllm-amd equivalent, because nano-vllm-amd silently opts OUT of compact
    WMMA at long T and dispatches `hipBLASLt` HGEMM with per-shape autotuned
    tiles (MT96×96×32, MT128×48×32, MT96×32×32 observed). Compact WMMA is a
@@ -848,12 +848,12 @@ AOTriton specifics worth recording so a future agent does not re-derive them:
     - Default prune keeps only `flash/attn_fwd/` (396 forward variants for
       bf16/fp16 × head_dim ∈ {16…256} × causal × …); drops every `bwd_*`,
       `bwd_preprocess*`, and `debug_*` subdir. Post-prune cache: **159 MB**.
-    - Tighter prune to the exact shapes hipENGINE invokes
+    - Tighter prune to the exact shapes hipEngine invokes
       (bf16/fp16 × head_dim 128 × causal=true × dropout=false × no-bias) is
       the per-GPU kernel streaming future-work item below; not implemented.
 - The 396 pretuned variants do per-shape kernel selection at call time; this
   is the value we would lose by hand-rolling. The default attn_fwd-only prune
-  is safe because hipENGINE's attention shape set is fixed at model-load time
+  is safe because hipEngine's attention shape set is fixed at model-load time
   and small (one head_dim per registered model, causal-only forward).
 
 ### Why "surely native HIP beats Triton" is not a fast path
@@ -879,7 +879,7 @@ AOTriton as the perf oracle is what makes a later native port tractable.
   (`aotriton_wrap.{cc,py}`) that links against the manifest-pinned
   `libaotriton_v2.so` and exposes a stable `extern "C"` surface around
   `attn_fwd_compact_varlen` (the varlen path matches `CompactPromptSlab`).
-  `ctypes` dlopens hipENGINE's own wrapper `.so`, not AOTriton directly; see
+  `ctypes` dlopens hipEngine's own wrapper `.so`, not AOTriton directly; see
   "Stable-ABI shim, not raw dlopen" below.
 - Register `KernelKey("hip_gfx1100", "full_attn_prefill", "w4_paro",
   "aotriton_attn_fwd")` alongside
@@ -938,7 +938,7 @@ unacceptable or per-shape headroom is measurable).
 AOTriton (`https://github.com/ROCm/aotriton`) is under active development:
 ABI churn is real between minors, release artifacts are matrixed across ROCm
 minors, and the version PyTorch bundles is mangled (the conda installs on this
-host show `libaotriton_v2.so.torch` symlinks under `torch/lib/`). hipENGINE
+host show `libaotriton_v2.so.torch` symlinks under `torch/lib/`). hipEngine
 pins one upstream release in `aotriton_release.toml` and now vendors the exact
 pruned gfx11xx runtime/images needed by the Qwen3.5/PARO inference path under
 `hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/`. Binary payloads
@@ -959,7 +959,7 @@ We pin AOTriton 0.11.2b (released 2026-01-28). Rationale:
   "massive accuracy problems". That warning is **training-only**:
   `test/adiffs/gfx1100.txt` in 0.11.2b lists 436 failing tests, 100% of which
   are in `test_backward.py` (backward/training kernels). Zero forward-pass
-  failures are listed. hipENGINE is inference-only, so the warning does not
+  failures are listed. hipEngine is inference-only, so the warning does not
   apply. As an additional sanity check, 0.11.1b restored Navi31 support via
   an alternative wheel mechanism and 0.11.2b shipped an updated `gfx11xx`
   image tarball; the gfx11xx images tarball has 60k+ downloads.
@@ -1106,7 +1106,7 @@ copies the pruned runtime/images into `aotriton_runtime/<version>/`, updates
 
 There is no standalone PyPI wheel that ships the gfx11xx tile database
 usefully. The pip distribution channel is PyTorch's; relying on it couples
-hipENGINE to a torch version we explicitly do not import. The standalone
+hipEngine to a torch version we explicitly do not import. The standalone
 tarballs at `https://github.com/ROCm/aotriton/releases/` are the
 upstream-blessed distribution; that is what we pin.
 
@@ -1137,14 +1137,14 @@ the registry key, runtime call site, and Python ABI remain stable.
 PyTorch dispatch policy is unrelated: `pytorch/pytorch#166397` (Nov 2025)
 marked gfx1100 as "experimental" in PyTorch's SDPA backend matrix. That is
 a PyTorch QA policy decision, not a statement about AOTriton kernel
-correctness on gfx1100. hipENGINE calls AOTriton directly via its C++ ABI
+correctness on gfx1100. hipEngine calls AOTriton directly via its C++ ABI
 and is unaffected.
 
 #### Future work: per-GPU kernel streaming (not implemented)
 
 The gfx11xx images tarball is 475 MB compressed because it bundles every
 shape variant across gfx1100/1101/1102/1103 plus the full forward + backward
-+ debug surface. hipENGINE only invokes the forward `attn_fwd` family on one
++ debug surface. hipEngine only invokes the forward `attn_fwd` family on one
 physical GPU at a time, and even within `attn_fwd` only calls a handful of
 shape variants for the model in use. There is an obvious opportunity to
 stream only the necessary kernels per detected GPU and per
@@ -1156,13 +1156,13 @@ landing; recorded here so a future iteration can pick it up):
 - Detect the host GPU at module load (`rocminfo` or HIP runtime device
   properties; we already do something similar for backend selection).
 - The manifest grows a `[[aotriton.shapes]]` table declaring the
-  (`dtype`, `head_dim`, `causal`, `BLOCK_M`, ...) tuples hipENGINE actually
+  (`dtype`, `head_dim`, `causal`, `BLOCK_M`, ...) tuples hipEngine actually
   invokes for each registered model. Filename pattern
   `FONLY__＊<dtype>@<BLOCK_M>_<head_dim>_<causal>_<...>___gfx11xx.aks2` is
   decodable (verified in `aotriton-0.11.2b-images-amd-gfx11xx.tar.gz`).
 - Fetcher resolves the cross product to a small file list and downloads only
   those .aks2 + their .json metadata, either by HTTP range over the upstream
-  tarball or by mirroring the pruned set on a hipENGINE-controlled location
+  tarball or by mirroring the pruned set on a hipEngine-controlled location
   (GitHub release of a `hipengine-aotriton-shapes-gfx1100` artifact, S3,
   etc.). A 32-file pruned set is ~3 MB.
 - Cache invalidation: keyed on (manifest version, GPU arch string, shape
@@ -1172,7 +1172,7 @@ landing; recorded here so a future iteration can pick it up):
   emit one diagnostic so the manifest can grow.
 
 The 0.11.2b vendor step already mitigates the original ~500 MB fetch by
-committing only the 12 BF16 head-dim-256 forward images hipENGINE uses.  Future
+committing only the 12 BF16 head-dim-256 forward images hipEngine uses.  Future
 shape streaming would reduce wheel/source-checkout footprint further, but it is
 not required for the baseline runtime dependency.
 
@@ -1198,7 +1198,7 @@ not required for the baseline runtime dependency.
 Trace comparison evidence above was produced with:
 
 ```bash
-# hipENGINE 512/0 trace
+# hipEngine 512/0 trace
 rocprofv3 --kernel-trace -d /tmp/iter50-shared-down-tile8-trace -o trace -- \
   python3 scripts/qwen35_paro_bench.py --token-id 9707 \
     --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 \
@@ -1206,7 +1206,7 @@ rocprofv3 --kernel-trace -d /tmp/iter50-shared-down-tile8-trace -o trace -- \
     --compiler-version-file /tmp/hipengine-hipcc-version.txt \
     --require-cached-build --json /tmp/iter50.json
 
-# hipENGINE 4K/0 trace
+# hipEngine 4K/0 trace
 rocprofv3 --kernel-trace -d /tmp/iter52-4k-profile-trace -o trace -- \
   python3 scripts/qwen35_paro_bench.py --token-id 9707 \
     --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 \

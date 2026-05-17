@@ -1,5 +1,5 @@
 # Manifest pin for the AOTriton flash-attention runtime used by the gfx11
-# attention wrapper.  hipENGINE vendors a pruned copy of this pin under
+# attention wrapper.  hipEngine vendors a pruned copy of this pin under
 # aotriton_runtime/<version>/ and tracks the binary/image payloads with Git LFS.
 # The fetch helper at scripts/fetch_aotriton.sh remains the refresh/offline-cache
 # tool for bumping or replacing the vendored tree.  See docs/PREFILL.md
@@ -43,7 +43,7 @@ size_bytes = 475390993
 [aotriton.prune]
 # Fetch-cache pruning keeps only the forward-attention kernel family.  AOTriton
 # ships forward kernels (attn_fwd), backward/training kernels (bwd_*), and debug
-# helpers in the gfx11xx image tarball; hipENGINE is inference-only.
+# helpers in the gfx11xx image tarball; hipEngine is inference-only.
 keep_flash_subdirs = ["attn_fwd"]
 # Restrict to the gfx11xx image tree.  AOTriton 0.11.x ships one image tarball
 # per architecture family; future fetches may add more.

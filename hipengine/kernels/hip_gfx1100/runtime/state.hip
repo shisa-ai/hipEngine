@@ -1,4 +1,4 @@
-// Small graph-friendly runtime state helpers for hipENGINE Qwen3.5/PARO.
+// Small graph-friendly runtime state helpers for hipEngine Qwen3.5/PARO.
 // These kernels keep decode token/position state device-resident so a future
 // HIP graph replay path does not depend on host-side memcpy between tokens.
 

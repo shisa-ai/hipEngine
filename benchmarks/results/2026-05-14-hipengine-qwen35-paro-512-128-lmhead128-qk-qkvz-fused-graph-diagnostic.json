@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-14T19:13:17+09:00",
   "run_tag": "qwen35-paro-512-128-lmhead128-qk-qkvz-fused-graph-diagnostic",
-  "summary": "hipENGINE Qwen3.5/PARO graph decode with fused QKV/Z, fused Q/K, and 128-thread W8A16 lm-head default; native batched prefill and accepted correctness gates still missing.",
+  "summary": "hipEngine Qwen3.5/PARO graph decode with fused QKV/Z, fused Q/K, and 128-thread W8A16 lm-head default; native batched prefill and accepted correctness gates still missing.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100"

@@ -8,7 +8,7 @@
   "quant": "w4_paro",
   "backend": "hip_gfx1100",
   "source_commit_before_artifact": "4a907e5",
-  "change": "AOTriton opt-in threshold sweep after real hipENGINE memory reporting and decode graph replay: compare disabled native attention with forced AOTriton at prompt lengths 32/64/128/256/512/1024/4096, then validate threshold 512 on 512/128 and 4K/128 graph-replay workloads.",
+  "change": "AOTriton opt-in threshold sweep after real hipEngine memory reporting and decode graph replay: compare disabled native attention with forced AOTriton at prompt lengths 32/64/128/256/512/1024/4096, then validate threshold 512 on 512/128 and 4K/128 graph-replay workloads.",
   "validation": {
     "rocm_smoke": "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\" && rocminfo | grep -E 'Name:|gfx'",
     "prefill_fixture_gate": "python3 scripts/qwen35_native_prefill_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/task21-aot512-prefill-fixture-gate.json",

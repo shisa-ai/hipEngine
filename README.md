@@ -1,11 +1,11 @@
-# hipENGINE
+# hipEngine
 
-hipENGINE is a ROCm-native local LLM inference engine designed from the ground
+hipEngine is a ROCm-native local LLM inference engine designed from the ground
 up for AMD RDNA GPUs (starting with gfx1100, gfx1151). It pairs a small 
 purpose-built Python host with a complete suite of custom-tuned HIP kernels 
 developed through 100+ iterations of profiling and tuning.
 
-hipENGINE has lightweight dependencies with no PyTorch required for fully
+hipEngine has lightweight dependencies with no PyTorch required for fully
 supported GPUs and models.
 
 ## Core principles
@@ -47,11 +47,11 @@ single-model tuning targets
 
 ## gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipENGINE/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family.
+While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family.
 
 ### Prefill tok/s
 
-| Workload | hipENGINE shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | **2518.836** | 2436.049 | 1816.927 |
 | 4K/128 | **2711.013** | 2176.905 | 1705.093 |
@@ -60,7 +60,7 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipENGINE/b
 
 ### Decode tok/s
 
-| Workload | hipENGINE shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | 111.738 | 85.487 | **127.515** |
 | 4K/128 | 113.231 | 87.375 | **120.163** |
@@ -69,7 +69,7 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipENGINE/b
 
 ### Peak GiB
 
-| Workload | hipENGINE shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | **18.123** | 21.125 | 20.844 |
 | 4K/128 | **19.995** | 21.197 | 20.969 |
@@ -82,7 +82,7 @@ The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the 
 
 ### Prefill tok/s
 
-| Workload | hipENGINE shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | 983.206 | **1058.738** | 638.008 |
 | 4K/128 | **1029.402** | 1004.220 | 595.400 |
@@ -92,7 +92,7 @@ The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the 
 
 ### Decode tok/s
 
-| Workload | hipENGINE shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | **62.060** | 50.537 | 57.615 |
 | 4K/128 | **63.605** | 49.379 | 55.027 |
@@ -100,7 +100,7 @@ The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the 
 | 128K/128 | 30.245 | **31.286** | 26.935 |
 | 4K/4K | **62.438** | 49.071 | 54.241 |
 
-On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so cross-engine memory comparisons are omitted here. The hipENGINE allocator high-water mark for the chunk256 sweep was 17.997 GiB (512/128), 18.097 GiB (4K/128), 18.909 GiB (32K/128), 21.877 GiB (128K/128), and 18.210 GiB (4K/4K).
+On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so cross-engine memory comparisons are omitted here. The hipEngine allocator high-water mark for the chunk256 sweep was 17.997 GiB (512/128), 18.097 GiB (4K/128), 18.909 GiB (32K/128), 21.877 GiB (128K/128), and 18.210 GiB (4K/4K).
 
 See [`benchmarks/README.md`](benchmarks/README.md) for full protocol details,
 correctness status, source-lineage targets, and external comparison baselines.
@@ -183,7 +183,7 @@ from hipengine import LLM, SamplingParams
 
 llm = LLM("/path/to/model", backend="hip_gfx1100", quant="w4_paro")
 outputs = llm.generate(
-    ["Hello, hipENGINE."],
+    ["Hello, hipEngine."],
     SamplingParams(max_tokens=64, temperature=0.0),
 )
 print(outputs[0])
@@ -246,14 +246,14 @@ and what a retained benchmark row requires.
 
 ## References & lineage
 
-hipENGINE is not a fork of any project; it is a brand new codebase with from-scratch
+hipEngine is not a fork of any project; it is a brand new codebase with from-scratch
 code and kernels. Of course it builds on the work of many others:
 
 - [ROCm](https://github.com/ROCm/rocm) - of course this all sits on AMD's open-source
   compute stack, notably on [HIP](https://github.com/ROCm/rocm-systems/tree/develop/projects/hip).
 - [Nano-vLLM](https://github.com/GeeeekExplorer/nano-vllm) - most of the original
   kernel tuning iteration loops used this as a host-layer. Some of the performance 
-  limitations of the architecture motivated the hipENGINE rewrite, but we remain
+  limitations of the architecture motivated the hipEngine rewrite, but we remain
   greatful and deeply appreciative of nano-vllm as a great research platform.
 - [ParoQuant](https://github.com/z-lab/paroquant) - after reviewing the current SOTA on model
   quantization, we chose ParoQuant as the first target due to both its excellent accuracy
@@ -269,7 +269,7 @@ See also: [Marlin](https://github.com/IST-DASLab/marlin), [kernel-anvil](https:/
 
 ## License
 
-hipENGINE source code is licensed under **AGPL-3.0-or-later**. It is built and distributed 
+hipEngine source code is licensed under **AGPL-3.0-or-later**. It is built and distributed
 for anyone who has an AMD card that hasn't been living up to its compute potential.
 
 Model weights, checkpoints, and external datasets remain under their own licenses.

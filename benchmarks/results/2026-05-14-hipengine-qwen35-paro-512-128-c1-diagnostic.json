@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-14T16:43:33+09:00",
   "run_tag": "qwen35-paro-512-128-actual-c1-diagnostic",
-  "summary": "hipENGINE Qwen3.5/PARO actual autoregressive c=1 diagnostic; not comparable to native PLAN-MOE2 prefill or graph replay decode yet.",
+  "summary": "hipEngine Qwen3.5/PARO actual autoregressive c=1 diagnostic; not comparable to native PLAN-MOE2 prefill or graph replay decode yet.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100"

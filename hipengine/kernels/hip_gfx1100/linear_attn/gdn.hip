@@ -1,5 +1,5 @@
 // Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed.
-// Qwen3.5 GDN recurrent RMSNorm+gate lowp kernel body is preserved; wrapper is hipENGINE C ABI.
+// Qwen3.5 GDN recurrent RMSNorm+gate lowp kernel body is preserved; wrapper is hipEngine C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>

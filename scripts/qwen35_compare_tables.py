@@ -2,7 +2,7 @@
 """Print hardcoded Qwen/PARO comparison tables.
 
 The values here are intentionally static: they summarize the current retained
-resident-runner hipENGINE diagnostics and the external comparison rows we use
+resident-runner hipEngine diagnostics and the external comparison rows we use
 for quick status checks.  They are not a benchmark runner.
 """
 
@@ -38,7 +38,7 @@ LLAMACPP_GFX1151_SOURCE = "benchmarks/results/2026-05-17-llamacpp-upstream-gfx11
 TARGETS: dict[str, Series] = {
     "qwen35-current": Series(
         key="qwen35-current",
-        display="hipENGINE Qwen3.5 current",
+        display="hipEngine Qwen3.5 current",
         source=QWEN35_SOURCE,
         notes=(
             "Qwen3.5-35B-A3B-PARO w4_paro resident-runner diagnostic with current defaults: "
@@ -54,7 +54,7 @@ TARGETS: dict[str, Series] = {
     ),
     "shisa-packed": Series(
         key="shisa-packed",
-        display="hipENGINE shisa Qwen3.6 packed PARO",
+        display="hipEngine shisa Qwen3.6 packed PARO",
         source=SHISA_SOURCE,
         notes=(
             "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5 unstripped checkpoint forced to "
@@ -70,7 +70,7 @@ TARGETS: dict[str, Series] = {
     ),
     "shisa-packed-gfx1151": Series(
         key="shisa-packed-gfx1151",
-        display="hipENGINE shisa Qwen3.6 packed PARO (gfx1151)",
+        display="hipEngine shisa Qwen3.6 packed PARO (gfx1151)",
         source=SHISA_GFX1151_SOURCE,
         notes=(
             "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed on Strix Halo/Radeon 8060S, "
@@ -87,7 +87,7 @@ TARGETS: dict[str, Series] = {
     ),
     "shisa-legacy": Series(
         key="shisa-legacy",
-        display="hipENGINE shisa Qwen3.6 legacy shared expert",
+        display="hipEngine shisa Qwen3.6 legacy shared expert",
         source=SHISA_SOURCE,
         notes=(
             "same shisa unstripped checkpoint forced to shared_expert_format=legacy_fp16. "
@@ -424,7 +424,7 @@ def parse_args() -> argparse.Namespace:
         "--target",
         default="qwen35-current",
         help=(
-            "A-side hipENGINE target: qwen35-current, shisa-packed, or shisa-legacy. "
+            "A-side hipEngine target: qwen35-current, shisa-packed, or shisa-legacy. "
             "Aliases: qwen35, shisa/packed, legacy/unpacked. Default: qwen35-current."
         ),
     )
@@ -435,7 +435,7 @@ def parse_args() -> argparse.Namespace:
         const="auto",
         default=None,
         help=(
-            "Compare the A-side target against another hipENGINE target instead of external baselines. "
+            "Compare the A-side target against another hipEngine target instead of external baselines. "
             "With no value, uses legacy when A is packed/shisa and packed when A is legacy."
         ),
     )

@@ -1,7 +1,7 @@
-# hipENGINE DFlash / DDTree Native Implementation Plan
+# hipEngine DFlash / DDTree Native Implementation Plan
 
 > Status: implementation plan. This document converts the DFlash lessons from
-> `~/amd-gpu-tuning` into a hipENGINE port plan. Kernel R&D and benchmark
+> `~/amd-gpu-tuning` into a hipEngine port plan. Kernel R&D and benchmark
 > exploration stay in `~/amd-gpu-tuning`; the production path belongs here as a
 > torch-free, native C++/HIP hot loop.
 
@@ -12,7 +12,7 @@ returns. It proved correctness, acceptance accounting, the parent-indexed tree
 kernel shape, and memory-safe state rings, but it still verifies rows too slowly
 relative to autoregressive decode.
 
-hipENGINE is the right destination for the real implementation because the speed
+hipEngine is the right destination for the real implementation because the speed
 problem is no longer a draft-policy problem. It is a native runtime problem:
 
 - one target forward over `[root, draft/tree nodes...]` per cycle;
@@ -29,7 +29,7 @@ speculative decoders, but DFlash is the first native block-verifier target. See
 [`MTP.md`](MTP.md) for the target-attached multi-token predictor plan that
 reuses this verifier/commit infrastructure after DFlash lands.
 
-## Current hipENGINE status (2026-05-15)
+## Current hipEngine status (2026-05-15)
 
 The API scaffolding exists (`DraftBatch`, `TargetVerifyBatch`,
 `TargetVerifyBuffers`, `TargetStateCommitBuffers`, `AcceptResult`,
@@ -164,7 +164,7 @@ These are worth porting or preserving:
 ## Reference implementations and what to copy
 
 All references below should be treated as design inputs. Do not edit them from
-hipENGINE work; port ideas and, where license-compatible and approved, code.
+hipEngine work; port ideas and, where license-compatible and approved, code.
 
 | Reference | Local path | Useful files / concepts | Key lesson |
 | --- | --- | --- | --- |
@@ -192,7 +192,7 @@ host overhead.
 ## Non-negotiable design rules
 
 1. **Native hot loop.**
-   DFlash generation in hipENGINE must not call PyTorch or HF Transformers in
+   DFlash generation in hipEngine must not call PyTorch or HF Transformers in
    the measured loop. Python may load configs, build the engine, and launch a
    benchmark; the repeated decode cycle is C++/HIP/raw-pointer execution.
 
@@ -201,7 +201,7 @@ host overhead.
    topk=1/chain cannot beat AR, topk>1 policy work is premature.
 
 3. **Verify is one target forward over `N` rows.**
-   hipENGINE's speculative plugin boundary stays `DraftBatch`: it carries
+   hipEngine's speculative plugin boundary stays `DraftBatch`: it carries
    candidate rows only, not the already-committed root. The verifier internally
    materializes a `TargetVerifyBatch` with root at slot 0 plus candidate rows:
 
@@ -245,7 +245,7 @@ host overhead.
 
 ### Core objects
 
-Suggested C++/HIP-owned runtime objects, exposed through hipENGINE's Python API
+Suggested C++/HIP-owned runtime objects, exposed through hipEngine's Python API
 only at setup/benchmark boundaries:
 
 ```text
@@ -323,13 +323,13 @@ fixed-shape path should eventually replay steps 4-8 with fresh buffer contents.
 
 ### Phase D1 — Native chain verifier API, no drafter yet
 
-Goal: prove hipENGINE can verify a fixed `[root, draft...]` chain through the
+Goal: prove hipEngine can verify a fixed `[root, draft...]` chain through the
 native target runtime with selectable state commit.
 
 - Add `TargetVerifyBatch` C++/Python boundary object with device buffers for
   ids, positions, parents, and mask.
 - Implement topk=1 chain compiler: `parents=[-1,0,1,...]`, causal block mask.
-- Port/wire corrected tree Conv/GDN t-loop kernels into hipENGINE's raw-pointer
+- Port/wire corrected tree Conv/GDN t-loop kernels into hipEngine's raw-pointer
   wrapper style.
 - Wire full-attention verify to write K/V rows into tree K/V scratch, not live
   cache first.
@@ -342,7 +342,7 @@ native target runtime with selectable state commit.
 
 Goal: remove host acceptance work from the measured loop.
 
-- Reuse/extend hipENGINE GPU lm-head + argmax primitives for `N` rows.
+- Reuse/extend hipEngine GPU lm-head + argmax primitives for `N` rows.
 - Add `dflash_accept_chain_kernel`:
   - inputs: draft ids, target top1 ids, `N`, remaining decode budget;
   - outputs: accepted draft count, commit row count, correction/bonus id,
@@ -355,7 +355,7 @@ Goal: remove host acceptance work from the measured loop.
 
 Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
 
-- Load z-lab DFlash drafter weights through hipENGINE loaders.
+- Load z-lab DFlash drafter weights through hipEngine loaders.
 - Implement target-hidden projection (`fc + hidden_norm`) as native kernels.
 - Materialize committed target hidden rows into draft KV cache incrementally.
 - Draft forward computes only root/query rows; context K/V are read from draft KV.
@@ -513,9 +513,9 @@ Do not start these before D1-D6 establish a winning native chain path.
 - Full logits copied to host per verify row will destroy the intended economics.
 - Python scalar `.item()` / CPU list conversion inside the hot loop is a bug.
 - Any kernel micro-optimization without a rocprof time-share audit belongs in
-  `~/amd-gpu-tuning`, not hipENGINE.
+  `~/amd-gpu-tuning`, not hipEngine.
 
-## First concrete hipENGINE tasks
+## First concrete hipEngine tasks
 
 1. Add DFlash source-lineage entries and fixtures for corrected tree Conv/GDN.
 2. Port corrected tree Conv/GDN t-loop wrappers into `hipengine/kernels/hip_gfx1100/linear_attn/`.

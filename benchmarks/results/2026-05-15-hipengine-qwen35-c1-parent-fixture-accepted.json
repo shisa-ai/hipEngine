@@ -236,11 +236,11 @@
   "passed": true,
   "notes": [
     "c=1 resident E2E gate; c>N parity hooks are separate until batched layer runner lands.",
-    "Fixture mode compares hipENGINE decode-loop outputs against parent nano-vllm-amd outputs after consuming the prefill seed token."
+    "Fixture mode compares hipEngine decode-loop outputs against parent nano-vllm-amd outputs after consuming the prefill seed token."
   ],
   "status": "accepted_correctness",
   "task_id": 36,
   "command": "python3 scripts/qwen35_e2e_correctness.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-new-tokens 32 --max-layers 40 --json benchmarks/results/2026-05-15-hipengine-qwen35-c1-parent-fixture-accepted.json",
-  "root_cause": "hipENGINE selected MoE gate/up GEMV skipped the parent PARO gate_up input rotation; layer-0 probes matched through routing but diverged at MoE output.",
+  "root_cause": "hipEngine selected MoE gate/up GEMV skipped the parent PARO gate_up input rotation; layer-0 probes matched through routing but diverged at MoE output.",
   "fix_summary": "Materialize gate_up_weight rotation tensors, add a gate_up_input scratch buffer, and rotate BF16/FP16 MoE inputs before selected gate/up pack8 GEMV."
 }

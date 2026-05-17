@@ -1,4 +1,4 @@
-// Torch-free dtype cast helpers for hipENGINE runtime glue.
+// Torch-free dtype cast helpers for hipEngine runtime glue.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>

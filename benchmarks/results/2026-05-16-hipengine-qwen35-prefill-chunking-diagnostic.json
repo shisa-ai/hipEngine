@@ -232,8 +232,8 @@
     "next_work": "Use these rows as the long-context baseline for the next profiler attribution pass; remaining gap is decode and short/mid prefill residual, not 128K scratch OOM."
   },
   "notes": [
-    "All hipENGINE rows are single-run diagnostics through scripts/qwen35_paro_bench.py resident-session path, not accepted public LLM.generate throughput rows.",
-    "tracked_peak_allocated_gib is hipENGINE allocator high-water; hip_used_peak_sampled_gib is sampled at phase boundaries and can under-report transient workspace peaks.",
+    "All hipEngine rows are single-run diagnostics through scripts/qwen35_paro_bench.py resident-session path, not accepted public LLM.generate throughput rows.",
+    "tracked_peak_allocated_gib is hipEngine allocator high-water; hip_used_peak_sampled_gib is sampled at phase boundaries and can under-report transient workspace peaks.",
     "Parent comparison values come from ~/amd-gpu-tuning/docs/OPTIMAL.md and use nano-vllm-amd parent commit 59195ed with graph/step true rows."
   ]
 }

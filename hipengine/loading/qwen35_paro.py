@@ -222,7 +222,7 @@ def _detect_shared_expert_format(tensors: dict[str, Any], *, layer_id: int) -> s
     """Detect the dense shared-expert representation for one layer.
 
     The public z-lab PARO checkpoint stores the dense shared expert as three
-    fp16 ``*.weight`` matrices.  hipENGINE's newer packed format stores the
+    fp16 ``*.weight`` matrices.  hipEngine's newer packed format stores the
     same projections as PARO W4 sidecars.  When both are present, prefer the
     packed sidecars so unstripped converter outputs exercise the new path.
     """
@@ -1358,7 +1358,7 @@ def repack_paro_awq_to_marlin_k_host(
     """Repack PARO/AWQ W4 tensors into the parent Marlin-K v0 host layout.
 
     Input layout mirrors the checkpoint/PARO pack8 layout used elsewhere in
-    hipENGINE: ``qweight [K, N/8]``, ``qzeros [K/group_size, N/8]``, and
+    hipEngine: ``qweight [K, N/8]``, ``qzeros [K/group_size, N/8]``, and
     ``scales [K/group_size, N]``.  The returned layout matches the parent
     ``nano-vllm-amd`` qweight-neutral Marlin-K path documented in
     ``docs/MARLIN.md``:
@@ -1410,7 +1410,7 @@ def paro_marlin_k_pack8_decode_view(qweight_mk: object):
     """Return the zero-copy pack8 decode view over ``qweight_mk``.
 
     The parent qweight-neutral path keeps one owning W4 buffer and exposes the
-    existing pack8/fused paths through this view.  hipENGINE runtime materialize
+    existing pack8/fused paths through this view.  hipEngine runtime materialize
     code must preserve the same ownership property when this helper is used for
     device tensors.
     """

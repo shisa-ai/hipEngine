@@ -23,7 +23,7 @@
   "software": {
     "hipcc_version": "HIP version: 7.2.53211-e1a6bc5663\nAMD clang version 22.0.0git (https://github.com/ROCm/llvm-project.git 08a72fce79ea9208f36b7845aa37aedfbaac39ee+PATCHED:f3b5643f91ad4def7b92cd48247bc11f1f39fb5c)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/lib/python3.11/site-packages/_rocm_sdk_core/lib/llvm/bin\n",
     "python": "3.11.10",
-    "torch": "2.10.0+cpu (not used by hipENGINE runtime)",
+    "torch": "2.10.0+cpu (not used by hipEngine runtime)",
     "hipengine_commit": "37c61ad3ade38cb0b44ac6d8668ec051e795f83b",
     "hipengine_dirty_before_artifact": false
   },
@@ -447,7 +447,7 @@
   "memory": {
     "summary": "See per-workload tracked_peak_allocated_gib, owned_session_peak_gib, and hip_used_peak_sampled_gib.",
     "notes": [
-      "tracked peak is hipENGINE allocator high-water mark",
+      "tracked peak is hipEngine allocator high-water mark",
       "hip peak is phase-sampled hipMemGetInfo, not continuous device-wide peak",
       "owned_session excludes external HIP/AOTriton internals"
     ]

@@ -1,25 +1,25 @@
-# hipENGINE — Purpose-Built Inference for AMD RDNA3
+# hipEngine — Purpose-Built Inference for AMD RDNA3
 
 > **Status:** Design document — architecture and roadmap for a clean-host inference engine built around proven gfx1100 kernels.
 
-## What hipENGINE Is
+## What hipEngine Is
 
-hipENGINE is a local LLM inference engine designed from the ground up for AMD RDNA3 GPUs (gfx1100, W7900-class). It pairs a minimal, purpose-built Python host with a complete suite of hand-tuned HIP kernels developed through 100+ iterations of profiling and optimization on real W7900 hardware.
+hipEngine is a local LLM inference engine designed from the ground up for AMD RDNA3 GPUs (gfx1100, W7900-class). It pairs a minimal, purpose-built Python host with a complete suite of hand-tuned HIP kernels developed through 100+ iterations of profiling and optimization on real W7900 hardware.
 
 The name signals exactly what we optimize for: **HIP** (AMD's GPU compute platform) as a first-class target, not a CUDA port or afterthought.
 
-## Why hipENGINE Exists
+## Why hipEngine Exists
 
 Existing inference engines fall into two categories that both fail the W7900 user:
 
 1. **CUDA-first engines** (vLLM, ExLlamaV3, TensorRT-LLM) — treat AMD as a second-class port, disable their best features on ROCm, or don't support it at all.
 2. **Generic PyTorch engines** (nano-vllm, HF Transformers) — run on ROCm but leave massive performance on the table because they never replace PyTorch's generic kernels with architecture-specific ones.
 
-hipENGINE occupies the gap: **a ROCm-native engine where every hot path has been profiled and replaced with a gfx1100-optimized kernel**, while maintaining the API compatibility and server features users expect.
+hipEngine occupies the gap: **a ROCm-native engine where every hot path has been profiled and replaced with a gfx1100-optimized kernel**, while maintaining the API compatibility and server features users expect.
 
 ## References & Lineage
 
-hipENGINE is informed by a lineage of inference engines with different strengths. We characterize them by **lines of code** as a proxy for complexity — our goal is a host layer orders of magnitude smaller than production engines, paired with a kernel layer that rivals their performance on AMD hardware.
+hipEngine is informed by a lineage of inference engines with different strengths. We characterize them by **lines of code** as a proxy for complexity — our goal is a host layer orders of magnitude smaller than production engines, paired with a kernel layer that rivals their performance on AMD hardware.
 
 All numbers marked ✓ were measured directly against the checked-out source in this workspace (`wc -l`, with embedded HIP source strings in Python files counted separately). Numbers marked (unverified) are from upstream reports; we have not audited them.
 
@@ -112,11 +112,11 @@ Our kernel layer is single-GPU by design. Multi-GPU support is a **host concern*
 | **ZeRO-style parameter sharding** | Adds complexity for marginal gain on 2-4 GPU consumer setups |
 | **Sequence parallelism (SP)** | Not needed until context lengths exceed single-GPU KV capacity |
 | **NVLink-optimized collectives** | No NVLink on consumer AMD; PCIe is the bottleneck |
-| **pynccl custom communicators** | mini-sglang uses this; hipENGINE uses `rccl` via ctypes (torch-free). Adding pynccl would require torch as a hard dep |
+| **pynccl custom communicators** | mini-sglang uses this; hipEngine uses `rccl` via ctypes (torch-free). Adding pynccl would require torch as a hard dep |
 
 ### Minimal Viable Multi-GPU
 
-The smallest useful multi-GPU path for hipENGINE:
+The smallest useful multi-GPU path for hipEngine:
 
 ```python
 # hipengine/distributed/tp.py
@@ -191,7 +191,7 @@ This is why we can defer multi-GPU without architectural risk. The kernel layer 
 
 ## Tiered Memory & Offloading
 
-hipENGINE treats memory as a hierarchy of tiers with async migration, not a single GPU buffer. This enables running models and contexts far exceeding single-GPU memory without kernel changes.
+hipEngine treats memory as a hierarchy of tiers with async migration, not a single GPU buffer. This enables running models and contexts far exceeding single-GPU memory without kernel changes.
 
 ### TieredTensor Abstraction
 
@@ -364,7 +364,7 @@ The kernel layer sees `hipengine.Tensor` (raw device ptr + metadata) on the acti
 | **HIP-first, not CUDA-ported** | Every kernel is written for gfx1100/RDNA3 wave32 defaults, vec8 FMA patterns, and cache hierarchy. No PTX, no `cp.async`, no tensor-core assumptions. |
 | **Multi-backend from day one** | The kernel tree is parameterized by target (`hip_gfx1100`, `hip_gfx1151`, `cuda_sm86`, `cpu_reference`). Adding a backend adds a sibling directory and registry entries — no engine rewrites. CUDA, Strix Halo, and future hardware are peers of gfx1100, not ports. |
 | **Clean host, proven kernels** | The Python host is ~700 lines of purpose-built scheduling and dispatch. The kernel layer is ~18,600 lines of proven, profiled HIP + C++ bindings (120 `__global__` kernels) from the nano-vllm-amd research lineage. Kernel bodies take raw device pointers — torch-independent — so only the host-side launch wrappers change when retargeting to a new backend. |
-| **Torch-free at runtime** | hipENGINE does not import `torch` at inference time. We own a thin `hipengine.Tensor` over HIP/CUDA device pointers, call `hipblasLt` / `hipGraph` / loading libs via `ctypes`, and JIT kernels with `hipcc` + `ctypes.CDLL` (no `torch.utils.cpp_extension`). This removes a 1.7 GiB dependency. Optional `hipengine[torch]` extra exposes dlpack interop for users who want to hand in torch tensors. |
+| **Torch-free at runtime** | hipEngine does not import `torch` at inference time. We own a thin `hipengine.Tensor` over HIP/CUDA device pointers, call `hipblasLt` / `hipGraph` / loading libs via `ctypes`, and JIT kernels with `hipcc` + `ctypes.CDLL` (no `torch.utils.cpp_extension`). This removes a 1.7 GiB dependency. Optional `hipengine[torch]` extra exposes dlpack interop for users who want to hand in torch tensors. |
 | **Fast dispatch, no Python in the hot path** | Decode forward is captured into a `hipGraph` at warmup and replayed with zero Python overhead per subsequent step. Python runs only once per token for sampling. |
 | **Fused + unfused kernels coexist** | Every fused composite (`rmsnorm_rotate`, `gate_combine_residual`, etc.) has an unfused chain equivalent. The dispatcher prefers fused when a registered composite matches the upcoming op chain and falls back to unfused primitives when not. Unfused kernels also serve as the correctness baseline. |
 | **Library-first, server-optional** | `pip install hipengine` gives you `from hipengine import LLM`. The OpenAI-compatible server is an optional extra (`pip install hipengine[server]`). |
@@ -442,7 +442,7 @@ Our host is simpler because **the kernels do the heavy lifting**. The scheduler 
 
 ### Concurrent Decode, Continuous Batching, and SpecDec Readiness
 
-hipENGINE is a better foundation for c>1 than the current `nano-vllm-amd` native PARO path, but the runnable implementation remains c=1 until the batch-state and c-aware kernels below land. Treat current Qwen3.5/PARO numbers as **single-request decode** unless a benchmark explicitly says otherwise.
+hipEngine is a better foundation for c>1 than the current `nano-vllm-amd` native PARO path, but the runnable implementation remains c=1 until the batch-state and c-aware kernels below land. Treat current Qwen3.5/PARO numbers as **single-request decode** unless a benchmark explicitly says otherwise.
 
 Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-shaped and speculative-verification-safe even when the first implementation only runs `C=1`.** Scalar c=1 entrypoints are allowed as smoke wrappers, not as the canonical internal interface.
 
@@ -470,12 +470,12 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 
 | Question | Answer |
 |---|---|
-| Can current hipENGINE run real c=8 PARO decode? | No. |
-| Does current hipENGINE implement continuous batching? | No. |
+| Can current hipEngine run real c=8 PARO decode? | No. |
+| Does current hipEngine implement continuous batching? | No. |
 | Is current SpecDec wired into generation? | No; only the design/file-tree placeholder exists. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
 | Would just setting `tokens=8` work? | No. |
-| Is hipENGINE the better place to build c=8+ PARO and SpecDec? | Probably yes. |
+| Is hipEngine the better place to build c=8+ PARO and SpecDec? | Probably yes. |
 
 Why the design is better positioned:
 
@@ -500,7 +500,7 @@ Current blockers that keep Qwen3.5/PARO effectively c=1:
 
 | Path | Expected aggregate c=8 behavior |
 |---|---|
-| Current hipENGINE as-is | Unsupported. |
+| Current hipEngine as-is | Unsupported. |
 | Eight serial c=1 sessions sharing weights | About 1× c1 aggregate, worse latency. |
 | Naive `rows=8` where wrappers allow it | Modest gain from larger grids and lower relative launch cost; weights are still mostly reloaded per row. |
 | Proper c=8 batch path | Plausibly 2–4× c1 aggregate for Qwen3.5/PARO decode; not 8×. |
@@ -524,9 +524,9 @@ The key distinction is that many current "batched" kernels are row-parallel GEMV
 
 ### Hot-Path Dispatch Strategy
 
-At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per token. Naive Python dispatch through PyTorch adds ~50–200 µs/token of pure overhead. hipENGINE has five compounding levers to move dispatch out of the hot path; we pick the cheapest first and add more only when profiling demands it.
+At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per token. Naive Python dispatch through PyTorch adds ~50–200 µs/token of pure overhead. hipEngine has five compounding levers to move dispatch out of the hot path; we pick the cheapest first and add more only when profiling demands it.
 
-| # | Lever | Removes | Status in hipENGINE |
+| # | Lever | Removes | Status in hipEngine |
 |---|-------|---------|---------------------|
 | 1 | **hipGraph capture per shape bucket** | ~100% of Python overhead during decode replay. Python runs once per token (sampling trigger). | **Phase 0 starts with batch-size buckets** patterned on `nano-vllm-amd/nanovllm/engine/model_runner.py:250`; c>1/SpecDec expands the key to `(C, context bucket, mode, draft/tree shape, active mask, experts, replay length)`. |
 | 2 | **C++ engine-step extension (pybind11 / nanobind)** | Remaining Python scheduler-loop overhead. Python calls one C++ function per batch step. | Phase 3, conditional on profiling evidence. Natural extraction point for a future standalone binary. |
@@ -534,7 +534,7 @@ At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per t
 | 4 | **Cython / `mypyc` for non-capturable paths** (prefill, variable-length, prefix lookup) | ~5–10× speedup of pure-Python scheduler loops. | Phase 4+, only if capture doesn't cover. |
 | 5 | **GIL-release on kernel submit + overlap scheduling** | Hides remaining Python overhead behind GPU work. | Phase 5, research. |
 
-**Phase-0 commitment:** lever #1 only. The nano-vllm-amd code already demonstrates it works on ROCm via PyTorch's `torch.cuda.CUDAGraph` wrapper; hipENGINE's torch-free port calls `hipGraphCreate` / `hipGraphInstantiate` / `hipGraphLaunch` directly through `ctypes` on `libamdhip64.so` (~300 lines).
+**Phase-0 commitment:** lever #1 only. The nano-vllm-amd code already demonstrates it works on ROCm via PyTorch's `torch.cuda.CUDAGraph` wrapper; hipEngine's torch-free port calls `hipGraphCreate` / `hipGraphInstantiate` / `hipGraphLaunch` directly through `ctypes` on `libamdhip64.so` (~300 lines).
 
 **Rule:** we do not add levers #2–5 without `rocprofv3` evidence that dispatch is above ~3% of decode wall time.
 
@@ -567,7 +567,7 @@ Registry keys are `(backend, layer, quant, variant)`. `layer` can be a primitive
 
 ### Runtime Without PyTorch
 
-hipENGINE does not import `torch` at inference time. This is an architectural commitment, not a Phase-5 cleanup.
+hipEngine does not import `torch` at inference time. This is an architectural commitment, not a Phase-5 cleanup.
 
 #### Why drop torch
 
@@ -582,7 +582,7 @@ Measured from this workspace (`du -sh`):
 | `numpy` (optional) | ~30 MiB | Convenience, fallback math |
 | AOTriton 0.11.2b gfx11xx subset (Git LFS) | ~24 MiB on disk / ~42 MB logical bytes | Baseline full-attention prefill runtime for Qwen3.5/PARO gfx1100 |
 
-A torch-free hipENGINE ships as **~125 MiB** including the vendored AOTriton subset vs **~2 GiB** with torch. Faster cold start, cleaner Docker images, no torch GPU-detection surprises, runs in environments where torch is broken (Strix Halo, edge ROCm builds, CUDA-forked environments). AOTriton is a pinned, vendored runtime dependency for the gfx1100 Qwen3.5/PARO path, tracked with Git LFS rather than pulled from PyTorch.
+A torch-free hipEngine ships as **~125 MiB** including the vendored AOTriton subset vs **~2 GiB** with torch. Faster cold start, cleaner Docker images, no torch GPU-detection surprises, runs in environments where torch is broken (Strix Halo, edge ROCm builds, CUDA-forked environments). AOTriton is a pinned, vendored runtime dependency for the gfx1100 Qwen3.5/PARO path, tracked with Git LFS rather than pulled from PyTorch.
 
 #### Kernel bodies are already torch-free
 
@@ -619,7 +619,7 @@ void qwen35_paged_full_attn_decode_split_k_warp_launch(
 
 #### Optional torch interop
 
-Users who have torch tensors can still feed them in via dlpack (~50 lines in `hipengine.Tensor.from_dlpack` / `to_dlpack`). Installed as `pip install hipengine[torch]` if the user wants the extra safety of torch-compatible ergonomics; never a runtime dep of hipENGINE itself.
+Users who have torch tensors can still feed them in via dlpack (~50 lines in `hipengine.Tensor.from_dlpack` / `to_dlpack`). Installed as `pip install hipengine[torch]` if the user wants the extra safety of torch-compatible ergonomics; never a runtime dep of hipEngine itself.
 
 ### Kernel Port Strategy
 
@@ -637,7 +637,7 @@ All kernels come from the `nano-vllm-amd` research lineage (`gfx1100-qwen3.5` br
 | **Total Qwen/PARO HIP source to port** | **~17,535** lines | **120** kernels | | 13,769 + 3,766, excluding the separate `smoke_add` build smoke |
 | **C++ bindings to port** | **~1,040** lines | | ~94 exports | |
 
-Pure-Python dispatch under `nano-vllm-amd/nanovllm/native/qwen35/` totals **~10,886 lines** (14,652 total − 3,766 embedded HIP) across `paroquant.py` (4,753), `expert.py` (1,085), `paroquant_weights.py` (854), `wmma.py` (774), `mtp.py` (676), `full_attention.py` (511), `weights.py` (454), `linear_attention.py` (387), `__init__.py` (306), `rmsnorm.py` (155), `linear.py` (138), `spec.py` (115), `router.py` (101), `paroquant_kernels.py` wrapper (628). This is the dispatch layer hipENGINE adapts.
+Pure-Python dispatch under `nano-vllm-amd/nanovllm/native/qwen35/` totals **~10,886 lines** (14,652 total − 3,766 embedded HIP) across `paroquant.py` (4,753), `expert.py` (1,085), `paroquant_weights.py` (854), `wmma.py` (774), `mtp.py` (676), `full_attention.py` (511), `weights.py` (454), `linear_attention.py` (387), `__init__.py` (306), `rmsnorm.py` (155), `linear.py` (138), `spec.py` (115), `router.py` (101), `paroquant_kernels.py` wrapper (628). This is the dispatch layer hipEngine adapts.
 
 #### Split Plan
 
@@ -671,15 +671,15 @@ The monolithic `qwen35_expert.hip` + `paroquant_kernels.py` embedded string are 
 
 **Correctness gate for the split:** after partitioning, verify (a) every kernel name still resolves via the Python extension module, (b) `rocprofv3 --kernel-trace` reports the same kernel set with matching `DurationNs` distribution on the Qwen3.6-35B-A3B decode smoke, (c) KL ≤ 0.05 and top-1 ≥ 90% vs the monolithic build on the correctness fixtures.
 
-Build system: **no `torch.utils.cpp_extension`**. hipENGINE's own build layer (`hipengine.core.build`) calls `hipcc` (or `nvcc` for CUDA backends) via `subprocess.run`, links with `ctypes.CDLL`, and caches by source+flags hash. Three HIP profiles adopted from `nano-vllm-amd/nanovllm/native/amd/extension.py` — `decode` (`-mllvm -amdgpu-unroll-threshold-local=600` + `-mcumode`, wave32; CU mode is not wave64), `prefill` (`-mllvm -amdgpu-unroll-threshold-local=600`, WGP/wave32), and `baseline` (no flags, wave32). Native HIP target arch (`--offload-arch=gfx1100` / `gfx1151`) is explicit through `target_arch` or `HIPENGINE_HIP_ARCH` and participates in the cache key. The edit→bench loop stays at ~5–10 s per kernel change.
+Build system: **no `torch.utils.cpp_extension`**. hipEngine's own build layer (`hipengine.core.build`) calls `hipcc` (or `nvcc` for CUDA backends) via `subprocess.run`, links with `ctypes.CDLL`, and caches by source+flags hash. Three HIP profiles adopted from `nano-vllm-amd/nanovllm/native/amd/extension.py` — `decode` (`-mllvm -amdgpu-unroll-threshold-local=600` + `-mcumode`, wave32; CU mode is not wave64), `prefill` (`-mllvm -amdgpu-unroll-threshold-local=600`, WGP/wave32), and `baseline` (no flags, wave32). Native HIP target arch (`--offload-arch=gfx1100` / `gfx1151`) is explicit through `target_arch` or `HIPENGINE_HIP_ARCH` and participates in the cache key. The edit→bench loop stays at ~5–10 s per kernel change.
 
 ### Reference backend for correctness
 
-`hipengine/kernels/cpu_reference/` holds a torch-free numpy implementation of every `layer` key registered by any hardware backend. This is the correctness oracle: when a new gfx1100 kernel is ported, the test suite runs the same inputs through the CPU reference and asserts KL ≤ 0.05 / top-1 ≥ 90%. The reference backend also lets hipENGINE run on machines without a GPU for CI and for architecture bring-up (develop a new model plugin on CPU first, then port its kernels to gfx1100).
+`hipengine/kernels/cpu_reference/` holds a torch-free numpy implementation of every `layer` key registered by any hardware backend. This is the correctness oracle: when a new gfx1100 kernel is ported, the test suite runs the same inputs through the CPU reference and asserts KL ≤ 0.05 / top-1 ≥ 90%. The reference backend also lets hipEngine run on machines without a GPU for CI and for architecture bring-up (develop a new model plugin on CPU first, then port its kernels to gfx1100).
 
 ## Extensibility Design
 
-hipENGINE has **four orthogonal plugin axes**. Each axis is a registry of implementations; the engine composes concrete instances at load time from the user's choice.
+hipEngine has **four orthogonal plugin axes**. Each axis is a registry of implementations; the engine composes concrete instances at load time from the user's choice.
 
 | Axis | Purpose | Examples |
 |------|---------|----------|
@@ -760,7 +760,7 @@ The model plugin does **not** know about backends or quant. Those are dispatched
 
 ### Quant Plugin
 
-Quantization is **six orthogonal axes**, not one format label. A real quant preset bundles choices across all six. hipENGINE exposes them explicitly so new formats slot in by registering new kernels, not by editing dispatch.
+Quantization is **six orthogonal axes**, not one format label. A real quant preset bundles choices across all six. hipEngine exposes them explicitly so new formats slot in by registering new kernels, not by editing dispatch.
 
 | Axis | Examples | Why orthogonal |
 |------|----------|----------------|
@@ -811,7 +811,7 @@ Quant plugins own layout gymnastics. The ~4,753-line `paroquant.py` collapses in
 | `higgs_4bit` | Research | `gemm_dequant` + Hadamard | all | Referenced in `reference/sansho/docs/kvcache-quant.md`; ~50% BF16 speed so deferred |
 | `aqua_kv` (KV-side, not weight) | Research | — | — | Additive scalar quantization; see KV Cache Plugin section |
 
-**Kernel family implication:** `gemm_dequant` (the weight-dequant-then-multiply family that covers GPTQ/AWQ/PARO/W8A16) already has a mature tree in hipENGINE (6 W8A16 linear kernels + 18 W8A16 MoE kernels + 10 PARO AWQ kernels). Adding GPTQ/AWQ is mostly **weight-preprocessing glue**, not new kernels. Adding EXL3/QTIP adds a **new kernel family** (`codebook_lut`) with its own ~14 kernels to port. FastKron is **a new kernel family with a different compute pattern** (two matmuls instead of one).
+**Kernel family implication:** `gemm_dequant` (the weight-dequant-then-multiply family that covers GPTQ/AWQ/PARO/W8A16) already has a mature tree in hipEngine (6 W8A16 linear kernels + 18 W8A16 MoE kernels + 10 PARO AWQ kernels). Adding GPTQ/AWQ is mostly **weight-preprocessing glue**, not new kernels. Adding EXL3/QTIP adds a **new kernel family** (`codebook_lut`) with its own ~14 kernels to port. FastKron is **a new kernel family with a different compute pattern** (two matmuls instead of one).
 
 ### Layer Plugin
 
@@ -840,7 +840,7 @@ No engine, dispatch, or quant changes.
 
 Detailed INT8-KV and FastDMS-derived compact-DMS delivery plan: [docs/KVCACHE.md](KVCACHE.md).
 
-KV cache has **two orthogonal axes**, plus the standard block-manager concerns. Designing for both from day 0 is the specific lesson from `~/FastDMS` — integrating DMS into vLLM is "major surgery" ([FastDMS README](/home/lhl/FastDMS/README.md)) precisely because vLLM's KV pool assumes fixed-page uniform-per-sequence blocks. hipENGINE avoids that trap by designing the interface around per-(seq, layer, head) live spans from the start, even if the default policy has uniform spans.
+KV cache has **two orthogonal axes**, plus the standard block-manager concerns. Designing for both from day 0 is the specific lesson from `~/FastDMS` — integrating DMS into vLLM is "major surgery" ([FastDMS README](/home/lhl/FastDMS/README.md)) precisely because vLLM's KV pool assumes fixed-page uniform-per-sequence blocks. hipEngine avoids that trap by designing the interface around per-(seq, layer, head) live spans from the start, even if the default policy has uniform spans.
 
 | Axis | What varies | Examples |
 |------|-------------|----------|
@@ -919,7 +919,7 @@ policy = KVPolicy.aqua_kv(higgs_bits=4)  # DMS + AQUA + HIGGS (sansho's 25.6x st
 
 #### Why this shape avoids the vLLM-DMS pain
 
-The FastDMS README lists seven subsystems that a DMS port to vLLM has to change (PagedAttention memory pool, prefill kernel, decode kernel, attention scoring, scheduler/admission, prefix caching, continuous batching). hipENGINE pays that design cost once, up front, by making `KVLiveSpans` + `KVPolicy.admission_cap()` the fundamental contract. Adding DMS later is **one new KVPolicy subclass** (`DMSKVPolicy`) plus **three new HIP kernels** (`dms_rope_store_compact_decode`, `compact_decode_grouped_splitk`, `streaming_pack_scatter`) ported from the `~/FastDMS` Triton reference. No engine rewrite.
+The FastDMS README lists seven subsystems that a DMS port to vLLM has to change (PagedAttention memory pool, prefill kernel, decode kernel, attention scoring, scheduler/admission, prefix caching, continuous batching). hipEngine pays that design cost once, up front, by making `KVLiveSpans` + `KVPolicy.admission_cap()` the fundamental contract. Adding DMS later is **one new KVPolicy subclass** (`DMSKVPolicy`) plus **three new HIP kernels** (`dms_rope_store_compact_decode`, `compact_decode_grouped_splitk`, `streaming_pack_scatter`) ported from the `~/FastDMS` Triton reference. No engine rewrite.
 
 
 ## Advanced Features Roadmap
@@ -968,7 +968,7 @@ The `KVPolicy.kvtc_offload()` plugin manages:
 
 ### RadixCache vs. vLLM Prefix Caching
 
-| Feature | vLLM Prefix Caching | hipENGINE RadixCache (mini-sglang) |
+| Feature | vLLM Prefix Caching | hipEngine RadixCache (mini-sglang) |
 |---------|---------------------|-----------------------------------|
 | Structure | Hash-based block matching | Trie-based prefix tree |
 | Granularity | Block-level (256 tokens) | Token-level exact prefix |
@@ -976,7 +976,7 @@ The `KVPolicy.kvtc_offload()` plugin manages:
 | Eviction | LRU on blocks | LRU on trie nodes (finer-grained) |
 | Overhead | Lower | Slightly higher CPU, better hit rate |
 
-hipENGINE defaults to **RadixCache** for better prefix sharing in multi-turn chat and API serving. vLLM-style is available as `KVPolicy.prefix_lru()`.
+hipEngine defaults to **RadixCache** for better prefix sharing in multi-turn chat and API serving. vLLM-style is available as `KVPolicy.prefix_lru()`.
 
 ### DMS Support Plan (and why it shapes Phase-0 design)
 
@@ -998,9 +998,9 @@ From `~/FastDMS/README.md`, a DMS port touches seven vLLM subsystems:
 | Prefix caching | Per-sequence per-head eviction overlays, or disabled |
 | Continuous batching | Memory accounting by actual surviving tokens, not logical sequence length |
 
-#### What hipENGINE commits in Phase 0 to make DMS cheap later
+#### What hipEngine commits in Phase 0 to make DMS cheap later
 
-| hipENGINE design choice | Why it helps DMS |
+| hipEngine design choice | Why it helps DMS |
 |---|---|
 | `KVLiveSpans` = `(base_offsets, live_counts, token_positions, evict_mask)` as the kernel contract | DMS needs per-(seq, layer, head) variable spans. Dense policies fill uniformly; DMS fills variably. Same kernel ABI. |
 | `KVPolicy.admission_cap(seq)` as the scheduler's unit | Fixed-page returns page-equivalent; DMS returns compact-token budget. Scheduler doesn't care which. |
@@ -1232,7 +1232,7 @@ hipengine/
 
 ## Comparison to Existing Engines
 
-| Feature | vLLM | ExLlamaV3 | llama.cpp | atlas | FastDMS | hipENGINE |
+| Feature | vLLM | ExLlamaV3 | llama.cpp | atlas | FastDMS | hipEngine |
 |---------|------|-----------|-----------|-------|---------|-----------|
 | AMD ROCm support | Partial (no FA) | Missing | Good (HIP/Vulkan) | No | No (CUDA) | **First-class** |
 | Custom gfx1100 kernels | No | No | Some | No | No | **Extensive (120 kernels)** |
@@ -1277,7 +1277,7 @@ hipengine/
 
 ## RDNA3 Wavefront and Scheduling Caveat
 
-For `hip_gfx1100` / W7900, hipENGINE treats HIP device code as **wave32 by default**.
+For `hip_gfx1100` / W7900, hipEngine treats HIP device code as **wave32 by default**.
 RDNA3 wave64 is architecturally real and LLVM can emit it with `-mwavefrontsize64`, but
 it is not a practical project default for the nano-vllm-amd kernel lineage.
 `-mcumode` and wavefront size are orthogonal: the decode profile keeps `-mcumode` for
@@ -1322,12 +1322,12 @@ These are deliberately deferred. Each has a `rocprofv3` or benchmarking prerequi
 | Structural/thinking tokens (ds4-style thinking modes) as first-class sampling options? | User demand; see `docs/STRUCTURED-COT.md` from nano-vllm research | Phase 4 |
 | Session save/restore: filesystem layout + compression policy | Decide after RadixCache is stable | Phase 5 |
 | NVFP4 / MXFP8 support (atlas-style NVIDIA-only formats) | Only on CUDA backend; not a blocker for gfx1100 | Phase 5+ |
-| Multi-tenant server with fair-share scheduling | Only if someone runs hipENGINE in production | Research |
+| Multi-tenant server with fair-share scheduling | Only if someone runs hipEngine in production | Research |
 | DMS scheduler interaction with RadixCache prefix overlays | FastDMS disables prefix caching entirely; can we do per-sequence eviction overlays on shared prefix blocks? | Phase 4+ |
 
 ## Evidence Policy
 
-Every performance claim in hipENGINE must include:
+Every performance claim in hipEngine must include:
 - **Model**: exact checkpoint name
 - **Quantization**: FP16, W8A16, W4, etc.
 - **Workload**: prompt length, generation length, batch size
@@ -1340,11 +1340,11 @@ This policy is inherited from the `LESSONS-LEARNED.md` discipline: fast rows are
 
 ## License
 
-AGPL-3.0-or-later. hipENGINE is intended as copyleft software for local/home users, including the optional hosted/server paths; model weights, checkpoints, and external datasets remain under their own licenses.
+AGPL-3.0-or-later. hipEngine is intended as copyleft software for local/home users, including the optional hosted/server paths; model weights, checkpoints, and external datasets remain under their own licenses.
 
 ## Acknowledgements
 
-hipENGINE is built on the research lineage of:
+hipEngine is built on the research lineage of:
 - **nano-vllm** (GeeeekExplorer) — clean engine architecture
 - **mini-sglang** — production server and model definitions
 - **nano-vllm-amd research** — 100+ iterations of gfx1100 kernel tuning

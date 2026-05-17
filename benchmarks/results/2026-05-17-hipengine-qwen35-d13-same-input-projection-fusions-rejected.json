@@ -143,7 +143,7 @@
     "default_changed": false,
     "rationale": [
       "M.4 shows generic W4 single pack8 remains visible (11.59-13.56% of decode kernel time), but static inventory attributes only 10/50 calls/token to an unfused same-input V projection; the rest are output projections/downstream singles.",
-      "All other adjacent same-input c=1 projection pairs are already fused in hipENGINE while preserving pack8/repacked layouts.",
+      "All other adjacent same-input c=1 projection pairs are already fused in hipEngine while preserving pack8/repacked layouts.",
       "The only broader remaining pack8 widening is parent-rejected full-attention Q/K/V; it is launch-count-only and changed kernel shape more than it saved dispatches.",
       "No arithmetic/data-reuse-only D1.3 win was identified; do not add another diagnostic kernel unless D1.6 explicitly reopens the K/V-specific hypothesis with a stronger design."
     ],

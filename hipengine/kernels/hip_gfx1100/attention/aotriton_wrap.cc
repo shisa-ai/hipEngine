@@ -1,7 +1,7 @@
 // Torch-free C ABI bridge for AOTriton compact-varlen forward attention.
 //
 // AOTriton exposes a C++ ABI (TensorView<N> plus a namespaced function).  The
-// Python hot path should call this stable hipENGINE-owned C surface instead of
+// Python hot path should call this stable hipEngine-owned C surface instead of
 // dlopening mangled C++ symbols directly.
 
 #include <array>

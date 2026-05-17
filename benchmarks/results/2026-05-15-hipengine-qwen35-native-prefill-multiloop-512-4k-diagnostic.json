@@ -1,7 +1,7 @@
 {
   "status": "diagnostic_retained",
   "performance_claim": false,
-  "reason_not_promoted": "Active native-prefill optimization loop measurement, not yet an accepted hipENGINE LLM.generate throughput row; final target and full sweep remain open.",
+  "reason_not_promoted": "Active native-prefill optimization loop measurement, not yet an accepted hipEngine LLM.generate throughput row; final target and full sweep remain open.",
   "model": "Qwen3.5-35B-A3B-PARO",
   "quant": "w4_paro",
   "backend": "hip_gfx1100",
@@ -11,7 +11,7 @@
   "max_layers": 40,
   "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
   "change": "Fuse paired transposed W4->WMMA FP16 prefill projections for full-attention Q/K and linear-attention QKV/Z into one dual fused-W4 launch while preserving separate contiguous outputs.",
-  "source_lineage": "hipENGINE local structural launch-fusion optimization of the ported nano-vllm-amd@59195ed fused W4 prefill projection family; keeps the single-projection fallback and adds a registered dual fused-W4 variant.",
+  "source_lineage": "hipEngine local structural launch-fusion optimization of the ported nano-vllm-amd@59195ed fused W4 prefill projection family; keeps the single-projection fallback and adds a registered dual fused-W4 variant.",
   "workloads": {
     "512_128": {
       "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/multiloop-prefill-512-128.json",

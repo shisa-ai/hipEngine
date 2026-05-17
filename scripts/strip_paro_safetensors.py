@@ -6,7 +6,7 @@ ParoQuant HF-bridge exports currently contain both quantized tensors
 tensors for the same modules.  This script removes every ``.weight`` whose
 module also has a ``.qweight``, producing the canonical packed PARO format.
 
-This is the only output mode.  hipENGINE itself materializes the packed shared
+This is the only output mode.  hipEngine itself materializes the packed shared
 expert directly via ``hipengine.loading.qwen35_paro``; there is no separate
 "keep fp16 fallback" path.
 

@@ -1,9 +1,9 @@
 # Lessons Learned
 
-This file records hipENGINE-specific debugging lessons that are likely to recur.
+This file records hipEngine-specific debugging lessons that are likely to recur.
 Keep entries compact, evidence-backed, and actionable. Parent-workspace kernel
 R&D notes still belong in `~/amd-gpu-tuning/LESSONS-LEARNED.md`; this file is
-for issues observed while integrating stable kernels into hipENGINE runtime,
+for issues observed while integrating stable kernels into hipEngine runtime,
 state, and gates.
 
 ## 2026-05-15 — Native prefill flakiness can hide in full-attention prefill softmax

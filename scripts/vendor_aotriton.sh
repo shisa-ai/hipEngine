@@ -16,7 +16,7 @@ usage() {
 Usage: scripts/vendor_aotriton.sh [options]
 
 Fetch the manifest-pinned AOTriton release into a cache, then copy the pruned
-runtime/images needed by hipENGINE into the repository vendor tree:
+runtime/images needed by hipEngine into the repository vendor tree:
 
   hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/<version>/
 

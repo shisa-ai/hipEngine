@@ -1,4 +1,4 @@
-# hipENGINE Work Log
+# hipEngine Work Log
 
 Append-only, chronological journal of decisions, commands, measurements, and next actions. Oldest entries at the top, newest appended at the bottom. Format borrowed from `~/amd-gpu-tuning/WORKLOG.md`: `## YYYY-MM-DD — Title` entries with `###` subsections and evidence-heavy bullets (exact commands, file paths, numbers, commit hashes).
 
@@ -21,8 +21,8 @@ Append-only, chronological journal of decisions, commands, measurements, and nex
 
 ### Project boundary decision
 
-- **Kernel R&D lives in `~/amd-gpu-tuning/`, not here.** Micro-tuning iteration loops (rocprofv3 time-share audit, VGPR / occupancy hunting, `__launch_bounds__` sweeps, fusion experiments, device-code gotcha catalog) all stay in the parent workspace. hipENGINE ingests *stable* kernels via the port pipeline in `docs/PLAN.md` "Kernel Port Strategy".
-- Consequence: hipENGINE's `docs/KERNELS.md` is a port playbook (copy + partition + retype + gate), not a kernel-tuning guide. Tuning guide stays at `~/amd-gpu-tuning/AGENTS.md` and `~/amd-gpu-tuning/LESSONS-LEARNED.md`.
+- **Kernel R&D lives in `~/amd-gpu-tuning/`, not here.** Micro-tuning iteration loops (rocprofv3 time-share audit, VGPR / occupancy hunting, `__launch_bounds__` sweeps, fusion experiments, device-code gotcha catalog) all stay in the parent workspace. hipEngine ingests *stable* kernels via the port pipeline in `docs/PLAN.md` "Kernel Port Strategy".
+- Consequence: hipEngine's `docs/KERNELS.md` is a port playbook (copy + partition + retype + gate), not a kernel-tuning guide. Tuning guide stays at `~/amd-gpu-tuning/AGENTS.md` and `~/amd-gpu-tuning/LESSONS-LEARNED.md`.
 - AGENTS.md "Handling Blockers" redirects kernel-micro-opt and ROCm-restore situations to `~/amd-gpu-tuning/` rather than duplicating the procedures here.
 
 ### Doc inventory from `~/amd-gpu-tuning/`
@@ -31,7 +31,7 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 
 | Upstream doc | Action | Rationale |
 | --- | --- | --- |
-| `docs/ROOFLINE.md` (1573 lines) | **Copied** to `docs/ROOFLINE.md` | Canonical RDNA3 / W7900 hardware landscape: hardware, roofline fundamentals, regimes, decision tree, what-not-to-chase. Read by anyone planning hipENGINE kernels or setting perf targets. Added provenance header; path-qualified companion-doc cross-refs to `~/amd-gpu-tuning/`. |
+| `docs/ROOFLINE.md` (1573 lines) | **Copied** to `docs/ROOFLINE.md` | Canonical RDNA3 / W7900 hardware landscape: hardware, roofline fundamentals, regimes, decision tree, what-not-to-chase. Read by anyone planning hipEngine kernels or setting perf targets. Added provenance header; path-qualified companion-doc cross-refs to `~/amd-gpu-tuning/`. |
 | Parent design doc (1214 lines) | Already here as `docs/PLAN.md` | Same content; don't duplicate. |
 | `LESSONS-LEARNED.md` (814 lines) | Referenced from `AGENTS.md` | Kernel tuning lessons; R&D. Stays in parent. |
 | `docs/LLAMACPP-VULKAN.md` (592 lines) | Referenced | llama.cpp HIP vs Vulkan source analysis; R&D lens. |
@@ -50,7 +50,7 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 
 ### Repo state at end of session
 
-- Commits: `f2a5166` docs: add hipENGINE design plan; `f33b2a8` docs: add AGENTS.md ground rules, CLAUDE.md symlink, .gitignore.
+- Commits: `f2a5166` docs: add hipEngine design plan; `f33b2a8` docs: add AGENTS.md ground rules, CLAUDE.md symlink, .gitignore.
 - No `pyproject.toml`, no `hipengine/` package tree, no `tests/`, no `scripts/` yet. This commit is docs-only.
 
 ### Next
@@ -211,11 +211,11 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 
 ---
 
-## 2026-05-12 — License hipENGINE as AGPL-3.0-or-later
+## 2026-05-12 — License hipEngine as AGPL-3.0-or-later
 
 ### Decision
 
-- Selected **AGPL-3.0-or-later** for hipENGINE source code.
+- Selected **AGPL-3.0-or-later** for hipEngine source code.
 - Rationale: project is aimed at local/home users, and we explicitly prefer copyleft over permissive/business adoption. AGPL closes the hosted-service loophole that GPLv3 leaves open for an inference engine with optional server/API paths.
 - User clarified that the future `nano-vllm-amd` kernel ports are not an upstream-license concern for this decision because those kernels were authored locally by the project lead; still, model weights/checkpoints and external datasets remain under their own licenses.
 
@@ -223,7 +223,7 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 
 - Added `LICENSE` containing the full GNU Affero General Public License v3 text from the system SPDX license copy (`/usr/share/licenses/spdx/AGPL-3.0-or-later.txt`).
 - Updated `pyproject.toml` project metadata from `Apache-2.0` to `AGPL-3.0-or-later`.
-- Updated `README.md` with a License section: hipENGINE source code is AGPL-3.0-or-later; model weights, checkpoints, and external datasets keep their own licenses.
+- Updated `README.md` with a License section: hipEngine source code is AGPL-3.0-or-later; model weights, checkpoints, and external datasets keep their own licenses.
 - Updated `docs/PLAN.md` "License" section from the prior MIT placeholder to AGPL-3.0-or-later.
 
 ### Verification
@@ -422,7 +422,7 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
   - Result: GPU use `0%`, VRAM used `4,376,268,800 B`; edge/junction/memory temps `39/48/52 C`.
 - `rocm-smi --showpids` showed PID `1697754` using `4,343,508,992 B` VRAM:
   `/home/lhl/amd-gpu-tuning/scripts/bench_paro_native_engine.py --model-preset qwen35-a3b-paro --prompt-len 512 --decode-len 128 ...`
-- That process is not owned by this hipENGINE task. Pausing further GPU actions here; do not run rmsnorm port or more profiling until the GPU is explicitly clear again.
+- That process is not owned by this hipEngine task. Pausing further GPU actions here; do not run rmsnorm port or more profiling until the GPU is explicitly clear again.
 
 ### Verification after adding script mode
 
@@ -442,7 +442,7 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 
 ### Prompt / concern
 
-- User noted hipENGINE is becoming "real" software and should have a proper testing story: RED/GREEN, correctness guard/gates, and especially protection against silent math mistakes.
+- User noted hipEngine is becoming "real" software and should have a proper testing story: RED/GREEN, correctness guard/gates, and especially protection against silent math mistakes.
 - Goal: adopt useful testing methodology/verbiage from `~/shisad/` and `~/shisad-dev/` without importing irrelevant process (multi-reviewer lanes, release machinery, implement-driven workflow).
 
 ### Sources reviewed
@@ -454,7 +454,7 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
   - Useful: validation cadence proportional to scope; do not default to broad suites for every small change; record validation evidence in worklog; truth-scoped claims.
   - Not adopted: private/public repo split, reviewer-lane rules, release-close process.
 - `~/shisad-dev/implement/TEST-COVERAGE.md`:
-  - Most relevant source. Key adapted concept: structural correctness is necessary but not sufficient. For shisad the real contract is user-visible correctness; for hipENGINE the real contract is numerical correctness against an oracle.
+  - Most relevant source. Key adapted concept: structural correctness is necessary but not sufficient. For shisad the real contract is user-visible correctness; for hipEngine the real contract is numerical correctness against an oracle.
   - Adapted RED/GREEN requirement: for regressions and math changes, add a failing fixture/test first where practical; if impossible, record no-RED rationale.
 - `~/shisad-dev/planning/PLAN-test-optimization.md` and `~/shisad/docs/analysis/ANALYSIS-test-suite-optimization.md`:
   - Useful as cautionary examples on test cost and validation cadence. Adopted the principle "targeted first, CPU deterministic bundle for ordinary changes, GPU/perf gates only when relevant".
@@ -498,11 +498,11 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
 
 - `docs/BENCHMARK.md` and `docs/TESTING.md` in this repo.
 - `docs/KERNELS.md` and `docs/PLAN.md` "Kernel Port Strategy" in this repo.
-- `hipengine/kernels/cpu_reference/ops.py` and `hipengine/kernels/hip_gfx1100/smoke/smoke_add.py` to list kernels/oracles actually landed in hipENGINE.
+- `hipengine/kernels/cpu_reference/ops.py` and `hipengine/kernels/hip_gfx1100/smoke/smoke_add.py` to list kernels/oracles actually landed in hipEngine.
 - `~/amd-gpu-tuning/PLAN-PAROQUANT.md` and `~/amd-gpu-tuning/docs/PARO.md` for the current Qwen3.5-35B-A3B-PARO route, shape-gated prefill MoE split, graph replay caveats, 24GB compact path, and recent rejected/alternative routes.
 - `~/amd-gpu-tuning/nano-vllm-amd` source inventory:
   - Committed stable Qwen/PARO set: 95 kernels in `csrc/amd/qwen35_expert.hip` + 25 kernels in `nanovllm/native/qwen35/paroquant_kernels.py` = 120 Qwen/PARO kernels, plus separate `smoke_add`.
-  - Parent repo observed at `nano-vllm-amd@22405a9` with local modifications in `paroquant.py` and `paroquant_kernels.py`; six additional PARO kernels were documented as lineage-dirty/experimental, not hipENGINE defaults.
+  - Parent repo observed at `nano-vllm-amd@22405a9` with local modifications in `paroquant.py` and `paroquant_kernels.py`; six additional PARO kernels were documented as lineage-dirty/experimental, not hipEngine defaults.
 
 ### Files changed
 
@@ -514,8 +514,8 @@ Surveyed 12 `.md` files in `~/amd-gpu-tuning/docs/` plus the top-level design do
   - Clarified blocked/rejected attempts are still useful evidence but not retained performance numbers.
 - `docs/KERNELS.md`:
   - Renamed to a kernel catalog + port playbook.
-  - Added status legend distinguishing hipENGINE-landed, CPU-reference-landed, lineage-green, lineage-dirty/experimental, and planned.
-  - Added authoritative hipENGINE-landed list: CPU-reference oracles (`embed`, `rmsnorm`, `linear`, `qkv_proj`, `rotate`, `attention_decode`, `o_proj`, `lm_head`) and `smoke_add` gfx1100 build/runtime smoke.
+  - Added status legend distinguishing hipEngine-landed, CPU-reference-landed, lineage-green, lineage-dirty/experimental, and planned.
+  - Added authoritative hipEngine-landed list: CPU-reference oracles (`embed`, `rmsnorm`, `linear`, `qkv_proj`, `rotate`, `attention_decode`, `o_proj`, `lm_head`) and `smoke_add` gfx1100 build/runtime smoke.
   - Added exact source-lineage kernel catalog grouped into atomic/primitive-oriented families and fused/composite families.
   - Added Qwen3.5 MoE/PARO target path map: current 24GB compact speed-best rows from parent docs, prefill route, decode route, alternative paths/caveats, and rejected standalone kernel ideas.
   - Documented six parent-worktree dirty/experimental PARO kernels separately from the committed 25-kernel PARO set.
@@ -552,7 +552,7 @@ Results:
 
 ### Prompt / concern
 
-- User asked for a way to track whether kernel or dispatch files in `~/amd-gpu-tuning/` are newer before continuing hipENGINE ports.
+- User asked for a way to track whether kernel or dispatch files in `~/amd-gpu-tuning/` are newer before continuing hipEngine ports.
 - Desired workflow: see changed kernel/dispatch files, inspect child-repo commits/diffs for those files, and jump to corresponding `~/amd-gpu-tuning/WORKLOG.md` evidence entries.
 
 ### Implementation
@@ -638,7 +638,7 @@ Results:
 
 - Before porting any real kernel family, run `python3 scripts/check_lineage.py --kind kernel --diff stat` and inspect DRIFT entries.
 - For a drifted file selected for port, use `--diff patch --file '<pattern>'` and read the listed parent WORKLOG evidence before copying code.
-- Do not advance `docs/source_lineage.json` baseline until hipENGINE's catalog/port plan is intentionally refreshed and logged.
+- Do not advance `docs/source_lineage.json` baseline until hipEngine's catalog/port plan is intentionally refreshed and logged.
 
 ---
 
@@ -646,8 +646,8 @@ Results:
 
 ### Prompt / concern
 
-- User noted `~/amd-gpu-tuning/docs/OPTIMAL.md` should be up to date with the optimal PARO inference path and should likely be referenced from hipENGINE's kernel catalog.
-- User also asked to review `~/amd-gpu-tuning/AGENTS.md` for git/benchmark hygiene worth adopting in hipENGINE.
+- User noted `~/amd-gpu-tuning/docs/OPTIMAL.md` should be up to date with the optimal PARO inference path and should likely be referenced from hipEngine's kernel catalog.
+- User also asked to review `~/amd-gpu-tuning/AGENTS.md` for git/benchmark hygiene worth adopting in hipEngine.
 - Follow-up explicit rule requested: before porting, check `docs/KERNELS.md` and use the lineage script to ensure the kernel catalog/path map is up to date.
 
 ### Sources reviewed
@@ -657,7 +657,7 @@ Results:
   - Latest retained sweep: 512/128 `2557 / 115.7`, 1K/128 `2876 / 112.9`, 4K/128 `2703 / 112.0`, 32K/128 `1880 / 98.8`, 128K/128 `914 / 62.6` prefill/decode tok/s, graph/step validation true.
   - 23 base flags, long-prefill chunking overrides, graph replay caveats, and decode profiling note that AWQ/GEMV decode is the next target.
 - `~/amd-gpu-tuning/AGENTS.md`:
-  - Already covered by hipENGINE: explicit staging rules, no destructive cleanup, WORKLOG with logical unit, audit-first kernel tuning, raw artifact exclusion.
+  - Already covered by hipEngine: explicit staging rules, no destructive cleanup, WORKLOG with logical unit, audit-first kernel tuning, raw artifact exclusion.
   - Adopted/tightened here: do not start next logical task until previous validated unit is committed; post-run benchmark quality gates (finite logits / graph validation / sample match / memory); source-lineage check before ports.
 
 ### Files changed
@@ -722,7 +722,7 @@ Results:
 - Added `benchmarks/README.md`:
   - `Last updated: 2026-05-13` at the top.
   - Maintenance contract for retained benchmark rows.
-  - Current fastest hipENGINE table (empty until first accepted E2E `LLM.generate()` benchmark).
+  - Current fastest hipEngine table (empty until first accepted E2E `LLM.generate()` benchmark).
   - Source-lineage target table from `~/amd-gpu-tuning/docs/OPTIMAL.md` for Qwen3.5-35B-A3B-PARO compact-WMMA + graph-replay route.
   - External comparison baseline tables from `docs/BENCHMARK.md` / parent WORKLOG.
   - `smoke_add` listed as non-throughput build/runtime smoke.
@@ -926,7 +926,7 @@ Results:
 
 ### Scope
 
-- Reviewed `https://github.com/AICL-Lab/hetero-paged-infer` at commit `a9765bd69aefd8a64591d930867d21ed3dd7fd90` as a potential reference for hipENGINE's scheduler / paged-KV / tiered-memory design.
+- Reviewed `https://github.com/AICL-Lab/hetero-paged-infer` at commit `a9765bd69aefd8a64591d930867d21ed3dd7fd90` as a potential reference for hipEngine's scheduler / paged-KV / tiered-memory design.
 - Local read-only clone: `/tmp/pi-github-repos/AICL-Lab/hetero-paged-infer`.
 
 ### Evidence
@@ -947,12 +947,12 @@ Results:
 
 - The repo is a Rust prototype around PagedAttention-style block allocation, continuous batching, memory-pressure rejection, an OpenAI-compatible server, and trait-shaped executor interfaces.
 - It does **not** contain production kernels: README and architecture docs mark the GPU executor as mock and real CUDA kernels / pinned memory / async CPU-GPU overlap as planned or not implemented.
-- Its KV abstraction is classic uniform fixed-page `block_table + context_len`. This is useful as a small scheduler/block-manager sanity reference, but it is less general than hipENGINE's planned `KVLiveSpans` ABI and `KVPolicy.admission_cap()` contract for DMS / H2O / SnapKV / sliding policies.
+- Its KV abstraction is classic uniform fixed-page `block_table + context_len`. This is useful as a small scheduler/block-manager sanity reference, but it is less general than hipEngine's planned `KVLiveSpans` ABI and `KVPolicy.admission_cap()` contract for DMS / H2O / SnapKV / sliding policies.
 - No architecture change adopted. If we need a future sanity check for host-only scheduler invariants, its property tests and simple `BlockPool`/`PageTable` model are a reasonable reference. For tiered/offloaded decode scheduling, APEX and Neo are more relevant research references than this repo.
 
 ### Next
 
-- Do not port code from this repo into hipENGINE.
+- Do not port code from this repo into hipEngine.
 - Optional future doc update: add it to `docs/PLAN.md` references only as a lightweight Rust host-shape / test-harness reference, not as a kernel or tiered offload source.
 
 ---
@@ -961,14 +961,14 @@ Results:
 
 ### Scope
 
-- Ported the first real model-layer gfx1100 kernel family into hipENGINE: Qwen3.5 BF16 RMSNorm from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip`.
+- Ported the first real model-layer gfx1100 kernel family into hipEngine: Qwen3.5 BF16 RMSNorm from `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip`.
 - Source commit: `nano-vllm-amd@59195ed` (`gfx1100-qwen3.5`). The lineage checker reports drift vs baseline `22405a9`, but `git diff 22405a9..HEAD -- csrc/amd/qwen35_expert.hip` shows the RMSNorm region is not touched by the current compact-WMMA drift.
 
 ### Files changed
 
 - Added `hipengine/kernels/hip_gfx1100/norm/rmsnorm.hip`:
   - Preserved Qwen kernel bodies for `qwen35_rmsnorm_kernel`, `qwen35_add_rmsnorm_kernel`, `qwen35_add_rmsnorm_f32_kernel`, and `qwen35_head_rmsnorm_kernel`.
-  - Added hipENGINE C ABI launch wrappers taking raw pointers, shapes, `eps`, and `hipStream_t`.
+  - Added hipEngine C ABI launch wrappers taking raw pointers, shapes, `eps`, and `hipStream_t`.
 - Added `hipengine/kernels/hip_gfx1100/norm/rmsnorm.py` and exported from `norm/__init__.py`:
   - `plan_qwen35_rmsnorm_build`, `build_qwen35_rmsnorm`.
   - Raw-pointer ctypes wrappers for all four kernels.
@@ -1026,7 +1026,7 @@ Results:
 
 ### Prompt / concern
 
-- User suggested using the current `~/amd-gpu-tuning/docs/OPTIMAL.md` MoE path as the next port target so hipENGINE can exercise the full `docs/KERNELS.md` checklist, correctness gates, and benchmark robustness against the parent performance rows.
+- User suggested using the current `~/amd-gpu-tuning/docs/OPTIMAL.md` MoE path as the next port target so hipEngine can exercise the full `docs/KERNELS.md` checklist, correctness gates, and benchmark robustness against the parent performance rows.
 
 ### Source review
 
@@ -1040,7 +1040,7 @@ python3 scripts/check_lineage.py --diff stat --evidence-limit 4
 Current parent checkout:
 
 - `nano-vllm-amd` branch `gfx1100-qwen3.5`, HEAD `59195ed`.
-- Drift vs hipENGINE baseline `22405a9` in:
+- Drift vs hipEngine baseline `22405a9` in:
   - `csrc/amd/qwen35_expert.hip`
   - `csrc/amd/extension.cpp`
   - `nanovllm/native/qwen35/paroquant_kernels.py`
@@ -1063,18 +1063,18 @@ Current parent checkout:
   - Recorded current OPTIMAL inventory as 96 + 29 = 125 kernels.
   - Added "Current OPTIMAL MoE port checklist (`nano-vllm-amd@59195ed`)".
   - Broke dependencies into source refresh deltas, MoE c=1 decode, MoE prefill compact-WMMA, full-inference dependencies outside MoE, and proposed port order.
-  - Explicitly marked current hipENGINE status: only Qwen BF16 RMSNorm subset is partial/landed; PARO RMSNorm out-kernels, router, selected GEMV, fused activation/down-rotation, W8A16 shared/lm-head, compact WMMA, attention/KV, model/plugin/loader, and eval harness remain missing.
+  - Explicitly marked current hipEngine status: only Qwen BF16 RMSNorm subset is partial/landed; PARO RMSNorm out-kernels, router, selected GEMV, fused activation/down-rotation, W8A16 shared/lm-head, compact WMMA, attention/KV, model/plugin/loader, and eval harness remain missing.
 - Updated `docs/IMPLEMENTATION.md`:
   - Added an OPTIMAL MoE/PARO reproduction exercise punchlist keyed to `docs/KERNELS.md`.
 
 ### Key conclusion
 
 - We should not start by copying a random MoE kernel. The fastest path to a meaningful exercise is:
-  1. add parent-baseline + hipENGINE-blocked benchmark artifacts for 512/128 and 4K/128,
+  1. add parent-baseline + hipEngine-blocked benchmark artifacts for 512/128 and 4K/128,
   2. port the MoE c=1 decode vertical slice,
   3. port the compact-WMMA prefill slice,
   4. only then close full inference with loader/model/attention/graph replay.
-- Full OPTIMAL inference cannot be replicated yet because hipENGINE still lacks `LLM.generate()`, `w4_paro` weight loading/layout, the Qwen3.5 model plugin, attention/KV/linear-attn/lm-head dependencies, and graph replay.
+- Full OPTIMAL inference cannot be replicated yet because hipEngine still lacks `LLM.generate()`, `w4_paro` weight loading/layout, the Qwen3.5 model plugin, attention/KV/linear-attn/lm-head dependencies, and graph replay.
 
 ### Verification
 
@@ -1103,12 +1103,12 @@ Results:
 
 ---
 
-## 2026-05-13 — Capture OPTIMAL parent parity artifacts and blocked hipENGINE row
+## 2026-05-13 — Capture OPTIMAL parent parity artifacts and blocked hipEngine row
 
 ### Scope
 
 - Ran the parent `nano-vllm-amd` OPTIMAL Qwen3.5-35B-A3B-PARO command for `512/128` and `4K/128` on W7900 to validate the benchmark output shape and create concrete comparison artifacts before porting more kernels.
-- Created a blocked hipENGINE artifact for the same parity exercise so the missing dependencies are tracked in `benchmarks/results/`, not just prose.
+- Created a blocked hipEngine artifact for the same parity exercise so the missing dependencies are tracked in `benchmarks/results/`, not just prose.
 
 ### Parent commands
 
@@ -1135,15 +1135,15 @@ PYTHONPATH=nano-vllm-amd:paroquant mamba run -n therock --no-capture-output \
 | --- | --- | ---: | ---: | ---: | --- | --- | --- |
 | `nano-vllm-amd@59195ed` parent | 512/128 | 2696.442 | 116.050 | 18.797 | true | graph/eager true, graph-compatible true | `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json` |
 | `nano-vllm-amd@59195ed` parent | 4K/128 | 2741.489 | 113.049 | 21.644 | true | graph/eager true, graph-compatible true | `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json` |
-| hipENGINE | OPTIMAL parity | — | — | — | not reached | blocked | `benchmarks/results/2026-05-13-hipengine-qwen35-paro-optimal-blocked.json` |
+| hipEngine | OPTIMAL parity | — | — | — | not reached | blocked | `benchmarks/results/2026-05-13-hipengine-qwen35-paro-optimal-blocked.json` |
 
-Blocked hipENGINE reason: `LLM.generate`, `w4_paro` loader/layout, Qwen3.5 model plugin, MoE/attention/linear/lm-head dependency kernels, and graph replay are not landed yet.
+Blocked hipEngine reason: `LLM.generate`, `w4_paro` loader/layout, Qwen3.5 model plugin, MoE/attention/linear/lm-head dependency kernels, and graph replay are not landed yet.
 
 ### Files changed
 
 - Added three compact benchmark artifacts under `benchmarks/results/`.
 - Updated `benchmarks/README.md` source-lineage rows for 512/128 and 4K/128 to point at artifacts and use the local rerun values.
-- Updated `benchmarks/CHANGELOG.md` with lineage-measured deltas and the blocked hipENGINE row.
+- Updated `benchmarks/CHANGELOG.md` with lineage-measured deltas and the blocked hipEngine row.
 - Updated `docs/BENCHMARK.md` with the OPTIMAL MoE/PARO parity artifact policy.
 - Updated `docs/IMPLEMENTATION.md` to mark parent/blocked artifacts complete.
 
@@ -1191,7 +1191,7 @@ Results:
 - Ported the PARO-native RMSNorm caller-output kernels from `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` at `nano-vllm-amd@59195ed`:
   - `paro_rmsnorm_out_kernel`
   - `paro_add_rmsnorm_out_kernel`
-- Added hipENGINE raw-pointer C ABI wrappers in the existing `norm/rmsnorm.hip` family:
+- Added hipEngine raw-pointer C ABI wrappers in the existing `norm/rmsnorm.hip` family:
   - `hipengine_paro_rmsnorm_out_bf16`
   - `hipengine_paro_add_rmsnorm_out_bf16`
 - Added ctypes wrappers and registry keys:
@@ -1314,7 +1314,7 @@ Results:
 
 ### Caveat / next
 
-- This first hipENGINE router wrapper supports BF16 hidden and BF16 combined weights. The parent accepts FP16 or BF16 hidden inputs; if the final hipENGINE OPTIMAL route keeps FP16 router inputs, add an FP16 hidden specialization before claiming full router parity.
+- This first hipEngine router wrapper supports BF16 hidden and BF16 combined weights. The parent accepts FP16 or BF16 hidden inputs; if the final hipEngine OPTIMAL route keeps FP16 router inputs, add an FP16 hidden specialization before claiming full router parity.
 - Next MoE c=1 dependencies remain selected pack8 GEMV, fused activation/down-rotation, W8A16 shared expert, and weighted shared-gate residual combine.
 
 ---
@@ -1597,7 +1597,7 @@ Results:
 ### Caveat / next
 
 - This lands the low-level W8A16 linear path used by parent shared expert and lm-head/auxiliary dense routes.
-- Next step is a composite hipENGINE shared-expert smoke chaining W8A16 gate/up → `silu_mul_dual_out` → W8A16 down, then a c=1 MoE vertical smoke that includes selected W4 experts and shared branch combine.
+- Next step is a composite hipEngine shared-expert smoke chaining W8A16 gate/up → `silu_mul_dual_out` → W8A16 down, then a c=1 MoE vertical smoke that includes selected W4 experts and shared branch combine.
 
 ---
 
@@ -1605,7 +1605,7 @@ Results:
 
 ### Scope
 
-- Added `scripts/smoke.py --mode w8a16-shared-expert-hip` to chain the current parent shared-expert lowp route with existing hipENGINE kernels:
+- Added `scripts/smoke.py --mode w8a16-shared-expert-hip` to chain the current parent shared-expert lowp route with existing hipEngine kernels:
   1. `w8a16_linear_bf16_lowp_out`: hidden → fused gate/up BF16 scratch.
   2. `silu_mul_dual_out_bf16`: fused `SiLU(gate) * up` into BF16 intermediate.
   3. `w8a16_linear_bf16_lowp_out`: intermediate → shared expert BF16 output.
@@ -2039,7 +2039,7 @@ Results:
 
 ### Next
 
-- Port the committed parent attention/KV decode kernels instead of inventing a new ABI, then adapt wrappers to hipENGINE's `KVLiveSpans` ABI at the host boundary.
+- Port the committed parent attention/KV decode kernels instead of inventing a new ABI, then adapt wrappers to hipEngine's `KVLiveSpans` ABI at the host boundary.
 
 ---
 
@@ -2092,7 +2092,7 @@ Results:
 
 ### Next
 
-- Port KV append (`qwen35_write_paged_kv_mixed_value*`) and paged full-attention decode from the committed parent kernels, adapting wrappers to hipENGINE `KVLiveSpans` instead of changing kernel bodies.
+- Port KV append (`qwen35_write_paged_kv_mixed_value*`) and paged full-attention decode from the committed parent kernels, adapting wrappers to hipEngine `KVLiveSpans` instead of changing kernel bodies.
 
 ---
 
@@ -2188,7 +2188,7 @@ Results:
 
 ### Next
 
-- Resume KV append and paged full-attention decode with public wrappers shaped around hipENGINE `KVLiveSpans`, while preserving parent kernel bodies internally.
+- Resume KV append and paged full-attention decode with public wrappers shaped around hipEngine `KVLiveSpans`, while preserving parent kernel bodies internally.
 
 ---
 
@@ -3276,7 +3276,7 @@ Results:
 - Added `scripts/qwen35_paro_next_token.py`, a torch-free bring-up harness that:
   - reads the real checkpoint/tokenizer metadata,
   - embeds one token from `embed_tokens.weight`,
-  - runs all Qwen3.5/PARO decode layers through hipENGINE linear-attention/full-attention c=1 layer chains,
+  - runs all Qwen3.5/PARO decode layers through hipEngine linear-attention/full-attention c=1 layer chains,
   - applies final PARO RMSNorm on GPU,
   - computes `lm_head.weight @ hidden` argmax on CPU with NumPy chunks (temporary correctness path, not a perf path),
   - emits JSON with layer sequence and decoded next-token text.
@@ -3399,7 +3399,7 @@ python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --w
 
 ### Result
 
-- hipENGINE actual autoregressive c=1 resident path completed on W7900.
+- hipEngine actual autoregressive c=1 resident path completed on W7900.
 - Shape: 512 prompt tokens, 4 warmup decode tokens, 128 measured decode tokens, repeated token id `9707`.
 - Load/materialization: `35.35s`.
 - Token-by-token prefill: `5.54s`, `92.39 tok/s` (actual inference, but not native batched/compact prefill).
@@ -3409,8 +3409,8 @@ python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --w
 ### Comparison to PLAN-MOE2 2026-05-12 512/128 row
 
 - PLAN-MOE2 parent baseline: prefill `1300.337 tok/s`, decode `131.128 tok/s`.
-- hipENGINE prefill ratio: `0.071x` of parent, **not comparable** because native prefill is not implemented.
-- hipENGINE warmed decode ratio: `0.024x` of parent, partially comparable but no graph replay/lower-overhead dispatch yet.
+- hipEngine prefill ratio: `0.071x` of parent, **not comparable** because native prefill is not implemented.
+- hipEngine warmed decode ratio: `0.024x` of parent, partially comparable but no graph replay/lower-overhead dispatch yet.
 
 Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-c1-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
 
@@ -3446,7 +3446,7 @@ python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --w
 - 512/128 actual c=1 resident run improved warmed decode from `3.146 tok/s` to `87.821 tok/s`.
 - Median decode step improved from `0.3161s` to `0.01138s`.
 - Token-by-token prefill stayed in the same class: `97.03 tok/s`; still not native batched/compact prefill.
-- Current PLAN-MOE2 compact-WMMA target is `115.666 tok/s` decode at 512/128; hipENGINE is now ~`75.9%` of that decode target, but remains blocked for accepted parity because graph replay and E2E correctness gates are not landed.
+- Current PLAN-MOE2 compact-WMMA target is `115.666 tok/s` decode at 512/128; hipEngine is now ~`75.9%` of that decode target, but remains blocked for accepted parity because graph replay and E2E correctness gates are not landed.
 
 Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-tokenizer-cache-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
 
@@ -3515,7 +3515,7 @@ python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --w
 - Load/materialization: `29.70s`.
 - Token-by-token prefill: `5.25s`, `97.46 tok/s` (actual c=1, not native prefill).
 - Graph replay measured decode: `1.381s`, `92.676 tok/s`, average step `10.79ms`.
-- Current PLAN-MOE2 compact-WMMA 512/128 decode target: `115.666 tok/s`; hipENGINE graph diagnostic is ~`80.1%` of target.
+- Current PLAN-MOE2 compact-WMMA 512/128 decode target: `115.666 tok/s`; hipEngine graph diagnostic is ~`80.1%` of target.
 
 Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
 
@@ -3534,7 +3534,7 @@ Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-graph-dia
 - Added contiguous `qkv_z` scratch with views for the existing `qkv` and `z` consumers.
 - Switched `project_linear_attention_qkv_z_bf16` from two separate generic pack8 GEMVs to the existing dual-input transposed pack8 GEMV wrapper.
 
-This ports the parent `NANOVLLM_PARO_LINEAR_ATTN_QKV_Z_PACK8_FUSED=1` decode route for the hipENGINE c=1 path.
+This ports the parent `NANOVLLM_PARO_LINEAR_ATTN_QKV_Z_PACK8_FUSED=1` decode route for the hipEngine c=1 path.
 
 ### Validation
 
@@ -3549,7 +3549,7 @@ Results:
 
 - 1-layer eager and graph smokes preserved the prior generated token/logit sequence (`229838`, `"وو"`; graph final logit `6.246890544891357`).
 - 512/128 graph diagnostic improved decode from `92.676 tok/s` to `104.066 tok/s` (`+12.3%`).
-- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; hipENGINE is now ~`90.0%` of that decode target.
+- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; hipEngine is now ~`90.0%` of that decode target.
 - Token-by-token c=1 prefill measured `109.4 tok/s`; still not native batched/compact prefill and not comparable to PLAN-MOE2 prefill.
 
 Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-linear-qkv-z-fused-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
@@ -3570,7 +3570,7 @@ Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-linear-qk
 - Switched full-attention Q/K projection to the dual-input transposed pack8 GEMV, keeping V and O projections on the existing generic pack8 path.
 - Added an optional benchmark `--graph-steps-per-replay` knob. A 4-step replay smoke matched eager, but it did not materially improve 512/128, so retained benchmark command remains one-step replay.
 
-This ports the parent `NANOVLLM_PARO_FULL_ATTN_QK_PACK8_FUSED=1` decode route for hipENGINE c=1 full-attention layers.
+This ports the parent `NANOVLLM_PARO_FULL_ATTN_QK_PACK8_FUSED=1` decode route for hipEngine c=1 full-attention layers.
 
 ### Validation
 
@@ -3585,7 +3585,7 @@ Results:
 
 - 4-layer graph final token/logit matched eager after Q/K fusion (`135534`, `"为重"`, final logit `7.168249607086182`).
 - 512/128 graph diagnostic improved decode from `104.066 tok/s` to `108.503 tok/s` (`+4.3%`).
-- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; hipENGINE is now ~`93.8%` of that decode target.
+- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; hipEngine is now ~`93.8%` of that decode target.
 - Token-by-token c=1 prefill measured `114.39 tok/s`; still not native batched/compact prefill.
 
 Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-linear-qkv-z-full-qk-fused-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
@@ -3617,7 +3617,7 @@ Results:
 - 128 threads: `110.03 tok/s` with explicit env; `109.99 tok/s` as default.
 - 256-thread prior after Q/K fusion: `108.50 tok/s`.
 - 512 threads regressed to `98.95 tok/s`.
-- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; hipENGINE is now ~`95.1%` of that decode target.
+- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; hipEngine is now ~`95.1%` of that decode target.
 
 Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-lmhead128-qk-qkvz-fused-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
 
@@ -3631,7 +3631,7 @@ Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-lmhead128
 - Added contiguous linear-attention `ab` scratch with existing `a`/`b` views.
 - Switched `project_linear_attention_ab_bf16` from two dense GEMV launches to the dual dense GEMV.
 
-This ports the parent `NANOVLLM_PARO_LINEAR_ATTN_AB_FUSED=1` decode route for hipENGINE c=1 linear-attention layers.
+This ports the parent `NANOVLLM_PARO_LINEAR_ATTN_AB_FUSED=1` decode route for hipEngine c=1 linear-attention layers.
 
 ### Validation
 
@@ -3646,7 +3646,7 @@ Results:
 
 - 1-layer graph smoke preserved final token/logit (`229838`, `"وو"`, `6.246890544891357`).
 - 512/128 graph diagnostic improved decode from `109.99 tok/s` to `111.104 tok/s` (`+1.0%`).
-- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; hipENGINE is now ~`96.1%` of that decode target.
+- Current PLAN-MOE2 compact-WMMA 512/128 decode target is `115.666 tok/s`; hipEngine is now ~`96.1%` of that decode target.
 - Token-by-token c=1 prefill measured `115.81 tok/s`; still not native batched/compact prefill.
 
 Artifact: `benchmarks/results/2026-05-14-hipengine-qwen35-paro-512-128-ab-fused-lmhead128-graph-diagnostic.json` (`status=blocked`, diagnostic/non-retained).
@@ -3811,7 +3811,7 @@ Results:
 ### Scope
 
 - Added `docs/PLAN.md` section `Concurrent Decode / c>1 PARO Roadmap`.
-- Captured the code-review conclusion that hipENGINE is a better foundation for c>1 than `nano-vllm-amd`, but current Qwen3.5/PARO runtime remains effectively c=1.
+- Captured the code-review conclusion that hipEngine is a better foundation for c>1 than `nano-vllm-amd`, but current Qwen3.5/PARO runtime remains effectively c=1.
 - Documented current blockers: one-token smoke generator, scalar resident-session state, c1-only decode orchestrators, scalar-context GQA attention, and selected-MoE lane mapping.
 - Added expected c=8 behavior and an implementation plan covering batch state, correctness harnesses, scheduler/graph buckets, batched attention, linear-attention state, MoE batch kernels, c-aware quant projection dispatch, and c=N benchmark protocol.
 
@@ -4205,10 +4205,10 @@ python3 scripts/qwen35_e2e_correctness.py \
 Results:
 
 - Unit tests passed: 48 passed.
-- Layer-1 parent fixture passed: parent expected token `84`, hipENGINE produced `84`; parent prefill seed `6332` matched.
-- Full 512/32 parent fixture still blocked: parent prefill seed `4403` matched, but generated-token parity missed at index 0 (`expected 1739`, hipENGINE `220`), then the remaining prefix matched (`220,16,15,...`).
-- Current hipENGINE fixture timing remains sequential-prefill limited: ~113.65 tok/s prefill and ~96.24 tok/s decode vs parent fixture ~2682.66 tok/s prefill and ~116.26 tok/s decode.
-- hipENGINE memory report is currently owned device buffers (~1.51 GiB), not parent-comparable allocator/VRAM peak (~18.8 GiB), so memory parity still needs a proper process/VRAM measurement path.
+- Layer-1 parent fixture passed: parent expected token `84`, hipEngine produced `84`; parent prefill seed `6332` matched.
+- Full 512/32 parent fixture still blocked: parent prefill seed `4403` matched, but generated-token parity missed at index 0 (`expected 1739`, hipEngine `220`), then the remaining prefix matched (`220,16,15,...`).
+- Current hipEngine fixture timing remains sequential-prefill limited: ~113.65 tok/s prefill and ~96.24 tok/s decode vs parent fixture ~2682.66 tok/s prefill and ~116.26 tok/s decode.
+- hipEngine memory report is currently owned device buffers (~1.51 GiB), not parent-comparable allocator/VRAM peak (~18.8 GiB), so memory parity still needs a proper process/VRAM measurement path.
 
 ### Next
 
@@ -4225,8 +4225,8 @@ Results:
 - Ported the parent `qwen35_full_attn_decode_context_tensor_kernel` into the gfx1100 attention build and registered a raw-pointer `full_attn_decode/w4_paro/bf16_context` wrapper.
 - Routed Qwen3.5/PARO resident full-attention layers to the dense short-context decode path when `max_live_count < 1024`, matching the parent small-context branch before paged attention.
 - Added `scripts/smoke.py --mode qwen35-full-attn-decode-hip` and cataloged the kernel in `docs/KERNELS.md`.
-- Re-ran the 512/32 parent fixture gate. The first decode token is still blocked: dense short-context attention changes hipENGINE from `220,...` to `4096,220,16,...`, while the parent expects `1739,220,16,...`.
-- Root-cause probe: the parent PARO native fixture runs FP16 activations/scales from the checkpoint (`embed`, RMSNorm, PARO scales/theta, LM head are `torch.float16`), while hipENGINE's current Qwen3.5/PARO resident path materializes those runtime tensors as BF16. Layer-0 prompt probes show BF16-vs-FP16 activation drift starts at input RMSNorm/rotation and is enough to flip close top logits after full decode (`parent top first-decode: 1739=6.4487, 220=6.3479, 4096=6.3336`; HIP BF16 dense path: 4096=6.7064, 220=6.5895, 1739=5.9954`).
+- Re-ran the 512/32 parent fixture gate. The first decode token is still blocked: dense short-context attention changes hipEngine from `220,...` to `4096,220,16,...`, while the parent expects `1739,220,16,...`.
+- Root-cause probe: the parent PARO native fixture runs FP16 activations/scales from the checkpoint (`embed`, RMSNorm, PARO scales/theta, LM head are `torch.float16`), while hipEngine's current Qwen3.5/PARO resident path materializes those runtime tensors as BF16. Layer-0 prompt probes show BF16-vs-FP16 activation drift starts at input RMSNorm/rotation and is enough to flip close top logits after full decode (`parent top first-decode: 1739=6.4487, 220=6.3479, 4096=6.3336`; HIP BF16 dense path: 4096=6.7064, 220=6.5895, 1739=5.9954`).
 
 ### Validation
 
@@ -4249,7 +4249,7 @@ Results:
 - Dense full-attention smoke passed: `max_abs=1.19e-07` vs NumPy BF16 softmax oracle.
 - `rocprofv3` confirmed `qwen35_full_attn_decode_context_tensor_kernel` ran: `DurationNs=9440`, `VGPR_Count=32`, `Scratch_Size=0`, `LDS_Block_Size=1040`, `Workgroup_Size_X=256`.
 - Targeted tests passed: 4 passed.
-- Full 512/32 parent fixture remains blocked by FP16-vs-BF16 activation parity: parent expected `[1739, 220, 16, ...]`; hipENGINE BF16 dense path produced `[4096, 220, 16, ...]` with matching prefill seed `4403`.
+- Full 512/32 parent fixture remains blocked by FP16-vs-BF16 activation parity: parent expected `[1739, 220, 16, ...]`; hipEngine BF16 dense path produced `[4096, 220, 16, ...]` with matching prefill seed `4403`.
 
 ### Next
 
@@ -4262,7 +4262,7 @@ Results:
 ### Scope
 
 - Updated the W7900/gfx1100 wavefront policy after the parent workspace probe: `-mcumode` is orthogonal to wavefront size and the HIP decode profile should be treated as wave32 unless `-mwavefrontsize64` is explicitly added for an isolated experiment.
-- Added a `docs/PLAN.md` caveat section near the end: RDNA3 wave64 is architecturally real, but hipENGINE/nano-vllm-amd defaults to wave32 + ILP/VOPD exposure; wave64 requires separate flags, probes, correctness gates, ISA checks, and E2E benchmarks.
+- Added a `docs/PLAN.md` caveat section near the end: RDNA3 wave64 is architecturally real, but hipEngine/nano-vllm-amd defaults to wave32 + ILP/VOPD exposure; wave64 requires separate flags, probes, correctness gates, ISA checks, and E2E benchmarks.
 - Updated `docs/KERNELS.md` and `docs/ROOFLINE.md` to remove stale decode-wave64 wording and to document wave32-compatible reductions (`__shfl_down` within 32 lanes plus LDS/shared-memory exchange across waves).
 - Updated `hipengine.core.build.PROFILES["decode"].wavefront` from `64` to `32`; decode flags remain `-mcumode` plus the unroll threshold and deliberately do not include `-mwavefrontsize64`.
 - Updated dry-run build-plan tests to expect wave32 and added a guard that the decode profile does not carry `-mwavefrontsize64`.
@@ -4699,7 +4699,7 @@ Results:
 
 ### Scope
 
-- Created `docs/DFLASH.md` as the hipENGINE-side plan for a proper native
+- Created `docs/DFLASH.md` as the hipEngine-side plan for a proper native
   DFlash implementation.
 - Consolidated lessons from `~/amd-gpu-tuning/PLAN-DFLASH.md`,
   `docs/SPECULATIVE-DECODE.md`, `docs/DFLASH-FRESH-EYES.md`, recent
@@ -4708,7 +4708,7 @@ Results:
 - Main decision recorded: the current Python/PyTorch DFlash harness has proven
   correctness and the corrected tree-kernel shape, but the remaining speed gap
   is a native-runtime verifier problem. The production path belongs in
-  hipENGINE as a torch-free C++/HIP hot loop with stable buffers, persistent
+  hipEngine as a torch-free C++/HIP hot loop with stable buffers, persistent
   state rings, device-side accept summaries, and graph-capturable fixed shapes.
 - Included DDTree-specific ABI/semantics: flat topological tree, `parent_ids`,
   positions/depths, ancestor mask, target-top1 edge following, no DFS-state
@@ -4726,9 +4726,9 @@ python3 - <<'PY'
 from pathlib import Path
 p = Path('/home/lhl/hipengine/docs/DFLASH.md')
 text = p.read_text()
-assert '# hipENGINE DFlash / DDTree Native Implementation Plan' in text
+assert '# hipEngine DFlash / DDTree Native Implementation Plan' in text
 assert 'DDTree details to preserve' in text
-assert 'First concrete hipENGINE tasks' in text
+assert 'First concrete hipEngine tasks' in text
 print(len(text.splitlines()), 'lines')
 PY
 git -C /home/lhl/hipengine diff --stat -- docs/DFLASH.md WORKLOG.md
@@ -4743,7 +4743,7 @@ Notes:
 
 ### Next
 
-- Use `docs/DFLASH.md` as the launch checklist when starting hipENGINE DFlash:
+- Use `docs/DFLASH.md` as the launch checklist when starting hipEngine DFlash:
   first source-lineage refresh for corrected tree Conv/GDN and pack8 small-row
   defaults, then a native topk=1 chain verifier before DDTree policy work.
 
@@ -4864,7 +4864,7 @@ python3 -m compileall -q hipengine tests scripts && python3 -m pytest tests/test
 
 Results:
 
-- Source-lineage check reported expected parent drift from `nano-vllm-amd` after baseline `22405a9` (`qwen35_expert.hip`, `smoke.hip`, `paroquant_kernels.py`); this iteration used existing stable hipENGINE bodies and added local dtype/helper variants only.
+- Source-lineage check reported expected parent drift from `nano-vllm-amd` after baseline `22405a9` (`qwen35_expert.hip`, `smoke.hip`, `paroquant_kernels.py`); this iteration used existing stable hipEngine bodies and added local dtype/helper variants only.
 - Active-loop guard passed: 68 targeted tests passed.
 - Extended local test bundle passed (`[100%]`, 80 test dots across cast/runtime/rotary/KV/generation/layout suites).
 - Parent fixture correctness remains blocked but narrower: full resident c=1 fixture run was finite/deterministic, but HIP seed token was `220` and first decode token was `58` with top logit `9.434697151184082`; parent fixture expected first generated token `1739`. No performance claim retained.
@@ -4878,7 +4878,7 @@ Results:
 
 ### Next
 
-- Start Task #41: promote/narrow the parent fixture by bisecting the remaining c=1 parity gap at per-layer hidden/logit checkpoints. The broad BF16-vs-FP16 activation policy is no longer the only blocker; next evidence should identify the first layer or projection where hipENGINE diverges from parent.
+- Start Task #41: promote/narrow the parent fixture by bisecting the remaining c=1 parity gap at per-layer hidden/logit checkpoints. The broad BF16-vs-FP16 activation policy is no longer the only blocker; next evidence should identify the first layer or projection where hipEngine diverges from parent.
 - Hot-path torch audit for touched runtime/generation paths:
   `rg -n "^\\s*import torch|^\\s*from torch" hipengine/runtime hipengine/generation hipengine/llm.py hipengine/loading/qwen35_paro.py || true` → no executable torch imports.
 
@@ -4892,7 +4892,7 @@ Results:
 - Parent-source audit found two materialization mismatches against `nano-vllm-amd`:
   - native router/shared-gate concatenates `router.weight` and `shared_expert_gate.weight` then casts the combined matrix to BF16 before `qwen35_router_logits_kernel`;
   - fused q/k head RMSNorm+RoPE receives BF16 *offset* weights computed as `(checkpoint + 1 -> FP16 -> BF16 -> -1)`, not checkpoint-direct BF16.
-- Updated hipENGINE runtime materialization accordingly and refreshed layout tests.
+- Updated hipEngine runtime materialization accordingly and refreshed layout tests.
 - Added blocked artifact `benchmarks/results/2026-05-15-hipengine-qwen35-c1-router-qnorm-blocked.json` with parent and HIP top-k evidence.
 
 ### Validation and probes
@@ -4946,7 +4946,7 @@ Results:
 
 - Continued Task #36 with a prefix top-k bisect against parent sequential mode.
 - Wrote one-off probes outside the repo:
-  - `/tmp/hipengine_prefix_probe.py` runs hipENGINE resident c=1 on the 512-token fixture for selected `max_layers` prefixes.
+  - `/tmp/hipengine_prefix_probe.py` runs hipEngine resident c=1 on the 512-token fixture for selected `max_layers` prefixes.
   - `/tmp/parent_prefix_probe.py` runs `nano-vllm-amd` parent sequential prefill/decode under OPTIMAL flags for the same prefixes.
 - Added blocked diagnostic artifact `benchmarks/results/2026-05-15-hipengine-qwen35-prefix-bisect-blocked.json`.
 
@@ -4984,7 +4984,7 @@ Results:
 - Root cause from one-off parent/HIP component probes:
   - Layer-0 internals matched parent through input RMSNorm, QKV/Z/A/B projections, Conv/GDN, out-proj, post-attention add-RMSNorm, router logits, routing weights, and selected experts.
   - The first material divergence was the selected/shared MoE output: before the fix, layer-0 `mlp_output` differed by `max_abs=0.00836181640625`, `mean_abs=0.0015244119567796588`, `rmse=0.0019268736941739917`.
-  - Parent rotates the MoE gate/up input via `experts.gate_up_weight_{pairs,theta,channel_scales}` before selected gate/up pack8 GEMV; hipENGINE was feeding the unrotated post-norm hidden into selected gate/up GEMV.
+  - Parent rotates the MoE gate/up input via `experts.gate_up_weight_{pairs,theta,channel_scales}` before selected gate/up pack8 GEMV; hipEngine was feeding the unrotated post-norm hidden into selected gate/up GEMV.
 - Runtime fix:
   - Add runtime materialization for `gate_up_weight_pairs`, `gate_up_weight_theta`, and `gate_up_weight_channel_scales` on full-attention and linear-attention MoE paths.
   - Add `moe.gate_up_input` scratch and call `paro_rotate1_{bf16,fp16}` before selected gate/up pack8 GEMV.
@@ -5136,8 +5136,8 @@ Results:
 
 ### Notes
 
-- No hipENGINE throughput row was promoted. The c=N accepted gate is explicitly serial (`step_batch_serial`) and remains a correctness gate only.
-- The current-fastest hipENGINE throughput table still has no accepted row; Task #15 remains the native compact/c-aware path needed before retaining c>N performance claims.
+- No hipEngine throughput row was promoted. The c=N accepted gate is explicitly serial (`step_batch_serial`) and remains a correctness gate only.
+- The current-fastest hipEngine throughput table still has no accepted row; Task #15 remains the native compact/c-aware path needed before retaining c>N performance claims.
 
 ### Validation
 
@@ -5166,7 +5166,7 @@ Result: `69 passed`.
 
 ### User question
 
-- Clarified that `w4a16` is the broad 4-bit-weight/16-bit-activation quantization class, while `w4_paro` is hipENGINE's concrete PARO AWQ packed-layout/plugin variant under that umbrella.
+- Clarified that `w4a16` is the broad 4-bit-weight/16-bit-activation quantization class, while `w4_paro` is hipEngine's concrete PARO AWQ packed-layout/plugin variant under that umbrella.
 - User also requested a FastAPI/OpenAI-compatible server. I proposed an optional `hipengine[server]` non-streaming first pass and asked whether SSE streaming should be included in v1 before changing scope.
 
 ### Validation
@@ -5248,7 +5248,7 @@ Result: `72 passed`.
 
 ### Notes
 
-- The original pi-multiloop verify command still fails with `active hipENGINE parity TaskList not found` because it searches for completed task IDs that are no longer in the active compacted TaskList file. A robust count over the active #12/#15 file still prints `2`.
+- The original pi-multiloop verify command still fails with `active hipEngine parity TaskList not found` because it searches for completed task IDs that are no longer in the active compacted TaskList file. A robust count over the active #12/#15 file still prints `2`.
 
 ---
 
@@ -5300,7 +5300,7 @@ Result: pytest exit code `0`.
 
 ### Notes
 
-- The original pi-multiloop verify command remains stale and exits `active hipENGINE parity TaskList not found` because it requires completed task IDs no longer present in the compacted active TaskList file. A robust count over the active #12/#15 file prints `2`.
+- The original pi-multiloop verify command remains stale and exits `active hipEngine parity TaskList not found` because it requires completed task IDs no longer present in the compacted active TaskList file. A robust count over the active #12/#15 file prints `2`.
 - No kernel port or throughput claim was made in this iteration.
 
 ---
@@ -5353,7 +5353,7 @@ Result: pytest exit code `0`.
 
 ### Notes
 
-- The original pi-multiloop verify command remains stale and exits `active hipENGINE parity TaskList not found`; robust active TaskList count over #12/#15 remains `2`.
+- The original pi-multiloop verify command remains stale and exits `active hipEngine parity TaskList not found`; robust active TaskList count over #12/#15 remains `2`.
 - No performance claim was made; the new artifact is explicitly rejected correctness evidence.
 
 ---
@@ -5404,7 +5404,7 @@ Result: pytest exit code `0`.
 ### Notes
 
 - This change preserves correctness/no-claim discipline; it does not fix native prefill yet.
-- The original pi-multiloop verify command remains stale and exits `active hipENGINE parity TaskList not found`; robust active TaskList count over #12/#15 remains `2`.
+- The original pi-multiloop verify command remains stale and exits `active hipEngine parity TaskList not found`; robust active TaskList count over #12/#15 remains `2`.
 
 ---
 
@@ -5445,7 +5445,7 @@ Result: pytest exit code `0`.
 
 ### Notes
 
-- The original pi-multiloop verify command remains stale and exits `active hipENGINE parity TaskList not found`; robust active TaskList count over the compacted active file is now `1` (#15 only).
+- The original pi-multiloop verify command remains stale and exits `active hipEngine parity TaskList not found`; robust active TaskList count over the compacted active file is now `1` (#15 only).
 
 ---
 
@@ -5506,7 +5506,7 @@ Result: pytest exit code `0`.
 
 ### Notes
 
-- The original pi-multiloop verify command remains stale and exits `active hipENGINE parity TaskList not found`; robust active TaskList count remains `1` (#15 only).
+- The original pi-multiloop verify command remains stale and exits `active hipEngine parity TaskList not found`; robust active TaskList count remains `1` (#15 only).
 - No performance claim was made; the new sweep artifact is explicitly rejected correctness evidence.
 
 ---
@@ -5557,7 +5557,7 @@ Result: pytest exit code `0`.
 
 ### Notes
 
-- The original pi-multiloop verify command remains stale and exits `active hipENGINE parity TaskList not found`; robust active TaskList count remains `1` (#15 only).
+- The original pi-multiloop verify command remains stale and exits `active hipEngine parity TaskList not found`; robust active TaskList count remains `1` (#15 only).
 - No performance claim was made; the new stage probe artifact is explicitly rejected correctness evidence.
 
 ---
@@ -5627,16 +5627,16 @@ Result: pytest exit code `0`.
 ### Notes
 
 - User added four new TaskList items (#42-#45) during this loop. The robust active TaskList count is now `5`, but the Qwen3.5/PARO parity implementation blocker remains Task #15.
-- The original pi-multiloop verify command remains stale and exits `active hipENGINE parity TaskList not found`.
+- The original pi-multiloop verify command remains stale and exits `active hipEngine parity TaskList not found`.
 - No performance claim was made; the new stage-bisect artifact is explicitly rejected correctness evidence.
 
 ---
 
-## 2026-05-15 — Rename display branding to hipENGINE
+## 2026-05-15 — Rename display branding to hipEngine
 
 ### Scope
 
-- Completed Task #42: user-facing project display name now uses `hipENGINE` while the import/package remains `hipengine`.
+- Completed Task #42: user-facing project display name now uses `hipEngine` while the import/package remains `hipengine`.
 - Replaced tracked-file display text only; established all-caps environment variables such as `HIPENGINE_COMPILER_VERSION_FILE` and `HIPENGINE_QWEN35_LM_HEAD_THREADS` were intentionally left unchanged.
 - Updated docs, benchmark rollups/artifacts, public docstrings/comments, and metadata text. No runtime identifiers, imports, package names, or kernel bodies changed.
 
@@ -6133,7 +6133,7 @@ Result: pytest exit code `0` (`76 passed`).
 ### Scope
 
 - Updated `benchmarks/README.md` after Task #43 artifacts:
-  - kept `Current fastest hipENGINE rows` empty;
+  - kept `Current fastest hipEngine rows` empty;
   - added a clearly marked `Blocked / diagnostic benchmark attempts` table;
   - linked the c=1/c=2/c=4/c=8 scheduler-serial blocked artifacts;
   - included workload shape, correctness/status, diagnostic timing, memory availability, and blocker notes.
@@ -6171,7 +6171,7 @@ Robust active TaskList count after completing #45: `2` (#15 and #44).
 - Added `scripts/qwen35_dflash_ddtree_blocker.py` to emit a compact blocker artifact.
 - Added `benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json`.
 - Added unit coverage in `tests/test_speculative_interfaces.py` for the blocker payload.
-- Updated `docs/DFLASH.md` with the current hipENGINE status and artifact link.
+- Updated `docs/DFLASH.md` with the current hipEngine status and artifact link.
 - Completed Task #44 via its documented blocker path; no speculative throughput claim was made.
 
 ### Evidence
@@ -8674,7 +8674,7 @@ Active TaskList count remains `1` (#15). This iteration narrows scheduler target
 
 ---
 
-## 2026-05-15 — Qwen3.5-0.8B-PARO hipENGINE feasibility check blocked
+## 2026-05-15 — Qwen3.5-0.8B-PARO hipEngine feasibility check blocked
 
 ### Request
 
@@ -8757,7 +8757,7 @@ Artifact: `benchmarks/results/2026-05-15-hipengine-qwen35-0p8b-paro-512-128-bloc
 
 ### Interpretation
 
-hipENGINE cannot currently run `z-lab/Qwen3.5-0.8B-PARO` for the requested
+hipEngine cannot currently run `z-lab/Qwen3.5-0.8B-PARO` for the requested
 512/128 comparison. The first observed blocker is the tied-embedding checkpoint
 layout: the resident runner requires `lm_head.weight`, while this model has no
 explicit lm head and relies on `embed_tokens.weight`.
@@ -8775,7 +8775,7 @@ For future comparison, the parent native PARO baseline from
 | --- | --- | ---: | ---: | ---: | --- |
 | `nano-vllm-amd` native PARO | 512/128 | 11363.34 | 251.78 | 1.171 | finite logits + graph/eager match |
 
-Needed before rerunning in hipENGINE: tied lm-head fallback plus dense PARO MLP
+Needed before rerunning in hipEngine: tied lm-head fallback plus dense PARO MLP
 materialization/runtime support, then rerun the 512/128 command with the normal
 post-run correctness/perf/memory gates.
 
@@ -8982,7 +8982,7 @@ python3 scripts/check_lineage.py --kind kernel --diff stat
 
 Result: parent kernel lineage reports expected DRIFT in `qwen35_expert.hip`,
 `smoke.hip`, and `paroquant_kernels.py` (latest parent HEAD `5d8f496`); no code
-was copied from those drifted new kernels for this hipENGINE-local vector RoPE
+was copied from those drifted new kernels for this hipEngine-local vector RoPE
 variant.
 
 Changes:
@@ -9354,7 +9354,7 @@ python3 scripts/check_lineage.py --kind kernel --diff stat
 ```
 
 Result: reports known parent drift in `qwen35_expert.hip`, `smoke.hip`, and
-`paroquant_kernels.py` from nano-vllm-amd head `5d8f496`; no additional hipENGINE
+`paroquant_kernels.py` from nano-vllm-amd head `5d8f496`; no additional hipEngine
 source-lineage manifest change needed for the local prompt-writer wrapper.
 
 ## 2026-05-15 — Compact c>N prompt slab metadata and blocker artifact
@@ -9408,7 +9408,7 @@ Lineage note:
 - `scripts/check_lineage.py --kind kernel --diff stat` reports parent drift at
   `nano-vllm-amd@b95eaa5` adding tree/speculative conv/GDN kernels. Those tree
   kernels are parent-indexed decode/speculation kernels, not the compact prompt
-  slab `cu_seqlens` ABI. This task implemented the hipENGINE slab ABI directly
+  slab `cu_seqlens` ABI. This task implemented the hipEngine slab ABI directly
   over `cu_seqlens` + state-slot indices.
 
 Changes:
@@ -9771,7 +9771,7 @@ is not the current bottleneck.
 
 ## 2026-05-15 — Prefill multiloop iter 5 audit: retained path launch counts
 
-Audit-only iteration after retaining shared prefill scratch. Wrapped hipENGINE
+Audit-only iteration after retaining shared prefill scratch. Wrapped hipEngine
 Python kernel-wrapper callables and ran `prefill_native(..., sample=False)` at
 T=512 and T=4096 to count host-side launches on the current retained path:
 
@@ -9870,7 +9870,7 @@ Results: fixture passed (`max_kl=0.00584`, top-1 `1.0`,
 Tried switching multi-token FP16 prefill projections from transposed
 `qweight_pack8_decode` to original strided `.qweight` for full-attention Q/K and
 linear-attention QKV/Z, following the parent optimal note that transposed pack8
-is disabled on W7900. In hipENGINE this regressed badly, so the change is
+is disabled on W7900. In hipEngine this regressed badly, so the change is
 rejected.
 
 Validation commands:
@@ -9890,13 +9890,13 @@ Results: fixture correctness stayed clean (`max_kl=0.00487`, top-1 `1.0`,
 `~2.03s`. 512/128 samples were `251.369`, `254.548`, `254.051`, `253.555` tok/s
 (median `253.803`), far below retained `516.236`; 4K/128 also regressed to
 `192.753 tok/s`, below the 95% guard floor (`302.135 tok/s`). Decision: revert;
-hipENGINE's transposed projection kernels remain faster for this path despite
+hipEngine's transposed projection kernels remain faster for this path despite
 the parent engine's different optimal flag stack.
 
 ## 2026-05-15 — Prefill multiloop iter 10: 64-thread prefill projection GEMV
 
 Tuned multi-token transposed pack8 prefill projections. The previous strided
-layout trial showed transposed qweights are the right layout in hipENGINE, so
+layout trial showed transposed qweights are the right layout in hipEngine, so
 this iteration kept that layout and changed only the thread count for the
 multi-token FP16 full-attention Q/K and linear-attention QKV/Z projections from
 default `128` to `64`. These projections are one of the largest launch families
@@ -10426,7 +10426,7 @@ path.
 ## 2026-05-15 — Prefill multiloop iter 28: fused W4 prefill projections kept
 
 After five failed launch/copy micro-fusion trials and the parent WORKLOG/ROOFLINE
-review, pivoted to the major algorithmic gap versus the parent route: hipENGINE
+review, pivoted to the major algorithmic gap versus the parent route: hipEngine
 multi-token prefill was still running non-expert transposed W4 pack8 projections
 through row-wise GEMV kernels. Ported the parent dense fused W4→WMMA prefill
 kernel from `nano-vllm-amd@55fede9` (`nanovllm/native/qwen35/paroquant_fusedw4.py`)
@@ -10520,7 +10520,7 @@ run showed W8A16 shared expert work as a top bucket: before this change,
 `w8a16_linear_lowp_out_kernel<_Float16>` ran 80 times for 40-layer 512-token
 prefill and totaled `50.934 ms`, with separate shared SiLU launches. Ported the
 parent `w8a16_shared_gate_up_bulk4_kernel` idea from `nano-vllm-amd@59195ed`
-into hipENGINE's raw-pointer W8A16 library as
+into hipEngine's raw-pointer W8A16 library as
 `hipengine_w8a16_shared_gate_up_silu_fp16`: four intermediate columns per block,
 FP16 lowp rounding before SiLU to match the existing gate/up → SiLU staging, and
 output into the existing `shared_intermediate` scratch. Runtime routing uses this
@@ -11556,9 +11556,9 @@ Added a standalone "Optimization diagnosis (2026-05-16): the 4K gap is one
 kernel" section to `docs/PREFILL.md` (between "Compact c>N prefill done" and
 "References"). Captures:
 
-- Where we stand: hipENGINE 2039 tok/s @ 512 / 659 tok/s @ 4K vs nano-vllm-amd
+- Where we stand: hipEngine 2039 tok/s @ 512 / 659 tok/s @ 4K vs nano-vllm-amd
   2589 / 1681 (+27 % / +155 %). 4K is the load-bearing gap.
-- Trace comparison: top-10 kernel buckets at hipENGINE 512/0 (229.77 ms total
+- Trace comparison: top-10 kernel buckets at hipEngine 512/0 (229.77 ms total
   kernel time) and 4K/0 (6171.07 ms total), summed across 40 layers. Headline:
   `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<false>` is 4572 ms /
   10 launches / 457 ms per layer at 4K, 74 % of all 4K kernel time. 8× tokens
@@ -11648,7 +11648,7 @@ source-reference submodule plus fetched runtime tarball. Added
 (commit `b24f43a9771622faa157155568b9a200c3b49e41`) and removed the `branch = main`
 tracking line from `.gitmodules`. The nested AOTriton Triton submodule is not
 initialized; initialize recursively only for an explicit from-source AOTriton
-build, not for normal hipENGINE wrapper work.
+build, not for normal hipEngine wrapper work.
 
 Also added a torch-free discovery scaffold at
 `hipengine/kernels/hip_gfx1100/attention/aotriton.py`. It resolves source
@@ -11766,11 +11766,11 @@ change.
 
 ## 2026-05-16 — Marlin-K port analysis doc
 
-Wrote `docs/MARLIN.md` as the hipENGINE intake analysis for the parent Marlin-K/qweight-neutral work from `~/amd-gpu-tuning`.
+Wrote `docs/MARLIN.md` as the hipEngine intake analysis for the parent Marlin-K/qweight-neutral work from `~/amd-gpu-tuning`.
 
 Source/evidence reviewed:
 
-- `python3 scripts/check_lineage.py --file '*paroquant*' --diff stat` from hipENGINE: parent `nano-vllm-amd` branch `gfx1100-qwen3.5`, HEAD `1522293`, with Marlin-related drift in `paroquant.py` and `paroquant_kernels.py` since the current hipENGINE lineage baseline `22405a9`.
+- `python3 scripts/check_lineage.py --file '*paroquant*' --diff stat` from hipEngine: parent `nano-vllm-amd` branch `gfx1100-qwen3.5`, HEAD `1522293`, with Marlin-related drift in `paroquant.py` and `paroquant_kernels.py` since the current hipEngine lineage baseline `22405a9`.
 - Parent source anchors:
   - `/home/lhl/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant.py` (`_repack_awq_to_marlin_k_v0`, qweight-neutral buffer/view setup, rows==1 dispatch).
   - `/home/lhl/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py` (`_MARLIN_K_FMA_SRC`, `gemv_paro_marlin_k_fma_kernel`, wrapper shape checks/thread selection).
@@ -11779,13 +11779,13 @@ Source/evidence reviewed:
   - `/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md` §11.11 and §12.
   - `/home/lhl/amd-gpu-tuning/WORKLOG.md` entries `2026-05-15 20:10 UTC — Marlin-K qweight-neutral replacement`, `2026-05-15 20:45 UTC — §12 Marlin-K roadmap reconciliation after qweight-neutral work`, and `2026-05-16 05:15 UTC — OPTIMAL.md refreshed for qweight-neutral Marlin-K`.
 
-Main documented conclusion: porting is worth doing now, but first hipENGINE port should be narrow/conservative: standalone `paro_marlin_k.{hip,py}` + NumPy repack/oracle tests, rows==1 non-expert GEMV only, no rejected §12 experiments, and runtime promotion only after hipENGINE reproduces the parent hybrid memory story (Marlin-K rows==1, zero-copy pack8 view for fused paths, no duplicate large W4 qweight buffer).
+Main documented conclusion: porting is worth doing now, but first hipEngine port should be narrow/conservative: standalone `paro_marlin_k.{hip,py}` + NumPy repack/oracle tests, rows==1 non-expert GEMV only, no rejected §12 experiments, and runtime promotion only after hipEngine reproduces the parent hybrid memory story (Marlin-K rows==1, zero-copy pack8 view for fused paths, no duplicate large W4 qweight buffer).
 
-Validation: docs/process change only. Re-read `docs/MARLIN.md`; no Python compile step was applicable because no Python files changed. No GPU benchmark rerun; all speed/memory numbers are explicitly cited as parent `~/amd-gpu-tuning` evidence, not new hipENGINE measurements.
+Validation: docs/process change only. Re-read `docs/MARLIN.md`; no Python compile step was applicable because no Python files changed. No GPU benchmark rerun; all speed/memory numbers are explicitly cited as parent `~/amd-gpu-tuning` evidence, not new hipEngine measurements.
 
 ## 2026-05-16 — PARO Marlin-K host repack helper
 
-Confirmed hipENGINE was runnable before touching PARO code:
+Confirmed hipEngine was runnable before touching PARO code:
 
 ```bash
 python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
@@ -12037,7 +12037,7 @@ Version bump rationale (recorded so the next agent does not re-derive it):
   `test/adiffs/gfx1100.txt` in 0.11.2b lists 436 failing tests, 100% of
   which are in `test_backward.py` (`awk -F'::' '{print $1}' | sort -u`
   returns only `test/test_backward.py`).  Zero forward-pass failures are
-  listed.  hipENGINE is inference-only.  0.11.1b restored Navi31 support and
+  listed.  hipEngine is inference-only.  0.11.1b restored Navi31 support and
   0.11.2b updated the gfx11xx image tarball; gfx11xx images have 60k+
   downloads on GitHub.
 - The V2 API (`attn_fwd_compact_varlen`) is still present in 0.11.x, but the
@@ -12474,18 +12474,18 @@ Readiness / blockers:
 
 ## 2026-05-16 — GGUF intake analysis doc
 
-Wrote `docs/GGUF.md` as the first planning/intake document for GGUF support in hipENGINE.
+Wrote `docs/GGUF.md` as the first planning/intake document for GGUF support in hipEngine.
 
 Source/evidence reviewed:
 
-- hipENGINE state was clean before the docs change.
+- hipEngine state was clean before the docs change.
 - Local llama.cpp GGUF references:
   - `/home/lhl/llama.cpp/llama.cpp-hip-therock/ggml/include/gguf.h` for GGUF file structure, magic/version/alignment, KV table, tensor info, and tensor offsets.
   - `/home/lhl/llama.cpp/llama.cpp-hip-therock/gguf-py/gguf/gguf_reader.py` for Python reader behavior.
   - `/home/lhl/llama.cpp/llama.cpp-hip-therock/gguf-py/gguf/constants.py` for `GGMLQuantizationType` and `GGML_QUANT_SIZES` (`Q4_0`, `Q8_0`, `Q4_K`, `Q5_K`, `Q6_K`, `Q8_K`, IQ types, etc.).
   - `/home/lhl/llama.cpp/llama.cpp-hip-therock/gguf-py/gguf/quants.py` and `ggml/src/ggml-quants.c` for CPU quant/dequant references.
   - `/home/lhl/llama.cpp/llama.cpp-hip-therock/ggml/src/ggml-common.h` for GGML block structs and static sizes.
-- Parent `~/amd-gpu-tuning` docs that explain how GGUF/Q4_K informed the PARO Marlin-K work: `PLAN-PAROQUANT2.md`, `PLAN-LONGCONTEXT.md`, `PR_COMMENT-llamacpp-hip-unroll600.md`, and hipENGINE's new `docs/MARLIN.md`.
+- Parent `~/amd-gpu-tuning` docs that explain how GGUF/Q4_K informed the PARO Marlin-K work: `PLAN-PAROQUANT2.md`, `PLAN-LONGCONTEXT.md`, `PR_COMMENT-llamacpp-hip-unroll600.md`, and hipEngine's new `docs/MARLIN.md`.
 
 Main conclusions documented:
 
@@ -12493,7 +12493,7 @@ Main conclusions documented:
 - FP16 fallback load is straightforward and useful for correctness/model plumbing, but not a performance/memory path.
 - Native GGUF quant execution is not drop-in from PARO Marlin-K: GGUF tensors are GGML block tensors (`Q4_0`, `Q8_0`, `Q4_K`, etc.) with embedded scale/min metadata and different quant math.
 - Recommended implementation order: scanner -> `inspect_gguf.py` tensor census -> quant-layout table/oracles -> Qwen dense name-map smoke -> FP16 fallback -> native `Q8_0` or `Q4_K` GEMV.
-- Keep GGUF as a first-class loader/quant family and preserve hipENGINE invariants: torch-free runtime, plugin registry keys, raw-pointer kernels, CPU-reference correctness gates, and benchmark artifact policy.
+- Keep GGUF as a first-class loader/quant family and preserve hipEngine invariants: torch-free runtime, plugin registry keys, raw-pointer kernels, CPU-reference correctness gates, and benchmark artifact policy.
 
 Validation: docs-only change. Re-read `docs/GGUF.md` and ran `git diff --check -- docs/GGUF.md WORKLOG.md`. No GPU run; no new performance claim.
 
@@ -12683,13 +12683,13 @@ Retained diagnostic artifact/rollup update:
 - `benchmarks/CHANGELOG.md` one-liner added.
 
 Conclusion: V3 is correctness-equivalent to the V2 direct-GQA shortcut and now
-puts hipENGINE on the richer long-term AOTriton API with a reusable persistent
+puts hipEngine on the richer long-term AOTriton API with a reusable persistent
 atomic counter.  The next useful step is a threshold sweep; default remains
 `attn_aotriton_min_tokens=0` until that lands.
 
-## 2026-05-16 — Task #15 real hipENGINE memory reporting
+## 2026-05-16 — Task #15 real hipEngine memory reporting
 
-Added process-local hipENGINE device allocation high-water tracking and benchmark
+Added process-local hipEngine device allocation high-water tracking and benchmark
 memory snapshots so Qwen3.5/PARO smokes can report comparable memory numbers.
 
 Implementation details:
@@ -12705,7 +12705,7 @@ Implementation details:
     sampled HIP used peak, and session-owned peak.
   - `memory_snapshots`: before-load, after-load, after-prefill,
     after-warmup-decode, after-decode, before-close, and after-close snapshots.
-- Caveat documented in JSON: tracked high-water covers hipENGINE-owned allocations
+- Caveat documented in JSON: tracked high-water covers hipEngine-owned allocations
   made through `hipengine.core.memory.malloc`; sampled HIP used is not a
   continuous device-wide peak.
 
@@ -12750,7 +12750,7 @@ python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --deco
 Parent comparison using tracked peak allocated as the closest analogue to parent
 Torch `peak_allocated_gib`:
 
-| Workload | hipENGINE tracked peak | parent peak allocated | Delta |
+| Workload | hipEngine tracked peak | parent peak allocated | Delta |
 | --- | ---: | ---: | ---: |
 | 512/128 | 18.63 GiB | 18.80 GiB | -0.17 GiB (-0.9%) |
 | 4K/128 | 20.81 GiB | 21.64 GiB | -0.84 GiB (-3.9%) |
@@ -12766,7 +12766,7 @@ Retained diagnostic artifact/rollup update:
 ## 2026-05-16 — Task #16 parent prefill gap audit
 
 Audited the current `nano-vllm-amd` Qwen3.5/PARO parent prefill source against
-hipENGINE's AOTriton V3 path and documented the prioritized residual-gap table in
+hipEngine's AOTriton V3 path and documented the prioritized residual-gap table in
 `docs/PREFILL.md`.
 
 Read-only source/evidence commands:
@@ -12774,7 +12774,7 @@ Read-only source/evidence commands:
 ```bash
 git status -sb && git log --oneline -4
 # ## main...origin/main [ahead 1]
-# a00c244 feat: report hipENGINE memory peaks
+# a00c244 feat: report hipEngine memory peaks
 # 3252b93 perf: move AOTriton prefill to V3 params
 # 454d684 perf: use direct AOTriton GQA prefill
 # c7e3bc1 docs: add gguf intake plan
@@ -12802,7 +12802,7 @@ Parent files audited:
 - `/home/lhl/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/paroquant.py`
 - Parent artifacts: `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json`,
   `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json`
-- hipENGINE artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-memory-diagnostic.json`
+- hipEngine artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-v3-memory-diagnostic.json`
 
 Main finding:
 
@@ -12815,7 +12815,7 @@ Main finding:
 - Highest-priority gap: parent multi-row prefill uses `F.linear(...)`/rocBLAS-like
   bulk GEMM for `ParoQuantDenseLinear` and `ParoQuantSharedExpert` (parent ledgers
   show `native_aux_dense_linear_calls=280`, `native_shared_expert_dense_calls=80`),
-  while hipENGINE uses row-wise `dense_gemv_out_fp16(...)` for linear-attention
+  while hipEngine uses row-wise `dense_gemv_out_fp16(...)` for linear-attention
   A/B and custom scalar W8A16 shared-expert kernels for all `tokens > 1`.
 - Next likely prefill lever: avoid/fuse AOTriton-side Q/K/V casts and the BF16
   attention-output gate post-pass.
@@ -12866,7 +12866,7 @@ Lineage hygiene for the kernel touch:
 
 ```bash
 python3 scripts/check_lineage.py --kind kernel --diff stat
-# DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9; no code copied from the drifted parent for this task. qwen35_rotary.hip change is a hipENGINE-only BF16-Q output specialization of the already-ported vector-position prelude.
+# DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9; no code copied from the drifted parent for this task. qwen35_rotary.hip change is a hipEngine-only BF16-Q output specialization of the already-ported vector-position prelude.
 ```
 
 ## 2026-05-16 — Task 18 AOTriton gate+rotate fusion diagnostic
@@ -12902,12 +12902,12 @@ Lineage hygiene:
 
 ```bash
 python3 scripts/check_lineage.py --kind kernel --diff stat
-# DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9; no parent kernel code was copied for this task. The new rotate gate helper is a hipENGINE-only fusion of existing gate and rotate semantics.
+# DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9; no parent kernel code was copied for this task. The new rotate gate helper is a hipEngine-only fusion of existing gate and rotate semantics.
 ```
 
 ## 2026-05-16 — Task 19 easy prefill fusion source audit
 
-Reviewed hipENGINE and nano-vllm-amd Qwen3.5/PARO prefill call structure for small launch/materialization fusions after the AOTriton cast and gate+rotate cleanups.  No GPU benchmark was run; this is a source/call-graph audit only.  Added a ranked candidate table to `docs/PREFILL.md`.
+Reviewed hipEngine and nano-vllm-amd Qwen3.5/PARO prefill call structure for small launch/materialization fusions after the AOTriton cast and gate+rotate cleanups.  No GPU benchmark was run; this is a source/call-graph audit only.  Added a ranked candidate table to `docs/PREFILL.md`.
 
 Top candidates identified:
 
@@ -12972,7 +12972,7 @@ Lineage hygiene for the runtime-state kernel touch:
 ```bash
 python3 scripts/check_lineage.py --kind kernel --diff stat
 # DRIFT remains on parent qwen35_expert.hip/smoke.hip/paroquant_kernels.py/paroquant_fusedw4.py vs baseline 22405a9.
-# No parent kernel code was copied for this task; `record_i64_scalar_indexed` is a hipENGINE-only graph-gate helper.
+# No parent kernel code was copied for this task; `record_i64_scalar_indexed` is a hipEngine-only graph-gate helper.
 ```
 
 ## 2026-05-16 — Task 21 AOTriton threshold sweep
@@ -13035,9 +13035,9 @@ Retained artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-thre
 
 ## 2026-05-16 — Long checkpoint: 4K/4K, 32K/128, attempted 128K/128
 
-Ran a long-shape checkpoint for the current hipENGINE Qwen3.5/PARO path: opt-in AOTriton threshold 512 plus one-step decode graph replay.  Hardware/env smoke stayed green (`libamdhip64.so` loads, W7900/gfx1100 visible).  These rows are diagnostic (`performance_claim=false`) because no new long-context oracle fixture was run; correctness context is inherited from the threshold-512 fixture gates in `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json`.
+Ran a long-shape checkpoint for the current hipEngine Qwen3.5/PARO path: opt-in AOTriton threshold 512 plus one-step decode graph replay.  Hardware/env smoke stayed green (`libamdhip64.so` loads, W7900/gfx1100 visible).  These rows are diagnostic (`performance_claim=false`) because no new long-context oracle fixture was run; correctness context is inherited from the threshold-512 fixture gates in `benchmarks/results/2026-05-16-hipengine-qwen35-aotriton-threshold-sweep-diagnostic.json`.
 
-hipENGINE commands/results:
+hipEngine commands/results:
 
 ```bash
 python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 4096 --decode-tokens 4096 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/task-long-checkpoint-4k-4k.json
@@ -13061,13 +13061,13 @@ cd /home/lhl/amd-gpu-tuning && <OPTIMAL env> PYTHONPATH=nano-vllm-amd:paroquant 
 
 Comparison:
 
-| Workload | hipENGINE prefill | hipENGINE decode | Parent/source | Gap / status |
+| Workload | hipEngine prefill | hipEngine decode | Parent/source | Gap / status |
 | --- | ---: | ---: | --- | --- |
 | 4K/4K | 2379.818 | 108.930 | local parent rerun 2728.305 / 104.963 | prefill -12.8%, decode +3.8%; parent 4K/4K has known graph/eager divergence caveat |
-| 32K/128 | 1718.308 | 93.933 | `~/amd-gpu-tuning/docs/OPTIMAL.md` 1880 / 98.8 | prefill -8.6%, decode -4.9%; hipENGINE tracked peak 35.10 GiB vs parent 21.37 GiB |
-| 128K/128 | blocked OOM | — | `~/amd-gpu-tuning/docs/OPTIMAL.md` 914 / 62.6 | hipENGINE lacks wired long-context chunking and reserves unchunked linear-attn scratch |
+| 32K/128 | 1718.308 | 93.933 | `~/amd-gpu-tuning/docs/OPTIMAL.md` 1880 / 98.8 | prefill -8.6%, decode -4.9%; hipEngine tracked peak 35.10 GiB vs parent 21.37 GiB |
+| 128K/128 | blocked OOM | — | `~/amd-gpu-tuning/docs/OPTIMAL.md` 914 / 62.6 | hipEngine lacks wired long-context chunking and reserves unchunked linear-attn scratch |
 
-Takeaway: the next long-context blocker is not AOTriton thresholding; it is wiring long-context prefill chunking.  Parent 32K/128 and 128K/128 rows add `NANOVLLM_PARO_PREFILL_LINEAR_CHUNK_SIZE=1024`, `NANOVLLM_PARO_MOE_CHUNK_SIZE=1024`, and full-attention post/RoPE/query chunk sizes.  hipENGINE `PrefillConfig` already has analogous fields, but the current single-request native prefill path does not apply them, so 128K cannot run on W7900 and 32K uses much higher peak memory than parent.
+Takeaway: the next long-context blocker is not AOTriton thresholding; it is wiring long-context prefill chunking.  Parent 32K/128 and 128K/128 rows add `NANOVLLM_PARO_PREFILL_LINEAR_CHUNK_SIZE=1024`, `NANOVLLM_PARO_MOE_CHUNK_SIZE=1024`, and full-attention post/RoPE/query chunk sizes.  hipEngine `PrefillConfig` already has analogous fields, but the current single-request native prefill path does not apply them, so 128K cannot run on W7900 and 32K uses much higher peak memory than parent.
 
 Retained artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-long-checkpoint-diagnostic.json`.
 
@@ -13123,7 +13123,7 @@ Default behavior remains unchanged for short/no-op chunk prompts: all chunk size
 
 ## 2026-05-16 — Task 28: retained chunking benchmark artifact
 
-Recorded the task 27 chunked-vs-unchunked long-context benchmark as a retained diagnostic artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-prefill-chunking-diagnostic.json`.  Hardware: W7900/gfx1100.  Model: Qwen3.5-35B-A3B-PARO `w4_paro`.  Common hipENGINE policy: `--attn-aotriton-min-tokens 512 --graph-replay-decode --warmup-decode-tokens 1 --max-layers 40 --require-cached-build`.  Chunked policy mirrors parent long-context knobs: linear/MoE/post/RoPE chunks `1024`, full-attn query chunk `4096`.  Correctness context comes from task 26: default unchunked fixture gate passed (`max_kl=0.04520468681522189`, top-1 `1.0`), chunked 128-row+AOTriton fixture gate passed (`max_kl=0.039568870612619614`, top-1 `1.0`), and chunked prefill + decode graph fixture passed (`final_kl=0.0`, generated IDs match eager/fixture).  `performance_claim=false`: these are single-run resident-session diagnostics, not public `LLM.generate()` accepted rows.
+Recorded the task 27 chunked-vs-unchunked long-context benchmark as a retained diagnostic artifact: `benchmarks/results/2026-05-16-hipengine-qwen35-prefill-chunking-diagnostic.json`.  Hardware: W7900/gfx1100.  Model: Qwen3.5-35B-A3B-PARO `w4_paro`.  Common hipEngine policy: `--attn-aotriton-min-tokens 512 --graph-replay-decode --warmup-decode-tokens 1 --max-layers 40 --require-cached-build`.  Chunked policy mirrors parent long-context knobs: linear/MoE/post/RoPE chunks `1024`, full-attn query chunk `4096`.  Correctness context comes from task 26: default unchunked fixture gate passed (`max_kl=0.04520468681522189`, top-1 `1.0`), chunked 128-row+AOTriton fixture gate passed (`max_kl=0.039568870612619614`, top-1 `1.0`), and chunked prefill + decode graph fixture passed (`final_kl=0.0`, generated IDs match eager/fixture).  `performance_claim=false`: these are single-run resident-session diagnostics, not public `LLM.generate()` accepted rows.
 
 Exact commands:
 
@@ -13139,7 +13139,7 @@ python3 scripts/qwen35_paro_bench.py $COMMON --prompt-length 131072 --json /tmp/
 # unchunked 128K exits 1 with HIP error 2 OOM while reserving linear_attn.out_rot
 ```
 
-Measured hipENGINE rows:
+Measured hipEngine rows:
 
 | Workload | Unchunk prefill | Chunk prefill | Delta | Unchunk decode | Chunk decode | Tracked peak GiB |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -13147,9 +13147,9 @@ Measured hipENGINE rows:
 | 32K/128 | 1731.976 | 1886.344 | +8.9% | 93.867 | 93.923 | 35.100 → 20.688 |
 | 128K/128 | OOM | 1002.409 | unblocked | — | 61.051 | OOM → 23.656 |
 
-Chunked hipENGINE vs parent `~/amd-gpu-tuning/docs/OPTIMAL.md` rows:
+Chunked hipEngine vs parent `~/amd-gpu-tuning/docs/OPTIMAL.md` rows:
 
-| Workload | hipENGINE chunked | Parent | Delta |
+| Workload | hipEngine chunked | Parent | Delta |
 | --- | ---: | ---: | ---: |
 | 4K/128 prefill | 2504.959 | 2703.0 | -7.3% |
 | 4K/128 decode | 110.117 | 112.0 | -1.7% |
@@ -13162,7 +13162,7 @@ Takeaway: chunking fixes the 128K OOM and removes the 32K memory cliff.  Long-co
 
 ## 2026-05-16 — Qwen3.5 comparison table script + 512/128 row
 
-Added a retained comparison-table snapshot and `scripts/qwen35_compare_tables.py` so the current hipENGINE resident-runner rows can be printed as separate prefill/decode/memory tables against `nano-vllm-amd`, llama.cpp HIP, or llama.cpp Vulkan.  The script is hardcoded on purpose; it is not a benchmark runner.
+Added a retained comparison-table snapshot and `scripts/qwen35_compare_tables.py` so the current hipEngine resident-runner rows can be printed as separate prefill/decode/memory tables against `nano-vllm-amd`, llama.cpp HIP, or llama.cpp Vulkan.  The script is hardcoded on purpose; it is not a benchmark runner.
 
 New 512/128 current row, using the same installed-AOTriton + decode-graph + parent-style chunk policy as the chunking checkpoint (chunk sizes exceed the 512 prompt, so this is a no-op chunk row):
 
@@ -13186,7 +13186,7 @@ python3 scripts/qwen35_compare_tables.py all
 
 Current `nano-vllm-amd` view:
 
-| Workload | hipENGINE prefill | nano parent prefill | Prefill delta | hipENGINE decode | nano parent decode | Decode delta | hipENGINE peak | nano parent peak | Peak delta |
+| Workload | hipEngine prefill | nano parent prefill | Prefill delta | hipEngine decode | nano parent decode | Decode delta | hipEngine peak | nano parent peak | Peak delta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 512/128 | 2216.487 | 2557.000 | -13.3% | 109.105 | 115.700 | -5.7% | 18.581 | 18.860 | -0.28 GiB |
 | 4K/128 | 2504.959 | 2703.000 | -7.3% | 110.117 | 112.000 | -1.7% | 19.875 | 21.640 | -1.77 GiB |
@@ -13211,11 +13211,11 @@ git diff --check
 
 ## 2026-05-16 — Optimization plan doc for beating parent/llama.cpp
 
-Reviewed the current hipENGINE docs and benchmark rollup plus parent references under `~/amd-gpu-tuning/` to create `docs/OPTIMIZE.md`, the batch-1 Qwen3.5/PARO grind plan.
+Reviewed the current hipEngine docs and benchmark rollup plus parent references under `~/amd-gpu-tuning/` to create `docs/OPTIMIZE.md`, the batch-1 Qwen3.5/PARO grind plan.
 
 Inputs reviewed included:
 
-- hipENGINE: `docs/PREFILL.md`, `docs/KERNELS.md`, `docs/ROOFLINE.md`, `docs/BENCHMARK.md`, `docs/IMPLEMENTATION.md`, `docs/MARLIN.md`, `docs/GGUF.md`, `docs/DFLASH.md`, `docs/MTP.md`, `benchmarks/README.md`, and the comparison-table artifact/script.
+- hipEngine: `docs/PREFILL.md`, `docs/KERNELS.md`, `docs/ROOFLINE.md`, `docs/BENCHMARK.md`, `docs/IMPLEMENTATION.md`, `docs/MARLIN.md`, `docs/GGUF.md`, `docs/DFLASH.md`, `docs/MTP.md`, `benchmarks/README.md`, and the comparison-table artifact/script.
 - Parent workspace: `docs/OPTIMAL.md`, `PLAN-PAROQUANT.md`, `PLAN-PAROQUANT2.md`, `PLAN-LONGCONTEXT.md`, `docs/LLAMACPP-VULKAN.md`, `PR_COMMENT-llamacpp-hip-unroll600.md`, `LESSONS-LEARNED.md`, and recent Marlin-K WORKLOG entries.
 
 Current board captured in the new plan:
@@ -13228,7 +13228,7 @@ Plan decision: do an audit-first grind rather than another blind kernel loop.  L
 
 ## 2026-05-17 — Reorganize `docs/OPTIMIZE.md` into per-category candidate tables
 
-Reviewed every parent and hipENGINE doc named in `AGENTS.md` "Key Files" plus the parent
+Reviewed every parent and hipEngine doc named in `AGENTS.md` "Key Files" plus the parent
 optimization references (`~/amd-gpu-tuning/docs/OPTIMAL.md`, `PLAN-PAROQUANT.md`,
 `PLAN-PAROQUANT2.md` including the §11 post-mortem and the live §12 punchlist,
 `PLAN-LONGCONTEXT.md`, `docs/LLAMACPP-VULKAN.md`, `PR_COMMENT-llamacpp-hip-unroll600.md`,
@@ -13424,13 +13424,13 @@ Results (peak GiB, this host, W7900):
 | 32K/128 | 21.738 | 21.533 |
 | 128K/128 | 23.605 | 23.596 |
 
-Resulting deltas vs hipENGINE tracked peak (negative = hipENGINE wins, positive = llama.cpp
+Resulting deltas vs hipEngine tracked peak (negative = hipEngine wins, positive = llama.cpp
 lower):
 
 - vs HIP: 512 `-2.54`, 4K `-1.32`, 32K `-1.05`, 128K `+0.05` GiB.
 - vs Vulkan: 512 `-2.26`, 4K `-1.09`, 32K `-0.85`, 128K `+0.06` GiB.
 
-hipENGINE wins memory at all four contexts vs HIP and Vulkan, with the 128K rows now effectively
+hipEngine wins memory at all four contexts vs HIP and Vulkan, with the 128K rows now effectively
 tied within run noise (≈50 MiB).
 
 Changes:
@@ -13472,7 +13472,7 @@ coordination rules and is left alone.
 
 ## 2026-05-17 — Packed PARO shared-expert format end-to-end (commits b46339c..a70929b + bench driver)
 
-Single canonical artifact for hipENGINE-consumable PARO checkpoints is now the **packed**
+Single canonical artifact for hipEngine-consumable PARO checkpoints is now the **packed**
 format. All three dense shared-expert projections ship the same six-tensor PARO
 suite (`qweight/qzeros/scales/theta/pairs/channel_scales`) that the dense attention
 projections already use; the duplicate fp16 `mlp.shared_expert.*.weight` fallback path is
@@ -13608,7 +13608,7 @@ to the W4 PARO format saves the per-layer fp16 fallback weights:
 
 | Path                | bytes per projection K=hidden=2048, N=shared_int=512 |
 |---------------------|------------------------------------------------------|
-| W8A16-from-fp16 (legacy, fully hipENGINE-side quantized) | int8 weight ≈ 1.0 MiB + fp32 per-row scale ≈ 2 KiB ≈ **1.00 MiB/proj** |
+| W8A16-from-fp16 (legacy, fully hipEngine-side quantized) | int8 weight ≈ 1.0 MiB + fp32 per-row scale ≈ 2 KiB ≈ **1.00 MiB/proj** |
 | W4 PARO + sidecars (this work)                            | qweight + transposed view ≈ 0.5 MiB + fp16 scales/theta/channel_scales/qzeros/pairs ≈ 30 KiB ≈ **0.53 MiB/proj** |
 
 So the shared expert weight footprint on device is roughly **halved**
@@ -13822,7 +13822,7 @@ Decode top families:
 Updated `docs/OPTIMIZE.md`:
 
 - M.3 and M.4 are `accepted` with the artifact path and rocprof caveat.
-- Replaced the old hand-narrated/parent-borrowed §5/§6 Amdahl blocks with measured hipENGINE tables.
+- Replaced the old hand-narrated/parent-borrowed §5/§6 Amdahl blocks with measured hipEngine tables.
 - Added data-backed D5.2: audit W8A16 decode kernels (`w8a16_linear_kernel`,
   `w8a16_linear_lowp_out_kernel`) for tile/occupancy headroom, explicitly **not** fused argmax.
 - Reordered §12 punchlist from measured buckets: P1 bulk dense/threshold first, W.1, D2.1+D5.2,
@@ -14709,7 +14709,7 @@ opt-in code path and kernel catalog entry are kept as evidence/diagnostic surfac
 ## 2026-05-17 — D1.4 selected-MoE post-op fold stop/reject
 
 Task #11 audited the selected-MoE post-op fold. The safe c=1 decode fold is
-already the default hipENGINE path: `run_moe_c1_fp16()` calls
+already the default hipEngine path: `run_moe_c1_fp16()` calls
 `combine_moe_c1_shared_residual_fp16()`, which launches
 `weighted_sum_shared_gate_combine_residual_out_fp16_f32w` for `tokens == 1`.
 That one kernel already performs selected-expert weighted sum, shared-gate
@@ -15451,7 +15451,7 @@ M.4 selected-region decode profile (`benchmarks/results/2026-05-17-hipengine-qwe
 
 Static inventory result:
 
-- Already fused and retained in hipENGINE:
+- Already fused and retained in hipEngine:
   - linear-attention `in_proj_qkv + in_proj_z` via `gemv_awq_dual_pack8_transposed_fp16` (`30` layers/token);
   - full-attention `q_proj + k_proj` via `gemv_awq_dual_pack8_transposed_fp16` (`10` layers/token);
   - linear-attention dense `in_proj_a + in_proj_b` via `dense_dual_gemv_out_fp16` (`30` layers/token);
@@ -15664,7 +15664,7 @@ Reasoning:
     `__launch_bounds__(32,2)->(32,4)` and fusedW4 prefill
     `__launch_bounds__(32,8)->(32,16)` because they regressed/spilled.
 - Per the project boundary, fresh kernel micro-tuning loops belong in
-  `~/amd-gpu-tuning/`; hipENGINE should port only stable parent evidence.
+  `~/amd-gpu-tuning/`; hipEngine should port only stable parent evidence.
 
 Decision: defer/no-op. Defaults remain unchanged. Reopen only after a default
 fusion is retained or parent kernel R&D produces a source-level launch-bound
@@ -16114,17 +16114,17 @@ After rebooting into TUI/headless mode, ran the canonical shisa packed Qwen3.6 c
 ### Environment
 
 - GPU: `AMD RYZEN AI MAX+ 395 w/ Radeon 8060S`, target `gfx1151`.
-- ROCm/HIP: `hipcc` reports `HIP version: 7.13.26154-ca4b97ef2c`; Python `3.12.12`; torch installed but not used by hipENGINE hot path (`2.10.0+rocm7.13.0a20260417`).
-- hipENGINE env: `HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151`.
+- ROCm/HIP: `hipcc` reports `HIP version: 7.13.26154-ca4b97ef2c`; Python `3.12.12`; torch installed but not used by hipEngine hot path (`2.10.0+rocm7.13.0a20260417`).
+- hipEngine env: `HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151`.
 - Model: `/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e` (`model.safetensors` 19.068 GiB). HF `refs/main` currently points to `176e57c1a5d823bd0f41605420d04e3441465bb4`, but both local snapshots share the same packed tensor payload.
 - GGUF comparison model: `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (file 21 GiB; llama.cpp record `model_size=20.604 GiB`).
-- APU memory caveat: `rocm-smi`/sysfs expose only a 512 MiB VRAM aperture. hipENGINE tracked allocator peak is meaningful; hipMemGetInfo sampled peaks were negative on this runtime and are not used. llama.cpp sysfs peak sampling is also aperture-limited and not a useful memory peak; the artifact records llama model size instead.
+- APU memory caveat: `rocm-smi`/sysfs expose only a 512 MiB VRAM aperture. hipEngine tracked allocator peak is meaningful; hipMemGetInfo sampled peaks were negative on this runtime and are not used. llama.cpp sysfs peak sampling is also aperture-limited and not a useful memory peak; the artifact records llama model size instead.
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-canonical-sweep-diagnostic.json`.
 
 Status: **diagnostic retained**, `performance_claim=false`. The max-layer smoke and all benchmark rows produced finite repeated-token previews (`9707` on full rows), but no shisa KL/top-1 E2E gate or repeated-run stats were run yet.
 
-### hipENGINE sweep
+### hipEngine sweep
 
 Common command shape:
 
@@ -16171,7 +16171,7 @@ and a separate `4K/4K` wrapper run. Binary reports llama.cpp build `e828394c2` /
 | 128K/128 | 376.264 | 31.322 | same |
 | 4K/4K | 1003.175 | 49.079 | same |
 
-On this Strix Halo run, hipENGINE decode beats local llama.cpp HIP on every matched row, but hipENGINE prefill trails llama.cpp at 512/4K/32K and is roughly tied/slightly behind at 128K. Keep as diagnostic until correctness/repetition gates are added.
+On this Strix Halo run, hipEngine decode beats local llama.cpp HIP on every matched row, but hipEngine prefill trails llama.cpp at 512/4K/32K and is roughly tied/slightly behind at 128K. Keep as diagnostic until correctness/repetition gates are added.
 
 ## 2026-05-17 — upstream llama.cpp HIP/Vulkan gfx1151 rerun
 
@@ -16235,7 +16235,7 @@ python3 scripts/qwen35_compare_tables.py --target gfx1151 vulkan-gfx1151 --no-me
 
 Investigated why `hip_gfx1151` shisa packed prefill trails upstream llama.cpp HIP at 4K. Baseline comparison from the retained TUI sweep:
 
-- hipENGINE shisa packed 4K/128: `630.585 prefill tok/s` / `63.364 decode tok/s`.
+- hipEngine shisa packed 4K/128: `630.585 prefill tok/s` / `63.364 decode tok/s`.
 - upstream llama.cpp HIP GGUF 4K/128: `1004.220 prefill tok/s` / `49.379 decode tok/s`.
 
 ### Profiling command
@@ -16459,3 +16459,11 @@ Keep **all256** as the retained/simple gfx1151 setting for now. It is within ~1%
 2. linear512-only: `linear=512, moe=256, full_q/post/rope=256`.
 
 Do not spend more time on global 64/128/512/1024 or broad full-factorial combinations unless W7900 shows a different architecture-specific pattern.
+
+## 2026-05-18 — Branding casing update to hipEngine
+
+### Scope
+
+- Replaced the legacy project-name casing with `hipEngine` across tracked repository files using the tracked-file match list and a Python `str.replace` pass.
+- Verification used a constructed legacy-casing search string so this log entry does not reintroduce the old contiguous spelling: `OLD=$(printf 'hip%sNGINE' E); if git grep -n "$OLD" -- .; then exit 1; else echo "No legacy casing remains in tracked files"; fi`.
+- No runtime tests were run; this was a docs/comments/metadata/string-only rename.

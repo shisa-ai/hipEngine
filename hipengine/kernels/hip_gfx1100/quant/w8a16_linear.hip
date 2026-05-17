@@ -1,5 +1,5 @@
 // Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed.
-// W8A16 linear kernel bodies are preserved; wrappers are hipENGINE C ABI.
+// W8A16 linear kernel bodies are preserved; wrappers are hipEngine C ABI.
 
 #include <hip/hip_runtime.h>
 #include <hip/hip_bfloat16.h>

@@ -3,7 +3,7 @@
 The amdgpu kernel driver exposes byte-accurate VRAM accounting under
 ``/sys/class/drm/card*/device/mem_info_vram_*``. Every userspace backend that
 allocates VRAM through the kernel driver (HIP, Vulkan, OpenCL) shows up here
-identically, so this single source of truth lets us compare hipENGINE,
+identically, so this single source of truth lets us compare hipEngine,
 llama.cpp HIP, llama.cpp Vulkan, etc. on the same scale without needing a HIP
 context or a per-backend hook.
 

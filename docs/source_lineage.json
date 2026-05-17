@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "description": "External source-lineage files hipENGINE ports from or audits before a port.",
+  "description": "External source-lineage files hipEngine ports from or audits before a port.",
   "evidence_paths": [
     "/home/lhl/github/shisa-ai/amd-gpu-tuning/WORKLOG.md",
     "/home/lhl/github/shisa-ai/amd-gpu-tuning/docs/OPTIMAL.md",

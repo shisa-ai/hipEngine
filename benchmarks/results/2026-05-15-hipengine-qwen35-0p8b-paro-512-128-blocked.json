@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-15T14:09:24+09:00",
   "run_tag": "qwen35-0p8b-paro-512-128-feasibility",
-  "summary": "hipENGINE cannot currently run z-lab/Qwen3.5-0.8B-PARO; resident Qwen3.5/PARO path expects an explicit lm_head.weight and MoE MLP tensors.",
+  "summary": "hipEngine cannot currently run z-lab/Qwen3.5-0.8B-PARO; resident Qwen3.5/PARO path expects an explicit lm_head.weight and MoE MLP tensors.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100",
@@ -67,7 +67,7 @@
     "stderr_excerpt": "Traceback (most recent call last):\n    head = _read_tensor(self.runner.normalized_infos, \"lm_head.weight\")\nKeyError: 'lm_head.weight'",
     "additional_static_blocker": "The current resident layer materializers/orchestrators are MoE-specific (materialize_qwen35_paro_*_moe_c1_runtime_layer, run_*_moe_c1_layer); this 0.8B checkpoint is dense (num_experts=0) with layers.0.mlp.gate_proj.*, not mlp.experts.*.",
     "needed_to_run": [
-      "tied-embedding lm_head fallback for hipENGINE resident/non-resident Qwen3.5/PARO runners",
+      "tied-embedding lm_head fallback for hipEngine resident/non-resident Qwen3.5/PARO runners",
       "dense Qwen3.5/PARO MLP materialization and runtime layer path",
       "then rerun 512/128 and add correctness/throughput gates"
     ]
@@ -80,5 +80,5 @@
     "decode_tok_s": 251.78,
     "peak_allocated_gib": 1.171
   },
-  "acceptance_decision": "blocked; no hipENGINE performance comparison available for this model/shape yet"
+  "acceptance_decision": "blocked; no hipEngine performance comparison available for this model/shape yet"
 }

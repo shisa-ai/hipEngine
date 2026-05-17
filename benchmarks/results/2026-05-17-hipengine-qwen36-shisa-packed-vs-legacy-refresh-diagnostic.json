@@ -42,7 +42,7 @@
     "layout_probe_prior": "tests/test_qwen35_paro_layout.py covers auto->packed and forced legacy/packed selection for dual-format checkpoints.",
     "generated_token_sanity": "All rows generated repeated token_id 9707 for the preview tokens recorded by qwen35_paro_bench.py.",
     "stripped_packed_sanity": "Packed-only auto rows at 512/4K match forced packed token previews and memory; timing differs only by single-run noise.",
-    "correctness_gate": "not run for shisa in this diagnostic pass; upstream kld-smoke.json records quantization KL, not hipENGINE E2E KL/top-1."
+    "correctness_gate": "not run for shisa in this diagnostic pass; upstream kld-smoke.json records quantization KL, not hipEngine E2E KL/top-1."
   },
   "common_command_args": "--token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512",
   "long_context_chunk_flags": "--prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024",

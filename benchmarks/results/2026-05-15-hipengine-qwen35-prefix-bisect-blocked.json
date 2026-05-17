@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-15T07:20:00-07:00",
   "run_tag": "hipengine-qwen35-c1-prefix-bisect",
-  "summary": "Prefix top-k bisect localizes the first hipENGINE vs parent sequential argmax divergence to max_layers=2, i.e. after adding layer 1 on top of the layer-0 linear-attention path.",
+  "summary": "Prefix top-k bisect localizes the first hipEngine vs parent sequential argmax divergence to max_layers=2, i.e. after adding layer 1 on top of the layer-0 linear-attention path.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100"

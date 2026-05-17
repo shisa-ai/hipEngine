@@ -1,8 +1,8 @@
-# hipENGINE Kernel Catalog and Port Playbook
+# hipEngine Kernel Catalog and Port Playbook
 
-This doc is both the live kernel catalog and the mechanics for landing a kernel in hipENGINE — porting from `~/amd-gpu-tuning/nano-vllm-amd/`, the JIT build layer, gotchas specific to this repo, and the correctness gate a port must pass.
+This doc is both the live kernel catalog and the mechanics for landing a kernel in hipEngine — porting from `~/amd-gpu-tuning/nano-vllm-amd/`, the JIT build layer, gotchas specific to this repo, and the correctness gate a port must pass.
 
-**Kernel R&D does not live here.** Micro-tuning iteration loops (`rocprofv3 --kernel-trace` ranking, VGPR/occupancy hunting, `__launch_bounds__` sweeps, fusion experiments, the device-code gotcha catalog) belong in `~/amd-gpu-tuning/`. hipENGINE receives *stable* kernels via the port pipeline below. If you find yourself opening a profiler inside the hipENGINE tree, stop and move the experiment to the parent workspace.
+**Kernel R&D does not live here.** Micro-tuning iteration loops (`rocprofv3 --kernel-trace` ranking, VGPR/occupancy hunting, `__launch_bounds__` sweeps, fusion experiments, the device-code gotcha catalog) belong in `~/amd-gpu-tuning/`. hipEngine receives *stable* kernels via the port pipeline below. If you find yourself opening a profiler inside the hipEngine tree, stop and move the experiment to the parent workspace.
 
 See also:
 - `docs/PLAN.md` "Kernel Port Strategy" — authoritative source inventory, split plan, per-family targets.
@@ -16,13 +16,13 @@ See also:
 
 | Status | Meaning |
 | --- | --- |
-| **hipENGINE landed** | Source lives in this repo, is registered or runnable through hipENGINE, and has this repo's tests/smokes. |
+| **hipEngine landed** | Source lives in this repo, is registered or runnable through hipEngine, and has this repo's tests/smokes. |
 | **CPU reference landed** | Torch-free NumPy oracle lives in `hipengine/kernels/cpu_reference/`; it is correctness infrastructure, not a HIP port. |
-| **Lineage green** | Implemented/validated in `~/amd-gpu-tuning/nano-vllm-amd/`; source for hipENGINE's copy+partition+retype port, but not yet landed here. |
-| **Lineage dirty / experimental** | Observed in the parent checkout's uncommitted worktree or R&D notes. Do not make a default hipENGINE path from it until it is promoted in `~/amd-gpu-tuning/`. |
-| **Planned** | Architecture path is decided, but no hipENGINE implementation yet. |
+| **Lineage green** | Implemented/validated in `~/amd-gpu-tuning/nano-vllm-amd/`; source for hipEngine's copy+partition+retype port, but not yet landed here. |
+| **Lineage dirty / experimental** | Observed in the parent checkout's uncommitted worktree or R&D notes. Do not make a default hipEngine path from it until it is promoted in `~/amd-gpu-tuning/`. |
+| **Planned** | Architecture path is decided, but no hipEngine implementation yet. |
 
-## hipENGINE-landed kernels and oracles
+## hipEngine-landed kernels and oracles
 
 This is the authoritative list of kernels/oracles that exist in this repo today. Empty backend family packages under `hipengine/kernels/hip_gfx1100/*/` are placeholders, not implemented kernels.
 
@@ -42,7 +42,7 @@ Registered by `hipengine.kernels.cpu_reference.register_cpu_reference_kernels()`
 
 Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, masked `attention_decode`, and causal-GQA `full_attn_prefill`; varlen full-attn is covered by direct NumPy unit tests. Run committed fixtures with `python3 scripts/check_fixtures.py`.
 
-### gfx1100 HIP kernels (**hipENGINE landed**)
+### gfx1100 HIP kernels (**hipEngine landed**)
 
 | Layer key | Quant key | Source | Public wrapper | Current gate |
 | --- | --- | --- | --- | --- |
@@ -57,7 +57,7 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, masked `atten
 | `rotate+dual_pack8_gemv` variants `transposed`, `transposed_fp16` | `w4_paro` with BF16/FP16 activations/scales | `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip` | `gemv_awq_dual_pack8_transposed_rotate_staged_bf16(...)`, `gemv_awq_dual_pack8_transposed_rotate_staged_fp16(...)` | `python3 scripts/smoke.py --mode paro-pack8-rotate-staged-hip --rows 1 --hidden-size 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact BF16/FP16 staged rotations and outputs (`mismatch=0`, `rotated_mismatch=0`, `fp16_mismatch=0`, `fp16_rotated_mismatch=0`); D1.1 opt-in graph fixture also matched generated tokens/logits (`final_kl=0`) and `rocprofv3` showed `gemv_awq_dual_pack8_transposed_rotate_staged_kernel<_Float16,true>` with `Scratch_Size=0`, `LDS_Block_Size=512`, `VGPR_Count=104`; 512/128 decode regressed `115.450 -> 110.457 tok/s`, so the runtime default remains off. Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d11-rotate-dual-pack8-fusion-rejected.json` |
 | `pack8_gemv`, `dual_pack8_gemv` variants `strided`, `transposed`, `*_fp16`; `pack8_gemm` variants `fusedw4_prefill_fp16`, `fusedw4_prefill_strided_fp16` | `w4_paro` with BF16/FP16 activations/scales | `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip` | `gemv_awq_pack8_*_bf16(...)`, `gemv_awq_dual_pack8_*_bf16(...)`, `gemv_awq_pack8_*_fp16(...)`, `gemv_awq_dual_pack8_*_fp16(...)`, `awq_fusedw4_prefill_fp16(...)`, `awq_fusedw4_prefill_strided_fp16(...)` | `python3 scripts/smoke.py --mode paro-pack8-gemv-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact generic BF16 and FP16 single/dual (`single_mismatch=0/0`, `dual_mismatch=0/0`, `fp16_single_mismatch=0/0`, `fp16_dual_mismatch=0/0`); fused-W4 route fixture gate passes (`max_kl=0.02233`, top-1 `1.0`); `rocprofv3 --kernel-trace` all-layer 512 prefill after the dual-launch wiring shows `awq_fusedw4_prefill_dual_fp16_kernel<32,32>` ran 40 times (`21.957 ms` total, avg `548.9 us`, `Scratch_Size=0`) for paired transposed Q/K and QKV/Z projections, while `awq_fusedw4_prefill_fp16_kernel<32,32,false>` ran 50 times (`14.795 ms` total) for strided V/O/linear-out projections on W7900 |
 | `marlin_k_gemv` variant `fma_fp16` | `w4_paro` qweight-neutral Marlin-K FP16 rows==1 decode | `hipengine/kernels/hip_gfx1100/quant/paro_marlin_k.hip` | `gemv_paro_marlin_k_fma_fp16(...)` | `python3 scripts/smoke.py --mode paro-marlin-k-hip --rows 2 --hidden-size 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact vs pack8 CPU oracle (`mismatch=0`, `max_abs=0`); `rocprofv3 --kernel-trace` shows `gemv_paro_marlin_k_fma_kernel<_Float16>` (`DurationNs=6720`, `VGPR_Count=104`, `Scratch_Size=0`, `LDS_Block_Size=512`) on W7900. Model fixture gates pass with default qweight-neutral replacement (`max_kl=0.0395688706`, top-1 `1.0`; graph/eager generated IDs match, final KL `0`), and D2.1 3-run diagnostic improves 512/128 and 4K/128 decode by `+5.57%/+5.61%` while lowering tracked peak by `0.411 GiB` vs `HIPENGINE_PARO_MARLIN_K_REPLACE=0`. |
-| `silu_mul_dual`, `silu_mul_separate`, `silu_mul_dual_rotate`, `silu_mul_pair_rotate` variants `out`, `out_fp16` | `bf16`, `fp16`, `w4_paro` | `hipengine/kernels/hip_gfx1100/fused/paro_silu.hip` | `silu_mul_dual_out_bf16(...)`, `silu_mul_dual_out_fp16(...)`, `silu_mul_separate_out_bf16(...)`, `silu_mul_separate_out_fp16(...)`, `silu_mul_dual_rotate_out_bf16(...)`, `silu_mul_dual_rotate_out_fp16(...)`, `silu_mul_pair_rotate_out_bf16(...)`, `silu_mul_pair_rotate_out_fp16(...)` | `python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact BF16 and FP16 dual SiLU and dual/pair rotate (`*_mismatch=0`, `*_fp16_mismatch=0`); `rocprofv3` shows FP16 `silu_mul_dual_out_kernel<_Float16>` (`DurationNs=1680`, `Scratch_Size=0`), `silu_mul_dual_rotate_out_kernel<_Float16>` (`DurationNs=11960`, `Scratch_Size=0`, `LDS_Block_Size=64`), and `silu_mul_pair_rotate_out_kernel<_Float16>` (`DurationNs=8480`, `Scratch_Size=0`) on W7900. `silu_mul_separate_out_{fp16,bf16}` is a hipENGINE-original variant that takes two separate `[rows, features]` buffers (gate, up) instead of a packed `[rows, 2*features]` input; used by the W4 PARO dense shared expert where gate/up have distinct rotations and can’t share a packed layout. Bit-exact vs `silu_mul_dual_out_fp16` on synthetic data (`max_abs_diff=0`) and launches successfully on W7900. |
+| `silu_mul_dual`, `silu_mul_separate`, `silu_mul_dual_rotate`, `silu_mul_pair_rotate` variants `out`, `out_fp16` | `bf16`, `fp16`, `w4_paro` | `hipengine/kernels/hip_gfx1100/fused/paro_silu.hip` | `silu_mul_dual_out_bf16(...)`, `silu_mul_dual_out_fp16(...)`, `silu_mul_separate_out_bf16(...)`, `silu_mul_separate_out_fp16(...)`, `silu_mul_dual_rotate_out_bf16(...)`, `silu_mul_dual_rotate_out_fp16(...)`, `silu_mul_pair_rotate_out_bf16(...)`, `silu_mul_pair_rotate_out_fp16(...)` | `python3 scripts/smoke.py --mode paro-silu-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact BF16 and FP16 dual SiLU and dual/pair rotate (`*_mismatch=0`, `*_fp16_mismatch=0`); `rocprofv3` shows FP16 `silu_mul_dual_out_kernel<_Float16>` (`DurationNs=1680`, `Scratch_Size=0`), `silu_mul_dual_rotate_out_kernel<_Float16>` (`DurationNs=11960`, `Scratch_Size=0`, `LDS_Block_Size=64`), and `silu_mul_pair_rotate_out_kernel<_Float16>` (`DurationNs=8480`, `Scratch_Size=0`) on W7900. `silu_mul_separate_out_{fp16,bf16}` is a hipEngine-original variant that takes two separate `[rows, features]` buffers (gate, up) instead of a packed `[rows, 2*features]` input; used by the W4 PARO dense shared expert where gate/up have distinct rotations and can’t share a packed layout. Bit-exact vs `silu_mul_dual_out_fp16` on synthetic data (`max_abs_diff=0`) and launches successfully on W7900. |
 | `weighted_sum`, `weighted_lanes_sum`, `weighted_sum+shared_gate+residual`, `shared_gate_combine`, `shared_gate_combine+residual` variants `out`, `out_fp16`, `batch_out`, `batch_out_fp16` | `bf16`, `fp16`, `w4_paro` with FP32 weights/gate logits | `hipengine/kernels/hip_gfx1100/fused/paro_combine.hip` | `weighted_sum_out_{bf16,fp16}_f32w(...)`, `weighted_lanes_sum_out_{bf16,fp16}_f32w(...)`, `weighted_sum_shared_gate_combine_residual*_{bf16,fp16}_f32w(...)`, `shared_gate_combine*_{bf16,fp16}(...)` | `python3 scripts/smoke.py --mode paro-combine-hip --rows 4 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact BF16 and FP16 weighted/shared/residual combine including batched selected weighted + shared/residual and grouped sorted-lane accumulation (`*_mismatch=0`, `*_fp16_mismatch=0`); `rocprofv3` shows weighted-lane and batch combine kernels, including `weighted_lanes_sum_out_kernel<unsigned short>` (`DurationNs=2080`), `weighted_lanes_sum_out_kernel<_Float16>` (`2000`), and `shared_gate_combine_residual_batch_out_kernel<_Float16>` (`2120`) on W7900 |
 | `awq_wmma` compact selected dual/single pack8 | `bf16`, `fp16`, `w4_paro` compact grouped MoE | `hipengine/kernels/hip_gfx1100/wmma/paro_awq_wmma.hip` | `gemm_awq_selected_dual_pack8_wmma_compact_{bf16,fp16}(...)`, `gemm_awq_selected_pack8_wmma_compact_{bf16,fp16}(...)` | `python3 scripts/smoke.py --mode paro-awq-wmma-compact-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → tiny compact AWQ WMMA fixture passes (`dual_mismatch=0`, `single_mismatch=0`, FP16 mismatches `0`); `rocprofv3` shows compact dual/single WMMA kernels for BF16/FP16, e.g. BF16 dual `DurationNs=10520`, BF16 single `6361`, FP16 dual `6760`, FP16 single `5161` on W7900 |
 | `dense_gemv`/`dense_dual_gemv` variants `out`, `out_fp16` | `bf16`, `fp16`, `w4_paro` | `hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip` | `dense_gemv_out_bf16(...)`, `dense_dual_gemv_out_bf16(...)`, `dense_gemv_out_fp16(...)`, `dense_dual_gemv_out_fp16(...)` | `python3 scripts/smoke.py --mode dense-gemv-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact BF16 single and FP16 single/dual GEMV (`mismatch=0`, `fp16_mismatch=0`, `dual_fp16_mismatch=0`, max abs `0.0`); `rocprofv3` shows FP16 `dense_gemv_out_kernel<_Float16>` (`DurationNs=3440`, `Scratch_Size=0`, `LDS_Block_Size=1024`) and `dense_dual_gemv_out_kernel<_Float16>` (`DurationNs=4040`, `Scratch_Size=0`) on W7900 |
@@ -88,23 +88,23 @@ The Qwen3.5/PARO resident generation and benchmark harness accept `backend="hip_
 
 `qwen35_rmsnorm` is the first real model-layer HIP family port. It is BF16-bit (`uint16_t`) at the raw pointer ABI; Qwen weights store deltas and the kernel applies `1.0 + weight_delta`. PARO `paro_out` RMSNorm variants use direct norm weights and caller-owned output buffers, matching the parent native PARO serving path.
 
-`paro_awq_gemv` ports the selected-expert and generic pack8 GEMV bodies used by the current OPTIMAL MoE c=1 route and non-MoE projections. The fused rotate→selected-dual GEMV path is landed for the parent strided layout; generic non-MoE and selected-MoE wrappers now cover strided/transposed qweight layouts for both BF16 and parent-parity FP16 activation/scale buffers. D1.1 added a generic transposed rotate-staged dual GEMV surface for decode diagnostics, but it remains opt-in/default-off because the rotate-once barrier/staging path regressed 512/128 decode. The FP16 `awq_fusedw4_prefill_fp16` WMMA prefill projection is ported from `nano-vllm-amd@55fede9` (`paroquant_fusedw4.py`) and is used for multi-token transposed pack8 prompt projections. hipENGINE also provides `awq_fusedw4_prefill_dual_fp16`, a same-math dual-output launch used for paired transposed Q/K and QKV/Z prefill projections, plus a strided-layout instantiation for V/O/linear-out prompt projections without adding transposed weight copies. The GEMV wrappers are retained as c=1/small-row fallbacks.
+`paro_awq_gemv` ports the selected-expert and generic pack8 GEMV bodies used by the current OPTIMAL MoE c=1 route and non-MoE projections. The fused rotate→selected-dual GEMV path is landed for the parent strided layout; generic non-MoE and selected-MoE wrappers now cover strided/transposed qweight layouts for both BF16 and parent-parity FP16 activation/scale buffers. D1.1 added a generic transposed rotate-staged dual GEMV surface for decode diagnostics, but it remains opt-in/default-off because the rotate-once barrier/staging path regressed 512/128 decode. The FP16 `awq_fusedw4_prefill_fp16` WMMA prefill projection is ported from `nano-vllm-amd@55fede9` (`paroquant_fusedw4.py`) and is used for multi-token transposed pack8 prompt projections. hipEngine also provides `awq_fusedw4_prefill_dual_fp16`, a same-math dual-output launch used for paired transposed Q/K and QKV/Z prefill projections, plus a strided-layout instantiation for V/O/linear-out prompt projections without adding transposed weight copies. The GEMV wrappers are retained as c=1/small-row fallbacks.
 
-`paro_marlin_k` ports the parent retained Marlin-K v0 vec8 FP32-FMA rows==1 decode path documented in `docs/MARLIN.md` and `/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md` (`nano-vllm-amd@7718fff` vec8 FMA and `@1522293` qweight-neutral replacement; those short SHAs are documented but not present in the current parent checkout). hipENGINE materializes `qweight_mk [N/8,K/128,128]`, small `qzeros_mk/scales_mk` decode metadata, and a zero-copy `qweight_pack8_decode [N/8,K]` alias so prefill and fused pair projections keep using the existing pack8/fusedw4 paths without duplicate large W4 buffers. The env gate `HIPENGINE_PARO_MARLIN_K_REPLACE` defaults on; setting it to `0` restores the old pack8/raw-qweight materialization for diagnostics.
+`paro_marlin_k` ports the parent retained Marlin-K v0 vec8 FP32-FMA rows==1 decode path documented in `docs/MARLIN.md` and `/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md` (`nano-vllm-amd@7718fff` vec8 FMA and `@1522293` qweight-neutral replacement; those short SHAs are documented but not present in the current parent checkout). hipEngine materializes `qweight_mk [N/8,K/128,128]`, small `qzeros_mk/scales_mk` decode metadata, and a zero-copy `qweight_pack8_decode [N/8,K]` alias so prefill and fused pair projections keep using the existing pack8/fusedw4 paths without duplicate large W4 buffers. The env gate `HIPENGINE_PARO_MARLIN_K_REPLACE` defaults on; setting it to `0` restores the old pack8/raw-qweight materialization for diagnostics.
 
 `paro_silu` ports the selected-expert activation and down-rotation stage, including the fused `silu_mul_dual_rotate_out_kernel` path used by the parent default and the unfused/separate-gate fallback kernels.
 
-`paro_combine` ports the c=1 selected-weighted/shared-gate/residual combine kernels. The current hipENGINE wrappers cover the parent default FP32 router-weight/gate-logit path; scalar-weight variants can be added if a future route needs them.
+`paro_combine` ports the c=1 selected-weighted/shared-gate/residual combine kernels. The current hipEngine wrappers cover the parent default FP32 router-weight/gate-logit path; scalar-weight variants can be added if a future route needs them.
 
 `dense_gemv` ports the parent PARO BF16 dense GEMV used by auxiliary dense paths such as linear-attention AB projections when they remain dense rather than W4/W8 quantized. `lm_head` is the temporary GPU E2E bring-up head: FP16 checkpoint weights, BF16 hidden input, FP32 logits, and two-stage GPU argmax so the one-token harness no longer depends on CPU NumPy for final-token selection.
 
-`paro_rotate` ports the parent PARO pairwise rotation helpers used by PARO projection paths (`paro_rotate1`, `paro_rotate2`, `paro_rotate3`); rotate1 is the single-output specialization needed by projection tails such as linear-attention `out_proj`. The wrappers cover both BF16 and parent-parity FP16 activation/scales, plus `paro_rotate1_bf16_gate_fp16(...)` for the AOTriton prefill tail: it rounds `BF16 attention * sigmoid(FP16 gate)` to FP16 before applying the same PARO rotate1 math, matching the old gate-kernel + rotate1 sequence while removing one launch. `qwen35_rotary` ports the parent full-attention prelude (`partial_rotary`, fused head RMSNorm + partial rotary, table-positioned scalar fused head RMSNorm + partial rotary, and hipENGINE's vector-position `(tokens, heads)` prefill variant) plus resident q/gate split helpers for BF16 and parent-mixed FP16 activation streams; the AOTriton prefill path also has a vector-position variant that writes BF16 Q directly while preserving FP32 K for the paged-KV append. `convert/cast` provides small runtime glue casts for paths where a parent kernel emits FP32 or FP16 but the next PARO/lm-head projection consumes a different lowp dtype.
+`paro_rotate` ports the parent PARO pairwise rotation helpers used by PARO projection paths (`paro_rotate1`, `paro_rotate2`, `paro_rotate3`); rotate1 is the single-output specialization needed by projection tails such as linear-attention `out_proj`. The wrappers cover both BF16 and parent-parity FP16 activation/scales, plus `paro_rotate1_bf16_gate_fp16(...)` for the AOTriton prefill tail: it rounds `BF16 attention * sigmoid(FP16 gate)` to FP16 before applying the same PARO rotate1 math, matching the old gate-kernel + rotate1 sequence while removing one launch. `qwen35_rotary` ports the parent full-attention prelude (`partial_rotary`, fused head RMSNorm + partial rotary, table-positioned scalar fused head RMSNorm + partial rotary, and hipEngine's vector-position `(tokens, heads)` prefill variant) plus resident q/gate split helpers for BF16 and parent-mixed FP16 activation streams; the AOTriton prefill path also has a vector-position variant that writes BF16 Q directly while preserving FP32 K for the paged-KV append. `convert/cast` provides small runtime glue casts for paths where a parent kernel emits FP32 or FP16 but the next PARO/lm-head projection consumes a different lowp dtype.
 
-`w8a16_linear` ports the parent W8A16 GEMV kernels used by the current shared-expert default (`hip_w8a16_linear_lowp_out`) and W8A16 lm-head/auxiliary dense route. Lowp output wrappers now cover both BF16 and parent-parity FP16 activation streams. The FP16 `w8a16_shared_gate_up_silu_fp16` prefill helper adapts parent `w8a16_shared_gate_up_bulk4_kernel` to the raw-pointer lowp-output path, computing four shared-expert intermediate columns per block and writing the existing `shared_intermediate` scratch. `w8a16_shared_gate_up_silu_fp16_token_tiled` is a hipENGINE prefill variant that preserves W8A16 storage while sharing gate/up weights across adjacent prompt tokens; runtime defaults use `token_tile=2` for legacy shared experts only when `tokens >= 1024`, with the original helper retained as fallback/opt-out. `w8a16_shared_gate_sigmoid_fp32` precomputes the shared-expert sigmoid once per token in the router shared-gate column after top-k/routing weights are materialized. The FP16 `w8a16_shared_down_combine_residual_fp16` helper consumes that precomputed gate while fusing grouped-prefill shared down projection with selected-output/shared-gate/residual combine; its default tile computes eight hidden rows per block, preserving the already-rounded `selected_out` ABI and exact per-row accumulation order. `w8a16_shared_down_combine_residual_fp16_token_tiled` shares the same fused tail while reusing down rows across adjacent prompt tokens; runtime defaults use `token_tile=2` for legacy prefill `tokens >= 2`, with the original helper retained as fallback/opt-out. c=1 and non-grouped paths keep the unfused gate/up/down/combine fallbacks. `scripts/smoke.py --mode w8a16-shared-expert-hip` chains W8A16 gate/up → `silu_mul_dual_out` → W8A16 down and is bit-exact against the staged BF16 NumPy oracle. `scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8` is the direct synthetic c=1 decode vertical smoke; `scripts/smoke.py --mode paro-moe-c1-state-hip --hidden-size 8` drives the same staged fixture through `Qwen35ParoDecodeState.run_moe_c1_bf16(...)` and validates the normalized prepared-weight/runtime-workspace path.
+`w8a16_linear` ports the parent W8A16 GEMV kernels used by the current shared-expert default (`hip_w8a16_linear_lowp_out`) and W8A16 lm-head/auxiliary dense route. Lowp output wrappers now cover both BF16 and parent-parity FP16 activation streams. The FP16 `w8a16_shared_gate_up_silu_fp16` prefill helper adapts parent `w8a16_shared_gate_up_bulk4_kernel` to the raw-pointer lowp-output path, computing four shared-expert intermediate columns per block and writing the existing `shared_intermediate` scratch. `w8a16_shared_gate_up_silu_fp16_token_tiled` is a hipEngine prefill variant that preserves W8A16 storage while sharing gate/up weights across adjacent prompt tokens; runtime defaults use `token_tile=2` for legacy shared experts only when `tokens >= 1024`, with the original helper retained as fallback/opt-out. `w8a16_shared_gate_sigmoid_fp32` precomputes the shared-expert sigmoid once per token in the router shared-gate column after top-k/routing weights are materialized. The FP16 `w8a16_shared_down_combine_residual_fp16` helper consumes that precomputed gate while fusing grouped-prefill shared down projection with selected-output/shared-gate/residual combine; its default tile computes eight hidden rows per block, preserving the already-rounded `selected_out` ABI and exact per-row accumulation order. `w8a16_shared_down_combine_residual_fp16_token_tiled` shares the same fused tail while reusing down rows across adjacent prompt tokens; runtime defaults use `token_tile=2` for legacy prefill `tokens >= 2`, with the original helper retained as fallback/opt-out. c=1 and non-grouped paths keep the unfused gate/up/down/combine fallbacks. `scripts/smoke.py --mode w8a16-shared-expert-hip` chains W8A16 gate/up → `silu_mul_dual_out` → W8A16 down and is bit-exact against the staged BF16 NumPy oracle. `scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8` is the direct synthetic c=1 decode vertical smoke; `scripts/smoke.py --mode paro-moe-c1-state-hip --hidden-size 8` drives the same staged fixture through `Qwen35ParoDecodeState.run_moe_c1_bf16(...)` and validates the normalized prepared-weight/runtime-workspace path.
 
 ## Source-lineage drift check
 
-Before porting a family, check whether the parent source moved since the last hipENGINE catalog/audit baseline:
+Before porting a family, check whether the parent source moved since the last hipEngine catalog/audit baseline:
 
 ```bash
 python3 scripts/check_lineage.py --diff stat
@@ -130,9 +130,9 @@ If a file reports **DRIFT**, inspect the listed commits/diff and read the eviden
 
 ## Source-lineage kernel catalog to port
 
-The stable source-lineage port set at the current hipENGINE catalog baseline is the committed `nano-vllm-amd` Qwen3.5/PARO kernel set: **95** kernels from `csrc/amd/qwen35_expert.hip` plus **25** PARO kernels from `nanovllm/native/qwen35/paroquant_kernels.py` = **120 Qwen/PARO kernels**, plus the separate `smoke_add` build smoke. hipENGINE ports these by family; bodies are preserved byte-for-byte except for includes and raw-pointer host-wrapper retyping.
+The stable source-lineage port set at the current hipEngine catalog baseline is the committed `nano-vllm-amd` Qwen3.5/PARO kernel set: **95** kernels from `csrc/amd/qwen35_expert.hip` plus **25** PARO kernels from `nanovllm/native/qwen35/paroquant_kernels.py` = **120 Qwen/PARO kernels**, plus the separate `smoke_add` build smoke. hipEngine ports these by family; bodies are preserved byte-for-byte except for includes and raw-pointer host-wrapper retyping.
 
-### Atomic / primitive-oriented kernel families (**source-lineage status; hipENGINE-landed where noted**)
+### Atomic / primitive-oriented kernel families (**source-lineage status; hipEngine-landed where noted**)
 
 - `wmma/wmma_i8_gemm.hip` (4):
   - `qwen35_wmma_i8_tile_kernel`
@@ -186,7 +186,7 @@ The stable source-lineage port set at the current hipENGINE catalog baseline is 
   - `qwen35_moe_gather_quantize_packed_hidden_kernel`
   - `qwen35_build_lane_to_sorted_kernel`
   - `qwen35_moe_combine_kernel`
-- `moe/router.hip` top-k subset (2) — **hipENGINE landed for BF16 hidden/weight raw-pointer wrappers**:
+- `moe/router.hip` top-k subset (2) — **hipEngine landed for BF16 hidden/weight raw-pointer wrappers**:
   - `qwen35_router_logits_kernel`
   - `qwen35_router_select_kernel`
 - `moe/router.hip` token-rank/top2 subset (4):
@@ -216,12 +216,12 @@ The stable source-lineage port set at the current hipENGINE catalog baseline is 
   - `qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel`
   - `qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel`
   - `qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16_kernel`
-- `norm/rmsnorm.hip` Qwen primitive subset (4) — **hipENGINE landed for BF16 raw-pointer wrappers**:
+- `norm/rmsnorm.hip` Qwen primitive subset (4) — **hipEngine landed for BF16 raw-pointer wrappers**:
   - `qwen35_rmsnorm_kernel`
   - `qwen35_add_rmsnorm_kernel`
   - `qwen35_add_rmsnorm_f32_kernel`
   - `qwen35_head_rmsnorm_kernel`
-- `norm/rmsnorm.hip` PARO subset (2) — **hipENGINE landed for BF16 and FP16 raw-pointer wrappers**:
+- `norm/rmsnorm.hip` PARO subset (2) — **hipEngine landed for BF16 and FP16 raw-pointer wrappers**:
   - `paro_rmsnorm_out_kernel`
   - `paro_add_rmsnorm_out_kernel`
 - `rotary/rotary.hip` Qwen primitive subset (1):
@@ -266,7 +266,7 @@ The stable source-lineage port set at the current hipENGINE catalog baseline is 
   - `paro_rotate2_kernel`
   - `paro_rotate3_kernel`
 
-### Fused / composite kernel families (**lineage green, not yet hipENGINE-landed**)
+### Fused / composite kernel families (**lineage green, not yet hipEngine-landed**)
 
 Each fused kernel still requires an unfused fallback chain registered under its primitive components.
 
@@ -299,7 +299,7 @@ Each fused kernel still requires an unfused fallback chain registered under its 
 
 ### Source catalog drift requiring refresh before PARO/WMMA ports
 
-The last manual hipENGINE catalog audit (`docs/source_lineage.json` baseline `22405a9`) counted the committed PARO embedded-HIP set at 25 kernels and observed six additional parent-worktree kernels beyond that committed set:
+The last manual hipEngine catalog audit (`docs/source_lineage.json` baseline `22405a9`) counted the committed PARO embedded-HIP set at 25 kernels and observed six additional parent-worktree kernels beyond that committed set:
 
 - `gemv_awq_mbatch_dual_pack8_kernel`
 - `gemv_awq_mbatch_pack8_kernel`
@@ -310,11 +310,11 @@ The last manual hipENGINE catalog audit (`docs/source_lineage.json` baseline `22
 
 `~/amd-gpu-tuning/docs/OPTIMAL.md` now promotes a compact-WMMA route, and `scripts/check_lineage.py` reports drift in `qwen35_expert.hip`, `extension.cpp`, `paroquant_kernels.py`, `paroquant.py`, and `expert.py` after `22405a9`. Therefore, treat the 120-kernel catalog above as the **baseline catalog**, not the final PARO/WMMA port inventory.
 
-Current OPTIMAL source refresh at `nano-vllm-amd@59195ed` adds **5 kernels** over the baseline catalog: `qwen35_moe_wmma_tile_map_kernel` in `qwen35_expert.hip`, plus `gemm_awq_selected_dual_pack8_wmma_kernel`, `gemm_awq_selected_pack8_wmma_kernel`, `gemm_awq_selected_dual_pack8_wmma_compact_kernel`, and `gemm_awq_selected_pack8_wmma_compact_kernel` in `paroquant_kernels.py`. That refresh's full Qwen/PARO HIP inventory is **96** monolithic kernels + **29** PARO/WMMA kernels = **125** kernels, excluding `smoke_add`. Additional parent drift observed at `nano-vllm-amd@b95eaa5` adds five tree/speculative linear-attention kernels (`qwen35_linear_attn_tree_conv_decode_lowp*`, `qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp*`, and `qwen35_gdn_tree_rmsnorm_gate_finalize_kernel`), bringing the observed parent inventory to **101** monolithic kernels + **29** PARO/WMMA kernels = **130** kernels. The dense-projection fused W4 prefill source is tracked separately in `paroquant_fusedw4.py`; hipENGINE has ported its FP16 raw-pointer WMMA kernel for transposed pack8 prompt projections and added a strided-layout instantiation for existing non-transposed prompt weights. Those tree kernels are not the compact prompt-slab `cu_seqlens` ABI and were not ported for the segment-prefill task. Before porting PARO/WMMA or tree kernels, read the listed WORKLOG/OPTIMAL evidence and keep this checklist synchronized with the source commit used.
+Current OPTIMAL source refresh at `nano-vllm-amd@59195ed` adds **5 kernels** over the baseline catalog: `qwen35_moe_wmma_tile_map_kernel` in `qwen35_expert.hip`, plus `gemm_awq_selected_dual_pack8_wmma_kernel`, `gemm_awq_selected_pack8_wmma_kernel`, `gemm_awq_selected_dual_pack8_wmma_compact_kernel`, and `gemm_awq_selected_pack8_wmma_compact_kernel` in `paroquant_kernels.py`. That refresh's full Qwen/PARO HIP inventory is **96** monolithic kernels + **29** PARO/WMMA kernels = **125** kernels, excluding `smoke_add`. Additional parent drift observed at `nano-vllm-amd@b95eaa5` adds five tree/speculative linear-attention kernels (`qwen35_linear_attn_tree_conv_decode_lowp*`, `qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp*`, and `qwen35_gdn_tree_rmsnorm_gate_finalize_kernel`), bringing the observed parent inventory to **101** monolithic kernels + **29** PARO/WMMA kernels = **130** kernels. The dense-projection fused W4 prefill source is tracked separately in `paroquant_fusedw4.py`; hipEngine has ported its FP16 raw-pointer WMMA kernel for transposed pack8 prompt projections and added a strided-layout instantiation for existing non-transposed prompt weights. Those tree kernels are not the compact prompt-slab `cu_seqlens` ABI and were not ported for the segment-prefill task. Before porting PARO/WMMA or tree kernels, read the listed WORKLOG/OPTIMAL evidence and keep this checklist synchronized with the source commit used.
 
 ## Qwen3.5 MoE / PARO path map
 
-This section maps the current source-lineage inference path that hipENGINE should preserve when porting `z-lab/Qwen3.5-35B-A3B-PARO` (`w4_paro`, W4A16) from `nano-vllm-amd`. It is **not** an hipENGINE performance claim yet; it is the target graph/kernel route to reproduce after the port.
+This section maps the current source-lineage inference path that hipEngine should preserve when porting `z-lab/Qwen3.5-35B-A3B-PARO` (`w4_paro`, W4A16) from `nano-vllm-amd`. It is **not** an hipEngine performance claim yet; it is the target graph/kernel route to reproduce after the port.
 
 ### Current optimal route
 
@@ -340,17 +340,17 @@ Correctness hierarchy for these rows: HF PARO oracle for model correctness; scal
 
 ### Base flags to preserve
 
-`OPTIMAL.md` lists 23 base environment flags. hipENGINE should preserve the same routing decisions as registry/plugin configuration rather than copying env-var checks into engine code:
+`OPTIMAL.md` lists 23 base environment flags. hipEngine should preserve the same routing decisions as registry/plugin configuration rather than copying env-var checks into engine code:
 
 - **MoE dispatch:** compact stacked layout, in-place selected-MoE repack replacement, GPU expert gather, grouped-stacked max tokens `4096`, native weighted lanes, grouped-stacked SiLU+rotate fusion, decode selected-MoE SiLU/down-rotate fusion, native router.
-- **GEMV / WMMA:** PARO vec8 GEMV, pack8 qweight replacement, transposed pack8 disabled on W7900, WMMA GEMM enabled for prefill MoE, compact WMMA buffers, parent `WMMA_MIN_TOKENS=64` (crossover vs GEMV ~48 tokens); hipENGINE P1.4 retains compact WMMA for all multi-token single-request prefill (`HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS=2`) after GEMV fallback lost at 128/256/512/4096 prompts.
+- **GEMV / WMMA:** PARO vec8 GEMV, pack8 qweight replacement, transposed pack8 disabled on W7900, WMMA GEMM enabled for prefill MoE, compact WMMA buffers, parent `WMMA_MIN_TOKENS=64` (crossover vs GEMV ~48 tokens); hipEngine P1.4 retains compact WMMA for all multi-token single-request prefill (`HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS=2`) after GEMV fallback lost at 128/256/512/4096 prompts.
 - **Attention:** full-attention gate fusion, full-attention Q/K pack8 fusion, grouped-GQA paged context attention, paged max splits `512`.
 - **Linear/projections:** W8A16 `lm_head`, W8A16 shared expert dense branch, fused linear-attention A/B projection, pack8 fused linear-attention QKV+Z projection.
 - **Routing threshold:** native router prefill path begins at `512` tokens.
 
 ### Current OPTIMAL MoE port checklist (`nano-vllm-amd@59195ed`)
 
-The checklist below is the active port map for reproducing the parent compact-WMMA + graph-replay route. Status values are hipENGINE status, not parent status.
+The checklist below is the active port map for reproducing the parent compact-WMMA + graph-replay route. Status values are hipEngine status, not parent status.
 
 #### Source refresh deltas since baseline `22405a9`
 
@@ -364,7 +364,7 @@ The checklist below is the active port map for reproducing the parent compact-WM
 
 #### MoE decode c=1 path
 
-| Stage | Parent kernels / wrappers | hipENGINE status | Notes / gate |
+| Stage | Parent kernels / wrappers | hipEngine status | Notes / gate |
 | --- | --- | --- | --- |
 | RMSNorm / residual | `paro_rmsnorm_out_kernel`, `paro_add_rmsnorm_out_kernel`; Qwen BF16 `qwen35_*rmsnorm*` family | **Landed for BF16 and FP16 PARO raw-pointer wrappers** | PARO out-kernels multiply direct norm weights and now cover the parent FP16 activation path; Qwen kernels use `1.0 + weight_delta`. |
 | Router + shared gate | `qwen35_router_logits_kernel`, `qwen35_router_select_kernel`, `hip_qwen35_router_topk_shared_out` | **Landed for BF16 and FP16 hidden raw-pointer shared-out routes; cooperative decode fold is opt-in/rejected** | Current wrappers write logits/selected/routing buffers and shared-gate logits with BF16 router weights; FP16 hidden specialization covers parent-mixed activation materialization. `HIPENGINE_PARO_ROUTER_TOPK_COOP=1` runs a diagnostic atomic last-producer fold that preserves the one-block-per-row logits grid but is not default after D1.5 regressed graph replay. |
@@ -377,7 +377,7 @@ The checklist below is the active port map for reproducing the parent compact-WM
 
 #### MoE prefill compact-WMMA path
 
-| Stage | Parent kernels / wrappers | hipENGINE status | Notes / gate |
+| Stage | Parent kernels / wrappers | hipEngine status | Notes / gate |
 | --- | --- | --- | --- |
 | Lane grouping | `qwen35_moe_group_count_kernel`, `qwen35_moe_group_prefix_kernel`, `qwen35_moe_group_scatter[_gather]_kernel`, `qwen35_moe_gather_packed_hidden_kernel` | **Landed for metadata + lowp packed-hidden gather** | `qwen35-moe-group-scatter-hip` validates count/prefix/scatter_gather/gather; expert GEMM/WMMA still required before retained MoE prefill. |
 | Compact WMMA tile map | `qwen35_moe_wmma_tile_map_kernel` | **Landed** | Maps compact expert starts to WMMA tiles without pad-multiple=16 overhead. |
@@ -389,7 +389,7 @@ The checklist below is the active port map for reproducing the parent compact-WM
 
 #### Full-inference dependencies outside MoE
 
-| Area | Required for reproducing parent inference | hipENGINE status |
+| Area | Required for reproducing parent inference | hipEngine status |
 | --- | --- | --- |
 | PARO quant plugin / weight layout | `w4_paro` plugin, pack8 replacement layout, compact stacked MoE weights, W8A16 shared/lm-head replacements | Missing; only `bf16` plugin landed. |
 | Model plugin / scheduler | Qwen3.5 hybrid full-attn + linear-attn/GDN + MoE layer sequence, static decode buffers, one-step graph replay | Missing; `LLM.generate()` is still scaffolded. |
@@ -397,11 +397,11 @@ The checklist below is the active port map for reproducing the parent compact-WM
 | Linear attention / GDN | `qwen35_linear_attn_conv_*`, `qwen35_gdn_*` incl. lowp recurrent RMSNorm gate | Landed for current Qwen3.5/PARO path: decode conv/GDN, single-request prefill conv/GDN, and segment-aware compact-slab conv/GDN state kernels are available; remaining c>N work is packed orchestration with varlen full-attn/final commit. |
 | Full attention / KV | `awq_fusedw4_prefill_fp16`, `awq_fusedw4_prefill_strided_fp16`, `qwen35_head_rmsnorm_partial_rotary*`, `qwen35_write_paged_kv_mixed_value*`, paged/split-K full-attention decode family, `full_attn_gate_mul_out` | Partial: FP16 fused-W4 prompt projection for transposed Q/K and strided V/O, full-attention prelude, span-shaped paged KV append, span-shaped paged context-tensor decode, generic split-K reduce, FP32/BF16 gated split-K reduce, and Qwen3.5 GQA-specialized split-K context variants landed; remaining gaps are non-context/int8/8K legacy variants and engine allocation/plumbing. |
 | Final head | W8A16 `lm_head` replacement path | Missing. |
-| Eval harness | Parent baseline JSON capture + hipENGINE JSON schema-2 artifacts + KL/top-1/sample/graph validation gates | Not yet landed. |
+| Eval harness | Parent baseline JSON capture + hipEngine JSON schema-2 artifacts + KL/top-1/sample/graph validation gates | Not yet landed. |
 
 #### Port order for the OPTIMAL exercise
 
-1. **Measurement harness first:** run/record the parent `512/128` and `4K/128` OPTIMAL commands as source-lineage artifacts, then create a blocked hipENGINE artifact until `LLM.generate()` exists.
+1. **Measurement harness first:** run/record the parent `512/128` and `4K/128` OPTIMAL commands as source-lineage artifacts, then create a blocked hipEngine artifact until `LLM.generate()` exists.
 2. **MoE c=1 decode vertical slice:** PARO RMSNorm out-kernels → router/shared-gate → selected pack8 GEMV → fused activation/down-rotation → W8A16 shared expert → weighted shared-gate residual combine.
 3. **MoE prefill compact-WMMA slice:** lane grouping/gather → compact tile map → compact dual/single WMMA → weighted-lane accumulation → GEMV fallback.
 4. **Full-inference closure:** weight loader/model plugin, non-MoE projections, linear attention/GDN, full attention/KV, final head, graph replay, then end-to-end correctness/perf comparison.
@@ -447,7 +447,7 @@ Parent decode profiling note from `OPTIMAL.md`: fused `lm_head + argmax` is not 
 - **24GB non-stacked baseline:** green but slow; retained as a deployable-memory fallback, not the speed target.
 - **Long-context decode:** contiguous full-attention decode cannot launch at 32K because dynamic LDS scales with context; long decode must use paged/split-K over the dense cache viewed as pages.
 - **Tensorized paged-attention drift:** current parent docs localize long-tail scalar-vs-tensorized drift to paged context-tensor full attention. Graph replay matching tensorized eager is necessary; scalar-eager greedy equality alone is not sufficient promotion evidence.
-- **Rejected standalone kernel ideas:** PARO v8 unroll-threshold 600, isolated wave32/no-LDS W4 GEMV, naive AWQ W4xQ8 dp4a, caller-owned paged workspace, and non-split-K 4K attention were tested but not promoted. Do not import them into hipENGINE defaults without a fresh audit and correctness/perf evidence.
+- **Rejected standalone kernel ideas:** PARO v8 unroll-threshold 600, isolated wave32/no-LDS W4 GEMV, naive AWQ W4xQ8 dp4a, caller-owned paged workspace, and non-split-K 4K attention were tested but not promoted. Do not import them into hipEngine defaults without a fresh audit and correctness/perf evidence.
 
 ## Port = copy + partition + retype
 
@@ -471,7 +471,7 @@ Never land a split that regresses any of these.
 
 ## Build layer (`hipengine.core.build`)
 
-hipENGINE uses its own build layer, not `torch.utils.cpp_extension`. It calls `hipcc` (or `nvcc` for CUDA backends) via `subprocess.run`, links with `ctypes.CDLL`, and caches `.so` files by a hash of `(source, flags, hipcc version)` under `~/.cache/hipengine/build/`. Edit → bench loop stays at ~5–10 s per kernel change.
+hipEngine uses its own build layer, not `torch.utils.cpp_extension`. It calls `hipcc` (or `nvcc` for CUDA backends) via `subprocess.run`, links with `ctypes.CDLL`, and caches `.so` files by a hash of `(source, flags, hipcc version)` under `~/.cache/hipengine/build/`. Edit → bench loop stays at ~5–10 s per kernel change.
 
 ### Three build profiles (from `nano-vllm-amd/nanovllm/native/amd/extension.py`)
 
@@ -500,7 +500,7 @@ For nano-vllm-amd lineage kernels on W7900/gfx1100:
   64-thread block is a single wave.
 - Only pursue wave64 as an isolated experiment with explicit `-mwavefrontsize64` build
   flags, `warpSize`/shuffle probes, correctness fixtures, ISA checks, and E2E benchmarks.
-  There is no retained wave64 default in hipENGINE.
+  There is no retained wave64 default in hipEngine.
 
 ### JIT cache gotcha
 

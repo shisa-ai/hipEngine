@@ -5,7 +5,7 @@ The motivating use case is comparing the canonical packed PARO format
 (``mlp.shared_expert.{gate,up,down}_proj.{qweight,qzeros,scales,theta,pairs,
 channel_scales}``) against any other variant once the checkpoint exists.
 Today the upstream ``z-lab/Qwen3.5-35B-A3B-PARO`` ships only fp16
-``shared_expert.*.weight`` and is *not* loadable by hipENGINE — see
+``shared_expert.*.weight`` and is *not* loadable by hipEngine — see
 ``--how-to-pack`` below for the paroquant invocation that produces a packed
 artifact.
 
@@ -45,7 +45,7 @@ HOW_TO_PACK = textwrap.dedent(
     Producing a packed-shared-expert PARO checkpoint
     -----------------------------------------------
     The upstream z-lab Qwen3.5-35B-A3B-PARO snapshot ships only fp16
-    mlp.shared_expert.{gate,up,down}_proj.weight. hipENGINE now requires the
+    mlp.shared_expert.{gate,up,down}_proj.weight. hipEngine now requires the
     packed PARO layout for the dense shared expert. To mint a packed
     checkpoint, re-run paroquant *without* mlp.shared_expert in the
     --skipped-modules list. From ~/amd-gpu-tuning/paroquant:
@@ -391,7 +391,7 @@ def main() -> int:
         sys.stderr.write(
             "\nno successful runs.\n"
             "if every row is skipped with 'missing packed shared-expert tensors', the\n"
-            "checkpoint is not in the packed PARO format hipENGINE currently requires.\n"
+            "checkpoint is not in the packed PARO format hipEngine currently requires.\n"
             "see scripts/qwen35_paro_packed_bench.py --how-to-pack for the runbook.\n"
         )
         return 1

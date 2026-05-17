@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-14T17:56:53+09:00",
   "run_tag": "qwen35-paro-512-128-actual-c1-tokenizer-cache-diagnostic",
-  "summary": "hipENGINE Qwen3.5/PARO actual autoregressive c=1 diagnostic after caching tokenizer decode in resident session; graph replay/native prefill still missing.",
+  "summary": "hipEngine Qwen3.5/PARO actual autoregressive c=1 diagnostic after caching tokenizer decode in resident session; graph replay/native prefill still missing.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100"
@@ -63,7 +63,7 @@
   },
   "blockers": [
     "native batched/compact prefill kernels not wired; current prefill is token-by-token c=1",
-    "one-step graph replay/lower-overhead dispatch not implemented in hipENGINE",
+    "one-step graph replay/lower-overhead dispatch not implemented in hipEngine",
     "correctness gate artifact not yet run for benchmark prompt"
   ],
   "generated_preview": [

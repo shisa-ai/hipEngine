@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-17
 
-hipENGINE ships a thin optional FastAPI layer that adapts OpenAI-style requests
+hipEngine ships a thin optional FastAPI layer that adapts OpenAI-style requests
 to the torch-free `hipengine.LLM.generate()` library API. It is installed only
 with the `server` extra and is intentionally serialized today because the
 current runnable Qwen/PARO path is still single-request / `c=1`.
@@ -57,7 +57,7 @@ curl http://127.0.0.1:8000/v1/completions \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "qwen-paro",
-    "prompt": "Hello, hipENGINE.",
+    "prompt": "Hello, hipEngine.",
     "max_tokens": 64,
     "temperature": 0.0
   }'
@@ -72,7 +72,7 @@ curl http://127.0.0.1:8000/v1/chat/completions \
     "model": "qwen-paro",
     "messages": [
       {"role": "system", "content": "Be concise."},
-      {"role": "user", "content": "What is hipENGINE?"}
+      {"role": "user", "content": "What is hipEngine?"}
     ],
     "max_tokens": 128,
     "temperature": 0.0

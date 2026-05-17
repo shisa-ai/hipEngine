@@ -15,7 +15,7 @@
   "bench_script": "scripts/qwen35_paro_bench.py",
   "common_args": "--token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode(default)",
   "ablation": {
-    "default_unroll600": "normal hipENGINE build profiles; decode/prefill profiles include -mllvm -amdgpu-unroll-threshold-local=600 where configured",
+    "default_unroll600": "normal hipEngine build profiles; decode/prefill profiles include -mllvm -amdgpu-unroll-threshold-local=600 where configured",
     "no_unroll600": "HIPENGINE_DISABLE_UNROLL600=1 strips only the -mllvm/-amdgpu-unroll-threshold-local=600 pair and preserves other profile flags such as -mcumode",
     "prebuild_command": "HIPENGINE_DISABLE_UNROLL600=1 python3 <builder preload script> with compiler_version=/tmp/hipengine-hipcc-version.txt; all measured runs used --require-cached-build"
   },

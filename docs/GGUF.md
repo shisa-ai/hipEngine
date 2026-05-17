@@ -1,23 +1,23 @@
 # GGUF Intake and Native-Quant Plan
 
 Date: 2026-05-16  
-Target repo: `~/hipENGINE`  
+Target repo: `~/hipEngine`
 Primary references: local llama.cpp checkouts under `~/llama.cpp/` and parent evidence in `~/amd-gpu-tuning/`
 
 ## Executive summary
 
-The short answer to "can hipENGINE load GGUF quants easily now?" is:
+The short answer to "can hipEngine load GGUF quants easily now?" is:
 
 - **GGUF file intake / metadata scanning is easy.** GGUF is a well-documented tensor container with a mature Python reader in llama.cpp's `gguf-py`.
-- **Correctness-first FP16 fallback is straightforward.** We can parse GGUF, dequantize tensors on the host, map names into hipENGINE's existing model loader, and run existing FP16 kernels. This proves model/tokenizer/tensor-name plumbing but does not preserve GGUF memory/perf benefits.
+- **Correctness-first FP16 fallback is straightforward.** We can parse GGUF, dequantize tensors on the host, map names into hipEngine's existing model loader, and run existing FP16 kernels. This proves model/tokenizer/tensor-name plumbing but does not preserve GGUF memory/perf benefits.
 - **Native GGUF quant execution is not drop-in.** GGUF `Q4_K`, `Q5_K`, `Q6_K`, `Q8_0`, `Q8_K`, and `IQ*` tensors have GGML block layouts and quant math that differ from PARO/AWQ and from the current Marlin-K v0 layout. They need their own quant plugins, CPU oracles, and HIP kernels or a deliberate repack path.
-- **The new PARO/Marlin-K work makes this tractable.** hipENGINE now has the pattern we want: file/checkpoint layout -> host repack -> explicit device layout -> raw-pointer kernel -> registry dispatch. GGUF should use the same architecture, not special-case dispatch.
+- **The new PARO/Marlin-K work makes this tractable.** hipEngine now has the pattern we want: file/checkpoint layout -> host repack -> explicit device layout -> raw-pointer kernel -> registry dispatch. GGUF should use the same architecture, not special-case dispatch.
 
 Recommended first implementation is a **GGUF scanner + FP16 fallback loader** and then one narrow native quant path, probably `Q8_0` first or `Q4_K` if the goal is direct llama.cpp Q4_K_M parity.
 
-Do not treat this document as a performance claim. It is an implementation plan. Any hipENGINE GGUF speedup must be measured in hipENGINE after the loader/kernels land.
+Do not treat this document as a performance claim. It is an implementation plan. Any hipEngine GGUF speedup must be measured in hipEngine after the loader/kernels land.
 
-## Why GGUF is attractive for hipENGINE
+## Why GGUF is attractive for hipEngine
 
 GGUF gives us three useful things:
 
@@ -25,7 +25,7 @@ GGUF gives us three useful things:
 2. **A huge ecosystem of local quantized models.** Qwen, Llama, Gemma, Mixtral/MoE variants, and many user-facing quants are already published as GGUF.
 3. **Reference implementations and baselines.** llama.cpp gives both parsing/quant oracles and W7900 comparison rows for HIP/Vulkan.
 
-The parent workspace has already used GGUF/llama.cpp as an external comparator, especially Qwen3.6-35B-A3B `Q4_K_M` and `UD-Q8_K_XL` rows. hipENGINE should use GGUF support to widen model access and to make apples-to-apples kernel comparisons against llama.cpp easier.
+The parent workspace has already used GGUF/llama.cpp as an external comparator, especially Qwen3.6-35B-A3B `Q4_K_M` and `UD-Q8_K_XL` rows. hipEngine should use GGUF support to widen model access and to make apples-to-apples kernel comparisons against llama.cpp easier.
 
 ## Local references
 
@@ -78,10 +78,10 @@ Parent docs that explain why GGUF/Q4_K-like layouts matter:
   - llama.cpp GGUF Q4_K_M comparison commands/rows for long-context HIP/Vulkan baselines.
 - `/home/lhl/amd-gpu-tuning/PR_COMMENT-llamacpp-hip-unroll600.md`
   - Cross-model GGUF llama.cpp HIP measurements and build-flag observations.
-- `/home/lhl/hipENGINE/docs/MARLIN.md`
-  - hipENGINE's Marlin-K intake analysis, including the qweight-neutral host-layout work already started here.
+- `/home/lhl/hipEngine/docs/MARLIN.md`
+  - hipEngine's Marlin-K intake analysis, including the qweight-neutral host-layout work already started here.
 
-## GGUF file structure hipENGINE needs
+## GGUF file structure hipEngine needs
 
 From `ggml/include/gguf.h`, GGUF files contain:
 
@@ -100,12 +100,12 @@ Important loader facts:
 - Tensor data is aligned by `general.alignment` if present, else `GGUF_DEFAULT_ALIGNMENT=32`.
 - GGUF tensor dimensions are stored in GGML order; `gguf-py` returns NumPy-style reversed dims via `ReaderTensor.shape`.
 
-hipENGINE should initially consume GGUF through a tiny loader module that either:
+hipEngine should initially consume GGUF through a tiny loader module that either:
 
 - uses `gguf-py` as an optional import, or
 - implements a minimal pure-Python reader for the subset we need.
 
-Because hipENGINE's runtime hot path must stay torch-free, either option is compatible. The issue is dependency policy: adding hard dependency `gguf` is avoidable. Prefer a small optional reader or an optional `gguf` extra until we know how much of `gguf-py` we need.
+Because hipEngine's runtime hot path must stay torch-free, either option is compatible. The issue is dependency policy: adding hard dependency `gguf` is avoidable. Prefer a small optional reader or an optional `gguf` extra until we know how much of `gguf-py` we need.
 
 ## What is similar to PARO Marlin-K
 
@@ -192,7 +192,7 @@ This is used in GGML's quantized dot-product chains as an activation-side/interm
 
 ### Tier 0: scanner / census
 
-Goal: Given a `.gguf`, print enough metadata to decide whether hipENGINE can load it.
+Goal: Given a `.gguf`, print enough metadata to decide whether hipEngine can load it.
 
 Outputs:
 
@@ -200,7 +200,7 @@ Outputs:
 - file type (`general.file_type`)
 - tokenizer metadata presence
 - tensor count and total bytes by quant type
-- tensor-name mapping coverage for the target hipENGINE model plugin
+- tensor-name mapping coverage for the target hipEngine model plugin
 - list of unsupported quant types
 
 This is low risk and should be first.
@@ -215,7 +215,7 @@ scripts/inspect_gguf.py
 
 ### Tier 1: FP16 fallback loader
 
-Goal: Load a GGUF model into hipENGINE by dequantizing quantized tensors on the host to FP16/BF16 and using existing FP16 kernels.
+Goal: Load a GGUF model into hipEngine by dequantizing quantized tensors on the host to FP16/BF16 and using existing FP16 kernels.
 
 Pros:
 
@@ -252,7 +252,7 @@ variant = "gemv_fp16" or "gemv_q8_0"
 
 ### Tier 3: native Q4_K / Q4_K_M
 
-Goal: Run common llama.cpp `Q4_K_M` GGUF weights with native hipENGINE kernels.
+Goal: Run common llama.cpp `Q4_K_M` GGUF weights with native hipEngine kernels.
 
 This is the first truly useful GGUF memory/perf target because many public models use Q4_K_M and our parent analysis already compared against Q4_K_M.
 
@@ -263,10 +263,10 @@ Implementation choices:
    - Kernel decodes GGML `scales[12]`, `d`, `dmin`, and q4 payload directly.
    - Best for fidelity and avoiding extra memory.
 
-2. **Host repack to hipENGINE-native Marlin-ish layout**
+2. **Host repack to hipEngine-native Marlin-ish layout**
    - Parse `block_q4_K` on host and emit a device layout optimized for W7900.
    - Could separate q4 payload and decoded scale/min tables for faster kernels.
-   - Costs load-time memory and may deviate from exact GGML layout, but fits hipENGINE's Marlin-K architecture.
+   - Costs load-time memory and may deviate from exact GGML layout, but fits hipEngine's Marlin-K architecture.
 
 3. **Host dequant to PARO-like W4 layout**
    - Usually not recommended: Q4_K does not have PARO/AWQ group_size=128 semantics and zero/scales are already quantized per 32-ish sub-blocks.
@@ -284,7 +284,7 @@ After Q4_K works:
 
 ## Model architecture scope
 
-GGUF is a container; hipENGINE still needs a model plugin.
+GGUF is a container; hipEngine still needs a model plugin.
 
 Recommended first architecture targets:
 
@@ -292,7 +292,7 @@ Recommended first architecture targets:
    - Local cache includes `ggml-org/Qwen3-0.6B-GGUF` with `Qwen3-0.6B-Q4_0.gguf` under Hugging Face cache.
    - Good for loader/tokenizer smoke.
 2. **Qwen2/Qwen3 dense**
-   - Similar enough to existing hipENGINE Qwen code to make name mapping feasible.
+   - Similar enough to existing hipEngine Qwen code to make name mapping feasible.
 3. **Qwen3.5/Qwen3.6 MoE GGUF**
    - Performance-relevant but more complicated: expert tensor naming, routing, and active-expert surfaces.
 
@@ -302,10 +302,10 @@ Avoid starting with arbitrary Llama/Gemma if the goal is to reuse existing Qwen 
 
 GGUF tensor names are not guaranteed to match Hugging Face safetensors names. llama.cpp has architecture-specific tensor maps in `gguf-py/gguf/constants.py` and conversion scripts.
 
-hipENGINE needs a mapping layer:
+hipEngine needs a mapping layer:
 
 ```text
-GGUF tensor name -> hipENGINE logical tensor name -> model/runtime slot
+GGUF tensor name -> hipEngine logical tensor name -> model/runtime slot
 ```
 
 Implementation should be table-driven per model architecture, not dispatch branches.
@@ -322,7 +322,7 @@ Do not overload `qwen35_paro.py` with GGUF-specific branches unless the target i
 
 ## Tokenizer considerations
 
-GGUF often carries tokenizer metadata. hipENGINE currently depends on `tokenizers` and has Qwen/HF-oriented loading. For GGUF:
+GGUF often carries tokenizer metadata. hipEngine currently depends on `tokenizers` and has Qwen/HF-oriented loading. For GGUF:
 
 - Tier 0 should verify tokenizer metadata is present and dump keys.
 - Tier 1 can initially require an external tokenizer path if using GGUF tokenizer metadata is too much work.
@@ -359,7 +359,7 @@ Options for GGUF parsing:
 
 Recommendation: start with a minimal internal scanner for metadata/tensor table, and use `gguf-py` as an optional oracle in tests if available. Add a hard or optional dependency only after we know we need full tokenizer/dequant support.
 
-## Proposed hipENGINE implementation shape
+## Proposed hipEngine implementation shape
 
 ### New docs/planning file created first
 
@@ -473,7 +473,7 @@ The GGUF native path should learn from Marlin-K but not pretend to be the same l
 | Best first execution | rows==1 non-expert GEMV | rows==1 GEMV, then prefill/multirow if needed |
 | Repack lesson | eliminate duplicate W4 qweight; use aliases carefully | avoid duplicating full GGUF block data unless a native layout earns it |
 
-The shared rule: **separate file format from execution layout**. A GGUF loader can either preserve GGML blocks or repack into a hipENGINE-native layout. The choice should be measured per quant type.
+The shared rule: **separate file format from execution layout**. A GGUF loader can either preserve GGML blocks or repack into a hipEngine-native layout. The choice should be measured per quant type.
 
 ## Validation plan
 
@@ -503,7 +503,7 @@ Do not commit these model files.
 
 - Dequantize one tiny linear weight from GGUF to FP16.
 - Compare against `gguf-py` dequant output.
-- Run hipENGINE dense linear CPU/GPU fixture if available.
+- Run hipEngine dense linear CPU/GPU fixture if available.
 - For model-level smoke, use fixed token IDs first; tokenizer integration can follow.
 
 ### Native quant validation
@@ -512,13 +512,13 @@ For each native quant kernel:
 
 1. CPU dequant oracle from internal code and/or `gguf-py`.
 2. Deterministic GPU fixture: tiny rows/K/N, exact or tight tolerance.
-3. hipENGINE correctness gate per `AGENTS.md`: KL <= 0.05 and top-1 agreement >= 90% vs CPU reference on fixture inputs.
+3. hipEngine correctness gate per `AGENTS.md`: KL <= 0.05 and top-1 agreement >= 90% vs CPU reference on fixture inputs.
 4. `rocprofv3 --kernel-trace` showing the expected kernel name and plausible duration.
-5. Only then benchmark against existing hipENGINE fallback and llama.cpp reference.
+5. Only then benchmark against existing hipEngine fallback and llama.cpp reference.
 
 ### Benchmark policy
 
-GGUF performance claims need all normal hipENGINE benchmark metadata:
+GGUF performance claims need all normal hipEngine benchmark metadata:
 
 - model file path and quant type
 - backend, kernel variant, commit
@@ -567,7 +567,7 @@ If the goal is user-visible model availability quickly, choose FP16 fallback fir
 
 ## Bottom line
 
-hipENGINE is now structurally ready for GGUF intake, but GGUF quants are not automatically supported by the PARO Marlin-K layout. The right plan is to add GGUF as a first-class loader/quant family with staged fallbacks and native kernels:
+hipEngine is now structurally ready for GGUF intake, but GGUF quants are not automatically supported by the PARO Marlin-K layout. The right plan is to add GGUF as a first-class loader/quant family with staged fallbacks and native kernels:
 
 ```text
 GGUF scanner -> FP16 fallback -> Q8_0/Q4_K native kernels -> broader K/IQ quant coverage

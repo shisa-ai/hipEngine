@@ -1,4 +1,4 @@
-"""Lazy ctypes wrappers for the small rocBLAS surface hipENGINE uses.
+"""Lazy ctypes wrappers for the small rocBLAS surface hipEngine uses.
 
 The module is intentionally torch-free and does not load ``librocblas`` at import
 time. Callers opt in to these helpers for diagnostic/prototype bulk GEMM paths.

@@ -9,7 +9,7 @@
     "quant": "w4_paro",
     "backend": "hip_gfx1100",
     "source_commit_before_artifact": "4a57e83",
-    "change": "Retain the hardcoded comparison-table inputs for scripts/qwen35_compare_tables.py, adding the 512/128 current hipENGINE row to the existing 4K/128, 32K/128, and 128K/128 chunked rows.",
+    "change": "Retain the hardcoded comparison-table inputs for scripts/qwen35_compare_tables.py, adding the 512/128 current hipEngine row to the existing 4K/128, 32K/128, and 128K/128 chunked rows.",
     "common_hipengine_policy": {
         "attn_aotriton_min_tokens": 512,
         "graph_replay_decode": true,
@@ -186,7 +186,7 @@
         ]
     },
     "notes": [
-        "All hipENGINE rows are single-run diagnostics through scripts/qwen35_paro_bench.py resident-session path, not accepted public LLM.generate throughput rows.",
+        "All hipEngine rows are single-run diagnostics through scripts/qwen35_paro_bench.py resident-session path, not accepted public LLM.generate throughput rows.",
         "The 512/128 row was measured after the chunking artifact so the comparison script could show the same four context depths across all baselines.",
         "llama.cpp HIP/Vulkan rows are cross-model/quant comparison rows and do not include retained memory measurements."
     ]

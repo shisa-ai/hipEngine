@@ -1,6 +1,6 @@
-"""Python bindings for hipENGINE's stable AOTriton C-ABI shim.
+"""Python bindings for hipEngine's stable AOTriton C-ABI shim.
 
-The module is torch-free.  It builds/loads only the small hipENGINE-owned wrapper
+The module is torch-free.  It builds/loads only the small hipEngine-owned wrapper
 shared object; the wrapper links against the manifest-pinned AOTriton runtime
 found by :mod:`hipengine.kernels.hip_gfx1100.attention.aotriton`.
 """

@@ -2,7 +2,7 @@
 // Source lineage: nano-vllm-amd Marlin-K retained path documented as @7718fff
 // (vec8 FMA) and @1522293 (qweight-neutral dispatch).  The current parent
 // checkout no longer retains those commits, so this file preserves the documented
-// retained algorithm beside hipENGINE's pack8 GEMV family: vec8 FP32-FMA inner
+// retained algorithm beside hipEngine's pack8 GEMV family: vec8 FP32-FMA inner
 // loop, qweight_mk [N/8, K/128, 128], qzeros_mk [N/8, K/128], scales_mk
 // [N/8, K/128, 8], wave32 reductions, and no Q8/SUDOT/half-FMA experiments.
 

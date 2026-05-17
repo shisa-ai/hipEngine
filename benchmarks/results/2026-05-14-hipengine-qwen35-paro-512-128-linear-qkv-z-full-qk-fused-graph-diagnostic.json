@@ -3,7 +3,7 @@
   "status": "blocked",
   "timestamp": "2026-05-14T19:06:50+09:00",
   "run_tag": "qwen35-paro-512-128-linear-qkv-z-full-qk-fused-graph-diagnostic",
-  "summary": "hipENGINE Qwen3.5/PARO graph decode after linear QKV/Z and full-attention Q/K dual pack8 projection fusion; native batched prefill and accepted correctness gates still missing.",
+  "summary": "hipEngine Qwen3.5/PARO graph decode after linear QKV/Z and full-attention Q/K dual pack8 projection fusion; native batched prefill and accepted correctness gates still missing.",
   "hardware": {
     "gpu": "AMD Radeon Pro W7900",
     "arch": "gfx1100"

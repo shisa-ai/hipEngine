@@ -1,6 +1,6 @@
 # ROOFLINE.md — RDNA3 W7900 Performance Model for LLM Inference
 
-_Ported from `~/amd-gpu-tuning/docs/ROOFLINE.md` (upstream last updated 2026-05-10). Kernel R&D evidence referenced below lives in that parent workspace and is not vendored into hipENGINE; path-qualified pointers keep the references navigable._
+_Ported from `~/amd-gpu-tuning/docs/ROOFLINE.md` (upstream last updated 2026-05-10). Kernel R&D evidence referenced below lives in that parent workspace and is not vendored into hipEngine; path-qualified pointers keep the references navigable._
 
 A standalone technical reference for understanding where performance comes
 from and where it is lost on AMD Radeon Pro W7900 (gfx1100 / RDNA3) during
@@ -87,7 +87,7 @@ wavefront occupies one SIMD; a wave64 wavefront spans both SIMDs in a CU
 sharing one SIMD's resources.
 
 **WGP mode vs CU mode.** RDNA3 can run wave32 and wave64 code paths, but the
-details are build-profile and compiler dependent. hipENGINE's gfx1100 decode
+details are build-profile and compiler dependent. hipEngine's gfx1100 decode
 profile uses `-mcumode` without `-mwavefrontsize64`, so device code should
 treat `warpSize == 32` as the default. CU mode and wavefront size are
 orthogonal. llama.cpp HIP on gfx1100 also defaults to wave32 in the checked
@@ -1134,7 +1134,7 @@ instructions don't need VOPD to be fast.
 
 | Mode | Threads/wave | Scheduling shape | Execution | Notes |
 |---|---|---|---|---|
-| Wave32 | 32 | one 32-lane half | native/fine-grained | Default for hipENGINE and llama.cpp HIP on RDNA3 in the checked paths |
+| Wave32 | 32 | one 32-lane half | native/fine-grained | Default for hipEngine and llama.cpp HIP on RDNA3 in the checked paths |
 | Wave64 / subgroup64 | 64 | two 32-lane halves | explicit/experimental | Vulkan reports subgroup 64; HIPCC can emit wave64 with `-mwavefrontsize64` |
 
 Scheduling facts and trade-offs:
@@ -1566,9 +1566,9 @@ the profiled bucket, not just the theoretical ceiling.
 
 ### Related docs
 
-In hipENGINE:
+In hipEngine:
 
-- `docs/PLAN.md` — hipENGINE architecture, phase roadmap, extensibility design
+- `docs/PLAN.md` — hipEngine architecture, phase roadmap, extensibility design
 - `docs/BENCHMARK.md` — benchmark protocols, baselines, correctness gate
 - `docs/KERNELS.md` — kernel port playbook, JIT cache, build profiles
 

@@ -191,7 +191,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "notes": [
             "c=1 resident E2E gate; c>N parity hooks are separate until batched layer runner lands.",
             "Native prefill mode uses prefill_native(...); serial-diagnostic mode is an explicit fallback only.",
-            "Fixture mode compares hipENGINE decode-loop outputs against parent nano-vllm-amd outputs after consuming the prefill seed token.",
+            "Fixture mode compares hipEngine decode-loop outputs against parent nano-vllm-amd outputs after consuming the prefill seed token.",
         ],
     }
 

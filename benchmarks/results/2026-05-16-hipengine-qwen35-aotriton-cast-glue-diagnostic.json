@@ -71,7 +71,7 @@
         "hip_used_peak_sampled_bytes": 20015620096,
         "hip_used_peak_sampled_gib": 18.64099884033203,
         "notes": [
-          "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+          "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
           "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
           "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
         ]
@@ -126,7 +126,7 @@
         "hip_used_peak_sampled_bytes": 20748959744,
         "hip_used_peak_sampled_gib": 19.323974609375,
         "notes": [
-          "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+          "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
           "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
           "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
         ]

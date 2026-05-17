@@ -1,4 +1,4 @@
-"""OpenAI-compatible FastAPI surface for hipENGINE.
+"""OpenAI-compatible FastAPI surface for hipEngine.
 
 The server layer is optional and intentionally thin: it adapts OpenAI-style JSON
 requests to the torch-free ``hipengine.LLM.generate()`` library API.  The current
@@ -133,7 +133,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     loads model metadata on first generation, not at app creation.
     """
 
-    app = FastAPI(title="hipENGINE OpenAI-compatible API", version="0.1.0")
+    app = FastAPI(title="hipEngine OpenAI-compatible API", version="0.1.0")
     app.state.hipengine_config = config
     app.state.hipengine_llm = llm
     generation_lock = asyncio.Lock()
@@ -354,7 +354,7 @@ def _validate_model(config: ServerConfig, requested: str | None) -> None:
     if requested is not None and requested != config.model_id:
         raise OpenAIHTTPError(
             404,
-            f"model {requested!r} is not served by this hipENGINE instance",
+            f"model {requested!r} is not served by this hipEngine instance",
             code="model_not_found",
             param="model",
         )

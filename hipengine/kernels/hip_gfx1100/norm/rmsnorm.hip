@@ -1,7 +1,7 @@
 // Ported from nano-vllm-amd @ 59195ed.
 // Qwen kernels come from csrc/amd/qwen35_expert.hip.
 // PARO out-kernels come from nanovllm/native/qwen35/paroquant_kernels.py.
-// Kernel bodies are preserved from the source families; wrappers are hipENGINE C ABI.
+// Kernel bodies are preserved from the source families; wrappers are hipEngine C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>

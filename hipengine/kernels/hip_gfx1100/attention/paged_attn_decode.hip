@@ -1,5 +1,5 @@
 // Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed.
-// Qwen3.5 paged full-attention context-tensor decode body is preserved; public wrapper uses hipENGINE KVLiveSpans.
+// Qwen3.5 paged full-attention context-tensor decode body is preserved; public wrapper uses hipEngine KVLiveSpans.
 
 #include <hip/hip_runtime.h>
 #include <hip/hip_bfloat16.h>

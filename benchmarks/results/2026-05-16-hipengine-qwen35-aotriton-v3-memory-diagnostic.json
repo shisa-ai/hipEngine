@@ -7,7 +7,7 @@
   "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
   "quant": "w4_paro",
   "backend": "hip_gfx1100",
-  "change": "Add real hipENGINE memory reporting to qwen35_paro_bench.py using tracked hipengine.core.memory high-water counters plus hipMemGetInfo phase snapshots.",
+  "change": "Add real hipEngine memory reporting to qwen35_paro_bench.py using tracked hipengine.core.memory high-water counters plus hipMemGetInfo phase snapshots.",
   "validation": {
     "unit_tests": "python3 -m pytest tests/test_memory_stats.py tests/test_qwen35_resident_batch_layout.py -q # 25 passed",
     "py_compile": "python3 -m py_compile hipengine/core/hip.py hipengine/core/memory.py scripts/qwen35_paro_bench.py # ok",
@@ -49,7 +49,7 @@
         "hip_used_peak_sampled_bytes": 20026105856,
         "hip_used_peak_sampled_gib": 18.65076446533203,
         "notes": [
-          "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+          "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
           "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
           "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
         ]
@@ -90,7 +90,7 @@
         "hip_used_peak_sampled_bytes": 20832845824,
         "hip_used_peak_sampled_gib": 19.402099609375,
         "notes": [
-          "tracked_* covers hipENGINE allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
+          "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
           "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
           "owned_session_* sums buffers owned by the resident session at each sampled point and excludes external HIP/AOTriton internal allocations."
         ]
@@ -98,7 +98,7 @@
     }
   ],
   "notes": [
-    "tracked_peak_allocated_gib is the hipENGINE-owned allocation high-water mark through hipengine.core.memory.malloc; it is the closest analogue to parent torch peak_allocated_gib.",
+    "tracked_peak_allocated_gib is the hipEngine-owned allocation high-water mark through hipengine.core.memory.malloc; it is the closest analogue to parent torch peak_allocated_gib.",
     "hip_used_peak_sampled_gib is sampled at phase boundaries via hipMemGetInfo and is not a continuous device-wide peak.",
     "AOTriton remains opt-in with --attn-aotriton-min-tokens 512; default dispatch remains native until threshold sweep lands."
   ]

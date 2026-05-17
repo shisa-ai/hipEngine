@@ -1,4 +1,4 @@
-"""Command-line entry point for the optional hipENGINE server."""
+"""Command-line entry point for the optional hipEngine server."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from hipengine.server.api import ServerConfig, create_app
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the hipENGINE OpenAI-compatible server")
-    parser.add_argument("--model", required=True, help="Path or model id served by hipENGINE")
+    parser = argparse.ArgumentParser(description="Run the hipEngine OpenAI-compatible server")
+    parser.add_argument("--model", required=True, help="Path or model id served by hipEngine")
     parser.add_argument("--backend", default="hip_gfx1100", help="Kernel backend key")
     parser.add_argument("--quant", default="w4_paro", help="Quantization key")
     parser.add_argument("--served-model-name", help="Public model id exposed by /v1/models")

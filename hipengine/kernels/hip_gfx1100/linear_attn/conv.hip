@@ -1,5 +1,5 @@
 // Ported from nano-vllm-amd/csrc/amd/qwen35_expert.hip @ 59195ed.
-// Qwen3.5 linear-attention decode convolution kernel bodies are preserved; wrappers are hipENGINE C ABI.
+// Qwen3.5 linear-attention decode convolution kernel bodies are preserved; wrappers are hipEngine C ABI.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
