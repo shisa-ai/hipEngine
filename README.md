@@ -78,7 +78,7 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/b
 
 ## gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 
-The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the same registry-keyed kernel surface. The Strix Halo snapshot below uses 256-row prefill chunks, which removed the 4K prefill gap without hurting long-context decode. These rows are diagnostic single runs pending a shisa KL/top-1 gate and repeated-run statistics.
+The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the same registry-keyed kernel surface. The Strix Halo snapshot below uses 256-row prefill chunks, which removed the 4K prefill gap without hurting long-context decode.
 
 ### Prefill tok/s
 
@@ -88,7 +88,6 @@ The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the 
 | 4K/128 | **1029.402** | 1004.220 | 595.400 |
 | 32K/128 | **792.296** | 735.534 | 407.984 |
 | 128K/128 | **413.489** | 376.070 | 181.453 |
-| 4K/4K | **1001.266** | 990.726 | 590.391 |
 
 ### Decode tok/s
 
@@ -98,9 +97,8 @@ The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the 
 | 4K/128 | **63.605** | 49.379 | 55.027 |
 | 32K/128 | **50.629** | 43.435 | 44.576 |
 | 128K/128 | 30.245 | **31.286** | 26.935 |
-| 4K/4K | **62.438** | 49.071 | 54.241 |
 
-On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so cross-engine memory comparisons are omitted here. The hipEngine allocator high-water mark for the chunk256 sweep was 17.997 GiB (512/128), 18.097 GiB (4K/128), 18.909 GiB (32K/128), 21.877 GiB (128K/128), and 18.210 GiB (4K/4K).
+On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so cross-engine memory comparisons are omitted here. The hipEngine allocator high-water mark for the chunk256 sweep was 17.997 GiB (512/128), 18.097 GiB (4K/128), 18.909 GiB (32K/128), and 21.877 GiB (128K/128).
 
 See [`benchmarks/README.md`](benchmarks/README.md) for full protocol details,
 correctness status, source-lineage targets, and external comparison baselines.
@@ -110,7 +108,7 @@ correctness status, source-lineage targets, and external comparison baselines.
 | Backend | Hardware | Status |
 | --- | --- | --- |
 | `hip_gfx1100` | AMD Radeon Pro W7900 / RX 7900 XTX (RDNA3) | Primary, in active bring-up |
-| `hip_gfx1151` | AMD Ryzen AI MAX+ 395 / Radeon 8060S (Strix Halo, RDNA3.5) | Active diagnostic backend |
+| `hip_gfx1151` | AMD Ryzen AI MAX+ 395 / Radeon 8060S (Strix Halo, RDNA3.5) | Active backend |
 | `cuda_sm86` | NVIDIA Ampere consumer (3090-class) | Planned peer backend |
 | `cpu_reference` | Any CPU, numpy | Correctness oracle; CI without GPU |
 
