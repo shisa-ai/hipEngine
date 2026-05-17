@@ -996,6 +996,7 @@ class Qwen35GGUFResidentSession:
     runtime: HipRuntime | None = None
     compiler_version: str | None = None
     require_cached_build: bool = False
+    max_sequence_length: int | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _token_buf: object | None = field(default=None, init=False)
@@ -1026,7 +1027,11 @@ class Qwen35GGUFResidentSession:
         }
         self._runtime_state_library = build_runtime_state(**build_kwargs)
         self._lm_head_library = build_lm_head(**build_kwargs)
-        self.scratch = _FullStackScratch.allocate(self.runner, runtime=runtime)
+        self.scratch = _FullStackScratch.allocate(
+            self.runner,
+            runtime=runtime,
+            max_sequence_length=self.max_sequence_length,
+        )
         self._token_buf = malloc(self._token_host.nbytes, runtime=runtime)
         hidden_bytes = self.runner.hidden_size * 2
         self._hidden_a = malloc(hidden_bytes, runtime=runtime)
@@ -1686,7 +1691,13 @@ class _FullStackScratch:
     buffers: tuple[object, ...]
 
     @classmethod
-    def allocate(cls, runner: Qwen35GGUFFullStackRunner, *, runtime: HipRuntime):
+    def allocate(
+        cls,
+        runner: Qwen35GGUFFullStackRunner,
+        *,
+        runtime: HipRuntime,
+        max_sequence_length: int | None = None,
+    ):
         def buf(nbytes: int):
             return malloc(nbytes, runtime=runtime)
 
@@ -1694,7 +1705,15 @@ class _FullStackScratch:
         cfg = runner.weights.config
         device = Device("hip", 0)
         block_size = 256
-        max_positions = min(int(cfg.context_length), block_size)
+        requested_positions = block_size if max_sequence_length is None else int(max_sequence_length)
+        if requested_positions <= 0:
+            raise ValueError("max_sequence_length must be positive")
+        if requested_positions > int(cfg.context_length):
+            raise ValueError(
+                f"max_sequence_length {requested_positions} exceeds GGUF context length {cfg.context_length}"
+            )
+        block_count = (requested_positions + block_size - 1) // block_size
+        max_positions = min(int(cfg.context_length), block_count * block_size)
         hidden_bytes = runner.hidden_size * 2
         ffn_bytes = runner.ffn_size * 2
         linear_qkv_bytes = runner.linear_qkv_width * 2
@@ -1730,7 +1749,7 @@ class _FullStackScratch:
                 layer_recurrent_states.append(None)
                 full_key_caches.append(key_cache)
                 full_value_caches.append(value_cache)
-        block_table_arr = np.asarray([0], dtype=np.int32)
+        block_table_arr = np.arange(block_count, dtype=np.int32)
         position_host = np.asarray([0], dtype=np.int64)
         context_host = np.asarray([1], dtype=np.int64)
         cos_arr, sin_arr = _rope_tables(

@@ -622,6 +622,22 @@ throughput peer. The retained diagnostic comparison is
 These rows are not apples-to-apples model comparisons. They identify the missing
 execution features GGUF must acquire before any throughput claim is fair.
 
+A newer standard-shape diagnostic is retained in
+`benchmarks/results/2026-05-17-hipengine-gguf-q4km-parity-benchmark-diagnostic.json`.
+It uses repeated token id `9707`, one warmup run, three measured runs,
+`--require-cached-build`, public GGUF correctness gates, and one-step decode
+graph replay with graph capture excluded from decode timing:
+
+| Path | Workload | Median prefill | Median decode | Peak tracked | Main reason |
+| --- | --- | ---: | ---: | ---: | --- |
+| GGUF Qwen3.5-0.8B-Q4_K_M | 512/128 | 16.35 tok/s | 171.84 tok/s | 0.568 GiB | token-serial prefill, graph replay decode |
+| GGUF Qwen3.5-0.8B-Q4_K_M | 4K/128 | 16.20 tok/s | 83.84 tok/s | 0.610 GiB | full-attention context cost grows; prefill still token-serial |
+
+The 512 decode number can exceed some 35B PARO/llama.cpp decode baselines only
+because the GGUF model is 0.8B; the prefill number remains ~99% below resident
+PARO/llama.cpp rows. This is a retained diagnostic, not an accepted throughput
+row.
+
 ### Dependency order
 
 AOTriton V3 is not the first GGUF blocker. It accelerates the attention compute
@@ -849,13 +865,18 @@ and UD-Q4_K_XL with no `torch` import on the generate path. Q4_K_M generates
 
 ### P7: benchmark parity only after P1-P5
 
+Status: Q4_K_M diagnostic retained in
+`benchmarks/results/2026-05-17-hipengine-gguf-q4km-parity-benchmark-diagnostic.json`.
+No accepted throughput row is promoted because public full-model bulk prefill is
+still token-serial and the reference rows are cross-model 35B-family baselines.
+
 Run retained comparison protocols only once GGUF has resident decode, all-GPU
 full attention, AOTriton/equivalent prefill attention, rows>1 projections, and
 optional graph replay.
 
 Required benchmark rows:
 
-- GGUF Qwen3.5-0.8B Q4_K_M: load/materialize, resident bytes, 512/128, 4K/128.
+- GGUF Qwen3.5-0.8B Q4_K_M: load/materialize, resident bytes, 512/128, 4K/128. [diagnostic retained]
 - GGUF Qwen3.5-0.8B Q8_0/Q4_1/UD-Q4_K_XL: same rows once supported.
 - llama.cpp HIP/Vulkan rows for the same GGUF file when available.
 - PARO retained rows remain reference context only unless model/quant/workload
@@ -955,4 +976,4 @@ The scanner, quant table, Qwen3.5 tensor-name map, Q4_K_M resident weight materi
 
 ## Bottom line
 
-hipENGINE can now load and execute the Qwen3.5-0.8B Q4_K_M GGUF fixture correctly with resident state, all-GPU attention/KV, layer-level AOTriton prefill attention, multirow projection surfaces, and decode graph replay. It is still not a promoted performance path: public full-model bulk prefill and retained throughput parity rows remain. GGUF must keep GGML quant math and its own quant layouts while borrowing PARO's scheduling, registry, and memory-discipline patterns.
+hipENGINE can now load and execute the Qwen3.5-0.8B Q4_K_M GGUF fixture correctly with resident state, all-GPU attention/KV, layer-level AOTriton prefill attention, multirow projection surfaces, decode graph replay, and retained diagnostic 512/128 + 4K/128 parity measurements. It is still not a promoted performance path: public full-model bulk prefill and accepted throughput parity rows remain. GGUF must keep GGML quant math and its own quant layouts while borrowing PARO's scheduling, registry, and memory-discipline patterns.

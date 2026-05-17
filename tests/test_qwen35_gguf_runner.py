@@ -53,6 +53,15 @@ def test_qwen35_gguf_full_stack_runs_finite_deterministic_hidden() -> None:
     assert int(np.count_nonzero(f32)) > 0
 
 
+def test_qwen35_gguf_resident_session_can_allocate_benchmark_length_cache() -> None:
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=512 + 128 + 1) as session:
+        assert session.scratch is not None
+        assert session.scratch.max_positions >= 512 + 128 + 1
+        assert session.scratch.block_table_tensor.numel >= 3
+
+
 def test_qwen35_gguf_resident_decode_graph_matches_eager_logits() -> None:
     if not _hip_available():
         pytest.skip("HIP runtime is not available")

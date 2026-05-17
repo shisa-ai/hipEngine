@@ -16626,3 +16626,111 @@ git diff --check
 ```
 
 All passed. Remaining caveat: public full-model prefill is still token-serial, and dense-BF16 fallback coverage is correctness-oriented only.
+
+## 2026-05-17 GGUF Q4_K_M parity benchmark vs PARO/llama.cpp
+
+Implemented task #50 as a retained diagnostic benchmark, not an accepted throughput row. The work added `scripts/qwen35_gguf_bench.py` and extended `Qwen35GGUFResidentSession` scratch/KV capacity past the old single 256-token page so standard 512/128 and 4K/128 shapes fit. The GGUF public full-model prefill path is still token-serial, so the result is diagnostic parity evidence only.
+
+Hardware/software snapshot from this run:
+
+```text
+rocm-smi product: AMD Radeon RX 7900 XTX, gfx1100, driver 7.0.0-070000-generic
+VRAM total/idle used before run: 25753026560 B / 27979776 B
+hipcc: HIP version: 7.13.60940-478a7a43c6
+torch probe: 2.10.0+rocm7.13.0a20260403 7.13.60910
+```
+
+Correctness gates:
+
+```bash
+/usr/bin/time -f 'elapsed=%E exit=%x' \
+  env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      PYTHONPATH=. \
+      python3 scripts/qwen35_gguf_decode_graph_smoke.py \
+        --json /tmp/gguf_task50_graph_smoke.json
+```
+
+Result: `passed=true`, graph/eager IDs `[220, 16, 13, 271]`, final logits finite, top-1 `271`, max_abs `0.0`, KL `0.0`, elapsed `0:22.45`.
+
+```bash
+/usr/bin/time -f 'elapsed=%E exit=%x' \
+  env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      PYTHONPATH=. \
+      python3 scripts/qwen35_gguf_e2e_correctness.py \
+        --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json \
+        --json /tmp/gguf_task50_e2e_q4km.json
+```
+
+Result: `passed=true`, outputs `[' 1.\n\n', ' 1.\n\n']`, generated IDs `[220,16,13,271]`, `torch_loaded_by_generate=false`, elapsed `0:23.82`.
+
+Benchmark commands:
+
+```bash
+mkdir -p /tmp/hipengine-gguf-task50
+/usr/bin/time -f 'elapsed=%E exit=%x' \
+  env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      PYTHONPATH=. \
+      python3 scripts/qwen35_gguf_bench.py \
+        --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf \
+        --quant gguf_q4_k_m \
+        --token-id 9707 \
+        --prompt-length 512 \
+        --decode-tokens 128 \
+        --warmup-decode-tokens 1 \
+        --warmup-runs 1 \
+        --measured-runs 3 \
+        --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+        --require-cached-build \
+        --json /tmp/hipengine-gguf-task50/q4km_512_128.json
+
+/usr/bin/time -f 'elapsed=%E exit=%x' \
+  env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      PYTHONPATH=. \
+      python3 scripts/qwen35_gguf_bench.py \
+        --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf \
+        --quant gguf_q4_k_m \
+        --token-id 9707 \
+        --prompt-length 4096 \
+        --decode-tokens 128 \
+        --warmup-decode-tokens 1 \
+        --warmup-runs 1 \
+        --measured-runs 3 \
+        --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+        --require-cached-build \
+        --json /tmp/hipengine-gguf-task50/q4km_4k_128.json
+```
+
+Benchmark results (medians over 3 measured runs, 1 warmup discarded; decode excludes graph capture):
+
+| Workload | Prefill tok/s | Decode tok/s | Prefill seconds | Decode seconds | Tracked peak | HIP sampled peak | Final tokens |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 512/128 | 16.3456 | 171.8444 | 31.3234 | 0.7449 | 0.5675 GiB | 0.8320 GiB | `[9707, 9707, 9707]` |
+| 4K/128 | 16.1961 | 83.8383 | 252.9002 | 1.5267 | 0.6103 GiB | 0.8945 GiB | `[9707, 9707, 9707]` |
+
+Variance: prefill/decode stdev <0.3% of median for both shapes. Graph capture was ~0.07 s and retained separately.
+
+Separate comparisons against retained baseline artifacts:
+
+| Workload | Baseline | Prefill delta | Decode delta |
+| --- | --- | ---: | ---: |
+| 512/128 | Qwen3.5-35B-A3B-PARO z-lab legacy/default Marlin-K | -99.3% | +49.3% |
+| 512/128 | Qwen3.6-35B-A3B-PARO shisa packed sidecars | -99.3% | +62.7% |
+| 512/128 | llama.cpp HIP Qwen3.6-35B-A3B UD-Q4_K_M GGUF | -99.3% | +95.1% |
+| 512/128 | llama.cpp Vulkan Qwen3.6-35B-A3B UD-Q4_K_M GGUF | -99.1% | +35.4% |
+| 4K/128 | Qwen3.5-35B-A3B-PARO z-lab legacy/default Marlin-K | -99.3% | -27.9% |
+| 4K/128 | Qwen3.6-35B-A3B-PARO shisa packed sidecars | -99.4% | -21.5% |
+| 4K/128 | llama.cpp HIP Qwen3.6-35B-A3B UD-Q4_K_M GGUF | -99.3% | -3.7% |
+| 4K/128 | llama.cpp Vulkan Qwen3.6-35B-A3B UD-Q4_K_M GGUF | -99.1% | -30.5% |
+
+Interpretation: 512 decode looks strong only because this GGUF target is 0.8B while the comparison rows are 35B-family models. The important negative result is unchanged: GGUF prefill is ~16 tok/s because public full-model prefill remains token-serial.
+
+Targeted tests after the benchmark/capacity change:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest \
+  tests/test_qwen35_gguf_runner.py tests/test_gguf_e2e_acceptance.py \
+  tests/test_llm_gguf_generate_path.py -q
+# 10 passed
+```
+
+Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-q4km-parity-benchmark-diagnostic.json`. Raw per-run JSON stays under `/tmp/hipengine-gguf-task50/`.
