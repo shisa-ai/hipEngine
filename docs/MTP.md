@@ -28,6 +28,13 @@ separate block-draft model plus draft context KV. MTP uses target-attached MTP
 weights to propose a short chain. The verifier, accept, commit, graph, and
 benchmark contracts should be shared.
 
+For the current `dflash` branch, MTP is explicitly deferred. The immediate lane
+is **z-lab/Qwen3.6-35B-A3B-DFlash** drafting against the
+**shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed** target on native Strix Halo
+`gfx1151` (`--offload-arch=gfx1151`). MTP should be added later as another
+`DraftModel` on the DFlash-built verifier only after chain verification,
+device-side accept, and state/KV commit are exact and faster than serial c=1.
+
 ## Alignment with existing hipEngine design
 
 hipEngine already has the right abstract contracts:
@@ -47,9 +54,17 @@ candidate rows only. The target verifier builds a runtime `VerifyBatch` with a
 root row at slot 0 and candidate rows at slots `1..N-1`. Docs and tests should
 not encode the root token as a `DraftBatch` candidate.
 
-## Current evidence from `~/amd-gpu-tuning`
+## Prior W7900/Quark evidence from `~/amd-gpu-tuning`
 
 Source plan: `~/amd-gpu-tuning/PLAN-MTP.md`.
+
+The rows below are prior W7900/gfx1100 + Quark/W8A8/BF16-MTP evidence. They are
+useful for verifier break-even math, but they are not a baseline for the current
+packed `gfx1151` DFlash lane. gfx1151 has a higher compute-per-byte balance than
+W7900 (roughly 48% of W7900 compute but ~30% of its memory bandwidth), so bytes
+are more expensive and native row reuse may matter even more. Do not promote an
+MTP speed claim until it is re-measured on the packed target with the shared
+native verifier.
 
 Retained native MTP rows show useful correctness and acceptance, but not speed:
 
@@ -94,8 +109,12 @@ Local bring-up artifact from the parent workspace:
 ```
 
 That artifact hardlinks the Quark W8A8 target shards and adds BF16 `mtp.*`
-tensors. It is a bring-up artifact, not necessarily the final quantized MTP
-layout.
+tensors. It is a bring-up artifact, not the current DFlash target layout. The
+`dflash` branch should not hardcode it into benchmark paths; the target baseline
+is the shisa packed PARO model, and the DFlash drafter is
+`z-lab/Qwen3.6-35B-A3B-DFlash`. MTP metadata/loading should be revisited after
+the shared verifier exists and should validate whatever packed-target-attached
+MTP artifact we actually retain.
 
 Important external facts:
 
@@ -332,12 +351,15 @@ not spend iterations on:
 ## First concrete hipEngine tasks after DFlash
 
 1. Confirm `docs/DFLASH.md` D1-D2 verifier/accept pieces are landed and faster
-   than serial c=1 on chain B=1/2/4/8.
-2. Add MTP tensor metadata/materialization for the Quark W8A8 + BF16 MTP
-   bring-up artifact.
+   than serial c=1 on chain B=1/2/4/8 for the shisa packed target on native
+   `gfx1151`.
+2. Add MTP tensor metadata/materialization for the retained packed-target MTP
+   artifact; use the Quark W8A8 + BF16 MTP artifact only as a bring-up/reference
+   source unless it becomes the measured target.
 3. Add native MTP proposal oracle tests against parent fixed fixtures.
 4. Implement `MtpDraftProvider` producing `DraftBatch` chain rows.
 5. Feed MTP drafts into the shared chain verifier and accept kernel.
 6. Add exact commit-state tests for reject, partial, and full accept.
-7. Benchmark B=1/2/3, then B=5 only if the split supports it.
+7. Benchmark B=1/2/3, then B=5 only if the split supports it, always with
+   same-session packed-target AR.
 8. Revisit top-k/tree policy only after a flat-chain MTP row beats AR.

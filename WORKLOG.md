@@ -16716,3 +16716,24 @@ uv run --no-sync python -m twine check dist/*
 # Successfully built hipengine-0.1.0.tar.gz and hipengine-0.1.0-py3-none-manylinux_2_39_x86_64.whl
 # twine check: PASSED for wheel and sdist
 ```
+
+## 2026-05-18 — DFlash docs retargeted to gfx1151 packed model
+
+### Scope
+
+- Started the `dflash` branch doc lane with the first task: refresh `docs/MTP.md` and `docs/DFLASH.md` before porting benchmark/code.
+- Retargeted the immediate DFlash plan to:
+  - target model: `shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed`
+  - drafter: `z-lab/Qwen3.6-35B-A3B-DFlash`
+  - backend: native Strix Halo `gfx1151` / `--offload-arch=gfx1151`
+- Clarified that prior W7900/gfx1100 + Quark rows from `~/amd-gpu-tuning` remain design evidence only, not a speed prediction or baseline for the packed/gfx1151 lane.
+- Recorded the gfx1151 roofline shift from `../amd-gpu-tuning/docs/ROOFLINE-gfx1151.md`: roughly 48% of W7900 compute but only ~30% of W7900 theoretical memory bandwidth, local read ceiling around 221 GB/s, so bytes are more expensive and a native verifier's row reuse/host-overhead removal may change DFlash economics.
+- Kept MTP explicitly deferred as a later `DraftModel` on the shared DFlash verifier; the old Quark W8A8 + BF16 MTP artifact is now marked bring-up/reference only.
+
+### Validation
+
+```bash
+git diff --check
+git diff -- docs/DFLASH.md docs/MTP.md WORKLOG.md
+# Re-read docs/DFLASH.md and docs/MTP.md end-to-end; docs-only review, no GPU run required
+```

@@ -23,11 +23,22 @@ problem is no longer a draft-policy problem. It is a native runtime problem:
 - device-side argmax/accept/commit summaries;
 - graph-capturable C++/HIP execution once fixed shapes are stable.
 
-The immediate target is **Qwen3.6/Qwen3.5 27B PARO + z-lab DFlash drafter** on
-W7900/gfx1100. The same infrastructure should later support MTP and other
-speculative decoders, but DFlash is the first native block-verifier target. See
-[`MTP.md`](MTP.md) for the target-attached multi-token predictor plan that
-reuses this verifier/commit infrastructure after DFlash lands.
+The immediate 2026-05 `dflash` branch target is
+**z-lab/Qwen3.6-35B-A3B-DFlash** as the drafter against the
+**shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed** target model on native
+Strix Halo `gfx1151` (`--offload-arch=gfx1151`). The W7900/gfx1100 and Quark
+rows below remain the measured parent evidence, but they are not a prediction
+for this packed/gfx1151 lane. On gfx1151 we have roughly 48% of W7900 compute
+but only ~30% of W7900 memory bandwidth (optimistic read ceiling ~221 GB/s), so
+bytes are more expensive and compute-per-byte is higher; a raw C++/HIP verifier
+that increases row reuse and avoids PyTorch/host overhead may shift DFlash from
+near-break-even to worthwhile. This is a hypothesis until same-session AR rows
+on the packed target prove it.
+
+The same infrastructure should later support MTP and other speculative decoders,
+but DFlash is the first native block-verifier target. See [`MTP.md`](MTP.md) for
+the target-attached multi-token predictor plan that reuses this verifier/commit
+infrastructure after DFlash lands.
 
 ## Current hipEngine status (2026-05-15)
 
@@ -80,7 +91,14 @@ It records:
   compact/c-aware target verifier with selectable per-row state and GPU accept
   summaries.
 
-## Current evidence from `~/amd-gpu-tuning`
+## Prior W7900/gfx1100 evidence from `~/amd-gpu-tuning`
+
+The numbers in this section are retained as design evidence from the parent
+workspace: W7900/gfx1100, Qwen3.5/Qwen3.6 PARO/Quark-family artifacts, and a
+Python/PyTorch-assisted DFlash harness. They prove acceptance accounting,
+correctness, and the verifier cost wall, but they are **not** the baseline for
+the new `gfx1151` + shisa packed target. Every promoted hipEngine row for the
+current branch must re-measure same-session AR and DFlash on the packed model.
 
 ### Best current Python-harness row
 
@@ -188,6 +206,25 @@ Reference headline numbers on Qwen3.5/3.6 27B-class DFlash targets:
 The gap is not explained by W7900 memory bandwidth. It is runtime shape,
 quantized small-batch linears, persistent cache discipline, and graph/native
 host overhead.
+
+## gfx1151 / packed-target deltas
+
+The current branch starts from the gfx1151 roofline in
+`../amd-gpu-tuning/docs/ROOFLINE-gfx1151.md`:
+
+- `gfx1151` has about **48%** of W7900's FP16/BF16/INT8/INT4 matrix compute but
+  only about **30%** of W7900's theoretical external memory bandwidth, with a
+  local measured read ceiling around **221 GB/s**.
+- Weight/KV bytes are therefore more expensive than on W7900. Speculative
+  verification only helps if the native path amortizes target weights across
+  root+candidate rows and removes PyTorch/host overhead; copying extra rows or
+  rebuilding draft context can erase the win quickly.
+- Native kernels must be compiled for `--offload-arch=gfx1151`; retained rows
+  should not rely on `HSA_OVERRIDE_GFX_VERSION=11.0.0` or `gfx1100` code objects.
+- The target artifact is the shisa packed PARO model (packed shared expert and
+  pack8 decode sidecars), not the older Quark W8A8 + BF16 MTP bring-up layout.
+- The first benchmark question is whether chain DFlash on the packed target can
+  beat same-session AR. DDTree and MTP remain follow-ons on the same verifier.
 
 ## Non-negotiable design rules
 
@@ -517,13 +554,19 @@ Do not start these before D1-D6 establish a winning native chain path.
 
 ## First concrete hipEngine tasks
 
-1. Add DFlash source-lineage entries and fixtures for corrected tree Conv/GDN.
-2. Port corrected tree Conv/GDN t-loop wrappers into `hipengine/kernels/hip_gfx1100/linear_attn/`.
-3. Add a native chain `TargetVerifyBatch` with fixed device buffers and CPU
+1. Refresh `docs/MTP.md`/this plan for the `gfx1151` + shisa packed target and
+   port the parent benchmark metric schema without inheriting PyTorch hot-loop
+   assumptions.
+2. Add DFlash source-lineage entries and fixtures for corrected tree Conv/GDN
+   plus z-lab DFlash drafter metadata.
+3. Validate packed target and drafter safetensors/config metadata offline.
+4. Add a native chain `TargetVerifyBatch` with fixed device buffers and CPU
    reference acceptance tests.
-4. Wire chain verify through Qwen3.5/PARO target runtime with persistent node
-   state rings and K/V scratch.
-5. Add GPU top1 + chain accept summary.
-6. Benchmark HumanEval chain N=1/2/4/8 against the current Python harness and
-   parent AR baseline.
-7. Only after chain > AR: add DDTree budget=4 compiler and tree accept/commit.
+5. Port corrected tree Conv/GDN t-loop wrappers into
+   `hipengine/kernels/hip_gfx1100/linear_attn/` with `gfx1151` alias coverage.
+6. Wire chain verify through the Qwen3.6/Qwen3.5 PARO target runtime with
+   persistent node state rings and K/V scratch.
+7. Add GPU top1 + chain accept summary.
+8. Benchmark HumanEval/code chain N=1/2/4/8 against same-session packed-target
+   AR on native `gfx1151`.
+9. Only after chain > AR: add DDTree budget=4 compiler and tree accept/commit.
