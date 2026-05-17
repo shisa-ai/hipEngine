@@ -16969,3 +16969,29 @@ git diff --check
 # tree GDN recurrent count=3 per dtype, DurationNs 6492–18475, Scratch_Size=0;
 # tree GDN finalize count=3 per dtype, DurationNs 1723–2244.
 ```
+
+## 2026-05-18 — DFlash target verifier layer ladder harness
+
+### Scope
+
+- Added `hipengine/speculative/ladder.py`, a torch-free serial-vs-bulk target-verifier comparator for `TargetVerifyBatch` layer-family snapshots.
+- The comparator records per-stage max abs/relative drift and reports the first failing stage/family/layer, tensor name, row, column, observed values, and tolerance.
+- Added a deterministic synthetic `verify_chain` harness that replays serial c=1 ancestry paths vs topological bulk rows for fixed root+candidate batches through embedding/position, RMSNorm, linear-attention Conv/GDN state, full-attention KV rows, MoE, and final norm/lm-head logits.
+- The result object exposes terminal logits and selectable per-row state snapshots (for example `linear_recurrent`, `kv_key`, `kv_value`) so later native verifier implementations can prove commit-row state parity before wiring commit copies.
+- Exported the ladder helpers from `hipengine.speculative` and documented the layer-ladder status in `docs/DFLASH.md`.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/speculative/ladder.py hipengine/speculative/__init__.py tests/test_target_verify_ladder.py
+python3 -m pytest \
+  tests/test_target_verify_ladder.py \
+  tests/test_speculative_interfaces.py \
+  tests/test_speculative_buffer_owner.py \
+  tests/test_dflash_chain_compiler.py \
+  tests/test_model_quant_and_imports.py -q
+! grep -R "import torch\\|from torch\\|transformers" -n hipengine/speculative
+git diff --check
+# pytest: 33 passed
+# no torch/transformers imports in hipengine/speculative
+```

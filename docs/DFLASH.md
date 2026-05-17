@@ -86,7 +86,10 @@ It records:
   summary to a transaction-scoped commit plan, validates target-verifier and
   state-commit device buffer shapes/dtypes, projects candidate rows into
   scheduler `WorkItem` metadata, and derives verify graph shape keys from the
-  target row topology, but no device-side state/KV commit is wired yet;
+  target row topology, and the torch-free target-verify ladder comparator can
+  compare serial c=1 vs bulk verify-chain row snapshots at each layer-family
+  boundary with first-failing-stage diagnostics, but no device-side state/KV
+  commit is wired yet;
 - no speculative throughput claim is allowed until Task #15 lands a native
   compact/c-aware target verifier with selectable per-row state and GPU accept
   summaries.

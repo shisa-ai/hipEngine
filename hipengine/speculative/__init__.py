@@ -25,6 +25,16 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBuffers,
     Verifier,
 )
+from hipengine.speculative.ladder import (
+    TargetVerifyLadderMismatch,
+    TargetVerifyLadderStageComparison,
+    TargetVerifyLayerLadderResult,
+    TargetVerifyStageSnapshot,
+    TargetVerifyStateRows,
+    compare_target_verify_ladder,
+    synthetic_chain_target_verify_ladder,
+    synthetic_chain_target_verify_snapshots,
+)
 
 __all__ = [
     "TargetVerifyBufferOwner",
@@ -46,4 +56,12 @@ __all__ = [
     "TargetVerifyBatch",
     "TargetVerifyBuffers",
     "Verifier",
+    "TargetVerifyLadderMismatch",
+    "TargetVerifyLadderStageComparison",
+    "TargetVerifyLayerLadderResult",
+    "TargetVerifyStageSnapshot",
+    "TargetVerifyStateRows",
+    "compare_target_verify_ladder",
+    "synthetic_chain_target_verify_ladder",
+    "synthetic_chain_target_verify_snapshots",
 ]
