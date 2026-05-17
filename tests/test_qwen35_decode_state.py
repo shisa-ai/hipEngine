@@ -1534,6 +1534,51 @@ def test_qwen35_decode_state_routes_moe_topk_shared_coop_when_enabled(monkeypatc
 
 
 
+def test_qwen35_decode_state_routes_prefill_sigmoid_only_for_legacy_fp16(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED", "1")
+    runtime = FakeRuntime()
+    hidden = _tensor(0xCA00, (2, 4096), "fp16")
+    calls = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_router_topk_shared_out_fp16",
+        lambda *args, **kwargs: calls.append(("raw", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_router_topk_shared_sigmoid_out_fp16",
+        lambda *args, **kwargs: calls.append(("sigmoid", args, kwargs)),
+    )
+
+    legacy = _state(runtime, _legacy_prepared_moe_weights())
+    legacy_scratch = legacy.reserve_moe_grouped_prefill_scratch(tokens=2, activation_dtype="fp16")
+    selected, weights = legacy.route_moe_topk_shared_fp16(hidden, legacy_scratch, tokens=2, stream=0x77)
+    assert selected is legacy_scratch.selected_experts
+    assert weights is legacy_scratch.routing_weights
+
+    packed = _state(runtime, _prepared_moe_weights())
+    packed_scratch = packed.reserve_moe_grouped_prefill_scratch(tokens=2, activation_dtype="fp16")
+    packed.route_moe_topk_shared_fp16(hidden, packed_scratch, tokens=2, stream=0x78)
+
+    assert [kind for kind, _args, _kwargs in calls] == ["sigmoid", "raw"]
+    legacy_args, legacy_kwargs = calls[0][1], calls[0][2]
+    assert legacy_args == (
+        hidden.ptr,
+        0xB000,
+        legacy_scratch.router_logits.ptr,
+        legacy_scratch.selected_experts.ptr,
+        legacy_scratch.routing_weights.ptr,
+        2,
+        4096,
+        129,
+        128,
+        8,
+    )
+    assert legacy_kwargs == {"threads": 256, "stream": 0x77, "library": None, "runtime": runtime}
+
+
+
 def test_qwen35_decode_state_activates_and_rotates_moe_down(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
@@ -1874,6 +1919,50 @@ def test_qwen35_decode_state_uses_token_tiled_legacy_shared_down_prefill(monkeyp
         129,
     )
     assert tiled_kwargs == {"token_tile": 4, "threads": 64, "stream": 0x55, "library": None, "runtime": runtime}
+
+
+def test_qwen35_decode_state_skips_legacy_shared_gate_sigmoid_when_router_fused(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _legacy_prepared_moe_weights())
+    scratch = state.reserve_moe_grouped_prefill_scratch(tokens=4, activation_dtype="fp16")
+    residual = _tensor(0xD100, (4, 4096), "fp16")
+    calls = []
+
+    monkeypatch.setenv("HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE", "4")
+    monkeypatch.setattr(qwen_runtime, "w8a16_shared_gate_sigmoid_fp32", lambda *a, **k: pytest.fail("unexpected sigmoid"))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "w8a16_shared_down_combine_residual_fp16_token_tiled",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(qwen_runtime, "w8a16_shared_down_combine_residual_fp16", lambda *a, **k: pytest.fail("unexpected fallback"))
+
+    out = state.shared_expert_down_combine_residual_fp16(
+        scratch,
+        residual,
+        tokens=4,
+        shared_gate_already_sigmoid=True,
+        stream=0x56,
+    )
+
+    assert out is scratch.moe_out
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    shared_gate_logits_ptr = scratch.router_logits.ptr + 128 * 4
+    assert args[:11] == (
+        scratch.shared_intermediate.ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_weight_w8a16").ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_weight_w8a16_scale").ptr,
+        scratch.selected_out.ptr,
+        shared_gate_logits_ptr,
+        residual.ptr,
+        scratch.moe_out.ptr,
+        4,
+        4096,
+        768,
+        129,
+    )
+    assert kwargs == {"token_tile": 4, "threads": 64, "stream": 0x56, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_runs_grouped_moe_fp16_legacy_w8a16_shared_fused_combine(monkeypatch) -> None:

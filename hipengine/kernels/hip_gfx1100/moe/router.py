@@ -16,6 +16,8 @@ _SYMBOL_LOGITS_FP16 = "hipengine_qwen35_router_logits_fp16"
 _SYMBOL_SELECT = "hipengine_qwen35_router_select"
 _SYMBOL_TOPK_SHARED_OUT = "hipengine_qwen35_router_topk_shared_out_bf16"
 _SYMBOL_TOPK_SHARED_OUT_FP16 = "hipengine_qwen35_router_topk_shared_out_fp16"
+_SYMBOL_TOPK_SHARED_SIGMOID_OUT = "hipengine_qwen35_router_topk_shared_sigmoid_out_bf16"
+_SYMBOL_TOPK_SHARED_SIGMOID_OUT_FP16 = "hipengine_qwen35_router_topk_shared_sigmoid_out_fp16"
 _SYMBOL_TOPK_SHARED_COOP_OUT = "hipengine_qwen35_router_topk_shared_coop_out_bf16"
 _SYMBOL_TOPK_SHARED_COOP_OUT_FP16 = "hipengine_qwen35_router_topk_shared_coop_out_fp16"
 _ALLOWED_THREADS = {64, 128, 256, 512}
@@ -324,6 +326,118 @@ def qwen35_router_topk_shared_out_fp16(
     _check_launch(runtime, err)
 
 
+def qwen35_router_topk_shared_sigmoid_out_bf16(
+    hidden_ptr: int,
+    combined_weight_ptr: int,
+    logits_ptr: int,
+    selected_ptr: int,
+    routing_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    num_rows: int,
+    num_experts: int,
+    top_k: int,
+    *,
+    threads: int = 512,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch prefill router top-k and overwrite shared-gate logits with sigmoid values."""
+
+    _check_prefill_sigmoid_shape(tokens, hidden_size, num_rows, num_experts, top_k)
+    _check_threads(threads)
+    library = library or build_qwen35_router(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_TOPK_SHARED_SIGMOID_OUT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_ptr),
+        ctypes.c_void_p(combined_weight_ptr),
+        ctypes.c_void_p(logits_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(routing_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(num_rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(top_k),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_router_topk_shared_sigmoid_out_fp16(
+    hidden_ptr: int,
+    combined_weight_ptr: int,
+    logits_ptr: int,
+    selected_ptr: int,
+    routing_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    num_rows: int,
+    num_experts: int,
+    top_k: int,
+    *,
+    threads: int = 512,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch prefill router top-k with FP16 hidden and fused shared-gate sigmoid."""
+
+    _check_prefill_sigmoid_shape(tokens, hidden_size, num_rows, num_experts, top_k)
+    _check_threads(threads)
+    library = library or build_qwen35_router(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_TOPK_SHARED_SIGMOID_OUT_FP16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_ptr),
+        ctypes.c_void_p(combined_weight_ptr),
+        ctypes.c_void_p(logits_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(routing_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(num_rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(top_k),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def qwen35_router_topk_shared_coop_out_bf16(
     hidden_ptr: int,
     combined_weight_ptr: int,
@@ -467,6 +581,16 @@ def register_qwen35_router_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
         register(
+            KernelKey("hip_gfx1100", "router_topk_shared", quant, "prefill_sigmoid_out"),
+            qwen35_router_topk_shared_sigmoid_out_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "router_topk_shared", quant, "prefill_sigmoid_out_fp16_hidden"),
+            qwen35_router_topk_shared_sigmoid_out_fp16,
+            replace=replace,
+        )
+        register(
             KernelKey("hip_gfx1100", "router_topk_shared", quant, "coop_out"),
             qwen35_router_topk_shared_coop_out_bf16,
             replace=replace,
@@ -479,6 +603,11 @@ def register_qwen35_router_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "router_topk_shared", "fp16", "out"),
         qwen35_router_topk_shared_out_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "router_topk_shared", "fp16", "prefill_sigmoid_out"),
+        qwen35_router_topk_shared_sigmoid_out_fp16,
         replace=replace,
     )
     register(
@@ -514,6 +643,22 @@ def _check_router_select_shape(
         raise ValueError("top_k must be <= num_experts")
     if num_experts > logits_stride:
         raise ValueError("num_experts must be <= logits_stride")
+
+
+def _check_prefill_sigmoid_shape(
+    tokens: int,
+    hidden_size: int,
+    num_rows: int,
+    num_experts: int,
+    top_k: int,
+) -> None:
+    if tokens <= 1:
+        raise ValueError("prefill shared-gate sigmoid router requires tokens > 1")
+    _check_positive(hidden_size, "hidden_size")
+    _check_positive(num_rows, "num_rows")
+    _check_router_select_shape(tokens, num_rows, num_experts, top_k)
+    if num_experts >= num_rows:
+        raise ValueError("num_experts must be smaller than num_rows for shared-gate routing")
 
 
 def _check_decode_coop_shape(

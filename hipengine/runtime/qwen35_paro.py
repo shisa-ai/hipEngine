@@ -101,6 +101,7 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_topk_shared_coop_out_fp16,
     qwen35_router_topk_shared_out_bf16,
     qwen35_router_topk_shared_out_fp16,
+    qwen35_router_topk_shared_sigmoid_out_fp16,
 )
 from hipengine.kernels.hip_gfx1100.quant.paro_marlin_k import gemv_paro_marlin_k_fma_fp16, marlin_k_default_threads
 from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
@@ -4030,11 +4031,15 @@ class Qwen35ParoDecodeState:
         combined = self.tensor(f"layers.{self.layer_weights.layer_id}.mlp.router_shared_gate.weight")
         prefill_threads = 256 if tokens > 1 else threads
         router_library = _library_for(library, "router")
-        router_fn = (
-            qwen35_router_topk_shared_coop_out_fp16
-            if tokens == 1 and _router_topk_coop_enabled()
-            else qwen35_router_topk_shared_out_fp16
-        )
+        if _use_prefill_router_shared_gate_sigmoid_fused(
+            tokens=tokens,
+            legacy_shared=self._shared_expert_is_legacy_w8a16(),
+        ):
+            router_fn = qwen35_router_topk_shared_sigmoid_out_fp16
+        elif tokens == 1 and _router_topk_coop_enabled():
+            router_fn = qwen35_router_topk_shared_coop_out_fp16
+        else:
+            router_fn = qwen35_router_topk_shared_out_fp16
         router_fn(
             hidden.ptr,
             combined.ptr,
@@ -4218,25 +4223,28 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         threads: int = 64,
+        shared_gate_already_sigmoid: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
         w8a16_library = _library_for(library, "w8a16")
         shared_gate_logits_ptr = scratch.router_logits.ptr + self.config.num_experts * DType.FP32.itemsize
-        # Overwrite the shared-gate logit column in place with sigmoid(logit).
-        # Router top-k/weights have already been materialized, and this avoids
-        # recomputing the same expf once per hidden row tile below.
-        w8a16_shared_gate_sigmoid_fp32(
-            shared_gate_logits_ptr,
-            shared_gate_logits_ptr,
-            tokens,
-            self.config.num_experts + 1,
-            threads=128,
-            stream=stream,
-            library=w8a16_library,
-            runtime=self.runtime,
-        )
+        if not shared_gate_already_sigmoid:
+            # Overwrite the shared-gate logit column in place with sigmoid(logit).
+            # Router top-k/weights have already been materialized, and this avoids
+            # recomputing the same expf once per hidden row tile below.  The P3.2
+            # diagnostic path can do this in the prefill router select kernel instead.
+            w8a16_shared_gate_sigmoid_fp32(
+                shared_gate_logits_ptr,
+                shared_gate_logits_ptr,
+                tokens,
+                self.config.num_experts + 1,
+                threads=128,
+                stream=stream,
+                library=w8a16_library,
+                runtime=self.runtime,
+            )
         token_tile = _use_shared_down_combine_prefill_token_tiled(tokens)
         if token_tile:
             w8a16_shared_down_combine_residual_fp16_token_tiled(
@@ -4818,6 +4826,10 @@ class Qwen35ParoDecodeState:
                 scratch,
                 residual,
                 tokens=tokens,
+                shared_gate_already_sigmoid=_use_prefill_router_shared_gate_sigmoid_fused(
+                    tokens=tokens,
+                    legacy_shared=True,
+                ),
                 library=library,
                 stream=stream,
             )
@@ -5746,6 +5758,14 @@ def _use_linear_gdn_prefill_rotate_fused(config, *, tokens: int, group_size: int
         tokens > 1
         and _env_flag("HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED", False)
         and int(group_size) == int(config.linear_value_head_dim)
+    )
+
+
+def _use_prefill_router_shared_gate_sigmoid_fused(*, tokens: int, legacy_shared: bool) -> bool:
+    return (
+        tokens > 1
+        and legacy_shared
+        and _env_flag("HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED", False)
     )
 
 

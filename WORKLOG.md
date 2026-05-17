@@ -15152,3 +15152,88 @@ python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py tests/test_qwen35_pa
 python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p31-gdn-rotate-rejected.json >/tmp/p31-artifact-check.json
 git diff --check
 ```
+
+---
+
+## 2026-05-17 — P3.2 prefill router shared-gate sigmoid diagnostic rejected
+
+Task #19 evaluated `docs/OPTIMIZE.md` P3.2. I added a diagnostic opt-in
+`HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1` that keeps the existing
+fallback as default and routes only legacy-FP16 shared-expert prefill
+(`tokens > 1`, `legacy_fp16` shared expert) through a new router select variant.
+The variant overwrites the shared-gate logit column with `sigmoid(logit)` inside
+`qwen35_router_select_sigmoid_shared_kernel`, so legacy grouped prefill can skip
+`w8a16_shared_gate_sigmoid_fp32`. c=1 decode and packed PARO shared-expert paths
+continue to preserve raw shared-gate logits for their combine kernels.
+
+Correctness/profiler evidence:
+
+```bash
+python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# selected_match=True, routing_max_abs=1.49e-08, fp16_selected_match=True,
+# sigmoid_logits_max_abs=0.0, sigmoid_selected_match=True,
+# sigmoid_fp16_logits_max_abs=4.77e-07, sigmoid_fp16_selected_match=True
+
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-router-p32-sigmoid \
+  --output-file router-p32 --output-format csv -- \
+  python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# qwen35_router_select_sigmoid_shared_kernel rows: duration 11840 ns and 3920 ns,
+# Scratch_Size=0, VGPR_Count=40, LDS_Block_Size=512, Workgroup_Size_X=64.
+
+HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p32-router-sigmoid-20260517/fused-native-prefill-fixture-gate.json
+# passed=True, max_kl=0.039568870612619614, top1_agreement=1.0, generated_match=True
+```
+
+Benchmark protocol on W7900/gfx1100 used cache-only HIP builds, graph replay
+decode, two repetitions per row, and current `HEAD=ca4796d` plus the uncommitted
+P3.2 diagnostic kernel/runtime/smoke/docs/artifact updates:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-or-shisa-unstripped> --shared-expert-format {auto,packed_paro_w4} \
+  --prompt-length {512,4096} --token-id 9707 --decode-tokens 128 \
+  --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p32-router-sigmoid-20260517/<mode>-<model>-<prompt>-128-runN.json
+
+HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 python3 scripts/qwen35_paro_bench.py ...same args...
+```
+
+Two-run median results, fused vs default:
+
+| model | workload | default prefill | fused prefill | Δ | default decode | fused decode | Δ | peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab Qwen3.5 legacy | 512/128 | `2220.024` | `2224.583` | `+0.21%` | `115.308` | `115.242` | `-0.06%` | `18.176` |
+| z-lab Qwen3.5 legacy | 4K/128 | `2467.279` | `2461.592` | `-0.23%` | `116.797` | `117.024` | `+0.19%` | `20.047` |
+| shisa Qwen3.6 packed | 512/128 | `2429.718` | `2445.832` | `+0.66%` | `111.795` | `111.707` | `-0.08%` | `18.123` |
+| shisa Qwen3.6 packed | 4K/128 | `2677.880` | `2672.998` | `-0.18%` | `112.622` | `112.945` | `+0.29%` | `19.995` |
+
+Default and fused rows generated identical first-two token IDs (`9707`, `9707`)
+across every repetition. Decision: reject P3.2 as a default fusion. Removing the
+extra legacy shared-gate sigmoid launch is correct, but the retained E2E surface
+is neutral/noisy: Qwen3.5 legacy is only `+0.21%` at 512 and regresses `-0.23%`
+at 4K, decode does not materially improve, and tracked peak memory is unchanged.
+The shisa packed rows are intentionally not routed through the sigmoid variant;
+their deltas are noise checks for raw-logit preservation. The env knob remains
+off by default for future diagnostics only.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p32-router-sigmoid-rejected.json`.
+
+Post-update validation:
+
+```bash
+python3 -m py_compile scripts/smoke.py hipengine/kernels/hip_gfx1100/moe/router.py \
+  hipengine/runtime/qwen35_paro.py tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py
+python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py -q --tb=short
+# 52 passed
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p32-router-sigmoid-rejected.json >/tmp/p32-artifact.pretty
+git diff --check
+```
