@@ -38,11 +38,7 @@ COMMON_FLAGS = (
     "--require-cached-build",
     "--attn-aotriton-min-tokens", "512",
     "--graph-replay-decode",
-    "--prefill-linear-chunk-size", "1024",
-    "--prefill-moe-chunk-size", "1024",
-    "--prefill-full-attn-query-chunk-size", "4096",
-    "--prefill-full-attn-post-chunk-size", "1024",
-    "--prefill-full-attn-rope-chunk-size", "1024",
+    "--prefill-chunk-autotune",
 )
 
 

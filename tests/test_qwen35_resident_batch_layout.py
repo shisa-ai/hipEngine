@@ -12,6 +12,7 @@ from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.generation import CompactPromptSlab
 from hipengine.runtime import PrefillConfig
+from hipengine.runtime.prefill import resolve_prefill_config_for_sequence
 from hipengine.runtime.qwen35_paro import Qwen35ParoGroupedMoeScratch
 from hipengine.runtime import qwen35_paro_runner as runner_module
 from hipengine.runtime.qwen35_paro_runner import (
@@ -126,16 +127,63 @@ def test_prefill_config_validates_chunk_sizes_and_defaults_to_full_native() -> N
     assert config.linear_chunk_size == 4
     assert config.attn_aotriton_min_tokens == 512
     assert config.require_full_native is False
+    assert config.auto_tune_chunk_sizes is True
     assert config.moe_grouped_device_gather is True
     assert PrefillConfig(attn_aotriton_min_tokens="1024").attn_aotriton_min_tokens == 1024
     assert PrefillConfig(moe_chunk_size="1024").moe_chunk_size == 1024
 
+    with pytest.raises(ValueError, match="chunk_tune_memory_budget_gib"):
+        PrefillConfig(chunk_tune_memory_budget_gib=-1)
     with pytest.raises(ValueError, match="full_attn_query_chunk_size"):
         PrefillConfig(full_attn_query_chunk_size=-1)
     with pytest.raises(ValueError, match="moe_chunk_size"):
         PrefillConfig(moe_chunk_size=-1)
     with pytest.raises(ValueError, match="attn_aotriton_min_tokens"):
         PrefillConfig(attn_aotriton_min_tokens=-1)
+
+
+def test_prefill_config_autotunes_long_context_chunks_from_budget() -> None:
+    short, short_tuning = resolve_prefill_config_for_sequence(
+        PrefillConfig(),
+        max_sequence_length=4096,
+        total_memory_bytes=48 * 1024**3,
+    )
+    assert short.linear_chunk_size == 0
+    assert short_tuning["reason"] == "below_min_tokens"
+
+    long, long_tuning = resolve_prefill_config_for_sequence(
+        PrefillConfig(),
+        max_sequence_length=32768 + 129,
+        total_memory_bytes=48 * 1024**3,
+    )
+    assert (long.linear_chunk_size, long.moe_chunk_size, long.full_attn_query_chunk_size) == (1024, 1024, 4096)
+    assert long.full_attn_post_chunk_size == 1024
+    assert long.full_attn_rope_chunk_size == 1024
+    assert long_tuning["reason"] == "long_context_static_budget"
+
+    very_long, very_long_tuning = resolve_prefill_config_for_sequence(
+        PrefillConfig(),
+        max_sequence_length=131072 + 129,
+        total_memory_bytes=48 * 1024**3,
+    )
+    assert very_long.full_attn_query_chunk_size == 8192
+    assert very_long_tuning["reason"] == "very_long_context_query8192_budget"
+
+    budget_limited, budget_tuning = resolve_prefill_config_for_sequence(
+        PrefillConfig(chunk_tune_memory_budget_gib=24.0),
+        max_sequence_length=131072 + 129,
+    )
+    assert budget_limited.full_attn_query_chunk_size == 4096
+    assert budget_tuning["reason"] == "long_context_static_budget"
+
+    manual, manual_tuning = resolve_prefill_config_for_sequence(
+        PrefillConfig(linear_chunk_size=2048),
+        max_sequence_length=131072 + 129,
+        total_memory_bytes=48 * 1024**3,
+    )
+    assert manual.linear_chunk_size == 2048
+    assert manual.full_attn_query_chunk_size == 0
+    assert manual_tuning["reason"] == "manual_chunk_sizes"
 
 
 def test_qwen35_resident_decode_split_config_caps_128k_context(monkeypatch) -> None:

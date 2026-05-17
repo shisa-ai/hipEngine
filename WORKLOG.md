@@ -15288,3 +15288,87 @@ python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-p33-moe-meta
 ```
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-p33-moe-metadata-fanout-deferred.json`.
+
+---
+
+## 2026-05-17 — P5.2 long-context chunk-size autotuner retained
+
+Task #21 evaluated `docs/OPTIMIZE.md` P5.2. I replaced the static long-prefill
+chunk defaults with a default-on, memory-budget-aware resolver in
+`PrefillConfig`: manual non-zero chunk sizes still override, prompts below 32K
+stay unchunked, 32K resolves to the retained static `1024/1024/4096/1024/1024`
+policy, and ≥128K raises only `full_attn_query_chunk_size` to `8192` when the
+budget is at least `24.5 GiB`. The default budget is derived as 55% of device
+VRAM from `hipMemGetInfo`; callers can set `chunk_tune_memory_budget_gib` or use
+`--no-prefill-chunk-autotune` for diagnostics.
+
+Candidate sweep on W7900/gfx1100, Qwen3.5-35B-A3B-PARO, `w4_paro`, max_layers=40,
+cache-only builds, AOTriton threshold 512, graph replay decode, warmup 1:
+
+| workload | candidate | chunks `(linear, moe, q, post, rope)` | prefill tok/s | decode tok/s | peak GiB |
+| --- | --- | --- | ---: | ---: | ---: |
+| 32K/128 | static | `(1024,1024,4096,1024,1024)` | `1983.834` | `100.476` | `20.320` |
+| 32K/128 | q8192 | `(1024,1024,8192,1024,1024)` | `1964.969` | `99.885` | `21.624` |
+| 32K/128 | all2048/q8192 | `(2048,2048,8192,2048,2048)` | `1923.982` | `99.183` | `21.804` |
+| 32K/128 | all512/q4096 | `(512,512,4096,512,512)` | `1890.300` | `98.927` | `20.230` |
+| 128K/128 | static | `(1024,1024,4096,1024,1024)` | `1013.420` | `63.238` | `23.288` |
+| 128K/128 | q6144 | `(1024,1024,6144,1024,1024)` | `1020.364` | `63.151` | `23.938` |
+| 128K/128 | q8192 | `(1024,1024,8192,1024,1024)` | `1050.368` | `63.368` | `24.592` |
+| 128K/128 | q12288 | `(1024,1024,12288,1024,1024)` | `1033.352` | `63.182` | `25.894` |
+| 128K/128 | q16384 | `(1024,1024,16384,1024,1024)` | `1040.739` | `63.181` | `27.201` |
+| 128K/128 | q32768 | `(1024,1024,32768,1024,1024)` | `1022.645` | `63.125` | `32.419` |
+
+Post-implementation A/B used the same harness. Short/mid contexts keep zero
+chunks, so their differences are run-to-run noise; 32K auto and static use the
+same chunks; 128K auto selects q8192 and improves prefill while staying under
+the derived `24.74 GiB` budget:
+
+| workload | baseline | auto | prefill Δ | decode Δ | peak Δ |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 no-auto -> auto | `2179.935` | `2188.194` | `+0.38%` | `+0.41%` | `+0.000 GiB` |
+| 4K/128 no-auto -> auto | `2434.652` | `2453.793` | `+0.79%` | `+0.36%` | `+0.000 GiB` |
+| 32K/128 static -> auto | `1937.989` | `1950.955` | `+0.67%` | `+1.24%` | `+0.000 GiB` |
+| 128K/128 static -> auto | `1017.796` | `1042.600` | `+2.44%` | `-0.40%` | `+1.304 GiB` |
+
+Decision: accept P5.2 as a default auto policy. This is a budget-aware
+performance tune, not a memory-saving tune: 128K spends ~`+1.30 GiB` tracked
+peak to recover `+2.44%` prefill, while 512/4K/32K do not regress because their
+resolved chunks are unchanged from the intended policies.
+
+Correctness/validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_paro_runner.py \
+  scripts/qwen35_paro_bench.py scripts/qwen35_native_prefill_fixture_gate.py \
+  scripts/qwen35_decode_graph_fixture_gate.py scripts/qwen35_rocprof_audit.py
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q --tb=short
+# 27 passed
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_paro_layout.py -q --tb=short
+# 47 passed
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p52-chunk-tuner-20260517-post/auto-native-prefill-fixture-gate.json
+# passed=True, max_kl=0.039568870612619614, top1_agreement=1.0, generated_match=True
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 8192 --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --json /tmp/hipengine-p52-chunk-tuner-20260517-post/q8192-native-prefill-fixture-gate.json
+# passed=True, max_kl=0.039568870612619614, top1_agreement=1.0, generated_match=True
+
+python3 scripts/qwen35_decode_graph_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p52-chunk-tuner-20260517-post/auto-decode-graph-fixture-gate.json
+# passed=True, final_kl=0.0, generated_match=True
+
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-p52-prefill-chunk-autotune-accepted.json >/tmp/p52-artifact-check.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-p52-prefill-chunk-autotune-accepted.json`.

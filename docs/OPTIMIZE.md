@@ -241,7 +241,7 @@ Keep as default policy.
 
 | ID | Candidate | Source / lineage | Expected prefill Δ | Expected decode Δ | Memory | Risk / prereqs | Status | Result / evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| P5.2 | Long-context chunk-size auto-tuner that respects per-shape memory budget instead of static defaults. | Parent `OPTIMAL.md` long-prefill overrides; current hipENGINE uses static defaults. | +1-3% at 32K/128 | neutral | -0.3 GiB at 32K, -0.5 GiB at 128K | Must verify same fixture gates pass for each chunk size; do not regress 512/4K. | pending | — |
+| P5.2 | Long-context chunk-size auto-tuner that respects per-shape memory budget instead of static defaults. | Parent `OPTIMAL.md` long-prefill overrides; current hipENGINE used static defaults. | 128K/128 `+2.44%` vs static measured; 32K keeps static chunks (`+0.67%` noise) | neutral (`-0.40%` at 128K measured; short/32K noisy positive) | 128K uses +1.30 GiB vs static when budget allows q8192; 512/4K unchanged; budget-limited policy stays static | Default `PrefillConfig.auto_tune_chunk_sizes=True`: <32K unchunked, 32K uses 1024/4096 chunks, ≥128K raises full-attn query chunk to 8192 only when budget ≥24.5 GiB. Manual chunk flags override. Fixture gates pass. | accepted (default auto policy) | `benchmarks/results/2026-05-17-hipengine-qwen35-p52-prefill-chunk-autotune-accepted.json` |
 
 ---
 
