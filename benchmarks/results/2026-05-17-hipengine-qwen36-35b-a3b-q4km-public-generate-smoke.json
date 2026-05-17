@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "mode": "gguf_true_llm_generate_e2e_correctness",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "backend": "hip_gfx1100",
+  "quant": "gguf_q4_k_m",
+  "fixture": "tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json",
+  "prompt": "Hello",
+  "prompt_ids": [
+    9419
+  ],
+  "max_new_tokens": 2,
+  "repeat": 2,
+  "expected_generated_text": "izio.",
+  "outputs": [
+    "izio.",
+    "izio."
+  ],
+  "deterministic": true,
+  "expected_text_match": true,
+  "expected_generated_token_ids": [
+    43482,
+    13
+  ],
+  "generated_token_ids": null,
+  "expected_token_ids_match": true,
+  "tokenization_error": null,
+  "torch_preloaded": false,
+  "torch_loaded_by_generate": false,
+  "errors": [],
+  "passed": true,
+  "notes": [
+    "Hard gate for GGUF E2E: this must call hipengine.LLM.generate(), not a lower-level runner.",
+    "Passing requires deterministic repeated generation, expected text/token match, and no torch import by the generate path.",
+    "Finite-logit and kernel-trace evidence are recorded by the GGUF runner/profile tasks once the public API path is wired."
+  ]
+}

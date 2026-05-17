@@ -137,6 +137,55 @@ def launch_gguf_linear(
     _LAUNCH_ABI[dispatch.abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
 
 
+def launch_gguf_linear_raw_ptr(
+    weight: Qwen35GGUFDeviceWeight,
+    qweight_ptr: int,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    activation_dtype: str = GGUF_ACTIVATION_BF16,
+    output_dtype: str = GGUF_OUTPUT_BF16,
+    backend: str = "hip_gfx1100",
+    threads: int = 0,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+) -> None:
+    """Launch a raw GGUF linear using an already offset qweight pointer.
+
+    Rank-3 MoE expert tensors are materialized as one contiguous raw GGUF
+    allocation.  The caller selects an expert by offsetting into that allocation,
+    while dispatch still resolves from the original logical weight spec.
+    """
+
+    dispatch = resolve_gguf_linear_dispatch(
+        weight,
+        activation_dtype=activation_dtype,
+        output_dtype=output_dtype,
+        backend=backend,
+        rows=rows,
+    )
+    if dispatch.abi != "raw":
+        raise ValueError(f"raw-pointer GGUF launch requires raw layout, got {weight.spec.layout!r}")
+    _ensure_linear_kernel_registered(dispatch.key)
+    fn = resolve(
+        backend=dispatch.key.backend,
+        layer=dispatch.key.layer,
+        quant=dispatch.key.quant,
+        variant=dispatch.key.variant,
+    )
+    library = None if libraries is None else libraries.get(dispatch.key.quant)
+    kwargs = {"stream": stream, "runtime": runtime}
+    if threads:
+        kwargs["threads"] = threads
+    if library is not None:
+        kwargs["library"] = library
+    fn(x_ptr, int(qweight_ptr), out_ptr, rows, in_features, out_features, **kwargs)
+
+
 def launch_gguf_linear_pair(
     weight_a: Qwen35GGUFDeviceWeight,
     weight_b: Qwen35GGUFDeviceWeight,
@@ -260,5 +309,6 @@ __all__ = [
     "GGUFLinearDispatch",
     "launch_gguf_linear",
     "launch_gguf_linear_pair",
+    "launch_gguf_linear_raw_ptr",
     "resolve_gguf_linear_dispatch",
 ]

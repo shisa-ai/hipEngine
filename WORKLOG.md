@@ -17898,3 +17898,32 @@ PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py \
 Next implementation blocker: add a GGUF MoE model/generator path for `qwen35moe`. The current Qwen3.5 GGUF mapper is dense/linear-attention focused, rejects `qwen35moe`, expects tied `lm_head=token_embd.weight` while this file has separate `output.weight`, and does not materialize/dispatch rank-3 MoE expert tensors such as `blk.0.ffn_gate_exps.weight [256, 512, 2048]` and `blk.0.ffn_down_exps.weight [256, 2048, 512]`.
 
 Diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-intake-diagnostic.json`.
+
+## 2026-05-17 Qwen3.6 35B-A3B GGUF qwen35moe bring-up
+
+Added the minimal public `LLM.generate()` path for local `general.architecture=qwen35moe` GGUF files. The shared Qwen3.5 GGUF mapper now accepts `qwen35moe`, maps the untied `output.weight` lm-head, validates MoE slots (`ffn_gate_inp`, rank-3 `ffn_{gate,up,down}_exps`, and shared-expert tensors), and computes the Qwen3.6 linear-attention QKV width as `2 * ssm_group_count * ssm_state_size + ssm_inner_size` (8192 for this file). Materialization keeps rank-3 GGUF expert tensors raw, converts router/linear F32 weights needed by BF16 kernels to BF16, and handles rank-3 Q4_K/Q5_K/Q6_K expert dispatch by offsetting raw GGUF pointers per selected expert.
+
+Runtime bring-up is intentionally c=1/minimal: qwen35moe prefill uses the serial resident path (bulk MoE rows are not wired yet), routes top-k on GPU, copies the selected expert IDs to host to offset raw rank-3 expert weights, runs selected Q4_K/Q5_K/Q6_K experts plus Q8_0 shared expert on HIP, and falls back to eager decode instead of graph capture because the current MoE selector is host-routed. This is a correctness bring-up path, not the target performance path.
+
+Validation:
+
+```bash
+PYTHONPATH=. pytest -q tests/test_qwen35_gguf_mapping.py tests/test_qwen35_gguf_materialize.py tests/test_llm_gguf_generate_path.py
+# 16 passed
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 2 --skip-tokenize-check --json benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-public-generate-smoke.json'
+# passed=true; outputs=["izio.", "izio."]; torch_loaded_by_generate=false
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --repeat 1 --skip-tokenize-check --json /tmp/hipengine-qwen35-q4km-regression-smoke.json'
+# Qwen3.5-0.8B Q4_K_M regression passed; output " 1.\n\n"; torch_loaded_by_generate=false
+```
+
+Direct public smoke for the target model:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY'
+from hipengine import LLM, SamplingParams
+print(LLM('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf', backend='hip_gfx1100', quant='gguf_q4_k_m').generate('Hello', SamplingParams(max_tokens=2, temperature=0.0, top_p=1.0, ignore_eos=True)))
+PY
+# ['izio.']; peak hipENGINE-tracked allocation observed in the timed smoke: 22,220,421,596 bytes
+```
+
+Follow-up for task #53/#54: add stronger correctness/oracle coverage and then benchmark/optimize. Current limitations are serial prefill for qwen35moe and host-routed expert selection, so this path is expected to be slower than packed PARO until grouped/prefill MoE and graph-captured/device-only selected expert dispatch land.

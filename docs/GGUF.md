@@ -43,7 +43,7 @@ projections, linear-attention state carry-over, CPU-hosted small-context full
 attention, residuals, dense FFN, and final RMSNorm. The public generator runs
 resident prefill once, then replays a captured one-step decode graph for remaining
 greedy tokens, detokenizes the generated IDs, and returns text through
-`LLM.generate()`. The hard gate now passes all local quant fixtures for the target prompt with no `torch` import on the generate path.
+`LLM.generate()`. The hard gate now passes all local dense-Qwen GGUF quant fixtures for the target prompt with no `torch` import on the generate path. A minimal `qwen35moe` GGUF public-generation bring-up also now works for `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`: it maps the untied `output.weight` lm-head, keeps rank-3 expert tensors in raw GGUF layout, and runs a deterministic c=1 public smoke. That MoE path is correctness-first and still uses serial prefill plus host-routed expert selection; performance parity with packed PARO is follow-up work.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
@@ -102,6 +102,28 @@ tests/fixtures/gguf/qwen35_0_8b_q4_1_e2e.json
 tests/fixtures/gguf/qwen35_0_8b_ud_q4_k_xl_e2e.json
 ```
 
+The first `qwen35moe` GGUF smoke fixture is intentionally narrower because a
+llama.cpp/token oracle row has not been promoted yet:
+
+```text
+tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json
+model: /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+prompt text: "Hello"
+prompt ids: [9419]
+expected generated text: "izio."
+expected generated token ids: [43482, 13]
+```
+
+Run it with:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json \
+  --repeat 2 --skip-tokenize-check \
+  --json benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-public-generate-smoke.json
+```
+
 External oracle: local llama.cpp CPU execution from
 `/home/lhl/llama.cpp/llama.cpp-hip-therock` at commit `59778f019`:
 
@@ -144,8 +166,7 @@ and dense-BF16 fallback coverage for Q4_1/F16/IQ4_XS. See
 `benchmarks/results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json`,
 `benchmarks/results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json`,
 and `benchmarks/results/2026-05-17-hipengine-gguf-local-quant-coverage-diagnostic.json`.
-Broader prompts, public full-model bulk prefill, and throughput claims remain
-future work.
+The `qwen35moe` Qwen3.6 smoke fixture now passes the same public API/no-torch gate, but only as a narrow deterministic bring-up smoke. Broader prompts, qwen35moe bulk prefill, stronger oracles, and throughput claims remain future work.
 
 ## Why GGUF is attractive for hipENGINE
 

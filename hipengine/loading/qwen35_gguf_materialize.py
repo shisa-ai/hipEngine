@@ -217,16 +217,25 @@ def _plan_layer(layer: Qwen35GGUFLayerMap) -> dict[str, Qwen35GGUFWeightSpec]:
 def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
+        bf16_linear_weight = slot_path.endswith(
+            (".ffn_gate_inp", ".ffn_gate_inp_shexp", ".ssm_alpha", ".ssm_beta")
+        )
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
-            quant_key="f32",
-            layout=LAYOUT_DENSE_F32,
+            quant_key="bf16" if bf16_linear_weight else "f32",
+            layout=LAYOUT_DENSE_BF16 if bf16_linear_weight else LAYOUT_DENSE_F32,
             allocation_names=("raw",),
         )
     if qtype == GGMLQuantizationType.Q4_K:
         if len(tensor.shape) != 2:
-            raise ValueError(f"Q4_K tensor {tensor.name!r} must be rank-2 for pack8 materialization")
+            return Qwen35GGUFWeightSpec(
+                slot_path=slot_path,
+                source=tensor,
+                quant_key="gguf_q4_k",
+                layout=LAYOUT_RAW_GGUF,
+                allocation_names=("raw",),
+            )
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
@@ -239,7 +248,7 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q5_k",
-            layout=LAYOUT_DENSE_BF16,
+            layout=LAYOUT_RAW_GGUF if len(tensor.shape) != 2 else LAYOUT_DENSE_BF16,
             allocation_names=("raw",),
         )
     if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
@@ -247,7 +256,7 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q6_k",
-            layout=LAYOUT_DENSE_BF16,
+            layout=LAYOUT_RAW_GGUF if len(tensor.shape) != 2 else LAYOUT_DENSE_BF16,
             allocation_names=("raw",),
         )
     if qtype in (GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0):

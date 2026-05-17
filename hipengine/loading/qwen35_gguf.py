@@ -11,20 +11,41 @@ from hipengine.loading.gguf import GGUFModelInfo, GGUFTensorInfo, MissingGGUFTen
 FULL_ATTENTION = "full_attention"
 LINEAR_ATTENTION = "linear_attention"
 
-_ROOT_SLOTS = {
+_DENSE_ROOT_SLOTS = {
     "token_embedding": "token_embd.weight",
     "output_norm": "output_norm.weight",
-    # Qwen3.5 GGUF omits a separate output tensor for this local target. The
-    # lm-head is tied to token_embd.weight and materialization should alias it.
+    # Dense Qwen3.5 GGUF omits a separate output tensor for this local target.
+    # The lm-head is tied to token_embd.weight and materialization should alias it.
     "lm_head": "token_embd.weight",
+}
+
+_MOE_ROOT_SLOTS = {
+    "token_embedding": "token_embd.weight",
+    "output_norm": "output_norm.weight",
+    # Qwen3.6 35B-A3B GGUF carries an untied output projection.
+    "lm_head": "output.weight",
+}
+
+_DENSE_MLP_LAYER_SLOTS = {
+    "ffn_gate": "ffn_gate.weight",
+    "ffn_up": "ffn_up.weight",
+    "ffn_down": "ffn_down.weight",
+}
+
+_MOE_LAYER_SLOTS = {
+    "ffn_gate_inp": "ffn_gate_inp.weight",
+    "ffn_gate_inp_shexp": "ffn_gate_inp_shexp.weight",
+    "ffn_gate_exps": "ffn_gate_exps.weight",
+    "ffn_up_exps": "ffn_up_exps.weight",
+    "ffn_down_exps": "ffn_down_exps.weight",
+    "ffn_gate_shexp": "ffn_gate_shexp.weight",
+    "ffn_up_shexp": "ffn_up_shexp.weight",
+    "ffn_down_shexp": "ffn_down_shexp.weight",
 }
 
 _COMMON_LAYER_SLOTS = {
     "attn_norm": "attn_norm.weight",
     "post_attention_norm": "post_attention_norm.weight",
-    "ffn_gate": "ffn_gate.weight",
-    "ffn_up": "ffn_up.weight",
-    "ffn_down": "ffn_down.weight",
 }
 
 _LINEAR_LAYER_SLOTS = {
@@ -51,7 +72,7 @@ _FULL_LAYER_SLOTS = {
 
 @dataclass(frozen=True)
 class Qwen35GGUFConfig:
-    """Qwen3.5 dimensions decoded from GGUF metadata."""
+    """Qwen3.5/Qwen3.6 GGUF dimensions decoded from metadata."""
 
     architecture: str
     block_count: int
@@ -74,6 +95,14 @@ class Qwen35GGUFConfig:
     ssm_state_size: int
     ssm_conv_kernel: int
     ssm_time_step_rank: int
+    expert_count: int = 0
+    expert_used_count: int = 0
+    expert_feed_forward_length: int = 0
+    expert_shared_feed_forward_length: int = 0
+
+    @property
+    def is_moe(self) -> bool:
+        return self.architecture == "qwen35moe"
 
 
 @dataclass(frozen=True)
@@ -165,45 +194,57 @@ class Qwen35GGUFModelMap:
 def qwen35_gguf_config_from_metadata(info: GGUFModelInfo) -> Qwen35GGUFConfig:
     metadata = info.metadata
     architecture = str(metadata.get("general.architecture", ""))
-    if architecture != "qwen35":
-        raise ValueError(f"expected GGUF architecture 'qwen35', got {architecture!r}")
-    block_count = _int_metadata(metadata, "qwen35.block_count")
-    full_interval = int(metadata.get("qwen35.full_attention_interval", 0) or 0)
+    if architecture not in {"qwen35", "qwen35moe"}:
+        raise ValueError(f"expected GGUF architecture 'qwen35' or 'qwen35moe', got {architecture!r}")
+    prefix = architecture
+    block_count = _int_metadata(metadata, f"{prefix}.block_count")
+    full_interval = int(metadata.get(f"{prefix}.full_attention_interval", 0) or 0)
     layer_types = tuple(
         FULL_ATTENTION if full_interval and (layer_id + 1) % full_interval == 0 else LINEAR_ATTENTION
         for layer_id in range(block_count)
     )
     token_embedding = info.tensor("token_embd.weight")
+    expert_count = int(metadata.get(f"{prefix}.expert_count", 0) or 0)
+    expert_used_count = int(metadata.get(f"{prefix}.expert_used_count", 0) or 0)
+    expert_ffn = int(metadata.get(f"{prefix}.expert_feed_forward_length", 0) or 0)
+    shared_ffn = int(metadata.get(f"{prefix}.expert_shared_feed_forward_length", 0) or 0)
+    feed_forward_length = (
+        expert_ffn if architecture == "qwen35moe" else _int_metadata(metadata, f"{prefix}.feed_forward_length")
+    )
     return Qwen35GGUFConfig(
         architecture=architecture,
         block_count=block_count,
-        hidden_size=_int_metadata(metadata, "qwen35.embedding_length"),
+        hidden_size=_int_metadata(metadata, f"{prefix}.embedding_length"),
         vocab_size=int(token_embedding.shape[0]),
-        feed_forward_length=_int_metadata(metadata, "qwen35.feed_forward_length"),
-        context_length=_int_metadata(metadata, "qwen35.context_length"),
-        head_count=_int_metadata(metadata, "qwen35.attention.head_count"),
-        head_count_kv=_int_metadata(metadata, "qwen35.attention.head_count_kv"),
-        key_length=_int_metadata(metadata, "qwen35.attention.key_length"),
-        value_length=_int_metadata(metadata, "qwen35.attention.value_length"),
+        feed_forward_length=feed_forward_length,
+        context_length=_int_metadata(metadata, f"{prefix}.context_length"),
+        head_count=_int_metadata(metadata, f"{prefix}.attention.head_count"),
+        head_count_kv=_int_metadata(metadata, f"{prefix}.attention.head_count_kv"),
+        key_length=_int_metadata(metadata, f"{prefix}.attention.key_length"),
+        value_length=_int_metadata(metadata, f"{prefix}.attention.value_length"),
         full_attention_interval=full_interval,
         layer_types=layer_types,
-        rms_norm_eps=float(metadata.get("qwen35.attention.layer_norm_rms_epsilon", 1.0e-6)),
-        rope_dimension_count=_int_metadata(metadata, "qwen35.rope.dimension_count"),
-        rope_dimension_sections=tuple(int(item) for item in metadata.get("qwen35.rope.dimension_sections", ())),
-        rope_freq_base=float(metadata.get("qwen35.rope.freq_base", 10000000.0)),
-        ssm_inner_size=_int_metadata(metadata, "qwen35.ssm.inner_size"),
-        ssm_group_count=_int_metadata(metadata, "qwen35.ssm.group_count"),
-        ssm_state_size=_int_metadata(metadata, "qwen35.ssm.state_size"),
-        ssm_conv_kernel=_int_metadata(metadata, "qwen35.ssm.conv_kernel"),
-        ssm_time_step_rank=_int_metadata(metadata, "qwen35.ssm.time_step_rank"),
+        rms_norm_eps=float(metadata.get(f"{prefix}.attention.layer_norm_rms_epsilon", 1.0e-6)),
+        rope_dimension_count=_int_metadata(metadata, f"{prefix}.rope.dimension_count"),
+        rope_dimension_sections=tuple(int(item) for item in metadata.get(f"{prefix}.rope.dimension_sections", ())),
+        rope_freq_base=float(metadata.get(f"{prefix}.rope.freq_base", 10000000.0)),
+        ssm_inner_size=_int_metadata(metadata, f"{prefix}.ssm.inner_size"),
+        ssm_group_count=_int_metadata(metadata, f"{prefix}.ssm.group_count"),
+        ssm_state_size=_int_metadata(metadata, f"{prefix}.ssm.state_size"),
+        ssm_conv_kernel=_int_metadata(metadata, f"{prefix}.ssm.conv_kernel"),
+        ssm_time_step_rank=_int_metadata(metadata, f"{prefix}.ssm.time_step_rank"),
+        expert_count=expert_count,
+        expert_used_count=expert_used_count,
+        expert_feed_forward_length=expert_ffn,
+        expert_shared_feed_forward_length=shared_ffn,
     )
 
 
 def required_qwen35_gguf_tensor_names(config: Qwen35GGUFConfig) -> tuple[str, ...]:
-    names: list[str] = ["output_norm.weight", "token_embd.weight"]
+    names = list(_root_slots_for_config(config).values())
     for layer_id, layer_type in enumerate(config.layer_types):
-        names.extend(_layer_required_tensor_names(layer_id, layer_type))
-    return tuple(names)
+        names.extend(_layer_required_tensor_names(config, layer_id, layer_type))
+    return tuple(dict.fromkeys(names))
 
 
 def validate_qwen35_gguf_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFMappingValidation:
@@ -230,7 +271,7 @@ def build_qwen35_gguf_tensor_map(info: GGUFModelInfo, *, strict: bool = True) ->
         validation.raise_for_errors()
     actual = {tensor.name: tensor for tensor in info.tensors}
     root_tensors = MappingProxyType(
-        {slot: actual[name] for slot, name in _ROOT_SLOTS.items() if name in actual}
+        {slot: actual[name] for slot, name in _root_slots_for_config(validation.config).items() if name in actual}
     )
     layers = tuple(
         _build_layer_map(validation.config, actual, layer_id)
@@ -250,8 +291,7 @@ def _build_layer_map(
     layer_id: int,
 ) -> Qwen35GGUFLayerMap:
     layer_type = config.layer_types[layer_id]
-    slot_suffixes = dict(_COMMON_LAYER_SLOTS)
-    slot_suffixes.update(_FULL_LAYER_SLOTS if layer_type == FULL_ATTENTION else _LINEAR_LAYER_SLOTS)
+    slot_suffixes = _layer_slot_suffixes(config, layer_type)
     tensors = {
         slot: actual[f"blk.{layer_id}.{suffix}"]
         for slot, suffix in slot_suffixes.items()
@@ -264,15 +304,28 @@ def _build_layer_map(
     )
 
 
-def _layer_required_tensor_names(layer_id: int, layer_type: str) -> tuple[str, ...]:
+def _root_slots_for_config(config: Qwen35GGUFConfig) -> Mapping[str, str]:
+    return _MOE_ROOT_SLOTS if config.is_moe else _DENSE_ROOT_SLOTS
+
+
+def _layer_slot_suffixes(config: Qwen35GGUFConfig, layer_type: str) -> dict[str, str]:
     slot_suffixes = dict(_COMMON_LAYER_SLOTS)
+    slot_suffixes.update(_MOE_LAYER_SLOTS if config.is_moe else _DENSE_MLP_LAYER_SLOTS)
     if layer_type == FULL_ATTENTION:
         slot_suffixes.update(_FULL_LAYER_SLOTS)
     elif layer_type == LINEAR_ATTENTION:
         slot_suffixes.update(_LINEAR_LAYER_SLOTS)
     else:
         raise ValueError(f"unknown Qwen3.5 GGUF layer type {layer_type!r}")
-    return tuple(f"blk.{layer_id}.{suffix}" for suffix in slot_suffixes.values())
+    return slot_suffixes
+
+
+def _layer_required_tensor_names(
+    config: Qwen35GGUFConfig,
+    layer_id: int,
+    layer_type: str,
+) -> tuple[str, ...]:
+    return tuple(f"blk.{layer_id}.{suffix}" for suffix in _layer_slot_suffixes(config, layer_type).values())
 
 
 def _shape_errors(config: Qwen35GGUFConfig, actual: Mapping[str, GGUFTensorInfo]) -> list[str]:
@@ -280,26 +333,67 @@ def _shape_errors(config: Qwen35GGUFConfig, actual: Mapping[str, GGUFTensorInfo]
         "output_norm.weight": (config.hidden_size,),
         "token_embd.weight": (config.vocab_size, config.hidden_size),
     }
+    if config.is_moe:
+        expected["output.weight"] = (config.vocab_size, config.hidden_size)
     for layer_id, layer_type in enumerate(config.layer_types):
         prefix = f"blk.{layer_id}"
         expected.update(
             {
                 f"{prefix}.attn_norm.weight": (config.hidden_size,),
                 f"{prefix}.post_attention_norm.weight": (config.hidden_size,),
-                f"{prefix}.ffn_gate.weight": (config.feed_forward_length, config.hidden_size),
-                f"{prefix}.ffn_up.weight": (config.feed_forward_length, config.hidden_size),
-                f"{prefix}.ffn_down.weight": (config.hidden_size, config.feed_forward_length),
             }
         )
+        if config.is_moe:
+            expected.update(
+                {
+                    f"{prefix}.ffn_gate_inp.weight": (config.expert_count, config.hidden_size),
+                    f"{prefix}.ffn_gate_inp_shexp.weight": (config.hidden_size,),
+                    f"{prefix}.ffn_gate_exps.weight": (
+                        config.expert_count,
+                        config.expert_feed_forward_length,
+                        config.hidden_size,
+                    ),
+                    f"{prefix}.ffn_up_exps.weight": (
+                        config.expert_count,
+                        config.expert_feed_forward_length,
+                        config.hidden_size,
+                    ),
+                    f"{prefix}.ffn_down_exps.weight": (
+                        config.expert_count,
+                        config.hidden_size,
+                        config.expert_feed_forward_length,
+                    ),
+                    f"{prefix}.ffn_gate_shexp.weight": (
+                        config.expert_shared_feed_forward_length,
+                        config.hidden_size,
+                    ),
+                    f"{prefix}.ffn_up_shexp.weight": (
+                        config.expert_shared_feed_forward_length,
+                        config.hidden_size,
+                    ),
+                    f"{prefix}.ffn_down_shexp.weight": (
+                        config.hidden_size,
+                        config.expert_shared_feed_forward_length,
+                    ),
+                }
+            )
+        else:
+            expected.update(
+                {
+                    f"{prefix}.ffn_gate.weight": (config.feed_forward_length, config.hidden_size),
+                    f"{prefix}.ffn_up.weight": (config.feed_forward_length, config.hidden_size),
+                    f"{prefix}.ffn_down.weight": (config.hidden_size, config.feed_forward_length),
+                }
+            )
         if layer_type == LINEAR_ATTENTION:
             expected.update(
                 {
                     f"{prefix}.attn_gate.weight": (config.ssm_inner_size, config.hidden_size),
-                    f"{prefix}.attn_qkv.weight": (3 * config.ssm_inner_size, config.hidden_size),
+                    f"{prefix}.attn_qkv.weight": (_linear_qkv_width(config), config.hidden_size),
                     f"{prefix}.ssm_a": (config.ssm_time_step_rank,),
                     f"{prefix}.ssm_alpha.weight": (config.ssm_time_step_rank, config.hidden_size),
                     f"{prefix}.ssm_beta.weight": (config.ssm_time_step_rank, config.hidden_size),
-                    f"{prefix}.ssm_conv1d.weight": (3 * config.ssm_inner_size, config.ssm_conv_kernel),
+                    f"{prefix}.ssm_conv1d.weight": (_linear_qkv_width(config), config.ssm_conv_kernel),
                     f"{prefix}.ssm_dt.bias": (config.ssm_time_step_rank,),
                     f"{prefix}.ssm_norm.weight": (config.ssm_state_size,),
                     f"{prefix}.ssm_out.weight": (config.hidden_size, config.ssm_inner_size),
@@ -322,6 +416,10 @@ def _shape_errors(config: Qwen35GGUFConfig, actual: Mapping[str, GGUFTensorInfo]
         if tensor is not None and tensor.shape != shape:
             errors.append(f"{name}: expected shape {shape}, got {tensor.shape}")
     return errors
+
+
+def _linear_qkv_width(config: Qwen35GGUFConfig) -> int:
+    return 2 * config.ssm_group_count * config.ssm_state_size + config.ssm_inner_size
 
 
 def _int_metadata(metadata: Mapping[str, Any], key: str) -> int:

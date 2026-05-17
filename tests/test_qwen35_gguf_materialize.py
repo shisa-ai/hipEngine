@@ -19,6 +19,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
 )
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
+MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 Q4_1_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_1.gguf")
 Q8_0_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q8_0.gguf")
 UD_Q4_K_XL_MODEL = Path("/models/gguf/Qwen3.5-0.8B-UD-Q4_K_XL.gguf")
@@ -50,6 +51,31 @@ def test_qwen35_gguf_materialization_plan_covers_every_tensor() -> None:
     assert layer3["attn_q"].layout == LAYOUT_Q4_K_PACK8
     assert layer3["attn_v"].layout == LAYOUT_DENSE_BF16
     assert layer3["attn_v"].quant_key == "gguf_q6_k"
+
+
+def test_qwen35moe_gguf_materialization_plan_keeps_experts_raw() -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+    plan = plan_qwen35_gguf_materialization(model_map)
+
+    assert set(plan.tensor_names) == {tensor.name for tensor in reader.info.tensors}
+    assert plan.root_specs["lm_head"].source.name == "output.weight"
+    assert plan.root_specs["lm_head"].layout == LAYOUT_RAW_GGUF
+    assert plan.root_specs["lm_head"].quant_key == "gguf_q6_k"
+
+    layer0 = plan.layer_specs[0]
+    assert layer0["ffn_gate_inp"].layout == LAYOUT_DENSE_BF16
+    assert layer0["ffn_gate_inp"].quant_key == "bf16"
+    assert layer0["ffn_gate_inp_shexp"].layout == LAYOUT_DENSE_BF16
+    assert layer0["ffn_gate_exps"].layout == LAYOUT_RAW_GGUF
+    assert layer0["ffn_gate_exps"].quant_key == "gguf_q4_k"
+    assert layer0["ffn_up_exps"].layout == LAYOUT_RAW_GGUF
+    assert layer0["ffn_down_exps"].layout == LAYOUT_RAW_GGUF
+    assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k"
+    assert layer0["ffn_gate_shexp"].layout == LAYOUT_RAW_GGUF
+    assert layer0["ffn_down_shexp"].layout == LAYOUT_RAW_GGUF
 
 
 @pytest.mark.parametrize(

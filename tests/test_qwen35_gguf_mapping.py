@@ -15,6 +15,7 @@ from hipengine.loading.qwen35_gguf import (
 )
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
+MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
 
 
@@ -58,6 +59,40 @@ def test_qwen35_gguf_tensor_map_covers_local_inventory() -> None:
     assert layer3.tensor("attn_k").shape == (512, 1024)
     assert layer3.tensor("attn_v").ggml_type_name == "Q6_K"
     assert layer3.tensor("attn_output").ggml_type_name == "Q4_K"
+
+
+def test_qwen35moe_gguf_tensor_map_covers_local_inventory() -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    info = GGUFReader(MOE_MODEL).info
+    model_map = build_qwen35_gguf_tensor_map(info)
+
+    assert model_map.validation.passed
+    assert model_map.config.architecture == "qwen35moe"
+    assert model_map.config.block_count == 40
+    assert model_map.config.hidden_size == 2048
+    assert model_map.config.vocab_size == 248320
+    assert model_map.config.expert_count == 256
+    assert model_map.config.expert_used_count == 8
+    assert model_map.config.expert_feed_forward_length == 512
+    assert model_map.config.expert_shared_feed_forward_length == 512
+    assert model_map.config.layer_types.count(FULL_ATTENTION) == 10
+    assert model_map.config.layer_types.count(LINEAR_ATTENTION) == 30
+    assert len(model_map.layers) == 40
+    assert set(model_map.tensor_names) == {tensor.name for tensor in info.tensors}
+    assert len(model_map.tensor_names) == len(info.tensors)
+    assert set(required_qwen35_gguf_tensor_names(model_map.config)) == set(model_map.tensor_names)
+
+    assert model_map.root("token_embedding").name == "token_embd.weight"
+    assert model_map.root("lm_head").name == "output.weight"
+    assert model_map.root("lm_head").ggml_type_name == "Q6_K"
+
+    layer0 = model_map.layer(0)
+    assert layer0.layer_type == LINEAR_ATTENTION
+    assert layer0.tensor("ffn_gate_inp").shape == (256, 2048)
+    assert layer0.tensor("ffn_gate_exps").shape == (256, 512, 2048)
+    assert layer0.tensor("ffn_down_exps").shape == (256, 2048, 512)
+    assert layer0.tensor("ffn_gate_shexp").shape == (512, 2048)
 
 
 def test_qwen35_gguf_tensor_map_reports_missing_tensor() -> None:

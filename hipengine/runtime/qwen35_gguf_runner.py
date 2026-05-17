@@ -36,6 +36,9 @@ from hipengine.kernels.hip_gfx1100.fused import (
     gguf_rmsnorm_bf16_f32_weight,
     silu_mul_separate_out_bf16,
 )
+from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32, build_lm_head, lm_head_argmax_stage1_blocks
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgate_bf16
 from hipengine.kernels.hip_gfx1100.runtime import (
@@ -56,14 +59,24 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
 )
+from hipengine.kernels.hip_gfx1100.moe.router import (
+    qwen35_router_logits_bf16,
+    qwen35_router_select,
+)
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
 from hipengine.loading.qwen35_gguf_materialize import (
+    Qwen35GGUFDeviceWeight,
     Qwen35GGUFResidentWeights,
     materialize_qwen35_gguf_weights,
 )
 from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
-from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear, launch_gguf_linear_pair
+from hipengine.runtime.gguf_linear import (
+    GGUF_OUTPUT_F32,
+    launch_gguf_linear,
+    launch_gguf_linear_pair,
+    launch_gguf_linear_raw_ptr,
+)
 from hipengine.runtime.prefill import PrefillConfig
 
 
@@ -282,6 +295,21 @@ class Qwen35GGUFFullStackRunner:
     def ffn_size(self) -> int:
         assert self.weights is not None
         return self.weights.config.feed_forward_length
+
+    @property
+    def expert_count(self) -> int:
+        assert self.weights is not None
+        return self.weights.config.expert_count
+
+    @property
+    def top_k(self) -> int:
+        assert self.weights is not None
+        return self.weights.config.expert_used_count
+
+    @property
+    def shared_ffn_size(self) -> int:
+        assert self.weights is not None
+        return self.weights.config.expert_shared_feed_forward_length
 
     @property
     def q_width(self) -> int:
@@ -1077,6 +1105,11 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        if self.weights.config.is_moe:
+            if rows != 1:
+                raise NotImplementedError("qwen35moe GGUF bulk MoE rows are not wired yet")
+            self._run_post_attention_moe_c1(layer_id, out_ptr, scratch, stream=stream)
+            return
         if not launch_gguf_linear_pair(
             layer.weight("ffn_gate"),
             layer.weight("ffn_up"),
@@ -1133,6 +1166,173 @@ class Qwen35GGUFFullStackRunner:
             scratch.ffn_down.ptr,
             out_ptr,
             rows * self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+
+    def _run_post_attention_moe_c1(self, layer_id: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
+        assert self.weights is not None
+        cfg = self.weights.config
+        if not cfg.is_moe:
+            raise ValueError("MoE path requires qwen35moe GGUF config")
+        layer = self.weights.layer(layer_id)
+        runtime = self.runtime or get_hip_runtime()
+        top_k = int(cfg.expert_used_count)
+        if top_k <= 0:
+            raise ValueError("qwen35moe GGUF expert_used_count must be positive")
+        if top_k > scratch.moe_selected_host.shape[0]:
+            raise ValueError("qwen35moe scratch top-k capacity is too small")
+
+        # Router weights are GGUF F32 tensors converted to BF16 at materialization time.
+        qwen35_router_logits_bf16(
+            scratch.post_norm.ptr,
+            layer.weight("ffn_gate_inp").allocation().tensor.ptr,
+            scratch.moe_router_logits.ptr,
+            1,
+            self.hidden_size,
+            cfg.expert_count,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_router_logits_bf16(
+            scratch.post_norm.ptr,
+            layer.weight("ffn_gate_inp_shexp").allocation().tensor.ptr,
+            scratch.moe_router_logits.ptr + cfg.expert_count * 4,
+            1,
+            self.hidden_size,
+            1,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_router_select(
+            scratch.moe_router_logits.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.moe_routing_weights.ptr,
+            1,
+            cfg.expert_count + 1,
+            cfg.expert_count,
+            top_k,
+            stream=stream,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(scratch.moe_selected_host),
+            scratch.moe_selected_experts,
+            top_k * DType.INT64.itemsize,
+            runtime=runtime,
+        )
+
+        gate_weight = layer.weight("ffn_gate_exps")
+        up_weight = layer.weight("ffn_up_exps")
+        down_weight = layer.weight("ffn_down_exps")
+        for lane, expert_id in enumerate(scratch.moe_selected_host[:top_k].tolist()):
+            expert = int(expert_id)
+            if expert < 0 or expert >= cfg.expert_count:
+                raise ValueError(f"router selected expert {expert} outside [0, {cfg.expert_count})")
+            launch_gguf_linear_raw_ptr(
+                gate_weight,
+                _expert_raw_ptr(gate_weight, expert),
+                scratch.post_norm.ptr,
+                scratch.ffn_gate_up.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear_raw_ptr(
+                up_weight,
+                _expert_raw_ptr(up_weight, expert),
+                scratch.post_norm.ptr,
+                scratch.ffn_gate_up.ptr + cfg.expert_feed_forward_length * 2,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+            silu_mul_separate_out_bf16(
+                scratch.ffn_gate_up.ptr,
+                scratch.ffn_gate_up.ptr + cfg.expert_feed_forward_length * 2,
+                scratch.ffn_intermediate.ptr,
+                rows=1,
+                features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear_raw_ptr(
+                down_weight,
+                _expert_raw_ptr(down_weight, expert),
+                scratch.ffn_intermediate.ptr,
+                scratch.moe_down_out.ptr + lane * self.hidden_size * 2,
+                rows=1,
+                in_features=cfg.expert_feed_forward_length,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+
+        if not launch_gguf_linear_pair(
+            layer.weight("ffn_gate_shexp"),
+            layer.weight("ffn_up_shexp"),
+            scratch.post_norm.ptr,
+            scratch.moe_shared_gate.ptr,
+            scratch.moe_shared_up.ptr,
+            rows=1,
+            in_features=self.hidden_size,
+            out_features=cfg.expert_shared_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        ):
+            launch_gguf_linear(
+                layer.weight("ffn_gate_shexp"),
+                scratch.post_norm.ptr,
+                scratch.moe_shared_gate.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_shared_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ffn_up_shexp"),
+                scratch.post_norm.ptr,
+                scratch.moe_shared_up.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_shared_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+        silu_mul_separate_out_bf16(
+            scratch.moe_shared_gate.ptr,
+            scratch.moe_shared_up.ptr,
+            scratch.moe_shared_intermediate.ptr,
+            rows=1,
+            features=cfg.expert_shared_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ffn_down_shexp"),
+            scratch.moe_shared_intermediate.ptr,
+            scratch.moe_shared_out.ptr,
+            rows=1,
+            in_features=cfg.expert_shared_feed_forward_length,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
+            scratch.moe_down_out.ptr,
+            scratch.moe_routing_weights.ptr,
+            scratch.moe_shared_out.ptr,
+            scratch.moe_router_logits.ptr + cfg.expert_count * 4,
+            scratch.residual.ptr,
+            out_ptr,
+            top_k,
+            self.hidden_size,
             stream=stream,
             runtime=runtime,
         )
@@ -1277,7 +1477,10 @@ class Qwen35GGUFResidentSession:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
-        run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
+        if self.runner.weights.config.is_moe and use_bulk is None:
+            run_bulk = False
+        else:
+            run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
         if run_bulk:
             if len(token_ids) < min_bulk_tokens:
                 raise ValueError(
@@ -1379,7 +1582,13 @@ class Qwen35GGUFResidentSession:
         last_hidden_ptr = bulk_scratch.norm.ptr + (rows - 1) * self.runner.hidden_size * 2
         return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
 
-    def step(self, token_id: int, position: int | None = None) -> Qwen35GGUFNextTokenProbeResult:
+    def step(
+        self,
+        token_id: int,
+        position: int | None = None,
+        *,
+        return_logits: bool = True,
+    ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume one generated token and return the next greedy token.
 
         ``position`` is optional because the session tracks its own decode
@@ -1390,7 +1599,7 @@ class Qwen35GGUFResidentSession:
             raise ValueError(f"position {position} does not match session cursor {self._position}")
         hidden_ptr = self._run_token_to_final_hidden(int(token_id), position=self._position)
         self._position += 1
-        return self._sample_from_hidden(hidden_ptr)
+        return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
 
     def _run_token_to_final_hidden(self, token_id: int, *, position: int, stream: int = 0) -> int:
         if self._token_buf is None:
@@ -2068,6 +2277,15 @@ class _FullStackScratch:
     ffn_gate_up: object
     ffn_intermediate: object
     ffn_down: object
+    moe_router_logits: object
+    moe_selected_experts: object
+    moe_routing_weights: object
+    moe_down_out: object
+    moe_shared_gate: object
+    moe_shared_up: object
+    moe_shared_intermediate: object
+    moe_shared_out: object
+    moe_selected_host: np.ndarray
     buffers: tuple[object, ...]
 
     @classmethod
@@ -2096,6 +2314,9 @@ class _FullStackScratch:
         max_positions = min(int(cfg.context_length), block_count * block_size)
         hidden_bytes = runner.hidden_size * 2
         ffn_bytes = runner.ffn_size * 2
+        moe_top_k = max(1, int(cfg.expert_used_count))
+        moe_experts = max(1, int(cfg.expert_count))
+        moe_shared_ffn = max(1, int(cfg.expert_shared_feed_forward_length or runner.ffn_size or 1))
         linear_qkv_bytes = runner.linear_qkv_width * 2
         ssm_inner_bytes = cfg.ssm_inner_size * 2
         alpha_bytes = cfg.ssm_time_step_rank * 2
@@ -2189,6 +2410,14 @@ class _FullStackScratch:
             "ffn_gate_up": buf(2 * ffn_bytes),
             "ffn_intermediate": buf(ffn_bytes),
             "ffn_down": buf(hidden_bytes),
+            "moe_router_logits": buf((moe_experts + 1) * DType.FP32.itemsize),
+            "moe_selected_experts": buf(moe_top_k * DType.INT64.itemsize),
+            "moe_routing_weights": buf(moe_top_k * DType.FP32.itemsize),
+            "moe_down_out": buf(moe_top_k * hidden_bytes),
+            "moe_shared_gate": buf(moe_shared_ffn * DType.BF16.itemsize),
+            "moe_shared_up": buf(moe_shared_ffn * DType.BF16.itemsize),
+            "moe_shared_intermediate": buf(moe_shared_ffn * DType.BF16.itemsize),
+            "moe_shared_out": buf(hidden_bytes),
         }
         metadata_buffers = (block_table, position_buf, context_buf, cos_table_buf, sin_table_buf)
         return cls(
@@ -2215,6 +2444,7 @@ class _FullStackScratch:
             layer_recurrent_states=tuple(layer_recurrent_states),
             conv_zero=conv_zero,
             recurrent_zero=recurrent_zero,
+            moe_selected_host=np.empty((moe_top_k,), dtype=np.int64),
             buffers=tuple(fields.values()) + tuple(state_buffers) + tuple(cache_buffers) + metadata_buffers,
         )
 
@@ -2240,6 +2470,18 @@ class _FullStackScratch:
             if recurrent_state is not None:
                 _zero(runtime, recurrent_state, self.recurrent_zero)
         self.set_full_attention_position(0, runtime)
+
+
+def _expert_raw_ptr(weight: Qwen35GGUFDeviceWeight, expert_id: int) -> int:
+    """Return the raw GGUF row pointer for one rank-3 MoE expert tensor."""
+
+    source = weight.spec.source
+    if len(source.shape) != 3 or len(source.byte_shape) != 3:
+        raise ValueError(f"GGUF expert tensor {source.name!r} must be rank-3, got {source.shape}")
+    experts, rows, row_bytes = source.byte_shape
+    if expert_id < 0 or expert_id >= experts:
+        raise ValueError(f"expert_id {expert_id} outside [0, {experts}) for {source.name}")
+    return weight.allocation("raw").tensor.ptr + int(expert_id) * int(rows) * int(row_bytes)
 
 
 def _zero(runtime: HipRuntime, buffer, zeros: np.ndarray) -> None:
