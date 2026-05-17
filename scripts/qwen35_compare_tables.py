@@ -32,7 +32,7 @@ class Series:
 
 QWEN35_SOURCE = "benchmarks/results/2026-05-17-hipengine-qwen35-d31-d33-grouped-gqa-long-context-diagnostic.json"
 SHISA_SOURCE = "benchmarks/results/2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json"
-SHISA_GFX1151_SOURCE = "benchmarks/results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-canonical-sweep-diagnostic.json"
+SHISA_GFX1151_SOURCE = "benchmarks/results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-chunk256-sweep-diagnostic.json"
 LLAMACPP_GFX1151_SOURCE = "benchmarks/results/2026-05-17-llamacpp-upstream-gfx1151-qwen36-gguf-rerun-diagnostic.json"
 
 TARGETS: dict[str, Series] = {
@@ -74,15 +74,15 @@ TARGETS: dict[str, Series] = {
         source=SHISA_GFX1151_SOURCE,
         notes=(
             "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed on Strix Halo/Radeon 8060S, "
-            "hip_gfx1151, graph-replay decode, AOTriton threshold 512. 32K/128K rows use "
-            "parent-style chunk flags. Diagnostic single-run; no shisa KL/top-1 gate yet."
+            "hip_gfx1151, graph-replay decode, AOTriton threshold 512, and 256-row prefill "
+            "chunks for linear/MoE/full-attn surfaces. Diagnostic single-run; no shisa KL/top-1 gate yet."
         ),
         rows=(
-            Row("512/128", 881.143, 61.915, 18.123),
-            Row("4K/128", 630.585, 63.364, 19.995),
-            Row("32K/128", 598.663, 50.546, 20.267),
-            Row("128K/128", 371.722, 30.220, 23.235),
-            Row("4K/4K", 621.551, 62.245, 20.108),
+            Row("512/128", 983.206, 62.060, 17.997),
+            Row("4K/128", 1029.402, 63.605, 18.097),
+            Row("32K/128", 792.296, 50.629, 18.909),
+            Row("128K/128", 413.489, 30.245, 21.877),
+            Row("4K/4K", 1001.266, 62.438, 18.210),
         ),
     ),
     "shisa-legacy": Series(

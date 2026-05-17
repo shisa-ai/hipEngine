@@ -1,0 +1,418 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "timestamp": "2026-05-17T23:10:00+09:00",
+  "run_tag": "gfx1151-shisa-qwen36-packed-chunk256-sweep",
+  "summary": "Strix Halo / gfx1151 shisa Qwen3.6 packed PARO sweep with 256-row prefill chunking after 4K prefill diagnosis.",
+  "hardware": {
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "arch": "gfx1151",
+    "mode": "TUI/headless",
+    "rocminfo_names": [
+      "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+      "gfx1151",
+      "amdgcn-amd-amdhsa--gfx1151",
+      "amdgcn-amd-amdhsa--gfx11-generic"
+    ],
+    "rocm_smi_vram_total_gib": 0.5,
+    "note": "APU/unified-memory system; rocm-smi/sysfs expose only a 512 MiB VRAM aperture. hipENGINE allocator high-water marks are meaningful; hipMemGetInfo sampled peaks are retained raw only.",
+    "environment_capture_path": "/tmp/hipengine-gfx1151-shisa36-chunk256-env.txt",
+    "environment_capture_excerpt": "--- git ---\n## gfx1151...origin/gfx1151\nafef746641740912f2a945268a73f29544bbeda4\n--- rocminfo ---\n  Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Vendor Name:             CPU                                \n  Name:                    gfx1151                            \n  Marketing Name:          Radeon 8060S Graphics              \n  Vendor Name:             AMD                                \n      Name:                    amdgcn-amd-amdhsa--gfx1151         \n      Name:                    amdgcn-amd-amdhsa--gfx11-generic   \n  Name:                    aie2p                              \n  Marketing Name:          RyzenAI-npu5                       \n  Vendor Name:             AMD                                \n--- rocm-smi ---\n\n\n============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 49.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 0\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 536870912\nGPU[0]\t\t: VRAM Total Used Memory (B): 338739200\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n--- hipcc ---\nHIP version: 7.13.26154-ca4b97ef2c\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 43215c73116c407735c85a180d174f718798c328+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n--- python/torch ---\npython 3.12.12\ntorch 2.10.0+rocm7.13.0a20260417 7.13.26154\n--- model refs ---\n176e57c1a5d823bd0f41605420d04e3441465bb4--- gguf ---\n-rw-r--r-- 1 lhl lhl 21G May 17 15:36 /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf\n"
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.13.26154-ca4b97ef2c\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 43215c73116c407735c85a180d174f718798c328+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "python": "3.12.12",
+    "hipengine_commit": "afef746641740912f2a945268a73f29544bbeda4",
+    "hipengine_dirty_before_artifact": false
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+    "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+    "snapshot_revision": "501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+    "current_refs_main": "176e57c1a5d823bd0f41605420d04e3441465bb4",
+    "quant": "w4_paro / packed ParoQuant",
+    "safetensors_size_gib": 19.0683598741889,
+    "architecture": "Qwen3_5MoeForConditionalGeneration / qwen3_5_moe_text",
+    "layers": 40,
+    "hidden_size": 2048,
+    "num_experts": 256,
+    "num_experts_per_tok": 8
+  },
+  "common_hipengine": {
+    "env": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "shared_expert_format": "packed_paro_w4",
+    "token_id": 9707,
+    "attn_aotriton_min_tokens": 512,
+    "graph_replay_decode": true,
+    "max_layers": 40,
+    "warmup_decode_tokens": 4,
+    "measured_runs": 1,
+    "prefill_chunk_flags": {
+      "prefill_linear_chunk_size": 256,
+      "prefill_moe_chunk_size": 256,
+      "prefill_full_attn_query_chunk_size": 256,
+      "prefill_full_attn_post_chunk_size": 256,
+      "prefill_full_attn_rope_chunk_size": 256
+    }
+  },
+  "measurements": {
+    "hipengine_chunk256": [
+      {
+        "workload": "512/128",
+        "prompt_tokens": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "json_path": "/tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-512-128.json",
+        "stdout_path": "/tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-512-128.stdout",
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 256 --prefill-moe-chunk-size 256 --prefill-full-attn-query-chunk-size 256 --prefill-full-attn-post-chunk-size 256 --prefill-full-attn-rope-chunk-size 256 --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-512-128.json",
+        "prefill_seconds": 0.5207453399998485,
+        "decode_seconds": 2.062509699999282,
+        "load_seconds": 17.12957300600101,
+        "prefill_tok_s": 983.2061099195798,
+        "decode_tok_s": 62.06031418908942,
+        "decode_step_median_s": 0.01611335703124439,
+        "tracked_peak_allocated_gib": 17.996782043017447,
+        "owned_session_peak_gib": 1.5349103743210435,
+        "tracked_current_gib_before_close": 17.88988369051367,
+        "hip_used_peak_sampled_gib_raw": -39.37823295593262,
+        "prefill_chunk_sizes": {
+          "linear": 256,
+          "moe": 256,
+          "full_attn_query": 256,
+          "full_attn_post": 256,
+          "full_attn_rope": 256
+        },
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "target_arch": "gfx1151",
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.547565460205078
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.32843589782715
+          }
+        ]
+      },
+      {
+        "workload": "4K/128",
+        "prompt_tokens": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "json_path": "/tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-4096-128.json",
+        "stdout_path": "/tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-4096-128.stdout",
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 256 --prefill-moe-chunk-size 256 --prefill-full-attn-query-chunk-size 256 --prefill-full-attn-post-chunk-size 256 --prefill-full-attn-rope-chunk-size 256 --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-4096-128.json",
+        "prefill_seconds": 3.97900923799898,
+        "decode_seconds": 2.0124063459988975,
+        "load_seconds": 17.13570631100083,
+        "prefill_tok_s": 1029.4019830071704,
+        "decode_tok_s": 63.60544442452783,
+        "decode_step_median_s": 0.015721924578116386,
+        "tracked_peak_allocated_gib": 18.096687846817076,
+        "owned_session_peak_gib": 1.6348161781206727,
+        "tracked_current_gib_before_close": 17.9897894943133,
+        "hip_used_peak_sampled_gib_raw": -39.243425369262695,
+        "prefill_chunk_sizes": {
+          "linear": 256,
+          "moe": 256,
+          "full_attn_query": 256,
+          "full_attn_post": 256,
+          "full_attn_rope": 256
+        },
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "target_arch": "gfx1151",
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.74695587158203
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.92479705810547
+          }
+        ]
+      },
+      {
+        "workload": "32K/128",
+        "prompt_tokens": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "json_path": "/tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-32768-128.json",
+        "stdout_path": "/tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-32768-128.stdout",
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 32768 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 256 --prefill-moe-chunk-size 256 --prefill-full-attn-query-chunk-size 256 --prefill-full-attn-post-chunk-size 256 --prefill-full-attn-rope-chunk-size 256 --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-32768-128.json",
+        "prefill_seconds": 41.358305772000676,
+        "decode_seconds": 2.528214944000865,
+        "load_seconds": 17.368610821000402,
+        "prefill_tok_s": 792.2955108616596,
+        "decode_tok_s": 50.628606679083134,
+        "decode_step_median_s": 0.01975167925000676,
+        "tracked_peak_allocated_gib": 18.909392529167235,
+        "owned_session_peak_gib": 2.4475208604708314,
+        "tracked_current_gib_before_close": 18.80249417666346,
+        "hip_used_peak_sampled_gib_raw": -38.405534744262695,
+        "prefill_chunk_sizes": {
+          "linear": 256,
+          "moe": 256,
+          "full_attn_query": 256,
+          "full_attn_post": 256,
+          "full_attn_rope": 256
+        },
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 32768,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "target_arch": "gfx1151",
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.894044876098633
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.38347053527832
+          }
+        ]
+      },
+      {
+        "workload": "128K/128",
+        "prompt_tokens": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "json_path": "/tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-131072-128.json",
+        "stdout_path": "/tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-131072-128.stdout",
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 131072 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 256 --prefill-moe-chunk-size 256 --prefill-full-attn-query-chunk-size 256 --prefill-full-attn-post-chunk-size 256 --prefill-full-attn-rope-chunk-size 256 --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-131072-128.json",
+        "prefill_seconds": 316.99027452799965,
+        "decode_seconds": 4.232052985000337,
+        "load_seconds": 17.460536567001327,
+        "prefill_tok_s": 413.48902642255183,
+        "decode_tok_s": 30.245368017288616,
+        "decode_step_median_s": 0.03306291394531513,
+        "tracked_peak_allocated_gib": 21.877449207939208,
+        "owned_session_peak_gib": 5.415577539242804,
+        "tracked_current_gib_before_close": 21.77055085543543,
+        "hip_used_peak_sampled_gib_raw": -35.438737869262695,
+        "prefill_chunk_sizes": {
+          "linear": 256,
+          "moe": 256,
+          "full_attn_query": 256,
+          "full_attn_post": 256,
+          "full_attn_rope": 256
+        },
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 131072,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "target_arch": "gfx1151",
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.215497970581055
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.599180221557617
+          }
+        ]
+      },
+      {
+        "workload": "4K/4K",
+        "prompt_tokens": 4096,
+        "decode_tokens": 4096,
+        "warmup_decode_tokens": 4,
+        "json_path": "/tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-4096-4096.json",
+        "stdout_path": "/tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-4096-4096.stdout",
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 4096 --decode-tokens 4096 --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 256 --prefill-moe-chunk-size 256 --prefill-full-attn-query-chunk-size 256 --prefill-full-attn-post-chunk-size 256 --prefill-full-attn-rope-chunk-size 256 --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-4096-4096.json",
+        "prefill_seconds": 4.090822919000857,
+        "decode_seconds": 65.60087481200026,
+        "load_seconds": 17.38856962599857,
+        "prefill_tok_s": 1001.2655353462251,
+        "decode_tok_s": 62.438191742691906,
+        "decode_step_median_s": 0.0160158385771485,
+        "tracked_peak_allocated_gib": 18.210267477668822,
+        "owned_session_peak_gib": 1.7483958089724183,
+        "tracked_current_gib_before_close": 18.103369125165045,
+        "hip_used_peak_sampled_gib_raw": -39.124284744262695,
+        "prefill_chunk_sizes": {
+          "linear": 256,
+          "moe": 256,
+          "full_attn_query": 256,
+          "full_attn_post": 256,
+          "full_attn_rope": 256
+        },
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 4096,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "target_arch": "gfx1151",
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.74695587158203
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.846912384033203
+          }
+        ]
+      }
+    ],
+    "comparison": [
+      {
+        "workload": "512/128",
+        "previous_default_prefill_tok_s": 881.1425687574745,
+        "previous_default_decode_tok_s": 61.914736083125064,
+        "prefill_delta_vs_default_pct": 11.583090498740534,
+        "decode_delta_vs_default_pct": 0.2351267487741504,
+        "tracked_peak_delta_vs_default_gib": -0.1265430450439453,
+        "llamacpp_upstream_hip_prefill_tok_s": 1058.737576,
+        "prefill_delta_vs_upstream_hip_pct": -7.134106486121372,
+        "llamacpp_upstream_hip_decode_tok_s": 50.536968,
+        "decode_delta_vs_upstream_hip_pct": 22.801815473159003,
+        "llamacpp_upstream_vulkan_prefill_tok_s": 638.00773,
+        "prefill_delta_vs_upstream_vulkan_pct": 54.10567359733709,
+        "llamacpp_upstream_vulkan_decode_tok_s": 57.615142,
+        "decode_delta_vs_upstream_vulkan_pct": 7.71528461925759
+      },
+      {
+        "workload": "4K/128",
+        "previous_default_prefill_tok_s": 630.5845581080741,
+        "previous_default_decode_tok_s": 63.36449790258679,
+        "prefill_delta_vs_default_pct": 63.24566939851135,
+        "decode_delta_vs_default_pct": 0.3802547639712328,
+        "tracked_peak_delta_vs_default_gib": -1.8981456756591797,
+        "llamacpp_upstream_hip_prefill_tok_s": 1004.21996,
+        "prefill_delta_vs_upstream_hip_pct": 2.5076202435938777,
+        "llamacpp_upstream_hip_decode_tok_s": 49.379432,
+        "decode_delta_vs_upstream_hip_pct": 28.809591055093197,
+        "llamacpp_upstream_vulkan_prefill_tok_s": 595.400407,
+        "prefill_delta_vs_upstream_vulkan_pct": 72.89238819871524,
+        "llamacpp_upstream_vulkan_decode_tok_s": 55.027415,
+        "decode_delta_vs_upstream_vulkan_pct": 15.58864690359858
+      },
+      {
+        "workload": "32K/128",
+        "previous_default_prefill_tok_s": 598.662573855585,
+        "previous_default_decode_tok_s": 50.54593072315976,
+        "prefill_delta_vs_default_pct": 32.34425291679992,
+        "decode_delta_vs_default_pct": 0.16356599777771486,
+        "tracked_peak_delta_vs_default_gib": -1.3579845428466797,
+        "llamacpp_upstream_hip_prefill_tok_s": 735.53422,
+        "prefill_delta_vs_upstream_hip_pct": 7.717015649069281,
+        "llamacpp_upstream_hip_decode_tok_s": 43.43536,
+        "decode_delta_vs_upstream_hip_pct": 16.560808242600334,
+        "llamacpp_upstream_vulkan_prefill_tok_s": 407.984089,
+        "prefill_delta_vs_upstream_vulkan_pct": 94.19764942393616,
+        "llamacpp_upstream_vulkan_decode_tok_s": 44.575954,
+        "decode_delta_vs_upstream_vulkan_pct": 13.578290840579953
+      },
+      {
+        "workload": "128K/128",
+        "previous_default_prefill_tok_s": 371.7217061501093,
+        "previous_default_decode_tok_s": 30.21999419396948,
+        "prefill_delta_vs_default_pct": 11.23618007272784,
+        "decode_delta_vs_default_pct": 0.08396369356087341,
+        "tracked_peak_delta_vs_default_gib": -1.3579845428466797,
+        "llamacpp_upstream_hip_prefill_tok_s": 376.069879,
+        "prefill_delta_vs_upstream_hip_pct": 9.95005170902077,
+        "llamacpp_upstream_hip_decode_tok_s": 31.285706,
+        "decode_delta_vs_upstream_hip_pct": -3.325282103946725,
+        "llamacpp_upstream_vulkan_prefill_tok_s": 181.452787,
+        "prefill_delta_vs_upstream_vulkan_pct": 127.87692228863467,
+        "llamacpp_upstream_vulkan_decode_tok_s": 26.935416,
+        "decode_delta_vs_upstream_vulkan_pct": 12.288475579098602
+      },
+      {
+        "workload": "4K/4K",
+        "previous_default_prefill_tok_s": 621.5506307228575,
+        "previous_default_decode_tok_s": 62.2448848119896,
+        "prefill_delta_vs_default_pct": 61.091548436168864,
+        "decode_delta_vs_default_pct": 0.3105587411498689,
+        "tracked_peak_delta_vs_default_gib": -1.8981456756591797,
+        "llamacpp_upstream_hip_prefill_tok_s": 990.725575,
+        "prefill_delta_vs_upstream_hip_pct": 1.0638627499067965,
+        "llamacpp_upstream_hip_decode_tok_s": 49.070638,
+        "decode_delta_vs_upstream_hip_pct": 27.241450870665073,
+        "llamacpp_upstream_vulkan_prefill_tok_s": 590.391163,
+        "prefill_delta_vs_upstream_vulkan_pct": 69.59358440570445,
+        "llamacpp_upstream_vulkan_decode_tok_s": 54.24097,
+        "decode_delta_vs_upstream_vulkan_pct": 15.112601678568627
+      }
+    ],
+    "comparison_sources": {
+      "previous_default_sweep": "benchmarks/results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-canonical-sweep-diagnostic.json",
+      "upstream_llamacpp_hip_vulkan": "benchmarks/results/2026-05-17-llamacpp-upstream-gfx1151-qwen36-gguf-rerun-diagnostic.json"
+    }
+  },
+  "correctness": {
+    "passed": false,
+    "status": "sanity_only_no_shisa_kl_top1_gate",
+    "finite_generated_logits": true,
+    "generated_preview_repeated_token_9707": true,
+    "kl_mean": null,
+    "top1_agreement": null,
+    "reason_not_accepted": "No gfx1151 shisa KL/top-1 E2E CPU-reference gate was run for these rows; single-run diagnostic sweep only."
+  },
+  "memory": {
+    "hipengine_note": "tracked_peak_allocated_gib is hipENGINE allocator high-water mark and is the meaningful hipENGINE memory field on this APU.",
+    "hipengine_hipmemgetinfo_note": "hip_used_peak_sampled_gib_raw is retained in row JSON but invalid/negative on this APU HIP runtime; do not use it for claims."
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "Diagnostic retained for chunk-size decision and comparison; promote only after shisa correctness gate and repeated-run statistics."
+  }
+}

@@ -16302,3 +16302,42 @@ Additional spot checks:
 Chunk256 profile (`/tmp/gfx1151-prefill-diagnostics-20260517/profile-chunk256-4k/out`) reduced kernel total from `6.439s` to `3.987s`. The biggest wins were linear conv (`0.945s -> 0.091s`) and rotate1 (`0.939s -> 0.181s`); GDN recurrent also improved (`1.568s -> 0.931s`). MoE/AWQ/attention kernel time increases from more chunks/launches, but the linear-attention gains dominate.
 
 Working hypothesis: Strix Halo/gfx1151 dislikes the current unchunked 4096-row prefill surfaces for linear-attention/rotate kernels. The existing long-context chunk machinery fixes the shape. Next optimization should promote a mid-context gfx1151/default autotune profile around `256` rows for `linear/moe/full_attn_*` chunks, then rerun correctness + retained 512/4K/32K/128K sweeps.
+
+## 2026-05-17 — gfx1151 shisa packed chunk256 sweep
+
+After the 4K prefill diagnosis, reran the shisa packed Qwen3.6 sweep with 256-row chunks promoted to all prefill surfaces:
+
+```bash
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/qwen35_paro_bench.py \
+    --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+    --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 \
+    --prompt-length {P} --decode-tokens {D} --warmup-decode-tokens 4 --max-layers 40 \
+    --attn-aotriton-min-tokens 512 --graph-replay-decode \
+    --prefill-linear-chunk-size 256 --prefill-moe-chunk-size 256 \
+    --prefill-full-attn-query-chunk-size 256 --prefill-full-attn-post-chunk-size 256 \
+    --prefill-full-attn-rope-chunk-size 256 \
+    --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build \
+    --json /tmp/hipengine-gfx1151-shisa36-packed-chunk256-20260517/packed-chunk256-{P}-{D}.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-chunk256-sweep-diagnostic.json`.
+
+Status remains **diagnostic retained** (`performance_claim=false`): generated previews are finite/repeated token `9707`, but there is no shisa KL/top-1 gate or repeated-run statistic yet.
+
+| Workload | Prefill tok/s | Decode tok/s | Tracked peak | Prefill vs default | Prefill vs upstream HIP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 983.206 | 62.060 | 17.997 GiB | +11.6% | -7.1% |
+| 4K/128 | 1029.402 | 63.605 | 18.097 GiB | +63.2% | +2.5% |
+| 32K/128 | 792.296 | 50.629 | 18.909 GiB | +32.3% | +7.7% |
+| 128K/128 | 413.489 | 30.245 | 21.877 GiB | +11.2% | +9.9% |
+| 4K/4K | 1001.266 | 62.438 | 18.210 GiB | +61.1% | +1.1% |
+
+Compared to the upstream llama.cpp HIP rerun (`1058.738 / 1004.220 / 735.534 / 376.070 / 990.726` prefill and `50.537 / 49.379 / 43.435 / 31.286 / 49.071` decode), chunk256 fixes the 4K prefill gap and gives better prefill at 4K/32K/128K/4K4K while preserving the decode win except at 128K. It also reduces tracked peak memory vs the default sweep (`18.123/19.995/20.267/23.235/20.108 GiB` -> `17.997/18.097/18.909/21.877/18.210 GiB`).
+
+Updated `scripts/qwen35_compare_tables.py` so `--target gfx1151` now points at the chunk256 sweep. Throughput-only comparison commands:
+
+```bash
+python3 scripts/qwen35_compare_tables.py --target gfx1151 hip-gfx1151 --no-memory
+python3 scripts/qwen35_compare_tables.py --target gfx1151 vulkan-gfx1151 --no-memory
+```
