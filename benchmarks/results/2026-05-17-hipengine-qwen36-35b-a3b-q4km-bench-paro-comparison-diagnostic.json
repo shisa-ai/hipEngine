@@ -1,0 +1,370 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "timestamp": "2026-05-17T15:12:47.026988+00:00",
+  "run_tag": "hipengine-qwen36-35b-a3b-q4km-bench-paro-comparison",
+  "summary": "c=1 Qwen3.6 35B-A3B qwen35moe GGUF Q4_K_M benchmark against retained PARO and llama.cpp GGUF rows",
+  "hardware": {
+    "measured_gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "vram_total_gib_observed": 23.984375,
+    "note": "This session is on the attached RX 7900 XTX/gfx1100 card; retained PARO/llama.cpp baseline rows are W7900/gfx1100, so comparisons are directional rather than strict same-card claims."
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "hipengine_commit": "8373fae",
+    "hipengine_status_at_artifact": "## gguf-bulk-prefill\n M scripts/qwen35_gguf_bench.py",
+    "python": "python3"
+  },
+  "workload": {
+    "model": "Qwen3.6-35B-A3B",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "architecture": "qwen35moe",
+    "quant": "gguf_q4_k_m / GGUF MOSTLY_Q4_K_M",
+    "concurrency": 1,
+    "prompt_source": "repeated token id 9707",
+    "shapes": [
+      "512/128",
+      "4K/128"
+    ],
+    "path": "Qwen35GGUFResidentSession, serial token prefill, eager host-routed MoE decode; graph replay disabled for qwen35moe bring-up path"
+  },
+  "commands": {
+    "environment": [
+      "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\"",
+      "rocminfo | grep -E 'Name:|gfx' | head -40",
+      "hipcc --version > /tmp/hipengine-hipcc-version.txt"
+    ],
+    "correctness": [
+      "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 1 --json /tmp/hipengine-qwen36-q4km-task54-correctness.json"
+    ],
+    "benchmark_512_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-q4km-512-128-bench.json",
+    "benchmark_4k_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-q4km-4096-128-bench.json"
+  },
+  "correctness": {
+    "artifact_source": "/tmp/hipengine-qwen36-q4km-task54-correctness.json",
+    "passed": true,
+    "public_generate_output": [
+      "izio."
+    ],
+    "generated_token_ids": [
+      43482,
+      13
+    ],
+    "external_tokenizer_passed": true,
+    "torch_loaded_by_generate": false,
+    "intake_passed": true,
+    "unsupported_dequant_types": [],
+    "finite_logits": {
+      "prompt_ids": [
+        9419
+      ],
+      "shape": [
+        1,
+        248320
+      ],
+      "dtype": "float32",
+      "finite": true,
+      "argmax_token_id": 43482,
+      "argmax_recomputed_token_id": 43482,
+      "argmax_logit": 10.306183815002441,
+      "expected_first_token_id": 43482,
+      "expected_first_token_match": true,
+      "min_logit": -9.574250221252441,
+      "max_logit": 10.306183815002441,
+      "memory_stats": {
+        "current_allocated_bytes": 22220421596,
+        "peak_allocated_bytes": 22220421596,
+        "total_allocated_bytes": 44440843192,
+        "total_freed_bytes": 22220421596,
+        "active_allocations": 903,
+        "peak_allocations": 903
+      },
+      "passed": true
+    },
+    "benchmark_shape_final_logits_finite_all": true
+  },
+  "measurements": {
+    "rows": [
+      {
+        "workload": "512/128",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "prefill_tok_s": 2.836961803074528,
+        "decode_tok_s": 2.8073702226995247,
+        "prefill_seconds": 180.47475980999297,
+        "decode_seconds": 45.59427145199152,
+        "tracked_peak_gib": 20.841097328811884,
+        "hip_used_peak_sampled_gib": 21.294921875,
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          238350
+        ],
+        "mode": "resident_token_serial_prefill_eager_decode",
+        "measured_runs": 1,
+        "warmup_runs": 0,
+        "graph_replay_decode": false,
+        "generated_preview_token_ids": [
+          73,
+          118,
+          11,
+          2867,
+          64,
+          13,
+          13,
+          11,
+          220,
+          20,
+          11,
+          220,
+          27,
+          509,
+          13,
+          20
+        ],
+        "generated_tail_token_ids": [
+          245670,
+          220,
+          119139,
+          103304,
+          119642,
+          220,
+          1035,
+          59227,
+          1510,
+          637,
+          133091,
+          15961,
+          49904,
+          13377,
+          220,
+          238350
+        ],
+        "max_sequence_length": 641,
+        "memory": {
+          "tracked_peak_allocated_bytes": 22377957860,
+          "tracked_peak_allocated_gib": 20.841097328811884,
+          "tracked_current_allocated_bytes_before_close": 22377957860,
+          "tracked_current_allocated_gib_before_close": 20.841097328811884,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 22377957860,
+          "owned_session_peak_gib": 20.841097328811884,
+          "hip_used_peak_sampled_bytes": 22865248256,
+          "hip_used_peak_sampled_gib": 21.294921875,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ]
+        }
+      },
+      {
+        "workload": "4K/128",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "prefill_tok_s": 2.8375054493615983,
+        "decode_tok_s": 2.751668731918438,
+        "prefill_seconds": 1443.5214568210067,
+        "decode_seconds": 46.51722735198564,
+        "tracked_peak_gib": 21.868330504745245,
+        "hip_used_peak_sampled_gib": 22.388671875,
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          85873
+        ],
+        "mode": "resident_token_serial_prefill_eager_decode",
+        "measured_runs": 1,
+        "warmup_runs": 0,
+        "graph_replay_decode": false,
+        "generated_preview_token_ids": [
+          11,
+          27,
+          220,
+          220,
+          220,
+          95912,
+          220,
+          1482,
+          13,
+          220,
+          95173,
+          1510,
+          402,
+          151531,
+          38118,
+          220
+        ],
+        "generated_tail_token_ids": [
+          220,
+          98732,
+          1993,
+          1993,
+          21,
+          164362,
+          2230,
+          220,
+          87705,
+          2514,
+          220,
+          100233,
+          95,
+          12290,
+          12290,
+          85873
+        ],
+        "max_sequence_length": 4225,
+        "memory": {
+          "tracked_peak_allocated_bytes": 23480941084,
+          "tracked_peak_allocated_gib": 21.868330504745245,
+          "tracked_current_allocated_bytes_before_close": 23480941084,
+          "tracked_current_allocated_gib_before_close": 21.868330504745245,
+          "tracked_current_allocated_bytes_after_close": 0,
+          "tracked_current_allocated_gib_after_close": 0.0,
+          "owned_session_peak_bytes": 23480941084,
+          "owned_session_peak_gib": 21.868330504745245,
+          "hip_used_peak_sampled_bytes": 24039653376,
+          "hip_used_peak_sampled_gib": 22.388671875,
+          "notes": [
+            "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+            "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+            "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+          ]
+        }
+      }
+    ]
+  },
+  "baselines": {
+    "paro_parent": {
+      "description": "retained source-lineage Qwen3.5-35B-A3B-PARO parent rows from benchmarks/README.md / source-lineage artifacts",
+      "hardware": "AMD Radeon Pro W7900 / gfx1100",
+      "rows": {
+        "512/128": {
+          "prefill_tok_s": 2696.4,
+          "decode_tok_s": 116.05,
+          "peak_gib": 18.8
+        },
+        "4K/128": {
+          "prefill_tok_s": 2741.5,
+          "decode_tok_s": 113.05,
+          "peak_gib": 21.64
+        }
+      }
+    },
+    "llamacpp_hip_ud_q4_k_m": {
+      "description": "retained llama.cpp HIP Qwen3.6-35B-A3B UD-Q4_K_M rows from benchmarks/README.md",
+      "hardware": "AMD Radeon Pro W7900 / gfx1100 in retained artifact; compared directionally to local RX 7900 XTX/gfx1100 run",
+      "rows": {
+        "512/128": {
+          "prefill_tok_s": 2436.049,
+          "decode_tok_s": 85.487,
+          "peak_gib": 21.125
+        },
+        "4K/128": {
+          "prefill_tok_s": 2176.905,
+          "decode_tok_s": 87.375,
+          "peak_gib": 21.197
+        }
+      }
+    },
+    "llamacpp_vulkan_ud_q4_k_m": {
+      "description": "retained llama.cpp Vulkan Qwen3.6-35B-A3B UD-Q4_K_M rows from benchmarks/README.md",
+      "hardware": "AMD Radeon Pro W7900 / gfx1100 in retained artifact; compared directionally to local RX 7900 XTX/gfx1100 run",
+      "rows": {
+        "512/128": {
+          "prefill_tok_s": 1816.927,
+          "decode_tok_s": 127.515,
+          "peak_gib": 20.844
+        },
+        "4K/128": {
+          "prefill_tok_s": 1705.093,
+          "decode_tok_s": 120.163,
+          "peak_gib": 20.969
+        }
+      }
+    }
+  },
+  "comparisons": {
+    "512/128": {
+      "paro_parent": {
+        "prefill_delta_pct": -99.89478705670247,
+        "decode_delta_pct": -97.5808959735463,
+        "tracked_peak_delta_gib": 2.041097328811883,
+        "hip_used_peak_sampled_delta_gib": 2.4949218749999993,
+        "baseline": {
+          "prefill_tok_s": 2696.4,
+          "decode_tok_s": 116.05,
+          "peak_gib": 18.8
+        }
+      },
+      "llamacpp_hip_ud_q4_k_m": {
+        "prefill_delta_pct": -99.88354249840316,
+        "decode_delta_pct": -96.71602673775016,
+        "tracked_peak_delta_gib": -0.2839026711881161,
+        "hip_used_peak_sampled_delta_gib": 0.169921875,
+        "baseline": {
+          "prefill_tok_s": 2436.049,
+          "decode_tok_s": 85.487,
+          "peak_gib": 21.125
+        }
+      },
+      "llamacpp_vulkan_ud_q4_k_m": {
+        "prefill_delta_pct": -99.84385934035464,
+        "decode_delta_pct": -97.7984000135674,
+        "tracked_peak_delta_gib": -0.0029026711881172673,
+        "hip_used_peak_sampled_delta_gib": 0.4509218749999988,
+        "baseline": {
+          "prefill_tok_s": 1816.927,
+          "decode_tok_s": 127.515,
+          "peak_gib": 20.844
+        }
+      }
+    },
+    "4K/128": {
+      "paro_parent": {
+        "prefill_delta_pct": -99.89649806859889,
+        "decode_delta_pct": -97.56597193107612,
+        "tracked_peak_delta_gib": 0.2283305047452444,
+        "hip_used_peak_sampled_delta_gib": 0.7486718749999994,
+        "baseline": {
+          "prefill_tok_s": 2741.5,
+          "decode_tok_s": 113.05,
+          "peak_gib": 21.64
+        }
+      },
+      "llamacpp_hip_ud_q4_k_m": {
+        "prefill_delta_pct": -99.86965414433053,
+        "decode_delta_pct": -96.85073678750393,
+        "tracked_peak_delta_gib": 0.6713305047452458,
+        "hip_used_peak_sampled_delta_gib": 1.1916718750000008,
+        "baseline": {
+          "prefill_tok_s": 2176.905,
+          "decode_tok_s": 87.375,
+          "peak_gib": 21.197
+        }
+      },
+      "llamacpp_vulkan_ud_q4_k_m": {
+        "prefill_delta_pct": -99.83358647010095,
+        "decode_delta_pct": -97.71005323442455,
+        "tracked_peak_delta_gib": 0.8993305047452438,
+        "hip_used_peak_sampled_delta_gib": 1.4196718749999988,
+        "baseline": {
+          "prefill_tok_s": 1705.093,
+          "decode_tok_s": 120.163,
+          "peak_gib": 20.969
+        }
+      }
+    }
+  },
+  "decision": {
+    "accepted": false,
+    "retained_as_diagnostic": true,
+    "reason": "The qwen35moe GGUF path now measures both requested c=1 shapes, but serial token prefill and eager host-routed expert selection are roughly two orders of magnitude below PARO/llama.cpp throughput. This is a baseline for task #55 optimization, not a performance win."
+  },
+  "notes": [
+    "measured_runs=1 and warmup_runs=0 were used because the current correctness-first qwen35moe path is intentionally serial and 4K/128 takes ~25 minutes on the attached card.",
+    "Decode timing uses eager session.step with full logits copied only for the final measured decode token; public generation uses return_logits=False for intermediate steps.",
+    "qwen35moe graph replay remains disabled because selected expert IDs are copied to host to offset raw rank-3 GGUF expert tensors."
+  ]
+}

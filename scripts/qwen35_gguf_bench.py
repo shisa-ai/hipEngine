@@ -110,7 +110,7 @@ def main() -> int:
         "model": str(args.model),
         "quant": args.quant,
         "backend": "hip_gfx1100",
-        "mode": "resident_token_serial_prefill_graph_decode",
+        "mode": "resident_token_serial_prefill_graph_decode" if args.graph_replay_decode else "resident_token_serial_prefill_eager_decode",
         "prompt_source": "repeated_token_id",
         "token_id": int(args.token_id),
         "prompt_length": int(args.prompt_length),
@@ -181,7 +181,7 @@ def _run_once(
 
         warmup_start = time.perf_counter()
         for _ in range(warmup_decode_tokens):
-            warmup = session.step(next_token)
+            warmup = session.step(next_token, return_logits=False)
             next_token = warmup.token_id
             generated_token_ids.append(warmup.token_id)
         warmup_decode_seconds = time.perf_counter() - warmup_start
@@ -206,8 +206,8 @@ def _run_once(
                 graph.close()
         else:
             decode_start = time.perf_counter()
-            for _ in range(decode_tokens):
-                final = session.step(next_token)
+            for step_index in range(decode_tokens):
+                final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
                 next_token = final.token_id
                 generated_token_ids.append(next_token)
             decode_seconds = time.perf_counter() - decode_start

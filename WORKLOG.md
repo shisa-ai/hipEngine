@@ -17947,3 +17947,52 @@ bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipc
 ```
 
 External oracle scope: `llama-tokenize` from `/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-tokenize` confirms the qwen35moe prompt and generated-token IDs. Full llama.cpp generation/quality parity for the 35B MoE remains follow-up work; this task's oracle is a token-level external check plus finite-logit public/resident smoke.
+
+## 2026-05-17 qwen35moe GGUF benchmark vs PARO/llama.cpp baselines
+
+Task #54 measured the local Qwen3.6 35B-A3B GGUF Q4_K_M public-runtime baseline on the attached RX 7900 XTX/gfx1100 card. Environment:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -40
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+# HIP version: 7.13.60940-478a7a43c6
+```
+
+Correctness gate:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json \
+  --repeat 1 \
+  --json /tmp/hipengine-qwen36-q4km-task54-correctness.json
+# passed=true; output "izio."; ids [43482, 13]; external llama-tokenize passed;
+# finite logits shape [1, 248320], argmax=43482; torch_loaded_by_generate=false
+```
+
+Benchmark commands (cached builds, c=1, repeated token id 9707, graph replay disabled because qwen35moe selected experts are currently host-routed):
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-qwen36-q4km-512-128-bench.json
+# prefill 2.836961803 tok/s, decode 2.807370223 tok/s, tracked peak 20.841097329 GiB, HIP sampled peak 21.294921875 GiB
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-qwen36-q4km-4096-128-bench.json
+# prefill 2.837505449 tok/s, decode 2.751668732 tok/s, tracked peak 21.868330505 GiB, HIP sampled peak 22.388671875 GiB
+```
+
+Comparison against retained rows: vs source-lineage PARO target (W7900/gfx1100) this qwen35moe GGUF bring-up path is `-99.895%/-99.896%` prefill and `-97.581%/-97.566%` decode at 512/4K. Vs retained llama.cpp HIP UD-Q4_K_M rows it is ~`-99.9%` prefill and `-96.7%/-96.9%` decode. Memory is in the same broad 21-22 GiB band but 4K HIP sampled peak is above the retained llama.cpp HIP row (`22.389` vs `21.197 GiB`). Comparisons are directional because this session ran on RX 7900 XTX/gfx1100 while retained PARO/llama.cpp rows are W7900/gfx1100.
+
+Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bench-paro-comparison-diagnostic.json`. This is a task #55 optimization baseline, not a performance claim. Current bottlenecks are serial qwen35moe prefill and eager host-routed selected expert dispatch.
