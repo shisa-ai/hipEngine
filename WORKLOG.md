@@ -16387,3 +16387,75 @@ Per-surface 4K/1 probes around chunk256:
 | linear384-moe256-full384 | 1044.611 | 63.710 | 18.137 GiB |
 
 Takeaway: do **not** go below 256 globally on gfx1151. Per-surface tuning is promising but the only confirmed 4K/128 improvement over all256 is modest (`linear=384, moe=256, full=384`, +1.5% prefill, same decode, +0.04 GiB). Keep all256 as the robust default for now; use a small autotune matrix (`linear in {256,384}`, `moe=256`, `full in {256,384}`) if we want to squeeze another percent and verify at 512/4K/32K/128K before changing the retained row.
+
+## 2026-05-17 — gfx1151 chunk autotune OFAT + 1024 extension
+
+Extended the shisa packed chunk-size tuning sweep after the retained all256 chunk sweep. Goal: decide whether to go below 256, include 1024, or tune individual surfaces separately before changing the retained/default gfx1151 setting.
+
+Method:
+
+- Model: `shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed` snapshot `501ef8635e5cfb5a7497d232358ca8d1afc0c66e`.
+- Backend/env: `HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151`, cached builds.
+- Prompts: `512`, `1024`, `4096`, `8192`.
+- Fast probe rows: `--decode-tokens 1 --warmup-decode-tokens 0` for OFAT and combinations.
+- Full candidate confirmation rows: `512/128`, `4K/128`, `32K/128`, `128K/128`, `4K/4K`.
+- Raw probe CSV: `/tmp/gfx1151-chunk-ofat-20260517/results.csv`.
+- Full candidate JSONs: `/tmp/hipengine-gfx1151-shisa36-packed-candidates-20260517/`.
+
+### Round 1: OFAT with {64,128,256,512,1024}
+
+Held all surfaces at all256, then varied one surface/group at a time. Results are noisy single runs, but the pattern is clear enough:
+
+- Global smaller chunks are bad: all64/all128 consistently trail all256.
+- Global larger chunks are also bad: all512/all1024 trail all256, often badly.
+- Individual `linear=512` or `linear=1024` is the most robust OFAT improvement across short/mid prompts.
+- `moe=1024` helps 1024/4096 OFAT but hurts 8192.
+- `full_q=512` helps 8192 but hurts 4096; `full_q=1024` is not a clear win and raises peak memory.
+- `full_post`/`full_rope` changes are small/noisy and not additive in combinations.
+
+Top OFAT rows by prompt after adding 1024:
+
+| Prompt | Best OFAT config | Prefill tok/s | all256 tok/s |
+| --- | --- | ---: | ---: |
+| 512 | fullpost128 | 997.908 | 968.884 |
+| 1024 | moe1024 | 1029.245 | 1017.095 |
+| 4096 | linear512 | 1043.240 | 1035.458 |
+| 8192 | fullq512 | 1003.324 | 938.318 |
+
+### Round 2: combination probes
+
+Tried a small combination set from OFAT signals and prior 384 hints:
+
+| Config | 512 | 1024 | 4096 | 8192 | Notes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| all256 | 968.884 | 1017.095 | 1035.458 | 938.318 | retained robust baseline |
+| linear512 only | 989.920 | 1010.456 | 1043.240 | 991.128 | best cross-prompt mean in fast probe |
+| linear1024 only | 995.003 | 1019.336 | 1032.191 | 993.306 | similar but weaker at 4K |
+| combo linear384/full384 | 944.933 | 1022.440 | 1003.943 | 1008.363 | good at 8192, bad at 512/4K |
+| combo linear512/full512 | 990.637 | 1008.563 | 1020.993 | 971.531 | not additive |
+| combo linear512/q512/post1024/rope512 | 968.330 | 996.322 | 1025.865 | 948.627 | not additive |
+
+Conclusion from fast probes: per-surface tuning exists, but additive combinations are not obviously better than the simple all256 row. The only robust single-knob candidate is `linear=512, everything else=256`.
+
+### Round 3: full candidate confirmation
+
+Confirmed `linear512 only` and `linear1024 only` on the full retained workload set against the current all256 artifact.
+
+| Workload | all256 prefill | linear512 prefill | Delta | linear512 decode | all256 decode |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 983.206 | 971.270 | -1.2% | 62.625 | 62.060 |
+| 4K/128 | 1029.402 | 1040.008 | +1.0% | 63.958 | 63.605 |
+| 32K/128 | 792.296 | 800.872 | +1.1% | 51.265 | 50.629 |
+| 128K/128 | 413.489 | 417.931 | +1.1% | 30.223 | 30.245 |
+| 4K/4K | 1001.266 | 1009.313 | +0.8% | 63.121 | 62.438 |
+
+`linear1024 only` was weaker overall: `-1.5% / -1.4% / -0.1% / +1.4% / -0.2%` prefill vs all256 for `512/128`, `4K/128`, `32K/128`, `128K/128`, `4K/4K`.
+
+### Decision
+
+Keep **all256** as the retained/simple gfx1151 setting for now. It is within ~1% of `linear512 only` on most retained rows, wins at 512, is easier to explain, and avoids overfitting single-run noise. If we do another optimization pass, compare repeated runs for:
+
+1. all256: `linear=256, moe=256, full_q/post/rope=256`.
+2. linear512-only: `linear=512, moe=256, full_q/post/rope=256`.
+
+Do not spend more time on global 64/128/512/1024 or broad full-factorial combinations unless W7900 shows a different architecture-specific pattern.
