@@ -48,7 +48,7 @@ def test_qwen35_gguf_materialization_plan_covers_every_tensor() -> None:
 
     layer3 = plan.layer_specs[3]
     assert layer3["attn_q"].layout == LAYOUT_Q4_K_PACK8
-    assert layer3["attn_v"].layout == LAYOUT_RAW_GGUF
+    assert layer3["attn_v"].layout == LAYOUT_DENSE_BF16
     assert layer3["attn_v"].quant_key == "gguf_q6_k"
 
 
@@ -139,8 +139,10 @@ def test_qwen35_gguf_materializes_selected_resident_records() -> None:
         assert ssm_alpha.allocation().tensor.shape == (16, 1088)
 
         attn_v = resident.layer(3).weight("attn_v")
+        assert attn_v.spec.layout == LAYOUT_DENSE_BF16
         assert attn_v.spec.quant_key == "gguf_q6_k"
-        assert attn_v.allocation().tensor.shape == (512, 840)
+        assert attn_v.allocation().tensor.dtype == DType.BF16
+        assert attn_v.allocation().tensor.shape == (512, 1024)
     finally:
         resident.free(runtime=runtime)
 

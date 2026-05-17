@@ -12,7 +12,13 @@ FIXTURES = {
         "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
         " 1.\n\n",
         [220, 16, 13, 271],
-        {"gguf_q4_k", "gguf_q5_k_dense_bf16_fallback", "gguf_q6_k", "gguf_q8_0"},
+        {
+            "gguf_q4_k",
+            "gguf_q5_k_dense_bf16_fallback",
+            "gguf_q6_k",
+            "gguf_q6_k_dense_bf16_fallback",
+            "gguf_q8_0",
+        },
     ),
     "gguf_q8_0": (
         Path("tests/fixtures/gguf/qwen35_0_8b_q8_0_e2e.json"),
@@ -26,7 +32,13 @@ FIXTURES = {
         "/models/gguf/Qwen3.5-0.8B-Q4_1.gguf",
         " 1.\n",
         [220, 16, 13, 198],
-        {"gguf_q4_1_dense_bf16_fallback", "gguf_q5_k_dense_bf16_fallback", "gguf_q6_k", "gguf_q8_0"},
+        {
+            "gguf_q4_1_dense_bf16_fallback",
+            "gguf_q5_k_dense_bf16_fallback",
+            "gguf_q6_k",
+            "gguf_q6_k_dense_bf16_fallback",
+            "gguf_q8_0",
+        },
     ),
     "gguf_ud_q4_k_xl": (
         Path("tests/fixtures/gguf/qwen35_0_8b_ud_q4_k_xl_e2e.json"),
@@ -39,6 +51,7 @@ FIXTURES = {
             "gguf_q4_k",
             "gguf_q5_k_dense_bf16_fallback",
             "gguf_q6_k",
+            "gguf_q6_k_dense_bf16_fallback",
             "gguf_q8_0",
         },
     ),

@@ -242,6 +242,14 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
             layout=LAYOUT_DENSE_BF16,
             allocation_names=("raw",),
         )
+    if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key="gguf_q6_k",
+            layout=LAYOUT_DENSE_BF16,
+            allocation_names=("raw",),
+        )
     if qtype in (GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0):
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,

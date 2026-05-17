@@ -38,6 +38,7 @@
       "gguf_q4_1_dense_bf16_fallback",
       "gguf_q5_k_dense_bf16_fallback",
       "gguf_q6_k",
+      "gguf_q6_k_dense_bf16_fallback",
       "gguf_q8_0"
     ]
   }

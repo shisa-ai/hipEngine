@@ -17732,3 +17732,18 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. py
 ```
 
 Loop metric after dense prefill GEMM: `1718.1144 tok/s` for 512-token prefill (`0.8867 GiB` tracked peak), up from `919.9459 tok/s`. Still below Qwen3.6 packed PARO target (`2451.2 tok/s` 512; `2666.7 tok/s` 4K). Next bottleneck from the Q5-dense profile is remaining rows>1 projection throughput: Q6_K raw and Q4_K pack8 rows>1 kernels plus the tiled dense GEMM efficiency.
+
+## 2026-05-17 GGUF bulk prefill iteration 5
+
+Materialized layer-scoped Q6_K tensors as dense BF16 fallback while keeping root Q6_K tensors raw for token embedding and tied lm-head/logits. This routes layer Q6 projections through the rows>1 dense prefill GEMM from iteration 4 without changing the public embedding/lm-head ABI.
+
+Validation:
+
+```bash
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --json /tmp/hipengine-gguf-bulk-loop-e2e.json >/tmp/hipengine-gguf-bulk-loop-e2e.out; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q'
+# 13 passed
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_materialize.py tests/test_gguf_e2e_acceptance.py -q
+# 10 passed
+```
+
+Loop metric: `1977.1244 tok/s` for 512-token prefill (`0.9374 GiB` tracked peak), up from `1718.1144 tok/s`. Still below Qwen3.6 packed PARO target (`2451.2 tok/s` 512; `2666.7 tok/s` 4K). Next experiment: layer Q4_K dense fallback or a better Q4_K pack8 prefill GEMM.
