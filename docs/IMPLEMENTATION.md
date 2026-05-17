@@ -91,6 +91,11 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
   - [x] Port Qwen3.5 GQA-specialized split-K context kernels (`qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp`, `*_gqa<8,16,2>`).
 - [ ] Reproduce parent correctness gates and performance rows with hipENGINE artifacts/rollup updates.
 
+## Phase 1 — Server + benchmark
+
+- [x] Add optional FastAPI/OpenAI-compatible server layer (`hipengine[server]`) with `/v1/models`, `/v1/completions`, `/v1/chat/completions`, bearer-token auth, one-chunk SSE, and fake-engine endpoint tests.
+- [ ] Add benchmark harness polish beyond the current Qwen/PARO diagnostic scripts.
+
 ## Notes
 
 - Kernel R&D remains in `~/amd-gpu-tuning/`; this repo receives stable ports.

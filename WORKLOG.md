@@ -14159,6 +14159,1661 @@ python3 -m pytest -q --tb=short
 # 254 passed
 ```
 
+## 2026-05-17 — P1.1 rocBLAS A/B prefill prototype rejected
+
+Task #4 tested the highest-impact prefill hypothesis P1.1: replacing the
+multi-token linear-attention A/B row-GEMV pair in
+`project_linear_attention_ab_fp16(...)` with torch-free rocBLAS bulk GEMM. Added
+an env-off diagnostic path:
+
+- `hipengine/core/rocblas.py` lazy-loads `librocblas.so` and wraps row-major NT
+  FP16 GEMM as `rocblas_gemm_ex` with FP32 accumulation.
+- `HIPENGINE_LINEAR_AB_PREFILL_ROCBLAS_MIN_TOKENS=2` routes only `tokens > 1`
+  A/B prefill projections through rocBLAS. The `tokens == 1` decode path remains
+  `dense_dual_gemv_out_fp16`.
+
+Microcheck:
+
+```bash
+# 5x7 @ 3x7 row-major NT rocblas_gemm_ex FP16/F32-accum
+# max_abs=0 vs NumPy FP32 reference rounded to FP16
+```
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/core/rocblas.py hipengine/runtime/qwen35_paro.py scripts/qwen35_paro_bench.py
+python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short
+# 38 passed
+```
+
+Benchmark protocol on W7900/gfx1100, all rows used cache-only HIP builds:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-legacy-or-shisa-packed> \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p11-rocblas-ab-20260517/<label>.json
+# rocBLAS rows add env: HIPENGINE_LINEAR_AB_PREFILL_ROCBLAS_MIN_TOKENS=2
+```
+
+Primary `rocblas_gemm_ex` FP32-accum results (single run per row; diagnostic
+only, no KL/top-1 gate because performance regressed):
+
+| model | workload | default prefill | rocBLAS prefill | Δ | default decode | rocBLAS decode | Δ | peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab legacy | 512/128 | 2227.421 | 930.273 | -58.24% | 109.354 | 109.033 | -0.29% | 18.587 |
+| z-lab legacy | 4096/128 | 2391.477 | 1996.481 | -16.52% | 110.678 | 110.450 | -0.21% | 20.458 |
+| shisa packed | 512/128 | 2468.194 | 941.780 | -61.84% | 105.717 | 105.606 | -0.10% | 18.535 |
+| shisa packed | 4096/128 | 2677.951 | 2204.678 | -17.67% | 106.966 | 106.719 | -0.23% | 20.406 |
+
+Generated token IDs stayed `9707` for the first two sampled outputs, but logits
+differed from default due rocBLAS/Tensile reduction order. An earlier
+`rocblas_hgemm` pilot also regressed similarly and was less numerically close;
+the artifact keeps those rows as `pilot_hgemm_measurements`.
+
+Conclusion: reject P1.1 rocBLAS A/B. The linear-attention A/B dense shape is
+skinny (`out_features=32`), and on this W7900 stack the current custom row-GEMV
+kernels beat rocBLAS/Tensile for both 512 and 4K. Keep the env-off rocBLAS bridge
+only as a diagnostic/prototype surface for wider future shapes. Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p11-rocblas-ab-rejected.json`.
+
+## 2026-05-17 — P1.2 legacy W8A16 shared gate/up token tiling retained
+
+Task #5 prototyped a torch-free bulk-ish prefill replacement for the legacy
+W8A16 shared-expert gate/up+SiLU path without materializing fp16 shadow weights.
+Instead of rocBLAS/dense fp16 weights, the retained path groups adjacent prompt
+tokens inside the existing quantized dot-product kernel:
+
+- Added `w8a16_shared_gate_up_silu_fp16_token_tiled_kernel<2/4>` in
+  `hipengine/kernels/hip_gfx1100/quant/w8a16_linear.hip` plus ctypes wrappers.
+- Runtime default is conservative: legacy W8A16 shared gate/up uses
+  `token_tile=2` only when `tokens >= 1024`.
+- Existing `w8a16_shared_gate_up_silu_fp16(...)` remains fallback for smaller
+  prompts and opt-out (`HIPENGINE_SHARED_GATE_UP_PREFILL_TOKEN_TILE=0`).
+- Shisa packed sidecars are intentionally unaffected; they continue to use the
+  packed PARO W4 prefill kernels.
+
+Microcheck:
+
+```bash
+# random small shape tokens=5 hidden=32 intermediate=8
+# tile2 max_abs 0.0 vs original kernel
+# tile4 max_abs 0.0 vs original kernel
+```
+
+Validation / correctness:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/w8a16_linear.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short
+# 39 passed
+
+HIPENGINE_SHARED_GATE_UP_PREFILL_MIN_TOKENS=2 \
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p12-shared-gate-up-token-tile-20260517/p12_tile2_fixture_gate.json
+# passed=true, max_kl=0.0395688706, top1_agreement=1.0, generated IDs match fixture
+```
+
+Profiler smoke (cache-only build, one layer, prompt 1024) confirmed the new
+kernel launched:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-file /tmp/hipengine-p12-shared-gate-up-token-tile-20260517/rocprof/p12_tile2 -- \
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --token-id 9707 --prompt-length 1024 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --max-layers 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p12-shared-gate-up-token-tile-20260517/rocprof/p12_tile2_bench.json
+# trace includes void (anonymous namespace)::w8a16_shared_gate_up_silu_fp16_token_tiled_kernel<2>(...), DurationNs 737130
+```
+
+Benchmark protocol on W7900/gfx1100, all rows used cache-only HIP builds:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-legacy-or-shisa-packed> \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p12-shared-gate-up-token-tile-20260517/<label>.json
+# candidate rows set HIPENGINE_SHARED_GATE_UP_PREFILL_TOKEN_TILE=2 or 4
+```
+
+Two-run medians, `HIPENGINE_SHARED_GATE_UP_PREFILL_TOKEN_TILE=2` vs previous
+no-token-tile default:
+
+| model/path | workload | prefill Δ | decode Δ | peak GiB | generated/logit sanity |
+| --- | ---: | ---: | ---: | ---: | --- |
+| z-lab legacy W8A16 | 512/128 | +0.52% | -0.07% | 18.587 | first two generated IDs/logits match |
+| z-lab legacy W8A16 | 4096/128 | +2.16% | +0.15% | 20.458 | first two generated IDs/logits match |
+| shisa stripped packed | 512/128 | -0.10% | -0.06% | 18.535 | packed path unaffected/noise |
+| shisa stripped packed | 4096/128 | -0.19% | -0.07% | 20.406 | packed path unaffected/noise |
+
+Tile4 was rejected after a one-run probe: it regressed 512 and did not improve
+4K. A final no-env post-change pass showed the default policy is wired; 512
+continues to use the old fallback, while 4K uses tile2. Because this is still a
+resident-runner diagnostic rather than a promoted public `LLM.generate()` row,
+`performance_claim=false` in the artifact.
+
+Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p12-shared-gate-up-token-tile-diagnostic.json`.
+
+## 2026-05-17 — P1.3 legacy W8A16 shared down+combine token tiling retained
+
+Task #6 prototyped the shared-expert down projection plus fused combine/residual
+prefill path. To preserve the W8A16 memory advantage and the existing fused tail,
+the retained implementation token-tiles the quantized down+combine kernel rather
+than materializing fp16 dense down weights or a separate shared-output scratch:
+
+- Added `w8a16_shared_down_combine_residual_fp16_token_tiled_kernel<2/4>` in
+  `hipengine/kernels/hip_gfx1100/quant/w8a16_linear.hip` plus ctypes wrappers.
+- Runtime default: legacy W8A16 shared down+combine uses `token_tile=2` when
+  `tokens >= 2`; decode `tokens == 1` stays untiled.
+- Existing `w8a16_shared_down_combine_residual_fp16(...)` remains fallback and
+  opt-out (`HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE=0`).
+- The tail semantics are unchanged: precompute shared sigmoid in-place, compute
+  lowp W8A16 shared down, then write `residual + selected + gate * shared`.
+- Shisa packed sidecars are intentionally unaffected; they continue through W4
+  shared expert plus `shared_gate_combine_residual_batch_out_fp16`.
+
+Microcheck:
+
+```bash
+# random small shape tokens=5 hidden=17 intermediate=32 gate_stride=9
+# tile2 max_abs 0.0 vs original fused down+combine kernel
+# tile4 max_abs 0.0 vs original fused down+combine kernel
+```
+
+Validation / correctness:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/w8a16_linear.py hipengine/runtime/qwen35_paro.py
+python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short
+# 40 passed
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p13-shared-down-combine-token-tile-20260517/p13_down_tile2_fixture_gate.json
+# passed=true, max_kl=0.0395688706, top1_agreement=1.0, generated IDs match fixture
+```
+
+Profiler smoke (cache-only build, one layer, prompt 512) confirmed the new kernel
+launched:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-file /tmp/hipengine-p13-shared-down-combine-token-tile-20260517/rocprof/p13_down_tile2 -- \
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --max-layers 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p13-shared-down-combine-token-tile-20260517/rocprof/p13_down_tile2_bench.json
+# trace includes void (anonymous namespace)::w8a16_shared_down_combine_residual_fp16_token_tiled_kernel<2>(...), DurationNs 309524
+```
+
+Benchmark protocol on W7900/gfx1100, all rows used cache-only HIP builds:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-legacy-or-shisa-packed> \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p13-shared-down-combine-token-tile-20260517/<label>.json
+# candidate rows set HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE=2 or 4
+```
+
+Two-run medians, `HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_TOKEN_TILE=2` vs the
+previous no-down-token-tile default (which already included P1.2 gate/up tiling):
+
+| model/path | workload | prefill Δ | decode Δ | peak GiB | generated/logit sanity |
+| --- | ---: | ---: | ---: | ---: | --- |
+| z-lab legacy W8A16 | 512/128 | +0.93% | +0.09% | 18.587 | first two generated IDs/logits match |
+| z-lab legacy W8A16 | 4096/128 | +0.91% | -0.14% | 20.458 | first two generated IDs/logits match |
+| shisa stripped packed | 512/128 | -0.17% | +0.25% | 18.535 | packed path unaffected/noise |
+| shisa stripped packed | 4096/128 | -0.01% | -0.00% | 20.406 | packed path unaffected/noise |
+
+Tile4 was rejected after a one-run probe because it regressed z-lab legacy 512
+and 4K. A final no-env post-change pass confirmed the default path is wired.
+Because this remains a resident-runner diagnostic rather than a promoted public
+`LLM.generate()` row, `performance_claim=false` in the artifact.
+
+Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p13-shared-down-combine-token-tile-diagnostic.json`.
+
+## 2026-05-17 — P1.4 selected-MoE compact WMMA threshold retained
+
+Task #7 swept selected-MoE multi-token prefill routing after the P1.1-P1.3
+prototypes. Added an env-controlled token-count threshold without backend/quant
+branches in the hot layer dispatch:
+
+- `HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS` defaults to `2`.
+- `tokens == 1` keeps the c1 GEMV/decode path.
+- single-request FP16 prefill chunks with `tokens >= threshold` use grouped
+  compact WMMA; chunks below threshold use the existing `run_moe_c1_fp16` GEMV
+  fallback.
+- A large diagnostic threshold (tested with `999999`) forces the GEMV fallback.
+- Packed cN/varlen prefill remains grouped compact WMMA.
+- Runner scratch selection now follows the same token-count helper, avoiding a
+  grouped scratch allocation when the diagnostic c1 fallback is forced.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py
+python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short
+# 41 passed
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p14-moe-threshold-sweep-20260517/p14_default_fixture_gate.json
+# passed=true, max_kl=0.0395688706, top1_agreement=1.0, generated IDs match fixture
+```
+
+Benchmark protocol on W7900/gfx1100, all rows used cache-only HIP builds:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-legacy-or-shisa-packed> \
+  --token-id 9707 \
+  --prompt-length {128,256,512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p14-moe-threshold-sweep-20260517/<label>.json
+# forced fallback rows add HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS=999999
+```
+
+Required 512/128 and 4K/128 rows, retained default compact WMMA vs forced GEMV
+fallback:
+
+| model/path | workload | compact WMMA prefill | forced GEMV prefill | compact Δ | decode Δ | peak GiB default/fallback |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab legacy | 512/128 | 2210.372 | 811.378 | +172.4% | -0.15% | 18.587 / 18.556 |
+| z-lab legacy | 4096/128 | 2452.941 | 813.924 | +201.4% | +0.14% | 20.458 / 20.208 |
+| shisa packed | 512/128 | 2403.645 | 850.397 | +182.6% | -0.13% | 18.535 / 18.503 |
+| shisa packed | 4096/128 | 2664.070 | 849.221 | +213.7% | -0.24% | 20.406 / 20.155 |
+
+Small z-lab probes also favored compact WMMA: 128/128 `1453.816` vs `703.792`
+(+106.6%) and 256/128 `1897.076` vs `767.725` (+147.1%). Forced GEMV previews
+kept the first generated token IDs but logits differed due the different
+selected-MoE ordering/reduction; the retained default fixture gate above is the
+correctness gate for the policy. The GEMV fallback uses slightly less scratch
+(+0.008 to +0.251 GiB for compact WMMA), but the prefill regression is too large.
+
+Conclusion: retain `HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS=2`; no useful
+GEMV crossover above decode token count one. P1.1-P1.4 are now closed. Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p14-moe-wmma-threshold-diagnostic.json`.
+
+## 2026-05-17 — D2.1 Marlin-K qweight-neutral decode retained
+
+Task #8 ported the documented parent Marlin-K v0 path for non-expert PARO W4
+rows==1 single GEMV decode. Pre-port checks:
+
+- Re-read `docs/KERNELS.md` and `docs/MARLIN.md`.
+- Ran `python3 scripts/check_lineage.py --kind kernel --diff stat`; parent
+  `nano-vllm-amd` still reports drift vs the old `22405a9` baseline.
+- Attempted `git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd show 7718fff` and
+  `1522293`; those short SHAs are not present in the current parent checkout.
+  Used the committed evidence in `docs/MARLIN.md` and
+  `/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md` §§11.10-11.11, which document
+  `7718fff` (vec8 FMA) and `1522293` (qweight-neutral replacement).
+
+Implementation:
+
+- Added `hipengine/kernels/hip_gfx1100/quant/paro_marlin_k.{hip,py}` with a
+  separate `paro_marlin_k.so` build family, registry key
+  `(hip_gfx1100, marlin_k_gemv, w4_paro, fma_fp16)`, and the retained vec8
+  FP32-FMA loop over `qweight_mk [N/8,K/128,128]`, `qzeros_mk [N/8,K/128]`,
+  `scales_mk [N/8,K/128,8]`.
+- Added torch-free NumPy repack helpers plus non-owning device allocation aliases
+  so `qweight_pack8_decode [N/8,K]` is a zero-copy view over `qweight_mk`; this
+  preserves fused pack8 prefill/QK/QKVZ paths without duplicate W4 qweight
+  residency.
+- `HIPENGINE_PARO_MARLIN_K_REPLACE` defaults on; setting it to `0` restores the
+  old pack8/raw-qweight materialization for diagnostics.
+- Runtime dispatch uses Marlin-K only for `rows == 1` FP16 single projections;
+  rows>1 and fused pair projections continue to use the existing pack8/fusedw4
+  paths through the alias.
+
+Validation commands:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/paro_marlin_k.py \
+  hipengine/loading/materialize.py hipengine/loading/qwen35_paro.py \
+  hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py \
+  scripts/smoke.py
+python3 -m pytest \
+  tests/test_qwen35_paro_marlin_k.py tests/test_qwen35_decode_state.py \
+  tests/test_qwen35_paro_layout.py tests/test_build.py -q --tb=short
+# 77 passed
+
+python3 scripts/smoke.py --mode paro-marlin-k-hip --rows 2 --hidden-size 128 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# mismatch=0 max_abs=0.0
+
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/hipengine-d21-marlin-k-20260517/rocprof_marlin_smoke -- \
+  python3 scripts/smoke.py --mode paro-marlin-k-hip --rows 2 --hidden-size 128 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# gemv_paro_marlin_k_fma_kernel<_Float16>, DurationNs=6720, VGPR=104,
+# Scratch_Size=0, LDS_Block_Size=512
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d21-marlin-k-20260517/native_prefill_fixture_gate.json
+# passed=true, max_kl=0.0395688706, top1_agreement=1.0
+
+python3 scripts/qwen35_decode_graph_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d21-marlin-k-20260517/decode_graph_fixture_gate.json
+# passed=true, generated_match=true, expected_match=true, final_kl=0.0
+```
+
+Benchmark protocol on W7900/gfx1100 (ROCm HIP `7.2.53211-d40244d`), all rows
+cache-only HIP builds:
+
+```bash
+# baseline rows add: HIPENGINE_PARO_MARLIN_K_REPLACE=0
+# candidate rows add: HIPENGINE_PARO_MARLIN_K_REPLACE=1
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --token-id 9707 \
+  --prompt-length {512,4096} \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 1 \
+  --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d21-marlin-k-20260517/{off,on}_{prompt}_128_run{1,2,3}.json
+```
+
+Three-run medians, Marlin-K qweight-neutral default vs pack8/raw fallback:
+
+| workload | fallback decode tok/s | Marlin-K decode tok/s | decode Δ | fallback prefill tok/s | Marlin-K prefill tok/s | peak GiB fallback/Marlin |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 109.061 | 115.137 | +5.57% | 2209.588 | 2231.018 | 18.587 / 18.176 |
+| 4096/128 | 110.088 | 116.263 | +5.61% | 2436.294 | 2468.623 | 20.458 / 20.047 |
+
+Conclusion: retain Marlin-K qweight-neutral replacement as the default. It is a
+resident-runner diagnostic row (`performance_claim=false`) because public
+`LLM.generate()` throughput is still not promoted, but the required 512/128 and
+4K/128 decode rows both improve with low variance, correctness gates pass, the
+kernel is visible under rocprof, and peak memory remains below the 24 GiB guardrail
+while dropping by ~0.411 GiB. Artifact:
+`benchmarks/results/2026-05-17-hipengine-qwen35-d21-marlin-k-qweight-neutral-diagnostic.json`.
+
+## 2026-05-17 — D5.2 W8A16 decode kernel audit stop condition
+
+Task #9 audited the W8A16 decode family called out by the M.4 Amdahl profile:
+`w8a16_linear_kernel` for lm-head BF16→FP32 and
+`w8a16_linear_lowp_out_kernel<_Float16>` for the legacy shared-expert gate/up
+and down projections. No fused lm-head/argmax work was attempted.
+
+M.4 source evidence (`benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`):
+
+- 512/128 decode graph window: W8A16 `15.67%`, `1.138 ms/token`, `81` calls/token.
+- 4K/128: W8A16 `15.72%`, `1.136 ms/token`.
+- 32K/128: W8A16 `13.36%`, `1.149 ms/token`.
+- Split at 512/128: lm-head W8A16 `0.694 ms/token`, shared lowp W8A16 `0.445 ms/token`; argmax is only `0.0069 ms/token`.
+
+ISA/resource audit on the cached decode build (`w8a16_linear-033698c919656936`):
+
+- `w8a16_linear_kernel`: SGPR 32, VGPR 23, no SGPR/VGPR spills, private segment 0, fixed LDS 0, wave32; dynamic LDS is `threads * sizeof(float)` for the reduction.
+- `w8a16_linear_lowp_out_kernel<hip_bfloat16>`: SGPR 32, VGPR 23, no spills/scratch.
+- `w8a16_linear_lowp_out_kernel<_Float16>`: SGPR 32, VGPR 20, no spills/scratch.
+- Static disassembly is the expected vec8 loop plus LDS reduction (`global_load`, `v_cvt`, `v_fma_mix`/`v_fmac`, `ds_*`, `s_barrier`); no scratch path appeared.
+
+Added `scripts/w8a16_decode_probe.py`, a synthetic decode-shape profiler helper,
+and ran it under rocprof:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/hipengine-d52-w8a16-probe-repo \
+  --output-file w8a16_decode_probe -- \
+  python3 scripts/w8a16_decode_probe.py \
+    --threads 64,128,256,512 \
+    --lm-reps 5 \
+    --shared-reps 40 \
+    --include-fused-shared \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+```
+
+Profiler medians after dropping warmup rows:
+
+| case | best / current | probes |
+| --- | --- | --- |
+| lm-head `w8a16_linear_kernel`, 2048→248320 | 128 threads, `674.285 us` | 64 `688.765`, 256 `913.247`, 512 `1753.732` us |
+| shared gate/up `w8a16_linear_lowp_out_kernel<_Float16>`, 2048→1024 | 64 threads, `3.220 us` | 128 `3.640`, 256 `4.760`, 512 `7.340` us |
+| shared down `w8a16_linear_lowp_out_kernel<_Float16>`, 512→2048 | 64 threads, `3.440 us` | 128 `4.240`, 256 `7.400`, 512 `12.320` us |
+| existing fused shared gate/up+SiLU helper, c=1 probe | rejected | best `~5.040 us`, slower than generic lowp gate/up plus measured graph shared SiLU (~`3.22 + 1.28 us`) |
+
+Conclusion / stop condition:
+
+- Keep `HIPENGINE_QWEN35_LM_HEAD_THREADS=128` and the shared lowp W8A16 default
+  at 64 threads. Larger workgroups lose to reduction/wave overhead; 64 is not
+  better for lm-head.
+- No code-path change retained. The remaining W8A16 lm-head cost is dominated by
+  the unavoidable 248320×2048 int8 weight stream (~509 MB/token before cache and
+  output/scales), while the shared-expert W8A16 linears are already low-VGPR,
+  no-spill, and best at the existing small workgroup.
+- Legacy-vs-packed shared-expert decode tradeoff remains a policy/format issue,
+  not a W8A16 occupancy bug: forced legacy W8A16 was faster for shisa decode but
+  worse for prefill/memory, and after packed-W4 recovery the remaining packed
+  decode gap is ~3.3%; D5.2 found no W8A16 micro-tune that changes the packed
+  checkpoint default.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/w8a16_decode_probe.py
+python3 -m pytest tests/test_w8a16_linear_plan.py -q --tb=short
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d52-w8a16-decode-audit.json >/tmp/d52-json-check.json
+# validation ok
+```
+
+Recorded artifact and rollup:
+
+- `benchmarks/results/2026-05-17-hipengine-qwen35-d52-w8a16-decode-audit.json`
+- `docs/OPTIMIZE.md` D5.2 marked accepted(stop)
+- `benchmarks/README.md` diagnostic row + `benchmarks/CHANGELOG.md` one-liner
+
+## 2026-05-17 — D1.1 rotation-into-W4 producer decode fusion rejected
+
+Task #10 implemented an opt-in generic transposed rotate-staged dual pack8 GEMV
+surface for the decode projection pairs that share an input:
+
+- Kernel wrappers: `gemv_awq_dual_pack8_transposed_rotate_staged_{bf16,fp16}`.
+- Runtime gate: `HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED=1` (default remains off).
+- Covered decode pairs: linear-attention `in_proj_qkv + in_proj_z`; full-attention
+  `q_proj + k_proj` with `v_proj` still rotated by the existing single-rotate path.
+- Design: rotate each input once into the existing pack8/repacked scratch, then run
+  the dual transposed pack8 GEMV after a device-side barrier; no per-output-pack
+  rotation recompute, preserving the parent D4 rejection lesson.
+
+Correctness / visibility:
+
+```bash
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py -q --tb=short
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py scripts/smoke.py
+python3 scripts/smoke.py --mode paro-pack8-rotate-staged-hip --rows 1 --hidden-size 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/check_lineage.py --kind kernel --diff stat  # known drift: qwen35_expert, smoke, paroquant_kernels, paroquant_fusedw4
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d11-rotate-dual-pack8-fusion-rejected.json >/tmp/d11-json-check.json
+git diff --check
+```
+
+The opt-in graph fixture gate matched the known generated sample/logits (`final_kl=0`,
+expected/generated match true), and rocprof confirmed the fused FP16 kernel path:
+`gemv_awq_dual_pack8_transposed_rotate_staged_kernel<_Float16,true>` with two
+observed dispatches in the small smoke trace (`DurationNs` 36320 / 33761,
+`VGPR_Count=104`, `Scratch_Size=0`, `LDS_Block_Size=512`).
+
+Performance decision:
+
+- 512/128 graph decode default/off median: `115.450 tok/s`, prefill `2268.369 tok/s`,
+  peak `18.176 GiB`.
+- 512/128 opt-in fused median: `110.457 tok/s`, prefill `2262.721 tok/s`, peak
+  `18.176 GiB`.
+- Delta: decode `-4.32%`, prefill `-0.25%`, memory neutral.
+
+Rejected as a default. The removed rotate launches are cheaper under one-step graph
+replay than the barrier/spin/global-staging overhead; full-attention Q/K also leaves
+V on a separate rotate, so it does not remove the whole rotation launch family. The
+opt-in code path and kernel catalog entry are kept as evidence/diagnostic surface;
+`docs/OPTIMIZE.md` marks D1.1 rejected and the artifact is
+`benchmarks/results/2026-05-17-hipengine-qwen35-d11-rotate-dual-pack8-fusion-rejected.json`.
+
+## 2026-05-17 — D1.4 selected-MoE post-op fold stop/reject
+
+Task #11 audited the selected-MoE post-op fold. The safe c=1 decode fold is
+already the default hipENGINE path: `run_moe_c1_fp16()` calls
+`combine_moe_c1_shared_residual_fp16()`, which launches
+`weighted_sum_shared_gate_combine_residual_out_fp16_f32w` for `tokens == 1`.
+That one kernel already performs selected-expert weighted sum, shared-gate
+sigmoid/combine, and residual add. The remaining combine bucket in M.4 is the
+one launch per MoE layer (`~40` calls/token), not a split post-op chain.
+
+Validation / probes:
+
+```bash
+python3 -m pytest tests/test_paro_combine_plan.py tests/test_qwen35_decode_state.py -q --tb=short
+python3 scripts/smoke.py --mode paro-combine-hip --rows 8 --hidden-size 2048 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --max-new-tokens 16 --json /tmp/hipengine-d14/graph-fixture-current.json
+PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d14-combine-probe --output-file combine_threads -- python3 /tmp/d14_combine_probe.py --features 2048 --rows 8 --reps 50 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d14/512x128-current.json
+```
+
+Results:
+
+- Combine smoke at `rows=8`, `hidden=2048` passed BF16/FP16 weighted/fused/batch/
+  shared/weighted-lane checks with all mismatches `0`.
+- Graph fixture gate passed (`generated_match=true`, `expected_match=true`,
+  `final_kl=0`, top-1 match true).
+- Combine thread probe medians for
+  `weighted_sum_shared_gate_combine_residual_out_kernel<_Float16,float>` were
+  effectively identical: 64 threads `2440.0 ns`, 128 threads `2440.5 ns`,
+  256 threads `2440.0 ns`; no thread-count lever.
+- Current 512/128 default diagnostic: prefill `2284.652 tok/s`, decode
+  `115.755 tok/s`, peak `18.176 GiB`. This is current baseline/no candidate
+  delta, not a retained improvement.
+
+Decision: reject further D1.4 default changes. The only direct way to remove the
+remaining combine launch is to fuse selected down-projection with weighted sum /
+shared gate / residual, but parent target-shape evidence already rejected that
+exact design: bit-correct, yet `13.38 us -> 16.52 us` (`0.81x`) because it
+collapses grid parallelism from `out_pack * active_experts` blocks to `out_pack`
+blocks. Reopen only for a design that preserves per-expert/out-pack parallelism
+without atomics or a graph-level fusion that removes the dispatch without
+changing selected-down GEMV layout.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d14-selected-moe-postop-fold-rejected.json`.
+
+## 2026-05-17 — D1.5 router cooperative fold rejected
+
+Task #12 prototyped an opt-in decode-only router cooperative fold behind
+`HIPENGINE_PARO_ROUTER_TOPK_COOP=1`:
+
+- `qwen35_router_topk_shared_coop_out_kernel` keeps the one-block-per-router-row
+  logits producer grid (`num_experts + shared_gate` blocks) and uses a global
+  atomic counter so the last producer block runs the existing block-parallel
+  top-k/softmax tail.
+- The default remains the separate `qwen35_router_logits_*` +
+  `qwen35_router_select_kernel` path. The cooperative wrapper must reset the
+  counter with `hipMemsetAsync` before each decode launch, so graph replay sees
+  a memset node plus the folded kernel rather than a pure launch removal.
+
+Validation / probes:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/moe/router.py hipengine/runtime/qwen35_paro.py scripts/smoke.py tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py
+python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py -q --tb=short
+python3 scripts/smoke.py --mode qwen35-router-hip --rows 1 --hidden-size 256 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+HIPENGINE_PARO_ROUTER_TOPK_COOP=1 python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --max-new-tokens 16 --json /tmp/hipengine-d15/graph-fixture-coop.json
+PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d15-router-probe --output-file router_probe -- python3 /tmp/d15_router_probe.py --reps 80 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/512x128-default-1.json
+HIPENGINE_PARO_ROUTER_TOPK_COOP=1 python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/512x128-coop-1.json
+python3 scripts/qwen35_paro_bench.py --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/4k128-default-1.json
+HIPENGINE_PARO_ROUTER_TOPK_COOP=1 python3 scripts/qwen35_paro_bench.py --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/4k128-coop-1.json
+python3 scripts/check_lineage.py --kind kernel --diff stat  # known parent drift in qwen35_expert/smoke/paroquant kernels
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d15-router-coop-fold-rejected.json >/tmp/d15-json-check.json
+git diff --check
+```
+
+Correctness passed: router smoke reported BF16/FP16 `selected_match=True` and
+cooperative `coop_selected_match=True`; graph fixture matched generated tokens
+and logits (`final_kl=0`, expected/generated match true); unit tests passed
+`48/48`.
+
+Micro-profile at the target router shape (`hidden=2048`, `num_rows=257`,
+`top_k=8`, `threads=512`) showed the kernel-only fold was real but too small:
+
+- Default logits kernel median `3080 ns` (`VGPR=24`, no LDS) plus select median
+  `5080 ns` (`VGPR=40`, `LDS=512`) = `8160 ns` kernel-only.
+- Cooperative producer median `7080 ns` (`VGPR=40`, `LDS=512`) while preserving
+  the 257-row producer grid; this excludes the required counter memset.
+
+End-to-end graph replay regressed, so reject as a default:
+
+- 512/128 default: prefill `2274.284 tok/s`, decode `115.931 tok/s`, peak
+  `18.176 GiB`.
+- 512/128 coop: prefill `2236.431 tok/s`, decode `114.856 tok/s`, peak
+  `18.176 GiB` (`-0.93%` decode).
+- 4K/128 default: prefill `2491.236 tok/s`, decode `116.887 tok/s`, peak
+  `20.047 GiB`.
+- 4K/128 coop: prefill `2490.971 tok/s`, decode `116.106 tok/s`, peak
+  `20.047 GiB` (`-0.67%` decode).
+
+Decision: keep the cooperative path only as an opt-in diagnostic. Reopen D1.5 /
+D5.3 only for a graph-level fusion or persistent initialized counter design that
+removes the extra memset node without racing; the naive one-block collapse remains
+invalid because it abandons the router producer occupancy.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d15-router-coop-fold-rejected.json`.
+
+## 2026-05-17 — D3.1-D3.3 grouped-GQA long-context decode retained
+
+Task #13 ported and retained the parent grouped-GQA paged split-K decode
+producer for Qwen3.5 full-attention decode, then swept the split cap and split
+threshold defaults:
+
+- Added `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>`
+  launch coverage through `qwen35_paged_full_attn_decode_split_k_gqa_*_spans`.
+- Added gated warp split wrappers so short/mid split decode can use the parent
+  warp-cooperative producer while long Qwen3.5 GQA rows switch to grouped-GQA.
+- Default policy: split decode from context `>=1024`, grouped-GQA when
+  `num_splits >= 64` or context `>=4096`, and `HIPENGINE_PAGED_ATTN_MAX_SPLITS=4096`
+  (no effective 128K cap). Opt-outs remain env-controlled.
+
+Correctness / visibility:
+
+```bash
+python3 -m pytest \
+  tests/test_qwen35_paged_attn_decode_plan.py \
+  tests/test_qwen35_decode_state.py \
+  tests/test_qwen35_resident_batch_layout.py -q --tb=short
+# passed before benchmark sweep
+
+python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# context_len=512, warp_max_abs=4.1e-08, gqa_max_abs=4.1e-08,
+# warp/GQA BF16 gated mismatches 0
+
+python3 scripts/qwen35_decode_graph_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 --graph-steps-per-replay 1 --max-new-tokens 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --json /tmp/hipengine-d31/graph-fixture-512.json
+# passed=true, generated_match=true, expected_match=true, final_kl=0
+
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/hipengine-d31/rocprof --output-file paged_attn_gqa_smoke -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# trace includes qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>
+# (DurationNs 109281/99761 in the two smoke launches, VGPR=80, scratch=0)
+```
+
+Benchmark protocol on W7900/gfx1100, cache-only HIP builds, graph replay decode:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --token-id 9707 \
+  --prompt-length {512,4096,32768,131072} \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d31/<label>.json
+# long rows add prefill chunk flags: linear=1024, moe=1024,
+# full-attn query=4096, post=1024, rope=1024
+# opt-out rows set HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX=0
+# cap row sets HIPENGINE_PAGED_ATTN_MAX_SPLITS=512
+# old threshold row sets HIPENGINE_PARO_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=4096
+```
+
+Results:
+
+| sweep | workload | baseline | retained/default | decode Δ | peak default |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| grouped-GQA | 32K/128 | opt-out `70.064 tok/s` | `99.560 tok/s` | `+42.1%` | `20.320 GiB` |
+| grouped-GQA | 128K/128 | opt-out `30.789 tok/s` | `63.368 tok/s` | `+105.8%` | `23.288 GiB` |
+| split cap | 128K/128 | default `63.368 tok/s` | cap512 `62.647 tok/s` | `-1.14%` | cap saves only `0.034 GiB` |
+| split threshold | 1K/128 | threshold4096 `92.486 tok/s` | threshold1024 `113.242 tok/s` | `+22.4%` | `18.443 GiB` |
+
+Short-context guard rows stayed within the unchanged-behavior band versus the prior
+D1.5 warmup-4 baseline: 512/128 `115.931 -> 115.627 tok/s` (-0.26%)
+and 4K/128 `116.887 -> 116.263 tok/s` (-0.53%). Memory guardrails
+remain satisfied: 32K peak `20.320 GiB` (A.3 <=20.69) and 128K peak
+`23.288 GiB` (A.4 <24).
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d31-d33-grouped-gqa-long-context-diagnostic.json`.
+
+Post-artifact verification:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py \
+  hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py \
+  scripts/smoke.py
+
+python3 -m pytest \
+  tests/test_qwen35_paged_attn_decode_plan.py \
+  tests/test_qwen35_decode_state.py \
+  tests/test_qwen35_resident_batch_layout.py -q --tb=short
+# 76 passed
+```
+
+## 2026-05-17 — Shisa Qwen3.6 packed-vs-legacy PARO refresh and compare tables
+
+Refreshed the shisa-ai Qwen3.6 PARO packed-vs-legacy diagnostic after the latest
+approved decode/prefill defaults, and updated `scripts/qwen35_compare_tables.py`
+so packed PARO sidecars are the least-surprising default comparison A:
+
+- `python3 scripts/qwen35_compare_tables.py --target shisa --against-target`
+  prints packed A vs legacy B.
+- `python3 scripts/qwen35_compare_tables.py --target legacy --against-target`
+  flips the A/B direction for decode-focused diagnostics.
+- `python3 scripts/qwen35_compare_tables.py --target shisa all` compares the
+  packed shisa row against external baselines.
+
+Benchmark protocol on W7900/gfx1100, cache-only HIP builds, graph replay decode:
+
+```bash
+# short rows
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 \
+  --shared-expert-format {packed_paro_w4,legacy_fp16} \
+  --prompt-length {512,4096} --token-id 9707 --decode-tokens 128 \
+  --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa36-packed-legacy-20260517/<label>.json
+
+# long rows add parent-style chunks
+python3 scripts/qwen35_paro_bench.py ... \
+  --prompt-length {32768,131072} \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024
+
+# packed-only stripped checkpoint sanity at 512/4K
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --shared-expert-format auto --prompt-length {512,4096} ...
+```
+
+Results (packed A vs legacy B):
+
+| workload | packed prefill | legacy prefill | packed Δ | packed decode | legacy decode | packed Δ | packed peak |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | `2518.836` | `2272.088` | `+10.9%` | `111.738` | `115.324` | `-3.1%` | `18.123 GiB` |
+| 4K/128 | `2711.013` | `2487.298` | `+9.0%` | `113.231` | `116.688` | `-3.0%` | `19.995 GiB` |
+| 32K/128 | `2130.562` | `1974.833` | `+7.9%` | `97.779` | `99.746` | `-2.0%` | `20.267 GiB` |
+| 128K/128 | `1048.543` | `1002.841` | `+4.6%` | `62.014` | `63.190` | `-1.9%` | `23.235 GiB` |
+
+Packed saves ~`0.052 GiB` tracked peak at every shape relative to legacy by
+omitting legacy W8A16 shared-expert buffers. Generated previews for all rows
+remain repeated token `9707`. Stripped packed-only auto rows at 512/4K match the
+forced-packed token previews and memory, with timing differing only by single-run
+noise.
+
+Packed-path approved-optimization audit:
+
+- Applicable and integrated: P1.4 compact WMMA prefill threshold=2, P2.3
+  AOTriton threshold=512, D2.1 Marlin-K non-expert decode default,
+  D3.1-D3.3 grouped-GQA long decode/default threshold, and packed shared-expert
+  decode fusion (`paro_rotate2` gate/up + fused SiLU+down-rotate).
+- Accepted legacy-only optimizations P1.2/P1.3 are deliberately not applicable
+  to packed sidecars; the refresh shows packed still wins prefill and memory.
+- `docs/OPTIMIZE.md` was corrected so D2.1 is no longer stale/pending.
+
+Created follow-up task entries for the remaining pending `docs/OPTIMIZE.md`
+items to process as accept/reject/defer decisions: P1.6, P3.1-P3.3, P5.2,
+D1.2, D1.3, D1.6, D4.2, D4.4, and D5.1.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json`.
+
+Verification for the shisa refresh/doc unit:
+
+```bash
+python3 -m py_compile scripts/qwen35_compare_tables.py
+python3 scripts/qwen35_compare_tables.py --target shisa --against-target >/tmp/compare-shisa.md
+python3 scripts/qwen35_compare_tables.py nano-vllm-amd >/tmp/compare-qwen35.md
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json >/tmp/shisa-artifact-check.json
+python3 -m pytest tests/test_qwen35_paro_layout.py -q --tb=short
+# 20 passed
+```
+
+## 2026-05-17 — P1.6 selective prefill `-mcumode` build-profile sweep
+
+Task #17 evaluated `docs/OPTIMIZE.md` P1.6 after the P1.5 unroll-600 default. I
+added a diagnostic-only build knob, `HIPENGINE_PREFILL_MCUMODE=1`, which appends
+`-mcumode` only to artifacts built with the `prefill` profile and does not
+duplicate the flag on libraries that already request it. Dry-run audit of the
+surface with `/tmp/hipengine-hipcc-version.txt`:
+
+- default `aotriton_wrap`: `-mllvm -amdgpu-unroll-threshold-local=600` plus
+  include/linker flags, no `-mcumode`.
+- default `qwen35_moe_group_scatter`: `-mllvm -amdgpu-unroll-threshold-local=600`.
+- default `paro_awq_wmma`: already includes `-mcumode`.
+- with `HIPENGINE_PREFILL_MCUMODE=1`, only `aotriton_wrap` and
+  `qwen35_moe_group_scatter` gain `-mcumode`; compact WMMA and most dual-use
+  decode/prefill libraries were already CU-mode builds.
+
+Benchmark protocol on W7900/gfx1100, current `HEAD=5336924`, uncommitted P1.6
+knob/tests/artifact docs pending. All measured rows used cache-only HIP builds
+after this prebuild:
+
+```bash
+HIPENGINE_PREFILL_MCUMODE=1 python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --max-layers 4 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p16-mcumode-20260517/prebuild-prefill-mcumode-l4.json
+```
+
+Measured commands were two repetitions of default vs `HIPENGINE_PREFILL_MCUMODE=1`
+for z-lab Qwen3.5 legacy and shisa Qwen3.6 forced-packed at 512/128 and 4K/128:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-or-shisa-unstripped> --shared-expert-format {auto,packed_paro_w4} \
+  --prompt-length {512,4096} --token-id 9707 --decode-tokens 128 \
+  --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p16-mcumode-20260517/<mode>-<model>-<prompt>-128-runN.json
+
+HIPENGINE_PREFILL_MCUMODE=1 python3 scripts/qwen35_paro_bench.py ...same args...
+```
+
+Two-run median results, `HIPENGINE_PREFILL_MCUMODE=1` vs default:
+
+| model | workload | default prefill | mcumode prefill | Δ | default decode | mcumode decode | Δ | peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab Qwen3.5 legacy | 512/128 | `2213.547` | `2218.591` | `+0.23%` | `115.429` | `115.295` | `-0.12%` | `18.176` |
+| z-lab Qwen3.5 legacy | 4K/128 | `2467.088` | `2463.313` | `-0.15%` | `116.718` | `116.701` | `-0.01%` | `20.047` |
+| shisa Qwen3.6 packed | 512/128 | `2423.833` | `2437.094` | `+0.55%` | `111.547` | `111.634` | `+0.08%` | `18.123` |
+| shisa Qwen3.6 packed | 4K/128 | `2675.662` | `2681.342` | `+0.21%` | `112.463` | `112.630` | `+0.15%` | `19.995` |
+
+Correctness/sanity:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_PREFILL_MCUMODE=1 \
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p16-mcumode-20260517/prefill-mcumode-native-prefill-fixture-gate.json
+# passed=True, max_kl=0.039568870612619614, top1_agreement=1.0, generated_match=True
+```
+
+Default and P1.6 rows produced identical first-two generated token IDs and logits
+(max logit delta `0.0`) across every repetition. Decision: reject P1.6 as a
+default build-profile change because the measured surface is neutral/noisy
+(prefill `-0.15%..+0.55%`, decode `-0.12%..+0.15%`, memory unchanged). Keep
+`HIPENGINE_PREFILL_MCUMODE=1` only as a future compiler diagnostic knob.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p16-prefill-mcumode-rejected.json`.
+
+Post-update validation:
+
+```bash
+python3 -m py_compile hipengine/core/build.py scripts/qwen35_paro_bench.py
+python3 -m pytest tests/test_build.py tests/test_qwen35_paro_layout.py -q --tb=short
+# 27 passed
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p16-prefill-mcumode-rejected.json >/tmp/p16-artifact-check.json
+git diff --check
+```
+
+## 2026-05-17 — P3.1 GDN prefill RMSNorm+gate+rotate fusion diagnostic
+
+Task #18 evaluated `docs/OPTIMIZE.md` P3.1. I added a diagnostic opt-in
+`HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1` that keeps the existing fallback as
+default and routes only safe Qwen3.5/PARO FP16 single-request prefill shapes
+(`tokens > 1`, `head_v_dim == group_size`) through a new
+`qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16` kernel. The fused kernel computes
+per-value-head RMSNorm + SiLU gate from `recurrent_out`, rounds the gated value to
+FP16 to match the old materialized path, applies the PARO rotate1 group, and
+writes `out_rot` directly before the unchanged `awq_fusedw4_prefill_strided_fp16`
+out projection.
+
+Correctness/sanity:
+
+```bash
+python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# ... fp16_gated_mismatch=0 fused_rotate_mismatch=0
+
+HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p31-gdn-rotate-20260517/fused-native-prefill-fixture-gate.json
+# passed=True, max_kl=0.039568870612619614, top1_agreement=1.0, generated_match=True
+```
+
+Benchmark protocol on W7900/gfx1100 used cache-only HIP builds, graph replay
+decode, two repetitions per row, and current `HEAD=9fecaa0` plus the uncommitted
+P3.1 diagnostic kernel/runtime/docs/artifact updates:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-or-shisa-unstripped> --shared-expert-format {auto,packed_paro_w4} \
+  --prompt-length {4096,32768} --token-id 9707 --decode-tokens 128 \
+  --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p31-gdn-rotate-20260517/<mode>-<model>-<prompt>-128-runN.json
+
+# 32K rows also used the current long-context chunk policy:
+--prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+--prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 \
+--prefill-full-attn-rope-chunk-size 1024
+
+HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 python3 scripts/qwen35_paro_bench.py ...same args...
+```
+
+Two-run median results, fused vs default:
+
+| model | workload | default prefill | fused prefill | Δ | default decode | fused decode | Δ | peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab Qwen3.5 legacy | 4K/128 | `2454.597` | `2467.638` | `+0.53%` | `116.473` | `116.464` | `-0.01%` | `20.047` |
+| z-lab Qwen3.5 legacy | 32K/128 | `1950.331` | `1942.608` | `-0.40%` | `98.923` | `98.488` | `-0.44%` | `20.320` |
+| shisa Qwen3.6 packed | 4K/128 | `2658.331` | `2672.125` | `+0.52%` | `112.400` | `112.576` | `+0.16%` | `19.995` |
+| shisa Qwen3.6 packed | 32K/128 | `2067.609` | `2061.326` | `-0.30%` | `96.219` | `95.700` | `-0.54%` | `20.267` |
+
+Default and fused rows generated identical first-two token IDs and logits (max
+logit delta `0.0`) across every repetition. Decision: reject P3.1 as a default
+fusion. The kernel is correct, but the retained surface is neutral-to-negative:
+4K gains are only ~`+0.5%`, 32K regresses, decode is not improved, and tracked
+peak memory is unchanged because the resident scratch allocator still reserves
+`recurrent_bf16` for the fallback path. The env knob remains off by default as a
+future diagnostic/prototype surface.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p31-gdn-rotate-rejected.json`.
+
+Post-update validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/linear_attn/gdn.py \
+  hipengine/kernels/hip_gfx1100/linear_attn/__init__.py \
+  hipengine/runtime/qwen35_paro.py scripts/smoke.py \
+  tests/test_qwen35_linear_attn_gdn_plan.py
+python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py tests/test_qwen35_paro_layout.py -q --tb=short
+# 23 passed
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p31-gdn-rotate-rejected.json >/tmp/p31-artifact-check.json
+git diff --check
+```
+
+---
+
+## 2026-05-17 — P3.2 prefill router shared-gate sigmoid diagnostic rejected
+
+Task #19 evaluated `docs/OPTIMIZE.md` P3.2. I added a diagnostic opt-in
+`HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1` that keeps the existing
+fallback as default and routes only legacy-FP16 shared-expert prefill
+(`tokens > 1`, `legacy_fp16` shared expert) through a new router select variant.
+The variant overwrites the shared-gate logit column with `sigmoid(logit)` inside
+`qwen35_router_select_sigmoid_shared_kernel`, so legacy grouped prefill can skip
+`w8a16_shared_gate_sigmoid_fp32`. c=1 decode and packed PARO shared-expert paths
+continue to preserve raw shared-gate logits for their combine kernels.
+
+Correctness/profiler evidence:
+
+```bash
+python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# selected_match=True, routing_max_abs=1.49e-08, fp16_selected_match=True,
+# sigmoid_logits_max_abs=0.0, sigmoid_selected_match=True,
+# sigmoid_fp16_logits_max_abs=4.77e-07, sigmoid_fp16_selected_match=True
+
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-router-p32-sigmoid \
+  --output-file router-p32 --output-format csv -- \
+  python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# qwen35_router_select_sigmoid_shared_kernel rows: duration 11840 ns and 3920 ns,
+# Scratch_Size=0, VGPR_Count=40, LDS_Block_Size=512, Workgroup_Size_X=64.
+
+HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p32-router-sigmoid-20260517/fused-native-prefill-fixture-gate.json
+# passed=True, max_kl=0.039568870612619614, top1_agreement=1.0, generated_match=True
+```
+
+Benchmark protocol on W7900/gfx1100 used cache-only HIP builds, graph replay
+decode, two repetitions per row, and current `HEAD=ca4796d` plus the uncommitted
+P3.2 diagnostic kernel/runtime/smoke/docs/artifact updates:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-or-shisa-unstripped> --shared-expert-format {auto,packed_paro_w4} \
+  --prompt-length {512,4096} --token-id 9707 --decode-tokens 128 \
+  --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p32-router-sigmoid-20260517/<mode>-<model>-<prompt>-128-runN.json
+
+HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 python3 scripts/qwen35_paro_bench.py ...same args...
+```
+
+Two-run median results, fused vs default:
+
+| model | workload | default prefill | fused prefill | Δ | default decode | fused decode | Δ | peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab Qwen3.5 legacy | 512/128 | `2220.024` | `2224.583` | `+0.21%` | `115.308` | `115.242` | `-0.06%` | `18.176` |
+| z-lab Qwen3.5 legacy | 4K/128 | `2467.279` | `2461.592` | `-0.23%` | `116.797` | `117.024` | `+0.19%` | `20.047` |
+| shisa Qwen3.6 packed | 512/128 | `2429.718` | `2445.832` | `+0.66%` | `111.795` | `111.707` | `-0.08%` | `18.123` |
+| shisa Qwen3.6 packed | 4K/128 | `2677.880` | `2672.998` | `-0.18%` | `112.622` | `112.945` | `+0.29%` | `19.995` |
+
+Default and fused rows generated identical first-two token IDs (`9707`, `9707`)
+across every repetition. Decision: reject P3.2 as a default fusion. Removing the
+extra legacy shared-gate sigmoid launch is correct, but the retained E2E surface
+is neutral/noisy: Qwen3.5 legacy is only `+0.21%` at 512 and regresses `-0.23%`
+at 4K, decode does not materially improve, and tracked peak memory is unchanged.
+The shisa packed rows are intentionally not routed through the sigmoid variant;
+their deltas are noise checks for raw-logit preservation. The env knob remains
+off by default for future diagnostics only.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p32-router-sigmoid-rejected.json`.
+
+Post-update validation:
+
+```bash
+python3 -m py_compile scripts/smoke.py hipengine/kernels/hip_gfx1100/moe/router.py \
+  hipengine/runtime/qwen35_paro.py tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py
+python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py -q --tb=short
+# 52 passed
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p32-router-sigmoid-rejected.json >/tmp/p32-artifact.pretty
+git diff --check
+```
+
+---
+
+## 2026-05-17 — P3.3 MoE metadata fanout collapse deferred by profile gate
+
+Task #20 evaluated `docs/OPTIMIZE.md` P3.3. I did **not** implement the
+proposed fused metadata kernel because the prerequisite M.3 rocprof evidence
+already shows the target is below material payoff for the current c=1 prefill
+path. The proposed change would combine `qwen35_moe_group_prefix` +
+`qwen35_moe_wmma_tile_map` and initialize `scatter_offsets`/`tile_expert` in the
+same small metadata kernel, but a fused kernel would still perform the same
+prefix/tile-map work and write the same metadata.
+
+Source evidence is the retained selected-region profile
+`benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`
+on W7900/gfx1100, Qwen3.5-35B-A3B-PARO, `w4_paro`, max_layers=40,
+cache-only builds, graph replay decode, and the 512/128 + 4K/128 + 32K/128
+M.3 workload set:
+
+```bash
+python3 scripts/qwen35_rocprof_audit.py --workloads 512/128 4096/128 32768/128 \
+  --out benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json
+```
+
+Profile-derived prefill upper-bound summary:
+
+| workload | MoE metadata family share of prefill kernel time | prefix + tile-map + two average fills optimistic bound |
+| --- | ---: | ---: |
+| 512/128 | `0.84%` | `0.27%` kernel time / `0.22%` wall time |
+| 4K/128 | `0.77%` | `0.12%` kernel time / `0.12%` wall time |
+| 32K/128 | `0.57%` | `0.09%` kernel time / `0.09%` wall time |
+
+Decision: defer/no-op. P3.3 should not add another diagnostic kernel for the
+current c=1 prefill path. Revisit only if c>N batching or future scheduler
+profiling makes MoE metadata a multi-percent prefill bucket.
+
+Current fallback correctness/sanity was rechecked without code changes:
+
+```bash
+python3 scripts/smoke.py --mode qwen35-moe-group-scatter-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# tokens=3 top_k=2 num_experts=4 hidden_size=5 prefix_match=True lane_match=True \
+# expert_match=True weight_match=True packed_match=True tile_match=True
+
+python3 -m pytest tests/test_qwen35_moe_group_scatter_plan.py -q --tb=short
+# 3 passed
+
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-p33-moe-metadata-fanout-deferred.json >/tmp/p33-artifact-check.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-p33-moe-metadata-fanout-deferred.json`.
+
+---
+
+## 2026-05-17 — P5.2 long-context chunk-size autotuner retained
+
+Task #21 evaluated `docs/OPTIMIZE.md` P5.2. I replaced the static long-prefill
+chunk defaults with a default-on, memory-budget-aware resolver in
+`PrefillConfig`: manual non-zero chunk sizes still override, prompts below 32K
+stay unchunked, 32K resolves to the retained static `1024/1024/4096/1024/1024`
+policy, and ≥128K raises only `full_attn_query_chunk_size` to `8192` when the
+budget is at least `24.5 GiB`. The default budget is derived as 55% of device
+VRAM from `hipMemGetInfo`; callers can set `chunk_tune_memory_budget_gib` or use
+`--no-prefill-chunk-autotune` for diagnostics.
+
+Candidate sweep on W7900/gfx1100, Qwen3.5-35B-A3B-PARO, `w4_paro`, max_layers=40,
+cache-only builds, AOTriton threshold 512, graph replay decode, warmup 1:
+
+| workload | candidate | chunks `(linear, moe, q, post, rope)` | prefill tok/s | decode tok/s | peak GiB |
+| --- | --- | --- | ---: | ---: | ---: |
+| 32K/128 | static | `(1024,1024,4096,1024,1024)` | `1983.834` | `100.476` | `20.320` |
+| 32K/128 | q8192 | `(1024,1024,8192,1024,1024)` | `1964.969` | `99.885` | `21.624` |
+| 32K/128 | all2048/q8192 | `(2048,2048,8192,2048,2048)` | `1923.982` | `99.183` | `21.804` |
+| 32K/128 | all512/q4096 | `(512,512,4096,512,512)` | `1890.300` | `98.927` | `20.230` |
+| 128K/128 | static | `(1024,1024,4096,1024,1024)` | `1013.420` | `63.238` | `23.288` |
+| 128K/128 | q6144 | `(1024,1024,6144,1024,1024)` | `1020.364` | `63.151` | `23.938` |
+| 128K/128 | q8192 | `(1024,1024,8192,1024,1024)` | `1050.368` | `63.368` | `24.592` |
+| 128K/128 | q12288 | `(1024,1024,12288,1024,1024)` | `1033.352` | `63.182` | `25.894` |
+| 128K/128 | q16384 | `(1024,1024,16384,1024,1024)` | `1040.739` | `63.181` | `27.201` |
+| 128K/128 | q32768 | `(1024,1024,32768,1024,1024)` | `1022.645` | `63.125` | `32.419` |
+
+Post-implementation A/B used the same harness. Short/mid contexts keep zero
+chunks, so their differences are run-to-run noise; 32K auto and static use the
+same chunks; 128K auto selects q8192 and improves prefill while staying under
+the derived `24.74 GiB` budget:
+
+| workload | baseline | auto | prefill Δ | decode Δ | peak Δ |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 no-auto -> auto | `2179.935` | `2188.194` | `+0.38%` | `+0.41%` | `+0.000 GiB` |
+| 4K/128 no-auto -> auto | `2434.652` | `2453.793` | `+0.79%` | `+0.36%` | `+0.000 GiB` |
+| 32K/128 static -> auto | `1937.989` | `1950.955` | `+0.67%` | `+1.24%` | `+0.000 GiB` |
+| 128K/128 static -> auto | `1017.796` | `1042.600` | `+2.44%` | `-0.40%` | `+1.304 GiB` |
+
+Decision: accept P5.2 as a default auto policy. This is a budget-aware
+performance tune, not a memory-saving tune: 128K spends ~`+1.30 GiB` tracked
+peak to recover `+2.44%` prefill, while 512/4K/32K do not regress because their
+resolved chunks are unchanged from the intended policies.
+
+Correctness/validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/prefill.py hipengine/runtime/qwen35_paro_runner.py \
+  scripts/qwen35_paro_bench.py scripts/qwen35_native_prefill_fixture_gate.py \
+  scripts/qwen35_decode_graph_fixture_gate.py scripts/qwen35_rocprof_audit.py
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q --tb=short
+# 27 passed
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_paro_layout.py -q --tb=short
+# 47 passed
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p52-chunk-tuner-20260517-post/auto-native-prefill-fixture-gate.json
+# passed=True, max_kl=0.039568870612619614, top1_agreement=1.0, generated_match=True
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 8192 --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --json /tmp/hipengine-p52-chunk-tuner-20260517-post/q8192-native-prefill-fixture-gate.json
+# passed=True, max_kl=0.039568870612619614, top1_agreement=1.0, generated_match=True
+
+python3 scripts/qwen35_decode_graph_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p52-chunk-tuner-20260517-post/auto-decode-graph-fixture-gate.json
+# passed=True, final_kl=0.0, generated_match=True
+
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-p52-prefill-chunk-autotune-accepted.json >/tmp/p52-artifact-check.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-p52-prefill-chunk-autotune-accepted.json`.
+
+---
+
+## 2026-05-17 — D1.2 RMSNorm/add-RMSNorm producer fusion deferred
+
+Task #22 evaluated `docs/OPTIMIZE.md` D1.2. I did **not** implement a new
+producer-into-projection kernel because the M.4 decode profile and the current
+Qwen3.5/PARO dataflow do not expose a material single-use RMSNorm/add-RMSNorm
+producer while preserving the pack8/repacked projection layout.
+
+M.4 selected-region decode evidence (`benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`):
+
+| workload | RMSNorm bucket share | calls/token | ms/token |
+| --- | ---: | ---: | ---: |
+| 512/128 | `3.303%` | `91` | `0.239940` |
+| 4K/128 | `3.365%` | `91` | `0.243179` |
+| 32K/128 | `2.968%` | `91` | `0.255358` |
+
+Breakdown from the same M.4 top-kernel rows:
+
+| producer family | calls/token | avg us/call at 512 | dataflow result |
+| --- | ---: | ---: | --- |
+| `paro_rmsnorm_out` | `41` | `2.525` | 40 input layernorms feed multiple attention projections; one final norm feeds lm-head |
+| `paro_add_rmsnorm_out` | `40` | `2.657` | post-attention MLP input fans out to router, selected-MoE, shared expert, and residual combine |
+| head RMSNorm+RoPE | `10` | `3.015` | already a fused full-attention helper; not a `paro_rmsnorm`/`add_rmsnorm` producer |
+
+Static dataflow conclusion:
+
+- Input RMSNorm is not single-use: linear-attention layers consume it through
+  QKV/Z rotate+pack8 plus dense A/B, while full-attention layers consume it
+  through Q/K/V rotations/projections.
+- Post-attention add-RMSNorm is not single-use: `mlp_input` feeds router,
+  selected-MoE gate/up, and shared-expert gate/up; residual output feeds combine.
+- The only clear single-use producer is final RMSNorm -> lm-head, but that is
+  one tiny `paro_rmsnorm_out` call per token (~`0.04%` of 512/128 kernel time).
+  Folding it into W8A16 lm-head would need a new row-staged design to avoid
+  recomputing RMS per vocab tile.
+
+Decision: defer/no-op. Revisit only after D1.3/D1.6 if there is a row-staged
+multi-consumer pack8/W8A16 design that stages RMS once per row without the D1.1
+rotate-staged barrier regression. Defaults remain unchanged.
+
+Validation (no math/runtime code changed):
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+# hip OK
+python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+# BF16/FP16 norm/add_norm/residual mismatches all 0
+python3 -m pytest tests/test_qwen35_rmsnorm_plan.py tests/test_qwen35_paro_layout.py -q --tb=short
+# 23 passed
+python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short
+# 49 passed
+python3 -m py_compile scripts/qwen35_rocprof_audit.py scripts/smoke.py
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d12-rmsnorm-producer-fusion-deferred.json >/tmp/d12.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d12-rmsnorm-producer-fusion-deferred.json`.
+
+---
+
+## 2026-05-17 — D1.3 same-input c=1 projection fusions rejected/no-op
+
+Task #23 evaluated `docs/OPTIMIZE.md` D1.3. I did **not** implement a new
+same-input projection fusion because static decode inventory plus the M.4 profile
+show no standalone D1.3 candidate with arithmetic/data-reuse upside while
+preserving pack8/repacked layouts.
+
+M.4 selected-region decode profile (`benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`):
+
+| workload | W4 single GEMV share | W4 single calls/token | W4 dual GEMV share | W4 dual calls/token |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | `13.379%` | `50` | `11.812%` | `40` |
+| 4K/128 | `13.557%` | `50` | `11.710%` | `40` |
+| 32K/128 | `11.592%` | `50` | `9.963%` | `40` |
+
+Static inventory result:
+
+- Already fused and retained in hipENGINE:
+  - linear-attention `in_proj_qkv + in_proj_z` via `gemv_awq_dual_pack8_transposed_fp16` (`30` layers/token);
+  - full-attention `q_proj + k_proj` via `gemv_awq_dual_pack8_transposed_fp16` (`10` layers/token);
+  - linear-attention dense `in_proj_a + in_proj_b` via `dense_dual_gemv_out_fp16` (`30` layers/token);
+  - selected-MoE `gate + up` via selected dual pack8 (`40` layers/token);
+  - shared-expert `gate + up` via packed dual W4 sidecars or legacy precombined W8A16 (`40` layers/token).
+- The only material unfused same-input slice is full-attention `v_proj` beside
+  the retained Q/K dual path. It accounts for only `10` of the `50` generic W4
+  single GEMV calls/token; the remaining single pack8 calls are `o_proj` and
+  linear-attention output projections, which have no adjacent same-input peer.
+- Down projections and `lm_head` are not D1.3 candidates; they consume post-op
+  inputs and belong to other producer/post-op rows.
+
+Parent/source-lineage evidence:
+
+- `/home/lhl/amd-gpu-tuning/docs/PARO.md:1414-1423` reports the full-attention
+  triple Q/K/V pack8 prototype was correct (`24/24`) and graph-safe but slower:
+  512/128 `116.357` and 4K/128 `107.412` decode tok/s versus the retained Q/K
+  path `116.721` and `107.703`.
+- The same parent note says the 2026-05-11 graph-stack recheck was only noise
+  (`512/128 115.569 vs 115.258`, `4K/128 120.622 vs 120.655`) and diagnostic
+  prefill wiring regressed (`~905` tok/s control to `836` Q/K-only and `822`
+  Q/K/V).
+- `/home/lhl/amd-gpu-tuning/LESSONS-LEARNED.md:38` generalizes the lesson:
+  do not widen a fused projection family unless it preserves kernel efficiency
+  or adds real data reuse; graph replay makes pure launch-count wins very small.
+
+Decision: reject/no-op for D1.3. Defaults remain unchanged. Any narrower
+`k_proj + v_proj` retest belongs to D1.6 and should inherit the parent Q/K/V
+rejection as its cautionary baseline.
+
+Validation (no math/runtime code changed):
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+# hip OK
+python3 -m py_compile hipengine/runtime/qwen35_paro.py scripts/qwen35_rocprof_audit.py
+python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short
+# 69 tests passed (command exit 0)
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d13-same-input-projection-fusions-rejected.json >/tmp/d13.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d13-same-input-projection-fusions-rejected.json`.
+
+---
+
+## 2026-05-17 — D1.6 decode K/V dual-pack8 route rejected as default
+
+Task #24 evaluated `docs/OPTIMIZE.md` D1.6. I implemented an opt-in diagnostic
+route, but did **not** promote it to default.
+
+Implementation:
+
+- Added `HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1` (default off).
+- Default full-attention decode projection route remains:
+  `rotate3 -> dual pack8 q_proj+k_proj -> single v_proj`.
+- Opt-in route is:
+  `rotate3 -> single q_proj -> dual pack8 k_proj+v_proj`.
+- The opt-in scratch aliases key and value into a contiguous `attn.kv_proj`
+  buffer so the existing dual-pack8 wrapper writes `K||V` without copy kernels.
+- Pack8/repacked qweight layout is preserved; no HIP kernel body changed.
+- The D1.1 rotate-staged full-attn path is disabled when K/V fusion is enabled,
+  because rotate-staged only fills V scratch before the fused Q/K kernel.
+
+Correctness:
+
+```bash
+HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1 python3 scripts/qwen35_decode_graph_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-new-tokens 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d16/graph-fixture-optin.json
+# passed=True, generated_match=True, expected_match=True, final_kl=0.0, final_top1_match=True
+```
+
+Graph replay benchmark (single run per A/B point, resident runner, max_layers=40):
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --prompt-length {512,4096} --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 \
+  --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --json <path>
+# opt-in adds HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1
+```
+
+| workload | route | prefill tok/s | decode tok/s | tracked peak GiB |
+| --- | --- | ---: | ---: | ---: |
+| 512/128 | default Q/K+V | `2276.276` | `115.495` | `18.175625` |
+| 512/128 | opt-in Q+K/V | `2244.508` | `115.627` | `18.176122` |
+| 4K/128 | default Q/K+V | `2487.220` | `117.301` | `20.047133` |
+| 4K/128 | opt-in Q+K/V | `2487.114` | `117.053` | `20.051049` |
+
+Deltas:
+
+- 512/128 decode: `+0.11%` (noise), prefill `-1.40%`, peak `+0.0005 GiB`.
+- 4K/128 decode: `-0.21%`, prefill ~neutral, peak `+0.0039 GiB`.
+
+Decision: reject as default. D1.6 changes projection pairing, not launch count:
+default Q/K+V and opt-in Q+K/V both use two projection launches per
+full-attention layer. The hoped-for benefit from running Q as a single-projection
+path and pairing the two small KV projections does not survive graph replay.
+`HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1` remains only as a diagnostic surface;
+default runtime behavior is unchanged.
+
+Validation:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+# hip OK
+python3 -m py_compile hipengine/runtime/qwen35_paro.py scripts/qwen35_paro_bench.py scripts/qwen35_decode_graph_fixture_gate.py
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py -q --tb=short
+# 71 passed
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d16-kv-pack8-fusion-rejected.json >/tmp/d16.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d16-kv-pack8-fusion-rejected.json`.
+
+---
+
+## 2026-05-17 — D4.2 dispatch/token reduction plan rejected/no-op
+
+Task #25 evaluated `docs/OPTIMIZE.md` D4.2 using the M.4 decode
+Amdahl/dispatch profile plus the closed D1.1-D1.6 decisions. I did **not**
+implement a new batched fusion or graph rewrite.
+
+Baseline / target math:
+
+- M.4 selected-region graph replay reports `877 dispatches/token` at
+  512/128, 4K/128, and 32K/128.
+- The D4.2 cap `<700 dispatches/token` therefore needs at least `178` fewer
+  dispatches/token (`20.3%` of dispatches).
+- Kernel time/token in the same profile is `7.265 ms` at 512, `7.226 ms` at
+  4K, and `8.603 ms` at 32K; this task is a dispatch-plan decision, not a new
+  throughput claim.
+
+D1 ledger for D4.2:
+
+| row | usable dispatch-count reduction | evidence |
+| --- | ---: | --- |
+| D1.1 rotate-staged dual pack8 | rejected; countable piece is only ~30/tok for linear-attn rotate2 | opt-in regressed 512/128 graph decode `115.450 -> 110.457 tok/s` (`-4.32%`) |
+| D1.2 RMSNorm/add-RMSNorm producer fusion | `0` | no material single-use producer; input/add RMSNorm are multi-consumer fanout, final RMSNorm -> lm-head is ~`0.04%` kernel-time upper bound |
+| D1.3 same-input projection sweep | `0` | material pairs are already fused; only full-attn V remains, and parent full Q/K/V widening was slower/no-win |
+| D1.4 selected-MoE post-op fold | `0` for safe path | safe combine fold is already default; direct selected-down+combine could remove 40/tok but parent microbench regressed `13.38 -> 16.52 us` |
+| D1.5 router cooperative fold | `0` in current implementation | logits+select becomes counter memset+cooperative kernel; graph decode regressed `-0.93%` at 512 and `-0.67%` at 4K |
+| D1.6 full-attn K/V dual pack8 | `0` | changes Q/K+V to Q+K/V, so projection launch count stays two per full-attn layer; 4K decode regressed `-0.21%` |
+
+Scenario accounting:
+
+- Accepted safe D1 changes remove `0`, leaving `877 dispatches/token`.
+- Counting rejected D1.1 plus an ideal no-memset router removes only ~`70`,
+  leaving ~`807 dispatches/token`.
+- Adding the parent-rejected direct selected-combine shape removes only ~`110`,
+  leaving ~`767 dispatches/token`, still above the `<700` target.
+- Crossing `<700` would require fusing multi-consumer RMSNorm/rotation/W4/MoE
+  families, a multi-layer/megakernel schedule, or scheduler-level graph
+  compaction. That is outside the D1.1-D1.6 batched-fusion plan and currently
+  lacks the required real data-flow evidence.
+
+Decision: reject/no-op for D4.2 as written. Defaults remain unchanged. Reopen
+only as a new major data-flow / graph-compaction design with fresh
+`dispatches/token` profiling before implementation.
+
+Validation:
+
+```bash
+python3 /tmp/create_d42_artifact.py
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d42-dispatch-cap-rejected.json >/tmp/d42.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+p = Path('benchmarks/results/2026-05-17-hipengine-qwen35-d42-dispatch-cap-rejected.json')
+data = json.loads(p.read_text())
+assert data['dispatch_cap_math']['baseline_dispatches_per_token'] == 877.0
+assert data['dispatch_cap_math']['minimum_dispatches_to_remove'] == 178.0
+assert data['dispatch_scenarios']['include_direct_selected_combine_too']['projected_dispatches_per_token'] == 767.0
+assert data['decision']['default_changed'] is False
+PY
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d42-dispatch-cap-rejected.json`.
+
+---
+
+## 2026-05-17 — D4.4 launch_bounds retune deferred/no-op
+
+Task #26 evaluated `docs/OPTIMIZE.md` D4.4. I did **not** retune any
+`__launch_bounds__` or thread-count defaults.
+
+Reasoning:
+
+- D4.4 was scoped to retuning after retained rotation/RMSNorm/W4 fusion changes.
+  The D1.1-D1.6 sweep did not retain a default fusion that changes the default
+  kernel resource envelope: D1.1 rotate-staged regressed, D1.2 deferred/no-op,
+  D1.3 rejected/no-op, and D1.6 is launch-count neutral and rejected as default.
+- D4.2 also rejected the stacked D1 dispatch plan, so there is no new batched
+  fusion surface whose source bounds need retuning.
+- Static source/wrapper audit confirms current launch sites do not bypass source
+  bounds:
+  - pack8/selected pack8 and Marlin-K launch at `32/64/128` or `64/128` threads
+    under `__launch_bounds__(128,4)`;
+  - compact WMMA and fusedW4 prefill launch at `32` threads under
+    `__launch_bounds__(32,*)`.
+- Existing evidence does not identify a safe retune:
+  - D1.1 rotate-staged and D2.1 Marlin-K traces both show workgroup `128`,
+    `VGPR=104`, scratch `0`, LDS `512`; rotate-staged regressed and remains
+    opt-in/off, while Marlin-K is already the retained default.
+  - D5.2 W8A16 thread probes found current decode thread choices best
+    (`lm_head=128`, shared lowp `64`) and larger workgroups regressed.
+  - Earlier WORKLOG launch-bound trials rejected compact-WMMA
+    `__launch_bounds__(32,2)->(32,4)` and fusedW4 prefill
+    `__launch_bounds__(32,8)->(32,16)` because they regressed/spilled.
+- Per the project boundary, fresh kernel micro-tuning loops belong in
+  `~/amd-gpu-tuning/`; hipENGINE should port only stable parent evidence.
+
+Decision: defer/no-op. Defaults remain unchanged. Reopen only after a default
+fusion is retained or parent kernel R&D produces a source-level launch-bound
+retune with resource metadata and throughput evidence.
+
+Validation:
+
+```bash
+python3 /tmp/create_d44_artifact.py
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d44-launch-bounds-deferred.json >/tmp/d44.json
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/kernels/hip_gfx1100/quant/paro_marlin_k.py hipengine/runtime/qwen35_paro.py
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d44-launch-bounds-deferred.json`.
+
+---
+
+## 2026-05-17 — D5.1 GDN recurrent decode audit stop/no-op
+
+Task #27 evaluated `docs/OPTIMIZE.md` D5.1 for
+`qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel` vec8 / occupancy headroom on
+c=1 decode. I added a retained diagnostic probe script,
+`scripts/gdn_decode_probe.py`, and did **not** change any kernel/runtime default.
+
+Findings:
+
+- M.4 makes GDN decode visible but bounded: `linear_attention_gdn_decode` is
+  `5.23%/5.39%/4.84%` of decode kernel time at 512/4K/32K with
+  `30` calls/token.
+- Static source audit shows the requested local vec8 pattern is already present:
+  Q/K RMS load uses `idx = threadIdx.x * 8` / `idx += blockDim.x * 8`, and both
+  KV-memory accumulation plus recurrent-state update are 8-way unrolled over
+  `head_k_dim`.
+- For the real Qwen3.5 c=1 shape (`num_k_heads=16`, `num_v_heads=32`,
+  `head_k_dim=128`, `head_v_dim=128`), the wrapper launches 128 threads and the
+  kernel maps `value_idx = threadIdx.x`, exactly one value lane per thread. A
+  64-thread retune would miss lanes without a new ownership scheme; 256 threads
+  add idle lanes and reduction overhead.
+- The wrapper's dynamic shared formula is
+  `(2 * head_k_dim + 3 * threads + head_v_dim) * sizeof(float)`, i.e. `3072 B`
+  for the actual shape. `rocprofv3` reports `LDS_Block_Size=0` for this dynamic
+  launch, so the artifact records the wrapper-computed value separately.
+- Barrier removal or multi-value/thread recurrence rewrites cross into kernel
+  R&D and need a new correctness proof; prior GDN barrier-removal attempts are a
+  documented do-not-chase item because they corrupted recurrent state.
+
+Profiler evidence (W7900/gfx1100, cache-only build, `reps=100`, first four
+warmups dropped):
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/hipengine-d51-gdn-probe \
+  --output-file gdn_decode_probe -- \
+  python3 scripts/gdn_decode_probe.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build --reps 100 --warmup 4
+```
+
+Target kernel rows:
+
+- BF16 lowp: median `8760 ns`, mean `8803 ns`, min/max `8600/10681 ns`,
+  `VGPR_Count=56`, `Scratch_Size=0`, `SGPR_Count=128`, workgroup `128`, grid
+  work-items `4096`.
+- FP16 lowp: median `8720 ns`, mean `8747 ns`, min/max `8600/10360 ns`,
+  `VGPR_Count=56`, `Scratch_Size=0`, `SGPR_Count=128`, workgroup `128`, grid
+  work-items `4096`.
+
+Correctness/validation:
+
+```bash
+python3 -m py_compile scripts/gdn_decode_probe.py
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.linear_attn import build_qwen35_linear_attn_gdn
+cv = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+build_qwen35_linear_attn_gdn(load=True, compiler_version=cv, require_cached=False)
+print('gdn build OK')
+PY
+python3 scripts/gdn_decode_probe.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --reps 2 --warmup 1
+python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# out_max_abs=2.98e-08, state_max_abs=1.49e-08; FP16 same
+python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py -q --tb=short
+# 3 passed
+python3 scripts/qwen35_decode_graph_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-new-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d51-gdn/graph-fixture-default.json
+# passed=True, generated_match=True, expected_match=True, final_kl=0.0
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d51-gdn-decode-audit.json >/tmp/d51.json
+```
+
+Decision: accepted stop/no-op. Keep the current GDN recurrent decode kernel.
+Reopen only if parent kernel R&D produces a correct multi-value/thread or
+barrier-reduced GDN design with resource metadata and E2E decode improvement, or
+if a future M.4-style profile shows GDN growing materially after other lanes
+change.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d51-gdn-decode-audit.json`.
+
+2026-05-17 — Added optional FastAPI / OpenAI-compatible server layer for v0.1.
+
+Implemented `hipengine.server` as an optional `[server]` surface that adapts
+OpenAI-style requests to the existing torch-free `LLM.generate()` API. The app
+factory is `hipengine.server.create_app(ServerConfig(...))`; the CLI is
+`python -m hipengine.server` / `hipengine-server`. Endpoints landed:
+
+- `GET /health`
+- `GET /v1/models`
+- `POST /v1/completions`
+- `POST /v1/chat/completions`
+
+Current behavior/limits are explicit: single-process requests are serialized
+behind an async lock because the runnable runtime is still c=1; streaming is a
+compatibility one-chunk SSE plus `[DONE]`; `n>1`, `logprobs`, and non-text chat
+content parts are rejected; token `usage` is exact only for an injected engine
+with `count_tokens`, otherwise the public `LLM` path returns zero placeholders
+until tokenizer accounting is exposed.
+
+Docs updated: root README server quickstart, new `docs/API.md`, docs index, and
+`docs/IMPLEMENTATION.md` Phase 1 server checkbox. Packaging updated with
+`hipengine-server` console script and dev extra server-test deps.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/server/api.py hipengine/server/__init__.py hipengine/server/__main__.py
+python3 -m pytest tests/test_server_api.py tests/test_llm_generate.py tests/test_model_quant_and_imports.py -q --tb=short
+# 15 passed
+python3 -m hipengine.server --help
+python3 - <<'PY'
+from pathlib import Path
+import re, urllib.parse, sys
+fail=[]
+for md in [Path('README.md'), Path('docs/README.md'), Path('docs/API.md')]:
+    text=md.read_text()
+    for m in re.finditer(r'\[[^\]]+\]\(([^)]+)\)', text):
+        target=m.group(1).split('#',1)[0]
+        if not target or '://' in target or target.startswith('mailto:'):
+            continue
+        path=(md.parent / urllib.parse.unquote(target)).resolve()
+        if not path.exists():
+            fail.append((str(md), target))
+if fail:
+    raise SystemExit(fail)
+print('markdown links OK')
+PY
+python3 -m pytest -q
+# full suite passed
 ## 2026-05-17 — Initial gfx1151 backend port
 
 Ported the current gfx11 Qwen3.5/PARO implementation to a Strix Halo backend key without forking kernel bodies.
@@ -14417,3 +16072,37 @@ HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
     --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build \
     --json /tmp/qwen36-27b-paro-gfx1151-...json
 ```
+
+## 2026-05-17 — Merge latest main into gfx1151
+
+Merged `origin/main` (`a679944`) into `gfx1151` to bring the Strix Halo branch up to the latest retained Qwen3.5/Qwen3.6 performance work before canonical gfx1151 benchmarking.
+
+Conflict-resolution notes:
+
+- Kept gfx1151 build plumbing in `hipengine/core/build.py` (`target_arch`, `HIPENGINE_HIP_ARCH` / `HIPENGINE_HIP_OFFLOAD_ARCH`, explicit `--offload-arch`, `HIPENGINE_ROCM_DEVICE_LIB_PATH` / `HIP_DEVICE_LIB_PATH`) and also kept main's diagnostic `HIPENGINE_PREFILL_MCUMODE` build knob.
+- Kept `hip_target_arch_environment(self.target_arch)` around resident kernel-library builds and added main's new `marlin_k` library load.
+- Combined dense PARO MLP materialization/runtime support from `gfx1151` with main's Marlin-K qweight-neutral materialization and grouped-MoE threshold/default logic.
+- Preserved gfx1151 diagnostic benchmark rows/artifacts while taking main's shisa packed, grouped-GQA, chunk autotuner, Marlin-K, and related benchmark rollup entries.
+- Kept `docs/source_lineage.json` pointing at the actual local parent workspace `/home/lhl/github/shisa-ai/amd-gpu-tuning/...` while adding main's `PLAN-PAROQUANT2.md` evidence path.
+
+Validation after conflict resolution:
+
+```bash
+python3 -m py_compile hipengine/core/build.py hipengine/loading/qwen35_paro.py \
+  hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py \
+  scripts/qwen35_paro_bench.py scripts/smoke.py
+python3 -m pytest tests/test_build.py tests/test_gfx1151_backend.py \
+  tests/test_qwen35_paro_layout.py tests/test_qwen35_paro_marlin_k.py \
+  tests/test_qwen35_decode_state.py -q --tb=short
+python3 -m pytest -q --tb=short
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/smoke.py --mode smoke-add-plan
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/smoke.py --mode smoke-add-hip --n 8
+hipcc --version > /tmp/hipengine-gfx1151-hipcc-version.txt
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/smoke.py --mode qwen35-rmsnorm-hip --rows 2 --hidden-size 16 \
+    --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build
+```
+
+Results: targeted pytest passed, full pytest passed, smoke-add plan emitted `--offload-arch=gfx1151 --rocm-device-lib-path=/opt/rocm/amdgcn/bitcode`, `smoke-add-hip --n 8` reported `max_abs=0.0`, and cached gfx1151 RMSNorm smoke reported `max_abs=0.0` / `bit_mismatch=0`.

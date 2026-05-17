@@ -1,0 +1,534 @@
+{
+  "schema": 2,
+  "date": "2026-05-17",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "decision": "retain_grouped_gqa_decode_and_1024_split_threshold_keep_no_512_split_cap",
+  "task": "D3.1-D3.3 long-context grouped-GQA decode path and thresholds",
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "source_commit_before_artifact": "6feb0a4",
+  "hipcc_version_file": "/tmp/hipengine-hipcc-version.txt",
+  "hipcc_version_first_line": "HIP version: 7.2.53211-d40244d",
+  "implementation": {
+    "ported_kernel": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>",
+    "wrappers": [
+      "qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans",
+      "qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans",
+      "qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans",
+      "qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans",
+      "qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans"
+    ],
+    "default_policy": {
+      "split_decode_min_context": 1024,
+      "split_decode_min_context_env": "HIPENGINE_PARO_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT",
+      "grouped_gqa_enabled_env": "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX",
+      "grouped_gqa_min_splits": 64,
+      "grouped_gqa_min_splits_env": "HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_SPLITS",
+      "grouped_gqa_min_context": 4096,
+      "grouped_gqa_min_context_env": "HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_CONTEXT",
+      "max_splits_default": 4096,
+      "max_splits_env": "HIPENGINE_PAGED_ATTN_MAX_SPLITS"
+    },
+    "split_config_examples": {
+      "32k_plus_129": {
+        "context_len": 32897,
+        "chunk_size": 256,
+        "num_splits": 129
+      },
+      "128k_plus_129": {
+        "context_len": 131201,
+        "chunk_size": 256,
+        "num_splits": 513
+      },
+      "128k_plus_129_with_max_splits_512": {
+        "context_len": 131201,
+        "chunk_size": 512,
+        "num_splits": 257
+      }
+    }
+  },
+  "correctness": {
+    "unit_tests": {
+      "command": "python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q --tb=short",
+      "result": "passed before benchmark sweep"
+    },
+    "gqa_smoke": {
+      "command": "python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "stdout_file": "/tmp/hipengine-d31/rocprof-smoke.out",
+      "result": "context_len=512, warp_max_abs=4.1e-08, gqa_max_abs=4.1e-08, BF16 gated warp/GQA mismatch=0"
+    },
+    "decode_graph_fixture": {
+      "command": "python3 scripts/qwen35_decode_graph_fixture_gate.py --model <model> --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --graph-steps-per-replay 1 --max-new-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-d31/graph-fixture-512.json",
+      "json_file": "/tmp/hipengine-d31/graph-fixture-512.json",
+      "passed": true,
+      "generated_match": true,
+      "expected_match": true,
+      "final_kl": 0.0
+    },
+    "e2e_1024_sanity": {
+      "command": "python3 scripts/qwen35_e2e_correctness.py --prompt-length 1024 --max-new-tokens 2 --max-layers 40 --repeat 1 --json /tmp/hipengine-d31/1024-e2e.json",
+      "json_file": "/tmp/hipengine-d31/1024-e2e.json",
+      "passed": true,
+      "expected_match": true,
+      "finite_logits": true,
+      "token_ids": [
+        [
+          9707,
+          9707
+        ]
+      ]
+    }
+  },
+  "kernel_trace_smoke": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d31/rocprof --output-file paged_attn_gqa_smoke -- python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "csv_file": "/tmp/hipengine-d31/rocprof/paged_attn_gqa_smoke_kernel_trace.csv",
+    "rows": [
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, float)",
+        "duration_ns": 104881,
+        "vgpr_count": 40,
+        "scratch_size": 0,
+        "lds_block_size": 0,
+        "workgroup_size_x": 256,
+        "grid_size_x": 4096,
+        "grid_size_y": 2
+      },
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_kernel(float const*, float const*, float const*, float*, long, long)",
+        "duration_ns": 3720,
+        "vgpr_count": 16,
+        "scratch_size": 0,
+        "lds_block_size": 0,
+        "workgroup_size_x": 256,
+        "grid_size_x": 4096,
+        "grid_size_y": 1
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8l, 16l, 2l>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, float)",
+        "duration_ns": 109281,
+        "vgpr_count": 80,
+        "scratch_size": 0,
+        "lds_block_size": 0,
+        "workgroup_size_x": 256,
+        "grid_size_x": 512,
+        "grid_size_y": 2
+      },
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_kernel(float const*, float const*, float const*, float*, long, long)",
+        "duration_ns": 3400,
+        "vgpr_count": 16,
+        "scratch_size": 0,
+        "lds_block_size": 0,
+        "workgroup_size_x": 256,
+        "grid_size_x": 4096,
+        "grid_size_y": 1
+      },
+      {
+        "kernel_name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, float)",
+        "duration_ns": 83841,
+        "vgpr_count": 40,
+        "scratch_size": 0,
+        "lds_block_size": 0,
+        "workgroup_size_x": 256,
+        "grid_size_x": 4096,
+        "grid_size_y": 2
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+        "duration_ns": 6120,
+        "vgpr_count": 16,
+        "scratch_size": 0,
+        "lds_block_size": 0,
+        "workgroup_size_x": 256,
+        "grid_size_x": 4096,
+        "grid_size_y": 1
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8l, 16l, 2l>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, float)",
+        "duration_ns": 99761,
+        "vgpr_count": 80,
+        "scratch_size": 0,
+        "lds_block_size": 0,
+        "workgroup_size_x": 256,
+        "grid_size_x": 512,
+        "grid_size_y": 2
+      },
+      {
+        "kernel_name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+        "duration_ns": 3800,
+        "vgpr_count": 16,
+        "scratch_size": 0,
+        "lds_block_size": 0,
+        "workgroup_size_x": 256,
+        "grid_size_x": 4096,
+        "grid_size_y": 1
+      }
+    ]
+  },
+  "benchmarks": {
+    "common_command": "python3 scripts/qwen35_paro_bench.py --model <model> --token-id 9707 --prompt-length <N> --decode-tokens 128 --warmup-decode-tokens <1-or-4> --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json <file>",
+    "long_context_chunk_flags": "--prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024",
+    "grouped_gqa_vs_opt_out": [
+      {
+        "workload": "32K/128",
+        "baseline_label": "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX=0",
+        "candidate_label": "default grouped-GQA",
+        "baseline": {
+          "file": "/tmp/hipengine-d31/32k128-gqa-off.json",
+          "prompt_length": 32768,
+          "decode_tokens": 128,
+          "warmup_decode_tokens": 4,
+          "prefill_chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          },
+          "prefill_tok_s": 1980.2356189029417,
+          "decode_tok_s": 70.06352030975897,
+          "decode_step_median_s": 0.014272762709879316,
+          "tracked_peak_allocated_gib": 20.319676571525633,
+          "hip_used_peak_sampled_gib": 19.443115234375,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.163585662841797
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.391733169555664
+            }
+          ]
+        },
+        "candidate": {
+          "file": "/tmp/hipengine-d31/32k128-default.json",
+          "prompt_length": 32768,
+          "decode_tokens": 128,
+          "warmup_decode_tokens": 4,
+          "prefill_chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          },
+          "prefill_tok_s": 1964.3453069383627,
+          "decode_tok_s": 99.5603445540577,
+          "decode_step_median_s": 0.010044159695098642,
+          "tracked_peak_allocated_gib": 20.319676571525633,
+          "hip_used_peak_sampled_gib": 19.443115234375,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.163585662841797
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.391733169555664
+            }
+          ]
+        },
+        "decode_delta_pct": 42.10011731338912,
+        "prefill_delta_pct": -0.8024455177400691,
+        "tracked_peak_delta_gib": 0.0
+      },
+      {
+        "workload": "128K/128",
+        "baseline_label": "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX=0",
+        "candidate_label": "default grouped-GQA",
+        "baseline": {
+          "file": "/tmp/hipengine-d31/128k128-gqa-off-warm4.json",
+          "prompt_length": 131072,
+          "decode_tokens": 128,
+          "warmup_decode_tokens": 4,
+          "prefill_chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          },
+          "prefill_tok_s": 1014.8154356372848,
+          "decode_tok_s": 30.788911737937017,
+          "decode_step_median_s": 0.032479225264978595,
+          "tracked_peak_allocated_gib": 23.287733250297606,
+          "hip_used_peak_sampled_gib": 22.409912109375,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.925739288330078
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.169452667236328
+            }
+          ]
+        },
+        "candidate": {
+          "file": "/tmp/hipengine-d31/128k128-default-v2.json",
+          "prompt_length": 131072,
+          "decode_tokens": 128,
+          "warmup_decode_tokens": 4,
+          "prefill_chunk_sizes": {
+            "linear": 1024,
+            "moe": 1024,
+            "full_attn_query": 4096,
+            "full_attn_post": 1024,
+            "full_attn_rope": 1024
+          },
+          "prefill_tok_s": 1015.7610596671002,
+          "decode_tok_s": 63.36809663603844,
+          "decode_step_median_s": 0.015780811687363894,
+          "tracked_peak_allocated_gib": 23.287733250297606,
+          "hip_used_peak_sampled_gib": 22.409912109375,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.925739288330078
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 28.169452667236328
+            }
+          ]
+        },
+        "decode_delta_pct": 105.81466852548247,
+        "prefill_delta_pct": 0.09318187294042879,
+        "tracked_peak_delta_gib": 0.0
+      }
+    ],
+    "split_cap_sweep_128k": {
+      "no_cap_default": {
+        "file": "/tmp/hipengine-d31/128k128-default-v2.json",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_tok_s": 1015.7610596671002,
+        "decode_tok_s": 63.36809663603844,
+        "decode_step_median_s": 0.015780811687363894,
+        "tracked_peak_allocated_gib": 23.287733250297606,
+        "hip_used_peak_sampled_gib": 22.409912109375,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.925739288330078
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.169452667236328
+          }
+        ]
+      },
+      "max_splits_512": {
+        "file": "/tmp/hipengine-d31/128k128-cap512.json",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_tok_s": 1021.8652466292222,
+        "decode_tok_s": 62.64744258853072,
+        "decode_step_median_s": 0.01596234353200998,
+        "tracked_peak_allocated_gib": 23.253737167455256,
+        "hip_used_peak_sampled_gib": 22.370849609375,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.925739288330078
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.891000747680664
+          }
+        ]
+      },
+      "decode_delta_pct_cap512_vs_default": -1.1372505815455791,
+      "tracked_peak_delta_gib_cap512_vs_default": -0.033996082842350006,
+      "decision": "keep default max_splits=4096/no 512 cap; cap512 saved only ~0.034 GiB and was slower"
+    },
+    "split_threshold_1k": {
+      "default_min_context_1024": {
+        "file": "/tmp/hipengine-d31/1k128-default.json",
+        "prompt_length": 1024,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_tok_s": 2505.9262526933458,
+        "decode_tok_s": 113.24229884080138,
+        "decode_step_median_s": 0.008830622569803381,
+        "tracked_peak_allocated_gib": 18.44296004716307,
+        "hip_used_peak_sampled_gib": 18.247085571289062,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.54252815246582
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.406681060791016
+          }
+        ]
+      },
+      "forced_min_context_4096": {
+        "file": "/tmp/hipengine-d31/1k128-threshold4096.json",
+        "prompt_length": 1024,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "prefill_tok_s": 2507.8539052897877,
+        "decode_tok_s": 92.4864345756773,
+        "decode_step_median_s": 0.010812396483743214,
+        "tracked_peak_allocated_gib": 18.44296004716307,
+        "hip_used_peak_sampled_gib": 18.247085571289062,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.54252815246582
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.496570587158203
+          }
+        ]
+      },
+      "decode_delta_pct_default_vs_4096": 22.442063379727916,
+      "decision": "retain split decode threshold 1024"
+    },
+    "short_context_guard": [
+      {
+        "workload": "512/128",
+        "current": {
+          "file": "/tmp/hipengine-d31/512x128-default-warm4.json",
+          "prompt_length": 512,
+          "decode_tokens": 128,
+          "warmup_decode_tokens": 4,
+          "prefill_chunk_sizes": {
+            "linear": 0,
+            "moe": 0,
+            "full_attn_query": 0,
+            "full_attn_post": 0,
+            "full_attn_rope": 0
+          },
+          "prefill_tok_s": 2177.6493786485353,
+          "decode_tok_s": 115.62653613287046,
+          "decode_step_median_s": 0.008648533748782938,
+          "tracked_peak_allocated_gib": 18.17562458757311,
+          "hip_used_peak_sampled_gib": 18.19373321533203,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.356470108032227
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.398529052734375
+            }
+          ]
+        },
+        "prior_d15_decode_tok_s": 115.93143270673986,
+        "decode_delta_pct_vs_prior_d15": -0.26299733105228373,
+        "prior_d15_peak_gib": 18.17562458757311
+      },
+      {
+        "workload": "4K/128",
+        "current": {
+          "file": "/tmp/hipengine-d31/4k128-default-warm4.json",
+          "prompt_length": 4096,
+          "decode_tokens": 128,
+          "warmup_decode_tokens": 4,
+          "prefill_chunk_sizes": {
+            "linear": 0,
+            "moe": 0,
+            "full_attn_query": 0,
+            "full_attn_post": 0,
+            "full_attn_rope": 0
+          },
+          "prefill_tok_s": 2449.0550057106166,
+          "decode_tok_s": 116.263209473728,
+          "decode_step_median_s": 0.008601173187344102,
+          "tracked_peak_allocated_gib": 20.047133021987975,
+          "hip_used_peak_sampled_gib": 18.603271484375,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.182941436767578
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.50152015686035
+            }
+          ]
+        },
+        "prior_d15_decode_tok_s": 116.88742838401605,
+        "decode_delta_pct_vs_prior_d15": -0.5340342575056667,
+        "prior_d15_peak_gib": 20.047133021987975
+      }
+    ]
+  },
+  "acceptance": {
+    "long_context_decode_improved": true,
+    "memory_guardrails": {
+      "a3_32k_peak_gib": 20.319676571525633,
+      "a3_guard_gib": 20.69,
+      "a4_128k_peak_gib": 23.287733250297606,
+      "a4_guard_gib": 24.0,
+      "passed": true
+    },
+    "short_context_decode_unchanged_within_1pct": true,
+    "decision_summary": "Grouped-GQA decode is retained by default; the 512 split cap is rejected; paged split decode min context is 1024."
+  },
+  "notes": [
+    "Resident-runner throughput remains diagnostic until a public LLM.generate() row is promoted.",
+    "Generated previews remain the repeated token 9707 on benchmark rows; graph fixture gives exact token/KL equality against the committed parent fixture.",
+    "The first attempted 128K opt-out run omitted long-prefill chunk flags and OOMed during prefill; it is not retained."
+  ]
+}

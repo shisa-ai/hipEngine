@@ -1,0 +1,487 @@
+{
+  "schema": 1,
+  "status": "diagnostic_rejected",
+  "performance_claim": false,
+  "date": "2026-05-17",
+  "git_head_at_run": "b23986b6c68b7f98fc970ea773a26fe901c5ccf3",
+  "working_tree_at_run": "uncommitted P1.1 rocBLAS diagnostic code plus pre-existing shared-expert silu+rotate working-tree edits; comparisons are within the same working tree and isolate the HIPENGINE_LINEAR_AB_PREFILL_ROCBLAS_MIN_TOKENS toggle.",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "bench_script": "scripts/qwen35_paro_bench.py",
+  "common_args": "--token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode(default)",
+  "candidate": "P1.1 rocBLAS bulk dense for linear-attention A/B prefill",
+  "implementation": {
+    "default": "existing dense_gemv_out_fp16 row-GEMV pair for tokens>1; decode tokens==1 keeps dense_dual_gemv_out_fp16",
+    "prototype": "HIPENGINE_LINEAR_AB_PREFILL_ROCBLAS_MIN_TOKENS=2 routes tokens>1 A/B FP16 projections through two rocblas_gemm_ex calls with FP32 accumulation and row-major NT wrapper; decode path unchanged",
+    "pilot_hgemm": "An initial rocblas_hgemm half-alpha/half-beta pilot was also run and was similarly/slightly worse plus less numerically close; primary comparison uses gemm_ex FP32 accumulation."
+  },
+  "models": {
+    "zlab_legacy": {
+      "display": "z-lab/Qwen3.5-35B-A3B-PARO true legacy shared-expert path",
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "shared_expert_format": "legacy_fp16"
+    },
+    "shisa_packed": {
+      "display": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+      "shared_expert_format": "packed_paro_w4"
+    }
+  },
+  "validation": {
+    "unit_tests": "python3 -m py_compile hipengine/core/rocblas.py hipengine/runtime/qwen35_paro.py scripts/qwen35_paro_bench.py && python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short -> 38 passed",
+    "rocblas_microcheck": "5x7 @ 3x7 row-major NT rocblas_gemm_ex FP16/F32-accum produced max_abs=0 vs numpy FP32 reference rounded to FP16",
+    "generated_preview_sanity": "All rows kept token_id 9707 for the first two sampled outputs; logits differ from default because rocBLAS/Tensile reduction order differs from the custom FP32 GEMV reduction.",
+    "correctness_gate": "not promoted; no KL/top-1 gate rerun because performance regressed sharply"
+  },
+  "measurements": [
+    {
+      "profile": "default_row_gemv",
+      "rocblas_min_tokens": null,
+      "model_key": "zlab_legacy",
+      "workload": "512/128",
+      "prefill_tok_s": 2227.420533011174,
+      "decode_tok_s": 109.35367679259195,
+      "prefill_seconds": 0.22986229695379734,
+      "decode_seconds": 1.1705139118712395,
+      "tracked_peak_gib": 18.586900514550507,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.356470108032227
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.533092498779297
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-zlab_legacy-512_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-zlab_legacy-512_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length 512 --json /tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-zlab_legacy-512_128.json"
+    },
+    {
+      "profile": "default_row_gemv",
+      "rocblas_min_tokens": null,
+      "model_key": "zlab_legacy",
+      "workload": "4096/128",
+      "prefill_tok_s": 2391.477072534942,
+      "decode_tok_s": 110.67771226432247,
+      "prefill_seconds": 1.7127490148413926,
+      "decode_seconds": 1.1565110750962049,
+      "tracked_peak_gib": 20.458408792503178,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.182941436767578
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.408403396606445
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-zlab_legacy-4096_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-zlab_legacy-4096_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length 4096 --json /tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-zlab_legacy-4096_128.json"
+    },
+    {
+      "profile": "default_row_gemv",
+      "rocblas_min_tokens": null,
+      "model_key": "shisa_packed",
+      "workload": "512/128",
+      "prefill_tok_s": 2468.1940758078254,
+      "decode_tok_s": 105.71653019282246,
+      "prefill_seconds": 0.2074391171336174,
+      "decode_seconds": 1.2107851039618254,
+      "tracked_peak_gib": 18.53460101503879,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.44217872619629
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.18210792541504
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-shisa_packed-512_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-shisa_packed-512_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --prompt-length 512 --json /tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-shisa_packed-512_128.json"
+    },
+    {
+      "profile": "default_row_gemv",
+      "rocblas_min_tokens": null,
+      "model_key": "shisa_packed",
+      "workload": "4096/128",
+      "prefill_tok_s": 2677.9505128375504,
+      "decode_tok_s": 106.9660331310801,
+      "prefill_seconds": 1.5295278909616172,
+      "decode_seconds": 1.1966415529605001,
+      "tracked_peak_gib": 20.40610929299146,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.685245513916016
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.736207962036133
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-shisa_packed-4096_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-shisa_packed-4096_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --prompt-length 4096 --json /tmp/hipengine-p11-rocblas-ab-20260517/default_row_gemv-shisa_packed-4096_128.json"
+    },
+    {
+      "profile": "p11_rocblas_ex_ab_min2",
+      "rocblas_min_tokens": "2",
+      "model_key": "zlab_legacy",
+      "workload": "512/128",
+      "prefill_tok_s": 930.2731631074214,
+      "decode_tok_s": 109.03321449984325,
+      "prefill_seconds": 0.550375975901261,
+      "decode_seconds": 1.1739541990682483,
+      "tracked_peak_gib": 18.586900514550507,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.333154678344727
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.625268936157227
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-zlab_legacy-512_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-zlab_legacy-512_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length 512 --json /tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-zlab_legacy-512_128.json",
+      "implementation": "rocblas_gemm_ex_f32_accumulation"
+    },
+    {
+      "profile": "p11_rocblas_ex_ab_min2",
+      "rocblas_min_tokens": "2",
+      "model_key": "zlab_legacy",
+      "workload": "4096/128",
+      "prefill_tok_s": 1996.4806891803512,
+      "decode_tok_s": 110.45015370887488,
+      "prefill_seconds": 2.051610126858577,
+      "decode_seconds": 1.1588938150089234,
+      "tracked_peak_gib": 20.458408792503178,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.222721099853516
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.319093704223633
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-zlab_legacy-4096_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-zlab_legacy-4096_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length 4096 --json /tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-zlab_legacy-4096_128.json",
+      "implementation": "rocblas_gemm_ex_f32_accumulation"
+    },
+    {
+      "profile": "p11_rocblas_ex_ab_min2",
+      "rocblas_min_tokens": "2",
+      "model_key": "shisa_packed",
+      "workload": "512/128",
+      "prefill_tok_s": 941.7804375306151,
+      "decode_tok_s": 105.60553467023745,
+      "prefill_seconds": 0.5436511309817433,
+      "decode_seconds": 1.2120576861780137,
+      "tracked_peak_gib": 18.53460101503879,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.53778839111328
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.878902435302734
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-shisa_packed-512_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-shisa_packed-512_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --prompt-length 512 --json /tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-shisa_packed-512_128.json",
+      "implementation": "rocblas_gemm_ex_f32_accumulation"
+    },
+    {
+      "profile": "p11_rocblas_ex_ab_min2",
+      "rocblas_min_tokens": "2",
+      "model_key": "shisa_packed",
+      "workload": "4096/128",
+      "prefill_tok_s": 2204.677780880991,
+      "decode_tok_s": 106.71928379888611,
+      "prefill_seconds": 1.8578678641933948,
+      "decode_seconds": 1.1994083491154015,
+      "tracked_peak_gib": 20.40610929299146,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.675214767456055
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.735401153564453
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-shisa_packed-4096_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-shisa_packed-4096_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --prompt-length 4096 --json /tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ex_ab_min2-shisa_packed-4096_128.json",
+      "implementation": "rocblas_gemm_ex_f32_accumulation"
+    }
+  ],
+  "pilot_hgemm_measurements": [
+    {
+      "profile": "p11_rocblas_ab_min2",
+      "rocblas_min_tokens": "2",
+      "model_key": "zlab_legacy",
+      "workload": "512/128",
+      "prefill_tok_s": 898.2000958288085,
+      "decode_tok_s": 109.23826618395721,
+      "prefill_seconds": 0.5700288859661669,
+      "decode_seconds": 1.1717505638953298,
+      "tracked_peak_gib": 18.586900514550507,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.39332389831543
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.587678909301758
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-zlab_legacy-512_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-zlab_legacy-512_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length 512 --json /tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-zlab_legacy-512_128.json"
+    },
+    {
+      "profile": "p11_rocblas_ab_min2",
+      "rocblas_min_tokens": "2",
+      "model_key": "zlab_legacy",
+      "workload": "4096/128",
+      "prefill_tok_s": 2002.9014884522155,
+      "decode_tok_s": 110.33035605294874,
+      "prefill_seconds": 2.0450331799220294,
+      "decode_seconds": 1.160152151947841,
+      "tracked_peak_gib": 20.458408792503178,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.209888458251953
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.127187728881836
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-zlab_legacy-4096_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-zlab_legacy-4096_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length 4096 --json /tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-zlab_legacy-4096_128.json"
+    },
+    {
+      "profile": "p11_rocblas_ab_min2",
+      "rocblas_min_tokens": "2",
+      "model_key": "shisa_packed",
+      "workload": "512/128",
+      "prefill_tok_s": 970.9480914496638,
+      "decode_tok_s": 105.455569736256,
+      "prefill_seconds": 0.5273196420166641,
+      "decode_seconds": 1.213781313970685,
+      "tracked_peak_gib": 18.53460101503879,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.18060874938965
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.767608642578125
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-shisa_packed-512_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-shisa_packed-512_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --prompt-length 512 --json /tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-shisa_packed-512_128.json"
+    },
+    {
+      "profile": "p11_rocblas_ab_min2",
+      "rocblas_min_tokens": "2",
+      "model_key": "shisa_packed",
+      "workload": "4096/128",
+      "prefill_tok_s": 2208.9879407863364,
+      "decode_tok_s": 106.9313492948526,
+      "prefill_seconds": 1.8542428070213646,
+      "decode_seconds": 1.1970296909566969,
+      "tracked_peak_gib": 20.40610929299146,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.64274787902832
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.54888916015625
+        }
+      ],
+      "json": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-shisa_packed-4096_128.json",
+      "log": "/tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-shisa_packed-4096_128.log",
+      "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --prompt-length 4096 --json /tmp/hipengine-p11-rocblas-ab-20260517/p11_rocblas_ab_min2-shisa_packed-4096_128.json"
+    }
+  ],
+  "comparisons": [
+    {
+      "model_key": "zlab_legacy",
+      "workload": "512/128",
+      "default_prefill_tok_s": 2227.420533011174,
+      "rocblas_ex_prefill_tok_s": 930.2731631074214,
+      "prefill_delta_pct": -58.23540506516671,
+      "default_decode_tok_s": 109.35367679259195,
+      "rocblas_ex_decode_tok_s": 109.03321449984325,
+      "decode_delta_pct": -0.29305122804101913,
+      "tracked_peak_gib_default": 18.586900514550507,
+      "tracked_peak_gib_rocblas_ex": 18.586900514550507,
+      "generated_preview_default": [
+        [
+          9707,
+          27.35647
+        ],
+        [
+          9707,
+          27.533092
+        ]
+      ],
+      "generated_preview_rocblas_ex": [
+        [
+          9707,
+          27.333155
+        ],
+        [
+          9707,
+          27.625269
+        ]
+      ]
+    },
+    {
+      "model_key": "zlab_legacy",
+      "workload": "4096/128",
+      "default_prefill_tok_s": 2391.477072534942,
+      "rocblas_ex_prefill_tok_s": 1996.4806891803512,
+      "prefill_delta_pct": -16.516837559972874,
+      "default_decode_tok_s": 110.67771226432247,
+      "rocblas_ex_decode_tok_s": 110.45015370887488,
+      "decode_delta_pct": -0.20560467938127713,
+      "tracked_peak_gib_default": 20.458408792503178,
+      "tracked_peak_gib_rocblas_ex": 20.458408792503178,
+      "generated_preview_default": [
+        [
+          9707,
+          27.182941
+        ],
+        [
+          9707,
+          27.408403
+        ]
+      ],
+      "generated_preview_rocblas_ex": [
+        [
+          9707,
+          27.222721
+        ],
+        [
+          9707,
+          27.319094
+        ]
+      ]
+    },
+    {
+      "model_key": "shisa_packed",
+      "workload": "512/128",
+      "default_prefill_tok_s": 2468.1940758078254,
+      "rocblas_ex_prefill_tok_s": 941.7804375306151,
+      "prefill_delta_pct": -61.84333935643307,
+      "default_decode_tok_s": 105.71653019282246,
+      "rocblas_ex_decode_tok_s": 105.60553467023745,
+      "decode_delta_pct": -0.10499353543155232,
+      "tracked_peak_gib_default": 18.53460101503879,
+      "tracked_peak_gib_rocblas_ex": 18.53460101503879,
+      "generated_preview_default": [
+        [
+          9707,
+          28.442179
+        ],
+        [
+          9707,
+          28.182108
+        ]
+      ],
+      "generated_preview_rocblas_ex": [
+        [
+          9707,
+          28.537788
+        ],
+        [
+          9707,
+          27.878902
+        ]
+      ]
+    },
+    {
+      "model_key": "shisa_packed",
+      "workload": "4096/128",
+      "default_prefill_tok_s": 2677.9505128375504,
+      "rocblas_ex_prefill_tok_s": 2204.677780880991,
+      "prefill_delta_pct": -17.672945399393527,
+      "default_decode_tok_s": 106.9660331310801,
+      "rocblas_ex_decode_tok_s": 106.71928379888611,
+      "decode_delta_pct": -0.2306800813035803,
+      "tracked_peak_gib_default": 20.40610929299146,
+      "tracked_peak_gib_rocblas_ex": 20.40610929299146,
+      "generated_preview_default": [
+        [
+          9707,
+          28.685246
+        ],
+        [
+          9707,
+          28.736208
+        ]
+      ],
+      "generated_preview_rocblas_ex": [
+        [
+          9707,
+          28.675215
+        ],
+        [
+          9707,
+          28.735401
+        ]
+      ]
+    }
+  ],
+  "conclusion": "Reject P1.1 rocBLAS A/B prefill prototype: rocblas_gemm_ex FP32-accumulation regressed prefill by -58.2%/-16.5% on z-lab 512/4K and -61.8%/-17.7% on shisa packed 512/4K, with no memory benefit and no decode gain. The skinny N=32 A/B shape is faster with the current custom row-GEMV kernels on this W7900 stack."
+}

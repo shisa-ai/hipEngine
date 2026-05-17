@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "status": "rejected",
+  "candidate": "D1.5 router cooperative top-k/softmax fold",
+  "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100)",
+  "runtime_gate": {
+    "env": "HIPENGINE_PARO_ROUTER_TOPK_COOP",
+    "default": false,
+    "note": "Opt-in diagnostic path only; default remains the separate logits + select launches."
+  },
+  "implementation": {
+    "kernel": "qwen35_router_topk_shared_coop_out_kernel<_Float16>",
+    "wrappers": [
+      "qwen35_router_topk_shared_coop_out_bf16",
+      "qwen35_router_topk_shared_coop_out_fp16"
+    ],
+    "pattern": "one block per router/shared-gate row computes logits; global atomic counter lets the last producer block run the existing block-parallel top-k/softmax tail",
+    "dispatch_delta": "replaces logits-kernel + select-kernel with hipMemsetAsync(counter) + cooperative-producer kernel for tokens == 1"
+  },
+  "correctness": [
+    {
+      "name": "router smoke with cooperative oracle",
+      "command": "python3 scripts/smoke.py --mode qwen35-router-hip --rows 1 --hidden-size 256 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "result": "passed; BF16/FP16 selected_match=True and coop_selected_match=True"
+    },
+    {
+      "name": "decode graph fixture gate",
+      "command": "HIPENGINE_PARO_ROUTER_TOPK_COOP=1 python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --max-new-tokens 16 --json /tmp/hipengine-d15/graph-fixture-coop.json",
+      "result": "passed; generated_match=true, expected_match=true, final_kl=0, final_top1_match=true"
+    },
+    {
+      "name": "unit tests",
+      "command": "python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py -q --tb=short",
+      "result": "48 passed"
+    }
+  ],
+  "micro_profile": {
+    "command": "PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d15-router-probe --output-file router_probe -- python3 /tmp/d15_router_probe.py --reps 80 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "shape": {
+      "tokens": 1,
+      "hidden_size": 2048,
+      "num_rows": 257,
+      "num_experts": 256,
+      "top_k": 8,
+      "threads": 512
+    },
+    "median_duration_ns": {
+      "default_logits_kernel": 3080,
+      "default_select_kernel": 5080,
+      "default_sum_without_launch_overhead": 8160,
+      "cooperative_kernel_without_memset": 7080
+    },
+    "occupancy_metadata": {
+      "default_logits": {"vgpr": 24, "scratch": 0, "lds": 0, "workgroup_size_x": 512, "grid_size_x": 131584},
+      "default_select": {"vgpr": 40, "scratch": 0, "lds": 512, "workgroup_size_x": 512, "grid_size_x": 512},
+      "cooperative": {"vgpr": 40, "scratch": 0, "lds": 512, "workgroup_size_x": 512, "grid_size_x": 131584}
+    },
+    "interpretation": "The cooperative producer preserves the 257-row producer grid and reduces kernel-only router time, but the required counter memset/atomic tail remains visible under graph replay."
+  },
+  "benchmarks": [
+    {
+      "shape": "512/128 graph replay decode",
+      "baseline_command": "python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/512x128-default-1.json",
+      "candidate_command": "HIPENGINE_PARO_ROUTER_TOPK_COOP=1 python3 scripts/qwen35_paro_bench.py --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/512x128-coop-1.json",
+      "baseline": {"prefill_tok_s": 2274.2838781151413, "decode_tok_s": 115.93143270673986, "peak_gib": 18.17562458757311},
+      "candidate": {"prefill_tok_s": 2236.431199324978, "decode_tok_s": 114.85649074516314, "peak_gib": 18.17562458757311},
+      "decode_delta_pct": -0.9272225319382965
+    },
+    {
+      "shape": "4K/128 graph replay decode",
+      "baseline_command": "python3 scripts/qwen35_paro_bench.py --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/4k128-default-1.json",
+      "candidate_command": "HIPENGINE_PARO_ROUTER_TOPK_COOP=1 python3 scripts/qwen35_paro_bench.py --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-d15/4k128-coop-1.json",
+      "baseline": {"prefill_tok_s": 2491.236476868579, "decode_tok_s": 116.88742838401605, "peak_gib": 20.047133021987975},
+      "candidate": {"prefill_tok_s": 2490.9707131307787, "decode_tok_s": 116.10554018971447, "peak_gib": 20.047133021987975},
+      "decode_delta_pct": -0.6689240644197307
+    }
+  ],
+  "decision": "Reject as default. The cooperative producer is correct and preserves producer occupancy, but graph-replay decode regresses at both required shapes; keep the opt-in path only as a diagnostic surface for future counter-reset/graph-level fusion work."
+}

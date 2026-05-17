@@ -57,6 +57,8 @@ def main() -> int:
             "paro-selected-gemv-hip",
             "paro-selected-gemv-rotate-hip",
             "paro-pack8-gemv-hip",
+            "paro-pack8-rotate-staged-hip",
+            "paro-marlin-k-hip",
             "paro-rotate-hip",
             "paro-silu-hip",
             "paro-combine-hip",
@@ -241,6 +243,20 @@ def main() -> int:
         )
     if args.mode == "paro-pack8-gemv-hip":
         return paro_pack8_gemv_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "paro-pack8-rotate-staged-hip":
+        return paro_pack8_rotate_staged_hip_smoke(
+            args.rows,
+            args.hidden_size,
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "paro-marlin-k-hip":
+        return paro_marlin_k_hip_smoke(
             args.rows,
             args.hidden_size,
             compiler_version=compiler_version,
@@ -1014,6 +1030,7 @@ def qwen35_paged_attn_gqa_hip_smoke(
         qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans,
         qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
         qwen35_paged_full_attn_decode_split_k_warp_bf16_spans,
+        qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     )
     from hipengine.kvcache import KVLiveSpans
 
@@ -1047,6 +1064,7 @@ def qwen35_paged_attn_gqa_hip_smoke(
         value_cache[token // block_size, token % block_size] = value_bits[token]
     warp_out = np.empty((num_q_heads, head_dim), dtype=np.float32)
     gqa_out = np.empty_like(warp_out)
+    warp_gate_out = np.empty((num_q_heads, head_dim), dtype=np.uint16)
     gqa_gate_out = np.empty((num_q_heads, head_dim), dtype=np.uint16)
     warp_partial_out = np.zeros((num_q_heads, num_splits, head_dim), dtype=np.float32)
     warp_partial_m = np.zeros((num_q_heads, num_splits), dtype=np.float32)
@@ -1054,6 +1072,9 @@ def qwen35_paged_attn_gqa_hip_smoke(
     gqa_partial_out = np.zeros_like(warp_partial_out)
     gqa_partial_m = np.zeros_like(warp_partial_m)
     gqa_partial_l = np.zeros_like(warp_partial_l)
+    warp_gate_partial_out = np.zeros_like(warp_partial_out)
+    warp_gate_partial_m = np.zeros_like(warp_partial_m)
+    warp_gate_partial_l = np.zeros_like(warp_partial_l)
     gate_partial_out = np.zeros_like(warp_partial_out)
     gate_partial_m = np.zeros_like(warp_partial_m)
     gate_partial_l = np.zeros_like(warp_partial_l)
@@ -1102,6 +1123,7 @@ def qwen35_paged_attn_gqa_hip_smoke(
         value_cache_dev = dev(value_cache)
         warp_out_dev = out_dev(warp_out)
         gqa_out_dev = out_dev(gqa_out)
+        warp_gate_out_dev = out_dev(warp_gate_out)
         gqa_gate_out_dev = out_dev(gqa_gate_out)
         warp_partial_out_dev = out_dev(warp_partial_out)
         warp_partial_m_dev = out_dev(warp_partial_m)
@@ -1109,6 +1131,9 @@ def qwen35_paged_attn_gqa_hip_smoke(
         gqa_partial_out_dev = out_dev(gqa_partial_out)
         gqa_partial_m_dev = out_dev(gqa_partial_m)
         gqa_partial_l_dev = out_dev(gqa_partial_l)
+        warp_gate_partial_out_dev = out_dev(warp_gate_partial_out)
+        warp_gate_partial_m_dev = out_dev(warp_gate_partial_m)
+        warp_gate_partial_l_dev = out_dev(warp_gate_partial_l)
         gate_partial_out_dev = out_dev(gate_partial_out)
         gate_partial_m_dev = out_dev(gate_partial_m)
         gate_partial_l_dev = out_dev(gate_partial_l)
@@ -1156,6 +1181,28 @@ def qwen35_paged_attn_gqa_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans(
+            query_dev.ptr,
+            key_cache_dev.ptr,
+            value_cache_dev.ptr,
+            gate_dev.ptr,
+            warp_gate_out_dev.ptr,
+            warp_gate_partial_out_dev.ptr,
+            warp_gate_partial_m_dev.ptr,
+            warp_gate_partial_l_dev.ptr,
+            spans,
+            chunk_size,
+            num_splits,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            head_dim,
+            1,
+            scale,
+            library=library,
+            runtime=runtime,
+        )
         qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
             query_dev.ptr,
             key_cache_dev.ptr,
@@ -1181,6 +1228,7 @@ def qwen35_paged_attn_gqa_hip_smoke(
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(warp_out), warp_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gqa_out), gqa_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(warp_gate_out), warp_gate_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gqa_gate_out), gqa_gate_out_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
@@ -1188,6 +1236,10 @@ def qwen35_paged_attn_gqa_hip_smoke(
 
     warp_max_abs = float(np.max(np.abs(warp_out - expected)))
     gqa_max_abs = float(np.max(np.abs(gqa_out - expected)))
+    warp_gate_mismatch = int(np.count_nonzero(warp_gate_out != expected_gate))
+    warp_gate_max_abs = float(
+        np.max(np.abs(_bf16_bits_to_float32(warp_gate_out) - _bf16_bits_to_float32(expected_gate)))
+    )
     gate_mismatch = int(np.count_nonzero(gqa_gate_out != expected_gate))
     gate_max_abs = float(
         np.max(np.abs(_bf16_bits_to_float32(gqa_gate_out) - _bf16_bits_to_float32(expected_gate)))
@@ -1196,10 +1248,18 @@ def qwen35_paged_attn_gqa_hip_smoke(
         f"context_len={context_len} chunk_size={chunk_size} num_splits={num_splits} "
         f"shape={num_q_heads}x{head_dim}/{num_kv_heads} "
         f"warp_max_abs={warp_max_abs:.3g} gqa_max_abs={gqa_max_abs:.3g} "
+        f"warp_gate_bf16_mismatch={warp_gate_mismatch} warp_gate_bf16_max_abs={warp_gate_max_abs:.3g} "
         f"gqa_gate_bf16_mismatch={gate_mismatch} gqa_gate_bf16_max_abs={gate_max_abs:.3g}"
     )
     print("gqa_attn_head0=", gqa_out[0, :8].tolist())
-    return 0 if warp_max_abs <= 1.0e-5 and gqa_max_abs <= 1.0e-5 and gate_mismatch == 0 else 1
+    return (
+        0
+        if warp_max_abs <= 1.0e-5
+        and gqa_max_abs <= 1.0e-5
+        and warp_gate_mismatch == 0
+        and gate_mismatch == 0
+        else 1
+    )
 
 def qwen35_paged_attn_prefill_hip_smoke(
     *,
@@ -2672,6 +2732,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
         qwen35_gdn_prefill_recurrent_k2_f32,
         qwen35_gdn_prefill_rmsnorm_gate_bf16,
         qwen35_gdn_prefill_rmsnorm_gate_fp16,
+        qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16,
         qwen35_linear_attn_conv_prefill_f32,
         qwen35_linear_attn_conv_prefill_fp16,
         qwen35_linear_attn_prefill_prepare_f32_bf16,
@@ -2826,6 +2887,40 @@ def qwen35_linear_attn_prefill_hip_smoke(
             return out.astype(np.float16)
         return _float32_to_bf16_bits(out.reshape(-1)).reshape(recurrent.shape)
 
+    def rotate1_ref(
+        x: np.ndarray,
+        pairs: np.ndarray,
+        theta: np.ndarray,
+        scales: np.ndarray,
+        *,
+        group_size: int,
+        krot: int,
+    ) -> np.ndarray:
+        tokens, hidden = x.shape
+        half_group = group_size // 2
+        out = np.empty_like(x, dtype=np.float16)
+        for token in range(tokens):
+            for group in range(hidden // group_size):
+                base = group * group_size
+                buf = (
+                    x[token, base : base + group_size].astype(np.float32)
+                    * scales[base : base + group_size].astype(np.float32)
+                )
+                for r in range(krot):
+                    for lane in range(half_group):
+                        pair_base = r * hidden + base + 2 * lane
+                        i = int(pairs[pair_base + 0])
+                        j = int(pairs[pair_base + 1])
+                        angle = np.float32(theta[r * (hidden // 2) + group * half_group + lane])
+                        s = np.sin(angle, dtype=np.float32)
+                        c = np.cos(angle, dtype=np.float32)
+                        xi = np.float32(buf[i])
+                        xj = np.float32(buf[j])
+                        buf[i] = np.float32(np.float32(xj * s) + np.float32(xi * c))
+                        buf[j] = np.float32(np.float32(xi * -s) + np.float32(xj * c))
+                out[token, base : base + group_size] = buf.astype(np.float16)
+        return out
+
     conv_tokens = 5
     channels = 8
     kernel_size = 4
@@ -2933,6 +3028,23 @@ def qwen35_linear_attn_prefill_hip_smoke(
     )
     expected_gated_bits = rmsnorm_gate_ref(expected_gdn_out, gate_bits, norm_weight, eps)
     expected_gated_fp16 = rmsnorm_gate_ref(expected_gdn_fp16_out, gate_fp16, norm_weight, eps, output_dtype="fp16")
+    rotate_group_size = head_v_dim
+    rotate_krot = 2
+    rotate_pairs = np.asarray([0, 2, 1, 3, 0, 2, 1, 3] * rotate_krot, dtype=np.int16)
+    rotate_theta = np.asarray(
+        [((idx % 7) - 3) * 0.03125 for idx in range(rotate_krot * (num_v_heads * head_v_dim // 2))],
+        dtype=np.float16,
+    )
+    rotate_scales = np.asarray([1.0 + 0.0625 * ((idx % 5) - 2) for idx in range(num_v_heads * head_v_dim)], dtype=np.float16)
+    expected_fused_rotate = rotate1_ref(
+        expected_gated_fp16.reshape(tokens, num_v_heads * head_v_dim),
+        rotate_pairs,
+        rotate_theta,
+        rotate_scales,
+        group_size=rotate_group_size,
+        krot=rotate_krot,
+    )
+    fused_rotate = np.empty_like(expected_fused_rotate)
     state_regular = state.copy()
     state_k2 = state.copy()
     state_k2_fp16 = state.copy()
@@ -2992,6 +3104,10 @@ def qwen35_linear_attn_prefill_hip_smoke(
         gdn_k2_fp16_out_dev = out_dev(gdn_k2_fp16_out)
         gated_bits_dev = out_dev(gated_bits)
         gated_fp16_dev = out_dev(gated_fp16)
+        fused_rotate_dev = out_dev(fused_rotate)
+        rotate_pairs_dev = dev(rotate_pairs)
+        rotate_theta_dev = dev(rotate_theta)
+        rotate_scales_dev = dev(rotate_scales)
         norm_weight_dev = dev(norm_weight)
         gate_dev = dev(gate_bits)
         gate_fp16_dev = dev(gate_fp16)
@@ -3102,6 +3218,23 @@ def qwen35_linear_attn_prefill_hip_smoke(
             library=gdn_library,
             runtime=runtime,
         )
+        qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16(
+            gdn_k2_fp16_out_dev.ptr,
+            gate_fp16_dev.ptr,
+            norm_weight_dev.ptr,
+            fused_rotate_dev.ptr,
+            rotate_pairs_dev.ptr,
+            rotate_theta_dev.ptr,
+            rotate_scales_dev.ptr,
+            eps,
+            tokens,
+            num_v_heads,
+            head_v_dim,
+            rotate_group_size,
+            rotate_krot,
+            library=gdn_library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(conv_out), conv_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(conv_out_fp16), conv_out_fp16_dev, runtime=runtime)
@@ -3122,6 +3255,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
         copy_device_to_host(host_array_ptr(gdn_k2_fp16_out), gdn_k2_fp16_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gated_bits), gated_bits_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gated_fp16), gated_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(fused_rotate), fused_rotate_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(state_regular), state_regular_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(state_k2), state_k2_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(state_k2_fp16), state_k2_fp16_dev, runtime=runtime)
@@ -3151,6 +3285,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
     fp16_gdn_k2_state_max_abs = float(np.max(np.abs(state_k2_fp16 - expected_gdn_fp16_state)))
     gated_mismatch = int(np.count_nonzero(gated_bits != expected_gated_bits))
     fp16_gated_mismatch = int(np.count_nonzero(gated_fp16.view(np.uint16) != expected_gated_fp16.view(np.uint16)))
+    fused_rotate_mismatch = int(np.count_nonzero(fused_rotate.view(np.uint16) != expected_fused_rotate.view(np.uint16)))
     print(
         f"conv_out_max_abs={conv_out_max_abs:.3g} conv_state_max_abs={conv_state_max_abs:.3g} "
         f"fp16_conv_out_max_abs={fp16_conv_out_max_abs:.3g} fp16_conv_state_max_abs={fp16_conv_state_max_abs:.3g} "
@@ -3161,7 +3296,8 @@ def qwen35_linear_attn_prefill_hip_smoke(
         f"fp16_prepare_max_abs={max(fp16_query_max_abs, fp16_key_max_abs, fp16_value_max_abs, fp16_beta_max_abs, fp16_decay_max_abs):.3g} "
         f"fp16_gdn_k2_out_max_abs={fp16_gdn_k2_out_max_abs:.3g} "
         f"fp16_gdn_k2_state_max_abs={fp16_gdn_k2_state_max_abs:.3g} "
-        f"fp16_gated_mismatch={fp16_gated_mismatch}"
+        f"fp16_gated_mismatch={fp16_gated_mismatch} "
+        f"fused_rotate_mismatch={fused_rotate_mismatch}"
     )
     return 0 if max(
         conv_out_max_abs,
@@ -3184,7 +3320,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
         fp16_decay_max_abs,
         fp16_gdn_k2_out_max_abs,
         fp16_gdn_k2_state_max_abs,
-    ) <= 1.0e-5 and gated_mismatch == 0 and fp16_gated_mismatch == 0 else 1
+    ) <= 1.0e-5 and gated_mismatch == 0 and fp16_gated_mismatch == 0 and fused_rotate_mismatch == 0 else 1
 
 
 def qwen35_linear_attn_gdn_hip_smoke(
@@ -4030,8 +4166,12 @@ def qwen35_router_hip_smoke(
     )
     from hipengine.kernels.hip_gfx1100.moe import (
         build_qwen35_router,
+        qwen35_router_topk_shared_coop_out_bf16,
+        qwen35_router_topk_shared_coop_out_fp16,
         qwen35_router_topk_shared_out_bf16,
         qwen35_router_topk_shared_out_fp16,
+        qwen35_router_topk_shared_sigmoid_out_bf16,
+        qwen35_router_topk_shared_sigmoid_out_fp16,
     )
 
     if rows < 1:
@@ -4060,6 +4200,18 @@ def qwen35_router_hip_smoke(
     logits_fp16 = np.empty_like(logits)
     selected_fp16 = np.empty_like(selected)
     routing_fp16 = np.empty_like(routing)
+    sigmoid_logits = np.empty_like(logits)
+    sigmoid_selected = np.empty_like(selected)
+    sigmoid_routing = np.empty_like(routing)
+    sigmoid_logits_fp16 = np.empty_like(logits)
+    sigmoid_selected_fp16 = np.empty_like(selected)
+    sigmoid_routing_fp16 = np.empty_like(routing)
+    coop_logits = np.empty_like(logits)
+    coop_selected = np.empty_like(selected)
+    coop_routing = np.empty_like(routing)
+    coop_logits_fp16 = np.empty_like(logits)
+    coop_selected_fp16 = np.empty_like(selected)
+    coop_routing_fp16 = np.empty_like(routing)
 
     x_bf32 = _bf16_bits_to_float32(x_bits)
     weight_bf32 = _bf16_bits_to_float32(weight_bits)
@@ -4083,6 +4235,12 @@ def qwen35_router_hip_smoke(
     expected_routing_fp16 = (expected_routing_fp16 / np.sum(expected_routing_fp16, axis=1, keepdims=True)).astype(
         np.float32
     )
+    expected_sigmoid_logits = expected_logits.copy()
+    expected_sigmoid_logits[:, num_experts] = 1.0 / (1.0 + np.exp(-expected_sigmoid_logits[:, num_experts]))
+    expected_sigmoid_logits_fp16 = expected_logits_fp16.copy()
+    expected_sigmoid_logits_fp16[:, num_experts] = 1.0 / (
+        1.0 + np.exp(-expected_sigmoid_logits_fp16[:, num_experts])
+    )
 
     runtime = get_hip_runtime()
     library = build_qwen35_router(
@@ -4092,6 +4250,10 @@ def qwen35_router_hip_smoke(
     )
     x_dev = x_fp16_dev = weight_dev = logits_dev = selected_dev = routing_dev = None
     logits_fp16_dev = selected_fp16_dev = routing_fp16_dev = None
+    sigmoid_logits_dev = sigmoid_selected_dev = sigmoid_routing_dev = None
+    sigmoid_logits_fp16_dev = sigmoid_selected_fp16_dev = sigmoid_routing_fp16_dev = None
+    coop_logits_dev = coop_selected_dev = coop_routing_dev = None
+    coop_logits_fp16_dev = coop_selected_fp16_dev = coop_routing_fp16_dev = None
     try:
         x_dev = malloc(x_bits.nbytes, runtime=runtime)
         x_fp16_dev = malloc(x_fp16.nbytes, runtime=runtime)
@@ -4102,6 +4264,20 @@ def qwen35_router_hip_smoke(
         logits_fp16_dev = malloc(logits_fp16.nbytes, runtime=runtime)
         selected_fp16_dev = malloc(selected_fp16.nbytes, runtime=runtime)
         routing_fp16_dev = malloc(routing_fp16.nbytes, runtime=runtime)
+        if rows > 1:
+            sigmoid_logits_dev = malloc(sigmoid_logits.nbytes, runtime=runtime)
+            sigmoid_selected_dev = malloc(sigmoid_selected.nbytes, runtime=runtime)
+            sigmoid_routing_dev = malloc(sigmoid_routing.nbytes, runtime=runtime)
+            sigmoid_logits_fp16_dev = malloc(sigmoid_logits_fp16.nbytes, runtime=runtime)
+            sigmoid_selected_fp16_dev = malloc(sigmoid_selected_fp16.nbytes, runtime=runtime)
+            sigmoid_routing_fp16_dev = malloc(sigmoid_routing_fp16.nbytes, runtime=runtime)
+        if rows == 1:
+            coop_logits_dev = malloc(coop_logits.nbytes, runtime=runtime)
+            coop_selected_dev = malloc(coop_selected.nbytes, runtime=runtime)
+            coop_routing_dev = malloc(coop_routing.nbytes, runtime=runtime)
+            coop_logits_fp16_dev = malloc(coop_logits_fp16.nbytes, runtime=runtime)
+            coop_selected_fp16_dev = malloc(coop_selected_fp16.nbytes, runtime=runtime)
+            coop_routing_fp16_dev = malloc(coop_routing_fp16.nbytes, runtime=runtime)
         copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
         copy_host_to_device(x_fp16_dev, host_array_ptr(x_fp16), runtime=runtime)
         copy_host_to_device(weight_dev, host_array_ptr(weight_bits), runtime=runtime)
@@ -4135,6 +4311,68 @@ def qwen35_router_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        if rows > 1:
+            qwen35_router_topk_shared_sigmoid_out_bf16(
+                x_dev.ptr,
+                weight_dev.ptr,
+                sigmoid_logits_dev.ptr,
+                sigmoid_selected_dev.ptr,
+                sigmoid_routing_dev.ptr,
+                rows,
+                hidden_size,
+                num_rows,
+                num_experts,
+                top_k,
+                threads=threads,
+                library=library,
+                runtime=runtime,
+            )
+            qwen35_router_topk_shared_sigmoid_out_fp16(
+                x_fp16_dev.ptr,
+                weight_dev.ptr,
+                sigmoid_logits_fp16_dev.ptr,
+                sigmoid_selected_fp16_dev.ptr,
+                sigmoid_routing_fp16_dev.ptr,
+                rows,
+                hidden_size,
+                num_rows,
+                num_experts,
+                top_k,
+                threads=threads,
+                library=library,
+                runtime=runtime,
+            )
+        if rows == 1:
+            qwen35_router_topk_shared_coop_out_bf16(
+                x_dev.ptr,
+                weight_dev.ptr,
+                coop_logits_dev.ptr,
+                coop_selected_dev.ptr,
+                coop_routing_dev.ptr,
+                rows,
+                hidden_size,
+                num_rows,
+                num_experts,
+                top_k,
+                threads=threads,
+                library=library,
+                runtime=runtime,
+            )
+            qwen35_router_topk_shared_coop_out_fp16(
+                x_fp16_dev.ptr,
+                weight_dev.ptr,
+                coop_logits_fp16_dev.ptr,
+                coop_selected_fp16_dev.ptr,
+                coop_routing_fp16_dev.ptr,
+                rows,
+                hidden_size,
+                num_rows,
+                num_experts,
+                top_k,
+                threads=threads,
+                library=library,
+                runtime=runtime,
+            )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(logits), logits_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(selected), selected_dev, runtime=runtime)
@@ -4142,8 +4380,34 @@ def qwen35_router_hip_smoke(
         copy_device_to_host(host_array_ptr(logits_fp16), logits_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(selected_fp16), selected_fp16_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(routing_fp16), routing_fp16_dev, runtime=runtime)
+        if rows > 1:
+            copy_device_to_host(host_array_ptr(sigmoid_logits), sigmoid_logits_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(sigmoid_selected), sigmoid_selected_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(sigmoid_routing), sigmoid_routing_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(sigmoid_logits_fp16), sigmoid_logits_fp16_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(sigmoid_selected_fp16), sigmoid_selected_fp16_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(sigmoid_routing_fp16), sigmoid_routing_fp16_dev, runtime=runtime)
+        if rows == 1:
+            copy_device_to_host(host_array_ptr(coop_logits), coop_logits_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(coop_selected), coop_selected_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(coop_routing), coop_routing_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(coop_logits_fp16), coop_logits_fp16_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(coop_selected_fp16), coop_selected_fp16_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(coop_routing_fp16), coop_routing_fp16_dev, runtime=runtime)
     finally:
         for buffer in (
+            coop_routing_fp16_dev,
+            coop_selected_fp16_dev,
+            coop_logits_fp16_dev,
+            coop_routing_dev,
+            coop_selected_dev,
+            coop_logits_dev,
+            sigmoid_routing_fp16_dev,
+            sigmoid_selected_fp16_dev,
+            sigmoid_logits_fp16_dev,
+            sigmoid_routing_dev,
+            sigmoid_selected_dev,
+            sigmoid_logits_dev,
             routing_fp16_dev,
             selected_fp16_dev,
             logits_fp16_dev,
@@ -4163,11 +4427,61 @@ def qwen35_router_hip_smoke(
     fp16_logits_max_abs = float(np.max(np.abs(logits_fp16 - expected_logits_fp16)))
     fp16_routing_max_abs = float(np.max(np.abs(routing_fp16 - expected_routing_fp16)))
     fp16_selected_match = bool(np.array_equal(selected_fp16, expected_selected_fp16))
+    sigmoid_ok = True
+    sigmoid_summary = ""
+    if rows > 1:
+        sigmoid_logits_max_abs = float(np.max(np.abs(sigmoid_logits - expected_sigmoid_logits)))
+        sigmoid_routing_max_abs = float(np.max(np.abs(sigmoid_routing - expected_routing)))
+        sigmoid_selected_match = bool(np.array_equal(sigmoid_selected, expected_selected))
+        sigmoid_fp16_logits_max_abs = float(np.max(np.abs(sigmoid_logits_fp16 - expected_sigmoid_logits_fp16)))
+        sigmoid_fp16_routing_max_abs = float(np.max(np.abs(sigmoid_routing_fp16 - expected_routing_fp16)))
+        sigmoid_fp16_selected_match = bool(np.array_equal(sigmoid_selected_fp16, expected_selected_fp16))
+        sigmoid_ok = (
+            sigmoid_selected_match
+            and sigmoid_logits_max_abs <= 2e-5
+            and sigmoid_routing_max_abs <= 2e-5
+            and sigmoid_fp16_selected_match
+            and sigmoid_fp16_logits_max_abs <= 2e-5
+            and sigmoid_fp16_routing_max_abs <= 2e-5
+        )
+        sigmoid_summary = (
+            f" sigmoid_logits_max_abs={sigmoid_logits_max_abs} "
+            f"sigmoid_routing_max_abs={sigmoid_routing_max_abs} "
+            f"sigmoid_selected_match={sigmoid_selected_match} "
+            f"sigmoid_fp16_logits_max_abs={sigmoid_fp16_logits_max_abs} "
+            f"sigmoid_fp16_routing_max_abs={sigmoid_fp16_routing_max_abs} "
+            f"sigmoid_fp16_selected_match={sigmoid_fp16_selected_match}"
+        )
+    coop_ok = True
+    coop_summary = ""
+    if rows == 1:
+        coop_logits_max_abs = float(np.max(np.abs(coop_logits - expected_logits)))
+        coop_routing_max_abs = float(np.max(np.abs(coop_routing - expected_routing)))
+        coop_selected_match = bool(np.array_equal(coop_selected, expected_selected))
+        coop_fp16_logits_max_abs = float(np.max(np.abs(coop_logits_fp16 - expected_logits_fp16)))
+        coop_fp16_routing_max_abs = float(np.max(np.abs(coop_routing_fp16 - expected_routing_fp16)))
+        coop_fp16_selected_match = bool(np.array_equal(coop_selected_fp16, expected_selected_fp16))
+        coop_ok = (
+            coop_selected_match
+            and coop_logits_max_abs <= 2e-5
+            and coop_routing_max_abs <= 2e-5
+            and coop_fp16_selected_match
+            and coop_fp16_logits_max_abs <= 2e-5
+            and coop_fp16_routing_max_abs <= 2e-5
+        )
+        coop_summary = (
+            f" coop_logits_max_abs={coop_logits_max_abs} coop_routing_max_abs={coop_routing_max_abs} "
+            f"coop_selected_match={coop_selected_match} "
+            f"coop_fp16_logits_max_abs={coop_fp16_logits_max_abs} "
+            f"coop_fp16_routing_max_abs={coop_fp16_routing_max_abs} "
+            f"coop_fp16_selected_match={coop_fp16_selected_match}"
+        )
     print(
         f"rows={rows} hidden_size={hidden_size} num_experts={num_experts} top_k={top_k} "
         f"logits_max_abs={logits_max_abs} routing_max_abs={routing_max_abs} "
         f"selected_match={selected_match} fp16_logits_max_abs={fp16_logits_max_abs} "
         f"fp16_routing_max_abs={fp16_routing_max_abs} fp16_selected_match={fp16_selected_match}"
+        f"{sigmoid_summary}{coop_summary}"
     )
     print("selected0=", selected[0].tolist())
     print("routing0=", routing[0].tolist())
@@ -4178,6 +4492,8 @@ def qwen35_router_hip_smoke(
         and fp16_selected_match
         and fp16_logits_max_abs <= 2e-5
         and fp16_routing_max_abs <= 2e-5
+        and sigmoid_ok
+        and coop_ok
     ) else 1
 
 
@@ -6346,6 +6662,104 @@ def paro_silu_hip_smoke(
 
 
 
+def paro_marlin_k_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant import build_paro_marlin_k, gemv_paro_marlin_k_fma_fp16
+    from hipengine.loading import repack_paro_awq_to_marlin_k_host
+
+    if rows < 1:
+        raise ValueError("--rows must be >= 1")
+    if hidden_size < 128 or hidden_size % 128 != 0:
+        raise ValueError("--hidden-size must be >= 128 and divisible by 128")
+
+    group_size = 128
+    out_packed = 2
+    x = (
+        (np.arange(rows * hidden_size, dtype=np.float32).reshape(rows, hidden_size) % 17) / np.float32(17.0)
+        - np.float32(0.5)
+    ).astype(np.float16)
+    qweight_3d, qzeros_3d, scales_bits_3d = _make_pack8_fixture(1, hidden_size, out_packed, group_size, salt=31)
+    qweight = qweight_3d[0].copy()
+    qzeros = qzeros_3d[0].copy()
+    scales = _bf16_bits_to_float32(scales_bits_3d[0]).astype(np.float16)
+    qweight_mk, qzeros_mk, scales_mk = repack_paro_awq_to_marlin_k_host(qweight, qzeros, scales)
+    expected = _pack8_reference_lowp(
+        x,
+        np.ascontiguousarray(qweight.T),
+        qzeros,
+        scales,
+        group_size,
+        qweight_transposed=True,
+        out_dtype=np.float16,
+    )
+    out = np.empty_like(expected)
+
+    runtime = get_hip_runtime()
+    library = build_paro_marlin_k(load=True, compiler_version=compiler_version, require_cached=require_cached_build)
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = dev(x)
+        qweight_dev = dev(qweight_mk)
+        qzeros_dev = dev(qzeros_mk)
+        scales_dev = dev(scales_mk)
+        out_device = out_dev(out)
+        gemv_paro_marlin_k_fma_fp16(
+            x_dev.ptr,
+            qweight_dev.ptr,
+            qzeros_dev.ptr,
+            scales_dev.ptr,
+            out_device.ptr,
+            rows,
+            hidden_size,
+            out_packed,
+            group_size,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out), out_device, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    mismatch = int(np.count_nonzero(out.view(np.uint16) != expected.view(np.uint16)))
+    max_abs = float(np.max(np.abs(out.astype(np.float32) - expected.astype(np.float32))))
+    print(
+        f"rows={rows} hidden_size={hidden_size} out_packed={out_packed} "
+        f"mismatch={mismatch} max_abs={max_abs}"
+    )
+    print("marlin0=", out[0].astype(np.float32).tolist())
+    return 0 if mismatch == 0 else 1
+
+
+
 def paro_pack8_gemv_hip_smoke(
     rows: int,
     hidden_size: int,
@@ -6772,6 +7186,303 @@ def paro_pack8_gemv_hip_smoke(
         and dual_transposed_fp16_mismatch == 0
         else 1
     )
+
+
+
+def paro_pack8_rotate_staged_hip_smoke(
+    rows: int,
+    hidden_size: int,
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant import (
+        build_paro_awq_gemv,
+        gemv_awq_dual_pack8_transposed_rotate_staged_bf16,
+        gemv_awq_dual_pack8_transposed_rotate_staged_fp16,
+    )
+
+    if rows != 1:
+        raise ValueError("rotate-staged pack8 GEMV smoke is decode-only; use --rows 1")
+    if hidden_size < 8 or hidden_size % 8 != 0:
+        raise ValueError("--hidden-size must be >= 8 and divisible by 8")
+
+    group_size = hidden_size
+    threads = 128
+    out_packed_a = out_packed_b = 1
+    krot = 1
+    selected = np.zeros(rows, dtype=np.int64)
+    x_f32 = np.asarray(
+        [[[-0.5, -0.25, 0.25, 0.5][col % 4] for col in range(hidden_size)]],
+        dtype=np.float32,
+    )
+    x_bits = _float32_to_bf16_bits(x_f32)
+    x_fp16 = x_f32.astype(np.float16)
+
+    pairs = np.empty((krot, hidden_size), dtype=np.int16)
+    half_group = group_size // 2
+    for lane in range(half_group):
+        pairs[0, 2 * lane] = lane
+        pairs[0, 2 * lane + 1] = lane + half_group
+    theta = np.zeros((krot, hidden_size // 2), dtype=np.float32)
+    theta_bits = _float32_to_bf16_bits(theta)
+    theta_fp16 = theta.astype(np.float16)
+
+    pattern = np.asarray([1.0, 0.5, 0.25, 2.0, 1.5, 0.75, 0.125, 1.25], dtype=np.float32)
+    channel_scales_a = np.asarray([pattern[i % 8] for i in range(hidden_size)], dtype=np.float32)
+    channel_scales_b = np.asarray([pattern[(i + 3) % 8] for i in range(hidden_size)], dtype=np.float32)
+    channel_scales_a_bits = _float32_to_bf16_bits(channel_scales_a)
+    channel_scales_b_bits = _float32_to_bf16_bits(channel_scales_b)
+    channel_scales_a_fp16 = channel_scales_a.astype(np.float16)
+    channel_scales_b_fp16 = channel_scales_b.astype(np.float16)
+
+    qweight_a_3d, qzeros_a_3d, scales_a_bits_3d = _make_pack8_fixture(
+        1, hidden_size, out_packed_a, group_size, salt=41
+    )
+    qweight_b_3d, qzeros_b_3d, scales_b_bits_3d = _make_pack8_fixture(
+        1, hidden_size, out_packed_b, group_size, salt=43
+    )
+    qweight_a = qweight_a_3d[0].copy()
+    qweight_b = qweight_b_3d[0].copy()
+    qweight_a_t = np.transpose(qweight_a).copy()
+    qweight_b_t = np.transpose(qweight_b).copy()
+    qzeros_a = qzeros_a_3d[0].copy()
+    qzeros_b = qzeros_b_3d[0].copy()
+    scales_a_bits = scales_a_bits_3d[0].copy()
+    scales_b_bits = scales_b_bits_3d[0].copy()
+    scales_a_fp16 = _bf16_bits_to_float32(scales_a_bits).astype(np.float16)
+    scales_b_fp16 = _bf16_bits_to_float32(scales_b_bits).astype(np.float16)
+
+    rotated_a_bits_expected = _float32_to_bf16_bits(
+        _bf16_bits_to_float32(x_bits)
+        * _bf16_bits_to_float32(channel_scales_a_bits).reshape(1, hidden_size)
+    )
+    rotated_b_bits_expected = _float32_to_bf16_bits(
+        _bf16_bits_to_float32(x_bits)
+        * _bf16_bits_to_float32(channel_scales_b_bits).reshape(1, hidden_size)
+    )
+    expected_a_bits = _selected_pack8_reference(
+        rotated_a_bits_expected,
+        selected,
+        np.transpose(qweight_a_3d, (0, 2, 1)).copy(),
+        qzeros_a_3d,
+        scales_a_bits_3d,
+        group_size,
+        qweight_transposed=True,
+    )
+    expected_b_bits = _selected_pack8_reference(
+        rotated_b_bits_expected,
+        selected,
+        np.transpose(qweight_b_3d, (0, 2, 1)).copy(),
+        qzeros_b_3d,
+        scales_b_bits_3d,
+        group_size,
+        qweight_transposed=True,
+    )
+    expected_bits = np.concatenate([expected_a_bits, expected_b_bits], axis=1)
+
+    rotated_a_fp16_expected = (
+        x_fp16.astype(np.float32) * channel_scales_a_fp16.astype(np.float32).reshape(1, hidden_size)
+    ).astype(np.float16)
+    rotated_b_fp16_expected = (
+        x_fp16.astype(np.float32) * channel_scales_b_fp16.astype(np.float32).reshape(1, hidden_size)
+    ).astype(np.float16)
+    expected_a_fp16 = _pack8_reference_lowp(
+        rotated_a_fp16_expected,
+        qweight_a_t,
+        qzeros_a,
+        scales_a_fp16,
+        group_size,
+        qweight_transposed=True,
+        out_dtype=np.float16,
+    )
+    expected_b_fp16 = _pack8_reference_lowp(
+        rotated_b_fp16_expected,
+        qweight_b_t,
+        qzeros_b,
+        scales_b_fp16,
+        group_size,
+        qweight_transposed=True,
+        out_dtype=np.float16,
+    )
+    expected_fp16 = np.concatenate([expected_a_fp16, expected_b_fp16], axis=1)
+
+    out_bits = np.empty_like(expected_bits)
+    out_fp16 = np.empty_like(expected_fp16)
+    rotated_a_bits = np.empty_like(x_bits)
+    rotated_b_bits = np.empty_like(x_bits)
+    rotated_a_fp16 = np.empty_like(x_fp16)
+    rotated_b_fp16 = np.empty_like(x_fp16)
+    barrier = np.zeros(2, dtype=np.int32)
+
+    runtime = get_hip_runtime()
+    library = build_paro_awq_gemv(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    def out_dev(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = dev(x_bits)
+        pairs_dev = dev(pairs)
+        theta_dev = dev(theta_bits)
+        channel_scales_a_dev = dev(channel_scales_a_bits)
+        channel_scales_b_dev = dev(channel_scales_b_bits)
+        qweight_a_t_dev = dev(qweight_a_t)
+        qzeros_a_dev = dev(qzeros_a)
+        scales_a_dev = dev(scales_a_bits)
+        qweight_b_t_dev = dev(qweight_b_t)
+        qzeros_b_dev = dev(qzeros_b)
+        scales_b_dev = dev(scales_b_bits)
+        rotated_a_dev = out_dev(rotated_a_bits)
+        rotated_b_dev = out_dev(rotated_b_bits)
+        out_dev_buf = out_dev(out_bits)
+        barrier_dev = dev(barrier)
+
+        x_fp16_dev = dev(x_fp16)
+        theta_fp16_dev = dev(theta_fp16)
+        channel_scales_a_fp16_dev = dev(channel_scales_a_fp16)
+        channel_scales_b_fp16_dev = dev(channel_scales_b_fp16)
+        scales_a_fp16_dev = dev(scales_a_fp16)
+        scales_b_fp16_dev = dev(scales_b_fp16)
+        rotated_a_fp16_dev = out_dev(rotated_a_fp16)
+        rotated_b_fp16_dev = out_dev(rotated_b_fp16)
+        out_fp16_dev = out_dev(out_fp16)
+        barrier_fp16_dev = dev(barrier)
+
+        gemv_awq_dual_pack8_transposed_rotate_staged_bf16(
+            x_dev.ptr,
+            rotated_a_dev.ptr,
+            rotated_b_dev.ptr,
+            pairs_dev.ptr,
+            pairs_dev.ptr,
+            theta_dev.ptr,
+            theta_dev.ptr,
+            channel_scales_a_dev.ptr,
+            channel_scales_b_dev.ptr,
+            qweight_a_t_dev.ptr,
+            qzeros_a_dev.ptr,
+            scales_a_dev.ptr,
+            qweight_b_t_dev.ptr,
+            qzeros_b_dev.ptr,
+            scales_b_dev.ptr,
+            out_dev_buf.ptr,
+            barrier_dev.ptr,
+            rows,
+            hidden_size,
+            out_packed_a,
+            out_packed_b,
+            group_size,
+            krot,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        gemv_awq_dual_pack8_transposed_rotate_staged_fp16(
+            x_fp16_dev.ptr,
+            rotated_a_fp16_dev.ptr,
+            rotated_b_fp16_dev.ptr,
+            pairs_dev.ptr,
+            pairs_dev.ptr,
+            theta_fp16_dev.ptr,
+            theta_fp16_dev.ptr,
+            channel_scales_a_fp16_dev.ptr,
+            channel_scales_b_fp16_dev.ptr,
+            qweight_a_t_dev.ptr,
+            qzeros_a_dev.ptr,
+            scales_a_fp16_dev.ptr,
+            qweight_b_t_dev.ptr,
+            qzeros_b_dev.ptr,
+            scales_b_fp16_dev.ptr,
+            out_fp16_dev.ptr,
+            barrier_fp16_dev.ptr,
+            rows,
+            hidden_size,
+            out_packed_a,
+            out_packed_b,
+            group_size,
+            krot,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(rotated_a_bits), rotated_a_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotated_b_bits), rotated_b_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_bits), out_dev_buf, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotated_a_fp16), rotated_a_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(rotated_b_fp16), rotated_b_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_fp16), out_fp16_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    mismatch = int(np.count_nonzero(out_bits != expected_bits))
+    rotated_mismatch = int(
+        np.count_nonzero(rotated_a_bits != rotated_a_bits_expected)
+        + np.count_nonzero(rotated_b_bits != rotated_b_bits_expected)
+    )
+    fp16_mismatch = int(np.count_nonzero(out_fp16.view(np.uint16) != expected_fp16.view(np.uint16)))
+    fp16_rotated_mismatch = int(
+        np.count_nonzero(rotated_a_fp16.view(np.uint16) != rotated_a_fp16_expected.view(np.uint16))
+        + np.count_nonzero(rotated_b_fp16.view(np.uint16) != rotated_b_fp16_expected.view(np.uint16))
+    )
+    max_abs = float(np.max(np.abs(_bf16_bits_to_float32(out_bits) - _bf16_bits_to_float32(expected_bits))))
+    rotated_max_abs = float(
+        max(
+            np.max(
+                np.abs(
+                    _bf16_bits_to_float32(rotated_a_bits)
+                    - _bf16_bits_to_float32(rotated_a_bits_expected)
+                )
+            ),
+            np.max(
+                np.abs(
+                    _bf16_bits_to_float32(rotated_b_bits)
+                    - _bf16_bits_to_float32(rotated_b_bits_expected)
+                )
+            ),
+        )
+    )
+    fp16_max_abs = float(np.max(np.abs(out_fp16.astype(np.float32) - expected_fp16.astype(np.float32))))
+    fp16_rotated_max_abs = float(
+        max(
+            np.max(np.abs(rotated_a_fp16.astype(np.float32) - rotated_a_fp16_expected.astype(np.float32))),
+            np.max(np.abs(rotated_b_fp16.astype(np.float32) - rotated_b_fp16_expected.astype(np.float32))),
+        )
+    )
+    print(
+        f"rows={rows} hidden_size={hidden_size} threads={threads} krot={krot} "
+        f"mismatch={mismatch} max_abs={max_abs} rotated_mismatch={rotated_mismatch} "
+        f"rotated_max_abs={rotated_max_abs} fp16_mismatch={fp16_mismatch} "
+        f"fp16_max_abs={fp16_max_abs} fp16_rotated_mismatch={fp16_rotated_mismatch} "
+        f"fp16_rotated_max_abs={fp16_rotated_max_abs}"
+    )
+    print("rotate_staged0=", _bf16_bits_to_float32(out_bits)[0].tolist())
+    print("rotate_staged_fp16=", out_fp16[0].astype(np.float32).tolist())
+    return 0 if mismatch == 0 and rotated_mismatch == 0 and fp16_mismatch == 0 and fp16_rotated_mismatch == 0 else 1
 
 
 

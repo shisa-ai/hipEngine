@@ -9,6 +9,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn import (
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_prefill_rmsnorm_gate_fp16,
+    qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
@@ -106,6 +107,15 @@ def test_qwen35_linear_attn_gdn_registers_decode_and_prefill_variants() -> None:
         )
         is qwen35_gdn_prefill_rmsnorm_gate_fp16
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_rmsnorm_gate_rotate",
+            quant="w4_paro",
+            variant="fp16",
+        )
+        is qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16
+    )
 
 
 def test_qwen35_linear_attn_gdn_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -150,3 +160,7 @@ def test_qwen35_linear_attn_gdn_wrapper_validates_before_gpu_load() -> None:
         qwen35_gdn_prefill_rmsnorm_gate_bf16(0, 0, 0, 0, 1.0e-6, 1, 2, 0)
     with pytest.raises(ValueError, match="head_v_dim must be positive"):
         qwen35_gdn_prefill_rmsnorm_gate_fp16(0, 0, 0, 0, 1.0e-6, 1, 2, 0)
+    with pytest.raises(ValueError, match="group_size must equal head_v_dim"):
+        qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16(
+            0, 0, 0, 0, 0, 0, 0, 1.0e-6, 1, 2, 4, 8, 1
+        )

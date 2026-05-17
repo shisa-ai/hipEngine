@@ -1,0 +1,493 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "decision": "retain default Marlin-K qweight-neutral replacement for non-expert rows==1 single GEMV decode; baseline fallback remains available with HIPENGINE_PARO_MARLIN_K_REPLACE=0",
+  "task": "D2.1 Marlin-K vec8/qweight-neutral decode path",
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "hipcc_version_file": "/tmp/hipengine-hipcc-version.txt",
+  "hipcc_version_first_line": "HIP version: 7.2.53211-d40244d",
+  "benchmark_protocol": {
+    "warmup_decode_tokens": 1,
+    "measured_runs": 3,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "attn_aotriton_min_tokens": 512,
+    "require_cached_build": true,
+    "common_command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --prompt-length {512|4096} --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-d21-marlin-k-20260517/{mode}_{prompt}_128_run{n}.json",
+    "raw_output_dir": "/tmp/hipengine-d21-marlin-k-20260517"
+  },
+  "implementation": {
+    "source_lineage": [
+      "docs/MARLIN.md",
+      "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md sections 11.10-11.11",
+      "nano-vllm-amd commits documented as 7718fff and 1522293 (not present in current parent checkout)"
+    ],
+    "env_default": {
+      "HIPENGINE_PARO_MARLIN_K_REPLACE": "enabled by default"
+    },
+    "layout": {
+      "qweight_mk": "[N/8, K/128, 128]",
+      "qzeros_mk": "[N/8, K/128]",
+      "scales_mk": "[N/8, K/128, 8]",
+      "qweight_pack8_decode_alias": "[N/8, K] zero-copy view over qweight_mk"
+    }
+  },
+  "correctness": {
+    "native_prefill_fixture_gate": {
+      "command": "python3 scripts/qwen35_native_prefill_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/hipengine-d21-marlin-k-20260517/native_prefill_fixture_gate.json",
+      "passed": true,
+      "status": "accepted",
+      "generated_match": true,
+      "expected_match": true,
+      "finite_logits": true,
+      "max_kl": 0.039568870612619614,
+      "top1_agreement": 1.0,
+      "final_kl": null,
+      "final_top1_match": null,
+      "artifact": "/tmp/hipengine-d21-marlin-k-20260517/native_prefill_fixture_gate.json"
+    },
+    "decode_graph_fixture_gate": {
+      "command": "python3 scripts/qwen35_decode_graph_fixture_gate.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-d21-marlin-k-20260517/decode_graph_fixture_gate.json",
+      "passed": true,
+      "status": "accepted",
+      "generated_match": true,
+      "expected_match": true,
+      "finite_logits": true,
+      "max_kl": null,
+      "top1_agreement": null,
+      "final_kl": 0.0,
+      "final_top1_match": true,
+      "artifact": "/tmp/hipengine-d21-marlin-k-20260517/decode_graph_fixture_gate.json"
+    }
+  },
+  "kernel_trace_smoke": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-d21-marlin-k-20260517/rocprof_marlin_smoke -- python3 scripts/smoke.py --mode paro-marlin-k-hip --rows 2 --hidden-size 128 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "marlin_kernel_rows": [
+      {
+        "csv": "/tmp/hipengine-d21-marlin-k-20260517/rocprof_marlin_smoke/epyc/1953574_kernel_trace.csv",
+        "kernel_name": "void (anonymous namespace)::gemv_paro_marlin_k_fma_kernel<_Float16>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, int)",
+        "duration_ns": 6720,
+        "workgroup_size": [
+          128,
+          1,
+          1
+        ],
+        "grid_size": [
+          256,
+          2,
+          1
+        ],
+        "vgpr_count": 104,
+        "scratch_size": 0,
+        "lds_block_size": 512
+      }
+    ]
+  },
+  "workloads": [
+    {
+      "workload": "512/128",
+      "prompt_tokens": 512,
+      "decode_tokens": 128,
+      "baseline_env": {
+        "HIPENGINE_PARO_MARLIN_K_REPLACE": "0"
+      },
+      "candidate_env": {
+        "HIPENGINE_PARO_MARLIN_K_REPLACE": "1"
+      },
+      "baseline_runs": [
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/off_512_128_run1.json",
+          "prefill_tok_s": 2221.530395288321,
+          "decode_tok_s": 109.06126134006581,
+          "wall_decode_seconds": 1.1736522980500013,
+          "prefill_seconds": 0.23047175095416605,
+          "load_seconds": 25.20212690695189,
+          "tracked_peak_gib": 18.586900514550507,
+          "tracked_current_before_close_gib": 18.37314296979457,
+          "hip_used_peak_sampled_gib": 18.60388946533203,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        },
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/off_512_128_run2.json",
+          "prefill_tok_s": 2209.5883825167084,
+          "decode_tok_s": 109.43735690399495,
+          "wall_decode_seconds": 1.1696188908535987,
+          "prefill_seconds": 0.23171736602671444,
+          "load_seconds": 25.764137604041025,
+          "tracked_peak_gib": 18.586900514550507,
+          "tracked_current_before_close_gib": 18.37314296979457,
+          "hip_used_peak_sampled_gib": 18.60388946533203,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        },
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/off_512_128_run3.json",
+          "prefill_tok_s": 2197.8405206434236,
+          "decode_tok_s": 108.9679294155148,
+          "wall_decode_seconds": 1.1746575408615172,
+          "prefill_seconds": 0.2329559379722923,
+          "load_seconds": 26.378033249173313,
+          "tracked_peak_gib": 18.586900514550507,
+          "tracked_current_before_close_gib": 18.37314296979457,
+          "hip_used_peak_sampled_gib": 18.60388946533203,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        }
+      ],
+      "candidate_runs": [
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/on_512_128_run1.json",
+          "prefill_tok_s": 2253.3689857200775,
+          "decode_tok_s": 115.13666532049052,
+          "wall_decode_seconds": 1.1117223140317947,
+          "prefill_seconds": 0.22721533989533782,
+          "load_seconds": 25.57925664098002,
+          "tracked_peak_gib": 18.17559985537082,
+          "tracked_current_before_close_gib": 17.961842310614884,
+          "hip_used_peak_sampled_gib": 18.19178009033203,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        },
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/on_512_128_run2.json",
+          "prefill_tok_s": 2231.01767090259,
+          "decode_tok_s": 115.34870335232263,
+          "wall_decode_seconds": 1.1096787070855498,
+          "prefill_seconds": 0.2294916829559952,
+          "load_seconds": 26.295756778214127,
+          "tracked_peak_gib": 18.17559985537082,
+          "tracked_current_before_close_gib": 17.961842310614884,
+          "hip_used_peak_sampled_gib": 18.19178009033203,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        },
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/on_512_128_run3.json",
+          "prefill_tok_s": 2224.277430131871,
+          "decode_tok_s": 115.13398581148164,
+          "wall_decode_seconds": 1.11174818710424,
+          "prefill_seconds": 0.23018711293116212,
+          "load_seconds": 25.857781503116712,
+          "tracked_peak_gib": 18.17559985537082,
+          "tracked_current_before_close_gib": 17.961842310614884,
+          "hip_used_peak_sampled_gib": 18.19178009033203,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        }
+      ],
+      "prefill_tok_s": {
+        "baseline": {
+          "samples": [
+            2221.530395288321,
+            2209.5883825167084,
+            2197.8405206434236
+          ],
+          "median": 2209.5883825167084,
+          "p95": 2221.530395288321,
+          "min": 2197.8405206434236,
+          "max": 2221.530395288321,
+          "stdev": 11.845069919042887,
+          "stdev_pct_of_median": 0.5360758597740011
+        },
+        "candidate": {
+          "samples": [
+            2253.3689857200775,
+            2231.01767090259,
+            2224.277430131871
+          ],
+          "median": 2231.01767090259,
+          "p95": 2253.3689857200775,
+          "min": 2224.277430131871,
+          "max": 2253.3689857200775,
+          "stdev": 15.227884107011349,
+          "stdev_pct_of_median": 0.6825532717923607
+        },
+        "delta_pct_median": 0.9698316915240923
+      },
+      "decode_tok_s": {
+        "baseline": {
+          "samples": [
+            109.06126134006581,
+            109.43735690399495,
+            108.9679294155148
+          ],
+          "median": 109.06126134006581,
+          "p95": 109.43735690399495,
+          "min": 108.9679294155148,
+          "max": 109.43735690399495,
+          "stdev": 0.2485024776162052,
+          "stdev_pct_of_median": 0.22785586244170172
+        },
+        "candidate": {
+          "samples": [
+            115.13666532049052,
+            115.34870335232263,
+            115.13398581148164
+          ],
+          "median": 115.13666532049052,
+          "p95": 115.34870335232263,
+          "min": 115.13398581148164,
+          "max": 115.34870335232263,
+          "stdev": 0.12320100720405833,
+          "stdev_pct_of_median": 0.10700414751558086
+        },
+        "delta_pct_median": 5.570634252505924
+      },
+      "tracked_peak_gib": {
+        "baseline": {
+          "samples": [
+            18.586900514550507,
+            18.586900514550507,
+            18.586900514550507
+          ],
+          "median": 18.586900514550507,
+          "p95": 18.586900514550507,
+          "min": 18.586900514550507,
+          "max": 18.586900514550507,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "candidate": {
+          "samples": [
+            18.17559985537082,
+            18.17559985537082,
+            18.17559985537082
+          ],
+          "median": 18.17559985537082,
+          "p95": 18.17559985537082,
+          "min": 18.17559985537082,
+          "max": 18.17559985537082,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "delta_gib_median": -0.4113006591796875
+      },
+      "generated_preview_match": true
+    },
+    {
+      "workload": "4096/128",
+      "prompt_tokens": 4096,
+      "decode_tokens": 128,
+      "baseline_env": {
+        "HIPENGINE_PARO_MARLIN_K_REPLACE": "0"
+      },
+      "candidate_env": {
+        "HIPENGINE_PARO_MARLIN_K_REPLACE": "1"
+      },
+      "baseline_runs": [
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/off_4096_128_run1.json",
+          "prefill_tok_s": 2439.144844458599,
+          "decode_tok_s": 109.91913768294928,
+          "wall_decode_seconds": 1.1644923959393054,
+          "prefill_seconds": 1.679277066839859,
+          "load_seconds": 25.380915786139667,
+          "tracked_peak_gib": 20.458408792503178,
+          "tracked_current_before_close_gib": 18.748622347600758,
+          "hip_used_peak_sampled_gib": 19.013427734375,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        },
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/off_4096_128_run2.json",
+          "prefill_tok_s": 2436.2938425277976,
+          "decode_tok_s": 110.54369606836839,
+          "wall_decode_seconds": 1.157913156086579,
+          "prefill_seconds": 1.6812421919312328,
+          "load_seconds": 26.096517340978608,
+          "tracked_peak_gib": 20.458408792503178,
+          "tracked_current_before_close_gib": 18.748622347600758,
+          "hip_used_peak_sampled_gib": 19.013427734375,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        },
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/off_4096_128_run3.json",
+          "prefill_tok_s": 2423.1949474932853,
+          "decode_tok_s": 110.08783294711212,
+          "wall_decode_seconds": 1.16270796302706,
+          "prefill_seconds": 1.6903303649742156,
+          "load_seconds": 25.775398839032277,
+          "tracked_peak_gib": 20.458408792503178,
+          "tracked_current_before_close_gib": 18.748622347600758,
+          "hip_used_peak_sampled_gib": 19.013427734375,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        }
+      ],
+      "candidate_runs": [
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/on_4096_128_run1.json",
+          "prefill_tok_s": 2473.287719551235,
+          "decode_tok_s": 116.50818298824106,
+          "wall_decode_seconds": 1.0986352779436857,
+          "prefill_seconds": 1.6560952321160585,
+          "load_seconds": 25.835588699905202,
+          "tracked_peak_gib": 20.04710813332349,
+          "tracked_current_before_close_gib": 18.33732168842107,
+          "hip_used_peak_sampled_gib": 18.601318359375,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        },
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/on_4096_128_run2.json",
+          "prefill_tok_s": 2468.6227144885006,
+          "decode_tok_s": 116.2101035711727,
+          "wall_decode_seconds": 1.1014532821718603,
+          "prefill_seconds": 1.659224787959829,
+          "load_seconds": 26.252742205979303,
+          "tracked_peak_gib": 20.04710813332349,
+          "tracked_current_before_close_gib": 18.33732168842107,
+          "hip_used_peak_sampled_gib": 18.601318359375,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        },
+        {
+          "json": "/tmp/hipengine-d21-marlin-k-20260517/on_4096_128_run3.json",
+          "prefill_tok_s": 2463.476054816821,
+          "decode_tok_s": 116.26250120984683,
+          "wall_decode_seconds": 1.1009568748995662,
+          "prefill_seconds": 1.6626912171486765,
+          "load_seconds": 25.675735255004838,
+          "tracked_peak_gib": 20.04710813332349,
+          "tracked_current_before_close_gib": 18.33732168842107,
+          "hip_used_peak_sampled_gib": 18.601318359375,
+          "generated_preview_token_ids": [
+            9707,
+            9707
+          ]
+        }
+      ],
+      "prefill_tok_s": {
+        "baseline": {
+          "samples": [
+            2439.144844458599,
+            2436.2938425277976,
+            2423.1949474932853
+          ],
+          "median": 2436.2938425277976,
+          "p95": 2439.144844458599,
+          "min": 2423.1949474932853,
+          "max": 2439.144844458599,
+          "stdev": 8.50596336243701,
+          "stdev_pct_of_median": 0.3491353634753505
+        },
+        "candidate": {
+          "samples": [
+            2473.287719551235,
+            2468.6227144885006,
+            2463.476054816821
+          ],
+          "median": 2468.6227144885006,
+          "p95": 2473.287719551235,
+          "min": 2463.476054816821,
+          "max": 2473.287719551235,
+          "stdev": 4.907802340355209,
+          "stdev_pct_of_median": 0.19880730706847227
+        },
+        "delta_pct_median": 1.3269693251434678
+      },
+      "decode_tok_s": {
+        "baseline": {
+          "samples": [
+            109.91913768294928,
+            110.54369606836839,
+            110.08783294711212
+          ],
+          "median": 110.08783294711212,
+          "p95": 110.54369606836839,
+          "min": 109.91913768294928,
+          "max": 110.54369606836839,
+          "stdev": 0.32309504645686965,
+          "stdev_pct_of_median": 0.2934884244765627
+        },
+        "candidate": {
+          "samples": [
+            116.50818298824106,
+            116.2101035711727,
+            116.26250120984683
+          ],
+          "median": 116.26250120984683,
+          "p95": 116.50818298824106,
+          "min": 116.2101035711727,
+          "max": 116.50818298824106,
+          "stdev": 0.1591416495104244,
+          "stdev_pct_of_median": 0.13688132274324916
+        },
+        "delta_pct_median": 5.608856217290703
+      },
+      "tracked_peak_gib": {
+        "baseline": {
+          "samples": [
+            20.458408792503178,
+            20.458408792503178,
+            20.458408792503178
+          ],
+          "median": 20.458408792503178,
+          "p95": 20.458408792503178,
+          "min": 20.458408792503178,
+          "max": 20.458408792503178,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "candidate": {
+          "samples": [
+            20.04710813332349,
+            20.04710813332349,
+            20.04710813332349
+          ],
+          "median": 20.04710813332349,
+          "p95": 20.04710813332349,
+          "min": 20.04710813332349,
+          "max": 20.04710813332349,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "delta_gib_median": -0.4113006591796875
+      },
+      "generated_preview_match": true
+    }
+  ],
+  "acceptance": {
+    "512_128_decode_delta_pct": 5.570634252505924,
+    "4096_128_decode_delta_pct": 5.608856217290703,
+    "memory_guardrail_peak_lt_24gib": true,
+    "variance_guard_ok": true,
+    "correctness_gates_passed": true,
+    "rocprof_kernel_seen": true
+  },
+  "notes": [
+    "Resident-runner diagnostic row; not promoted to current-fastest public LLM.generate() throughput table.",
+    "Baseline uses the explicit env opt-out to preserve the pre-port pack8/raw-qweight path in the same working tree.",
+    "Marlin-K lowers peak memory here because the qweight-neutral alias replaces raw qweight plus prepared pack8 duplicates for eligible non-expert linears."
+  ]
+}

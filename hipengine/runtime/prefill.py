@@ -2,7 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+_GIB = 1024 ** 3
+_LONG_CONTEXT_MIN_TOKENS = 32768
+_VERY_LONG_CONTEXT_MIN_TOKENS = 131072
+_LONG_CONTEXT_LINEAR_CHUNK = 1024
+_LONG_CONTEXT_MOE_CHUNK = 1024
+_LONG_CONTEXT_FULL_ATTN_QUERY_CHUNK = 4096
+_VERY_LONG_CONTEXT_FULL_ATTN_QUERY_CHUNK = 8192
+_LONG_CONTEXT_FULL_ATTN_POST_CHUNK = 1024
+_LONG_CONTEXT_FULL_ATTN_ROPE_CHUNK = 1024
+_VERY_LONG_QUERY_MIN_BUDGET_GIB = 24.5
+_DEFAULT_BUDGET_FRACTION = 0.55
 
 
 @dataclass(frozen=True, slots=True)
@@ -11,10 +23,12 @@ class PrefillConfig:
 
     The defaults describe the final retained path: full-native prefill is
     required unless a caller explicitly opts into bring-up/oracle behavior.
-    Chunk sizes of ``0`` mean unchunked, matching the parent environment-knob
-    convention.  AOTriton is a baseline vendored runtime dependency for the
-    gfx1100 Qwen3.5/PARO path; the measured crossover policy uses AOTriton
-    attention once prompts reach 512 tokens.
+    Chunk sizes of ``0`` mean "no manual override", matching the parent
+    environment-knob convention; with ``auto_tune_chunk_sizes`` enabled, long
+    sessions resolve those zeros to a profile-derived memory-budget policy at
+    session construction.  AOTriton is a baseline vendored runtime dependency
+    for the gfx1100 Qwen3.5/PARO path; the measured crossover policy uses
+    AOTriton attention once prompts reach 512 tokens.
     """
 
     linear_chunk_size: int = 0
@@ -23,6 +37,9 @@ class PrefillConfig:
     full_attn_rope_chunk_size: int = 0
     moe_chunk_size: int = 0
     attn_aotriton_min_tokens: int = 512
+    auto_tune_chunk_sizes: bool = True
+    chunk_tune_min_tokens: int = _LONG_CONTEXT_MIN_TOKENS
+    chunk_tune_memory_budget_gib: float = 0.0
     moe_grouped_device_gather: bool = True
     moe_stacked_compact: bool = True
     require_full_native: bool = True
@@ -35,11 +52,111 @@ class PrefillConfig:
             "full_attn_rope_chunk_size",
             "moe_chunk_size",
             "attn_aotriton_min_tokens",
+            "chunk_tune_min_tokens",
         ):
             value = int(getattr(self, name))
             if value < 0:
                 raise ValueError(f"{name} must be non-negative")
             object.__setattr__(self, name, value)
+        budget = float(self.chunk_tune_memory_budget_gib)
+        if budget < 0.0:
+            raise ValueError("chunk_tune_memory_budget_gib must be non-negative")
+        object.__setattr__(self, "chunk_tune_memory_budget_gib", budget)
+        object.__setattr__(self, "auto_tune_chunk_sizes", bool(self.auto_tune_chunk_sizes))
         object.__setattr__(self, "moe_grouped_device_gather", bool(self.moe_grouped_device_gather))
         object.__setattr__(self, "moe_stacked_compact", bool(self.moe_stacked_compact))
         object.__setattr__(self, "require_full_native", bool(self.require_full_native))
+
+
+def resolve_prefill_config_for_sequence(
+    config: PrefillConfig,
+    *,
+    max_sequence_length: int,
+    total_memory_bytes: int = 0,
+) -> tuple[PrefillConfig, dict[str, object]]:
+    """Resolve profile-derived chunk sizes for long single-request prefill.
+
+    Explicit non-zero chunk sizes are treated as manual overrides.  With the
+    default auto policy, short/mid prompts stay unchunked while long contexts use
+    the retained parent-style 1024/4096 policy; very long contexts can use a
+    larger full-attention query chunk when the memory budget allows it.
+    """
+
+    max_sequence = int(max_sequence_length)
+    if max_sequence <= 0:
+        raise ValueError("max_sequence_length must be positive")
+    tuning: dict[str, object] = {
+        "enabled": bool(config.auto_tune_chunk_sizes),
+        "applied": False,
+        "reason": "disabled",
+        "max_sequence_length": max_sequence,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0,
+    }
+    if not config.auto_tune_chunk_sizes:
+        return config, tuning
+    if _has_manual_chunk_sizes(config):
+        tuning["reason"] = "manual_chunk_sizes"
+        return config, tuning
+    if max_sequence < int(config.chunk_tune_min_tokens):
+        tuning["reason"] = "below_min_tokens"
+        return config, tuning
+
+    budget_gib = _chunk_memory_budget_gib(config, total_memory_bytes=total_memory_bytes)
+    query_chunk = _LONG_CONTEXT_FULL_ATTN_QUERY_CHUNK
+    estimated_peak_gib = 23.3
+    reason = "long_context_static_budget"
+    if max_sequence >= _VERY_LONG_CONTEXT_MIN_TOKENS and budget_gib >= _VERY_LONG_QUERY_MIN_BUDGET_GIB:
+        query_chunk = _VERY_LONG_CONTEXT_FULL_ATTN_QUERY_CHUNK
+        estimated_peak_gib = _VERY_LONG_QUERY_MIN_BUDGET_GIB
+        reason = "very_long_context_query8192_budget"
+
+    tuned = replace(
+        config,
+        linear_chunk_size=_LONG_CONTEXT_LINEAR_CHUNK,
+        moe_chunk_size=_LONG_CONTEXT_MOE_CHUNK,
+        full_attn_query_chunk_size=query_chunk,
+        full_attn_post_chunk_size=_LONG_CONTEXT_FULL_ATTN_POST_CHUNK,
+        full_attn_rope_chunk_size=_LONG_CONTEXT_FULL_ATTN_ROPE_CHUNK,
+    )
+    tuning.update(
+        {
+            "applied": True,
+            "reason": reason,
+            "memory_budget_gib": budget_gib,
+            "estimated_peak_gib": estimated_peak_gib,
+            "chunk_sizes": _chunk_sizes_dict(tuned),
+        }
+    )
+    return tuned, tuning
+
+
+def _has_manual_chunk_sizes(config: PrefillConfig) -> bool:
+    return any(
+        int(getattr(config, name)) > 0
+        for name in (
+            "linear_chunk_size",
+            "moe_chunk_size",
+            "full_attn_query_chunk_size",
+            "full_attn_post_chunk_size",
+            "full_attn_rope_chunk_size",
+        )
+    )
+
+
+def _chunk_memory_budget_gib(config: PrefillConfig, *, total_memory_bytes: int) -> float:
+    if config.chunk_tune_memory_budget_gib > 0.0:
+        return float(config.chunk_tune_memory_budget_gib)
+    if total_memory_bytes <= 0:
+        return 0.0
+    return (float(total_memory_bytes) / float(_GIB)) * _DEFAULT_BUDGET_FRACTION
+
+
+def _chunk_sizes_dict(config: PrefillConfig) -> dict[str, int]:
+    return {
+        "linear": int(config.linear_chunk_size),
+        "moe": int(config.moe_chunk_size),
+        "full_attn_query": int(config.full_attn_query_chunk_size),
+        "full_attn_post": int(config.full_attn_post_chunk_size),
+        "full_attn_rope": int(config.full_attn_rope_chunk_size),
+    }

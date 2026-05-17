@@ -39,15 +39,22 @@ _DTYPE_TO_SAFETENSORS = {dtype: safetensors for safetensors, dtype in _SAFETENSO
 
 @dataclass(frozen=True)
 class DeviceTensorAllocation:
-    """Owned device allocation plus the tensor view used by kernel wrappers."""
+    """Device allocation plus the tensor view used by kernel wrappers.
+
+    Most entries own their ``buffer``.  qweight-neutral Marlin-K materialization
+    also stores zero-copy Tensor aliases over an owning allocation; those entries
+    set ``owns_buffer=False`` so ``DeviceWeightMap.free()`` cannot double-free.
+    """
 
     name: str
     source: TensorInfo
     buffer: DeviceBuffer
     tensor: Tensor
+    owns_buffer: bool = True
 
     def free(self, *, runtime: HipRuntime | None = None) -> None:
-        free(self.buffer, runtime=runtime)
+        if self.owns_buffer:
+            free(self.buffer, runtime=runtime)
 
 
 @dataclass(frozen=True)
@@ -157,6 +164,41 @@ def load_host_array_to_device(
         device=device,
         runtime=runtime,
     )
+
+
+def alias_device_allocation(
+    name: str,
+    owner: DeviceTensorAllocation,
+    shape: tuple[int, ...],
+    dtype: str | DType,
+    *,
+    byte_offset: int = 0,
+    device: Device | None = None,
+) -> DeviceTensorAllocation:
+    """Create a non-owning tensor alias over an existing device allocation."""
+
+    if not name:
+        raise ValueError("tensor name must be non-empty")
+    if byte_offset < 0:
+        raise ValueError("byte_offset must be non-negative")
+    parsed = DType.parse(dtype)
+    shape = tuple(int(dim) for dim in shape)
+    expected_nbytes = parsed.itemsize
+    for dim in shape:
+        if dim < 0:
+            raise ValueError("alias dimensions must be non-negative")
+        expected_nbytes *= dim
+    if byte_offset + expected_nbytes > owner.buffer.nbytes:
+        raise ValueError(
+            f"alias {name!r} byte range exceeds owner {owner.name!r}: "
+            f"offset={byte_offset} nbytes={expected_nbytes} owner_nbytes={owner.buffer.nbytes}"
+        )
+    safetensors_dtype = _DTYPE_TO_SAFETENSORS.get(parsed)
+    if safetensors_dtype is None:
+        raise ValueError(f"dtype {parsed.value!r} cannot be represented as safetensors metadata")
+    source = TensorInfo(name=name, shard_path=index_virtual_path(name), dtype=safetensors_dtype, shape=shape)
+    tensor = Tensor.from_handle(owner.buffer.ptr + byte_offset, shape, parsed, device or owner.tensor.device)
+    return DeviceTensorAllocation(name=name, source=source, buffer=owner.buffer, tensor=tensor, owns_buffer=False)
 
 
 def load_host_array_to_device_as_dtype(

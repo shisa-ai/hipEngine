@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "status": "diagnostic_deferred",
+  "performance_claim": false,
+  "date": "2026-05-17",
+  "task": "D1.2 RMSNorm/add-RMSNorm producer fusion",
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "source_profile": "benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json",
+  "profile_basis": "M.4 selected-region decode Amdahl profile; kernel time only, 16 graph-replay decode tokens per workload.",
+  "m4_decode_rmsnorm_bucket": [
+    {
+      "workload": "512-128",
+      "kernel_time_ms": 116.240399,
+      "dispatches_per_token": 877.0,
+      "rmsnorm_share_percent": 3.3026736255439038,
+      "rmsnorm_calls_per_token": 91.0,
+      "rmsnorm_ms_per_token": 0.2399400625
+    },
+    {
+      "workload": "4k-128",
+      "kernel_time_ms": 115.620904,
+      "dispatches_per_token": 877.0,
+      "rmsnorm_share_percent": 3.365196833264684,
+      "rmsnorm_calls_per_token": 91.0,
+      "rmsnorm_ms_per_token": 0.2431794375
+    },
+    {
+      "workload": "32k-128",
+      "kernel_time_ms": 137.648706,
+      "dispatches_per_token": 877.0,
+      "rmsnorm_share_percent": 2.9682298647980025,
+      "rmsnorm_calls_per_token": 91.0,
+      "rmsnorm_ms_per_token": 0.255358125
+    }
+  ],
+  "rmsnorm_kernel_breakdown": [
+    {
+      "workload": "512-128",
+      "paro_rmsnorm_out_input_norm_plus_final_norm": {
+        "calls": 656,
+        "calls_per_token": 41.0,
+        "total_ms": 1.656098,
+        "avg_us": 2.5245396341463415
+      },
+      "paro_add_rmsnorm_out_post_attention": {
+        "calls": 640,
+        "calls_per_token": 40.0,
+        "total_ms": 1.700537,
+        "avg_us": 2.6570890625000003
+      },
+      "head_rmsnorm_rope_already_fused": {
+        "calls": 160,
+        "calls_per_token": 10.0,
+        "total_ms": 0.482406,
+        "avg_us": 3.0150375
+      }
+    },
+    {
+      "workload": "4k-128",
+      "paro_rmsnorm_out_input_norm_plus_final_norm": {
+        "calls": 656,
+        "calls_per_token": 41.0,
+        "total_ms": 1.686659,
+        "avg_us": 2.571126524390244
+      },
+      "paro_add_rmsnorm_out_post_attention": {
+        "calls": 640,
+        "calls_per_token": 40.0,
+        "total_ms": 1.696409,
+        "avg_us": 2.6506390625
+      },
+      "head_rmsnorm_rope_already_fused": {
+        "calls": 160,
+        "calls_per_token": 10.0,
+        "total_ms": 0.507803,
+        "avg_us": 3.1737687500000002
+      }
+    },
+    {
+      "workload": "32k-128",
+      "paro_rmsnorm_out_input_norm_plus_final_norm": {
+        "calls": 656,
+        "calls_per_token": 41.0,
+        "total_ms": 1.761144,
+        "avg_us": 2.684670731707317
+      },
+      "paro_add_rmsnorm_out_post_attention": {
+        "calls": 640,
+        "calls_per_token": 40.0,
+        "total_ms": 1.80842,
+        "avg_us": 2.82565625
+      },
+      "head_rmsnorm_rope_already_fused": {
+        "calls": 160,
+        "calls_per_token": 10.0,
+        "total_ms": 0.516166,
+        "avg_us": 3.2260375
+      }
+    }
+  ],
+  "static_dataflow_audit": [
+    {
+      "producer": "input_layernorm -> attention input",
+      "calls_per_token": 40,
+      "single_use": false,
+      "consumers": [
+        "linear-attention layers: PARO rotate2 for in_proj_qkv/in_proj_z plus dense A/B projection",
+        "full-attention layers: PARO rotate inputs for q_proj/k_proj/v_proj"
+      ],
+      "reason_not_fused_now": "Fusing into one following projection would either recompute RMSNorm for sibling projections or require a row-staged/barrier producer like the rejected D1.1 rotate-staged kernel."
+    },
+    {
+      "producer": "post_attention add_rmsnorm -> mlp_input plus residual",
+      "calls_per_token": 40,
+      "single_use": false,
+      "consumers": [
+        "router/shared-gate logits",
+        "selected-MoE gate/up projection",
+        "shared-expert gate/up projection",
+        "residual output consumed by MoE/shared combine"
+      ],
+      "reason_not_fused_now": "The normalized vector fans out to routing and both expert paths; a projection-local fusion would duplicate RMS/add work and risk changing residual rounding semantics."
+    },
+    {
+      "producer": "full-attention q/k head RMSNorm + RoPE",
+      "calls_per_token": 10,
+      "single_use": false,
+      "already_fused": true,
+      "reason_not_fused_now": "This is already a fused head-RMSNorm+rotary helper and is not a paro_rmsnorm/add_rmsnorm producer. The remaining projection issue is same-input Q/K/V pack8 fusion (D1.3/D1.6), not D1.2."
+    },
+    {
+      "producer": "final RMSNorm -> lm_head",
+      "calls_per_token": 1,
+      "single_use": true,
+      "optimistic_upper_bound_percent_kernel_time_512": 0.035,
+      "reason_not_fused_now": "This is the only clear single-use RMSNorm producer, but it is one tiny launch per token. Folding it into the W8A16 lm-head would need a new row-staged W8A16 producer to avoid recomputing RMS for each vocab tile."
+    }
+  ],
+  "decision": {
+    "action": "defer_no_code_change",
+    "default_runtime_impact": "none",
+    "rationale": "The measured RMSNorm/add-RMSNorm family is only about 3.0-3.4% of decode kernel time, and nearly all of it is multi-consumer producer state. The safe single-use slice is only final RMSNorm -> lm-head (~0.04% kernel-time upper bound at 512/128). A pack8-preserving producer fusion that stages RMS once per row would be a new row-staging design and should wait until D1.3/D1.6 multi-projection fusion work justifies shared staging.",
+    "revisit_when": [
+      "A later graph-level fusion pass can stage one normalized row and feed multiple pack8/W8A16 projections without the D1.1 barrier regression.",
+      "M.4-equivalent c>N or scheduler profiles show RMSNorm/add-RMSNorm as a multi-percent single-use bucket rather than fanout glue."
+    ]
+  },
+  "validation": {
+    "no_math_or_runtime_code_changed": true,
+    "commands": [
+      {
+        "command": "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\"",
+        "result": "hip OK"
+      },
+      {
+        "command": "python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt",
+        "result": "norm/add_norm/residual BF16 and FP16 mismatches all 0"
+      },
+      {
+        "command": "python3 -m pytest tests/test_qwen35_rmsnorm_plan.py tests/test_qwen35_paro_layout.py -q --tb=short",
+        "result": "23 passed"
+      },
+      {
+        "command": "python3 -m pytest tests/test_qwen35_decode_state.py -q --tb=short",
+        "result": "49 passed"
+      },
+      {
+        "command": "python3 -m py_compile scripts/qwen35_rocprof_audit.py scripts/smoke.py",
+        "result": "passed"
+      }
+    ]
+  }
+}

@@ -1,0 +1,527 @@
+{
+  "schema": 2,
+  "date": "2026-05-17",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "reason_not_promoted": "Resident-runner diagnostic only: no shisa KL/top-1 gate was run in this pass, and rows are single runs per workload/format.",
+  "task": "shisa-ai Qwen3.6 packed-vs-legacy PARO refresh and compare-table update",
+  "git_head_at_benchmark_run": "5bf796ebd381a7053cafac050baa61acca6fbb36",
+  "git_head_at_artifact_write": "5bf796ebd381a7053cafac050baa61acca6fbb36",
+  "working_tree_at_benchmark_start": "clean (git status -sb: ## main...origin/main)",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "software": {
+    "python": "3.12.9",
+    "hipcc_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "hipcc_version_text": "HIP version: 7.2.53211-d40244d\nAMD clang version 22.0.0git (/startdir/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n"
+  },
+  "models": {
+    "unstripped": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+      "format_note": "Contains both legacy fp16 shared_expert.*.weight tensors and packed PARO sidecars; auto/packed uses packed_paro_w4, legacy can be forced for diagnostics."
+    },
+    "packed_only": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+      "strip_report": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e/strip_paro_safetensors_report.json",
+      "format_note": "Stripped packed-only checkpoint; auto resolves to packed PARO sidecars."
+    }
+  },
+  "quant": "w4_paro",
+  "default_comparison_policy": {
+    "comparison_a": "packed_paro_w4",
+    "comparison_b": "legacy_fp16",
+    "script_flags": {
+      "packed_as_A": "python3 scripts/qwen35_compare_tables.py --target shisa --against-target",
+      "legacy_as_A": "python3 scripts/qwen35_compare_tables.py --target legacy --against-target",
+      "packed_vs_external": "python3 scripts/qwen35_compare_tables.py --target shisa <baseline|all>"
+    }
+  },
+  "validation": {
+    "layout_probe_prior": "tests/test_qwen35_paro_layout.py covers auto->packed and forced legacy/packed selection for dual-format checkpoints.",
+    "generated_token_sanity": "All rows generated repeated token_id 9707 for the preview tokens recorded by qwen35_paro_bench.py.",
+    "stripped_packed_sanity": "Packed-only auto rows at 512/4K match forced packed token previews and memory; timing differs only by single-run noise.",
+    "correctness_gate": "not run for shisa in this diagnostic pass; upstream kld-smoke.json records quantization KL, not hipENGINE E2E KL/top-1."
+  },
+  "common_command_args": "--token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512",
+  "long_context_chunk_flags": "--prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024",
+  "measurements": {
+    "packed_paro_w4": {
+      "512/128": {
+        "file": "/tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-packed_paro_w4-512-128.json",
+        "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 512 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-packed_paro_w4-512-128.json",
+        "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+        "shared_expert_format": "packed_paro_w4",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "prefill_tok_s": 2518.835626185072,
+        "decode_tok_s": 111.73818063961825,
+        "decode_step_median_s": 0.008949492414103588,
+        "tracked_peak_allocated_gib": 18.123325088061392,
+        "hip_used_peak_sampled_gib": 18.14099884033203,
+        "owned_session_peak_gib": 1.5545942122116685,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.44217872619629
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.256940841674805
+          }
+        ]
+      },
+      "4K/128": {
+        "file": "/tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-packed_paro_w4-4096-128.json",
+        "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-packed_paro_w4-4096-128.json",
+        "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+        "shared_expert_format": "packed_paro_w4",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "prefill_tok_s": 2711.012939813165,
+        "decode_tok_s": 113.23099604735297,
+        "decode_step_median_s": 0.00883150404843036,
+        "tracked_peak_allocated_gib": 19.994833522476256,
+        "hip_used_peak_sampled_gib": 18.552490234375,
+        "owned_session_peak_gib": 1.9300737464800477,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.685245513916016
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.744184494018555
+          }
+        ]
+      },
+      "32K/128": {
+        "file": "/tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-packed_paro_w4-32768-128.json",
+        "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 32768 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-packed_paro_w4-32768-128.json",
+        "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+        "shared_expert_format": "packed_paro_w4",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "prefill_tok_s": 2130.5616566777217,
+        "decode_tok_s": 97.77869746292893,
+        "decode_step_median_s": 0.010227176531770965,
+        "tracked_peak_allocated_gib": 20.267377072013915,
+        "hip_used_peak_sampled_gib": 19.390380859375,
+        "owned_session_peak_gib": 2.7427784288302064,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.928117752075195
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.008821487426758
+          }
+        ]
+      },
+      "128K/128": {
+        "file": "/tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-packed_paro_w4-131072-128.json",
+        "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 131072 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-packed_paro_w4-131072-128.json",
+        "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+        "shared_expert_format": "packed_paro_w4",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "prefill_tok_s": 1048.5427505582509,
+        "decode_tok_s": 62.014014304523656,
+        "decode_step_median_s": 0.01612538732115354,
+        "tracked_peak_allocated_gib": 23.235433750785887,
+        "hip_used_peak_sampled_gib": 22.357177734375,
+        "owned_session_peak_gib": 5.710835107602179,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.670663833618164
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.789804458618164
+          }
+        ]
+      }
+    },
+    "legacy_fp16": {
+      "512/128": {
+        "file": "/tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-legacy_fp16-512-128.json",
+        "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format legacy_fp16 --prompt-length 512 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-legacy_fp16-512-128.json",
+        "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+        "shared_expert_format": "legacy_fp16",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "prefill_tok_s": 2272.0877139991203,
+        "decode_tok_s": 115.32350515134056,
+        "decode_step_median_s": 0.008671259156471933,
+        "tracked_peak_allocated_gib": 18.17562458757311,
+        "hip_used_peak_sampled_gib": 18.19373321533203,
+        "owned_session_peak_gib": 1.5545942122116685,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 27.87755012512207
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.27869987487793
+          }
+        ]
+      },
+      "4K/128": {
+        "file": "/tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-legacy_fp16-4096-128.json",
+        "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format legacy_fp16 --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-legacy_fp16-4096-128.json",
+        "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+        "shared_expert_format": "legacy_fp16",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "prefill_tok_s": 2487.298130316128,
+        "decode_tok_s": 116.68750358438835,
+        "decode_step_median_s": 0.008569897969209705,
+        "tracked_peak_allocated_gib": 20.047133021987975,
+        "hip_used_peak_sampled_gib": 18.603271484375,
+        "owned_session_peak_gib": 1.9300737464800477,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.435157775878906
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.604114532470703
+          }
+        ]
+      },
+      "32K/128": {
+        "file": "/tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-legacy_fp16-32768-128.json",
+        "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format legacy_fp16 --prompt-length 32768 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-legacy_fp16-32768-128.json",
+        "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+        "shared_expert_format": "legacy_fp16",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "prefill_tok_s": 1974.8328270060356,
+        "decode_tok_s": 99.74614653503646,
+        "decode_step_median_s": 0.010025449952081544,
+        "tracked_peak_allocated_gib": 20.319676571525633,
+        "hip_used_peak_sampled_gib": 19.443115234375,
+        "owned_session_peak_gib": 2.7427784288302064,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.925642013549805
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.166587829589844
+          }
+        ]
+      },
+      "128K/128": {
+        "file": "/tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-legacy_fp16-131072-128.json",
+        "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format legacy_fp16 --prompt-length 131072 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/hipengine-shisa36-packed-legacy-20260517/unstripped-legacy_fp16-131072-128.json",
+        "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+        "shared_expert_format": "legacy_fp16",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "prefill_tok_s": 1002.8409804717033,
+        "decode_tok_s": 63.1895003158975,
+        "decode_step_median_s": 0.015825413953280076,
+        "tracked_peak_allocated_gib": 23.287733250297606,
+        "hip_used_peak_sampled_gib": 22.409912109375,
+        "owned_session_peak_gib": 5.710835107602179,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.459583282470703
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.46431541442871
+          }
+        ]
+      }
+    },
+    "packed_only_auto_sanity": {
+      "512/128": {
+        "file": "/tmp/hipengine-shisa36-packed-legacy-20260517/stripped-auto-512-128.json",
+        "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --shared-expert-format auto --prompt-length 512 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa36-packed-legacy-20260517/stripped-auto-512-128.json",
+        "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+        "shared_expert_format": "auto",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "prefill_tok_s": 2474.102082161253,
+        "decode_tok_s": 111.6391930820868,
+        "decode_step_median_s": 0.008957427695349907,
+        "tracked_peak_allocated_gib": 18.123325088061392,
+        "hip_used_peak_sampled_gib": 18.14099884033203,
+        "owned_session_peak_gib": 1.5545942122116685,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.44217872619629
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.256940841674805
+          }
+        ]
+      },
+      "4K/128": {
+        "file": "/tmp/hipengine-shisa36-packed-legacy-20260517/stripped-auto-4096-128.json",
+        "command": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --shared-expert-format auto --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-shisa36-packed-legacy-20260517/stripped-auto-4096-128.json",
+        "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+        "shared_expert_format": "auto",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "prefill_tok_s": 2702.6063888997137,
+        "decode_tok_s": 112.69125349113298,
+        "decode_step_median_s": 0.008873803148162551,
+        "tracked_peak_allocated_gib": 19.994833522476256,
+        "hip_used_peak_sampled_gib": 18.552490234375,
+        "owned_session_peak_gib": 1.9300737464800477,
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.685245513916016
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.744184494018555
+          }
+        ]
+      }
+    }
+  },
+  "comparisons_packed_vs_legacy": [
+    {
+      "workload": "512/128",
+      "a_default": "packed_paro_w4",
+      "b": "legacy_fp16",
+      "prefill_tok_s_packed": 2518.835626185072,
+      "prefill_tok_s_legacy": 2272.0877139991203,
+      "prefill_delta_packed_vs_legacy_pct": 10.859964193532345,
+      "decode_tok_s_packed": 111.73818063961825,
+      "decode_tok_s_legacy": 115.32350515134056,
+      "decode_delta_packed_vs_legacy_pct": -3.108927800119532,
+      "tracked_peak_gib_packed": 18.123325088061392,
+      "tracked_peak_gib_legacy": 18.17562458757311,
+      "tracked_peak_delta_packed_vs_legacy_gib": -0.05229949951171875
+    },
+    {
+      "workload": "4K/128",
+      "a_default": "packed_paro_w4",
+      "b": "legacy_fp16",
+      "prefill_tok_s_packed": 2711.012939813165,
+      "prefill_tok_s_legacy": 2487.298130316128,
+      "prefill_delta_packed_vs_legacy_pct": 8.994290100182045,
+      "decode_tok_s_packed": 113.23099604735297,
+      "decode_tok_s_legacy": 116.68750358438835,
+      "decode_delta_packed_vs_legacy_pct": -2.962191692219751,
+      "tracked_peak_gib_packed": 19.994833522476256,
+      "tracked_peak_gib_legacy": 20.047133021987975,
+      "tracked_peak_delta_packed_vs_legacy_gib": -0.05229949951171875
+    },
+    {
+      "workload": "32K/128",
+      "a_default": "packed_paro_w4",
+      "b": "legacy_fp16",
+      "prefill_tok_s_packed": 2130.5616566777217,
+      "prefill_tok_s_legacy": 1974.8328270060356,
+      "prefill_delta_packed_vs_legacy_pct": 7.885671513156911,
+      "decode_tok_s_packed": 97.77869746292893,
+      "decode_tok_s_legacy": 99.74614653503646,
+      "decode_delta_packed_vs_legacy_pct": -1.9724562205683305,
+      "tracked_peak_gib_packed": 20.267377072013915,
+      "tracked_peak_gib_legacy": 20.319676571525633,
+      "tracked_peak_delta_packed_vs_legacy_gib": -0.05229949951171875
+    },
+    {
+      "workload": "128K/128",
+      "a_default": "packed_paro_w4",
+      "b": "legacy_fp16",
+      "prefill_tok_s_packed": 1048.5427505582509,
+      "prefill_tok_s_legacy": 1002.8409804717033,
+      "prefill_delta_packed_vs_legacy_pct": 4.557230007199231,
+      "decode_tok_s_packed": 62.014014304523656,
+      "decode_tok_s_legacy": 63.1895003158975,
+      "decode_delta_packed_vs_legacy_pct": -1.8602552726281085,
+      "tracked_peak_gib_packed": 23.235433750785887,
+      "tracked_peak_gib_legacy": 23.287733250297606,
+      "tracked_peak_delta_packed_vs_legacy_gib": -0.05229949951171875
+    }
+  ],
+  "stripped_packed_sanity": [
+    {
+      "workload": "512/128",
+      "unstripped_forced_packed_prefill_tok_s": 2518.835626185072,
+      "stripped_auto_prefill_tok_s": 2474.102082161253,
+      "stripped_auto_prefill_delta_vs_unstripped_packed_pct": -1.775961224257061,
+      "unstripped_forced_packed_decode_tok_s": 111.73818063961825,
+      "stripped_auto_decode_tok_s": 111.6391930820868,
+      "stripped_auto_decode_delta_vs_unstripped_packed_pct": -0.08858883952183039,
+      "tracked_peak_delta_gib": 0.0,
+      "generated_first_two_match": true
+    },
+    {
+      "workload": "4K/128",
+      "unstripped_forced_packed_prefill_tok_s": 2711.012939813165,
+      "stripped_auto_prefill_tok_s": 2702.6063888997137,
+      "stripped_auto_prefill_delta_vs_unstripped_packed_pct": -0.3100889261720252,
+      "unstripped_forced_packed_decode_tok_s": 113.23099604735297,
+      "stripped_auto_decode_tok_s": 112.69125349113298,
+      "stripped_auto_decode_delta_vs_unstripped_packed_pct": -0.4766738570367024,
+      "tracked_peak_delta_gib": 0.0,
+      "generated_first_two_match": true
+    }
+  ],
+  "summary": {
+    "prefill": "Packed is faster than legacy across all swept shapes: +10.9%, +9.0%, +7.9%, +4.6% for 512/4K/32K/128K.",
+    "decode": "Legacy remains faster for c=1 decode, but the gap is now smaller: packed is -3.1%, -3.0%, -2.0%, -1.9% vs legacy.",
+    "memory": "Packed saves ~0.052 GiB tracked peak versus legacy at each shape by omitting legacy W8A16 shared-expert buffers.",
+    "decision": "Keep packed as the default shisa comparison A because it wins prefill and memory; use legacy as explicit A/B diagnostic when decode-only tradeoffs matter."
+  },
+  "approved_optimization_audit": {
+    "packed_default_loader": "PASS: loading/qwen35_paro.py auto-selects packed_paro_w4 when packed shared-expert sidecars are present; scripts/qwen35_compare_tables.py makes shisa-packed the default A-side target.",
+    "P1.4_compact_wmma_prefill": "PASS: multi-token prefill uses run_moe_grouped_compact_* for tokens>=2 via HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS default 2; applies to packed and legacy shared-expert formats.",
+    "P2.3_aotriton_threshold_512": "PASS: PrefillConfig default attn_aotriton_min_tokens=512 and all shisa sweep commands used --attn-aotriton-min-tokens 512.",
+    "D2.1_marlin_k_non_expert_decode": "PASS: HIPENGINE_PARO_MARLIN_K_REPLACE defaults enabled and the non-expert qweight-neutral Marlin-K loader/runtime is format-independent; shisa rows use default environment.",
+    "D3.1_D3.3_grouped_gqa_long_decode": "PASS: long shisa rows use current split decode threshold/grouped-GQA defaults; Qwen3.6 config has the same Qwen3.5 GQA shape.",
+    "packed_shared_decode_fusion": "PASS: packed shared expert decode uses same-input gate/up paro_rotate2 and fused SiLU+down-rotate kernels; refreshed sweep shows the legacy decode gap reduced to 3.1/3.0/2.0/1.9%.",
+    "P1.2_P1.3_legacy_w8a16_prefill": "NOT_APPLICABLE_TO_PACKED: accepted token-tiled W8A16 shared-expert prefill kernels are deliberately legacy_fp16-only; packed PARO sidecars continue on W4 shared-expert kernels and remain faster on prefill.",
+    "pending_after_audit": [
+      "P1.6",
+      "P3.1",
+      "P3.2",
+      "P3.3",
+      "P5.2",
+      "D1.2",
+      "D1.3",
+      "D1.6",
+      "D4.2",
+      "D4.4",
+      "D5.1"
+    ]
+  }
+}

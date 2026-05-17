@@ -1,0 +1,193 @@
+{
+  "schema": 1,
+  "status": "diagnostic_deferred",
+  "decision": "Defer P3.3; do not implement a fused MoE metadata fanout kernel for the current c=1 prefill path.",
+  "performance_claim": false,
+  "reason_not_promoted": "The existing M.3 rocprofv3 selected-region profile shows the entire MoE metadata family below 0.85% of prefill kernel time, while the P3.3 target components plus two removable memset calls have only an optimistic upper bound of 0.27% at 512/128 and about 0.12%/0.09% at 4K/128 and 32K/128. A fused kernel would still do the same prefix/tile-map work, so expected realized gain is below benchmark noise.",
+  "date": "2026-05-17",
+  "git_head_at_decision": "cfcd50ba133c4c4ba1d299edef69d255f935e77c",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "source_profile_artifact": "benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json",
+  "ablation": {
+    "proposed": "Combine qwen35_moe_group_prefix + qwen35_moe_wmma_tile_map and initialize scatter_offsets/tile_expert in the same small metadata kernel.",
+    "implemented_for_measurement": false,
+    "fallback_policy": "Keep existing memset -> group_count -> group_prefix -> tile_expert memset -> wmma_tile_map -> scatter_offsets memset -> group_scatter_gather_lowp sequence."
+  },
+  "profile_summary": {
+    "moe_metadata_share_pct_max": 0.8435038145666349,
+    "optimistic_upper_bound_prefill_kernel_pct_max": 0.2716152505098652,
+    "optimistic_upper_bound_prefill_wall_pct_max": 0.2238341409479106
+  },
+  "workloads": [
+    {
+      "workload": "512-128",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "source_prefill_command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --rocprof-selected-region prefill --prompt-length 512 --json /tmp/hipengine-rocprof-qwen35-audit/512-128/prefill/512-128-prefill-bench.json",
+      "source_rocprof_command": "/home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-rocprof-qwen35-audit/512-128/prefill -o qwen35-512-128-prefill -- /home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --rocprof-selected-region prefill --prompt-length 512 --json /tmp/hipengine-rocprof-qwen35-audit/512-128/prefill/512-128-prefill-bench.json",
+      "prefill_seconds": 0.23890797584317625,
+      "prefill_tok_s": 2143.0845838988926,
+      "kernel_time_ms": 196.880556,
+      "moe_metadata": {
+        "calls": 160,
+        "total_ms": 1.660695,
+        "avg_us": 10.37934375,
+        "share_of_prefill_kernel_time_pct": 0.8435038145666349
+      },
+      "candidate_components": {
+        "group_prefix": {
+          "calls": 40,
+          "total_ms": 0.136482,
+          "avg_us": 3.4120500000000002,
+          "share_of_prefill_kernel_time_pct": 0.06932223413672196
+        },
+        "wmma_tile_map": {
+          "calls": 40,
+          "total_ms": 0.172083,
+          "avg_us": 4.302074999999999,
+          "share_of_prefill_kernel_time_pct": 0.08740477144934516
+        },
+        "runtime_memset_family": {
+          "calls": 160,
+          "total_ms": 2.337579,
+          "avg_us": 14.60986875,
+          "share_of_prefill_kernel_time_pct": 1.187308207317334
+        },
+        "fill_buffer_kernel": {
+          "calls": 130,
+          "total_ms": 0.367563,
+          "avg_us": 2.827407692307692,
+          "share_of_prefill_kernel_time_pct": 0.18669339800117182
+        }
+      },
+      "optimistic_upper_bound_if_fully_eliminated": {
+        "assumption": "Remove group_prefix and wmma_tile_map time plus two average fillBufferAligned calls per prefix/tile-map invocation for tile_expert and scatter_offsets initialization. This is an optimistic bound; a fused kernel would still do prefix/tile work and write the same metadata.",
+        "removed_fill_calls_estimate": 80,
+        "upper_bound_ms": 0.5347576153846154,
+        "upper_bound_prefill_kernel_time_pct": 0.2716152505098652,
+        "upper_bound_prefill_wall_time_pct": 0.2238341409479106
+      }
+    },
+    {
+      "workload": "4k-128",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "source_prefill_command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --rocprof-selected-region prefill --prompt-length 4096 --json /tmp/hipengine-rocprof-qwen35-audit/4k-128/prefill/4k-128-prefill-bench.json",
+      "source_rocprof_command": "/home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-rocprof-qwen35-audit/4k-128/prefill -o qwen35-4k-128-prefill -- /home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --rocprof-selected-region prefill --prompt-length 4096 --json /tmp/hipengine-rocprof-qwen35-audit/4k-128/prefill/4k-128-prefill-bench.json",
+      "prefill_seconds": 1.6425998888444155,
+      "prefill_tok_s": 2493.60786386122,
+      "kernel_time_ms": 1576.428974,
+      "moe_metadata": {
+        "calls": 520,
+        "total_ms": 12.175677,
+        "avg_us": 23.414763461538463,
+        "share_of_prefill_kernel_time_pct": 0.7723581081554011
+      },
+      "candidate_components": {
+        "group_prefix": {
+          "calls": 130,
+          "total_ms": 0.442803,
+          "avg_us": 3.406176923076923,
+          "share_of_prefill_kernel_time_pct": 0.028088991467623205
+        },
+        "wmma_tile_map": {
+          "calls": 130,
+          "total_ms": 0.757648,
+          "avg_us": 5.828061538461538,
+          "share_of_prefill_kernel_time_pct": 0.04806102986533918
+        },
+        "runtime_memset_family": {
+          "calls": 520,
+          "total_ms": 16.968498,
+          "avg_us": 32.631726923076926,
+          "share_of_prefill_kernel_time_pct": 1.0763883612811598
+        },
+        "fill_buffer_kernel": {
+          "calls": 400,
+          "total_ms": 1.135334,
+          "avg_us": 2.838335,
+          "share_of_prefill_kernel_time_pct": 0.072019356325279
+        }
+      },
+      "optimistic_upper_bound_if_fully_eliminated": {
+        "assumption": "Remove group_prefix and wmma_tile_map time plus two average fillBufferAligned calls per prefix/tile-map invocation for tile_expert and scatter_offsets initialization. This is an optimistic bound; a fused kernel would still do prefix/tile work and write the same metadata.",
+        "removed_fill_calls_estimate": 260,
+        "upper_bound_ms": 1.9384181,
+        "upper_bound_prefill_kernel_time_pct": 0.12296260294439375,
+        "upper_bound_prefill_wall_time_pct": 0.11800914593776671
+      }
+    },
+    {
+      "workload": "32k-128",
+      "prompt_length": 32768,
+      "decode_tokens": 128,
+      "source_prefill_command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --rocprof-selected-region prefill --prompt-length 32768 --json /tmp/hipengine-rocprof-qwen35-audit/32k-128/prefill/32k-128-prefill-bench.json",
+      "source_rocprof_command": "/home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-rocprof-qwen35-audit/32k-128/prefill -o qwen35-32k-128-prefill -- /home/lhl/mambaforge/envs/therock/bin/python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --rocprof-selected-region prefill --prompt-length 32768 --json /tmp/hipengine-rocprof-qwen35-audit/32k-128/prefill/32k-128-prefill-bench.json",
+      "prefill_seconds": 17.303896985016763,
+      "prefill_tok_s": 1893.677477875268,
+      "kernel_time_ms": 16973.306147,
+      "moe_metadata": {
+        "calls": 4160,
+        "total_ms": 97.248004,
+        "avg_us": 23.376924038461535,
+        "share_of_prefill_kernel_time_pct": 0.5729467385892194
+      },
+      "candidate_components": {
+        "group_prefix": {
+          "calls": 1040,
+          "total_ms": 3.573,
+          "avg_us": 3.435576923076923,
+          "share_of_prefill_kernel_time_pct": 0.02105070143115
+        },
+        "wmma_tile_map": {
+          "calls": 1040,
+          "total_ms": 6.197865,
+          "avg_us": 5.959485576923077,
+          "share_of_prefill_kernel_time_pct": 0.0365153668137628
+        },
+        "runtime_memset_family": {
+          "calls": 4160,
+          "total_ms": 135.346664,
+          "avg_us": 32.53525576923077,
+          "share_of_prefill_kernel_time_pct": 0.7974089598561931
+        },
+        "fill_buffer_kernel": {
+          "calls": 3200,
+          "total_ms": 9.073214,
+          "avg_us": 2.835379375,
+          "share_of_prefill_kernel_time_pct": 0.05345578475648761
+        }
+      },
+      "optimistic_upper_bound_if_fully_eliminated": {
+        "assumption": "Remove group_prefix and wmma_tile_map time plus two average fillBufferAligned calls per prefix/tile-map invocation for tile_expert and scatter_offsets initialization. This is an optimistic bound; a fused kernel would still do prefix/tile work and write the same metadata.",
+        "removed_fill_calls_estimate": 2080,
+        "upper_bound_ms": 15.6684541,
+        "upper_bound_prefill_kernel_time_pct": 0.09231232833662974,
+        "upper_bound_prefill_wall_time_pct": 0.09054870191129274
+      }
+    }
+  ],
+  "validation": {
+    "current_metadata_smoke": {
+      "command": "python3 scripts/smoke.py --mode qwen35-moe-group-scatter-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "passed": true,
+      "output": "tokens=3 top_k=2 num_experts=4 hidden_size=5 prefix_match=True lane_match=True expert_match=True weight_match=True packed_match=True tile_match=True"
+    },
+    "unit_tests": {
+      "command": "python3 -m pytest tests/test_qwen35_moe_group_scatter_plan.py -q --tb=short",
+      "passed": true,
+      "output": "3 passed"
+    },
+    "artifact_json": "python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-p33-moe-metadata-fanout-deferred.json",
+    "no_kernel_change": true
+  },
+  "notes": [
+    "This is a profile-gated defer decision, not a fused-kernel A/B benchmark.",
+    "The source profile was already collected for OPTIMIZE M.3 on the same W7900/gfx1100 resident benchmark surface and is directly the prerequisite named by P3.3.",
+    "Revisit only if c>N batching or a future scheduler makes MoE metadata a multi-percent prefill bucket."
+  ]
+}

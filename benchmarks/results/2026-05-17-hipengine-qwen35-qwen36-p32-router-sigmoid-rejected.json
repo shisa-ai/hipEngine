@@ -1,0 +1,555 @@
+{
+  "schema": 1,
+  "status": "diagnostic_rejected",
+  "decision": "Reject P3.2 as a default fusion. Keep HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 as diagnostic opt-in only.",
+  "performance_claim": false,
+  "reason_not_promoted": "The fused prefill router select kernel is correct and removes the separate legacy W8A16 shared-gate sigmoid launch, but two-run medians are neutral/noisy: Qwen3.5 legacy is only +0.21% at 512 and -0.23% at 4K; packed Shisa is intentionally not routed through the sigmoid variant and shows only noise. Memory is unchanged.",
+  "date": "2026-05-17",
+  "git_head_at_run": "ca4796dfc9c55919fa4dc3bbd2f2fbd76e15e5ac",
+  "working_tree_at_run": "uncommitted P3.2 router sigmoid diagnostic kernel/runtime/smoke/docs/artifact updates pending",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "software": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "compiler_version": "HIP version: 7.2.53211-d40244d\nAMD clang version 22.0.0git (/startdir/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "rocprof": "rocprofv3 kernel trace used for the tiny router smoke, not for E2E timings"
+  },
+  "bench_script": "scripts/qwen35_paro_bench.py",
+  "common_args": "--token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512",
+  "ablation": {
+    "default": "Prefill router writes raw shared-gate logits; legacy W8A16 grouped prefill then launches w8a16_shared_gate_sigmoid_fp32 before shared down+combine. Packed PARO shared expert keeps raw logits for shared_gate_combine_residual_batch_out_fp16.",
+    "fused": "HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 routes only tokens>1 legacy-FP16 shared-expert prefill through qwen35_router_select_sigmoid_shared_kernel, overwriting the shared-gate column with sigmoid(logit) inside the router select launch and skipping w8a16_shared_gate_sigmoid_fp32 downstream.",
+    "decode_semantics": "tokens==1 decode and packed PARO shared-expert paths continue to use raw shared-gate logits; combine kernels apply sigmoid themselves where required.",
+    "default_policy_after_decision": "env flag default remains false; fallback remains production path."
+  },
+  "models": {
+    "zlab": {
+      "display": "z-lab/Qwen3.5-35B-A3B-PARO",
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "resolved_shared_expert_format": "legacy_fp16"
+    },
+    "shisa": {
+      "display": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5 forced packed sidecars",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+      "resolved_shared_expert_format": "packed_paro_w4"
+    }
+  },
+  "validation": {
+    "router_smoke": {
+      "command": "python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "passed": true,
+      "output": "rows=2 hidden_size=16 num_experts=8 top_k=4 logits_max_abs=0.0 routing_max_abs=1.49e-08 selected_match=True fp16_logits_max_abs=4.77e-07 fp16_routing_max_abs=2.98e-08 fp16_selected_match=True sigmoid_logits_max_abs=0.0 sigmoid_routing_max_abs=1.49e-08 sigmoid_selected_match=True sigmoid_fp16_logits_max_abs=4.77e-07 sigmoid_fp16_routing_max_abs=2.98e-08 sigmoid_fp16_selected_match=True"
+    },
+    "rocprof_router_sigmoid_kernel": {
+      "command": "rocprofv3 --kernel-trace --output-directory /tmp/hipengine-rocprof-router-p32-sigmoid --output-file router-p32 --output-format csv -- python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "csv": "/tmp/hipengine-rocprof-router-p32-sigmoid/router-p32_kernel_trace.csv",
+      "target_rows": [
+        {
+          "kernel_name": "(anonymous namespace)::qwen35_router_select_sigmoid_shared_kernel(float*, long*, float*, long, long, long)",
+          "duration_ns": 11840,
+          "vgpr_count": 40,
+          "scratch_size": 0,
+          "lds_block_size": 512,
+          "workgroup_size_x": 64,
+          "grid_size_x": 128
+        },
+        {
+          "kernel_name": "(anonymous namespace)::qwen35_router_select_sigmoid_shared_kernel(float*, long*, float*, long, long, long)",
+          "duration_ns": 3920,
+          "vgpr_count": 40,
+          "scratch_size": 0,
+          "lds_block_size": 512,
+          "workgroup_size_x": 64,
+          "grid_size_x": 128
+        }
+      ]
+    },
+    "native_prefill_fixture_gate_fused": {
+      "command": "HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/qwen35_native_prefill_fixture_gate.py --model <zlab> --max-layers 40 --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p32-router-sigmoid-20260517/fused-native-prefill-fixture-gate.json",
+      "passed": true,
+      "max_kl": 0.039568870612619614,
+      "top1_agreement": 1.0,
+      "generated_match": true,
+      "artifact": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-native-prefill-fixture-gate.json"
+    },
+    "generated_preview_sanity": "For every workload and repetition, default and fused generated the same first two token IDs (9707, 9707).",
+    "unit_tests": "python3 -m py_compile scripts/smoke.py hipengine/kernels/hip_gfx1100/moe/router.py hipengine/runtime/qwen35_paro.py && python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_decode_state.py -q --tb=short -> 52 passed; python3 -m json.tool artifact passed; git diff --check passed."
+  },
+  "summary": {
+    "prefill_delta_pct_min": -0.23049049324405102,
+    "prefill_delta_pct_max": 0.663222649202444,
+    "decode_delta_pct_min": -0.0789868202143551,
+    "decode_delta_pct_max": 0.2872159371441363,
+    "tracked_peak_changed": false
+  },
+  "measurements": [
+    {
+      "model_key": "zlab",
+      "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "workload": "512/128",
+      "shared_expert_format": "auto",
+      "command_default_template": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --shared-expert-format auto --prompt-length 512 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p32-router-sigmoid-20260517/default-zlab-512-128-runN.json",
+      "command_fused_template": "HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --shared-expert-format auto --prompt-length 512 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p32-router-sigmoid-20260517/fused-zlab-512-128-runN.json",
+      "median": {
+        "default_prefill_tok_s": 2220.023847949853,
+        "fused_prefill_tok_s": 2224.582646453062,
+        "default_decode_tok_s": 115.3078135826762,
+        "fused_decode_tok_s": 115.24189158777112,
+        "default_tracked_peak_gib": 18.17562458757311,
+        "fused_tracked_peak_gib": 18.17562458757311,
+        "prefill_delta_pct": 0.20534907800286994,
+        "decode_delta_pct": -0.05717044912816327,
+        "tracked_peak_changed": false
+      },
+      "runs": {
+        "default": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2249.249544447144,
+            "decode_tok_s": 115.21267027927489,
+            "prefill_seconds": 0.2276314788032323,
+            "decode_seconds": 1.1109889189247042,
+            "tracked_peak_gib": 18.17562458757311,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.356470108032227
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.398529052734375
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/default-zlab-512-128-run1.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/default-zlab-512-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2190.7981514525623,
+            "decode_tok_s": 115.40295688607752,
+            "prefill_seconds": 0.23370477999560535,
+            "decode_seconds": 1.109157022088766,
+            "tracked_peak_gib": 18.17562458757311,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.356470108032227
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.398529052734375
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/default-zlab-512-128-run2.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/default-zlab-512-128-run2.out"
+          }
+        ],
+        "fused": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2241.805785243551,
+            "decode_tok_s": 115.02538191611755,
+            "prefill_seconds": 0.22838731319643557,
+            "decode_seconds": 1.1127978700678796,
+            "tracked_peak_gib": 18.17562458757311,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.356470108032227
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.398529052734375
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-zlab-512-128-run1.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-zlab-512-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2207.3595076625725,
+            "decode_tok_s": 115.45840125942469,
+            "prefill_seconds": 0.23195134196430445,
+            "decode_seconds": 1.1086243928875774,
+            "tracked_peak_gib": 18.17562458757311,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.356470108032227
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.398529052734375
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-zlab-512-128-run2.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-zlab-512-128-run2.out"
+          }
+        ]
+      },
+      "sanity": {
+        "default_vs_fused_first_two_tokens_match": true,
+        "default_vs_fused_first_two_max_logit_delta": 0.0
+      }
+    },
+    {
+      "model_key": "zlab",
+      "model": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+      "workload": "4096/128",
+      "shared_expert_format": "auto",
+      "command_default_template": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --shared-expert-format auto --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p32-router-sigmoid-20260517/default-zlab-4096-128-runN.json",
+      "command_fused_template": "HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --shared-expert-format auto --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p32-router-sigmoid-20260517/fused-zlab-4096-128-runN.json",
+      "median": {
+        "default_prefill_tok_s": 2467.2787100588903,
+        "fused_prefill_tok_s": 2461.59186719037,
+        "default_decode_tok_s": 116.79722618217647,
+        "fused_decode_tok_s": 117.02366199228136,
+        "default_tracked_peak_gib": 20.047133021987975,
+        "fused_tracked_peak_gib": 20.047133021987975,
+        "prefill_delta_pct": -0.23049049324405102,
+        "decode_delta_pct": 0.19387087990574425,
+        "tracked_peak_changed": false
+      },
+      "runs": {
+        "default": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2473.9602979942147,
+            "decode_tok_s": 116.61795701294206,
+            "prefill_seconds": 1.655645000981167,
+            "decode_seconds": 1.0976011180318892,
+            "tracked_peak_gib": 20.047133021987975,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.182941436767578
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.50152015686035
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/default-zlab-4096-128-run1.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/default-zlab-4096-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2460.597122123566,
+            "decode_tok_s": 116.97649535141089,
+            "prefill_seconds": 1.6646365888882428,
+            "decode_seconds": 1.0942369201220572,
+            "tracked_peak_gib": 20.047133021987975,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.182941436767578
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.50152015686035
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/default-zlab-4096-128-run2.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/default-zlab-4096-128-run2.out"
+          }
+        ],
+        "fused": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2465.0265065868853,
+            "decode_tok_s": 117.0239685623409,
+            "prefill_seconds": 1.6616454180330038,
+            "decode_seconds": 1.093793020118028,
+            "tracked_peak_gib": 20.047133021987975,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.182941436767578
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.50152015686035
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-zlab-4096-128-run1.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-zlab-4096-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2458.157227793855,
+            "decode_tok_s": 117.02335542222183,
+            "prefill_seconds": 1.6662888580467552,
+            "decode_seconds": 1.0937987510114908,
+            "tracked_peak_gib": 20.047133021987975,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.182941436767578
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 27.50152015686035
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-zlab-4096-128-run2.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-zlab-4096-128-run2.out"
+          }
+        ]
+      },
+      "sanity": {
+        "default_vs_fused_first_two_tokens_match": true,
+        "default_vs_fused_first_two_max_logit_delta": 0.0
+      }
+    },
+    {
+      "model_key": "shisa",
+      "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+      "workload": "512/128",
+      "shared_expert_format": "packed_paro_w4",
+      "command_default_template": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 512 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p32-router-sigmoid-20260517/default-shisa-512-128-runN.json",
+      "command_fused_template": "HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 512 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p32-router-sigmoid-20260517/fused-shisa-512-128-runN.json",
+      "median": {
+        "default_prefill_tok_s": 2429.7175697751354,
+        "fused_prefill_tok_s": 2445.8320070095356,
+        "default_decode_tok_s": 111.79486195898878,
+        "fused_decode_tok_s": 111.70655875236434,
+        "default_tracked_peak_gib": 18.123325088061392,
+        "fused_tracked_peak_gib": 18.123325088061392,
+        "prefill_delta_pct": 0.663222649202444,
+        "decode_delta_pct": -0.0789868202143551,
+        "tracked_peak_changed": false
+      },
+      "runs": {
+        "default": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2428.9360909534803,
+            "decode_tok_s": 111.73119742201777,
+            "prefill_seconds": 0.21079187793657184,
+            "decode_seconds": 1.1456066251266748,
+            "tracked_peak_gib": 18.123325088061392,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.44217872619629
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.256940841674805
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/default-shisa-512-128-run1.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/default-shisa-512-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2430.4990485967905,
+            "decode_tok_s": 111.85852649595977,
+            "prefill_seconds": 0.21065632603131235,
+            "decode_seconds": 1.1443025758489966,
+            "tracked_peak_gib": 18.123325088061392,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.44217872619629
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.256940841674805
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/default-shisa-512-128-run2.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/default-shisa-512-128-run2.out"
+          }
+        ],
+        "fused": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2445.9860585875117,
+            "decode_tok_s": 111.67838340259273,
+            "prefill_seconds": 0.2093225340358913,
+            "decode_seconds": 1.1461483959574252,
+            "tracked_peak_gib": 18.123325088061392,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.44217872619629
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.256940841674805
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-shisa-512-128-run1.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-shisa-512-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2445.6779554315594,
+            "decode_tok_s": 111.73473410213595,
+            "prefill_seconds": 0.2093489042017609,
+            "decode_seconds": 1.1455703638494015,
+            "tracked_peak_gib": 18.123325088061392,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.44217872619629
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.256940841674805
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-shisa-512-128-run2.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-shisa-512-128-run2.out"
+          }
+        ]
+      },
+      "sanity": {
+        "default_vs_fused_first_two_tokens_match": true,
+        "default_vs_fused_first_two_max_logit_delta": 0.0
+      }
+    },
+    {
+      "model_key": "shisa",
+      "model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4",
+      "workload": "4096/128",
+      "shared_expert_format": "packed_paro_w4",
+      "command_default_template": "python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p32-router-sigmoid-20260517/default-shisa-4096-128-runN.json",
+      "command_fused_template": "HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5/snapshots/1492d9ae108682763e67b28ff4aad660d7e19cd4 --shared-expert-format packed_paro_w4 --prompt-length 4096 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --json /tmp/hipengine-p32-router-sigmoid-20260517/fused-shisa-4096-128-runN.json",
+      "median": {
+        "default_prefill_tok_s": 2677.880151647756,
+        "fused_prefill_tok_s": 2672.998274480432,
+        "default_decode_tok_s": 112.62168163813207,
+        "fused_decode_tok_s": 112.94514905647652,
+        "default_tracked_peak_gib": 19.994833522476256,
+        "fused_tracked_peak_gib": 19.994833522476256,
+        "prefill_delta_pct": -0.18230379594547097,
+        "decode_delta_pct": 0.2872159371441363,
+        "tracked_peak_changed": false
+      },
+      "runs": {
+        "default": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2680.5286628229205,
+            "decode_tok_s": 112.89557404551452,
+            "prefill_seconds": 1.5280567810405046,
+            "decode_seconds": 1.133791125845164,
+            "tracked_peak_gib": 19.994833522476256,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.685245513916016
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.744184494018555
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/default-shisa-4096-128-run1.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/default-shisa-4096-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2675.231640472592,
+            "decode_tok_s": 112.34778923074963,
+            "prefill_seconds": 1.531082369852811,
+            "decode_seconds": 1.1393192592076957,
+            "tracked_peak_gib": 19.994833522476256,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.685245513916016
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.744184494018555
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/default-shisa-4096-128-run2.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/default-shisa-4096-128-run2.out"
+          }
+        ],
+        "fused": [
+          {
+            "rep": 1,
+            "prefill_tok_s": 2674.2282574051974,
+            "decode_tok_s": 112.97411058470641,
+            "prefill_seconds": 1.5316568391863257,
+            "decode_seconds": 1.13300294498913,
+            "tracked_peak_gib": 19.994833522476256,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.685245513916016
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.744184494018555
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-shisa-4096-128-run1.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-shisa-4096-128-run1.out"
+          },
+          {
+            "rep": 2,
+            "prefill_tok_s": 2671.7682915556666,
+            "decode_tok_s": 112.91618752824664,
+            "prefill_seconds": 1.5330670750699937,
+            "decode_seconds": 1.1335841459222138,
+            "tracked_peak_gib": 19.994833522476256,
+            "generated_preview": [
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.685245513916016
+              },
+              {
+                "token_id": 9707,
+                "token_text": ".Q",
+                "logit": 28.744184494018555
+              }
+            ],
+            "json": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-shisa-4096-128-run2.json",
+            "log": "/tmp/hipengine-p32-router-sigmoid-20260517/fused-shisa-4096-128-run2.out"
+          }
+        ]
+      },
+      "sanity": {
+        "default_vs_fused_first_two_tokens_match": true,
+        "default_vs_fused_first_two_max_logit_delta": 0.0
+      }
+    }
+  ]
+}

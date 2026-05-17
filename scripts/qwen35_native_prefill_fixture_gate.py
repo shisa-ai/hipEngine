@@ -115,6 +115,14 @@ def _run_once(
             logits.append(_read_logits(session))
         decode_seconds = time.perf_counter() - decode_start
         detail = getattr(session, "last_prefill_execution", None)
+        resolved_chunk_sizes = {
+            "linear": int(session.prefill_config.linear_chunk_size),
+            "moe": int(session.prefill_config.moe_chunk_size),
+            "full_attn_query": int(session.prefill_config.full_attn_query_chunk_size),
+            "full_attn_post": int(session.prefill_config.full_attn_post_chunk_size),
+            "full_attn_rope": int(session.prefill_config.full_attn_rope_chunk_size),
+        }
+        chunk_tuning = getattr(session, "prefill_chunk_tuning", None)
     return {
         "prefill_mode": prefill_mode,
         "seed": _result_dict(seed),
@@ -124,6 +132,8 @@ def _run_once(
         "decode_seconds": decode_seconds,
         "owned_device_bytes": owned_device_bytes,
         "prefill_execution_detail": detail,
+        "prefill_chunk_sizes": resolved_chunk_sizes,
+        "prefill_chunk_tuning": chunk_tuning,
     }
 
 
@@ -192,6 +202,10 @@ def _command(args: argparse.Namespace) -> str:
         value = int(getattr(args, attr, 0))
         if value:
             command += f" {flag} {value}"
+    if not getattr(args, "prefill_chunk_autotune", True):
+        command += " --no-prefill-chunk-autotune"
+    if getattr(args, "prefill_chunk_memory_budget_gib", 0.0):
+        command += f" --prefill-chunk-memory-budget-gib {args.prefill_chunk_memory_budget_gib}"
     if args.json is not None:
         command += f" --json {args.json}"
     return command
@@ -217,6 +231,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             full_attn_post_chunk_size=args.prefill_full_attn_post_chunk_size,
             full_attn_rope_chunk_size=args.prefill_full_attn_rope_chunk_size,
             attn_aotriton_min_tokens=args.attn_aotriton_min_tokens,
+            auto_tune_chunk_sizes=args.prefill_chunk_autotune,
+            chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
         ),
     )
     comparison = _compare_logits(serial["logits"], native["logits"])
@@ -244,13 +260,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "decode_tokens": decode_tokens,
         "max_layers": int(args.max_layers),
         "attn_aotriton_min_tokens": int(args.attn_aotriton_min_tokens),
-        "prefill_chunk_sizes": {
+        "requested_prefill_chunk_sizes": {
             "linear": int(args.prefill_linear_chunk_size),
             "moe": int(args.prefill_moe_chunk_size),
             "full_attn_query": int(args.prefill_full_attn_query_chunk_size),
             "full_attn_post": int(args.prefill_full_attn_post_chunk_size),
             "full_attn_rope": int(args.prefill_full_attn_rope_chunk_size),
         },
+        "prefill_chunk_autotune": bool(args.prefill_chunk_autotune),
+        "prefill_chunk_memory_budget_gib": float(args.prefill_chunk_memory_budget_gib),
+        "prefill_chunk_sizes": native["prefill_chunk_sizes"],
+        "prefill_chunk_tuning": native["prefill_chunk_tuning"],
         "thresholds": {
             "kl_max": float(args.kl_threshold),
             "top1_agreement_min": float(args.top1_threshold),
@@ -296,12 +316,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prefill-full-attn-query-chunk-size", type=int, default=0)
     parser.add_argument("--prefill-full-attn-post-chunk-size", type=int, default=0)
     parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0)
+    parser.add_argument("--prefill-chunk-autotune", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--prefill-chunk-memory-budget-gib", type=float, default=0.0)
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
     if args.max_new_tokens is not None and args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive")
     if args.attn_aotriton_min_tokens < 0:
         raise ValueError("--attn-aotriton-min-tokens must be non-negative")
+    if args.prefill_chunk_memory_budget_gib < 0.0:
+        raise ValueError("--prefill-chunk-memory-budget-gib must be non-negative")
     for name in (
         "prefill_linear_chunk_size",
         "prefill_moe_chunk_size",

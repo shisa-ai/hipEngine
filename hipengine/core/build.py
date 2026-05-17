@@ -97,9 +97,9 @@ def plan_hip_build(
     target_arch = _normalize_target_arch(target_arch or _target_arch_from_environment())
     arch_flags = (f"--offload-arch={target_arch}",) if target_arch is not None else ()
     device_lib_flags = _rocm_device_lib_flags()
-    flags = _maybe_disable_unroll600(
-        (*build_profile.flags, *arch_flags, *device_lib_flags, *include_flags, *tuple(extra_flags))
-    )
+    flags = (*build_profile.flags, *arch_flags, *device_lib_flags, *include_flags, *tuple(extra_flags))
+    flags = _maybe_enable_prefill_mcumode(flags, build_profile)
+    flags = _maybe_disable_unroll600(flags)
     cache_key = _cache_key(
         sources=source_paths,
         flags=flags,
@@ -266,6 +266,22 @@ def _normalize_target_arch(value: str | None) -> str | None:
     if any(char.isspace() for char in stripped):
         raise ValueError(f"HIP target architecture must not contain whitespace: {value!r}")
     return stripped
+
+
+def _maybe_enable_prefill_mcumode(flags: tuple[str, ...], profile: BuildProfile) -> tuple[str, ...]:
+    """Diagnostic P1.6 ablation: add ``-mcumode`` to prefill-profile builds.
+
+    Most dual-use decode/prefill libraries already build with the decode profile,
+    and the compact-WMMA prefill library adds ``-mcumode`` explicitly.  This knob
+    isolates the remaining prefill-profile surfaces without changing decode
+    kernels or duplicating the flag on libraries that already request it.
+    """
+
+    if profile.name != "prefill" or not _env_truthy(os.environ.get("HIPENGINE_PREFILL_MCUMODE")):
+        return flags
+    if "-mcumode" in flags:
+        return flags
+    return (*flags, "-mcumode")
 
 
 def _maybe_disable_unroll600(flags: tuple[str, ...]) -> tuple[str, ...]:

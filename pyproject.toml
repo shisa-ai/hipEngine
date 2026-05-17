@@ -29,7 +29,13 @@ torch = [
 ]
 dev = [
   "pytest>=8.0",
+  "fastapi>=0.115",
+  "httpx>=0.27",
+  "uvicorn[standard]>=0.30",
 ]
+
+[project.scripts]
+hipengine-server = "hipengine.server.__main__:main"
 
 [tool.hatch.build]
 artifacts = [
