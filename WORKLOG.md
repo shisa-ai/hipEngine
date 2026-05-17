@@ -16350,3 +16350,40 @@ Updated `README.md` performance presentation to split the top-level tables into:
 - `gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)` using the latest chunk256 shisa packed sweep (`983.206 / 1029.402 / 792.296 / 413.489 / 1001.266` prefill tok/s and `62.060 / 63.605 / 50.629 / 30.245 / 62.438` decode tok/s) against the upstream llama.cpp HIP/Vulkan rerun.
 
 Before editing, confirmed chunk256 has no long-context regression versus the prior default/parent-style chunk sweep: 32K prefill improved `598.663 -> 792.296 tok/s` (+32.3%), 128K prefill improved `371.722 -> 413.489 tok/s` (+11.2%), decode was effectively flat/slightly positive, and tracked peak memory dropped by ~1.36 GiB on both 32K and 128K rows.
+
+## 2026-05-17 — Additional chunk-size probe below/around 256
+
+After the chunk256 sweep, ran quick 4K shisa packed probes to answer whether smaller chunks (`128`/`64`) or per-surface chunk sizes are worth pursuing. Commands used cached gfx1151 kernels with `--prompt-length 4096`; most probes used `--decode-tokens 1 --warmup-decode-tokens 0` to isolate prefill.
+
+All-surfaces smaller-than-256 was worse:
+
+| Variant | Prefill tok/s | Notes |
+| --- | ---: | --- |
+| all128 | 935.871 | slower than all256 (`~1029 tok/s`) |
+| all64 | 716.446 | too much launch/overhead |
+
+Per-surface 4K/1 probes around chunk256:
+
+| Variant | Linear | MoE | Full-attn q/post/rope | Prefill tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| linear128-rest256 | 128 | 256 | 256 | 964.648 |
+| moe128-rest256 | 256 | 128 | 256 | 962.279 |
+| full128-rest256 | 256 | 256 | 128 | 1003.372 |
+| linear384-moe256-full256 | 384 | 256 | 256 | 1037.376 |
+| linear256-moe384-full256 | 256 | 384 | 256 | 972.969 |
+| linear256-moe256-full384 | 256 | 256 | 384 | 1051.281 |
+| linear384-moe256-full384 | 384 | 256 | 384 | 1037.383 |
+| linear512-moe256-full384 | 512 | 256 | 384 | 1019.392 |
+| linear384-moe256-full512 | 384 | 256 | 512 | 1018.663 |
+| linear512-moe256-full512 | 512 | 256 | 512 | 1001.862 |
+| linear384-moe512-full384 | 384 | 512 | 384 | 1032.709 |
+
+4K/128 confirmation probes:
+
+| Variant | Prefill tok/s | Decode tok/s | Tracked peak |
+| --- | ---: | ---: | ---: |
+| all256 retained sweep | 1029.402 | 63.605 | 18.097 GiB |
+| linear256-moe256-full384 | 986.433 | 63.774 | 18.137 GiB |
+| linear384-moe256-full384 | 1044.611 | 63.710 | 18.137 GiB |
+
+Takeaway: do **not** go below 256 globally on gfx1151. Per-surface tuning is promising but the only confirmed 4K/128 improvement over all256 is modest (`linear=384, moe=256, full=384`, +1.5% prefill, same decode, +0.04 GiB). Keep all256 as the robust default for now; use a small autotune matrix (`linear in {256,384}`, `moe=256`, `full in {256,384}`) if we want to squeeze another percent and verify at 512/4K/32K/128K before changing the retained row.
