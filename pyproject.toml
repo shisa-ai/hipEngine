@@ -4,13 +4,25 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hipengine"
-version = "0.0.0"
+version = "0.1.0"
 description = "ROCm-native local LLM inference engine with a torch-free runtime hot path"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "AGPL-3.0-or-later" }
 authors = [
   { name = "hipEngine contributors" }
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
   "jinja2>=3.1",
@@ -37,6 +49,12 @@ dev = [
 [project.scripts]
 hipengine-server = "hipengine.server.__main__:main"
 
+[project.urls]
+Homepage = "https://github.com/shisa-ai/hipEngine"
+Repository = "https://github.com/shisa-ai/hipEngine"
+Issues = "https://github.com/shisa-ai/hipEngine/issues"
+Changelog = "https://github.com/shisa-ai/hipEngine/blob/main/CHANGELOG.md"
+
 [tool.hatch.build]
 artifacts = [
   "hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*",
@@ -44,6 +62,9 @@ artifacts = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["hipengine"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

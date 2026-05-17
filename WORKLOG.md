@@ -16482,3 +16482,24 @@ Do not spend more time on global 64/128/512/1024 or broad full-factorial combina
 - `uv run pytest tests/test_gfx1151_backend.py tests/test_llm_generate.py tests/test_server_api.py -q` failed during collection because the transient uv environment did not include pytest/dev extras.
 - `uv run --extra dev python -m pytest tests/test_gfx1151_backend.py tests/test_llm_generate.py tests/test_server_api.py -q` passed: 19 tests.
 - `git diff --check` passed.
+
+## 2026-05-18 — v0.1.0 packaging and publish checklist prep
+
+### Scope
+
+- Bumped package metadata from `0.0.0` to `0.1.0` and added PyPI project URLs/classifiers.
+- Added a Hatch custom build hook so wheels that bundle the x86-64 Linux AOTriton runtime build as `py3-none-manylinux_2_39_x86_64` with `Root-Is-Purelib: false` instead of `py3-none-any`; ROCm libraries remain external system dependencies.
+- Added a top-level package release `CHANGELOG.md`; kept benchmark/performance history in `benchmarks/CHANGELOG.md`.
+- Added `docs/PUBLISH.md` using the prior Outline/textguard checklists as references, tailored to hipEngine GitHub/PyPI release steps, platform-wheel checks, LFS, server extra smoke, and evidence policy.
+
+### Validation
+
+- `python3 -m compileall -q hipengine scripts tests hatch_build.py` passed.
+- `uv run --extra dev python -m pytest -q` passed.
+- `uv run --extra dev hipengine-server --help` passed.
+- `python3 -m build --outdir /tmp/hipengine-dist-check` built `hipengine-0.1.0.tar.gz` and `hipengine-0.1.0-py3-none-manylinux_2_39_x86_64.whl`.
+- Wheel metadata check confirmed `Root-Is-Purelib: false`, `Tag: py3-none-manylinux_2_39_x86_64`, bundled `libaotriton_v2.so.0.11.2`, and no `hipengine.libs/` vendored ROCm payload.
+- `uvx --from auditwheel auditwheel show /tmp/hipengine-dist-check/hipengine-0.1.0-py3-none-manylinux_2_39_x86_64.whl` reported the current native payload constrains the wheel to `manylinux_2_39_x86_64`.
+- `uvx --from twine twine check /tmp/hipengine-dist-check/*` passed.
+- `(cd /tmp && uv run --isolated --with '/tmp/hipengine-dist-check/hipengine-0.1.0-py3-none-manylinux_2_39_x86_64.whl[server]' hipengine-server --help)` passed.
+- `git diff --check` passed.
