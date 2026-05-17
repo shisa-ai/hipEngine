@@ -15679,3 +15679,88 @@ python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipen
 ```
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d44-launch-bounds-deferred.json`.
+
+---
+
+## 2026-05-17 — D5.1 GDN recurrent decode audit stop/no-op
+
+Task #27 evaluated `docs/OPTIMIZE.md` D5.1 for
+`qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel` vec8 / occupancy headroom on
+c=1 decode. I added a retained diagnostic probe script,
+`scripts/gdn_decode_probe.py`, and did **not** change any kernel/runtime default.
+
+Findings:
+
+- M.4 makes GDN decode visible but bounded: `linear_attention_gdn_decode` is
+  `5.23%/5.39%/4.84%` of decode kernel time at 512/4K/32K with
+  `30` calls/token.
+- Static source audit shows the requested local vec8 pattern is already present:
+  Q/K RMS load uses `idx = threadIdx.x * 8` / `idx += blockDim.x * 8`, and both
+  KV-memory accumulation plus recurrent-state update are 8-way unrolled over
+  `head_k_dim`.
+- For the real Qwen3.5 c=1 shape (`num_k_heads=16`, `num_v_heads=32`,
+  `head_k_dim=128`, `head_v_dim=128`), the wrapper launches 128 threads and the
+  kernel maps `value_idx = threadIdx.x`, exactly one value lane per thread. A
+  64-thread retune would miss lanes without a new ownership scheme; 256 threads
+  add idle lanes and reduction overhead.
+- The wrapper's dynamic shared formula is
+  `(2 * head_k_dim + 3 * threads + head_v_dim) * sizeof(float)`, i.e. `3072 B`
+  for the actual shape. `rocprofv3` reports `LDS_Block_Size=0` for this dynamic
+  launch, so the artifact records the wrapper-computed value separately.
+- Barrier removal or multi-value/thread recurrence rewrites cross into kernel
+  R&D and need a new correctness proof; prior GDN barrier-removal attempts are a
+  documented do-not-chase item because they corrupted recurrent state.
+
+Profiler evidence (W7900/gfx1100, cache-only build, `reps=100`, first four
+warmups dropped):
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/hipengine-d51-gdn-probe \
+  --output-file gdn_decode_probe -- \
+  python3 scripts/gdn_decode_probe.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build --reps 100 --warmup 4
+```
+
+Target kernel rows:
+
+- BF16 lowp: median `8760 ns`, mean `8803 ns`, min/max `8600/10681 ns`,
+  `VGPR_Count=56`, `Scratch_Size=0`, `SGPR_Count=128`, workgroup `128`, grid
+  work-items `4096`.
+- FP16 lowp: median `8720 ns`, mean `8747 ns`, min/max `8600/10360 ns`,
+  `VGPR_Count=56`, `Scratch_Size=0`, `SGPR_Count=128`, workgroup `128`, grid
+  work-items `4096`.
+
+Correctness/validation:
+
+```bash
+python3 -m py_compile scripts/gdn_decode_probe.py
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.kernels.hip_gfx1100.linear_attn import build_qwen35_linear_attn_gdn
+cv = Path('/tmp/hipengine-hipcc-version.txt').read_text()
+build_qwen35_linear_attn_gdn(load=True, compiler_version=cv, require_cached=False)
+print('gdn build OK')
+PY
+python3 scripts/gdn_decode_probe.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --reps 2 --warmup 1
+python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# out_max_abs=2.98e-08, state_max_abs=1.49e-08; FP16 same
+python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py -q --tb=short
+# 3 passed
+python3 scripts/qwen35_decode_graph_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-new-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d51-gdn/graph-fixture-default.json
+# passed=True, generated_match=True, expected_match=True, final_kl=0.0
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d51-gdn-decode-audit.json >/tmp/d51.json
+```
+
+Decision: accepted stop/no-op. Keep the current GDN recurrent decode kernel.
+Reopen only if parent kernel R&D produces a correct multi-value/thread or
+barrier-reduced GDN design with resource metadata and E2E decode improvement, or
+if a future M.4-style profile shows GDN growing materially after other lanes
+change.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d51-gdn-decode-audit.json`.
