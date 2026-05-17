@@ -15568,3 +15568,67 @@ python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d16-kv-pack8
 ```
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d16-kv-pack8-fusion-rejected.json`.
+
+---
+
+## 2026-05-17 — D4.2 dispatch/token reduction plan rejected/no-op
+
+Task #25 evaluated `docs/OPTIMIZE.md` D4.2 using the M.4 decode
+Amdahl/dispatch profile plus the closed D1.1-D1.6 decisions. I did **not**
+implement a new batched fusion or graph rewrite.
+
+Baseline / target math:
+
+- M.4 selected-region graph replay reports `877 dispatches/token` at
+  512/128, 4K/128, and 32K/128.
+- The D4.2 cap `<700 dispatches/token` therefore needs at least `178` fewer
+  dispatches/token (`20.3%` of dispatches).
+- Kernel time/token in the same profile is `7.265 ms` at 512, `7.226 ms` at
+  4K, and `8.603 ms` at 32K; this task is a dispatch-plan decision, not a new
+  throughput claim.
+
+D1 ledger for D4.2:
+
+| row | usable dispatch-count reduction | evidence |
+| --- | ---: | --- |
+| D1.1 rotate-staged dual pack8 | rejected; countable piece is only ~30/tok for linear-attn rotate2 | opt-in regressed 512/128 graph decode `115.450 -> 110.457 tok/s` (`-4.32%`) |
+| D1.2 RMSNorm/add-RMSNorm producer fusion | `0` | no material single-use producer; input/add RMSNorm are multi-consumer fanout, final RMSNorm -> lm-head is ~`0.04%` kernel-time upper bound |
+| D1.3 same-input projection sweep | `0` | material pairs are already fused; only full-attn V remains, and parent full Q/K/V widening was slower/no-win |
+| D1.4 selected-MoE post-op fold | `0` for safe path | safe combine fold is already default; direct selected-down+combine could remove 40/tok but parent microbench regressed `13.38 -> 16.52 us` |
+| D1.5 router cooperative fold | `0` in current implementation | logits+select becomes counter memset+cooperative kernel; graph decode regressed `-0.93%` at 512 and `-0.67%` at 4K |
+| D1.6 full-attn K/V dual pack8 | `0` | changes Q/K+V to Q+K/V, so projection launch count stays two per full-attn layer; 4K decode regressed `-0.21%` |
+
+Scenario accounting:
+
+- Accepted safe D1 changes remove `0`, leaving `877 dispatches/token`.
+- Counting rejected D1.1 plus an ideal no-memset router removes only ~`70`,
+  leaving ~`807 dispatches/token`.
+- Adding the parent-rejected direct selected-combine shape removes only ~`110`,
+  leaving ~`767 dispatches/token`, still above the `<700` target.
+- Crossing `<700` would require fusing multi-consumer RMSNorm/rotation/W4/MoE
+  families, a multi-layer/megakernel schedule, or scheduler-level graph
+  compaction. That is outside the D1.1-D1.6 batched-fusion plan and currently
+  lacks the required real data-flow evidence.
+
+Decision: reject/no-op for D4.2 as written. Defaults remain unchanged. Reopen
+only as a new major data-flow / graph-compaction design with fresh
+`dispatches/token` profiling before implementation.
+
+Validation:
+
+```bash
+python3 /tmp/create_d42_artifact.py
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d42-dispatch-cap-rejected.json >/tmp/d42.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+p = Path('benchmarks/results/2026-05-17-hipengine-qwen35-d42-dispatch-cap-rejected.json')
+data = json.loads(p.read_text())
+assert data['dispatch_cap_math']['baseline_dispatches_per_token'] == 877.0
+assert data['dispatch_cap_math']['minimum_dispatches_to_remove'] == 178.0
+assert data['dispatch_scenarios']['include_direct_selected_combine_too']['projected_dispatches_per_token'] == 767.0
+assert data['decision']['default_changed'] is False
+PY
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d42-dispatch-cap-rejected.json`.

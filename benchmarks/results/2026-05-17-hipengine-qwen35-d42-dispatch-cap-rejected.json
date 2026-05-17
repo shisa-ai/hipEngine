@@ -1,0 +1,247 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "task": "D4.2 dispatch/token reduction plan",
+  "status": "diagnostic_rejected_noop",
+  "performance_claim": false,
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "source_profile": "benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json",
+  "summary": "Reject the D4.2 plan of reaching <700 dispatches/token through batched D1.1-D1.6 fusions. M.4 reports 877 dispatches/token, so the plan needs to remove at least 178 dispatches/token. D1.2/D1.3/D1.6 found no dataflow-safe material launch reduction, and the remaining D1 opt-in routes were either already defaulted, launch-count-neutral, or regressed under graph replay.",
+  "m4_decode_profile": {
+    "512-128": {
+      "dispatches_per_token": 877.0,
+      "kernel_time_ms_per_token": 7.2650249375,
+      "families": {
+        "rotation_rope": {
+          "calls_per_token": 160.0,
+          "share_percent": 9.416568675061068,
+          "ms_per_token": 0.6841160625
+        },
+        "rmsnorm": {
+          "calls_per_token": 91.0,
+          "share_percent": 3.3026736255439038,
+          "ms_per_token": 0.2399400625
+        },
+        "router": {
+          "calls_per_token": 80.0,
+          "share_percent": 5.753891983801604,
+          "ms_per_token": 0.4180216875
+        },
+        "moe_combine": {
+          "calls_per_token": 40.0,
+          "share_percent": 1.161710568457357,
+          "ms_per_token": 0.0843985625
+        },
+        "w4_single_gemv": {
+          "calls_per_token": 50.0,
+          "share_percent": 13.378650739146206,
+          "ms_per_token": 0.9719623125
+        },
+        "w4_dual_gemv": {
+          "calls_per_token": 40.0,
+          "share_percent": 11.812156632394217,
+          "ms_per_token": 0.858156125
+        },
+        "selected_moe_w4_gemv": {
+          "calls_per_token": 80.0,
+          "share_percent": 17.92092093558626,
+          "ms_per_token": 1.301959375
+        },
+        "w8a16_linear": {
+          "calls_per_token": 81.0,
+          "share_percent": 15.669889433190951,
+          "ms_per_token": 1.138421375
+        }
+      }
+    },
+    "4k-128": {
+      "dispatches_per_token": 877.0,
+      "kernel_time_ms_per_token": 7.2263065,
+      "families": {
+        "rotation_rope": {
+          "calls_per_token": 160.0,
+          "share_percent": 9.613803919056021,
+          "ms_per_token": 0.6947229375
+        },
+        "rmsnorm": {
+          "calls_per_token": 91.0,
+          "share_percent": 3.365196833264684,
+          "ms_per_token": 0.2431794375
+        },
+        "router": {
+          "calls_per_token": 80.0,
+          "share_percent": 5.791508947205602,
+          "ms_per_token": 0.4185121875
+        },
+        "moe_combine": {
+          "calls_per_token": 40.0,
+          "share_percent": 1.1761990720985886,
+          "ms_per_token": 0.08499575
+        },
+        "w4_single_gemv": {
+          "calls_per_token": 50.0,
+          "share_percent": 13.556970632231003,
+          "ms_per_token": 0.97966825
+        },
+        "w4_dual_gemv": {
+          "calls_per_token": 40.0,
+          "share_percent": 11.710288132671925,
+          "ms_per_token": 0.8462213125
+        },
+        "selected_moe_w4_gemv": {
+          "calls_per_token": 80.0,
+          "share_percent": 18.258211335209765,
+          "ms_per_token": 1.3193943125
+        },
+        "w8a16_linear": {
+          "calls_per_token": 81.0,
+          "share_percent": 15.723685225640512,
+          "ms_per_token": 1.1362416875
+        }
+      }
+    },
+    "32k-128": {
+      "dispatches_per_token": 877.0,
+      "kernel_time_ms_per_token": 8.603044125,
+      "families": {
+        "rotation_rope": {
+          "calls_per_token": 160.0,
+          "share_percent": 8.393677888987929,
+          "ms_per_token": 0.7221118125
+        },
+        "rmsnorm": {
+          "calls_per_token": 91.0,
+          "share_percent": 2.9682298647980025,
+          "ms_per_token": 0.255358125
+        },
+        "router": {
+          "calls_per_token": 80.0,
+          "share_percent": 5.057762039550157,
+          "ms_per_token": 0.4351215
+        },
+        "moe_combine": {
+          "calls_per_token": 40.0,
+          "share_percent": 1.0207266314584897,
+          "ms_per_token": 0.0878135625
+        },
+        "w4_single_gemv": {
+          "calls_per_token": 50.0,
+          "share_percent": 11.592403200651956,
+          "ms_per_token": 0.9972995625
+        },
+        "w4_dual_gemv": {
+          "calls_per_token": 40.0,
+          "share_percent": 9.963073681201188,
+          "ms_per_token": 0.857127625
+        },
+        "selected_moe_w4_gemv": {
+          "calls_per_token": 80.0,
+          "share_percent": 15.508916589451992,
+          "ms_per_token": 1.3342389375
+        },
+        "w8a16_linear": {
+          "calls_per_token": 81.0,
+          "share_percent": 13.358229462760079,
+          "ms_per_token": 1.149214375
+        }
+      }
+    }
+  },
+  "dispatch_cap_math": {
+    "baseline_dispatches_per_token": 877.0,
+    "target_less_than": 700.0,
+    "minimum_dispatches_to_remove": 178.0,
+    "minimum_percent_reduction": 20.296465222348917
+  },
+  "d1_decision_ledger": [
+    {
+      "id": "D1.1",
+      "artifact": "benchmarks/results/2026-05-17-hipengine-qwen35-d11-rotate-dual-pack8-fusion-rejected.json",
+      "dispatch_reduction_if_counted": "about 30/tok for linear-attention rotate2; full-attention Q/K path remains launch-count neutral because V still rotates separately",
+      "result": "rejected; opt-in rotate-staged path regressed 512/128 graph decode 115.450 -> 110.457 tok/s (-4.32%)",
+      "dataflow_verdict": "not usable for D4.2; barrier/global-staging cost outweighed removed dispatches"
+    },
+    {
+      "id": "D1.2",
+      "artifact": "benchmarks/results/2026-05-17-hipengine-qwen35-d12-rmsnorm-producer-fusion-deferred.json",
+      "dispatch_reduction_if_counted": 0,
+      "result": "deferred/no-op; input RMSNorm and add-RMSNorm are multi-consumer fanout, final norm -> lm-head is only ~0.04% kernel-time upper bound",
+      "dataflow_verdict": "no material single-use producer while preserving pack8/W8A16 layout"
+    },
+    {
+      "id": "D1.3",
+      "artifact": "benchmarks/results/2026-05-17-hipengine-qwen35-d13-same-input-projection-fusions-rejected.json",
+      "dispatch_reduction_if_counted": 0,
+      "result": "rejected/no-op; material same-input pairs are already fused, and full-attention Q/K/V widening was parent-rejected",
+      "dataflow_verdict": "no remaining standalone same-input pair with arithmetic/data-reuse upside"
+    },
+    {
+      "id": "D1.4",
+      "artifact": "benchmarks/results/2026-05-17-hipengine-qwen35-d14-selected-moe-postop-fold-rejected.json",
+      "dispatch_reduction_if_counted": "0 for safe path; a direct selected-down+combine could remove 40/tok but is rejected",
+      "result": "existing weighted_sum_shared_gate_combine_residual path is already the safe fused default; direct down+combine parent microbench was 13.38 -> 16.52 us (0.81x)",
+      "dataflow_verdict": "further launch removal collapses selected-expert grid parallelism"
+    },
+    {
+      "id": "D1.5",
+      "artifact": "benchmarks/results/2026-05-17-hipengine-qwen35-d15-router-coop-fold-rejected.json",
+      "dispatch_reduction_if_counted": "0 in current implementation because logits+select becomes counter memset+cooperative kernel; an ideal graph-internal counter reset would at most save ~40/tok",
+      "result": "rejected; graph replay decode regressed 512/128 by -0.93% and 4K/128 by -0.67%",
+      "dataflow_verdict": "producer occupancy can be preserved, but atomic/memset tail erases the win"
+    },
+    {
+      "id": "D1.6",
+      "artifact": "benchmarks/results/2026-05-17-hipengine-qwen35-d16-kv-pack8-fusion-rejected.json",
+      "dispatch_reduction_if_counted": 0,
+      "result": "rejected; opt-in Q+K/V pairing is correct but launch-count neutral and 4K decode regressed -0.21%",
+      "dataflow_verdict": "changes pairing, not dispatch count; no robust decode win"
+    }
+  ],
+  "dispatch_scenarios": {
+    "accepted_safe_d1_changes": {
+      "removed_dispatches_per_token": 0,
+      "projected_dispatches_per_token": 877.0,
+      "meets_below_700": false
+    },
+    "include_rejected_countable_d1_1_plus_hypothetical_no_memset_router": {
+      "removed_dispatches_per_token": 70,
+      "projected_dispatches_per_token": 807.0,
+      "meets_below_700": false,
+      "note": "This already counts rejected/regressing paths; it still lands around 807 dispatches/token."
+    },
+    "include_direct_selected_combine_too": {
+      "removed_dispatches_per_token": 110,
+      "projected_dispatches_per_token": 767.0,
+      "meets_below_700": false,
+      "note": "This includes the parent-rejected selected-down+combine shape and still lands around 767 dispatches/token."
+    },
+    "crosses_700_only_with_multi_consumer_norm_or_megakernel": {
+      "required_extra_after_110": 68.0,
+      "note": "The remaining reduction would require fusing multi-consumer RMSNorm/rotation/W4/MoE families or multi-layer/megakernel scheduling, which is outside D1.1-D1.6 and violates the current real-dataflow evidence."
+    }
+  },
+  "decision": {
+    "action": "reject_d4_2_batched_d1_plan_as_noop",
+    "default_changed": false,
+    "rationale": [
+      "M.4 baseline is 877 dispatches/token; <700 requires removing at least 178 dispatches/token.",
+      "D1.2, D1.3, and D1.6 provide zero dataflow-safe launch-count reduction.",
+      "The only countable D1 launch removals either regressed (D1.1), were already safely fused with no further count reduction (D1.4), or are launch-count neutral/regressing due to required counter/reset work (D1.5).",
+      "Even an optimistic accounting of rejected D1.1 + ideal router + rejected direct combine removes only about 110 dispatches/token, leaving ~767 dispatches/token.",
+      "Therefore D4.2 as a Vulkan-style batched D1.1-D1.6 fusion plan fails the below-700 dispatch target and the real data-flow benefit criterion."
+    ],
+    "future_reopen_condition": "Reopen only as a new design that changes major data flow (multi-layer W4/MoE/attention megakernel, row-staged multi-consumer norm with proven no barrier regression, or scheduler-level graph compaction) and re-profiles dispatches/token before implementation."
+  },
+  "validation": {
+    "commands": [
+      "python3 /tmp/create_d42_artifact.py",
+      "python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d42-dispatch-cap-rejected.json >/tmp/d42.json",
+      "python3 - <<'PY'  # assert dispatch-cap math and no default change",
+      "python3 - <<'PY'  # assert docs/README/CHANGELOG reference the artifact"
+    ],
+    "result": "passed; artifact JSON parsed, dispatch-cap math assertions passed, and docs/benchmark rollup references were present"
+  }
+}
