@@ -16850,3 +16850,31 @@ git diff --check
 # pytest: 16 passed
 # artifact validation passed 722 91
 ```
+
+## 2026-05-18 — Stable DFlash prompt fixture
+
+### Scope
+
+- Added `hipengine/benchmark/prompts.py` with the stable speculative prompt set ported from parent DFlash/MTP harnesses:
+  - code-promotion rows: quicksort, normalize_scores, LRU, JSON/YAML continuation, HumanEval add, HumanEval sort_third;
+  - robustness rows: GSM8K-style math, simple QA, static Qwen chat-style QA, prose continuation;
+  - synthetic stress rows: deterministic random token-id prompts at lengths 64 and 256.
+- Added `scripts/dflash_prepare_prompts.py` to build or validate the fixture without remote datasets.
+- Generated `fixtures/dflash/stable_prompts.jsonl` from the shisa packed target tokenizer snapshot `501ef8635e5cfb5a7497d232358ca8d1afc0c66e` (`tokenizer.json` SHA `5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42`).
+- Each row carries token IDs, token count, prompt/token SHA256 hashes, preview, category, `benchmark_group`, and `promotion_gate`. Code rows are the first promotion gate; robustness/synthetic rows are diagnostics until code rows beat AR.
+- Updated `scripts/dflash_speculative_bench.py` to default to this prompt suite, validate it, and record the prompt-suite summary/SHA in benchmark artifacts; regenerated the diagnostic benchmark-contract JSON with fixture SHA `3d2588cc131a13c69a9021cfc97f42e5b96788b059078d3e9125144e1f9c076b`.
+- Documented the fixture contract in `docs/BENCHMARK.md`.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/benchmark/prompts.py hipengine/benchmark/__init__.py scripts/dflash_prepare_prompts.py scripts/dflash_speculative_bench.py
+python3 -m pytest tests/test_dflash_prompts.py tests/test_speculative_benchmark.py -q
+python3 scripts/dflash_prepare_prompts.py --output fixtures/dflash/stable_prompts.jsonl --validate-only >/tmp/hipengine-dflash-prompts-validate.json
+python3 -m json.tool /tmp/hipengine-dflash-prompts-validate.json >/tmp/hipengine-dflash-prompts-validate.pretty.json
+python3 -m json.tool benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json >/tmp/hipengine-dflash-benchmark-contract.json
+cat /tmp/hipengine-dflash-prompts-validate.json
+# rows=12, code_promotion=6, robustness=4, synthetic_stress=2, min/max tokens=16/256
+git diff --check
+# pytest: 8 passed
+```

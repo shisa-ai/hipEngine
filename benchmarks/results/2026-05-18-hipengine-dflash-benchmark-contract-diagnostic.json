@@ -1,6 +1,6 @@
 {
   "commands": {
-    "benchmark_contract": "python3 scripts/dflash_speculative_bench.py --emit-schema-fixture --status diagnostic --run-tag dflash-benchmark-contract-fixture --summary 'DFlash speculative benchmark metric contract fixture for gfx1151 packed target' --json benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json --decision-reason 'schema fixture only; native DFlash runtime rows not implemented yet' --note 'Synthetic row exercises same-session AR, DFlash tok/s, exact equality, finite logits, acceptance histogram, rows/output, phase split, D2H counters, graph status, and peak memory fields.'",
+    "benchmark_contract": "python3 scripts/dflash_speculative_bench.py --emit-schema-fixture --status diagnostic --run-tag dflash-benchmark-contract-fixture --summary 'DFlash speculative benchmark metric contract fixture for gfx1151 packed target' --json benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json --decision-reason 'schema fixture only; native DFlash runtime rows not implemented yet' --note 'Synthetic row exercises same-session AR, DFlash tok/s, exact equality, finite logits, acceptance histogram, rows/output, phase split, D2H counters, graph status, peak memory, and stable prompt-suite fields.'",
     "row_sources": {
       "rows_json": null,
       "rows_jsonl": null,
@@ -245,7 +245,7 @@
     }
   },
   "notes": [
-    "Synthetic row exercises same-session AR, DFlash tok/s, exact equality, finite logits, acceptance histogram, rows/output, phase split, D2H counters, graph status, and peak memory fields."
+    "Synthetic row exercises same-session AR, DFlash tok/s, exact equality, finite logits, acceptance histogram, rows/output, phase split, D2H counters, graph status, peak memory, and stable prompt-suite fields."
   ],
   "performance_claim": false,
   "run_tag": "dflash-benchmark-contract-fixture",
@@ -253,9 +253,9 @@
   "software": {
     "hipcc_version": null,
     "hipengine_branch": "dflash",
-    "hipengine_commit": "e52cd57cbc52c130ba88721a84111d2b66290590",
+    "hipengine_commit": "ba5013579ac22493f8929b8c431e1962976ef1b5",
     "hipengine_dirty": true,
-    "hipengine_status_porcelain": "M WORKLOG.md\n M docs/BENCHMARK.md\n M docs/DFLASH.md\n M hipengine/benchmark/__init__.py\n?? benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json\n?? hipengine/benchmark/speculative.py\n?? scripts/dflash_speculative_bench.py\n?? tests/test_speculative_benchmark.py",
+    "hipengine_status_porcelain": "M WORKLOG.md\n M benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json\n M docs/BENCHMARK.md\n M hipengine/benchmark/__init__.py\n M scripts/dflash_speculative_bench.py\n?? fixtures/dflash/\n?? hipengine/benchmark/prompts.py\n?? scripts/dflash_prepare_prompts.py\n?? tests/test_dflash_prompts.py",
     "note": null,
     "platform": "Linux-7.1.0-rc1-1-mainline-x86_64-with-glibc2.43",
     "python": "3.12.12"
@@ -304,7 +304,7 @@
   "status": "diagnostic",
   "summary": "DFlash speculative benchmark metric contract fixture for gfx1151 packed target",
   "synthetic_schema_fixture": true,
-  "timestamp": "2026-05-17T20:20:43.502182+00:00",
+  "timestamp": "2026-05-17T20:38:03.143736+00:00",
   "workload": {
     "decode_tokens": null,
     "draft_budgets": [
@@ -312,8 +312,25 @@
       4,
       8
     ],
-    "prompt_suite": null,
-    "prompt_suite_sha256": null,
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "prompt_suite_sha256": "3d2588cc131a13c69a9021cfc97f42e5b96788b059078d3e9125144e1f9c076b",
+    "prompt_suite_summary": {
+      "benchmark_groups": {
+        "code_promotion": 6,
+        "robustness": 4,
+        "synthetic_stress": 2
+      },
+      "categories": {
+        "code": 6,
+        "instruct": 2,
+        "math": 1,
+        "prose": 1,
+        "synthetic": 2
+      },
+      "prompt_tokens_max": 256,
+      "prompt_tokens_min": 16,
+      "rows": 12
+    },
     "provider": "dflash",
     "same_session_ar_required": true,
     "shape": "speculative_decode",

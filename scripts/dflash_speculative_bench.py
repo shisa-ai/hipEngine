@@ -28,7 +28,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hipengine.benchmark.speculative import (  # noqa: E402
+from hipengine.benchmark.prompts import (  # noqa: E402
+    DEFAULT_STABLE_PROMPT_FIXTURE,
+    file_sha256,
+    load_prompt_records,
+    validate_prompt_records,
+)
+from hipengine.benchmark.speculative import (
     DEFAULT_DFLASH_DRAFTER,
     DEFAULT_TARGET_MODEL,
     SpeculativeBenchmarkModels,
@@ -105,6 +111,21 @@ def _default_command(argv: list[str]) -> str:
     return " ".join(shlex.quote(part) for part in ["python3", "scripts/dflash_speculative_bench.py", *argv])
 
 
+def _prompt_suite_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    groups: dict[str, int] = {}
+    categories: dict[str, int] = {}
+    for record in records:
+        groups[str(record.get("benchmark_group"))] = groups.get(str(record.get("benchmark_group")), 0) + 1
+        categories[str(record.get("category"))] = categories.get(str(record.get("category")), 0) + 1
+    return {
+        "rows": len(records),
+        "benchmark_groups": dict(sorted(groups.items())),
+        "categories": dict(sorted(categories.items())),
+        "prompt_tokens_min": min(int(row["prompt_tokens"]) for row in records) if records else 0,
+        "prompt_tokens_max": max(int(row["prompt_tokens"]) for row in records) if records else 0,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rows-json", type=Path, help="JSON file containing rows or a prior artifact with measurements.rows")
@@ -136,7 +157,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--target-arch", default="gfx1151")
     parser.add_argument("--gpu", default="AMD RYZEN AI MAX+ 395 w/ Radeon 8060S")
-    parser.add_argument("--prompt-suite", default=None)
+    parser.add_argument("--prompt-suite", default=str(DEFAULT_STABLE_PROMPT_FIXTURE))
+    parser.add_argument("--skip-prompt-suite-validation", action="store_true")
     parser.add_argument("--prompt-suite-sha256", default=None)
     parser.add_argument("--decode-tokens", type=int, default=0)
     parser.add_argument("--draft-budgets", default="2,4,8")
@@ -187,12 +209,24 @@ def main(argv: list[str] | None = None) -> int:
         "hipcc_version": _read_optional_text(args.compiler_version_file),
         "note": args.software_note,
     }
+    prompt_suite_summary = None
+    prompt_suite_sha256 = args.prompt_suite_sha256
+    if args.prompt_suite and prompt_suite_sha256 is None and Path(args.prompt_suite).exists():
+        prompt_suite_sha256 = file_sha256(args.prompt_suite)
+    if args.prompt_suite and not args.skip_prompt_suite_validation:
+        prompt_records = load_prompt_records(args.prompt_suite)
+        prompt_errors = validate_prompt_records(prompt_records)
+        if prompt_errors:
+            raise ValueError(f"prompt suite validation failed: {prompt_errors[:4]}")
+        prompt_suite_summary = _prompt_suite_summary(prompt_records)
+
     workload = {
         "shape": "speculative_decode",
         "provider": "dflash",
         "verify_modes": ["verify_chain"],
         "prompt_suite": args.prompt_suite,
-        "prompt_suite_sha256": args.prompt_suite_sha256,
+        "prompt_suite_sha256": prompt_suite_sha256,
+        "prompt_suite_summary": prompt_suite_summary,
         "decode_tokens": args.decode_tokens or None,
         "draft_budgets": [int(x) for x in args.draft_budgets.split(",") if x.strip()],
         "same_session_ar_required": True,

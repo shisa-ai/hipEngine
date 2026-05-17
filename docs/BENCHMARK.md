@@ -167,6 +167,12 @@ harnesses:
 - graph capture/replay status and bucket key;
 - peak memory fields and target/drafter model paths.
 
+Use `fixtures/dflash/stable_prompts.jsonl` for deterministic no-remote prompt
+coverage. Its `code_promotion` rows are the first speed-promotion gate;
+`robustness` and `synthetic_stress` rows are diagnostic until code rows already
+beat AR. Rebuild/validate it with `scripts/dflash_prepare_prompts.py` when the
+retained tokenizer snapshot changes.
+
 A speculative row is promotable only when every row is exact/finite and aggregate
 speculative decode is >1.10× same-session AR. The checked-in
 `benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json`
