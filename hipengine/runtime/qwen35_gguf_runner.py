@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -34,7 +34,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
-    silu_mul_dual_out_bf16,
+    silu_mul_separate_out_bf16,
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32, build_lm_head, lm_head_argmax_stage1_blocks
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgate_bf16
@@ -46,8 +46,16 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     set_i64_scalar,
 )
 from hipengine.kvcache import KVLiveSpans
-from hipengine.kernels.hip_gfx1100.linear_attn.conv import qwen35_linear_attn_conv_decode_bf16
-from hipengine.kernels.hip_gfx1100.linear_attn.gdn import qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
+from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
+    qwen35_linear_attn_conv_decode_bf16,
+    qwen35_linear_attn_conv_prefill_f32,
+)
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_prefill_recurrent_k2_f32,
+    qwen35_gdn_prefill_rmsnorm_gate_bf16,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+    qwen35_linear_attn_prefill_prepare_f32_bf16,
+)
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
 from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFResidentWeights,
@@ -753,6 +761,153 @@ class Qwen35GGUFFullStackRunner:
         )
         self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
 
+    def _run_linear_attention_prefill_layer_rows(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        decode_scratch,
+        stream: int = 0,
+    ) -> None:
+        assert self.weights is not None
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        layer = self.weights.layer(layer_id)
+        cfg = self.weights.config
+        runtime = self.runtime or get_hip_runtime()
+        conv_state = decode_scratch.layer_conv_states[layer_id]
+        recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
+        if conv_state is None or recurrent_state is None:
+            raise ValueError(f"layer {layer_id} has no linear-attention state")
+        gguf_rmsnorm_bf16_f32_weight(
+            hidden_ptr,
+            layer.weight("attn_norm").allocation().tensor.ptr,
+            scratch.norm.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=cfg.rms_norm_eps,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("attn_qkv"),
+            scratch.norm.ptr,
+            scratch.linear_qkv.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.linear_qkv_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("attn_gate"),
+            scratch.norm.ptr,
+            scratch.linear_z.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=cfg.ssm_inner_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ssm_alpha"),
+            scratch.norm.ptr,
+            scratch.linear_alpha.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=cfg.ssm_time_step_rank,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ssm_beta"),
+            scratch.norm.ptr,
+            scratch.linear_beta.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=cfg.ssm_time_step_rank,
+            stream=stream,
+            runtime=runtime,
+        )
+        bf16_to_f32(
+            scratch.linear_qkv.ptr,
+            scratch.linear_qkv_f32.ptr,
+            rows * self.linear_qkv_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_linear_attn_conv_prefill_f32(
+            scratch.linear_qkv_f32.ptr,
+            conv_state.ptr,
+            layer.weight("ssm_conv1d").allocation().tensor.ptr,
+            scratch.conv_out.ptr,
+            rows,
+            self.linear_qkv_width,
+            cfg.ssm_conv_kernel,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_linear_attn_prefill_prepare_f32_bf16(
+            scratch.conv_out.ptr,
+            scratch.linear_alpha.ptr,
+            scratch.linear_beta.ptr,
+            layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+            layer.weight("ssm_a").allocation().tensor.ptr,
+            scratch.prefill_query.ptr,
+            scratch.prefill_key.ptr,
+            scratch.prefill_value.ptr,
+            scratch.prefill_beta.ptr,
+            scratch.prefill_decay.ptr,
+            rows,
+            cfg.ssm_group_count,
+            cfg.ssm_time_step_rank,
+            cfg.ssm_state_size,
+            self.ssm_value_dim,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_gdn_prefill_recurrent_k2_f32(
+            scratch.prefill_query.ptr,
+            scratch.prefill_key.ptr,
+            scratch.prefill_value.ptr,
+            scratch.prefill_beta.ptr,
+            scratch.prefill_decay.ptr,
+            recurrent_state.ptr,
+            scratch.recurrent_out.ptr,
+            rows,
+            cfg.ssm_time_step_rank,
+            cfg.ssm_state_size,
+            self.ssm_value_dim,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_gdn_prefill_rmsnorm_gate_bf16(
+            scratch.recurrent_out.ptr,
+            scratch.linear_z.ptr,
+            layer.weight("ssm_norm").allocation().tensor.ptr,
+            scratch.recurrent_bf16.ptr,
+            cfg.rms_norm_eps,
+            rows,
+            cfg.ssm_time_step_rank,
+            self.ssm_value_dim,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ssm_out"),
+            scratch.recurrent_bf16.ptr,
+            scratch.attn_out.ptr,
+            rows=rows,
+            in_features=cfg.ssm_inner_size,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        self._run_post_attention_ffn_rows(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, rows=rows, stream=stream)
+
     def _run_full_attention_layer(
         self,
         layer_id: int,
@@ -942,8 +1097,9 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        silu_mul_dual_out_bf16(
+        silu_mul_separate_out_bf16(
             scratch.ffn_gate_up.ptr,
+            scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
             scratch.ffn_intermediate.ptr,
             rows=rows,
             features=self.ffn_size,
@@ -1071,11 +1227,32 @@ class Qwen35GGUFResidentSession:
         self.scratch.zero_states(runtime)
         self._position = 0
 
-    def prefill(self, token_ids: list[int] | tuple[int, ...]) -> Qwen35GGUFNextTokenProbeResult:
-        """Consume prompt tokens once and return greedy next-token logits."""
+    def prefill(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        use_bulk: bool | None = None,
+    ) -> Qwen35GGUFNextTokenProbeResult:
+        """Consume prompt tokens once and return greedy next-token logits.
+
+        Prompts at least as long as the linear-attention convolution kernel use
+        the native bulk prefill scheduler by default. Short prompts keep the
+        token-serial path as a correctness/bisect fallback.
+        """
 
         if not token_ids:
             raise ValueError("token_ids must be non-empty")
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
+        run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
+        if run_bulk:
+            if len(token_ids) < min_bulk_tokens:
+                raise ValueError(
+                    f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
+                )
+            return self._run_bulk_prefill_and_sample(token_ids)
+
         self.reset()
         hidden_ptr = None
         for token_id in token_ids:
@@ -1083,6 +1260,96 @@ class Qwen35GGUFResidentSession:
             self._position += 1
         assert hidden_ptr is not None
         return self._sample_from_hidden(hidden_ptr)
+
+    def _run_bulk_prefill_and_sample(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        stream: int = 0,
+    ) -> Qwen35GGUFNextTokenProbeResult:
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        rows = int(len(token_ids))
+        if rows <= 0:
+            raise ValueError("token_ids must be non-empty")
+        if rows > self.scratch.max_positions:
+            raise ValueError(f"GGUF bulk prefill rows {rows} exceed cache capacity {self.scratch.max_positions}")
+        runtime = self.runtime or get_hip_runtime()
+        tokens = np.asarray([int(token) for token in token_ids], dtype=np.int64)
+        for token in tokens.tolist():
+            if token < 0 or token >= self.runner.vocab_size:
+                raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
+        self.reset()
+        bulk_scratch = _GGUFFullAttentionPrefillScratch.allocate(self.runner, rows=rows, runtime=runtime)
+        token_buf = malloc(tokens.nbytes, runtime=runtime)
+        hidden_a = malloc(rows * self.runner.hidden_size * 2, runtime=runtime)
+        hidden_b = malloc(rows * self.runner.hidden_size * 2, runtime=runtime)
+        buffers = (token_buf, hidden_a, hidden_b, *bulk_scratch.buffers)
+        try:
+            copy_host_to_device(token_buf, host_array_ptr(tokens), runtime=runtime)
+            launch_gguf_embedding(
+                self.runner.weights.root("token_embedding"),
+                token_buf.ptr,
+                hidden_a.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                vocab_size=self.runner.vocab_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            src = hidden_a
+            dst = hidden_b
+            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                if layer_type == LINEAR_ATTENTION:
+                    self.runner._run_linear_attention_prefill_layer_rows(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        bulk_scratch,
+                        rows=rows,
+                        stream=stream,
+                        decode_scratch=self.scratch,
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    key_cache, value_cache = self.scratch.full_cache(layer_id)
+                    layer_scratch = replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
+                    self.runner._run_full_attention_prefill_layer_aotriton(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        layer_scratch,
+                        stream=stream,
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                src, dst = dst, src
+            gguf_rmsnorm_bf16_f32_weight(
+                src.ptr,
+                self.runner.weights.root("output_norm").allocation().tensor.ptr,
+                bulk_scratch.norm.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                eps=self.runner.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+            runtime.stream_synchronize(stream)
+            self._position = rows
+            self.scratch.position_host[0] = rows
+            self.scratch.context_host[0] = rows + 1
+            set_decode_position_i64(
+                self.scratch.position_buf.ptr,
+                self.scratch.context_buf.ptr,
+                rows,
+                stream=stream,
+                library=self._runtime_state_library,
+                runtime=runtime,
+            )
+            last_hidden_ptr = bulk_scratch.norm.ptr + (rows - 1) * self.runner.hidden_size * 2
+            return self._sample_from_hidden(last_hidden_ptr)
+        finally:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
 
     def step(self, token_id: int, position: int | None = None) -> Qwen35GGUFNextTokenProbeResult:
         """Consume one generated token and return the next greedy token.
@@ -1495,6 +1762,19 @@ class _GGUFFullAttentionPrefillScratch:
     full_q: object
     full_k: object
     full_v: object
+    linear_qkv: object
+    linear_qkv_f32: object
+    linear_z: object
+    linear_alpha: object
+    linear_beta: object
+    conv_out: object
+    prefill_query: object
+    prefill_key: object
+    prefill_value: object
+    prefill_beta: object
+    prefill_decay: object
+    recurrent_out: object
+    recurrent_bf16: object
     full_query_raw: object
     full_key_raw: object
     full_query: object
@@ -1552,6 +1832,12 @@ class _GGUFFullAttentionPrefillScratch:
         q_f32_bytes = rows * runner.q_width * 4
         kv_f32_bytes = rows * runner.kv_width * 4
         ffn_bytes = rows * runner.ffn_size * 2
+        linear_qkv_bf16_bytes = rows * runner.linear_qkv_width * 2
+        linear_qkv_f32_bytes = rows * runner.linear_qkv_width * 4
+        linear_z_bytes = rows * cfg.ssm_inner_size * 2
+        linear_ab_bytes = rows * cfg.ssm_time_step_rank * 2
+        recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
+        prefill_scalar_bytes = rows * cfg.ssm_time_step_rank * 4
         cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2
         block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
         positions_arr = np.arange(rows, dtype=np.int64)
@@ -1568,6 +1854,19 @@ class _GGUFFullAttentionPrefillScratch:
             "full_q": buf(q_proj_bytes),
             "full_k": buf(kv_bf16_bytes),
             "full_v": buf(kv_bf16_bytes),
+            "linear_qkv": buf(linear_qkv_bf16_bytes),
+            "linear_qkv_f32": buf(linear_qkv_f32_bytes),
+            "linear_z": buf(linear_z_bytes),
+            "linear_alpha": buf(linear_ab_bytes),
+            "linear_beta": buf(linear_ab_bytes),
+            "conv_out": buf(linear_qkv_f32_bytes),
+            "prefill_query": buf(recurrent_f32_bytes),
+            "prefill_key": buf(recurrent_f32_bytes),
+            "prefill_value": buf(recurrent_f32_bytes),
+            "prefill_beta": buf(prefill_scalar_bytes),
+            "prefill_decay": buf(prefill_scalar_bytes),
+            "recurrent_out": buf(recurrent_f32_bytes),
+            "recurrent_bf16": buf(linear_z_bytes),
             "full_query_raw": buf(q_f32_bytes),
             "full_key_raw": buf(kv_f32_bytes),
             "full_query": buf(q_f32_bytes),

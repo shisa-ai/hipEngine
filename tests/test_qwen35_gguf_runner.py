@@ -62,6 +62,22 @@ def test_qwen35_gguf_resident_session_can_allocate_benchmark_length_cache() -> N
         assert session.scratch.block_table_tensor.numel >= 3
 
 
+def test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt() -> None:
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    prompt_ids = [760, 4087, 369, 220]
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=16) as serial:
+        serial_first = serial.prefill(prompt_ids, use_bulk=False)
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=16) as bulk:
+        bulk_first = bulk.prefill(prompt_ids, use_bulk=True)
+
+    assert bulk_first.token_id == serial_first.token_id
+    assert bulk_first.logits.shape == serial_first.logits.shape == (1, 248320)
+    assert np.all(np.isfinite(bulk_first.logits))
+    assert _kl_divergence(serial_first.logits.reshape(-1), bulk_first.logits.reshape(-1)) <= 0.05
+    assert float(np.max(np.abs(bulk_first.logits - serial_first.logits))) <= 0.125
+
+
 def test_qwen35_gguf_resident_decode_graph_matches_eager_logits() -> None:
     if not _hip_available():
         pytest.skip("HIP runtime is not available")
@@ -82,6 +98,16 @@ def test_qwen35_gguf_resident_decode_graph_matches_eager_logits() -> None:
     assert graph_second.logits.shape == eager_second.logits.shape == (1, 248320)
     assert np.all(np.isfinite(graph_second.logits))
     assert float(np.max(np.abs(graph_second.logits - eager_second.logits))) == 0.0
+
+
+def _kl_divergence(reference_logits: np.ndarray, candidate_logits: np.ndarray) -> float:
+    ref = reference_logits.astype(np.float64, copy=False)
+    cand = candidate_logits.astype(np.float64, copy=False)
+    ref_exp = np.exp(ref - float(np.max(ref)))
+    cand_exp = np.exp(cand - float(np.max(cand)))
+    ref_prob = ref_exp / float(np.sum(ref_exp))
+    cand_prob = cand_exp / float(np.sum(cand_exp))
+    return float(np.sum(ref_prob * (np.log(ref_prob + 1.0e-30) - np.log(cand_prob + 1.0e-30))))
 
 
 def _hip_available() -> bool:

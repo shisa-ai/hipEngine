@@ -17668,3 +17668,31 @@ bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipc
 ```
 
 Post-fix loop metric: `16.0414 tok/s` for 512-token prefill, back in the known token-serial baseline band. No bulk prefill scheduler has landed yet.
+
+## 2026-05-17 GGUF bulk prefill iteration 2
+
+Implemented the first public GGUF full-model bulk prefill scheduler for prompts with at least `ssm_conv_kernel` tokens (4 for Qwen3.5). Short prompts and `use_bulk=False` keep the token-serial fallback for correctness/bisect.
+
+Main changes:
+
+- `Qwen35GGUFResidentSession.prefill(..., use_bulk=None)` now defaults to bulk for prompts length >=4.
+- Bulk path batches token embedding rows, layer-wise GGUF projections, linear-attention conv/GDN native prefill, AOTriton full-attention prefill, and FFN rows.
+- Full-attention prompt KV writes still go through `KVLiveSpans` via `_GGUFFullAttentionPrefillScratch.append_spans`; persistent decode uses the resident session KV cache for each full-attention layer.
+- Fixed rows>1 FFN activation to use `silu_mul_separate_out_bf16`; the old dual layout only worked for rows=1 because it expected per-row `[gate, up]` adjacency.
+- Added a 4-token bulk-vs-serial test using top-1 + KL gate; logits differ by max abs ~0.10 due native prefill/AOTriton accumulation order, while top-1 matches and KL is within gate.
+
+Loop verify result:
+
+```bash
+bash -lc 'set -euo pipefail; hipcc --version > /tmp/hipengine-hipcc-version.txt; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-runs 0 --measured-runs 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-bulk-loop-512.json >/tmp/hipengine-gguf-bulk-loop-512.out; python3 -c "import json; print(json.load(open(\"/tmp/hipengine-gguf-bulk-loop-512.json\"))[\"summary\"][\"prefill_tok_s\"][\"median\"])"'
+# 910.4868655417616
+```
+
+Guard:
+
+```bash
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --json /tmp/hipengine-gguf-bulk-loop-e2e.json >/tmp/hipengine-gguf-bulk-loop-e2e.out; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q'
+# 13 passed
+```
+
+Metric improved from the token-serial baseline band (`16.0414 tok/s`) to `910.4869 tok/s` for 512-token prefill, but this is still below the Qwen3.6 packed PARO target (`2451.2 tok/s`). Next likely bottleneck is GGUF rows>1 projection throughput: current Q4_K/Q5_K/Q6_K rows>1 kernels are row-grid equivalents, not WMMA/GEMM-tiled kernels.
