@@ -45,7 +45,9 @@ single-model tuning targets
 (19.07 GiB, 4.68 bpw) in packed
 [ParoQuant](https://github.com/shisa-ai/paroquant) format.
 
-While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipENGINE/blob/main/docs/ROOFLINE.md), currently, our implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`):
+## gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
+
+While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipENGINE/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family.
 
 ### Prefill tok/s
 
@@ -74,6 +76,32 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipENGINE/b
 | 32K/128 | **20.267** | 21.738 | 21.533 |
 | 128K/128 | **23.235** | 23.605 | 23.596 |
 
+## gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
+
+The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the same registry-keyed kernel surface. The Strix Halo snapshot below uses 256-row prefill chunks, which removed the 4K prefill gap without hurting long-context decode. These rows are diagnostic single runs pending a shisa KL/top-1 gate and repeated-run statistics.
+
+### Prefill tok/s
+
+| Workload | hipENGINE shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: |
+| 512/128 | 983.206 | **1058.738** | 638.008 |
+| 4K/128 | **1029.402** | 1004.220 | 595.400 |
+| 32K/128 | **792.296** | 735.534 | 407.984 |
+| 128K/128 | **413.489** | 376.070 | 181.453 |
+| 4K/4K | **1001.266** | 990.726 | 590.391 |
+
+### Decode tok/s
+
+| Workload | hipENGINE shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| --- | ---: | ---: | ---: |
+| 512/128 | **62.060** | 50.537 | 57.615 |
+| 4K/128 | **63.605** | 49.379 | 55.027 |
+| 32K/128 | **50.629** | 43.435 | 44.576 |
+| 128K/128 | 30.245 | **31.286** | 26.935 |
+| 4K/4K | **62.438** | 49.071 | 54.241 |
+
+On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so cross-engine memory comparisons are omitted here. The hipENGINE allocator high-water mark for the chunk256 sweep was 17.997 GiB (512/128), 18.097 GiB (4K/128), 18.909 GiB (32K/128), 21.877 GiB (128K/128), and 18.210 GiB (4K/4K).
+
 See [`benchmarks/README.md`](benchmarks/README.md) for full protocol details,
 correctness status, source-lineage targets, and external comparison baselines.
 
@@ -82,7 +110,7 @@ correctness status, source-lineage targets, and external comparison baselines.
 | Backend | Hardware | Status |
 | --- | --- | --- |
 | `hip_gfx1100` | AMD Radeon Pro W7900 / RX 7900 XTX (RDNA3) | Primary, in active bring-up |
-| `hip_gfx1151` | Strix Halo (RDNA3.5) | Planned peer backend |
+| `hip_gfx1151` | AMD Ryzen AI MAX+ 395 / Radeon 8060S (Strix Halo, RDNA3.5) | Active diagnostic backend |
 | `cuda_sm86` | NVIDIA Ampere consumer (3090-class) | Planned peer backend |
 | `cpu_reference` | Any CPU, numpy | Correctness oracle; CI without GPU |
 
@@ -114,7 +142,7 @@ isolated experiment with its own gates (see
 │  KERNELS (backend-keyed, 120 __global__ in the Qwen/PARO port)  │
 │  kernels/hip_gfx1100/  attention / linear_attn / moe / quant    │
 │                        wmma / norm / rotary / fused             │
-│  kernels/hip_gfx1151/  (future)                                 │
+│  kernels/hip_gfx1151/  native target-arch peer backend           │
 │  kernels/cuda_sm86/    (future)                                 │
 │  kernels/cpu_reference/ correctness oracle, no GPU required     │
 └─────────────────────────────────────────────────────────────────┘

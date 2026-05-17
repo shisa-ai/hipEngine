@@ -16341,3 +16341,12 @@ Updated `scripts/qwen35_compare_tables.py` so `--target gfx1151` now points at t
 python3 scripts/qwen35_compare_tables.py --target gfx1151 hip-gfx1151 --no-memory
 python3 scripts/qwen35_compare_tables.py --target gfx1151 vulkan-gfx1151 --no-memory
 ```
+
+## 2026-05-17 — README gfx1100/gfx1151 performance split
+
+Updated `README.md` performance presentation to split the top-level tables into:
+
+- `gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)` using the existing W7900/gfx1100 shisa packed vs llama.cpp HIP/Vulkan rows.
+- `gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)` using the latest chunk256 shisa packed sweep (`983.206 / 1029.402 / 792.296 / 413.489 / 1001.266` prefill tok/s and `62.060 / 63.605 / 50.629 / 30.245 / 62.438` decode tok/s) against the upstream llama.cpp HIP/Vulkan rerun.
+
+Before editing, confirmed chunk256 has no long-context regression versus the prior default/parent-style chunk sweep: 32K prefill improved `598.663 -> 792.296 tok/s` (+32.3%), 128K prefill improved `371.722 -> 413.489 tok/s` (+11.2%), decode was effectively flat/slightly positive, and tracked peak memory dropped by ~1.36 GiB on both 32K and 128K rows.
