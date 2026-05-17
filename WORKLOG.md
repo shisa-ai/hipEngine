@@ -15237,3 +15237,54 @@ python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_decode_stat
 python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p32-router-sigmoid-rejected.json >/tmp/p32-artifact.pretty
 git diff --check
 ```
+
+---
+
+## 2026-05-17 — P3.3 MoE metadata fanout collapse deferred by profile gate
+
+Task #20 evaluated `docs/OPTIMIZE.md` P3.3. I did **not** implement the
+proposed fused metadata kernel because the prerequisite M.3 rocprof evidence
+already shows the target is below material payoff for the current c=1 prefill
+path. The proposed change would combine `qwen35_moe_group_prefix` +
+`qwen35_moe_wmma_tile_map` and initialize `scatter_offsets`/`tile_expert` in the
+same small metadata kernel, but a fused kernel would still perform the same
+prefix/tile-map work and write the same metadata.
+
+Source evidence is the retained selected-region profile
+`benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`
+on W7900/gfx1100, Qwen3.5-35B-A3B-PARO, `w4_paro`, max_layers=40,
+cache-only builds, graph replay decode, and the 512/128 + 4K/128 + 32K/128
+M.3 workload set:
+
+```bash
+python3 scripts/qwen35_rocprof_audit.py --workloads 512/128 4096/128 32768/128 \
+  --out benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json
+```
+
+Profile-derived prefill upper-bound summary:
+
+| workload | MoE metadata family share of prefill kernel time | prefix + tile-map + two average fills optimistic bound |
+| --- | ---: | ---: |
+| 512/128 | `0.84%` | `0.27%` kernel time / `0.22%` wall time |
+| 4K/128 | `0.77%` | `0.12%` kernel time / `0.12%` wall time |
+| 32K/128 | `0.57%` | `0.09%` kernel time / `0.09%` wall time |
+
+Decision: defer/no-op. P3.3 should not add another diagnostic kernel for the
+current c=1 prefill path. Revisit only if c>N batching or future scheduler
+profiling makes MoE metadata a multi-percent prefill bucket.
+
+Current fallback correctness/sanity was rechecked without code changes:
+
+```bash
+python3 scripts/smoke.py --mode qwen35-moe-group-scatter-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# tokens=3 top_k=2 num_experts=4 hidden_size=5 prefix_match=True lane_match=True \
+# expert_match=True weight_match=True packed_match=True tile_match=True
+
+python3 -m pytest tests/test_qwen35_moe_group_scatter_plan.py -q --tb=short
+# 3 passed
+
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-p33-moe-metadata-fanout-deferred.json >/tmp/p33-artifact-check.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-p33-moe-metadata-fanout-deferred.json`.
