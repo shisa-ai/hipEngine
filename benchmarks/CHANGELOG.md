@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-05-18
 
+- [diagnostic retained] hipEngine / shisa Qwen3.6-35B-A3B-PARO packed / gfx1100 default >1K chunk refresh: previous packed refresh -> current default rows with 512 unchunked and >1K chunks `1024/1024/4096/1024/1024`; 4K prefill `2711.013 -> 2899.685 tok/s` (+6.96%) and tracked peak `19.995 -> 19.455 GiB`, while 512/32K/128K stay within single-run noise (`2500.565/2115.050/1054.291` prefill); compare tables and README updated; `benchmarks/results/2026-05-18-hipengine-gfx1100-shisa-qwen36-packed-gt1k-default-diagnostic.json`.
 - [diagnostic retained] hipEngine / Qwen3.5-35B-A3B-PARO / >1K prefill chunk policy: old P5.2 default kept <32K unchunked and used q8192 at 128K -> new default resolves actual prompt length, keeps `<=1024` unchunked, and uses manual-long chunks `1024/1024/4096/1024/1024` for `>1024`; manual-long vs prior baseline prefill improves 1.5K median `+0.64%`, 2K `+3.01%`, 4K `+6.55%`, 8K `+8.46%`, 12K `+9.96%`, 16K `+11.04%`, while retained manual-long peaks stay under 24 GiB (16K `19.85 GiB`); linear-only faster points are not special-cased because they cost more memory; `benchmarks/results/2026-05-18-hipengine-qwen35-gt1k-prefill-chunk-policy-diagnostic.json`.
 
 ## 2026-05-17

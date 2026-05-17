@@ -16596,3 +16596,85 @@ Benchmark artifact and rollup update:
 - `benchmarks/results/2026-05-18-hipengine-qwen35-gt1k-prefill-chunk-policy-diagnostic.json`
 - `benchmarks/README.md` P5.3 row
 - `benchmarks/CHANGELOG.md` 2026-05-18 entry
+
+## 2026-05-18 — gfx1100 shisa packed compare-table refresh after >1K chunks
+
+Refreshed the W7900/gfx1100 shisa packed Qwen3.6 rows after the default prefill
+policy change (`<=1024` unchunked, `>1024` resolves to
+`1024/1024/4096/1024/1024`).  The compare-table A-side now uses the packed-only
+checkpoint and default auto chunking rather than old manual/no-chunk short-row
+assumptions.
+
+Benchmark command template (one single run per workload; diagnostic only, no
+shisa KL/top-1 gate):
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --backend hip_gfx1100 --shared-expert-format packed_paro_w4 \
+  --token-id 9707 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --prompt-length {512|4096|32768|131072} --decode-tokens 128 \
+  --json /tmp/hipengine-gfx1100-shisa36-packed-gt1k-default-20260518-025325/...
+```
+
+A cached-build warmup/prebuild was run once without `--require-cached-build`:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 \
+  --warmup-decode-tokens 0 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --prompt-length 8 --decode-tokens 1 \
+  --json /tmp/hipengine-gfx1100-shisa36-packed-prebuild.json
+# prebuild_ok
+```
+
+Measured rows (AMD Radeon Pro W7900 / gfx1100, graph replay decode):
+
+| Workload | Prefill tok/s | Decode tok/s | Tracked peak | Resolved chunks |
+| --- | ---: | ---: | ---: | --- |
+| 512/128 | 2500.565 | 111.516 | 18.123 GiB | all zero |
+| 4K/128 | 2899.685 | 113.094 | 19.455 GiB | 1024/1024/4096/1024/1024 |
+| 32K/128 | 2115.050 | 97.594 | 20.267 GiB | 1024/1024/4096/1024/1024 |
+| 128K/128 | 1054.291 | 62.027 | 23.235 GiB | 1024/1024/4096/1024/1024 |
+
+Compared to the prior packed refresh, 4K prefill improves `2711.013 ->
+2899.685 tok/s` (+6.96%) and tracked peak drops `19.995 -> 19.455 GiB`; 512,
+32K, and 128K are within single-run noise.  Updated:
+
+- `scripts/qwen35_compare_tables.py` (`--target shisa` rows and source)
+- top-level `README.md` gfx1100 tables
+- `benchmarks/README.md` rollup row
+- `benchmarks/CHANGELOG.md`
+- `benchmarks/results/2026-05-18-hipengine-gfx1100-shisa-qwen36-packed-gt1k-default-diagnostic.json`
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/qwen35_compare_tables.py
+python3 scripts/qwen35_compare_tables.py --target shisa llama.cpp-hip >/tmp/qwen35-compare-shisa-hip.md
+python3 scripts/qwen35_compare_tables.py --target shisa --against-target >/tmp/qwen35-compare-shisa-legacy.md
+python3 -m json.tool benchmarks/results/2026-05-18-hipengine-gfx1100-shisa-qwen36-packed-gt1k-default-diagnostic.json >/tmp/gfx1100-shisa-packed.json
+python3 - <<'PY'
+from pathlib import Path
+import re, urllib.parse
+fail=[]
+for md in [Path('README.md'), Path('benchmarks/README.md'), Path('benchmarks/CHANGELOG.md')]:
+    text=md.read_text()
+    for m in re.finditer(r'\[[^\]]+\]\(([^)]+)\)', text):
+        target=m.group(1).split('#',1)[0]
+        if not target or '://' in target or target.startswith('mailto:'):
+            continue
+        path=(md.parent / urllib.parse.unquote(target)).resolve()
+        if not path.exists():
+            fail.append((str(md), target))
+if fail:
+    raise SystemExit(fail)
+print('markdown links OK')
+PY
+# all passed
+```

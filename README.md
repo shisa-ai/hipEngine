@@ -47,32 +47,32 @@ single-model tuning targets
 
 ## gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family.
+While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family. The latest W7900 packed rows use the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks.
 
 ### Prefill tok/s
 
 | Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
-| 512/128 | **2518.836** | 2436.049 | 1816.927 |
-| 4K/128 | **2711.013** | 2176.905 | 1705.093 |
-| 32K/128 | **2130.562** | 1496.409 | 1128.554 |
-| 128K/128 | **1048.543** | 710.213 | 480.539 |
+| 512/128 | **2500.565** | 2436.049 | 1816.927 |
+| 4K/128 | **2899.685** | 2176.905 | 1705.093 |
+| 32K/128 | **2115.050** | 1496.409 | 1128.554 |
+| 128K/128 | **1054.291** | 710.213 | 480.539 |
 
 ### Decode tok/s
 
 | Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
-| 512/128 | 111.738 | 85.487 | **127.515** |
-| 4K/128 | 113.231 | 87.375 | **120.163** |
-| 32K/128 | 97.779 | 76.994 | **98.073** |
-| 128K/128 | 62.014 | 57.341 | **64.478** |
+| 512/128 | 111.516 | 85.487 | **127.515** |
+| 4K/128 | 113.094 | 87.375 | **120.163** |
+| 32K/128 | 97.594 | 76.994 | **98.073** |
+| 128K/128 | 62.027 | 57.341 | **64.478** |
 
 ### Peak GiB
 
 | Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | **18.123** | 21.125 | 20.844 |
-| 4K/128 | **19.995** | 21.197 | 20.969 |
+| 4K/128 | **19.455** | 21.197 | 20.969 |
 | 32K/128 | **20.267** | 21.738 | 21.533 |
 | 128K/128 | **23.235** | 23.605 | 23.596 |
 

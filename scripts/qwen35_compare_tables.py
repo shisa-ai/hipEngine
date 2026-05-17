@@ -31,7 +31,8 @@ class Series:
 
 
 QWEN35_SOURCE = "benchmarks/results/2026-05-17-hipengine-qwen35-d31-d33-grouped-gqa-long-context-diagnostic.json"
-SHISA_SOURCE = "benchmarks/results/2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json"
+SHISA_PACKED_SOURCE = "benchmarks/results/2026-05-18-hipengine-gfx1100-shisa-qwen36-packed-gt1k-default-diagnostic.json"
+SHISA_LEGACY_SOURCE = "benchmarks/results/2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json"
 SHISA_GFX1151_SOURCE = "benchmarks/results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-chunk256-sweep-diagnostic.json"
 LLAMACPP_GFX1151_SOURCE = "benchmarks/results/2026-05-17-llamacpp-upstream-gfx1151-qwen36-gguf-rerun-diagnostic.json"
 
@@ -55,17 +56,18 @@ TARGETS: dict[str, Series] = {
     "shisa-packed": Series(
         key="shisa-packed",
         display="hipEngine shisa Qwen3.6 packed PARO",
-        source=SHISA_SOURCE,
+        source=SHISA_PACKED_SOURCE,
         notes=(
-            "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5 unstripped checkpoint forced to "
-            "shared_expert_format=packed_paro_w4; packed is the default A-side for shisa comparisons. "
-            "512/4K rows are no-chunk short rows; 32K/128K rows use parent-style chunk flags."
+            "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed checkpoint forced to "
+            "shared_expert_format=packed_paro_w4 on W7900/gfx1100; packed is the default A-side "
+            "for shisa comparisons. The current default chunk policy keeps 512 unchunked and "
+            "uses 1024/1024/4096/1024/1024 chunks for prompts above 1K."
         ),
         rows=(
-            Row("512/128", 2518.836, 111.738, 18.123),
-            Row("4K/128", 2711.013, 113.231, 19.995),
-            Row("32K/128", 2130.562, 97.779, 20.267),
-            Row("128K/128", 1048.543, 62.014, 23.235),
+            Row("512/128", 2500.565, 111.516, 18.123),
+            Row("4K/128", 2899.685, 113.094, 19.455),
+            Row("32K/128", 2115.050, 97.594, 20.267),
+            Row("128K/128", 1054.291, 62.027, 23.235),
         ),
     ),
     "shisa-packed-gfx1151": Series(
@@ -88,7 +90,7 @@ TARGETS: dict[str, Series] = {
     "shisa-legacy": Series(
         key="shisa-legacy",
         display="hipEngine shisa Qwen3.6 legacy shared expert",
-        source=SHISA_SOURCE,
+        source=SHISA_LEGACY_SOURCE,
         notes=(
             "same shisa unstripped checkpoint forced to shared_expert_format=legacy_fp16. "
             "Use --target shisa-legacy to make legacy the A-side, or --against-target with no value "
