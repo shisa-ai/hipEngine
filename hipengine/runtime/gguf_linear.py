@@ -6,8 +6,10 @@ import ctypes
 from dataclasses import dataclass
 from typing import Mapping
 
+import hipengine.kernels.hip_gfx1100.linear.dense_gemv  # noqa: F401 - register dense BF16 fallback
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_DENSE_BF16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     Qwen35GGUFDeviceWeight,
@@ -51,6 +53,10 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
     (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_f32_out"),
         "raw",
+    ),
+    (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
+        "dense_bf16",
     ),
 }
 
@@ -151,6 +157,18 @@ def _launch_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwa
     )
 
 
+def _launch_dense_bf16(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
+    fn(
+        x_ptr,
+        weight.allocation("raw").tensor.ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
 def _variant_for_rows(variant: str, *, rows: int) -> str:
     if rows <= 0:
         raise ValueError("rows must be positive")
@@ -164,6 +182,7 @@ def _variant_for_rows(variant: str, *, rows: int) -> str:
 
 
 _LAUNCH_ABI = {
+    "dense_bf16": _launch_dense_bf16,
     "pack8": _launch_pack8,
     "raw": _launch_raw,
 }

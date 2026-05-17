@@ -8,7 +8,7 @@ import pytest
 import hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv  # noqa: F401
 from hipengine.kernels.registry import KernelKey, register, resolve
-from hipengine.loading.qwen35_gguf_materialize import LAYOUT_Q4_K_PACK8, LAYOUT_RAW_GGUF
+from hipengine.loading.qwen35_gguf_materialize import LAYOUT_DENSE_BF16, LAYOUT_Q4_K_PACK8, LAYOUT_RAW_GGUF
 from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_BF16,
     GGUF_OUTPUT_F32,
@@ -40,6 +40,7 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     q4 = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
     q5 = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
     q6 = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q6_k")
+    q41 = _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1")
 
     assert resolve_gguf_linear_dispatch(q4).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_bf16_out"
@@ -55,6 +56,9 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     )
     assert resolve_gguf_linear_dispatch(q5, rows=4, output_dtype=GGUF_OUTPUT_FP16).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q5_k", "prefill_bf16_fp16_out"
+    )
+    assert resolve_gguf_linear_dispatch(q41, rows=4).key == KernelKey(
+        "hip_gfx1100", "dense_gemv", "bf16", "out"
     )
 
 
@@ -77,6 +81,12 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
             _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q6_k"),
             GGUF_OUTPUT_F32,
             KernelKey("hip_gfx1100", "linear", "gguf_q6_k", "prefill_bf16_f32_out"),
+            (100, 10, 200, 2, 1024, 2048),
+        ),
+        (
+            _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1"),
+            GGUF_OUTPUT_BF16,
+            KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
             (100, 10, 200, 2, 1024, 2048),
         ),
     ],

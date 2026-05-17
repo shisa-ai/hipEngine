@@ -2,10 +2,10 @@
 """True GGUF LLM.generate() E2E correctness gate.
 
 This script is intentionally a public-API gate: it calls ``hipengine.LLM.generate``
-with the local Qwen3.5-0.8B Q4_K_M GGUF and compares the generated completion
-against a small llama.cpp CPU-oracle fixture. It is expected to fail until the
-GGUF materializer/runner tasks are complete; passing this script is the hard
-acceptance gate for claiming GGUF E2E support.
+with a local Qwen3.5-0.8B GGUF fixture and compares the generated completion
+against the fixture text/token oracle. Passing the Q4_K_M, Q8_0, Q4_1, and
+UD-Q4_K_XL fixtures is the hard acceptance gate for local GGUF E2E quant
+coverage.
 """
 
 from __future__ import annotations

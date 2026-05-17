@@ -71,12 +71,13 @@ def make_qwen35_gguf_bringup_generator(
     )
 
 
-register_text_generator(
-    model="qwen3_5_gguf",
-    backend="hip_gfx1100",
-    quant="gguf_q4_k_m",
-    factory=make_qwen35_gguf_bringup_generator,
-)
+for _quant in ("gguf_q4_k_m", "gguf_q8_0", "gguf_q4_1", "gguf_ud_q4_k_xl"):
+    register_text_generator(
+        model="qwen3_5_gguf",
+        backend="hip_gfx1100",
+        quant=_quant,
+        factory=make_qwen35_gguf_bringup_generator,
+    )
 
 
 __all__ = [

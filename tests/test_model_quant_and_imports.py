@@ -75,11 +75,13 @@ def test_builtin_gguf_q4_k_quant_plugin_is_registered() -> None:
 
 def test_builtin_mixed_gguf_quant_plugins_are_registered() -> None:
     expected = {
-        "gguf_q8_0": ("gguf_block_q8_0", "block32_scale"),
-        "gguf_q5_k": ("gguf_block_q5_k", "block256_subblock32_scale_min"),
-        "gguf_q6_k": ("gguf_block_q6_k", "block256_subblock16_scale"),
+        "gguf_q8_0": ("gguf_block_q8_0", "block32_scale", "gguf_k_gemv"),
+        "gguf_q4_1": ("gguf_block_q4_1", "block32_scale_min", "gguf_dense_bf16_fallback"),
+        "gguf_q5_k": ("gguf_block_q5_k", "block256_subblock32_scale_min", "gguf_k_gemv"),
+        "gguf_q6_k": ("gguf_block_q6_k", "block256_subblock16_scale", "gguf_k_gemv"),
+        "gguf_iq4_xs": ("gguf_iq4_xs", "block256_iq4_xs", "gguf_dense_bf16_fallback"),
     }
-    for name, (storage, granularity) in expected.items():
+    for name, (storage, granularity, kernel_family) in expected.items():
         plugin = resolve_quant(name)
 
         assert plugin.weight_storage == storage
@@ -87,4 +89,4 @@ def test_builtin_mixed_gguf_quant_plugins_are_registered() -> None:
         assert plugin.compute_dtype == "fp32_accum"
         assert plugin.scale_granularity == granularity
         assert plugin.calibration_artifact == "gguf"
-        assert plugin.kernel_family == "gguf_k_gemv"
+        assert plugin.kernel_family == kernel_family

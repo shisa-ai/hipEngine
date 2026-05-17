@@ -14,18 +14,20 @@ local tensor types (`BF16`, `Q8_0`, `Q4_1`, `Q4_K`, `Q5_K`, `Q6_K`, `IQ4_XS`,
 `MXFP4`, plus dense `F16/F32`). Native GGUF GEMV correctness spikes now cover
 `Q8_0`, `Q5_K`, `Q6_K`, and `Q4_K` raw bytes, plus a lossless PARO-style pack8
 repack for `Q4_K`, on gfx1100 while preserving GGML quant math. Full Qwen GGUF
-model materialization and E2E correctness now work for the Q4_K_M fixture;
-persistent resident decode, all-GPU full attention, layer-level AOTriton prefill,
-rows>1 measured-equivalent projection surfaces, and decode graph replay with GPU
-sampling have landed; public full-model bulk prefill and deeper WMMA/Marlin-style
-tuning remain next steps. BF16 and FP16 output variants are available for the GGUF projection
+model materialization and E2E correctness now work for the local Q4_K_M, Q8_0,
+Q4_1, and UD-Q4_K_XL files; persistent resident decode, all-GPU full attention,
+layer-level AOTriton prefill, rows>1 measured-equivalent projection surfaces,
+decode graph replay with GPU sampling, and dense-BF16 fallback materialization for
+Q4_1/F16/IQ4_XS tensors have landed. Public full-model bulk prefill and deeper
+WMMA/Marlin-style tuning remain next steps. BF16 and FP16 output variants are available for the GGUF projection
 kernels used by the planned runtime path. Qwen3.5 GGUF
 tensor-name mapping now validates the local 0.8B Q4_K_M inventory and classifies
 all 24 layers into 18 linear-attention and 6 full-attention blocks. The resident materialization plan covers all 320 tensors:
 98 Q4_K weights use lossless pack8 records, 89 Q5_K/Q6_K/Q8_0 weights keep raw
-GGUF block bytes, and 133 F32 tensors stay dense F32. A native Q6_K embedding
-lookup kernel now dequantizes selected `token_embd.weight` rows directly to BF16
-hidden states, avoiding full dense embedding-table fallback. A registry-driven
+GGUF block bytes, and 133 F32 tensors stay dense F32. Q4_1, F16, BF16, and
+IQ4_XS tensors in the other local files materialize through explicit dense-BF16
+fallback records for correctness. Native Q6_K and Q8_0 embedding lookup kernels now dequantize selected `token_embd.weight` rows directly to BF16
+hidden states, avoiding full dense embedding-table fallback for those token embeddings. A registry-driven
 runtime adapter selects the GGUF linear variants for BF16 hidden projections and
 FP32 lm-head logits from resident weight metadata. A first resident one-layer
 projection probe now starts at Q6_K token embedding and runs layer-0 RMSNorm,
@@ -33,16 +35,15 @@ Q4_K `attn_gate`, and Q5_K `ssm_out` through native GGUF kernels to produce a
 finite deterministic BF16 hidden-size output. `hipengine.LLM.generate()` now detects
 GGUF files, resolves the `qwen35` model plugin, and routes the target quant key
 through the native GGUF bring-up generator. The bring-up path now also runs the
-tied Q6_K `token_embd.weight` lm-head GEMV to produce FP32 logits and uses the
-shared GPU `argmax_f32` sampler for deterministic greedy tokens. The GGUF tokenizer/detokenizer now parses Qwen3.5
+tied Q6_K/Q8_0 `token_embd.weight` lm-head GEMV to produce FP32 logits and uses
+the shared GPU `argmax_f32` sampler for deterministic greedy tokens. The GGUF tokenizer/detokenizer now parses Qwen3.5
 byte-BPE metadata without torch or llama.cpp subprocesses on the hot path. The
 GGUF full-stack runner now executes all 24 mapped layers with native GGUF
 projections, linear-attention state carry-over, CPU-hosted small-context full
 attention, residuals, dense FFN, and final RMSNorm. The public generator runs
 resident prefill once, then replays a captured one-step decode graph for remaining
 greedy tokens, detokenizes the generated IDs, and returns text through
-`LLM.generate()`. The hard gate now passes the llama.cpp oracle
-fixture exactly for the target prompt.
+`LLM.generate()`. The hard gate now passes all local quant fixtures for the target prompt with no `torch` import on the generate path.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
@@ -51,13 +52,13 @@ The short answer to "can hipENGINE load GGUF quants easily now?" is:
 - **Native GGUF quant execution is not drop-in.** GGUF `Q4_K`, `Q5_K`, `Q6_K`, `Q8_0`, `Q8_K`, and `IQ*` tensors have GGML block layouts and quant math that differ from PARO/AWQ and from the current Marlin-K v0 layout. They need their own quant plugins, CPU oracles, and HIP kernels or a deliberate repack path.
 - **The new PARO/Marlin-K work makes this tractable.** hipENGINE now has the pattern we want: file/checkpoint layout -> host repack -> explicit device layout -> raw-pointer kernel -> registry dispatch. GGUF should use the same architecture, not special-case dispatch.
 
-The intake implementation is now past scanner/GEMV bring-up for the Q4_K_M fixture. The near-term performance path has resident GGUF decode, all-GPU full attention, AOTriton/equivalent layer prefill attention, rows>1 GGUF projections, and decode graph replay; remaining work is public full-model bulk prefill and retained throughput parity rows.
+The intake implementation is now past scanner/GEMV bring-up for the local Q4_K_M, Q8_0, Q4_1, and UD-Q4_K_XL fixtures. The near-term performance path has resident GGUF decode, all-GPU full attention, AOTriton/equivalent layer prefill attention, rows>1 GGUF projections, decode graph replay, and correctness-oriented dense fallback coverage; remaining work is public full-model bulk prefill and retained throughput parity rows.
 
 Do not treat this document as a performance claim. It is an implementation plan. Any hipENGINE GGUF speedup must be measured in hipENGINE after the accelerated runtime pieces land.
 
 ## True `LLM.generate()` E2E acceptance gate
 
-The first native GGUF E2E target is fixed to the local file:
+The first native GGUF E2E target was fixed to the local file:
 
 ```text
 /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf
@@ -91,10 +92,14 @@ hipengine.LLM(
 ).generate("The answer is", SamplingParams(max_tokens=4, temperature=0.0, top_p=1.0))
 ```
 
-Acceptance fixture:
+Acceptance fixtures now cover the original Q4_K_M target plus the local Q8_0,
+Q4_1, and UD-Q4_K_XL files:
 
 ```text
 tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json
+tests/fixtures/gguf/qwen35_0_8b_q8_0_e2e.json
+tests/fixtures/gguf/qwen35_0_8b_q4_1_e2e.json
+tests/fixtures/gguf/qwen35_0_8b_ud_q4_k_xl_e2e.json
 ```
 
 External oracle: local llama.cpp CPU execution from
@@ -122,24 +127,25 @@ Definition of done for GGUF E2E:
 2. The generated text and generated token IDs match the oracle fixture exactly.
 3. Repeated runs are deterministic.
 4. The public API path does not import `torch`.
-5. The implementation path materializes native GGUF resident weights and dispatches
-   native GGUF kernels (`gguf_q4_k`, `gguf_q5_k`, `gguf_q6_k`, `gguf_q8_0`) rather
-   than PARO/safetensors or dense fallback paths.
+5. The implementation path materializes GGUF resident weights and dispatches
+   native GGUF kernels where available (`gguf_q4_k`, `gguf_q5_k`, `gguf_q6_k`,
+   `gguf_q8_0`), with explicitly named dense-BF16 fallbacks for Q4_1/F16/IQ4_XS.
 6. A cached `rocprofv3 --kernel-trace` smoke proves the expected GGUF kernels ran.
 7. `WORKLOG.md` records the exact command output and any benchmark artifact only
    after correctness passes.
 
-As of 2026-05-17, this command passes for the fixed target fixture. Cached
-`rocprofv3 --kernel-trace` smokes over `LLM.generate(max_tokens=1)` confirm the
-native GGUF path: Q4_K pack8 GEMV, Q5_K/Q6_K/Q8_0 raw GEMV, Q6_K embedding, GGUF
-RMSNorm/add-RMSNorm, linear-attn conv/GDN, BF16 casts, SiLU, GGUF F32-weight
-head-RMSNorm+RoPE, span-shaped paged-KV append, paged full-attention decode, and
-BF16 gate application. See
-`benchmarks/results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json`
-and
-`benchmarks/results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json`.
-Broader prompts, batched prefill, AOTriton full-attention prefill, and throughput
-claims remain future work.
+As of 2026-05-17, this command passes for Q4_K_M, Q8_0, Q4_1, and UD-Q4_K_XL.
+Cached `rocprofv3 --kernel-trace` smokes over earlier `LLM.generate(max_tokens=1)`
+confirmed the native GGUF path: Q4_K pack8 GEMV, Q5_K/Q6_K/Q8_0 raw GEMV, Q6_K
+embedding, GGUF RMSNorm/add-RMSNorm, linear-attn conv/GDN, BF16 casts, SiLU,
+GGUF F32-weight head-RMSNorm+RoPE, span-shaped paged-KV append, paged
+full-attention decode, and BF16 gate application. Task #49 adds Q8_0 embedding
+and dense-BF16 fallback coverage for Q4_1/F16/IQ4_XS. See
+`benchmarks/results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json`,
+`benchmarks/results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json`,
+and `benchmarks/results/2026-05-17-hipengine-gguf-local-quant-coverage-diagnostic.json`.
+Broader prompts, public full-model bulk prefill, and throughput claims remain
+future work.
 
 ## Why GGUF is attractive for hipENGINE
 
@@ -819,19 +825,27 @@ layers rather than full-context recompute per generated token.
 
 ### P6: broaden local GGUF quant coverage
 
-The current public E2E target is Q4_K_M. Local files also include Q8_0, Q4_1,
-and UD-Q4_K_XL. Coverage work should follow performance plumbing so every new
-quant gets the same resident/session gates.
+Status: implemented as correctness coverage in
+`benchmarks/results/2026-05-17-hipengine-gguf-local-quant-coverage-diagnostic.json`.
+The public E2E target now includes Q4_K_M plus the local Q8_0, Q4_1, and
+UD-Q4_K_XL files. Coverage follows the same resident/session and graph replay
+gates as Q4_K_M.
 
-Implementation target:
+Implemented target:
 
-- Route Q8_0 through native materialization/generation where existing raw kernels
-  already cover the math.
-- Add Q4_1 runtime support.
-- Add F16 and IQ4_XS support needed by UD-Q4_K_XL before claiming that file.
+- Q8_0 routes through native raw GGUF materialization/generation, including a new
+  Q8_0 token-embedding lookup kernel and existing Q8_0 projection/lm-head GEMV.
+- Q4_1 uses explicit dense-BF16 fallback materialization and the registered
+  `dense_gemv` BF16 projection kernel.
+- F16 and IQ4_XS tensors needed by UD-Q4_K_XL also use dense-BF16 fallback
+  materialization, while Q4_K/Q5_K/Q6_K/Q8_0 tensors keep their native paths.
+- Public generator keys are registered for `gguf_q8_0`, `gguf_q4_1`, and
+  `gguf_ud_q4_k_xl` in addition to `gguf_q4_k_m`.
 
-Validation gate: `LLM.generate()` E2E fixtures pass for Q4_K_M, Q8_0, Q4_1, and
-UD-Q4_K_XL with no `torch` import on the generate path.
+Validation result: `LLM.generate()` E2E fixtures pass for Q4_K_M, Q8_0, Q4_1,
+and UD-Q4_K_XL with no `torch` import on the generate path. Q4_K_M generates
+`[220, 16, 13, 271]` / `" 1.\n\n"`; Q8_0, Q4_1, and UD-Q4_K_XL generate
+`[220, 16, 13, 198]` / `" 1.\n"`.
 
 ### P7: benchmark parity only after P1-P5
 
@@ -936,7 +950,7 @@ The scanner, quant table, Qwen3.5 tensor-name map, Q4_K_M resident weight materi
 3. Wire AOTriton V3 or an equivalent full-attention prefill path once Q/K/V are device-resident.
 4. Add rows>1 GGUF projection kernels for native prefill.
 5. Add decode graph replay and GPU sampling. [done]
-6. Broaden to Q8_0, Q4_1, and UD-Q4_K_XL only after the resident/runtime gates are reusable.
+6. Broaden to Q8_0, Q4_1, and UD-Q4_K_XL only after the resident/runtime gates are reusable. [done]
 7. Promote benchmark rows only after the normal correctness, profiler, artifact, rollup, and changelog gates pass.
 
 ## Bottom line

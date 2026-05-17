@@ -11,17 +11,22 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime
 from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
-from hipengine.loading.materialize import DeviceTensorAllocation, load_host_array_to_device_as_dtype
+from hipengine.loading.materialize import (
+    DeviceTensorAllocation,
+    float_array_to_bf16_bits,
+    load_host_array_to_device_as_dtype,
+)
 from hipengine.loading.qwen35_gguf import (
     Qwen35GGUFConfig,
     Qwen35GGUFLayerMap,
     Qwen35GGUFModelMap,
     build_qwen35_gguf_tensor_map,
 )
-from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
 
 LAYOUT_DENSE_F32 = "dense_f32"
+LAYOUT_DENSE_BF16 = "dense_bf16"
 LAYOUT_RAW_GGUF = "raw_gguf"
 LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
 
@@ -237,6 +242,24 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
             layout=LAYOUT_RAW_GGUF,
             allocation_names=("raw",),
         )
+    if qtype in (
+        GGMLQuantizationType.Q4_1,
+        GGMLQuantizationType.IQ4_XS,
+        GGMLQuantizationType.F16,
+        GGMLQuantizationType.BF16,
+    ):
+        quant_key = (
+            "fp16" if qtype == GGMLQuantizationType.F16 else f"gguf_{tensor.ggml_type_name.lower()}"
+        )
+        if qtype == GGMLQuantizationType.BF16:
+            quant_key = "bf16"
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key=quant_key,
+            layout=LAYOUT_DENSE_BF16,
+            allocation_names=("raw",),
+        )
     raise ValueError(f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r}: {tensor.name}")
 
 
@@ -319,12 +342,28 @@ def _materialize_spec(
                 runtime=runtime,
             )
         }
+    elif spec.layout == LAYOUT_DENSE_BF16:
+        if GGMLQuantizationType(spec.source.ggml_type) == GGMLQuantizationType.BF16:
+            bf16 = raw
+        else:
+            bf16 = float_array_to_bf16_bits(dequantize_gguf_data(raw, spec.source.ggml_type))
+        allocations = {
+            "raw": load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.dense_bf16_fallback",
+                bf16,
+                DType.BF16,
+                source_dtype="BF16",
+                device=device,
+                runtime=runtime,
+            )
+        }
     else:
         raise ValueError(f"unsupported materialization layout {spec.layout!r}")
     return Qwen35GGUFDeviceWeight(spec=spec, allocations=MappingProxyType(allocations))
 
 
 __all__ = [
+    "LAYOUT_DENSE_BF16",
     "LAYOUT_DENSE_F32",
     "LAYOUT_Q4_K_PACK8",
     "LAYOUT_RAW_GGUF",

@@ -48,13 +48,13 @@ from hipengine.kernels.hip_gfx1100.runtime import (
 from hipengine.kvcache import KVLiveSpans
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import qwen35_linear_attn_conv_decode_bf16
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
-from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import gguf_q6_k_embedding_bf16_out
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
 from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFResidentWeights,
     materialize_qwen35_gguf_weights,
 )
 from hipengine.quant.gguf import bf16_to_float32
+from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
 from hipengine.runtime.prefill import PrefillConfig
 
@@ -140,9 +140,9 @@ class Qwen35GGUFOneLayerProbe:
             buffers.extend((token_buf, hidden_buf, norm_buf, gate_buf, out_buf))
             copy_host_to_device(token_buf, host_array_ptr(token_ids), runtime=runtime)
 
-            gguf_q6_k_embedding_bf16_out(
+            launch_gguf_embedding(
+                self.weights.root("token_embedding"),
                 token_buf.ptr,
-                self.weights.root("token_embedding").allocation().tensor.ptr,
                 hidden_buf.ptr,
                 rows=1,
                 hidden_size=self.hidden_size,
@@ -327,9 +327,9 @@ class Qwen35GGUFFullStackRunner:
                 scratch.set_full_attention_position(position, runtime)
                 token_arr[0] = int(token_id)
                 copy_host_to_device(token_buf, host_array_ptr(token_arr), runtime=runtime)
-                gguf_q6_k_embedding_bf16_out(
+                launch_gguf_embedding(
+                    self.weights.root("token_embedding"),
                     token_buf.ptr,
-                    self.weights.root("token_embedding").allocation().tensor.ptr,
                     hidden_a.ptr,
                     rows=1,
                     hidden_size=self.hidden_size,
@@ -1148,9 +1148,9 @@ class Qwen35GGUFResidentSession:
         if self.runner is None or self._hidden_a is None:
             raise RuntimeError("GGUF resident session is closed")
         assert self.runner.weights is not None
-        gguf_q6_k_embedding_bf16_out(
+        launch_gguf_embedding(
+            self.runner.weights.root("token_embedding"),
             token_id_ptr,
-            self.runner.weights.root("token_embedding").allocation().tensor.ptr,
             self._hidden_a.ptr,
             rows=1,
             hidden_size=self.runner.hidden_size,

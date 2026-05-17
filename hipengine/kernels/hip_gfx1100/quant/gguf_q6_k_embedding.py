@@ -1,4 +1,4 @@
-"""Raw-pointer wrapper for GGUF Q6_K token embedding lookup."""
+"""Raw-pointer wrappers for GGUF Q6_K/Q8_0 token embedding lookup."""
 
 from __future__ import annotations
 
@@ -67,10 +67,72 @@ def gguf_q6_k_embedding_bf16_out(
 ) -> None:
     """Launch GGUF Q6_K embedding lookup into BF16-bit output."""
 
-    _validate(rows, hidden_size, vocab_size, threads)
+    _launch_embedding(
+        "gguf_q6_k",
+        "hipengine_gguf_q6_k_embedding_bf16_out",
+        token_ids_ptr,
+        qweight_ptr,
+        out_ptr,
+        rows,
+        hidden_size,
+        vocab_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q8_0_embedding_bf16_out(
+    token_ids_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch GGUF Q8_0 embedding lookup into BF16-bit output."""
+
+    _launch_embedding(
+        "gguf_q8_0",
+        "hipengine_gguf_q8_0_embedding_bf16_out",
+        token_ids_ptr,
+        qweight_ptr,
+        out_ptr,
+        rows,
+        hidden_size,
+        vocab_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def _launch_embedding(
+    quant: str,
+    symbol: str,
+    token_ids_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    vocab_size: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _validate(quant, rows, hidden_size, vocab_size, threads)
     library = library or build_gguf_q6_k_embedding(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = library.hipengine_gguf_q6_k_embedding_bf16_out
+    fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -102,13 +164,21 @@ def register_gguf_q6_k_embedding_kernels(*, replace: bool = True) -> None:
         gguf_q6_k_embedding_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey("hip_gfx1100", "embedding", "gguf_q8_0", "lookup_bf16_out"),
+        gguf_q8_0_embedding_bf16_out,
+        replace=replace,
+    )
 
 
-def _validate(rows: int, hidden_size: int, vocab_size: int, threads: int) -> None:
+def _validate(quant: str, rows: int, hidden_size: int, vocab_size: int, threads: int) -> None:
     if rows <= 0:
         raise ValueError("rows must be positive")
-    if hidden_size <= 0 or hidden_size % 256 != 0:
-        raise ValueError("hidden_size must be positive and divisible by GGUF Q6_K block size 256")
+    block_size = 32 if quant == "gguf_q8_0" else 256
+    if hidden_size <= 0 or hidden_size % block_size != 0:
+        raise ValueError(
+            f"hidden_size must be positive and divisible by GGUF {quant} block size {block_size}"
+        )
     if vocab_size <= 0:
         raise ValueError("vocab_size must be positive")
     if threads not in _ALLOWED_THREADS:
@@ -122,6 +192,7 @@ register_gguf_q6_k_embedding_kernels()
 __all__ = [
     "build_gguf_q6_k_embedding",
     "gguf_q6_k_embedding_bf16_out",
+    "gguf_q8_0_embedding_bf16_out",
     "plan_gguf_q6_k_embedding_build",
     "register_gguf_q6_k_embedding_kernels",
 ]

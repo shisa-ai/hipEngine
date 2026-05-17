@@ -11,15 +11,17 @@ from hipengine.kernels.cpu_reference import gguf_q6_k_embedding
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
     build_gguf_q6_k_embedding,
     gguf_q6_k_embedding_bf16_out,
+    gguf_q8_0_embedding_bf16_out,
     plan_gguf_q6_k_embedding_build,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.materialize import float_array_to_bf16_bits
-from hipengine.quant.gguf import bf16_to_float32
+from hipengine.quant.gguf import bf16_to_float32, dequantize_gguf_data
 from tests.test_gguf_k_gemv import make_q6_k_weight
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
+Q8_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q8_0.gguf")
 
 
 def _hip_available() -> bool:
@@ -52,6 +54,12 @@ def test_gguf_q6_k_embedding_registry_and_build_plan() -> None:
         quant="gguf_q6_k",
         variant="lookup_bf16_out",
     ) is gguf_q6_k_embedding_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="embedding",
+        quant="gguf_q8_0",
+        variant="lookup_bf16_out",
+    ) is gguf_q8_0_embedding_bf16_out
 
     artifact = plan_gguf_q6_k_embedding_build(compiler_version="test-compiler")
     assert artifact.output_path.name == "gguf_q6_k_embedding.so"
@@ -67,6 +75,8 @@ def test_gguf_q6_k_embedding_wrapper_validates_contract() -> None:
         gguf_q6_k_embedding_bf16_out(1, 2, 3, rows=0, hidden_size=256, vocab_size=1)
     with pytest.raises(ValueError, match="divisible"):
         gguf_q6_k_embedding_bf16_out(1, 2, 3, rows=1, hidden_size=255, vocab_size=1)
+    with pytest.raises(ValueError, match="divisible"):
+        gguf_q8_0_embedding_bf16_out(1, 2, 3, rows=1, hidden_size=31, vocab_size=1)
     with pytest.raises(ValueError, match="threads"):
         gguf_q6_k_embedding_bf16_out(
             1, 2, 3, rows=1, hidden_size=256, vocab_size=1, threads=96
@@ -77,7 +87,14 @@ def test_gguf_q6_k_embedding_wrapper_validates_contract() -> None:
 def test_gguf_q6_k_embedding_hip_matches_cpu_reference_synthetic() -> None:
     qweight = make_q6_k_weight(7, 512)
     token_ids = np.asarray([0, 3, 6, 3], dtype=np.int64)
-    _run_embedding_case(qweight, token_ids, hidden_size=512, vocab_size=7)
+    _run_embedding_case(
+        qweight,
+        token_ids,
+        hidden_size=512,
+        vocab_size=7,
+        expected=gguf_q6_k_embedding(token_ids, qweight),
+        kernel=gguf_q6_k_embedding_bf16_out,
+    )
 
 
 @pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
@@ -92,6 +109,26 @@ def test_gguf_q6_k_embedding_hip_matches_real_token_embedding() -> None:
         token_ids,
         hidden_size=tensor.shape[1],
         vocab_size=tensor.shape[0],
+        expected=gguf_q6_k_embedding(token_ids, qweight),
+        kernel=gguf_q6_k_embedding_bf16_out,
+    )
+
+
+@pytest.mark.skipif(not Q8_MODEL.exists(), reason=f"local GGUF fixture not found: {Q8_MODEL}")
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_gguf_q8_0_embedding_hip_matches_real_token_embedding() -> None:
+    reader = GGUFReader(Q8_MODEL)
+    tensor = reader.tensor_info("token_embd.weight")
+    qweight = np.asarray(reader.tensor_data("token_embd.weight"))
+    token_ids = np.asarray([760, 4087, 369, 760], dtype=np.int64)
+    expected = dequantize_gguf_data(qweight[token_ids], tensor.ggml_type)
+    _run_embedding_case(
+        qweight,
+        token_ids,
+        hidden_size=tensor.shape[1],
+        vocab_size=tensor.shape[0],
+        expected=expected,
+        kernel=gguf_q8_0_embedding_bf16_out,
     )
 
 
@@ -101,12 +138,13 @@ def _run_embedding_case(
     *,
     hidden_size: int,
     vocab_size: int,
+    expected: np.ndarray,
+    kernel,
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
     library = build_gguf_q6_k_embedding(load=True)
-    expected = gguf_q6_k_embedding(token_ids, qweight)
     expected_bits = float_array_to_bf16_bits(expected)
     out = np.empty((token_ids.shape[0], hidden_size), dtype=np.uint16)
     bufs = []
@@ -117,7 +155,7 @@ def _run_embedding_case(
         bufs.extend((token_dev, qweight_dev, out_dev))
         copy_host_to_device(token_dev, host_array_ptr(np.ascontiguousarray(token_ids)), runtime=runtime)
         copy_host_to_device(qweight_dev, host_array_ptr(np.ascontiguousarray(qweight)), runtime=runtime)
-        gguf_q6_k_embedding_bf16_out(
+        kernel(
             token_dev.ptr,
             qweight_dev.ptr,
             out_dev.ptr,

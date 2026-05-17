@@ -16515,3 +16515,114 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pyte
 ```
 
 Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-decode-graph-replay-diagnostic.json` (`performance_claim=false`). Public full-model prefill remains token-serial until the linear-attention bulk scheduler path lands.
+
+## 2026-05-17 GGUF local quant coverage (Q8_0, Q4_1, UD-Q4_K_XL)
+
+Implemented task #49: broadened Qwen3.5 GGUF runtime/materialization coverage beyond the original Q4_K_M file to the local Q8_0, Q4_1, and UD-Q4_K_XL files. This is correctness coverage only; Q4_1/F16/IQ4_XS use explicit dense-BF16 fallback materialization and are not claimed as native throughput kernels.
+
+Code changes:
+
+- Registered public `LLM.generate()` GGUF quant keys:
+  - `gguf_q4_k_m`
+  - `gguf_q8_0`
+  - `gguf_q4_1`
+  - `gguf_ud_q4_k_xl`
+- Added `hipengine/runtime/gguf_embedding.py` for registry-driven token embedding dispatch.
+- Extended `gguf_q6_k_embedding.hip/.py` with Q8_0 token embedding lookup to BF16 output.
+- Added dense-BF16 fallback materialization layout in `qwen35_gguf_materialize.py` for:
+  - `Q4_1`
+  - `F16`
+  - `BF16`
+  - `IQ4_XS`
+- Routed dense-BF16 fallback projections through registered `dense_gemv` BF16 kernels in `launch_gguf_linear(...)`.
+- Added quant plugin metadata for `gguf_q4_1` and `gguf_iq4_xs`.
+- Added E2E fixtures:
+  - `tests/fixtures/gguf/qwen35_0_8b_q8_0_e2e.json`
+  - `tests/fixtures/gguf/qwen35_0_8b_q4_1_e2e.json`
+  - `tests/fixtures/gguf/qwen35_0_8b_ud_q4_k_xl_e2e.json`
+- Updated docs/benchmark rollups and added artifact:
+  - `benchmarks/results/2026-05-17-hipengine-gguf-local-quant-coverage-diagnostic.json`
+
+Embedding smoke after extending the Q6_K embedding library to cover Q8_0 as well:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. python3 scripts/gguf_q6_k_embedding_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt
+```
+
+Result:
+
+```text
+synthetic_q6_k_embedding rows=4 hidden_size=512 max_abs=0.0
+real_q6_k_token_embd rows=4 hidden_size=1024 max_abs=0.0
+real_q8_0_token_embd rows=4 hidden_size=1024 max_abs=0.0
+worst_max_abs=0.0
+```
+
+Profiler smoke for the new Q8_0 embedding kernel:
+
+```bash
+rm -rf /tmp/hipengine-gguf-q8-embed-rocprof-task49
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-q8-embed-rocprof-task49 \
+  --output-file q8-embed --output-format csv -- \
+  python3 scripts/gguf_q6_k_embedding_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+Trace rows from `/tmp/hipengine-gguf-q8-embed-rocprof-task49/q8-embed_kernel_trace.csv`:
+
+```text
+gguf_q6_k_embedding_bf16_out_kernel DurationNs=5400 Scratch_Size=0 Workgroup_Size_X=256 Grid_Size=(512,4,1)
+gguf_q6_k_embedding_bf16_out_kernel DurationNs=8160 Scratch_Size=0 Workgroup_Size_X=256 Grid_Size=(1024,4,1)
+gguf_q8_0_embedding_bf16_out_kernel DurationNs=8120 Scratch_Size=0 Workgroup_Size_X=256 Grid_Size=(1024,4,1)
+```
+
+Public `LLM.generate()` E2E acceptance for all local Qwen3.5 GGUF files:
+
+```bash
+for f in \
+  tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json \
+  tests/fixtures/gguf/qwen35_0_8b_q8_0_e2e.json \
+  tests/fixtures/gguf/qwen35_0_8b_q4_1_e2e.json \
+  tests/fixtures/gguf/qwen35_0_8b_ud_q4_k_xl_e2e.json; do
+  name=$(basename "$f" .json)
+  /usr/bin/time -f 'elapsed=%E exit=%x' \
+    env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+        PYTHONPATH=. \
+        python3 scripts/qwen35_gguf_e2e_correctness.py \
+          --fixture "$f" --json "/tmp/${name}_task49_e2e.json"
+done
+```
+
+Results:
+
+| Fixture | Output | IDs | No torch | Wall |
+| --- | --- | --- | --- | --- |
+| Q4_K_M | `[' 1.\n\n', ' 1.\n\n']` | `[220, 16, 13, 271]` | `torch_loaded_by_generate=false` | `0:23.71` |
+| Q8_0 | `[' 1.\n', ' 1.\n']` | `[220, 16, 13, 198]` | `torch_loaded_by_generate=false` | `0:04.29` |
+| Q4_1 | `[' 1.\n', ' 1.\n']` | `[220, 16, 13, 198]` | `torch_loaded_by_generate=false` | `0:09.77` |
+| UD-Q4_K_XL | `[' 1.\n', ' 1.\n']` | `[220, 16, 13, 198]` | `torch_loaded_by_generate=false` | `0:14.57` |
+
+Targeted tests:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest \
+  tests/test_gguf_embedding_dispatch.py tests/test_gguf_linear_dispatch.py \
+  tests/test_model_quant_and_imports.py tests/test_gguf_e2e_acceptance.py \
+  tests/test_qwen35_gguf_materialize.py tests/test_gguf_q6_k_embedding.py \
+  tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_runner.py \
+  tests/test_gguf_ops.py tests/test_qwen35_gguf_full_attention_gpu.py \
+  tests/test_qwen35_gguf_tokenizer.py tests/test_aotriton_discovery.py -q
+# 57 passed
+```
+
+Validation cleanup:
+
+```bash
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-gguf-local-quant-coverage-diagnostic.json >/dev/null
+python3 -m py_compile hipengine/runtime/gguf_embedding.py hipengine/loading/qwen35_gguf_materialize.py hipengine/runtime/gguf_linear.py hipengine/runtime/qwen35_gguf_runner.py hipengine/generation/qwen35_gguf.py hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py hipengine/kernels/hip_gfx1100/runtime/state.py hipengine/quant/gguf_k.py hipengine/quant/__init__.py scripts/qwen35_gguf_e2e_correctness.py tests/test_gguf_embedding_dispatch.py tests/test_qwen35_gguf_materialize.py tests/test_gguf_q6_k_embedding.py tests/test_gguf_linear_dispatch.py tests/test_gguf_e2e_acceptance.py tests/test_model_quant_and_imports.py
+git diff --check
+```
+
+All passed. Remaining caveat: public full-model prefill is still token-serial, and dense-BF16 fallback coverage is correctness-oriented only.
