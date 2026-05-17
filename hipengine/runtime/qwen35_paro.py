@@ -69,6 +69,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_prefill_rmsnorm_gate_fp16,
+    qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
@@ -3303,14 +3304,13 @@ class Qwen35ParoDecodeState:
         )
         return scratch.recurrent_out
 
-    def run_linear_attention_prefill_conv_gdn_fp16(
+    def run_linear_attention_prefill_recurrent_fp16(
         self,
         scratch: Qwen35ParoLinearAttentionScratch,
         *,
         conv_state: Tensor,
         recurrent_state: Tensor,
         tokens: int,
-        eps: float | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3319,7 +3319,6 @@ class Qwen35ParoDecodeState:
             raise ValueError("native linear-attention prefill requires tokens >= linear_conv_kernel_dim")
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
         qkv_width = _linear_qkv_width(cfg)
-        z_width = _linear_value_width(cfg)
         qwen35_linear_attn_conv_prefill_fp16(
             scratch.qkv.ptr,
             conv_state.ptr,
@@ -3367,6 +3366,30 @@ class Qwen35ParoDecodeState:
             stream=stream,
             library=_library_for(library, "linear_gdn"),
             runtime=self.runtime,
+        )
+        return scratch.recurrent_out
+
+    def run_linear_attention_prefill_conv_gdn_fp16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        tokens: int,
+        eps: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        cfg = self.config
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        z_width = _linear_value_width(cfg)
+        self.run_linear_attention_prefill_recurrent_fp16(
+            scratch,
+            conv_state=conv_state,
+            recurrent_state=recurrent_state,
+            tokens=tokens,
+            library=library,
+            stream=stream,
         )
         qwen35_gdn_prefill_rmsnorm_gate_fp16(
             scratch.recurrent_out.ptr,
@@ -3572,6 +3595,50 @@ class Qwen35ParoDecodeState:
         )
         return scratch.out_proj
 
+    def project_linear_attention_prefill_gdn_rotate_out_fp16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        out_prefix = f"{prefix}.out_proj"
+        width = _linear_value_width(self.config)
+        pairs = self.tensor(f"{out_prefix}.pairs")
+        qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16(
+            scratch.recurrent_out.ptr,
+            scratch.z.ptr,
+            self.tensor(f"{prefix}.norm.weight").ptr,
+            scratch.out_rot.ptr,
+            pairs.ptr,
+            self.tensor(f"{out_prefix}.theta").ptr,
+            self.tensor(f"{out_prefix}.channel_scales").ptr,
+            self.config.rms_norm_eps,
+            tokens,
+            self.config.linear_num_value_heads,
+            self.config.linear_value_head_dim,
+            group_size,
+            _rotation_krot(pairs),
+            stream=stream,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        self.project_pack8_fp16(
+            scratch.out_rot,
+            scratch.out_proj,
+            weight_prefix=out_prefix,
+            rows=tokens,
+            in_features=width,
+            group_size=group_size,
+            threads=64 if tokens > 1 else 128,
+            library=library,
+            stream=stream,
+        )
+        return scratch.out_proj
+
     def run_linear_attention_state_fp16(
         self,
         hidden: Tensor,
@@ -3669,6 +3736,25 @@ class Qwen35ParoDecodeState:
         stream: int = 0,
     ) -> Tensor:
         scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        if _use_linear_gdn_prefill_rotate_fused(self.config, tokens=tokens, group_size=group_size):
+            self.rotate_linear_attention_inputs_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            self.project_linear_attention_qkv_z_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            self.project_linear_attention_ab_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+            self.run_linear_attention_prefill_recurrent_fp16(
+                scratch,
+                conv_state=conv_state,
+                recurrent_state=recurrent_state,
+                tokens=tokens,
+                library=library,
+                stream=stream,
+            )
+            return self.project_linear_attention_prefill_gdn_rotate_out_fp16(
+                scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         self.run_linear_attention_prefill_state_fp16(
             hidden,
             conv_state=conv_state,
@@ -5653,6 +5739,14 @@ def _linear_ab_prefill_rocblas_min_tokens() -> int:
 def _use_linear_ab_prefill_rocblas(tokens: int) -> bool:
     threshold = _linear_ab_prefill_rocblas_min_tokens()
     return threshold > 0 and tokens >= threshold
+
+
+def _use_linear_gdn_prefill_rotate_fused(config, *, tokens: int, group_size: int) -> bool:
+    return (
+        tokens > 1
+        and _env_flag("HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED", False)
+        and int(group_size) == int(config.linear_value_head_dim)
+    )
 
 
 def _shared_gate_up_prefill_token_tile() -> int:

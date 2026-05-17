@@ -2726,6 +2726,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
         qwen35_gdn_prefill_recurrent_k2_f32,
         qwen35_gdn_prefill_rmsnorm_gate_bf16,
         qwen35_gdn_prefill_rmsnorm_gate_fp16,
+        qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16,
         qwen35_linear_attn_conv_prefill_f32,
         qwen35_linear_attn_conv_prefill_fp16,
         qwen35_linear_attn_prefill_prepare_f32_bf16,
@@ -2880,6 +2881,40 @@ def qwen35_linear_attn_prefill_hip_smoke(
             return out.astype(np.float16)
         return _float32_to_bf16_bits(out.reshape(-1)).reshape(recurrent.shape)
 
+    def rotate1_ref(
+        x: np.ndarray,
+        pairs: np.ndarray,
+        theta: np.ndarray,
+        scales: np.ndarray,
+        *,
+        group_size: int,
+        krot: int,
+    ) -> np.ndarray:
+        tokens, hidden = x.shape
+        half_group = group_size // 2
+        out = np.empty_like(x, dtype=np.float16)
+        for token in range(tokens):
+            for group in range(hidden // group_size):
+                base = group * group_size
+                buf = (
+                    x[token, base : base + group_size].astype(np.float32)
+                    * scales[base : base + group_size].astype(np.float32)
+                )
+                for r in range(krot):
+                    for lane in range(half_group):
+                        pair_base = r * hidden + base + 2 * lane
+                        i = int(pairs[pair_base + 0])
+                        j = int(pairs[pair_base + 1])
+                        angle = np.float32(theta[r * (hidden // 2) + group * half_group + lane])
+                        s = np.sin(angle, dtype=np.float32)
+                        c = np.cos(angle, dtype=np.float32)
+                        xi = np.float32(buf[i])
+                        xj = np.float32(buf[j])
+                        buf[i] = np.float32(np.float32(xj * s) + np.float32(xi * c))
+                        buf[j] = np.float32(np.float32(xi * -s) + np.float32(xj * c))
+                out[token, base : base + group_size] = buf.astype(np.float16)
+        return out
+
     conv_tokens = 5
     channels = 8
     kernel_size = 4
@@ -2987,6 +3022,23 @@ def qwen35_linear_attn_prefill_hip_smoke(
     )
     expected_gated_bits = rmsnorm_gate_ref(expected_gdn_out, gate_bits, norm_weight, eps)
     expected_gated_fp16 = rmsnorm_gate_ref(expected_gdn_fp16_out, gate_fp16, norm_weight, eps, output_dtype="fp16")
+    rotate_group_size = head_v_dim
+    rotate_krot = 2
+    rotate_pairs = np.asarray([0, 2, 1, 3, 0, 2, 1, 3] * rotate_krot, dtype=np.int16)
+    rotate_theta = np.asarray(
+        [((idx % 7) - 3) * 0.03125 for idx in range(rotate_krot * (num_v_heads * head_v_dim // 2))],
+        dtype=np.float16,
+    )
+    rotate_scales = np.asarray([1.0 + 0.0625 * ((idx % 5) - 2) for idx in range(num_v_heads * head_v_dim)], dtype=np.float16)
+    expected_fused_rotate = rotate1_ref(
+        expected_gated_fp16.reshape(tokens, num_v_heads * head_v_dim),
+        rotate_pairs,
+        rotate_theta,
+        rotate_scales,
+        group_size=rotate_group_size,
+        krot=rotate_krot,
+    )
+    fused_rotate = np.empty_like(expected_fused_rotate)
     state_regular = state.copy()
     state_k2 = state.copy()
     state_k2_fp16 = state.copy()
@@ -3046,6 +3098,10 @@ def qwen35_linear_attn_prefill_hip_smoke(
         gdn_k2_fp16_out_dev = out_dev(gdn_k2_fp16_out)
         gated_bits_dev = out_dev(gated_bits)
         gated_fp16_dev = out_dev(gated_fp16)
+        fused_rotate_dev = out_dev(fused_rotate)
+        rotate_pairs_dev = dev(rotate_pairs)
+        rotate_theta_dev = dev(rotate_theta)
+        rotate_scales_dev = dev(rotate_scales)
         norm_weight_dev = dev(norm_weight)
         gate_dev = dev(gate_bits)
         gate_fp16_dev = dev(gate_fp16)
@@ -3156,6 +3212,23 @@ def qwen35_linear_attn_prefill_hip_smoke(
             library=gdn_library,
             runtime=runtime,
         )
+        qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16(
+            gdn_k2_fp16_out_dev.ptr,
+            gate_fp16_dev.ptr,
+            norm_weight_dev.ptr,
+            fused_rotate_dev.ptr,
+            rotate_pairs_dev.ptr,
+            rotate_theta_dev.ptr,
+            rotate_scales_dev.ptr,
+            eps,
+            tokens,
+            num_v_heads,
+            head_v_dim,
+            rotate_group_size,
+            rotate_krot,
+            library=gdn_library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(conv_out), conv_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(conv_out_fp16), conv_out_fp16_dev, runtime=runtime)
@@ -3176,6 +3249,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
         copy_device_to_host(host_array_ptr(gdn_k2_fp16_out), gdn_k2_fp16_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gated_bits), gated_bits_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gated_fp16), gated_fp16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(fused_rotate), fused_rotate_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(state_regular), state_regular_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(state_k2), state_k2_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(state_k2_fp16), state_k2_fp16_dev, runtime=runtime)
@@ -3205,6 +3279,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
     fp16_gdn_k2_state_max_abs = float(np.max(np.abs(state_k2_fp16 - expected_gdn_fp16_state)))
     gated_mismatch = int(np.count_nonzero(gated_bits != expected_gated_bits))
     fp16_gated_mismatch = int(np.count_nonzero(gated_fp16.view(np.uint16) != expected_gated_fp16.view(np.uint16)))
+    fused_rotate_mismatch = int(np.count_nonzero(fused_rotate.view(np.uint16) != expected_fused_rotate.view(np.uint16)))
     print(
         f"conv_out_max_abs={conv_out_max_abs:.3g} conv_state_max_abs={conv_state_max_abs:.3g} "
         f"fp16_conv_out_max_abs={fp16_conv_out_max_abs:.3g} fp16_conv_state_max_abs={fp16_conv_state_max_abs:.3g} "
@@ -3215,7 +3290,8 @@ def qwen35_linear_attn_prefill_hip_smoke(
         f"fp16_prepare_max_abs={max(fp16_query_max_abs, fp16_key_max_abs, fp16_value_max_abs, fp16_beta_max_abs, fp16_decay_max_abs):.3g} "
         f"fp16_gdn_k2_out_max_abs={fp16_gdn_k2_out_max_abs:.3g} "
         f"fp16_gdn_k2_state_max_abs={fp16_gdn_k2_state_max_abs:.3g} "
-        f"fp16_gated_mismatch={fp16_gated_mismatch}"
+        f"fp16_gated_mismatch={fp16_gated_mismatch} "
+        f"fused_rotate_mismatch={fused_rotate_mismatch}"
     )
     return 0 if max(
         conv_out_max_abs,
@@ -3238,7 +3314,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
         fp16_decay_max_abs,
         fp16_gdn_k2_out_max_abs,
         fp16_gdn_k2_state_max_abs,
-    ) <= 1.0e-5 and gated_mismatch == 0 and fp16_gated_mismatch == 0 else 1
+    ) <= 1.0e-5 and gated_mismatch == 0 and fp16_gated_mismatch == 0 and fused_rotate_mismatch == 0 else 1
 
 
 def qwen35_linear_attn_gdn_hip_smoke(

@@ -20,6 +20,7 @@ _SYMBOL_PREFILL_PREPARE = "hipengine_qwen35_linear_attn_prefill_prepare_f32_bf16
 _SYMBOL_PREFILL_PREPARE_FP16 = "hipengine_qwen35_linear_attn_prefill_prepare_f32_fp16"
 _SYMBOL_PREFILL_RMSNORM_GATE = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_bf16"
 _SYMBOL_PREFILL_RMSNORM_GATE_FP16 = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_fp16"
+_SYMBOL_PREFILL_RMSNORM_GATE_ROTATE_FP16 = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16"
 
 
 def plan_qwen35_linear_attn_gdn_build(
@@ -629,6 +630,80 @@ def qwen35_gdn_prefill_rmsnorm_gate_fp16(
     _check_launch(runtime, err)
 
 
+def qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16(
+    recurrent_ptr: int,
+    gate_ptr: int,
+    norm_weight_ptr: int,
+    out_rot_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    scales_ptr: int,
+    eps: float,
+    tokens: int,
+    num_v_heads: int,
+    head_v_dim: int,
+    group_size: int,
+    krot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply FP16 GDN RMSNorm+SiLU gate and PARO rotate1 directly to ``out_rot``.
+
+    This P3.1 fused prefill tail is valid for Qwen3.5/PARO's natural grouping
+    where each linear-attention value head is exactly one PARO rotate group.
+    """
+
+    _check_positive(tokens, "tokens")
+    _check_positive(num_v_heads, "num_v_heads")
+    _check_positive(head_v_dim, "head_v_dim")
+    _check_positive(group_size, "group_size")
+    if int(krot) < 0:
+        raise ValueError("krot must be non-negative")
+    if int(group_size) != int(head_v_dim):
+        raise ValueError("group_size must equal head_v_dim for fused GDN rotate")
+    if int(group_size) % 2:
+        raise ValueError("group_size must be even for fused GDN rotate")
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_RMSNORM_GATE_ROTATE_FP16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(recurrent_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(norm_weight_ptr),
+        ctypes.c_void_p(out_rot_ptr),
+        ctypes.c_void_p(pairs_ptr),
+        ctypes.c_void_p(theta_ptr),
+        ctypes.c_void_p(scales_ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(krot),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "gdn_recurrent_rmsnorm_gate", "w4_paro", "bf16_lowp"),
@@ -673,6 +748,11 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "gdn_prefill_rmsnorm_gate", "w4_paro", "fp16"),
         qwen35_gdn_prefill_rmsnorm_gate_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_prefill_rmsnorm_gate_rotate", "w4_paro", "fp16"),
+        qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16,
         replace=replace,
     )
 

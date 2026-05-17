@@ -15070,3 +15070,85 @@ python3 -m pytest tests/test_build.py tests/test_qwen35_paro_layout.py -q --tb=s
 python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p16-prefill-mcumode-rejected.json >/tmp/p16-artifact-check.json
 git diff --check
 ```
+
+## 2026-05-17 — P3.1 GDN prefill RMSNorm+gate+rotate fusion diagnostic
+
+Task #18 evaluated `docs/OPTIMIZE.md` P3.1. I added a diagnostic opt-in
+`HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1` that keeps the existing fallback as
+default and routes only safe Qwen3.5/PARO FP16 single-request prefill shapes
+(`tokens > 1`, `head_v_dim == group_size`) through a new
+`qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16` kernel. The fused kernel computes
+per-value-head RMSNorm + SiLU gate from `recurrent_out`, rounds the gated value to
+FP16 to match the old materialized path, applies the PARO rotate1 group, and
+writes `out_rot` directly before the unchanged `awq_fusedw4_prefill_strided_fp16`
+out projection.
+
+Correctness/sanity:
+
+```bash
+python3 scripts/smoke.py --mode qwen35-linear-attn-prefill-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# ... fp16_gated_mismatch=0 fused_rotate_mismatch=0
+
+HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+python3 scripts/qwen35_native_prefill_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-layers 40 --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p31-gdn-rotate-20260517/fused-native-prefill-fixture-gate.json
+# passed=True, max_kl=0.039568870612619614, top1_agreement=1.0, generated_match=True
+```
+
+Benchmark protocol on W7900/gfx1100 used cache-only HIP builds, graph replay
+decode, two repetitions per row, and current `HEAD=9fecaa0` plus the uncommitted
+P3.1 diagnostic kernel/runtime/docs/artifact updates:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model <zlab-or-shisa-unstripped> --shared-expert-format {auto,packed_paro_w4} \
+  --prompt-length {4096,32768} --token-id 9707 --decode-tokens 128 \
+  --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-p31-gdn-rotate-20260517/<mode>-<model>-<prompt>-128-runN.json
+
+# 32K rows also used the current long-context chunk policy:
+--prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+--prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 \
+--prefill-full-attn-rope-chunk-size 1024
+
+HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED=1 python3 scripts/qwen35_paro_bench.py ...same args...
+```
+
+Two-run median results, fused vs default:
+
+| model | workload | default prefill | fused prefill | Δ | default decode | fused decode | Δ | peak GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| z-lab Qwen3.5 legacy | 4K/128 | `2454.597` | `2467.638` | `+0.53%` | `116.473` | `116.464` | `-0.01%` | `20.047` |
+| z-lab Qwen3.5 legacy | 32K/128 | `1950.331` | `1942.608` | `-0.40%` | `98.923` | `98.488` | `-0.44%` | `20.320` |
+| shisa Qwen3.6 packed | 4K/128 | `2658.331` | `2672.125` | `+0.52%` | `112.400` | `112.576` | `+0.16%` | `19.995` |
+| shisa Qwen3.6 packed | 32K/128 | `2067.609` | `2061.326` | `-0.30%` | `96.219` | `95.700` | `-0.54%` | `20.267` |
+
+Default and fused rows generated identical first-two token IDs and logits (max
+logit delta `0.0`) across every repetition. Decision: reject P3.1 as a default
+fusion. The kernel is correct, but the retained surface is neutral-to-negative:
+4K gains are only ~`+0.5%`, 32K regresses, decode is not improved, and tracked
+peak memory is unchanged because the resident scratch allocator still reserves
+`recurrent_bf16` for the fallback path. The env knob remains off by default as a
+future diagnostic/prototype surface.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p31-gdn-rotate-rejected.json`.
+
+Post-update validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/linear_attn/gdn.py \
+  hipengine/kernels/hip_gfx1100/linear_attn/__init__.py \
+  hipengine/runtime/qwen35_paro.py scripts/smoke.py \
+  tests/test_qwen35_linear_attn_gdn_plan.py
+python3 -m pytest tests/test_qwen35_linear_attn_gdn_plan.py tests/test_qwen35_paro_layout.py -q --tb=short
+# 23 passed
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-p31-gdn-rotate-rejected.json >/tmp/p31-artifact-check.json
+git diff --check
+```
