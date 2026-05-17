@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import struct
 from pathlib import Path
 
 import pytest
@@ -8,10 +10,11 @@ from hipengine.loading.dflash import (
     DFLASH_DRAFTER_MODEL,
     DFLASH_PACKED_TARGET_MODEL,
     dflash_draft_config_from_hf,
+    dflash_drafter_runtime_tensor_names,
     validate_dflash_drafter_metadata,
     validate_dflash_target_metadata,
 )
-from hipengine.loading.safetensors import TensorInfo, WeightIndex, load_weight_index
+from hipengine.loading.safetensors import TensorInfo, WeightIndex, load_weight_index, read_tensor_storage_bytes
 
 
 LOCAL_TARGET = Path(
@@ -64,6 +67,30 @@ def test_dflash_drafter_metadata_validation_passes_fake_manifest() -> None:
     assert result.config.hidden_size == 16
     assert result.config.num_hidden_layers == 2
     assert len(result.present) == 25
+
+
+def test_dflash_drafter_runtime_names_support_layer_limit() -> None:
+    config = dflash_draft_config_from_hf(_draft_config())
+
+    names = dflash_drafter_runtime_tensor_names(config, layer_limit=1)
+
+    assert names[:2] == ("fc.weight", "hidden_norm.weight")
+    assert "layers.0.self_attn.q_proj.weight" in names
+    assert "layers.1.self_attn.q_proj.weight" not in names
+    assert names[-1] == "norm.weight"
+    with pytest.raises(ValueError, match="layer_limit"):
+        dflash_drafter_runtime_tensor_names(config, layer_limit=3)
+
+
+def test_read_tensor_storage_bytes_handles_bf16_payload(tmp_path: Path) -> None:
+    payload = bytes([1, 2, 3, 4, 5, 6, 7, 8])
+    header = {"x": {"dtype": "BF16", "shape": [2, 2], "data_offsets": [0, len(payload)]}}
+    header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
+    path = tmp_path / "tiny.safetensors"
+    path.write_bytes(struct.pack("<Q", len(header_bytes)) + header_bytes + payload)
+    info = TensorInfo(name="x", shard_path=path, dtype="BF16", shape=(2, 2))
+
+    assert read_tensor_storage_bytes(info) == payload
 
 
 def test_dflash_target_metadata_validation_passes_fake_packed_manifest() -> None:

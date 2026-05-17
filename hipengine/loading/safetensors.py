@@ -148,12 +148,51 @@ def _parse_safetensors_header(shard: Path) -> dict[str, dict]:
     ``get_slice``.
     """
 
+    header, _ = _parse_safetensors_header_and_data_start(shard)
+    return header
+
+
+def _parse_safetensors_header_and_data_start(shard: Path) -> tuple[dict[str, dict], int]:
     with open(shard, "rb") as fh:
         header_len = struct.unpack("<Q", fh.read(8))[0]
         header_bytes = fh.read(header_len)
     header = json.loads(header_bytes)
     header.pop("__metadata__", None)
-    return header
+    return header, 8 + int(header_len)
+
+
+def read_tensor_storage_bytes(info: TensorInfo) -> bytes:
+    """Read one safetensors tensor payload as raw contiguous storage bytes.
+
+    This helper is dtype-agnostic and intentionally avoids framework dtype
+    adapters.  It is required for BF16 checkpoints on NumPy-only hot paths,
+    where ``safe_open(..., framework='numpy')`` raises because NumPy has no
+    portable bfloat16 dtype.
+    """
+
+    header, data_start = _parse_safetensors_header_and_data_start(info.shard_path)
+    meta = header.get(info.name)
+    if meta is None:
+        raise MissingTensorError(f"tensor {info.name!r} not found in {info.shard_path}")
+    dtype = str(meta.get("dtype"))
+    shape = tuple(int(dim) for dim in meta.get("shape", ()))
+    offsets = meta.get("data_offsets")
+    if dtype != info.dtype:
+        raise ValueError(f"tensor {info.name!r} dtype changed: expected {info.dtype}, got {dtype}")
+    if shape != info.shape:
+        raise ValueError(f"tensor {info.name!r} shape changed: expected {info.shape}, got {shape}")
+    if not isinstance(offsets, list) or len(offsets) != 2:
+        raise ValueError(f"tensor {info.name!r} has invalid data_offsets in {info.shard_path}")
+    begin = data_start + int(offsets[0])
+    end = data_start + int(offsets[1])
+    if end < begin:
+        raise ValueError(f"tensor {info.name!r} has negative byte range in {info.shard_path}")
+    with open(info.shard_path, "rb") as fh:
+        fh.seek(begin)
+        payload = fh.read(end - begin)
+    if info.nbytes is not None and len(payload) != info.nbytes:
+        raise ValueError(f"tensor {info.name!r} byte size mismatch: expected {info.nbytes}, got {len(payload)}")
+    return payload
 
 
 def load_weight_index(model_path: str | Path) -> WeightIndex:

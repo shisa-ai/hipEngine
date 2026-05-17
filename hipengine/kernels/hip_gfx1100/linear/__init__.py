@@ -18,6 +18,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     lm_head_fp16_argmax_bf16_rows_i32,
     plan_lm_head_build,
     register_lm_head_kernels,
+    topk_f32_rows_i32,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "lm_head_fp16_argmax_bf16_rows_i32",
     "plan_lm_head_build",
     "register_lm_head_kernels",
+    "topk_f32_rows_i32",
 ]

@@ -13,7 +13,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime
 from hipengine.core.memory import DeviceBuffer, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
-from hipengine.loading.safetensors import TensorInfo, WeightIndex
+from hipengine.loading.safetensors import TensorInfo, WeightIndex, read_tensor_storage_bytes
 
 _SAFETENSORS_DTYPE_TO_DTYPE = {
     "BOOL": DType.BOOL,
@@ -115,6 +115,18 @@ def load_tensor_info_to_device(
     expected_nbytes = info.nbytes
     if expected_nbytes is None:
         raise ValueError(f"cannot materialize tensor {info.name!r} with unknown dtype {info.dtype!r}")
+    if info.dtype == "BF16":
+        import numpy as np
+
+        array = np.frombuffer(read_tensor_storage_bytes(info), dtype=np.uint16).copy().reshape(info.shape)
+        return load_host_array_to_device_as_dtype(
+            info.name,
+            array,
+            DType.BF16,
+            source_dtype="BF16",
+            device=device,
+            runtime=runtime,
+        )
     array = _read_numpy_tensor(info)
     if tuple(int(dim) for dim in array.shape) != info.shape:
         raise ValueError(f"tensor {info.name!r} shape changed while loading: expected {info.shape}, got {array.shape}")

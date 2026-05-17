@@ -13,6 +13,12 @@ from hipengine.speculative.dflash import (
     DFlashDraftRequest,
     compile_dflash_chain,
 )
+from hipengine.speculative.dflash_drafter import (
+    DFlashRootQueryPlan,
+    DFlashRootQueryRequest,
+    draft_batch_from_topk,
+    project_dflash_target_hidden_bf16,
+)
 from hipengine.speculative.interfaces import (
     AcceptResult,
     DraftBatch,
@@ -45,7 +51,11 @@ __all__ = [
     "DFlashChainCompiler",
     "DFlashDraftProvider",
     "DFlashDraftRequest",
+    "DFlashRootQueryPlan",
+    "DFlashRootQueryRequest",
     "compile_dflash_chain",
+    "draft_batch_from_topk",
+    "project_dflash_target_hidden_bf16",
     "AcceptResult",
     "DraftBatch",
     "DraftModel",

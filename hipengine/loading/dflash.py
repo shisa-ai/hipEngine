@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from hipengine.core.hip import HipRuntime
+from hipengine.core.device import Device
+from hipengine.core.tensor import Tensor
+from hipengine.loading.materialize import DeviceTensorAllocation, DeviceWeightMap, load_tensor_info_to_device
 from hipengine.loading.qwen35_paro import qwen35_paro_config_from_hf, normalize_qwen35_weight_name
 from hipengine.loading.safetensors import MissingTensorError, TensorInfo, WeightIndex, load_weight_index
 
@@ -59,6 +63,24 @@ class DFlashDraftConfig:
             "dtype": self.dtype,
             "layer_types": list(self.layer_types),
         }
+
+
+@dataclass(frozen=True)
+class DFlashDrafterDeviceWeights:
+    """Materialized BF16 DFlash drafter weights for the native root/query path."""
+
+    config: DFlashDraftConfig
+    weights: DeviceWeightMap
+    layer_limit: int
+
+    def tensor(self, name: str) -> Tensor:
+        return self.weights[name]
+
+    def allocation(self, name: str) -> DeviceTensorAllocation:
+        return self.weights.allocation(name)
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        self.weights.free(runtime=runtime)
 
 
 @dataclass(frozen=True)
@@ -339,6 +361,85 @@ def validate_dflash_artifact_pair(
         "drafter": drafter.to_json_dict(),
         "pair_errors": pair_errors,
     }
+
+
+def dflash_drafter_runtime_tensor_names(
+    config: DFlashDraftConfig,
+    *,
+    layer_limit: int | None = None,
+    include_terminal: bool = True,
+) -> tuple[str, ...]:
+    """Return BF16 tensor names consumed by native DFlash drafter execution."""
+
+    layers = config.num_hidden_layers if layer_limit is None else int(layer_limit)
+    if layers < 0 or layers > config.num_hidden_layers:
+        raise ValueError(f"layer_limit must be in [0, {config.num_hidden_layers}], got {layer_limit}")
+    names = ["fc.weight", "hidden_norm.weight"]
+    for layer in range(layers):
+        prefix = f"layers.{layer}"
+        names.extend(
+            (
+                f"{prefix}.input_layernorm.weight",
+                f"{prefix}.post_attention_layernorm.weight",
+                f"{prefix}.self_attn.q_proj.weight",
+                f"{prefix}.self_attn.k_proj.weight",
+                f"{prefix}.self_attn.v_proj.weight",
+                f"{prefix}.self_attn.o_proj.weight",
+                f"{prefix}.self_attn.q_norm.weight",
+                f"{prefix}.self_attn.k_norm.weight",
+                f"{prefix}.mlp.gate_proj.weight",
+                f"{prefix}.mlp.up_proj.weight",
+                f"{prefix}.mlp.down_proj.weight",
+            )
+        )
+    if include_terminal:
+        names.append("norm.weight")
+    return tuple(names)
+
+
+def load_dflash_drafter_bf16_weights(
+    index: WeightIndex,
+    *,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    validate: bool = True,
+    layer_limit: int | None = None,
+) -> DFlashDrafterDeviceWeights:
+    """Materialize z-lab DFlash drafter BF16 weights without importing PyTorch.
+
+    BF16 payloads are copied byte-for-byte from safetensors storage via the raw
+    header offsets, avoiding NumPy's missing bfloat16 dtype support and avoiding
+    tensor materialization on the host beyond a transient uint16 view.
+    """
+
+    validation = validate_dflash_drafter_metadata(index, raise_on_error=validate)
+    config = validation.config
+    if not isinstance(config, DFlashDraftConfig):
+        raise TypeError("DFlash drafter validation did not return a draft config")
+    layers = config.num_hidden_layers if layer_limit is None else int(layer_limit)
+    if layers < 0 or layers > config.num_hidden_layers:
+        raise ValueError(f"layer_limit must be in [0, {config.num_hidden_layers}], got {layer_limit}")
+    names = dflash_drafter_runtime_tensor_names(config, layer_limit=layers)
+    allocations: dict[str, DeviceTensorAllocation] = {}
+    try:
+        for name in names:
+            info = index.require((name,))[0]
+            allocation = load_tensor_info_to_device(info, device=device, runtime=runtime)
+            allocations[name] = DeviceTensorAllocation(
+                name=name,
+                source=allocation.source,
+                buffer=allocation.buffer,
+                tensor=allocation.tensor,
+                owns_buffer=allocation.owns_buffer,
+            )
+    except Exception:
+        DeviceWeightMap(allocations).free(runtime=runtime)
+        raise
+    return DFlashDrafterDeviceWeights(
+        config=config,
+        weights=DeviceWeightMap(allocations),
+        layer_limit=layers,
+    )
 
 
 def dflash_drafter_tensor_requirements(config: DFlashDraftConfig) -> tuple[TensorRequirement, ...]:

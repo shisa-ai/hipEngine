@@ -280,6 +280,81 @@ __global__ void argmax_rows_stage2_i32_kernel(
   }
 }
 
+constexpr int kMaxTopK = 8;
+
+__device__ inline void insert_topk_pair(
+    float value,
+    int32_t index,
+    float* top_values,
+    int32_t* top_indices,
+    int top_k) {
+  for (int pos = 0; pos < top_k; ++pos) {
+    if (better_pair_i32(value, index, top_values[pos], top_indices[pos])) {
+      for (int shift = top_k - 1; shift > pos; --shift) {
+        top_values[shift] = top_values[shift - 1];
+        top_indices[shift] = top_indices[shift - 1];
+      }
+      top_values[pos] = value;
+      top_indices[pos] = index;
+      return;
+    }
+  }
+}
+
+__global__ void topk_rows_i32_kernel(
+    const float* __restrict__ logits,
+    float* __restrict__ out_values,
+    int32_t* __restrict__ out_indices,
+    int64_t rows,
+    int64_t vocab_size,
+    int32_t top_k) {
+  extern __shared__ unsigned char shared_raw[];
+  float* shared_values = reinterpret_cast<float*>(shared_raw);
+  int32_t* shared_indices = reinterpret_cast<int32_t*>(shared_values + static_cast<int64_t>(blockDim.x) * top_k);
+  const int tid = threadIdx.x;
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  float local_values[kMaxTopK];
+  int32_t local_indices[kMaxTopK];
+  for (int pos = 0; pos < kMaxTopK; ++pos) {
+    local_values[pos] = -3.4028234663852886e+38F;
+    local_indices[pos] = INT32_MAX;
+  }
+  const int64_t base = row * vocab_size;
+  for (int64_t i = tid; i < vocab_size; i += blockDim.x) {
+    insert_topk_pair(logits[base + i], static_cast<int32_t>(i), local_values, local_indices, top_k);
+  }
+  for (int pos = 0; pos < top_k; ++pos) {
+    const int64_t off = static_cast<int64_t>(tid) * top_k + pos;
+    shared_values[off] = local_values[pos];
+    shared_indices[off] = local_indices[pos];
+  }
+  __syncthreads();
+  if (tid == 0) {
+    float final_values[kMaxTopK];
+    int32_t final_indices[kMaxTopK];
+    for (int pos = 0; pos < kMaxTopK; ++pos) {
+      final_values[pos] = -3.4028234663852886e+38F;
+      final_indices[pos] = INT32_MAX;
+    }
+    for (int thread = 0; thread < blockDim.x; ++thread) {
+      for (int pos = 0; pos < top_k; ++pos) {
+        const int64_t off = static_cast<int64_t>(thread) * top_k + pos;
+        insert_topk_pair(shared_values[off], shared_indices[off], final_values, final_indices, top_k);
+      }
+    }
+    const int64_t out_base = row * top_k;
+    for (int pos = 0; pos < top_k; ++pos) {
+      out_indices[out_base + pos] = final_indices[pos];
+      if (out_values != nullptr) {
+        out_values[out_base + pos] = final_values[pos];
+      }
+    }
+  }
+}
+
 bool valid_threads(int64_t threads) {
   return threads == 128 || threads == 256 || threads == 512;
 }
@@ -438,6 +513,34 @@ extern "C" int hipengine_argmax_f32_rows_i32(
       out_values,
       rows,
       stage1_blocks);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_topk_f32_rows_i32(
+    const float* logits,
+    float* out_values,
+    int32_t* out_indices,
+    int64_t rows,
+    int64_t vocab_size,
+    int64_t top_k,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || top_k <= 0 || top_k > kMaxTopK || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const size_t smem = static_cast<size_t>(threads) * static_cast<size_t>(top_k) * (sizeof(float) + sizeof(int32_t));
+  hipLaunchKernelGGL(
+      topk_rows_i32_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      smem,
+      stream,
+      logits,
+      out_values,
+      out_indices,
+      rows,
+      vocab_size,
+      static_cast<int32_t>(top_k));
   return static_cast<int>(hipGetLastError());
 }
 

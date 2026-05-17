@@ -17143,3 +17143,93 @@ git diff --check
 # smoke: reject accepted=[0] output_lengths=[2]; partial accepted=[1] output_lengths=[3]; full accepted=[2] output_lengths=[4]; budgeted no-bonus output_lengths=[3]; multi-prefix accepted=[2,1] output_lengths=[4,3].
 # rocprofv3 1.1.0 / gfx1151: dflash_accept_chain_i32_kernel count=5 DurationNs 3767–14948 Scratch_Size=0; dflash_commit_chain_i32_kernel count=5 DurationNs 3206–11903 Scratch_Size=0.
 ```
+
+## 2026-05-18 — DFlash native drafter root/query scaffold (partial D12)
+
+### Scope
+
+- Added raw safetensors payload reads for BF16 tensors and taught `load_tensor_info_to_device()` to materialize BF16 checkpoints byte-for-byte without importing PyTorch or relying on NumPy BF16 dtype support.
+- Added `DFlashDrafterDeviceWeights`, `dflash_drafter_runtime_tensor_names()`, and `load_dflash_drafter_bf16_weights()` for z-lab DFlash drafter runtime weights. Local smoke loaded the real 35B-A3B DFlash `fc.weight`, `hidden_norm.weight`, and `norm.weight` with `layer_limit=0` and returned BF16 device tensors.
+- Added `hipengine/speculative/dflash_drafter.py` with torch-free root/query request planning:
+  - validates fixed target hidden tap tensors `[context_len, target_hidden_concat_size]`;
+  - prepares root+mask `noise_token_ids` and per-cycle position ids;
+  - exposes `project_dflash_target_hidden_bf16()` for native `fc + hidden_norm` via `dense_gemv_out_bf16` + `paro_rmsnorm_out_bf16`;
+  - emits candidate-only `DraftBatch` rows from compact top-k token ids while keeping root insertion centralized in `TargetVerifyBatch.from_draft()`.
+- Extended `lm_head.hip`/`lm_head.py` with `topk_f32_rows_i32`, a compact row-wise top-k primitive for DFlash drafter logits (K<=8, stable lower-token tie breaks). Registered/exported it for gfx1100/gfx1151 alias coverage.
+- Updated `docs/DFLASH.md` and `docs/KERNELS.md` to mark D12 as partial: BF16 loader, projection boundary, root/query planning, and top-k primitive landed; full DFlash decoder block forward and parent-oracle top1/topk parity remain open.
+
+### Validation
+
+```bash
+python3 -m py_compile \
+  hipengine/loading/safetensors.py \
+  hipengine/loading/materialize.py \
+  hipengine/loading/dflash.py \
+  hipengine/loading/__init__.py \
+  hipengine/speculative/dflash_drafter.py \
+  hipengine/speculative/__init__.py \
+  hipengine/kernels/hip_gfx1100/linear/lm_head.py \
+  tests/test_dflash_metadata.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+python3 -m pytest -q \
+  tests/test_dflash_metadata.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_dflash_chain_compiler.py \
+  tests/test_speculative_interfaces.py
+python3 - <<'PY'
+from hipengine.loading.safetensors import load_weight_index
+from hipengine.loading.dflash import load_dflash_drafter_bf16_weights
+p='/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719'
+idx=load_weight_index(p)
+w=load_dflash_drafter_bf16_weights(idx, layer_limit=0)
+try:
+ print(w.config.block_size, w.layer_limit, sorted(w.weights.tensors))
+ print(w.tensor('fc.weight'))
+finally:
+ w.free()
+PY
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+import numpy as np
+from hipengine.core.hip import get_hip_runtime
+from hipengine.core.memory import malloc, free, copy_host_to_device, copy_device_to_host, host_array_ptr
+from hipengine.kernels.hip_gfx1100.linear import build_lm_head, topk_f32_rows_i32
+rt=get_hip_runtime()
+compiler_version=open('/tmp/hipengine-hipcc-version.txt').read()
+lib=build_lm_head(load=True, compiler_version=compiler_version, require_cached=True)
+logits=np.array([[1.0,5.0,5.0,3.0,-1.0,8.0],[2.0,2.0,4.0,4.0,0.0,1.0]],dtype=np.float32)
+rows,vocab=logits.shape;k=3
+vals=np.empty((rows,k),dtype=np.float32); idx=np.empty((rows,k),dtype=np.int32)
+bufs=[]
+try:
+ l=malloc(logits.nbytes,runtime=rt); v=malloc(vals.nbytes,runtime=rt); i=malloc(idx.nbytes,runtime=rt); bufs=[l,v,i]
+ copy_host_to_device(l,host_array_ptr(logits),runtime=rt)
+ topk_f32_rows_i32(l.ptr,v.ptr,i.ptr,rows,vocab,k,threads=128,library=lib,runtime=rt)
+ rt.device_synchronize()
+ copy_device_to_host(host_array_ptr(vals),v,runtime=rt); copy_device_to_host(host_array_ptr(idx),i,runtime=rt)
+ print(idx.tolist(), vals.tolist())
+ assert idx.tolist()==[[5,1,2],[2,3,0]]
+finally:
+ for b in bufs: free(b,runtime=rt)
+PY
+python3 scripts/check_lineage.py --kind kernel --diff stat
+! grep -RInE 'import torch|torch\.' \
+  hipengine/loading/dflash.py \
+  hipengine/loading/materialize.py \
+  hipengine/loading/safetensors.py \
+  hipengine/speculative/dflash_drafter.py \
+  hipengine/kernels/hip_gfx1100/linear/lm_head.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_metadata.py \
+  tests/test_dflash_accept_kernels.py
+git diff --check
+# pytest: 36 passed
+# BF16 loader smoke: 16 0 ['fc.weight', 'hidden_norm.weight', 'norm.weight']; fc.weight Tensor(... shape=(2048, 10240), dtype=BF16, device=hip:0).
+# topk smoke: [[5, 1, 2], [2, 3, 0]] / [[8.0, 5.0, 5.0], [4.0, 4.0, 2.0]].
+# lineage: expected pre-existing baseline drift; DFlash R1 tree entries clean.
+```
+
+### Remaining D12 blocker
+
+- Full native DFlash decoder block execution (q/k/v projection + q/k norm + YaRN rotary + full attention over projected target context + root/query rows + MLP + final norm + target lm-head top1/topk) is not wired yet, so Task #14 is intentionally left open until native top1/topk parity with the parent/PyTorch harness fixture is available.

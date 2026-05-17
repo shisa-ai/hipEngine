@@ -10,6 +10,7 @@ from hipengine.kernels.hip_gfx1100.linear import (
     lm_head_fp16_argmax_bf16_rows_i32,
     plan_lm_head_build,
     register_lm_head_kernels,
+    topk_f32_rows_i32,
 )
 from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_accept_chain_i32,
@@ -57,6 +58,7 @@ def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
         )
         is lm_head_fp16_argmax_bf16_rows_i32
     )
+    assert resolve(backend="hip_gfx1151", layer="topk", quant="w4_paro", variant="f32_rows_i32") is topk_f32_rows_i32
     assert (
         resolve(backend="hip_gfx1151", layer="dflash_accept_chain", quant="w4_paro", variant="i32")
         is dflash_accept_chain_i32
@@ -76,6 +78,8 @@ def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hi
         argmax_f32_rows_i32(0, 0, 0, 0, None, rows=0, vocab_size=16)
     with pytest.raises(ValueError, match="vocab_size"):
         lm_head_fp16_argmax_bf16_rows_i32(0, 0, 0, 0, 0, 0, None, rows=1, hidden_size=8, vocab_size=0)
+    with pytest.raises(ValueError, match="top_k"):
+        topk_f32_rows_i32(0, None, 0, rows=1, vocab_size=16, top_k=9)
     with pytest.raises(ValueError, match="request_count"):
         dflash_accept_chain_i32(
             0,
