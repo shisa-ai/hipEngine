@@ -102,8 +102,9 @@ tests/fixtures/gguf/qwen35_0_8b_q4_1_e2e.json
 tests/fixtures/gguf/qwen35_0_8b_ud_q4_k_xl_e2e.json
 ```
 
-The first `qwen35moe` GGUF smoke fixture is intentionally narrower because a
-llama.cpp/token oracle row has not been promoted yet:
+The first `qwen35moe` GGUF smoke fixture is intentionally narrower than the
+dense-Qwen fixtures, but now carries intake, internal tokenizer, finite-logit,
+and external `llama-tokenize` token-oracle evidence:
 
 ```text
 tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json
@@ -120,7 +121,7 @@ Run it with:
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
   PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py \
   --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json \
-  --repeat 2 --skip-tokenize-check \
+  --repeat 2 \
   --json benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-public-generate-smoke.json
 ```
 

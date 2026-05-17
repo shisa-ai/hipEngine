@@ -9,6 +9,7 @@ from hipengine.loading.gguf import GGUFReader
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
+MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
 
 
@@ -23,6 +24,18 @@ def test_qwen35_gguf_tokenizer_matches_e2e_fixture() -> None:
     assert tokenizer.decode([220, 16, 13, 271]) == " 1.\n\n"
     assert tokenizer.encode(" 1.\n\n") == [220, 16, 13, 271]
     assert tokenizer.decode([760, 4087, 369, 220, 16, 13, 271]) == "The answer is 1.\n\n"
+
+
+def test_qwen35moe_gguf_tokenizer_matches_smoke_fixture() -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(GGUFReader(MOE_MODEL).info)
+
+    assert tokenizer.encode("Hello") == [9419]
+    assert tokenizer.decode([9419]) == "Hello"
+    assert tokenizer.encode("izio.") == [43482, 13]
+    assert tokenizer.decode([43482, 13]) == "izio."
+    assert tokenizer.decode([9419, 43482, 13]) == "Helloizio."
 
 
 def test_qwen35_gguf_tokenizer_round_trips_common_ascii_prompts() -> None:

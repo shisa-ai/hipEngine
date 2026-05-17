@@ -17927,3 +17927,23 @@ PY
 ```
 
 Follow-up for task #53/#54: add stronger correctness/oracle coverage and then benchmark/optimize. Current limitations are serial prefill for qwen35moe and host-routed expert selection, so this path is expected to be slower than packed PARO until grouped/prefill MoE and graph-captured/device-only selected expert dispatch land.
+
+## 2026-05-17 qwen35moe GGUF correctness gates
+
+Extended `scripts/qwen35_gguf_e2e_correctness.py` from a pure public-generation text gate into a compact correctness artifact generator. The gate now records GGUF intake/mapping/dequant support, internal tokenizer parity, external `llama-tokenize` token-oracle parity for prompt and generated text, optional fixture-driven finite-logit evidence via `Qwen35GGUFResidentSession.prefill(..., return_logits=True)`, deterministic `LLM.generate()` output, and the no-`torch` hot-path check. The Qwen3.6 35B-A3B fixture now declares `finite_logits_required=true` and `external_token_oracle=llama-tokenize`.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/qwen35_gguf_e2e_correctness.py
+PYTHONPATH=. pytest -q tests/test_gguf_e2e_acceptance.py tests/test_qwen35_gguf_tokenizer.py tests/test_qwen35_gguf_mapping.py tests/test_qwen35_gguf_materialize.py tests/test_llm_gguf_generate_path.py
+# 26 passed
+bash -lc 'set -euo pipefail; hipcc --version > /tmp/hipengine-hipcc-version.txt; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 2 --json benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-public-generate-smoke.json'
+# passed=true; outputs=["izio.", "izio."]; generated_token_ids=[43482, 13]; torch_loaded_by_generate=false
+# intake: qwen35moe/MOSTLY_Q4_K_M, 733 tensors, unsupported_dequant_types=[]; lm_head=output.weight
+# finite logits: shape=[1,248320], finite=true, argmax_token_id=43482, argmax_logit=10.306183815002441
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --repeat 1 --json /tmp/hipengine-qwen35-q4km-e2e-correctness-schema2.json'
+# dense Qwen3.5 Q4_K_M regression passed; external token ids [220,16,13,271]; finite logits argmax=220; torch_loaded_by_generate=false
+```
+
+External oracle scope: `llama-tokenize` from `/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-tokenize` confirms the qwen35moe prompt and generated-token IDs. Full llama.cpp generation/quality parity for the 35B MoE remains follow-up work; this task's oracle is a token-level external check plus finite-logit public/resident smoke.
