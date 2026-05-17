@@ -18103,3 +18103,27 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
 Deltas vs the prior selected-device-expert diagnostic: 512/128 `+1623%` prefill and `-0.1%` decode; 4K/128 `+1424%` prefill and `+0.1%` decode. Still not close to retained PARO: prefill remains `-95.7%/-96.2%`, decode remains `-57.1%/-70.6%`. Task #55 remains open. Next work should first establish a stronger qwen35moe long-prompt bulk oracle/parity target, then move raw-GGUF grouped/packed MoE kernel R&D to `~/amd-gpu-tuning/` before porting stable kernels back.
 
 Retained progress artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bulk-moe-prefill-diagnostic.json`.
+
+## 2026-05-17 qwen35moe GGUF task #55 bulk parity diagnostic
+
+Added `scripts/qwen35_gguf_bulk_parity.py` to make the current qwen35moe GGUF bulk-prefill correctness blocker reproducible instead of relying on an ad-hoc probe. The script compares resident token-serial prefill against explicit `use_bulk=True` on a 4-token prompt, then scans hidden-state drift by layer limit with both AOTriton full-attention bulk and native/sequential full-attention bulk.
+
+Command:
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bulk_parity.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-qwen36-task55-bulk-parity.json
+```
+
+Result copied to `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bulk-parity-diagnostic.json`:
+
+- serial `use_bulk=False` token id `4469`
+- explicit bulk `use_bulk=True` token id `101478`
+- top-1 match `false`, KL(serial||bulk) `3.0287284520191466`, max logit abs diff `14.37797737121582`
+- AOTriton-full layer scan first hidden drift at layer limit `4` (last layer type `full_attention`, max hidden abs `0.0625`)
+- native-full layer scan first hidden drift at layer limit `14` (last layer type `linear_attention`, max hidden abs `0.0625`)
+
+Interpretation: the explicit bulk-MoE-prefill performance path remains diagnostic-only. There are two separable correctness questions to resolve before enabling it by default: (1) full-attention bulk numerical drift versus the token-serial decode-context path, and (2) later linear-attention prefill recurrent drift even when full-attention is forced through the native per-row path. Matching retained PARO still needs grouped/packed MoE kernel work, but that work should not be promoted in hipENGINE until the long-prompt qwen35moe bulk oracle/parity gate is stronger.
