@@ -16779,3 +16779,36 @@ python3 scripts/dflash_speculative_bench.py \
 python3 -m json.tool /tmp/hipengine-dflash-contract-ingest.json >/tmp/hipengine-dflash-contract-ingest.pretty.json
 # pytest: 11 passed
 ```
+
+## 2026-05-18 — DFlash/MTP source lineage registered
+
+### Scope
+
+- Extended `docs/source_lineage.json` for the DFlash/MTP lane before porting verifier or drafter code.
+- Added the root `amd-gpu-tuning` workspace as a lineage repo alongside nested `nano-vllm-amd`, with file-specific baselines for parent DFlash/MTP docs and prototype scripts.
+- Registered runtime/kernel lineage:
+  - `nano-vllm-amd@b95eaa5` R1 single-launch tree Conv/GDN t-loop kernels (`csrc/amd/qwen35_expert.hip`, `extension.cpp`, `smoke.hip`).
+  - `nano-vllm-amd@69eb9d8` R2 Python wrappers (`nanovllm/native/qwen35/linear_attention.py`).
+  - `nano-vllm-amd@5d8f496` pack8 small-row / dual-pack8 threshold policy, including `6f0e468` (`GEMV_V8_MAX_ROWS` 8→16 for DFlash bulk verify).
+  - MTP runtime/metadata sources: `mtp.py@e7651e8`, `weights.py@7b20f47`, `spec.py@5bfaa85`.
+- Registered benchmark-only/prototype sources separately from runtime/kernel lineage: parent DFlash acceptance suites, dense27 smoke/sweep prototypes, MTP prompt/sweep helpers, and parent DFlash/MTP design docs.
+- Added `external_artifacts` entries for the non-git model artifacts:
+  - `z-lab/Qwen3.6-35B-A3B-DFlash` snapshot `42d3b34d588423cdae7ba8f53a8cf7789346a719` with observed `dflash.py`, `config.json`, and safetensors blob IDs.
+  - `shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed` observed snapshots `501ef8635e5cfb5a7497d232358ca8d1afc0c66e` and `176e57c1a5d823bd0f41605420d04e3441465bb4`; benchmark rows must record the exact snapshot used.
+- Updated `docs/KERNELS.md` with the DFlash/MTP lineage map, command filters, benchmark-only/runtime split, and artifact notes.
+
+### Validation
+
+```bash
+python3 -m json.tool docs/source_lineage.json >/tmp/hipengine-source-lineage.json
+python3 -m pytest tests/test_check_lineage.py -q
+python3 scripts/check_lineage.py --file '*DFlash*' --diff none --evidence-limit 2 >/tmp/hipengine-lineage-dflash.txt
+python3 scripts/check_lineage.py --file '*MTP*' --diff none --evidence-limit 1 >/tmp/hipengine-lineage-mtp.txt
+python3 scripts/check_lineage.py --file '*pack8 small-row*' --diff stat --evidence-limit 2 >/tmp/hipengine-lineage-pack8.txt
+grep -E 'tracked_sources:|changed_or_dirty:' /tmp/hipengine-lineage-dflash.txt /tmp/hipengine-lineage-mtp.txt /tmp/hipengine-lineage-pack8.txt
+# /tmp/hipengine-lineage-dflash.txt:tracked_sources: 16 changed_or_dirty: 0
+# /tmp/hipengine-lineage-mtp.txt:tracked_sources: 9 changed_or_dirty: 0
+# /tmp/hipengine-lineage-pack8.txt:tracked_sources: 1 changed_or_dirty: 0
+git diff --check
+# pytest: 2 passed
+```

@@ -102,6 +102,68 @@ The Qwen3.5/PARO resident generation and benchmark harness accept `backend="hip_
 
 `w8a16_linear` ports the parent W8A16 GEMV kernels used by the current shared-expert default (`hip_w8a16_linear_lowp_out`) and W8A16 lm-head/auxiliary dense route. Lowp output wrappers now cover both BF16 and parent-parity FP16 activation streams. The FP16 `w8a16_shared_gate_up_silu_fp16` prefill helper adapts parent `w8a16_shared_gate_up_bulk4_kernel` to the raw-pointer lowp-output path, computing four shared-expert intermediate columns per block and writing the existing `shared_intermediate` scratch. `w8a16_shared_gate_up_silu_fp16_token_tiled` is a hipEngine prefill variant that preserves W8A16 storage while sharing gate/up weights across adjacent prompt tokens; runtime defaults use `token_tile=2` for legacy shared experts only when `tokens >= 1024`, with the original helper retained as fallback/opt-out. `w8a16_shared_gate_sigmoid_fp32` precomputes the shared-expert sigmoid once per token in the router shared-gate column after top-k/routing weights are materialized. The FP16 `w8a16_shared_down_combine_residual_fp16` helper consumes that precomputed gate while fusing grouped-prefill shared down projection with selected-output/shared-gate/residual combine; its default tile computes eight hidden rows per block, preserving the already-rounded `selected_out` ABI and exact per-row accumulation order. `w8a16_shared_down_combine_residual_fp16_token_tiled` shares the same fused tail while reusing down rows across adjacent prompt tokens; runtime defaults use `token_tile=2` for legacy prefill `tokens >= 2`, with the original helper retained as fallback/opt-out. c=1 and non-grouped paths keep the unfused gate/up/down/combine fallbacks. `scripts/smoke.py --mode w8a16-shared-expert-hip` chains W8A16 gate/up → `silu_mul_dual_out` → W8A16 down and is bit-exact against the staged BF16 NumPy oracle. `scripts/smoke.py --mode paro-moe-c1-hip --hidden-size 8` is the direct synthetic c=1 decode vertical smoke; `scripts/smoke.py --mode paro-moe-c1-state-hip --hidden-size 8` drives the same staged fixture through `Qwen35ParoDecodeState.run_moe_c1_bf16(...)` and validates the normalized prepared-weight/runtime-workspace path.
 
+## DFlash / MTP lineage map
+
+DFlash and MTP are tracked in `docs/source_lineage.json` before any native port
+so benchmark-only scaffolding is not mistaken for a production kernel source.
+Use these filters before touching the verifier/drafter path:
+
+```bash
+python3 scripts/check_lineage.py --file '*DFlash*' --diff stat
+python3 scripts/check_lineage.py --file '*MTP*' --diff stat
+python3 scripts/check_lineage.py --file '*pack8 small-row*' --diff patch
+```
+
+### Runtime/kernel lineage
+
+| Source | Baseline | Role | Port note |
+| --- | --- | --- | --- |
+| `nano-vllm-amd/csrc/amd/qwen35_expert.hip` | `b95eaa5` | R1 single-launch tree Conv/GDN t-loop kernels | Kernel source for DFlash tree/chain linear-attention verification; port as raw-pointer HIP with CPU or parent oracle fixtures. |
+| `nano-vllm-amd/csrc/amd/extension.cpp` | `b95eaa5` | R1 extension bindings | Binding shape only; hipEngine wrappers stay torch-free and do not copy PyBind/Tensor signatures. |
+| `nano-vllm-amd/csrc/amd/smoke.hip` | `b95eaa5` | R1 smoke fixtures | Fixture/oracle reference for t-loop kernels, not an E2E runtime dependency. |
+| `nano-vllm-amd/nanovllm/native/qwen35/linear_attention.py` | `69eb9d8` | R2 Python wrappers for tree Conv/GDN t-loop kernels | Dispatch/API reference for row order, parent ids, and scratch semantics. |
+| `nano-vllm-amd/nanovllm/native/qwen35/paroquant.py` | `5d8f496` | DFlash pack8 small-row and dual-pack8 threshold policy | Includes `6f0e468` (`GEMV_V8_MAX_ROWS` 8→16 for DFlash bulk verify) and `5d8f496` (`NANOVLLM_PARO_DUAL_PACK8_MAX_ROWS`). Re-audit before changing hipEngine row thresholds. |
+| `nano-vllm-amd/nanovllm/native/qwen35/mtp.py` | `e7651e8` | Target-attached MTP proposal provider | Future `MtpDraftProvider` source after DFlash verifier exists. |
+| `nano-vllm-amd/nanovllm/native/qwen35/weights.py` | `7b20f47` | Native weight layout plus MTP BF16 loader | Loader metadata reference only; hipEngine runtime remains torch-free. |
+| `nano-vllm-amd/nanovllm/native/qwen35/spec.py` | `5bfaa85` | Qwen3.5/Qwen3.6 config/spec parsing | Config alias reference for packed PARO/DFlash metadata validation. |
+
+### Benchmark-only / prototype lineage
+
+These sources are useful for metric names, prompt suites, and expected JSON, but
+must not import PyTorch/HF code into hipEngine's production hot path.
+
+| Source | Baseline | Role |
+| --- | --- | --- |
+| `nano-vllm-amd/scripts/bench_qwen35_dflash_acceptance.py` | `bd8360e` | Qwen3.6 W8A8 DFlash acceptance harness. |
+| `nano-vllm-amd/scripts/eval_qwen35_dflash_acceptance_suite.py` | `874b5ae` | AR vs DFlash chain/DDTree prompt-suite comparison. |
+| `nano-vllm-amd/scripts/inspect_qwen35_mtp.py` | `6ad5aea` | MTP artifact/tensor inspector. |
+| `nano-vllm-amd/scripts/make_qwen35_mtp_real_prompts.py` | `4bb2573` | Stable real-prompt fixture builder. |
+| `nano-vllm-amd/scripts/sweep_qwen35_mtp_real_acceptance.py` | `4bb2573` | MTP top-1/top-k acceptance sweep. |
+| `amd-gpu-tuning/scripts/bench_dense27_dflash_smoke.py` | `3d509f4` | Dense27 DFlash smoke, serial/bulk verifier prototype, DDTree flat ABI reference. |
+| `amd-gpu-tuning/scripts/sweep_dense27_dflash_prediction.py` | `c09e4df` | Dense27 chain/DDTree sweep harness and row aggregation. |
+| `amd-gpu-tuning/PLAN-DFLASH.md` | `3d509f4` | Parent DFlash punchlist/evidence log. |
+| `amd-gpu-tuning/PLAN-MTP.md` | `ab62086` | Parent MTP punchlist/evidence log. |
+| `amd-gpu-tuning/MTP-DFLASH.md` | `63a9164` | Shared-verifier notes and early DFlash/MTP root-cause analysis. |
+| `amd-gpu-tuning/docs/DFLASH-FRESH-EYES.md` | `8fd89b4` | Reference implementation audit. |
+| `amd-gpu-tuning/docs/SPECULATIVE-DECODE.md` | `2cd030f` | HumanEval/code prompt and speculative-decode evidence notes. |
+| `amd-gpu-tuning/docs/ROOFLINE-gfx1151.md` | `82f65a3` | Strix Halo roofline for verifier economics. |
+
+### External model/artifact references
+
+`check_lineage.py` audits git repos only. Model artifacts are recorded in
+`docs/source_lineage.json` under `external_artifacts` and must be restated in
+benchmark JSON:
+
+- Drafter: `z-lab/Qwen3.6-35B-A3B-DFlash`, local snapshot
+  `42d3b34d588423cdae7ba8f53a8cf7789346a719`; observed blobs include
+  `dflash.py` blob `74d3ee2a48fbb1e65e25e19ab6cd89e2b28cd120`, `config.json`
+  blob `64b63098ee9f2c9e1a2c0bf5ec1a4e32eb489703`, and the safetensors LFS SHA
+  `6db5c712b4f3d924026162ad1aedf7fd1fef32437690451137f967d9b7160144`.
+- Target: `shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed`; local snapshots
+  observed `501ef8635e5cfb5a7497d232358ca8d1afc0c66e` and
+  `176e57c1a5d823bd0f41605420d04e3441465bb4`. Every benchmark row must record
+  the exact snapshot path/revision used.
+
 ## Source-lineage drift check
 
 Before porting a family, check whether the parent source moved since the last hipEngine catalog/audit baseline:

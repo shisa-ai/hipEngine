@@ -7,13 +7,24 @@
     "/home/lhl/github/shisa-ai/amd-gpu-tuning/docs/PARO.md",
     "/home/lhl/github/shisa-ai/amd-gpu-tuning/PLAN-PAROQUANT.md",
     "/home/lhl/github/shisa-ai/amd-gpu-tuning/PLAN-PAROQUANT2.md",
-    "/home/lhl/github/shisa-ai/amd-gpu-tuning/PLAN-MOE2.md"
+    "/home/lhl/github/shisa-ai/amd-gpu-tuning/PLAN-MOE2.md",
+    "/home/lhl/github/shisa-ai/amd-gpu-tuning/PLAN-DFLASH.md",
+    "/home/lhl/github/shisa-ai/amd-gpu-tuning/PLAN-MTP.md",
+    "/home/lhl/github/shisa-ai/amd-gpu-tuning/MTP-DFLASH.md",
+    "/home/lhl/github/shisa-ai/amd-gpu-tuning/docs/DFLASH-FRESH-EYES.md",
+    "/home/lhl/github/shisa-ai/amd-gpu-tuning/docs/SPECULATIVE-DECODE.md",
+    "/home/lhl/github/shisa-ai/amd-gpu-tuning/docs/ROOFLINE-gfx1151.md"
   ],
   "repositories": {
     "nano-vllm-amd": {
       "path": "/home/lhl/github/shisa-ai/amd-gpu-tuning/nano-vllm-amd",
       "baseline_ref": "22405a9",
       "baseline_note": "Last manual KERNELS.md catalog audit before adding scripts/check_lineage.py."
+    },
+    "amd-gpu-tuning": {
+      "path": "/home/lhl/github/shisa-ai/amd-gpu-tuning",
+      "baseline_ref": "82f65a3",
+      "baseline_note": "Current parent workspace head when DFlash/gfx1151 benchmark-contract lineage was registered."
     }
   },
   "files": [
@@ -124,6 +135,177 @@
       "path": "nanovllm/native/qwen35/router.py",
       "kind": "dispatch",
       "family": "Router dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/mtp.py",
+      "kind": "dispatch",
+      "family": "DFlash/MTP: target-attached MTP proposal provider",
+      "baseline_ref": "e7651e8"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/weights.py",
+      "kind": "layout",
+      "family": "DFlash/MTP: Qwen3.5/Qwen3.6 native weights and MTP BF16 loader",
+      "baseline_ref": "7b20f47"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/spec.py",
+      "kind": "dispatch",
+      "family": "DFlash/MTP: model spec/config parsing for Qwen3.5/Qwen3.6 PARO",
+      "baseline_ref": "5bfaa85"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/linear_attention.py",
+      "kind": "dispatch",
+      "family": "DFlash R2: Python wrappers for tree Conv/GDN t-loop kernels",
+      "baseline_ref": "69eb9d8"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/qwen35_expert.hip",
+      "kind": "kernel",
+      "family": "DFlash R1: single-launch tree Conv/GDN t-loop kernels",
+      "baseline_ref": "b95eaa5"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/extension.cpp",
+      "kind": "binding",
+      "family": "DFlash R1: tree Conv/GDN t-loop extension bindings",
+      "baseline_ref": "b95eaa5"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/smoke.hip",
+      "kind": "kernel",
+      "family": "DFlash R1: tree Conv/GDN t-loop smoke fixtures",
+      "baseline_ref": "b95eaa5"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/paroquant.py",
+      "kind": "dispatch",
+      "family": "DFlash: pack8 small-row and dual-pack8 threshold policy",
+      "baseline_ref": "5d8f496"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "scripts/bench_qwen35_dflash_acceptance.py",
+      "kind": "benchmark",
+      "family": "DFlash benchmark-only: Qwen3.6 W8A8 acceptance harness",
+      "baseline_ref": "bd8360e"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "scripts/eval_qwen35_dflash_acceptance_suite.py",
+      "kind": "benchmark",
+      "family": "DFlash benchmark-only: prompt-suite acceptance comparison",
+      "baseline_ref": "874b5ae"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "scripts/inspect_qwen35_mtp.py",
+      "kind": "benchmark",
+      "family": "MTP benchmark-only: artifact/tensor inspector",
+      "baseline_ref": "6ad5aea"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "scripts/make_qwen35_mtp_real_prompts.py",
+      "kind": "benchmark",
+      "family": "MTP benchmark-only: stable real-prompt fixture builder",
+      "baseline_ref": "4bb2573"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "scripts/sweep_qwen35_mtp_real_acceptance.py",
+      "kind": "benchmark",
+      "family": "MTP benchmark-only: real-prompt acceptance sweep",
+      "baseline_ref": "4bb2573"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "scripts/bench_dense27_dflash_smoke.py",
+      "kind": "benchmark",
+      "family": "DFlash benchmark-only: dense27 smoke and serial/bulk verifier prototype",
+      "baseline_ref": "3d509f4"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "scripts/sweep_dense27_dflash_prediction.py",
+      "kind": "benchmark",
+      "family": "DFlash benchmark-only: dense27 chain/DDTree prediction sweep",
+      "baseline_ref": "c09e4df"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "PLAN-DFLASH.md",
+      "kind": "doc",
+      "family": "DFlash design/evidence log",
+      "baseline_ref": "3d509f4"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "PLAN-MTP.md",
+      "kind": "doc",
+      "family": "MTP design/evidence log",
+      "baseline_ref": "ab62086"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "MTP-DFLASH.md",
+      "kind": "doc",
+      "family": "MTP/DFlash shared-verifier notes",
+      "baseline_ref": "63a9164"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "docs/DFLASH-FRESH-EYES.md",
+      "kind": "doc",
+      "family": "DFlash reference-implementation audit",
+      "baseline_ref": "8fd89b4"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "docs/SPECULATIVE-DECODE.md",
+      "kind": "doc",
+      "family": "Speculative decode evidence and HumanEval/code prompt notes",
+      "baseline_ref": "2cd030f"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "docs/ROOFLINE-gfx1151.md",
+      "kind": "doc",
+      "family": "gfx1151 roofline for DFlash verifier economics",
+      "baseline_ref": "82f65a3"
+    }
+  ],
+  "external_artifacts": [
+    {
+      "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "kind": "hf_drafter_model",
+      "snapshot_revision": "42d3b34d588423cdae7ba8f53a8cf7789346a719",
+      "local_snapshot_path": "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
+      "code_files": {
+        "config.json_blob": "64b63098ee9f2c9e1a2c0bf5ec1a4e32eb489703",
+        "dflash.py_blob": "74d3ee2a48fbb1e65e25e19ab6cd89e2b28cd120",
+        "model.safetensors_lfs_sha256": "6db5c712b4f3d924026162ad1aedf7fd1fef32437690451137f967d9b7160144"
+      },
+      "note": "DFlash drafter artifact; validate metadata in task DFlash 04 before materializing tensors."
+    },
+    {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "kind": "hf_target_model",
+      "snapshot_revisions_observed": [
+        "501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+        "176e57c1a5d823bd0f41605420d04e3441465bb4"
+      ],
+      "local_snapshot_root": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots",
+      "note": "Packed PARO target; benchmark rows must record exact snapshot path/revision."
     }
   ]
 }
