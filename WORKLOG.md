@@ -17747,3 +17747,14 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. py
 ```
 
 Loop metric: `1977.1244 tok/s` for 512-token prefill (`0.9374 GiB` tracked peak), up from `1718.1144 tok/s`. Still below Qwen3.6 packed PARO target (`2451.2 tok/s` 512; `2666.7 tok/s` 4K). Next experiment: layer Q4_K dense fallback or a better Q4_K pack8 prefill GEMM.
+
+## 2026-05-17 GGUF bulk prefill iteration 6 rejected
+
+Tried materializing layer-scoped Q4_K tensors as dense BF16 fallback so they would use the dense prefill GEMM. This was worse than the retained Q4_K pack8 path:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-runs 0 --measured-runs 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-bulk-loop-512-q456dense.json
+# prefill_tok_s=1368.3650, peak_gib=1.2865
+```
+
+The experiment was reverted immediately; retained tree keeps Q4_K pack8 materialization. No correctness guard was run after the adverse metric because no code from the experiment was retained.
