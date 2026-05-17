@@ -163,6 +163,7 @@ class Qwen35ParoAttentionScratch:
     query: Tensor
     key: Tensor
     value: Tensor
+    kv_proj: Tensor | None
     gate: Tensor
     partial_out: Tensor
     partial_m: Tensor
@@ -323,6 +324,18 @@ class Qwen35ParoDecodeState:
             lowp,
             q_proj_key.device,
         )
+        kv_proj = None
+        if _full_attn_kv_pack8_fused_enabled():
+            kv_proj = self.workspace.reserve_tensor("attn.kv_proj", (tokens, 2 * kv_width), lowp)
+            key_bf16 = Tensor.from_handle(kv_proj.ptr, (tokens, kv_width), lowp, kv_proj.device)
+            value = Tensor.from_handle(
+                kv_proj.ptr + tokens * kv_width * lowp.itemsize,
+                (tokens, cfg.num_key_value_heads, cfg.head_dim),
+                lowp,
+                kv_proj.device,
+            )
+        else:
+            value = self.workspace.reserve_tensor("attn.value", (tokens, cfg.num_key_value_heads, cfg.head_dim), lowp)
         return Qwen35ParoAttentionScratch(
             attn_input=self.workspace.reserve_tensor("attn.input", (tokens, cfg.hidden_size), lowp),
             q_rot=self.workspace.reserve_tensor("attn.q_rot", (tokens, cfg.hidden_size), lowp),
@@ -336,7 +349,8 @@ class Qwen35ParoDecodeState:
             key_raw=self.workspace.reserve_tensor("attn.key_raw", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
             query=self.workspace.reserve_tensor("attn.query", (tokens, cfg.num_attention_heads, cfg.head_dim), DType.FP32),
             key=self.workspace.reserve_tensor("attn.key", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
-            value=self.workspace.reserve_tensor("attn.value", (tokens, cfg.num_key_value_heads, cfg.head_dim), lowp),
+            value=value,
+            kv_proj=kv_proj,
             gate=self.workspace.reserve_tensor("attn.gate", (tokens, cfg.num_attention_heads, cfg.head_dim), gated),
             partial_out=self.workspace.reserve_tensor(
                 "attn.partial_out",
@@ -532,7 +546,12 @@ class Qwen35ParoDecodeState:
         q_pairs = self.tensor(f"{q}.pairs")
         k_pairs = self.tensor(f"{k}.pairs")
         v_pairs = self.tensor(f"{v}.pairs")
-        if tokens == 1 and hidden.ptr == scratch.attn_input.ptr and _rotate_dual_pack8_fused_enabled():
+        if (
+            tokens == 1
+            and hidden.ptr == scratch.attn_input.ptr
+            and _rotate_dual_pack8_fused_enabled()
+            and not _full_attn_kv_pack8_fused_enabled()
+        ):
             self._rotate_fuse_ready.add(scratch.rotate_fuse_barrier.ptr)
             paro_rotate1_bf16(
                 hidden.ptr,
@@ -586,14 +605,48 @@ class Qwen35ParoDecodeState:
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
         q = f"{prefix}.q_proj"
         k = f"{prefix}.k_proj"
+        v = f"{prefix}.v_proj"
         q_qweight = self.tensor(f"{q}.qweight_pack8_decode")
         k_qweight = self.tensor(f"{k}.qweight_pack8_decode")
         q_out_packed = _out_packed_from_generic_transposed_qweight(q_qweight)
         k_out_packed = _out_packed_from_generic_transposed_qweight(k_qweight)
         awq_library = _library_for(library, "awq")
+        kv_fused = False
         if tokens == 1:
             use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
-            if use_rotate_fused:
+            if scratch.kv_proj is not None and not use_rotate_fused:
+                v_qweight = self.tensor(f"{v}.qweight_pack8_decode")
+                v_out_packed = _out_packed_from_generic_transposed_qweight(v_qweight)
+                self.project_pack8_bf16(
+                    scratch.q_rot,
+                    scratch.q_proj,
+                    weight_prefix=q,
+                    rows=tokens,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                gemv_awq_dual_pack8_transposed_bf16(
+                    scratch.k_rot.ptr,
+                    scratch.v_rot.ptr,
+                    k_qweight.ptr,
+                    self.tensor(f"{k}.qzeros").ptr,
+                    self.tensor(f"{k}.scales").ptr,
+                    v_qweight.ptr,
+                    self.tensor(f"{v}.qzeros").ptr,
+                    self.tensor(f"{v}.scales").ptr,
+                    scratch.key_bf16.ptr,
+                    tokens,
+                    scratch.k_rot.shape[-1],
+                    k_out_packed,
+                    v_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+                kv_fused = True
+            elif use_rotate_fused:
                 gemv_awq_dual_pack8_transposed_rotate_staged_bf16(
                     scratch.attn_input.ptr,
                     scratch.q_rot.ptr,
@@ -672,15 +725,16 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
-        self.project_pack8_bf16(
-            scratch.v_rot,
-            scratch.value,
-            weight_prefix=f"{prefix}.v_proj",
-            rows=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
-        )
+        if not kv_fused:
+            self.project_pack8_bf16(
+                scratch.v_rot,
+                scratch.value,
+                weight_prefix=f"{prefix}.v_proj",
+                rows=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         return scratch.q_proj, scratch.key_bf16, scratch.value
 
     def prepare_full_attention_qkv_bf16(
@@ -1841,7 +1895,12 @@ class Qwen35ParoDecodeState:
         q_pairs = self.tensor(f"{q}.pairs")
         k_pairs = self.tensor(f"{k}.pairs")
         v_pairs = self.tensor(f"{v}.pairs")
-        if tokens == 1 and hidden.ptr == scratch.attn_input.ptr and _rotate_dual_pack8_fused_enabled():
+        if (
+            tokens == 1
+            and hidden.ptr == scratch.attn_input.ptr
+            and _rotate_dual_pack8_fused_enabled()
+            and not _full_attn_kv_pack8_fused_enabled()
+        ):
             self._rotate_fuse_ready.add(scratch.rotate_fuse_barrier.ptr)
             paro_rotate1_fp16(
                 hidden.ptr,
@@ -1895,14 +1954,48 @@ class Qwen35ParoDecodeState:
         prefix = f"layers.{self.layer_weights.layer_id}.self_attn"
         q = f"{prefix}.q_proj"
         k = f"{prefix}.k_proj"
+        v = f"{prefix}.v_proj"
         q_qweight = self.tensor(f"{q}.qweight_pack8_decode")
         k_qweight = self.tensor(f"{k}.qweight_pack8_decode")
         q_out_packed = _out_packed_from_generic_transposed_qweight(q_qweight)
         k_out_packed = _out_packed_from_generic_transposed_qweight(k_qweight)
         awq_library = _library_for(library, "awq")
+        kv_fused = False
         if tokens == 1:
             use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
-            if use_rotate_fused:
+            if scratch.kv_proj is not None and not use_rotate_fused:
+                v_qweight = self.tensor(f"{v}.qweight_pack8_decode")
+                v_out_packed = _out_packed_from_generic_transposed_qweight(v_qweight)
+                self.project_pack8_fp16(
+                    scratch.q_rot,
+                    scratch.q_proj,
+                    weight_prefix=q,
+                    rows=tokens,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                gemv_awq_dual_pack8_transposed_fp16(
+                    scratch.k_rot.ptr,
+                    scratch.v_rot.ptr,
+                    k_qweight.ptr,
+                    self.tensor(f"{k}.qzeros").ptr,
+                    self.tensor(f"{k}.scales").ptr,
+                    v_qweight.ptr,
+                    self.tensor(f"{v}.qzeros").ptr,
+                    self.tensor(f"{v}.scales").ptr,
+                    scratch.key_bf16.ptr,
+                    tokens,
+                    scratch.k_rot.shape[-1],
+                    k_out_packed,
+                    v_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+                kv_fused = True
+            elif use_rotate_fused:
                 gemv_awq_dual_pack8_transposed_rotate_staged_fp16(
                     scratch.attn_input.ptr,
                     scratch.q_rot.ptr,
@@ -1973,16 +2066,17 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
-        self.project_pack8_fp16(
-            scratch.v_rot,
-            scratch.value,
-            weight_prefix=f"{prefix}.v_proj",
-            rows=tokens,
-            group_size=group_size,
-            threads=64 if tokens > 1 else 128,
-            library=library,
-            stream=stream,
-        )
+        if not kv_fused:
+            self.project_pack8_fp16(
+                scratch.v_rot,
+                scratch.value,
+                weight_prefix=f"{prefix}.v_proj",
+                rows=tokens,
+                group_size=group_size,
+                threads=64 if tokens > 1 else 128,
+                library=library,
+                stream=stream,
+            )
         return scratch.q_proj, scratch.key_bf16, scratch.value
 
     def prepare_full_attention_qkv_fp16(
@@ -5622,6 +5716,14 @@ class Qwen35ParoDecodeState:
 
 def _rotate_dual_pack8_fused_enabled() -> bool:
     value = os.environ.get("HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED")
+    if value is None or value.strip() == "":
+        return False
+    return value.strip().lower() not in {"0", "false", "off", "no"}
+
+
+
+def _full_attn_kv_pack8_fused_enabled() -> bool:
+    value = os.environ.get("HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED")
     if value is None or value.strip() == "":
         return False
     return value.strip().lower() not in {"0", "false", "off", "no"}

@@ -15494,3 +15494,77 @@ python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d13-same-inp
 ```
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d13-same-input-projection-fusions-rejected.json`.
+
+---
+
+## 2026-05-17 — D1.6 decode K/V dual-pack8 route rejected as default
+
+Task #24 evaluated `docs/OPTIMIZE.md` D1.6. I implemented an opt-in diagnostic
+route, but did **not** promote it to default.
+
+Implementation:
+
+- Added `HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1` (default off).
+- Default full-attention decode projection route remains:
+  `rotate3 -> dual pack8 q_proj+k_proj -> single v_proj`.
+- Opt-in route is:
+  `rotate3 -> single q_proj -> dual pack8 k_proj+v_proj`.
+- The opt-in scratch aliases key and value into a contiguous `attn.kv_proj`
+  buffer so the existing dual-pack8 wrapper writes `K||V` without copy kernels.
+- Pack8/repacked qweight layout is preserved; no HIP kernel body changed.
+- The D1.1 rotate-staged full-attn path is disabled when K/V fusion is enabled,
+  because rotate-staged only fills V scratch before the fused Q/K kernel.
+
+Correctness:
+
+```bash
+HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1 python3 scripts/qwen35_decode_graph_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --max-new-tokens 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d16/graph-fixture-optin.json
+# passed=True, generated_match=True, expected_match=True, final_kl=0.0, final_top1_match=True
+```
+
+Graph replay benchmark (single run per A/B point, resident runner, max_layers=40):
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --prompt-length {512,4096} --decode-tokens 128 --warmup-decode-tokens 4 --token-id 9707 \
+  --graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --json <path>
+# opt-in adds HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1
+```
+
+| workload | route | prefill tok/s | decode tok/s | tracked peak GiB |
+| --- | --- | ---: | ---: | ---: |
+| 512/128 | default Q/K+V | `2276.276` | `115.495` | `18.175625` |
+| 512/128 | opt-in Q+K/V | `2244.508` | `115.627` | `18.176122` |
+| 4K/128 | default Q/K+V | `2487.220` | `117.301` | `20.047133` |
+| 4K/128 | opt-in Q+K/V | `2487.114` | `117.053` | `20.051049` |
+
+Deltas:
+
+- 512/128 decode: `+0.11%` (noise), prefill `-1.40%`, peak `+0.0005 GiB`.
+- 4K/128 decode: `-0.21%`, prefill ~neutral, peak `+0.0039 GiB`.
+
+Decision: reject as default. D1.6 changes projection pairing, not launch count:
+default Q/K+V and opt-in Q+K/V both use two projection launches per
+full-attention layer. The hoped-for benefit from running Q as a single-projection
+path and pairing the two small KV projections does not survive graph replay.
+`HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1` remains only as a diagnostic surface;
+default runtime behavior is unchanged.
+
+Validation:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+# hip OK
+python3 -m py_compile hipengine/runtime/qwen35_paro.py scripts/qwen35_paro_bench.py scripts/qwen35_decode_graph_fixture_gate.py
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_paro_layout.py -q --tb=short
+# 71 passed
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d16-kv-pack8-fusion-rejected.json >/tmp/d16.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d16-kv-pack8-fusion-rejected.json`.

@@ -225,6 +225,7 @@ def test_qwen35_decode_state_reserves_full_attention_split_k_scratch() -> None:
     assert scratch.query.shape == (1, 16, 256)
     assert scratch.key.shape == (1, 2, 256)
     assert scratch.value.shape == (1, 2, 256)
+    assert scratch.kv_proj is None
     assert scratch.gate.shape == (1, 16, 256)
     assert scratch.partial_out.shape == (16, 2, 256)
     assert scratch.partial_m.shape == (16, 2)
@@ -234,6 +235,20 @@ def test_qwen35_decode_state_reserves_full_attention_split_k_scratch() -> None:
     assert scratch.gated_attn.dtype is DType.BF16
     assert scratch.o_rot.shape == (1, 4096)
     assert scratch.o_proj.shape == (1, 4096)
+
+
+def test_qwen35_decode_state_reserves_full_attention_kv_fused_scratch(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED", "1")
+    runtime = FakeRuntime()
+    state = _state(runtime)
+
+    scratch = state.reserve_full_attention_scratch(tokens=1, num_splits=1, activation_dtype="fp16")
+
+    assert scratch.kv_proj is not None
+    assert scratch.kv_proj.shape == (1, 1024)
+    assert scratch.key_bf16.ptr == scratch.kv_proj.ptr
+    assert scratch.value.ptr == scratch.kv_proj.ptr + 512 * DType.FP16.itemsize
+    assert scratch.value.shape == (1, 2, 256)
 
 
 def test_qwen35_decode_state_projects_full_attention_qkv_fp16_tokens_split_layout(monkeypatch) -> None:
@@ -282,6 +297,50 @@ def test_qwen35_decode_state_projects_full_attention_qkv_fp16_tokens_split_layou
     assert calls[0][1][8] == scratch.q_proj.ptr
     assert calls[0][1][9] == scratch.key_bf16.ptr
     assert calls[1][1][4] == scratch.value.ptr
+
+
+def test_qwen35_decode_state_projects_full_attention_qkv_fp16_with_kv_fusion(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED", "1")
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights())
+    scratch = state.reserve_full_attention_scratch(tokens=1, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
+    calls = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_pack8_strided_fp16",
+        lambda *args, **kwargs: calls.append(("single_q", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_dual_pack8_transposed_fp16",
+        lambda *args, **kwargs: calls.append(("dual_kv", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_dual_pack8_transposed_rotate_staged_fp16",
+        lambda *args, **kwargs: calls.append(("unexpected_rotate_fused", args, kwargs)),
+    )
+
+    q_proj, key, value = state.project_full_attention_qkv_fp16(scratch, tokens=1)
+
+    assert q_proj is scratch.q_proj
+    assert key is scratch.key_bf16
+    assert value is scratch.value
+    assert [kind for kind, _args, _kwargs in calls] == ["single_q", "dual_kv"]
+    assert calls[0][1][:5] == (scratch.q_rot.ptr, 0x8230, 0x8240, 0x8250, scratch.q_proj.ptr)
+    assert calls[1][1][:9] == (
+        scratch.k_rot.ptr,
+        scratch.v_rot.ptr,
+        0x8338,
+        0x8340,
+        0x8350,
+        0x8438,
+        0x8440,
+        0x8450,
+        scratch.key_bf16.ptr,
+    )
+    assert calls[1][1][9:14] == (1, 4096, 64, 64, 128)
 
 
 def test_qwen35_decode_state_projects_linear_qkv_z_fp16_with_fused_rotation_when_deferred(monkeypatch) -> None:
@@ -755,6 +814,9 @@ def _full_attention_weights() -> DeviceWeightMap:
             f"{prefix}.v_proj.theta": _allocation(f"{prefix}.v_proj.theta", 0x8410, (8, 2048), "bf16"),
             f"{prefix}.v_proj.channel_scales": _allocation(f"{prefix}.v_proj.channel_scales", 0x8420, (1, 4096), "bf16"),
             f"{prefix}.v_proj.qweight": _allocation(f"{prefix}.v_proj.qweight", 0x8430, (4096, 64), "int32"),
+            f"{prefix}.v_proj.qweight_pack8_decode": _allocation(
+                f"{prefix}.v_proj.qweight_pack8_decode", 0x8438, (64, 4096), "int32"
+            ),
             f"{prefix}.v_proj.qzeros": _allocation(f"{prefix}.v_proj.qzeros", 0x8440, (32, 64), "int32"),
             f"{prefix}.v_proj.scales": _allocation(f"{prefix}.v_proj.scales", 0x8450, (32, 512), "bf16"),
             f"{prefix}.o_proj.pairs": _allocation(f"{prefix}.o_proj.pairs", 0x8500, (8, 4096), "int16"),
