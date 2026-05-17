@@ -56,16 +56,29 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
+    build_gguf_expert_pack8_gemv,
+    register_gguf_expert_pack8_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_selected_gemv_bf16_bf16_out,
     gguf_q6_k_selected_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import gguf_q4_k_selected_gemv_bf16_bf16_out
+from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16,
     qwen35_router_select,
 )
-from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
+from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION, build_qwen35_gguf_tensor_map
+from hipengine.loading.qwen35_gguf_expert_sidecar import (
+    GGUFExpertPackedTensor,
+    build_packed_expert_tensor_from_reader,
+    expert_sidecar_cache_path,
+    load_packed_expert_tensor,
+    save_packed_expert_tensor,
+)
 from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFDeviceWeight,
     Qwen35GGUFResidentWeights,
@@ -96,6 +109,67 @@ class Qwen35GGUFFullAttentionPrefillResult:
     hidden_bits: np.ndarray
     mode: str
     used_aotriton: bool
+
+
+@dataclass(frozen=True)
+class _DeviceExpertPackedTensor:
+    quant_key: str
+    qweight_low: DeviceBuffer
+    scales: DeviceBuffer
+    qweight_high: DeviceBuffer | None
+    mins: DeviceBuffer | None
+    num_experts: int
+    in_features: int
+    out_features: int
+    buffers: tuple[DeviceBuffer, ...]
+
+    @classmethod
+    def from_host(cls, packed: GGUFExpertPackedTensor, *, runtime: HipRuntime) -> "_DeviceExpertPackedTensor":
+        buffers: list[DeviceBuffer] = []
+        try:
+            qweight_low = _copy_sidecar_array_to_device(packed.qweight_low, runtime=runtime)
+            buffers.append(qweight_low)
+            scales = _copy_sidecar_array_to_device(packed.scales, runtime=runtime)
+            buffers.append(scales)
+            qweight_high = None
+            if packed.qweight_high is not None:
+                qweight_high = _copy_sidecar_array_to_device(packed.qweight_high, runtime=runtime)
+                buffers.append(qweight_high)
+            mins = None
+            if packed.mins is not None:
+                mins = _copy_sidecar_array_to_device(packed.mins, runtime=runtime)
+                buffers.append(mins)
+            return cls(
+                quant_key=packed.quant_key,
+                qweight_low=qweight_low,
+                scales=scales,
+                qweight_high=qweight_high,
+                mins=mins,
+                num_experts=packed.num_experts,
+                in_features=packed.in_features,
+                out_features=packed.out_features,
+                buffers=tuple(buffers),
+            )
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
+            raise
+
+    def free(self, *, runtime: HipRuntime) -> None:
+        for buffer in reversed(self.buffers):
+            free(buffer, runtime=runtime)
+
+
+@dataclass(frozen=True)
+class _DeviceExpertLayerSidecar:
+    tensors: dict[str, _DeviceExpertPackedTensor]
+
+    def tensor(self, slot: str) -> _DeviceExpertPackedTensor:
+        return self.tensors[slot]
+
+    def free(self, *, runtime: HipRuntime) -> None:
+        for tensor in reversed(tuple(self.tensors.values())):
+            tensor.free(runtime=runtime)
 
 
 @dataclass
@@ -526,6 +600,7 @@ class Qwen35GGUFFullStackRunner:
         scratch,
         *,
         stream: int = 0,
+        expert_sidecar: _DeviceExpertLayerSidecar | None = None,
     ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -651,7 +726,16 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        self._run_post_attention_ffn_rows(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, rows=rows, stream=stream)
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            expert_sidecar=expert_sidecar,
+        )
 
     def _run_linear_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
         self._run_linear_attention_attn_only(layer_id, hidden_ptr, scratch.attn_out.ptr, scratch, stream=stream)
@@ -822,6 +906,7 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         decode_scratch,
         stream: int = 0,
+        expert_sidecar: _DeviceExpertLayerSidecar | None = None,
     ) -> None:
         assert self.weights is not None
         if rows <= 0:
@@ -1003,7 +1088,16 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        self._run_post_attention_ffn_rows(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, rows=rows, stream=stream)
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            expert_sidecar=expert_sidecar,
+        )
 
     def _run_full_attention_layer(
         self,
@@ -1170,6 +1264,7 @@ class Qwen35GGUFFullStackRunner:
         *,
         rows: int,
         stream: int = 0,
+        expert_sidecar: _DeviceExpertLayerSidecar | None = None,
     ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -1190,7 +1285,14 @@ class Qwen35GGUFFullStackRunner:
             if rows == 1:
                 self._run_post_attention_moe_c1(layer_id, out_ptr, scratch, stream=stream)
             else:
-                self._run_post_attention_moe_rows(layer_id, out_ptr, scratch, rows=rows, stream=stream)
+                self._run_post_attention_moe_rows(
+                    layer_id,
+                    out_ptr,
+                    scratch,
+                    rows=rows,
+                    stream=stream,
+                    expert_sidecar=expert_sidecar,
+                )
             return
         if not launch_gguf_linear_pair(
             layer.weight("ffn_gate"),
@@ -1424,6 +1526,7 @@ class Qwen35GGUFFullStackRunner:
         *,
         rows: int,
         stream: int = 0,
+        expert_sidecar: _DeviceExpertLayerSidecar | None = None,
     ) -> None:
         assert self.weights is not None
         cfg = self.weights.config
@@ -1476,23 +1579,12 @@ class Qwen35GGUFFullStackRunner:
         up_weight = layer.weight("ffn_up_exps")
         down_weight = layer.weight("ffn_down_exps")
         gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
-        _launch_selected_raw_gguf_moe_linear(
-            gate_weight,
+        if expert_sidecar is not None and _launch_selected_expert_pack8_moe_pair(
+            expert_sidecar.tensor("ffn_gate_exps"),
+            expert_sidecar.tensor("ffn_up_exps"),
             scratch.post_norm.ptr,
             scratch.moe_selected_experts.ptr,
             scratch.ffn_gate_up.ptr,
-            x_rows=rows,
-            rows=selected_rows,
-            num_experts=cfg.expert_count,
-            in_features=self.hidden_size,
-            out_features=cfg.expert_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        )
-        _launch_selected_raw_gguf_moe_linear(
-            up_weight,
-            scratch.post_norm.ptr,
-            scratch.moe_selected_experts.ptr,
             scratch.ffn_gate_up.ptr + gate_rows_nbytes,
             x_rows=rows,
             rows=selected_rows,
@@ -1501,7 +1593,65 @@ class Qwen35GGUFFullStackRunner:
             out_features=cfg.expert_feed_forward_length,
             stream=stream,
             runtime=runtime,
-        )
+            library=getattr(self, "_expert_pack8_library", None),
+        ):
+            pass
+        elif expert_sidecar is not None:
+            _launch_selected_expert_pack8_moe_linear(
+                expert_sidecar.tensor("ffn_gate_exps"),
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_gate_up.ptr,
+                x_rows=rows,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+                library=getattr(self, "_expert_pack8_library", None),
+            )
+            _launch_selected_expert_pack8_moe_linear(
+                expert_sidecar.tensor("ffn_up_exps"),
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                x_rows=rows,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+                library=getattr(self, "_expert_pack8_library", None),
+            )
+        else:
+            _launch_selected_raw_gguf_moe_linear(
+                gate_weight,
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_gate_up.ptr,
+                x_rows=rows,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+            _launch_selected_raw_gguf_moe_linear(
+                up_weight,
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                x_rows=rows,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
         silu_mul_separate_out_bf16(
             scratch.ffn_gate_up.ptr,
             scratch.ffn_gate_up.ptr + gate_rows_nbytes,
@@ -1511,19 +1661,35 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        _launch_selected_raw_gguf_moe_linear(
-            down_weight,
-            scratch.ffn_intermediate.ptr,
-            scratch.moe_selected_experts.ptr,
-            scratch.moe_down_out.ptr,
-            x_rows=selected_rows,
-            rows=selected_rows,
-            num_experts=cfg.expert_count,
-            in_features=cfg.expert_feed_forward_length,
-            out_features=self.hidden_size,
-            stream=stream,
-            runtime=runtime,
-        )
+        if expert_sidecar is not None:
+            _launch_selected_expert_pack8_moe_linear(
+                expert_sidecar.tensor("ffn_down_exps"),
+                scratch.ffn_intermediate.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.moe_down_out.ptr,
+                x_rows=selected_rows,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=cfg.expert_feed_forward_length,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+                library=getattr(self, "_expert_pack8_library", None),
+            )
+        else:
+            _launch_selected_raw_gguf_moe_linear(
+                down_weight,
+                scratch.ffn_intermediate.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.moe_down_out.ptr,
+                x_rows=selected_rows,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=cfg.expert_feed_forward_length,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
 
         if not launch_gguf_linear_pair(
             layer.weight("ffn_gate_shexp"),
@@ -1619,6 +1785,10 @@ class Qwen35GGUFResidentSession:
     compiler_version: str | None = None
     require_cached_build: bool = False
     max_sequence_length: int | None = None
+    use_expert_sidecar: bool = False
+    expert_sidecar_cache_dir: str | Path | None = None
+    require_expert_sidecar: bool = False
+    preload_expert_sidecars: bool = True
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _token_buf: object | None = field(default=None, init=False)
@@ -1635,6 +1805,10 @@ class Qwen35GGUFResidentSession:
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
     _runtime_state_library: object | None = field(default=None, init=False)
     _lm_head_library: object | None = field(default=None, init=False)
+    _expert_pack8_library: object | None = field(default=None, init=False)
+    _expert_sidecar_reader: GGUFReader | None = field(default=None, init=False)
+    _expert_sidecar_model_map: object | None = field(default=None, init=False)
+    _expert_sidecar_host_layers: dict[int, dict[str, GGUFExpertPackedTensor]] | None = field(default=None, init=False)
     _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
     _logits_host: np.ndarray | None = field(default=None, init=False)
     _buffers: tuple[object, ...] = field(default=(), init=False)
@@ -1653,6 +1827,16 @@ class Qwen35GGUFResidentSession:
         }
         self._runtime_state_library = build_runtime_state(**build_kwargs)
         self._lm_head_library = build_lm_head(**build_kwargs)
+        if self.use_expert_sidecar:
+            self._expert_pack8_library = build_gguf_expert_pack8_gemv(**build_kwargs)
+            setattr(self.runner, "_expert_pack8_library", self._expert_pack8_library)
+            self._expert_sidecar_reader = GGUFReader(self.model_path)
+            self._expert_sidecar_model_map = build_qwen35_gguf_tensor_map(self._expert_sidecar_reader.info)
+            if self.preload_expert_sidecars:
+                self._expert_sidecar_host_layers = {
+                    layer_id: self._load_expert_sidecar_host_layer(layer_id)
+                    for layer_id in range(self.runner.weights.config.block_count)
+                }
         self.scratch = _FullStackScratch.allocate(
             self.runner,
             runtime=runtime,
@@ -1798,39 +1982,48 @@ class Qwen35GGUFResidentSession:
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
         for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
-            if bulk_attention_mode == "native":
-                self.runner._run_native_attention_bulk_ffn_layer_rows(
-                    layer_id,
-                    layer_type,
-                    src.ptr,
-                    dst.ptr,
-                    bulk_scratch,
-                    rows=rows,
-                    stream=stream,
-                    decode_scratch=self.scratch,
-                )
-            elif layer_type == LINEAR_ATTENTION:
-                self.runner._run_linear_attention_prefill_layer_rows(
-                    layer_id,
-                    src.ptr,
-                    dst.ptr,
-                    bulk_scratch,
-                    rows=rows,
-                    stream=stream,
-                    decode_scratch=self.scratch,
-                )
-            elif layer_type == FULL_ATTENTION:
-                key_cache, value_cache = self.scratch.full_cache(layer_id)
-                layer_scratch = replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
-                self.runner._run_full_attention_prefill_layer_aotriton(
-                    layer_id,
-                    src.ptr,
-                    dst.ptr,
-                    layer_scratch,
-                    stream=stream,
-                )
-            else:
-                raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            expert_sidecar = None
+            if self.use_expert_sidecar and bulk_attention_mode == "bulk" and self.runner.weights.config.is_moe:
+                expert_sidecar = self._load_expert_sidecar_device_layer(layer_id, runtime=runtime)
+            try:
+                if bulk_attention_mode == "native":
+                    self.runner._run_native_attention_bulk_ffn_layer_rows(
+                        layer_id,
+                        layer_type,
+                        src.ptr,
+                        dst.ptr,
+                        bulk_scratch,
+                        rows=rows,
+                        stream=stream,
+                        decode_scratch=self.scratch,
+                    )
+                elif layer_type == LINEAR_ATTENTION:
+                    self.runner._run_linear_attention_prefill_layer_rows(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        bulk_scratch,
+                        rows=rows,
+                        stream=stream,
+                        decode_scratch=self.scratch,
+                        expert_sidecar=expert_sidecar,
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    key_cache, value_cache = self.scratch.full_cache(layer_id)
+                    layer_scratch = replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
+                    self.runner._run_full_attention_prefill_layer_aotriton(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        layer_scratch,
+                        stream=stream,
+                        expert_sidecar=expert_sidecar,
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            finally:
+                if expert_sidecar is not None:
+                    expert_sidecar.free(runtime=runtime)
             src, dst = dst, src
         gguf_rmsnorm_bf16_f32_weight(
             src.ptr,
@@ -1855,6 +2048,44 @@ class Qwen35GGUFResidentSession:
         )
         last_hidden_ptr = bulk_scratch.norm.ptr + (rows - 1) * self.runner.hidden_size * 2
         return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
+
+    def _load_expert_sidecar_host_layer(self, layer_id: int) -> dict[str, GGUFExpertPackedTensor]:
+        if self._expert_sidecar_reader is None or self._expert_sidecar_model_map is None:
+            raise RuntimeError("GGUF expert sidecar loading was not enabled for this session")
+        layer_map = self._expert_sidecar_model_map.layer(layer_id)  # type: ignore[attr-defined]
+        tensors: dict[str, GGUFExpertPackedTensor] = {}
+        for slot in ("ffn_gate_exps", "ffn_up_exps", "ffn_down_exps"):
+            tensor_info = layer_map.tensor(slot)
+            cache_path = expert_sidecar_cache_path(
+                self._expert_sidecar_reader.info,
+                tensor_info,
+                cache_dir=self.expert_sidecar_cache_dir,
+            )
+            if cache_path.exists():
+                packed = load_packed_expert_tensor(cache_path)
+            else:
+                if self.require_expert_sidecar:
+                    raise FileNotFoundError(f"missing cached GGUF expert sidecar for {tensor_info.name}: {cache_path}")
+                packed = build_packed_expert_tensor_from_reader(self._expert_sidecar_reader, tensor_info, slot=slot)
+                save_packed_expert_tensor(cache_path, packed)
+            tensors[slot] = packed
+        return tensors
+
+    def _load_expert_sidecar_device_layer(self, layer_id: int, *, runtime: HipRuntime) -> _DeviceExpertLayerSidecar:
+        host_tensors = (
+            self._expert_sidecar_host_layers[layer_id]
+            if self._expert_sidecar_host_layers is not None
+            else self._load_expert_sidecar_host_layer(layer_id)
+        )
+        tensors: dict[str, _DeviceExpertPackedTensor] = {}
+        try:
+            for slot, packed in host_tensors.items():
+                tensors[slot] = _DeviceExpertPackedTensor.from_host(packed, runtime=runtime)
+            return _DeviceExpertLayerSidecar(tensors=tensors)
+        except Exception:
+            for tensor in reversed(tuple(tensors.values())):
+                tensor.free(runtime=runtime)
+            raise
 
     def step(
         self,
@@ -2187,6 +2418,9 @@ class Qwen35GGUFResidentSession:
         self._prefill_hidden_b = None
         self._bulk_prefill_scratch = None
         self._logits_host = None
+        self._expert_sidecar_host_layers = None
+        self._expert_sidecar_reader = None
+        self._expert_sidecar_model_map = None
 
     def __enter__(self) -> "Qwen35GGUFResidentSession":
         return self
@@ -2779,6 +3013,152 @@ def _expert_raw_ptr(weight: Qwen35GGUFDeviceWeight, expert_id: int) -> int:
     if expert_id < 0 or expert_id >= experts:
         raise ValueError(f"expert_id {expert_id} outside [0, {experts}) for {source.name}")
     return weight.allocation("raw").tensor.ptr + int(expert_id) * int(rows) * int(row_bytes)
+
+
+_EXPERT_PACK8_SELECTED_KEYS = {
+    "gguf_q4_k": KernelKey("hip_gfx1100", "moe_linear", "gguf_q4_k", "expert_pack8_selected_bf16_bf16_out"),
+    "gguf_q5_k": KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_k", "expert_pack8_selected_bf16_bf16_out"),
+    "gguf_q6_k": KernelKey("hip_gfx1100", "moe_linear", "gguf_q6_k", "expert_pack8_selected_bf16_bf16_out"),
+}
+_EXPERT_PACK8_DUAL_KEYS = {
+    ("gguf_q4_k", "gguf_q4_k"): KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q4_k",
+        "expert_pack8_dual_selected_bf16_bf16_out",
+    ),
+}
+
+
+def _copy_sidecar_array_to_device(array: np.ndarray, *, runtime: HipRuntime) -> DeviceBuffer:
+    contiguous = np.ascontiguousarray(array)
+    buffer = malloc(contiguous.nbytes, runtime=runtime)
+    copy_host_to_device(buffer, host_array_ptr(contiguous), runtime=runtime)
+    return buffer
+
+
+def _launch_selected_expert_pack8_moe_pair(
+    weight_a: _DeviceExpertPackedTensor,
+    weight_b: _DeviceExpertPackedTensor,
+    x_ptr: int,
+    selected_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    *,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    stream: int,
+    runtime: HipRuntime,
+    library: object | None = None,
+) -> bool:
+    key = _EXPERT_PACK8_DUAL_KEYS.get((weight_a.quant_key, weight_b.quant_key))
+    if key is None:
+        return False
+    _validate_expert_pack8_shape(
+        weight_a,
+        num_experts=num_experts,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    _validate_expert_pack8_shape(
+        weight_b,
+        num_experts=num_experts,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    register_gguf_expert_pack8_gemv_kernels()
+    fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    fn(
+        x_ptr,
+        selected_ptr,
+        weight_a.qweight_low.ptr,
+        weight_a.scales.ptr,
+        _required_ptr(weight_a.mins, "mins", weight_a.quant_key),
+        weight_b.qweight_low.ptr,
+        weight_b.scales.ptr,
+        _required_ptr(weight_b.mins, "mins", weight_b.quant_key),
+        out_a_ptr,
+        out_b_ptr,
+        x_rows=x_rows,
+        rows=rows,
+        num_experts=num_experts,
+        in_features=in_features,
+        out_features=out_features,
+        stream=stream,
+        runtime=runtime,
+        library=library,
+    )
+    return True
+
+
+def _launch_selected_expert_pack8_moe_linear(
+    weight: _DeviceExpertPackedTensor,
+    x_ptr: int,
+    selected_ptr: int,
+    out_ptr: int,
+    *,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    stream: int,
+    runtime: HipRuntime,
+    library: object | None = None,
+) -> None:
+    try:
+        key = _EXPERT_PACK8_SELECTED_KEYS[weight.quant_key]
+    except KeyError as exc:
+        raise ValueError(f"unsupported expert pack8 quant {weight.quant_key!r}") from exc
+    _validate_expert_pack8_shape(
+        weight,
+        num_experts=num_experts,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    register_gguf_expert_pack8_gemv_kernels()
+    fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    fn(
+        x_ptr,
+        selected_ptr,
+        weight.qweight_low.ptr,
+        0 if weight.qweight_high is None else weight.qweight_high.ptr,
+        weight.scales.ptr,
+        0 if weight.mins is None else weight.mins.ptr,
+        out_ptr,
+        x_rows=x_rows,
+        rows=rows,
+        num_experts=num_experts,
+        in_features=in_features,
+        out_features=out_features,
+        stream=stream,
+        runtime=runtime,
+        library=library,
+    )
+
+
+def _validate_expert_pack8_shape(
+    weight: _DeviceExpertPackedTensor,
+    *,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+) -> None:
+    if weight.num_experts != num_experts or weight.in_features != in_features or weight.out_features != out_features:
+        raise ValueError(
+            "expert sidecar shape does not match launch: "
+            f"sidecar=({weight.num_experts}, {weight.out_features}, {weight.in_features}), "
+            f"launch=({num_experts}, {out_features}, {in_features})"
+        )
+
+
+def _required_ptr(buffer: DeviceBuffer | None, name: str, quant_key: str) -> int:
+    if buffer is None:
+        raise ValueError(f"expert pack8 {quant_key} requires {name}")
+    return buffer.ptr
 
 
 def _launch_selected_raw_gguf_moe_linear(

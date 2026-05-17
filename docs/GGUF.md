@@ -249,8 +249,20 @@ input position:
 
 CPU oracle tests dequantize from the packed sidecar bytes/scales and compare
 against the raw GGUF dequantizers for synthetic `Q4_K`, `Q5_K`, and `Q6_K`
-expert tensors. Future task #60 should consume this sidecar through registered
-MoE kernels rather than adding backend/quant branches in model dispatch.
+expert tensors. Task #60 added registered `moe_linear` kernels that consume this
+sidecar without model-dispatch backend/quant branches:
+
+- `expert_pack8_selected_bf16_bf16_out` for Q4_K/Q5_K/Q6_K selected expert rows.
+- `expert_pack8_dual_selected_bf16_bf16_out` for Q4_K gate+up selected rows.
+
+Runtime use is explicit: build the cache first, then pass
+`--use-expert-sidecar --expert-sidecar-cache-dir <dir> --require-expert-sidecar`
+to `scripts/qwen35_gguf_bench.py`. The default public path still uses raw GGUF
+selected kernels because the correctness-safe transient sidecar path is currently
+a diagnostic blocker: 512/128 reaches `62.458 tok/s` prefill, which is `+303.8%`
+vs the old native row baseline but `-37.5%` vs the current raw fast-bulk default.
+The retained artifact is
+`benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-expert-pack8-sidecar-diagnostic.json`.
 
 ### Parent workspace evidence
 

@@ -18398,3 +18398,119 @@ rm -rf /tmp/hipengine-task59-sidecar
 ```
 
 Task #59 acceptance is met: build/cache is explicit, generated sidecar files are not repository artifacts, packed bytes/scales have CPU-reference parity tests, and model dispatch remains free of new backend/quant conditionals. Task #60 can now add grouped packed MoE kernels against `gguf_expert_pack8_v1`.
+
+## 2026-05-17 qwen35moe GGUF task #60 expert pack8 MoE kernels
+
+Task #60 added the first runtime/JIT kernels that consume the explicit `gguf_expert_pack8_v1` sidecars from task #59. The kernels are registered under `moe_linear` variants and are only used by opt-in sidecar mode; the raw GGUF selected GEMV path remains the default/unfused fallback because the correctness-safe transient sidecar path is still slower than the task #58 raw fast-bulk default.
+
+Implementation:
+
+- Added `hipengine/kernels/hip_gfx1100/quant/gguf_expert_pack8_gemv.{hip,py}`:
+  - `expert_pack8_selected_bf16_bf16_out` for selected Q4_K/Q5_K/Q6_K expert rows.
+  - `expert_pack8_dual_selected_bf16_bf16_out` for Q4_K gate+up selected rows.
+  - Default launch uses 128 threads to match raw selected GEMV reduction order; 32-thread launches were faster to build but caused tiny per-layer BF16 differences that amplified into full-prefill divergence.
+  - Registered via `KernelKey("hip_gfx1100", "moe_linear", quant, variant)`; runtime helpers resolve through the registry rather than adding model-dispatch backend/quant branches.
+- Added `tests/test_gguf_expert_pack8_gemv.py` synthetic GPU tests for Q4/Q5/Q6 sidecar kernels vs CPU dequant reference and Q4 dual-vs-single parity.
+- Added `scripts/qwen35_gguf_expert_pack8_smoke.py` to compare real qwen35moe layer sidecar kernels against the current raw selected path and to give rocprof a compact kernel-name smoke.
+- Added explicit sidecar flags to `scripts/qwen35_gguf_bench.py`: `--use-expert-sidecar`, `--expert-sidecar-cache-dir`, `--require-expert-sidecar`, and `--[no-]preload-expert-sidecars`.
+- Threaded optional `expert_sidecar` records through the qwen35moe bulk prefill FFN/MoE path. Decode and native row-serial fallback remain raw GGUF.
+
+Correctness and profiler evidence:
+
+```bash
+python3 -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  hipengine/kernels/hip_gfx1100/quant/gguf_expert_pack8_gemv.py \
+  scripts/qwen35_gguf_bench.py \
+  scripts/qwen35_gguf_expert_pack8_smoke.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q \
+  tests/test_gguf_expert_pack8_gemv.py \
+  tests/test_qwen35_gguf_runner.py::test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback \
+  tests/test_llm_gguf_generate_path.py
+# 10 passed
+```
+
+Full sidecar cache build (explicit `/tmp` cache, not committed):
+
+```bash
+rm -rf /tmp/hipengine-task60-sidecar
+PYTHONPATH=. python3 scripts/qwen35_gguf_build_expert_sidecar.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --layers all --cache-dir /tmp/hipengine-task60-sidecar \
+  --json /tmp/hipengine-task60-sidecar-build.json
+# 40 layer sidecars / 120 .npz files, 23.84375 GiB packed arrays
+```
+
+Real layer-34 selected-kernel smoke:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_expert_pack8_smoke.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --layer 34 --cache-dir /tmp/hipengine-task60-sidecar --require-sidecar \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task60-expert-pack8-smoke-layer34-dual.json
+# ffn_gate_exps Q4_K bit_equal=True, max_abs=0
+# ffn_up_exps   Q4_K bit_equal=True, max_abs=0
+# ffn_down_exps Q6_K bit_equal=True, max_abs=0
+# ffn_gate_up_exps_dual launched=True, bit_equal=True, gate/up max_abs=0
+```
+
+Profiler smoke:
+
+```bash
+rm -rf /tmp/hipengine-task60-rocprof && mkdir -p /tmp/hipengine-task60-rocprof
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task60-rocprof -- \
+  python3 scripts/qwen35_gguf_expert_pack8_smoke.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --layer 34 --cache-dir /tmp/hipengine-task60-sidecar --require-sidecar \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+    --json /tmp/hipengine-task60-expert-pack8-smoke-rocprof-dual.json
+# CSV contains gguf_expert_pack8_selected_prefill_kernel<...,4>, <...,6>, and gguf_expert_pack8_q4_dual_selected_prefill_kernel
+```
+
+Full-prefill sidecar-vs-raw parity probe after switching the sidecar default to 128 threads:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY'
+# Compare 4-token raw fast-bulk vs opt-in sidecar fast-bulk logits.
+# Wrote /tmp/hipengine-task60-sidecar-short-parity.json
+PY
+# raw_token_id=4469, sidecar_token_id=4469, KL=0.0, max_abs_logit=0.0
+```
+
+Public qwen35moe smoke remains on the default raw fallback path and still passes:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json \
+  --json /tmp/hipengine-task60-qwen36-public-e2e.json
+# passed=true; output izio.; IDs [43482, 13]; torch_loaded_by_generate=false
+```
+
+512/128 performance evidence on the attached RX 7900 XTX/gfx1100 card:
+
+```bash
+# Default raw fast-bulk rerun after this task
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-task60-default-512-128-post.json
+# 99.940640 tok/s prefill, 49.849876 tok/s decode, tracked peak 20.885868 GiB
+
+# Opt-in sidecar path
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --use-expert-sidecar --expert-sidecar-cache-dir /tmp/hipengine-task60-sidecar \
+  --require-expert-sidecar --json /tmp/hipengine-task60-sidecar-t128-512-128.json
+# 62.457945 tok/s prefill, 49.539177 tok/s decode, tracked peak 21.510867 GiB
+```
+
+Interpretation: the sidecar kernels are correctness-safe and rocprof-visible, and they improve 512/128 prefill by `+303.8%` versus the old parity-safe native-attention row baseline (`15.469 tok/s`). They are **not** a promoted default because they are `-37.5%` versus the current raw fast-bulk default (`99.941 tok/s`) and still `-97.4%` versus llama.cpp HIP Q4_K_M (`2436.049 tok/s`). The immediate blocker is data movement/residency plus lack of grouped/tiled reuse: the full sidecar cache is 23.844 GiB, while the 24 GiB device cannot keep raw GGUF weights plus all sidecars resident, so the opt-in path copies/allocates/frees sidecars layer-by-layer during prefill. Task #61 should profile per-layer compute vs copy overhead and design grouped-by-expert/tiled reuse or a memory policy that avoids duplicate raw+sidecar residency.
+
+Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-expert-pack8-sidecar-diagnostic.json`.

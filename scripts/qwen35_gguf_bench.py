@@ -78,6 +78,28 @@ def main() -> int:
         action="store_true",
         help="Fail instead of rebuilding resident runtime/lm-head HIP libraries.",
     )
+    parser.add_argument(
+        "--use-expert-sidecar",
+        action="store_true",
+        help="Use explicit qwen35moe GGUF expert pack8 sidecar kernels during bulk prefill.",
+    )
+    parser.add_argument(
+        "--expert-sidecar-cache-dir",
+        type=Path,
+        default=None,
+        help="Directory containing/building qwen35moe GGUF expert pack8 sidecars.",
+    )
+    parser.add_argument(
+        "--require-expert-sidecar",
+        action="store_true",
+        help="Fail instead of building missing qwen35moe expert sidecar cache files.",
+    )
+    parser.add_argument(
+        "--preload-expert-sidecars",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Load all expert sidecar host arrays during session load so measured prefill only copies host->device per layer.",
+    )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
 
@@ -118,6 +140,10 @@ def main() -> int:
             bulk_attention_mode=args.bulk_prefill_attention_mode,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
+            use_expert_sidecar=args.use_expert_sidecar,
+            expert_sidecar_cache_dir=args.expert_sidecar_cache_dir,
+            require_expert_sidecar=args.require_expert_sidecar,
+            preload_expert_sidecars=args.preload_expert_sidecars,
             measured=measured,
             run_index=(run_index - args.warmup_runs + 1 if measured else run_index + 1),
         )
@@ -155,6 +181,10 @@ def main() -> int:
         "use_bulk_prefill": use_bulk_prefill,
         "bulk_prefill_attention_mode": args.bulk_prefill_attention_mode,
         "require_cached_build": bool(args.require_cached_build),
+        "use_expert_sidecar": bool(args.use_expert_sidecar),
+        "expert_sidecar_cache_dir": None if args.expert_sidecar_cache_dir is None else str(args.expert_sidecar_cache_dir),
+        "require_expert_sidecar": bool(args.require_expert_sidecar),
+        "preload_expert_sidecars": bool(args.preload_expert_sidecars),
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
         "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
         "runs": runs,
@@ -163,6 +193,7 @@ def main() -> int:
             "Prefill mode is controlled by --force-bulk-prefill/--no-bulk-prefill; default delegates to Qwen35GGUFResidentSession.prefill().",
             "--bulk-prefill-attention-mode=bulk selects the fast fully bulk scheduler and is the qwen35moe delegated default.",
             "--bulk-prefill-attention-mode=native preserves row-serial attention while using row-bulk FFN/MoE as a qwen35moe diagnostic fallback.",
+            "--use-expert-sidecar enables explicit qwen35moe GGUF expert pack8 sidecar kernels for bulk prefill; generated sidecars live in the requested cache dir.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
         ],
     }
@@ -199,6 +230,10 @@ def _run_once(
     bulk_attention_mode: str,
     compiler_version: str | None,
     require_cached_build: bool,
+    use_expert_sidecar: bool,
+    expert_sidecar_cache_dir: Path | None,
+    require_expert_sidecar: bool,
+    preload_expert_sidecars: bool,
     measured: bool,
     run_index: int,
 ) -> dict[str, Any]:
@@ -212,6 +247,10 @@ def _run_once(
         compiler_version=compiler_version,
         require_cached_build=require_cached_build,
         max_sequence_length=max_sequence_length,
+        use_expert_sidecar=use_expert_sidecar,
+        expert_sidecar_cache_dir=expert_sidecar_cache_dir,
+        require_expert_sidecar=require_expert_sidecar,
+        preload_expert_sidecars=preload_expert_sidecars,
     )
     load_seconds = time.perf_counter() - load_start
     memory_snapshots["after_load"] = _memory_snapshot("after_load", runtime, session)
