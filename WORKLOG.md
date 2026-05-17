@@ -14812,3 +14812,97 @@ removes the extra memset node without racing; the naive one-block collapse remai
 invalid because it abandons the router producer occupancy.
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d15-router-coop-fold-rejected.json`.
+
+## 2026-05-17 — D3.1-D3.3 grouped-GQA long-context decode retained
+
+Task #13 ported and retained the parent grouped-GQA paged split-K decode
+producer for Qwen3.5 full-attention decode, then swept the split cap and split
+threshold defaults:
+
+- Added `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>`
+  launch coverage through `qwen35_paged_full_attn_decode_split_k_gqa_*_spans`.
+- Added gated warp split wrappers so short/mid split decode can use the parent
+  warp-cooperative producer while long Qwen3.5 GQA rows switch to grouped-GQA.
+- Default policy: split decode from context `>=1024`, grouped-GQA when
+  `num_splits >= 64` or context `>=4096`, and `HIPENGINE_PAGED_ATTN_MAX_SPLITS=4096`
+  (no effective 128K cap). Opt-outs remain env-controlled.
+
+Correctness / visibility:
+
+```bash
+python3 -m pytest \
+  tests/test_qwen35_paged_attn_decode_plan.py \
+  tests/test_qwen35_decode_state.py \
+  tests/test_qwen35_resident_batch_layout.py -q --tb=short
+# passed before benchmark sweep
+
+python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# context_len=512, warp_max_abs=4.1e-08, gqa_max_abs=4.1e-08,
+# warp/GQA BF16 gated mismatches 0
+
+python3 scripts/qwen35_decode_graph_fixture_gate.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json \
+  --max-layers 40 --graph-steps-per-replay 1 --max-new-tokens 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --json /tmp/hipengine-d31/graph-fixture-512.json
+# passed=true, generated_match=true, expected_match=true, final_kl=0
+
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/hipengine-d31/rocprof --output-file paged_attn_gqa_smoke -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# trace includes qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>
+# (DurationNs 109281/99761 in the two smoke launches, VGPR=80, scratch=0)
+```
+
+Benchmark protocol on W7900/gfx1100, cache-only HIP builds, graph replay decode:
+
+```bash
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --token-id 9707 \
+  --prompt-length {512,4096,32768,131072} \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --json /tmp/hipengine-d31/<label>.json
+# long rows add prefill chunk flags: linear=1024, moe=1024,
+# full-attn query=4096, post=1024, rope=1024
+# opt-out rows set HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX=0
+# cap row sets HIPENGINE_PAGED_ATTN_MAX_SPLITS=512
+# old threshold row sets HIPENGINE_PARO_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=4096
+```
+
+Results:
+
+| sweep | workload | baseline | retained/default | decode Δ | peak default |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| grouped-GQA | 32K/128 | opt-out `70.064 tok/s` | `99.560 tok/s` | `+42.1%` | `20.320 GiB` |
+| grouped-GQA | 128K/128 | opt-out `30.789 tok/s` | `63.368 tok/s` | `+105.8%` | `23.288 GiB` |
+| split cap | 128K/128 | default `63.368 tok/s` | cap512 `62.647 tok/s` | `-1.14%` | cap saves only `0.034 GiB` |
+| split threshold | 1K/128 | threshold4096 `92.486 tok/s` | threshold1024 `113.242 tok/s` | `+22.4%` | `18.443 GiB` |
+
+Short-context guard rows stayed within the unchanged-behavior band versus the prior
+D1.5 warmup-4 baseline: 512/128 `115.931 -> 115.627 tok/s` (-0.26%)
+and 4K/128 `116.887 -> 116.263 tok/s` (-0.53%). Memory guardrails
+remain satisfied: 32K peak `20.320 GiB` (A.3 <=20.69) and 128K peak
+`23.288 GiB` (A.4 <24).
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d31-d33-grouped-gqa-long-context-diagnostic.json`.
+
+Post-artifact verification:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py \
+  hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py \
+  scripts/smoke.py
+
+python3 -m pytest \
+  tests/test_qwen35_paged_attn_decode_plan.py \
+  tests/test_qwen35_decode_state.py \
+  tests/test_qwen35_resident_batch_layout.py -q --tb=short
+# 76 passed
+```

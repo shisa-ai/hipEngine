@@ -1024,6 +1024,7 @@ def qwen35_paged_attn_gqa_hip_smoke(
         qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans,
         qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
         qwen35_paged_full_attn_decode_split_k_warp_bf16_spans,
+        qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     )
     from hipengine.kvcache import KVLiveSpans
 
@@ -1057,6 +1058,7 @@ def qwen35_paged_attn_gqa_hip_smoke(
         value_cache[token // block_size, token % block_size] = value_bits[token]
     warp_out = np.empty((num_q_heads, head_dim), dtype=np.float32)
     gqa_out = np.empty_like(warp_out)
+    warp_gate_out = np.empty((num_q_heads, head_dim), dtype=np.uint16)
     gqa_gate_out = np.empty((num_q_heads, head_dim), dtype=np.uint16)
     warp_partial_out = np.zeros((num_q_heads, num_splits, head_dim), dtype=np.float32)
     warp_partial_m = np.zeros((num_q_heads, num_splits), dtype=np.float32)
@@ -1064,6 +1066,9 @@ def qwen35_paged_attn_gqa_hip_smoke(
     gqa_partial_out = np.zeros_like(warp_partial_out)
     gqa_partial_m = np.zeros_like(warp_partial_m)
     gqa_partial_l = np.zeros_like(warp_partial_l)
+    warp_gate_partial_out = np.zeros_like(warp_partial_out)
+    warp_gate_partial_m = np.zeros_like(warp_partial_m)
+    warp_gate_partial_l = np.zeros_like(warp_partial_l)
     gate_partial_out = np.zeros_like(warp_partial_out)
     gate_partial_m = np.zeros_like(warp_partial_m)
     gate_partial_l = np.zeros_like(warp_partial_l)
@@ -1112,6 +1117,7 @@ def qwen35_paged_attn_gqa_hip_smoke(
         value_cache_dev = dev(value_cache)
         warp_out_dev = out_dev(warp_out)
         gqa_out_dev = out_dev(gqa_out)
+        warp_gate_out_dev = out_dev(warp_gate_out)
         gqa_gate_out_dev = out_dev(gqa_gate_out)
         warp_partial_out_dev = out_dev(warp_partial_out)
         warp_partial_m_dev = out_dev(warp_partial_m)
@@ -1119,6 +1125,9 @@ def qwen35_paged_attn_gqa_hip_smoke(
         gqa_partial_out_dev = out_dev(gqa_partial_out)
         gqa_partial_m_dev = out_dev(gqa_partial_m)
         gqa_partial_l_dev = out_dev(gqa_partial_l)
+        warp_gate_partial_out_dev = out_dev(warp_gate_partial_out)
+        warp_gate_partial_m_dev = out_dev(warp_gate_partial_m)
+        warp_gate_partial_l_dev = out_dev(warp_gate_partial_l)
         gate_partial_out_dev = out_dev(gate_partial_out)
         gate_partial_m_dev = out_dev(gate_partial_m)
         gate_partial_l_dev = out_dev(gate_partial_l)
@@ -1166,6 +1175,28 @@ def qwen35_paged_attn_gqa_hip_smoke(
             library=library,
             runtime=runtime,
         )
+        qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans(
+            query_dev.ptr,
+            key_cache_dev.ptr,
+            value_cache_dev.ptr,
+            gate_dev.ptr,
+            warp_gate_out_dev.ptr,
+            warp_gate_partial_out_dev.ptr,
+            warp_gate_partial_m_dev.ptr,
+            warp_gate_partial_l_dev.ptr,
+            spans,
+            chunk_size,
+            num_splits,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            head_dim,
+            1,
+            scale,
+            library=library,
+            runtime=runtime,
+        )
         qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
             query_dev.ptr,
             key_cache_dev.ptr,
@@ -1191,6 +1222,7 @@ def qwen35_paged_attn_gqa_hip_smoke(
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(warp_out), warp_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gqa_out), gqa_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(warp_gate_out), warp_gate_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(gqa_gate_out), gqa_gate_out_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
@@ -1198,6 +1230,10 @@ def qwen35_paged_attn_gqa_hip_smoke(
 
     warp_max_abs = float(np.max(np.abs(warp_out - expected)))
     gqa_max_abs = float(np.max(np.abs(gqa_out - expected)))
+    warp_gate_mismatch = int(np.count_nonzero(warp_gate_out != expected_gate))
+    warp_gate_max_abs = float(
+        np.max(np.abs(_bf16_bits_to_float32(warp_gate_out) - _bf16_bits_to_float32(expected_gate)))
+    )
     gate_mismatch = int(np.count_nonzero(gqa_gate_out != expected_gate))
     gate_max_abs = float(
         np.max(np.abs(_bf16_bits_to_float32(gqa_gate_out) - _bf16_bits_to_float32(expected_gate)))
@@ -1206,10 +1242,18 @@ def qwen35_paged_attn_gqa_hip_smoke(
         f"context_len={context_len} chunk_size={chunk_size} num_splits={num_splits} "
         f"shape={num_q_heads}x{head_dim}/{num_kv_heads} "
         f"warp_max_abs={warp_max_abs:.3g} gqa_max_abs={gqa_max_abs:.3g} "
+        f"warp_gate_bf16_mismatch={warp_gate_mismatch} warp_gate_bf16_max_abs={warp_gate_max_abs:.3g} "
         f"gqa_gate_bf16_mismatch={gate_mismatch} gqa_gate_bf16_max_abs={gate_max_abs:.3g}"
     )
     print("gqa_attn_head0=", gqa_out[0, :8].tolist())
-    return 0 if warp_max_abs <= 1.0e-5 and gqa_max_abs <= 1.0e-5 and gate_mismatch == 0 else 1
+    return (
+        0
+        if warp_max_abs <= 1.0e-5
+        and gqa_max_abs <= 1.0e-5
+        and warp_gate_mismatch == 0
+        and gate_mismatch == 0
+        else 1
+    )
 
 def qwen35_paged_attn_prefill_hip_smoke(
     *,

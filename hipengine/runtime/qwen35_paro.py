@@ -16,8 +16,12 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_fp16,
     qwen35_paged_full_attn_decode_context_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gate_fp16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
+    qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
@@ -1660,6 +1664,53 @@ class Qwen35ParoDecodeState:
         )
         return scratch.gated_attn
 
+    def decode_full_attention_split_gate_bf16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        chunk_size: int,
+        num_splits: int,
+        gate: Tensor | None = None,
+        block_size: int = 256,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        gate_tensor = scratch.gate if gate is None else gate
+        decode_fn = _full_attention_split_gate_bf16_fn(
+            self.config,
+            block_size=block_size,
+            num_splits=num_splits,
+            max_live_count=spans.max_live_count,
+        )
+        decode_fn(
+            scratch.query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            gate_tensor.ptr,
+            scratch.gated_attn.ptr,
+            scratch.partial_out.ptr,
+            scratch.partial_m.ptr,
+            scratch.partial_l.ptr,
+            spans,
+            chunk_size,
+            num_splits,
+            block_size,
+            self.config.num_attention_heads,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            gate_tensor.shape[-1],
+            1,
+            (self.config.head_dim ** -0.5) if scale is None else scale,
+            stream=stream,
+            library=_library_for(library, "attention"),
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
+
     def run_full_attention_moe_c1_layer_bf16(
         self,
         hidden: Tensor,
@@ -1721,7 +1772,7 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        if decode_spans.max_live_count <= 4096:
+        if not _use_full_attention_split_decode(decode_spans.max_live_count):
             gated = self.decode_full_attention_context_gate_bf16(
                 attention_scratch,
                 key_cache=key_cache,
@@ -1733,7 +1784,7 @@ class Qwen35ParoDecodeState:
                 stream=stream,
             )
         else:
-            gated = self.decode_full_attention_gqa_gate_bf16(
+            gated = self.decode_full_attention_split_gate_bf16(
                 attention_scratch,
                 key_cache=key_cache,
                 value_cache=value_cache,
@@ -2460,6 +2511,53 @@ class Qwen35ParoDecodeState:
         )
         return scratch.gated_attn
 
+    def decode_full_attention_split_gate_fp16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        chunk_size: int,
+        num_splits: int,
+        gate: Tensor | None = None,
+        block_size: int = 256,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        gate_tensor = scratch.gate if gate is None else gate
+        decode_fn = _full_attention_split_gate_fp16_fn(
+            self.config,
+            block_size=block_size,
+            num_splits=num_splits,
+            max_live_count=spans.max_live_count,
+        )
+        decode_fn(
+            scratch.query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            gate_tensor.ptr,
+            scratch.gated_attn.ptr,
+            scratch.partial_out.ptr,
+            scratch.partial_m.ptr,
+            scratch.partial_l.ptr,
+            spans,
+            chunk_size,
+            num_splits,
+            block_size,
+            self.config.num_attention_heads,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            gate_tensor.shape[-1],
+            1,
+            (self.config.head_dim ** -0.5) if scale is None else scale,
+            stream=stream,
+            library=_library_for(library, "attention"),
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
+
     def project_full_attention_o_fp16(
         self,
         gated_attn: Tensor,
@@ -2618,7 +2716,7 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        if decode_spans.max_live_count <= 4096:
+        if not _use_full_attention_split_decode(decode_spans.max_live_count):
             gated = self.decode_full_attention_context_gate_fp16(
                 attention_scratch,
                 key_cache=key_cache,
@@ -2630,7 +2728,7 @@ class Qwen35ParoDecodeState:
                 stream=stream,
             )
         else:
-            gated = self.decode_full_attention_gqa_gate_fp16(
+            gated = self.decode_full_attention_split_gate_fp16(
                 attention_scratch,
                 key_cache=key_cache,
                 value_cache=value_cache,
@@ -5438,6 +5536,100 @@ def _router_topk_coop_enabled() -> bool:
         return False
     return value.strip().lower() not in {"0", "false", "off", "no"}
 
+
+def _env_value(name: str, *aliases: str) -> str | None:
+    for key in (name, *aliases):
+        value = os.environ.get(key)
+        if value is not None and value.strip() != "":
+            return value.strip()
+    return None
+
+
+def _env_flag(name: str, default: bool, *aliases: str) -> bool:
+    value = _env_value(name, *aliases)
+    if value is None:
+        return default
+    return value.lower() not in {"0", "false", "off", "no"}
+
+
+def _env_int(name: str, default: int, *aliases: str) -> int:
+    value = _env_value(name, *aliases)
+    return default if value is None else int(value)
+
+
+def _full_attention_split_decode_min_context() -> int:
+    return max(
+        0,
+        _env_int(
+            "HIPENGINE_PARO_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT",
+            1024,
+            "NANOVLLM_PARO_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT",
+        ),
+    )
+
+
+def _use_full_attention_split_decode(max_live_count: int) -> bool:
+    threshold = _full_attention_split_decode_min_context()
+    return threshold > 0 and int(max_live_count) >= threshold
+
+
+def _paged_attn_gqa_grouped_min_splits() -> int:
+    return max(1, _env_int("HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_SPLITS", 64))
+
+
+def _paged_attn_gqa_grouped_min_context() -> int:
+    return max(0, _env_int("HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_CONTEXT", 4096))
+
+
+def _paged_attn_gqa_grouped_enabled() -> bool:
+    return _env_flag(
+        "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX",
+        True,
+        "NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX",
+    )
+
+
+def _paged_attn_warp_split_enabled() -> bool:
+    return _env_flag(
+        "HIPENGINE_PAGED_ATTN_WARP_SPLIT_CTX",
+        True,
+        "NANOVLLM_AMD_PAGED_ATTN_WARP_SPLIT_CTX",
+    )
+
+
+def _qwen35_gqa_decode_shape(config, *, block_size: int) -> bool:
+    return (
+        int(block_size) == 256
+        and int(config.num_attention_heads) == 16
+        and int(config.num_key_value_heads) == 2
+        and int(config.head_dim) == 256
+    )
+
+
+def _use_paged_attn_gqa_grouped(max_live_count: int, num_splits: int) -> bool:
+    if not _paged_attn_gqa_grouped_enabled():
+        return False
+    return int(num_splits) >= _paged_attn_gqa_grouped_min_splits() or int(
+        max_live_count
+    ) >= _paged_attn_gqa_grouped_min_context()
+
+
+def _full_attention_split_gate_bf16_fn(config, *, block_size: int, num_splits: int, max_live_count: int):
+    if _qwen35_gqa_decode_shape(config, block_size=block_size):
+        if _use_paged_attn_gqa_grouped(max_live_count, num_splits):
+            return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
+        if _paged_attn_warp_split_enabled():
+            return qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans
+    return qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
+
+
+def _full_attention_split_gate_fp16_fn(config, *, block_size: int, num_splits: int, max_live_count: int):
+    if _qwen35_gqa_decode_shape(config, block_size=block_size):
+        if _use_paged_attn_gqa_grouped(max_live_count, num_splits):
+            return qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans
+        if _paged_attn_warp_split_enabled():
+            return qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans
+    return qwen35_paged_full_attn_decode_split_k_gate_fp16_spans
 
 
 def _moe_prefill_compact_wmma_min_tokens() -> int:

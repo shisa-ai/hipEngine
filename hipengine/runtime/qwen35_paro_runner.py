@@ -75,6 +75,44 @@ from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
 
+def _env_int(name: str, default: int, *aliases: str) -> int:
+    for key in (name, *aliases):
+        value = os.environ.get(key)
+        if value is not None and value.strip() != "":
+            return int(value)
+    return default
+
+
+def _paged_attn_max_splits() -> int:
+    return max(
+        1,
+        _env_int(
+            "HIPENGINE_PAGED_ATTN_MAX_SPLITS",
+            4096,
+            "NANOVLLM_AMD_PAGED_ATTN_MAX_SPLITS",
+        ),
+    )
+
+
+def _paged_attn_decode_split_config(context_len: int, *, block_size: int, chunk_size: int) -> tuple[int, int]:
+    """Return decode split-K chunk size and split count with an env cap."""
+
+    if context_len <= 0:
+        raise ValueError("context_len must be positive")
+    if block_size <= 0:
+        raise ValueError("block_size must be positive")
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    max_splits = _paged_attn_max_splits()
+    splits = (int(context_len) + int(chunk_size) - 1) // int(chunk_size)
+    effective_chunk = int(chunk_size)
+    if splits > max_splits:
+        effective_chunk = (int(context_len) + max_splits - 1) // max_splits
+        effective_chunk = ((effective_chunk + int(block_size) - 1) // int(block_size)) * int(block_size)
+        splits = (int(context_len) + effective_chunk - 1) // effective_chunk
+    return effective_chunk, max(1, splits)
+
+
 @dataclass(frozen=True)
 class Qwen35ParoLayerRecord:
     """One layer executed by the one-token Qwen3.5/PARO smoke path."""
@@ -755,12 +793,17 @@ class Qwen35ParoResidentSession:
         self.max_sequence_length = int(max_sequence_length)
         self.block_size = int(block_size)
         self.chunk_size = int(chunk_size)
+        self.decode_chunk_size, self.max_splits = _paged_attn_decode_split_config(
+            self.max_sequence_length,
+            block_size=self.block_size,
+            chunk_size=self.chunk_size,
+        )
         self.max_batch_size = int(max_batch_size)
         self.compiler_version = compiler_version
         self.require_cached_build = bool(require_cached_build)
         self.prefill_config = prefill_config or PrefillConfig()
-        self.max_splits = (self.max_sequence_length + self.chunk_size - 1) // self.chunk_size
-        self.blocks = (self.max_sequence_length + self.block_size - 1) // self.block_size
+        decode_context_capacity = self.decode_chunk_size * self.max_splits
+        self.blocks = (max(self.max_sequence_length, decode_context_capacity) + self.block_size - 1) // self.block_size
         self.batch_layout = Qwen35ParoResidentBatchLayout(
             max_batch_size=self.max_batch_size,
             hidden_size=self.config.hidden_size,
@@ -1338,7 +1381,7 @@ class Qwen35ParoResidentSession:
         replay_span = int(max_replay_steps) if max_replay_steps is not None else int(steps_per_replay)
         self._check_position(position + replay_span - 1)
         self._check_position(position + steps_per_replay - 1)
-        num_splits = max(1, (position + replay_span + self.chunk_size - 1) // self.chunk_size)
+        num_splits = max(1, (position + replay_span + self.decode_chunk_size - 1) // self.decode_chunk_size)
         generated_buf: DeviceBuffer | None = None
         generated_index_buf: DeviceBuffer | None = None
         if record_steps:
@@ -2060,7 +2103,7 @@ class Qwen35ParoResidentSession:
                     )
                 elif layer_type == "full_attention":
                     key_cache, value_cache = self._slot_full_cache(layer_id, 0)
-                    num_splits = max(1, (position + 1 + self.chunk_size - 1) // self.chunk_size)
+                    num_splits = max(1, (position + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
                     out = state.run_full_attention_moe_c1_layer_fp16(
                         hidden,
                         key_cache=key_cache,
@@ -2073,7 +2116,7 @@ class Qwen35ParoResidentSession:
                         max_positions=self.max_sequence_length,
                         attention_scratch=self.full_scratch[layer_id],
                         moe_scratch=self.moe_scratch[layer_id],
-                        chunk_size=self.chunk_size,
+                        chunk_size=self.decode_chunk_size,
                         num_splits=num_splits,
                         library=self.libraries,
                         stream=stream,
@@ -2132,7 +2175,7 @@ class Qwen35ParoResidentSession:
                 )
             elif layer_type == "full_attention":
                 key_cache, value_cache = self._slot_full_cache(layer_id, slot)
-                num_splits = num_splits_override or max(1, (position + 1 + self.chunk_size - 1) // self.chunk_size)
+                num_splits = num_splits_override or max(1, (position + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
                 out = state.run_full_attention_moe_c1_layer_fp16(
                     hidden,
                     key_cache=key_cache,
@@ -2145,7 +2188,7 @@ class Qwen35ParoResidentSession:
                     max_positions=self.max_sequence_length,
                     attention_scratch=self.full_scratch[layer_id],
                     moe_scratch=self.moe_scratch[layer_id],
-                    chunk_size=self.chunk_size,
+                    chunk_size=self.decode_chunk_size,
                     num_splits=num_splits,
                     library=self.libraries,
                     stream=stream,

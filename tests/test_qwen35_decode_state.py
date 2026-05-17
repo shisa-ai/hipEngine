@@ -1413,6 +1413,53 @@ def test_qwen35_decode_state_decodes_gqa_gate_with_scratch_pointers(monkeypatch)
     assert kwargs == {"stream": 0, "library": None, "runtime": runtime}
 
 
+def test_qwen35_decode_state_adaptive_split_gate_uses_warp_then_gqa(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime)
+    scratch = state.reserve_full_attention_scratch(tokens=1, num_splits=64, activation_dtype="fp16", gated_dtype="fp16")
+    key_cache = _tensor(0xE000, (256, 256, 2, 256), "bf16")
+    value_cache = _tensor(0xF000, (256, 256, 2, 256), "bf16")
+    calls = []
+
+    monkeypatch.delenv("HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX", raising=False)
+    monkeypatch.delenv("NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX", raising=False)
+    monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans", lambda *a, **k: calls.append(("warp", a, k)))
+    monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans", lambda *a, **k: calls.append(("gqa", a, k)))
+
+    state.decode_full_attention_split_gate_fp16(
+        scratch,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        spans=_spans(),
+        chunk_size=256,
+        num_splits=16,
+    )
+    state.decode_full_attention_split_gate_fp16(
+        scratch,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        spans=_spans(),
+        chunk_size=256,
+        num_splits=64,
+    )
+
+    assert [item[0] for item in calls] == ["warp", "gqa"]
+    assert calls[0][1][9:18] == (256, 16, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+    assert calls[1][1][9:18] == (256, 64, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+
+
+def test_qwen35_decode_state_split_decode_threshold_defaults_to_1024(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_PARO_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", raising=False)
+    monkeypatch.delenv("NANOVLLM_PARO_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", raising=False)
+
+    assert not qwen_runtime._use_full_attention_split_decode(512)
+    assert qwen_runtime._use_full_attention_split_decode(1024)
+
+    monkeypatch.setenv("HIPENGINE_PARO_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "4096")
+    assert not qwen_runtime._use_full_attention_split_decode(1024)
+    assert qwen_runtime._use_full_attention_split_decode(4096)
+
+
 def test_qwen35_decode_state_routes_moe_topk_shared(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())

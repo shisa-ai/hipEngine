@@ -138,6 +138,19 @@ def test_prefill_config_validates_chunk_sizes_and_defaults_to_full_native() -> N
         PrefillConfig(attn_aotriton_min_tokens=-1)
 
 
+def test_qwen35_resident_decode_split_config_caps_128k_context(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_PAGED_ATTN_MAX_SPLITS", raising=False)
+    monkeypatch.delenv("NANOVLLM_AMD_PAGED_ATTN_MAX_SPLITS", raising=False)
+
+    assert runner_module._paged_attn_decode_split_config(32768 + 129, block_size=256, chunk_size=256) == (256, 129)
+    assert runner_module._paged_attn_decode_split_config(131072 + 129, block_size=256, chunk_size=256) == (256, 513)
+
+    monkeypatch.setenv("HIPENGINE_PAGED_ATTN_MAX_SPLITS", "512")
+    assert runner_module._paged_attn_decode_split_config(131072 + 129, block_size=256, chunk_size=256) == (512, 257)
+    monkeypatch.setenv("HIPENGINE_PAGED_ATTN_MAX_SPLITS", "128")
+    assert runner_module._paged_attn_decode_split_config(32768 + 129, block_size=256, chunk_size=256) == (512, 65)
+
+
 def test_qwen35_resident_prefill_chunk_helpers_select_safe_ranges() -> None:
     assert Qwen35ParoResidentSession._chunk_ranges(5, 2) == ((0, 2), (2, 4), (4, 5))
     assert Qwen35ParoResidentSession._chunk_ranges(7, 2, min_chunk_size=4) == ((0, 2), (2, 7))

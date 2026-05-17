@@ -421,6 +421,144 @@ def qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans(
     )
 
 
+def qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run parent warp-cooperative split-K context and BF16 gated reduce."""
+
+    _check_qwen35_gqa_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_split_context(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        symbol=_SYMBOL_SPLIT_WARP_CONTEXT,
+    )
+    _launch_gate_reduce(
+        _SYMBOL_SPLIT_REDUCE_GATE_BF16,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        gate_ptr,
+        out_ptr,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        gate_stride1,
+        gate_stride2,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run parent warp-cooperative split-K context and FP16 gated reduce."""
+
+    _check_qwen35_gqa_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_split_context(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        symbol=_SYMBOL_SPLIT_WARP_CONTEXT,
+    )
+    _launch_gate_reduce(
+        _SYMBOL_SPLIT_REDUCE_GATE_FP16,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        gate_ptr,
+        out_ptr,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        gate_stride1,
+        gate_stride2,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
     query_ptr: int,
     key_cache_ptr: int,
@@ -488,6 +626,7 @@ def qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
         library=library,
         runtime=runtime,
     )
+
 
 def qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans(
     query_ptr: int,
@@ -1039,6 +1178,16 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_warp_spans"),
         qwen35_paged_full_attn_decode_split_k_warp_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_warp_gate_bf16_spans"),
+        qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_warp_gate_fp16_spans"),
+        qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans,
         replace=replace,
     )
     register(
