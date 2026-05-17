@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "date": "2026-05-17",
+  "task": "D1.3 remaining same-input c=1 projection fusions",
+  "status": "diagnostic_rejected_noop",
+  "performance_claim": false,
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "quant": "w4_paro",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "source_profile": "benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json",
+  "summary": "Static decode dataflow and M.4 profile enumeration found no remaining standalone same-input c=1 projection fusion with an arithmetic/data-reuse win. Linear-attention QKV/Z, full-attention Q/K, linear-attention A/B, selected-MoE gate/up, and shared-expert gate/up are already fused. The only material unfused same-input slice is full-attention V beside the retained Q/K dual path (10 calls/token), but the parent full-attention Q/K/V pack8 widening prototype was correct and graph-safe yet slower/no-win, so D1.3 keeps defaults unchanged and leaves any narrower K/V-specific retest to D1.6.",
+  "m4_decode_profile": {
+    "512-128": {
+      "kernel_time_ms_per_token": 7.2650249375,
+      "w4_single_gemv": {
+        "calls_per_token": 50.0,
+        "ms_per_token": 0.9719623125,
+        "share": 0.13378650739146206
+      },
+      "w4_dual_gemv": {
+        "calls_per_token": 40.0,
+        "ms_per_token": 0.858156125,
+        "share": 0.11812156632394216
+      },
+      "dense_gemv": {
+        "calls_per_token": 30.0,
+        "ms_per_token": 0.0904658125,
+        "share": 0.012452237023033618
+      }
+    },
+    "4k-128": {
+      "kernel_time_ms_per_token": 7.2263065,
+      "w4_single_gemv": {
+        "calls_per_token": 50.0,
+        "ms_per_token": 0.97966825,
+        "share": 0.13556970632231002
+      },
+      "w4_dual_gemv": {
+        "calls_per_token": 40.0,
+        "ms_per_token": 0.8462213125,
+        "share": 0.11710288132671925
+      },
+      "dense_gemv": {
+        "calls_per_token": 30.0,
+        "ms_per_token": 0.08713325,
+        "share": 0.012057784983241438
+      }
+    },
+    "32k-128": {
+      "kernel_time_ms_per_token": 8.603044125,
+      "w4_single_gemv": {
+        "calls_per_token": 50.0,
+        "ms_per_token": 0.9972995625,
+        "share": 0.11592403200651956
+      },
+      "w4_dual_gemv": {
+        "calls_per_token": 40.0,
+        "ms_per_token": 0.857127625,
+        "share": 0.09963073681201187
+      },
+      "dense_gemv": {
+        "calls_per_token": 30.0,
+        "ms_per_token": 0.10122625,
+        "share": 0.01176632928172968
+      }
+    }
+  },
+  "candidate_inventory": [
+    {
+      "name": "linear_attn.in_proj_qkv + linear_attn.in_proj_z",
+      "layers_per_token": 30,
+      "current_status": "already_fused",
+      "current_runtime": "project_linear_attention_qkv_z_fp16 -> gemv_awq_dual_pack8_transposed_fp16 for tokens == 1",
+      "code_reference": "hipengine/runtime/qwen35_paro.py:3095",
+      "pack8_layout": "preserved; concatenated QKV/Z scratch then sliced",
+      "parent_evidence": "LINEAR_ATTN_QKV_Z_PACK8_FUSED retained; parent 4K/4K decode 100.060 -> 100.801 tok/s (+0.74%)."
+    },
+    {
+      "name": "full_attn.q_proj + full_attn.k_proj",
+      "layers_per_token": 10,
+      "current_status": "already_fused",
+      "current_runtime": "project_full_attention_qkv_fp16 -> gemv_awq_dual_pack8_transposed_fp16 for tokens == 1; v_proj stays single",
+      "code_reference": "hipengine/runtime/qwen35_paro.py:1886",
+      "pack8_layout": "preserved; Q/gate and K are contiguous in q_proj_key scratch",
+      "parent_evidence": "FULL_ATTN_QK_PACK8_FUSED retained; parent 4K/4K decode 100.801 -> 101.211 tok/s (+0.41%)."
+    },
+    {
+      "name": "linear_attn.in_proj_a + linear_attn.in_proj_b",
+      "layers_per_token": 30,
+      "current_status": "already_fused",
+      "current_runtime": "project_linear_attention_ab_fp16 -> dense_dual_gemv_out_fp16 for tokens == 1",
+      "code_reference": "hipengine/runtime/qwen35_paro.py:3187",
+      "layout": "dense dual output scratch split into A/B"
+    },
+    {
+      "name": "selected_moe.gate_proj + selected_moe.up_proj",
+      "layers_per_token": 40,
+      "current_status": "already_fused",
+      "current_runtime": "selected_moe_gate_up_pack8_fp16 -> gemv_awq_selected_dual_pack8_transposed_fp16",
+      "code_reference": "hipengine/runtime/qwen35_paro.py:4061",
+      "pack8_layout": "preserved selected-dual pack8 output consumed by fused SiLU/down input"
+    },
+    {
+      "name": "shared_expert.gate_proj + shared_expert.up_proj",
+      "layers_per_token": 40,
+      "current_status": "already_fused_or_precombined",
+      "current_runtime": "shared_expert_paro_w4_fp16 uses dual pack8 for packed sidecars; shared_expert_w8a16_fp16 uses precombined gate_up W8A16 path",
+      "code_reference": "hipengine/runtime/qwen35_paro.py:4288 and hipengine/runtime/qwen35_paro.py:4369",
+      "pack8_layout": "packed PARO W4 sidecars preserve dual-pack8 layout; legacy W8A16 is not a D1.3 pack8 target"
+    },
+    {
+      "name": "full_attn.v_proj adjacent to retained q_proj+k_proj",
+      "layers_per_token": 10,
+      "current_status": "only_material_unfused_same_input_slice; rejected for D1.3 broad widening",
+      "current_runtime": "project_full_attention_qkv_fp16 calls v_proj through project_pack8_fp16 after Q/K dual",
+      "code_reference": "hipengine/runtime/qwen35_paro.py:1886",
+      "estimated_bucket": "part of w4_single_gemv 50 calls/token; V accounts for 10 of those 50 calls/token, while O and linear-attn out are not same-input neighbors",
+      "why_not_implemented": "A D1.3 implementation would widen the retained Q/K dual pack8 family to Q/K/V (or change scratch layout for a separate K/V dual). Parent already tested full-attention Q/K/V pack8 widening and reverted it because the larger kernel shape erased launch-count savings; this adds no arithmetic/data-reuse win under graph replay."
+    },
+    {
+      "name": "full_attn.o_proj, linear_attn.out_proj, selected/shared down, lm_head",
+      "current_status": "not_d1_3_candidates",
+      "reason": "These are single projections whose inputs are attention/GDN/MoE/final-norm outputs, not adjacent projections over the same input row. Fusing them would be producer/post-op work covered by D1.2, D1.4, D5.1, or D5.2 rather than D1.3 same-input projection fusion."
+    }
+  ],
+  "parent_rejection_evidence": {
+    "source": "/home/lhl/amd-gpu-tuning/docs/PARO.md:1414-1423 and /home/lhl/amd-gpu-tuning/LESSONS-LEARNED.md:38",
+    "full_attention_qkv_pack8": {
+      "correctness": "24/24 proof-of-life; graph-safe",
+      "decode_tok_s": {
+        "512_128_qkv": 116.357,
+        "512_128_retained_qk": 116.721,
+        "4k_128_qkv": 107.412,
+        "4k_128_retained_qk": 107.703
+      },
+      "recheck": "2026-05-11 current graph stack only noise-level movement: 512/128 115.569 vs 115.258; 4K/128 120.622 vs 120.655.",
+      "prefill_wiring": "diagnostic same-command prefill regressed: ~905 tok/s control -> 836 Q/K-only -> 822 Q/K/V.",
+      "lesson": "Do not widen a fused projection family unless it preserves kernel efficiency or adds real data reuse; graph replay makes pure launch-count wins very small."
+    }
+  },
+  "decision": {
+    "outcome": "reject_noop_for_d1_3",
+    "default_changed": false,
+    "rationale": [
+      "M.4 shows generic W4 single pack8 remains visible (11.59-13.56% of decode kernel time), but static inventory attributes only 10/50 calls/token to an unfused same-input V projection; the rest are output projections/downstream singles.",
+      "All other adjacent same-input c=1 projection pairs are already fused in hipENGINE while preserving pack8/repacked layouts.",
+      "The only broader remaining pack8 widening is parent-rejected full-attention Q/K/V; it is launch-count-only and changed kernel shape more than it saved dispatches.",
+      "No arithmetic/data-reuse-only D1.3 win was identified; do not add another diagnostic kernel unless D1.6 explicitly reopens the K/V-specific hypothesis with a stronger design."
+    ],
+    "follow_up": "D1.6 remains the narrower k_proj+v_proj row if a future task wants to test a targeted K/V design; it should inherit the parent Q/K/V rejection as the baseline caution."
+  },
+  "validation": {
+    "commands": [
+      "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\"",
+      "python3 -m py_compile hipengine/runtime/qwen35_paro.py scripts/qwen35_rocprof_audit.py",
+      "python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short",
+      "python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d13-same-input-projection-fusions-rejected.json >/tmp/d13.json"
+    ],
+    "result": "passed; HIP runtime loads, py_compile passed, pytest layout+decode-state suite passed (69 tests), artifact JSON parsed"
+  }
+}

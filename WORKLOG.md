@@ -15431,3 +15431,66 @@ python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d12-rmsnorm-
 ```
 
 Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d12-rmsnorm-producer-fusion-deferred.json`.
+
+---
+
+## 2026-05-17 — D1.3 same-input c=1 projection fusions rejected/no-op
+
+Task #23 evaluated `docs/OPTIMIZE.md` D1.3. I did **not** implement a new
+same-input projection fusion because static decode inventory plus the M.4 profile
+show no standalone D1.3 candidate with arithmetic/data-reuse upside while
+preserving pack8/repacked layouts.
+
+M.4 selected-region decode profile (`benchmarks/results/2026-05-17-hipengine-qwen35-rocprof-amdahl-diagnostic.json`):
+
+| workload | W4 single GEMV share | W4 single calls/token | W4 dual GEMV share | W4 dual calls/token |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | `13.379%` | `50` | `11.812%` | `40` |
+| 4K/128 | `13.557%` | `50` | `11.710%` | `40` |
+| 32K/128 | `11.592%` | `50` | `9.963%` | `40` |
+
+Static inventory result:
+
+- Already fused and retained in hipENGINE:
+  - linear-attention `in_proj_qkv + in_proj_z` via `gemv_awq_dual_pack8_transposed_fp16` (`30` layers/token);
+  - full-attention `q_proj + k_proj` via `gemv_awq_dual_pack8_transposed_fp16` (`10` layers/token);
+  - linear-attention dense `in_proj_a + in_proj_b` via `dense_dual_gemv_out_fp16` (`30` layers/token);
+  - selected-MoE `gate + up` via selected dual pack8 (`40` layers/token);
+  - shared-expert `gate + up` via packed dual W4 sidecars or legacy precombined W8A16 (`40` layers/token).
+- The only material unfused same-input slice is full-attention `v_proj` beside
+  the retained Q/K dual path. It accounts for only `10` of the `50` generic W4
+  single GEMV calls/token; the remaining single pack8 calls are `o_proj` and
+  linear-attention output projections, which have no adjacent same-input peer.
+- Down projections and `lm_head` are not D1.3 candidates; they consume post-op
+  inputs and belong to other producer/post-op rows.
+
+Parent/source-lineage evidence:
+
+- `/home/lhl/amd-gpu-tuning/docs/PARO.md:1414-1423` reports the full-attention
+  triple Q/K/V pack8 prototype was correct (`24/24`) and graph-safe but slower:
+  512/128 `116.357` and 4K/128 `107.412` decode tok/s versus the retained Q/K
+  path `116.721` and `107.703`.
+- The same parent note says the 2026-05-11 graph-stack recheck was only noise
+  (`512/128 115.569 vs 115.258`, `4K/128 120.622 vs 120.655`) and diagnostic
+  prefill wiring regressed (`~905` tok/s control to `836` Q/K-only and `822`
+  Q/K/V).
+- `/home/lhl/amd-gpu-tuning/LESSONS-LEARNED.md:38` generalizes the lesson:
+  do not widen a fused projection family unless it preserves kernel efficiency
+  or adds real data reuse; graph replay makes pure launch-count wins very small.
+
+Decision: reject/no-op for D1.3. Defaults remain unchanged. Any narrower
+`k_proj + v_proj` retest belongs to D1.6 and should inherit the parent Q/K/V
+rejection as its cautionary baseline.
+
+Validation (no math/runtime code changed):
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+# hip OK
+python3 -m py_compile hipengine/runtime/qwen35_paro.py scripts/qwen35_rocprof_audit.py
+python3 -m pytest tests/test_qwen35_paro_layout.py tests/test_qwen35_decode_state.py -q --tb=short
+# 69 tests passed (command exit 0)
+python3 -m json.tool benchmarks/results/2026-05-17-hipengine-qwen35-d13-same-input-projection-fusions-rejected.json >/tmp/d13.json
+```
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-qwen35-d13-same-input-projection-fusions-rejected.json`.
