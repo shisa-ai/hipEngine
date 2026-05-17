@@ -17853,3 +17853,28 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. py
 ```
 
 This clears the one-run prefill targets for both Qwen3.6 packed PARO comparison rows (512 target `2451.2 tok/s`; 4K target `2666.7 tok/s`). Next step is promoted 3-run 512/128 and 4K/128 artifacts plus benchmark rollup/changelog updates if the medians hold.
+
+## 2026-05-17 GGUF bulk prefill promoted benchmark
+
+Ran the promoted cached 3-run GGUF Q4_K_M benchmarks after iteration 11 (`0fb57d4`) with one warmup run and graph replay decode (`decode_tokens=128`, capture excluded). Public `LLM.generate()` correctness was rerun after the measurements.
+
+Commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-promoted-512-128.json
+# measured prefill samples [3277.9183, 3286.8893, 3279.0297], median 3279.0297 tok/s
+# measured decode samples [179.0440, 178.3893, 179.1289], median 179.0440 tok/s; peak 0.9374 GiB; finite_final_logits_all=true
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-promoted-4k-128.json
+# measured prefill samples [3564.4112, 3599.7168, 3634.0744], median 3599.7168 tok/s
+# measured decode samples [85.7862, 85.6478, 85.7023], median 85.7023 tok/s; peak 1.6084 GiB; finite_final_logits_all=true
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --json /tmp/hipengine-gguf-bulk-final-e2e.json >/tmp/hipengine-gguf-bulk-final-e2e.out; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q'
+# 13 passed; public E2E expected text/token IDs matched and torch_loaded_by_generate=false
+```
+
+The promoted medians beat the Qwen3.6 packed PARO prefill comparison rows used for this GGUF-bulk-prefill target (`2451.2 tok/s` at 512 and `2666.7 tok/s` at 4K) by `+33.8%` and `+35.0%`, respectively. This is a cross-model GGUF 0.8B resident-session throughput row with a public `LLM.generate()` correctness gate, not a 35B/PARO equivalence claim.
+
+Artifacts/rollup updated:
+
+- `benchmarks/results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`
+- `benchmarks/README.md`
+- `benchmarks/CHANGELOG.md`
