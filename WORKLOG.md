@@ -17712,3 +17712,23 @@ bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipc
 ```
 
 Loop metric: `919.9459 tok/s` for 512-token prefill. This is only +1.0% over iteration 2 (`910.4869 tok/s`), so per-prefill allocation was not the dominant bottleneck. The likely bottleneck remains GGUF rows>1 projection throughput.
+
+## 2026-05-17 GGUF bulk prefill iteration 4
+
+Rocprof on 128-token bulk prefill showed rows>1 GGUF projection kernels were the bottleneck. After Q5_K raw kernels dominated the first profile (~105 ms under profiler), materializing Q5_K tensors as dense BF16 gave only a modest direct improvement (`1004.35 tok/s` 512-token prefill, `1053.91 tok/s` 4K-token prefill) because the dense BF16 fallback still used row-GEMV.
+
+Added a rows>1 dense BF16 tiled prefill GEMM registry variant (`dense_gemv/bf16/prefill_out`) and routed dense fallback rows>1 through it. Q5_K tensors now materialize as dense BF16 in the Qwen3.5 GGUF resident plan; Q6_K and Q8_0 remain raw GGUF.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/linear/dense_gemv.py hipengine/runtime/gguf_linear.py hipengine/loading/qwen35_gguf_materialize.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_materialize.py::test_qwen35_gguf_materialization_plan_covers_every_tensor -q
+# 7 passed
+bash -lc 'set -euo pipefail; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --json /tmp/hipengine-gguf-bulk-loop-e2e.json >/tmp/hipengine-gguf-bulk-loop-e2e.out; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q'
+# 13 passed
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_materialize.py tests/test_gguf_e2e_acceptance.py tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt -q
+# 17 passed
+```
+
+Loop metric after dense prefill GEMM: `1718.1144 tok/s` for 512-token prefill (`0.8867 GiB` tracked peak), up from `919.9459 tok/s`. Still below Qwen3.6 packed PARO target (`2451.2 tok/s` 512; `2666.7 tok/s` 4K). Next bottleneck from the Q5-dense profile is remaining rows>1 projection throughput: Q6_K raw and Q4_K pack8 rows>1 kernels plus the tiled dense GEMM efficiency.

@@ -42,7 +42,7 @@ def test_qwen35_gguf_materialization_plan_covers_every_tensor() -> None:
     layer0 = plan.layer_specs[0]
     assert layer0["attn_gate"].layout == LAYOUT_Q4_K_PACK8
     assert layer0["attn_gate"].allocation_names == ("qweight", "scales", "mins")
-    assert layer0["attn_qkv"].layout == LAYOUT_RAW_GGUF
+    assert layer0["attn_qkv"].layout == LAYOUT_DENSE_BF16
     assert layer0["attn_qkv"].quant_key == "gguf_q5_k"
     assert layer0["ssm_alpha"].quant_key == "gguf_q8_0"
 
@@ -78,7 +78,7 @@ def test_qwen35_gguf_materialization_plan_covers_every_tensor() -> None:
                 "root.token_embedding": (LAYOUT_RAW_GGUF, "gguf_q6_k"),
                 "layers.0.ssm_alpha": (LAYOUT_DENSE_BF16, "fp16"),
                 "layers.8.ffn_gate": (LAYOUT_DENSE_BF16, "gguf_iq4_xs"),
-                "layers.3.attn_q": (LAYOUT_RAW_GGUF, "gguf_q5_k"),
+                "layers.3.attn_q": (LAYOUT_DENSE_BF16, "gguf_q5_k"),
             },
         ),
     ],
@@ -129,10 +129,10 @@ def test_qwen35_gguf_materializes_selected_resident_records() -> None:
         assert attn_gate.allocation("mins").tensor.shape == (32, 2048)
 
         attn_qkv = resident.layer(0).weight("attn_qkv")
-        assert attn_qkv.spec.layout == LAYOUT_RAW_GGUF
+        assert attn_qkv.spec.layout == LAYOUT_DENSE_BF16
         assert attn_qkv.spec.quant_key == "gguf_q5_k"
-        assert attn_qkv.allocation().tensor.dtype == DType.INT8
-        assert attn_qkv.allocation().tensor.shape == (6144, 704)
+        assert attn_qkv.allocation().tensor.dtype == DType.BF16
+        assert attn_qkv.allocation().tensor.shape == (6144, 1024)
 
         ssm_alpha = resident.layer(0).weight("ssm_alpha")
         assert ssm_alpha.spec.quant_key == "gguf_q8_0"

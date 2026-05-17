@@ -181,6 +181,8 @@ def _variant_for_rows(variant: str, *, rows: int) -> str:
         return f"pack8_prefill_{variant[len('pack8_') :]}"
     if variant.startswith("gemv_"):
         return f"prefill_{variant[len('gemv_') :]}"
+    if variant == "out":
+        return "prefill_out"
     return variant
 
 

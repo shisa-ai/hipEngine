@@ -58,7 +58,7 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
         "hip_gfx1100", "linear", "gguf_q5_k", "prefill_bf16_fp16_out"
     )
     assert resolve_gguf_linear_dispatch(q41, rows=4).key == KernelKey(
-        "hip_gfx1100", "dense_gemv", "bf16", "out"
+        "hip_gfx1100", "dense_gemv", "bf16", "prefill_out"
     )
 
 
@@ -86,7 +86,7 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
         (
             _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1"),
             GGUF_OUTPUT_BF16,
-            KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
+            KernelKey("hip_gfx1100", "dense_gemv", "bf16", "prefill_out"),
             (100, 10, 200, 2, 1024, 2048),
         ),
     ],

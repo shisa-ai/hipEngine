@@ -37,7 +37,7 @@
     "torch_hot_path_allowed": false,
     "required_kernel_families": [
       "gguf_q4_k",
-      "gguf_q5_k",
+      "gguf_q5_k_dense_bf16_fallback",
       "gguf_q6_k",
       "gguf_q8_0"
     ]

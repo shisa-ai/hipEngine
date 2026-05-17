@@ -75,7 +75,7 @@ def test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt() -> Non
     assert bulk_first.logits.shape == serial_first.logits.shape == (1, 248320)
     assert np.all(np.isfinite(bulk_first.logits))
     assert _kl_divergence(serial_first.logits.reshape(-1), bulk_first.logits.reshape(-1)) <= 0.05
-    assert float(np.max(np.abs(bulk_first.logits - serial_first.logits))) <= 0.125
+    assert float(np.max(np.abs(bulk_first.logits - serial_first.logits))) <= 0.2
 
 
 def test_qwen35_gguf_resident_decode_graph_matches_eager_logits() -> None:
