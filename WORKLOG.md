@@ -16678,3 +16678,41 @@ print('markdown links OK')
 PY
 # all passed
 ```
+
+## 2026-05-18 — PyPI trusted-publishing workflow
+
+### Scope
+
+- Added `.github/workflows/publish.yml`, modeled on `shisa-ai/textguard` trusted publishing:
+  - trigger: `push` tags matching `v*`
+  - build job: pinned checkout/setup/upload actions, `persist-credentials: false`, Git LFS enabled for the vendored AOTriton runtime, Python 3.12 via `uv`, tag-to-`pyproject.toml` version check, full pytest release validation, `python -m build`, and `twine check`
+  - publish job: `environment: pypi-publish`, `id-token: write`, build-provenance attestations, and `pypa/gh-action-pypi-publish` for OIDC/trusted publishing (no PyPI API token secret)
+- PyPI-side trusted publisher still needs to be configured for project `hipengine` with owner `shisa-ai`, repository `hipEngine`, workflow `publish.yml`, and environment `pypi-publish` before the first tag publish can succeed.
+
+### Validation
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+workflow = Path('.github/workflows/publish.yml').read_text()
+assert 'uv run --no-sync pytest -q' in workflow
+assert 'uv run --no-sync python -m build' in workflow
+assert 'uv run --no-sync python -m twine check dist/*' in workflow
+print('workflow no-sync sanity OK')
+PY
+uv pip install -e '.[dev]' build twine
+uv run --no-sync python - <<'PY'
+from pathlib import Path
+import tomllib
+print(tomllib.loads(Path('pyproject.toml').read_text())['project']['version'])
+PY
+uv run --no-sync python -m pytest -q
+rm -rf dist/
+uv run --no-sync python -m build
+uv run --no-sync python -m twine check dist/*
+# workflow no-sync sanity OK
+# 0.1.0
+# pytest: 296 passed
+# Successfully built hipengine-0.1.0.tar.gz and hipengine-0.1.0-py3-none-manylinux_2_39_x86_64.whl
+# twine check: PASSED for wheel and sdist
+```

@@ -1,0 +1,103 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          lfs: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+
+      - name: Set up Python 3.12
+        run: |
+          uv python install 3.12
+          uv venv --python 3.12
+
+      - name: Extract version metadata
+        id: meta
+        run: |
+          version="$(uv run --no-sync python - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          data = tomllib.loads(Path("pyproject.toml").read_text())
+          print(data["project"]["version"])
+          PY
+          )"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          expected="v${RELEASE_VERSION}"
+          if [ "${RELEASE_TAG}" != "${expected}" ]; then
+            echo "::error::Tag '${RELEASE_TAG}' does not match package version '${expected}'"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: uv pip install -e '.[dev]' build twine
+
+      - name: Run release validation
+        run: uv run --no-sync pytest -q
+
+      - name: Remove stale build artifacts
+        run: rm -rf dist/
+
+      - name: Build
+        run: uv run --no-sync python -m build
+
+      - name: Verify package metadata
+        run: uv run --no-sync python -m twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: |
+            dist/hipengine-*.whl
+            dist/hipengine-*.tar.gz
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: pypi-publish
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+
+      - name: Generate artifact attestations
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: |
+            dist/hipengine-*.whl
+            dist/hipengine-*.tar.gz
+
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
