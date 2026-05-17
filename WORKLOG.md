@@ -16106,3 +16106,69 @@ HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
 ```
 
 Results: targeted pytest passed, full pytest passed, smoke-add plan emitted `--offload-arch=gfx1151 --rocm-device-lib-path=/opt/rocm/amdgcn/bitcode`, `smoke-add-hip --n 8` reported `max_abs=0.0`, and cached gfx1151 RMSNorm smoke reported `max_abs=0.0` / `bit_mismatch=0`.
+
+## 2026-05-17 — gfx1151 TUI shisa Qwen3.6 packed canonical sweep
+
+After rebooting into TUI/headless mode, ran the canonical shisa packed Qwen3.6 comparison sweep on merged `gfx1151` commit `22b0b2eadadf5e8a43a84dfdbaa985a270a0478a`.
+
+### Environment
+
+- GPU: `AMD RYZEN AI MAX+ 395 w/ Radeon 8060S`, target `gfx1151`.
+- ROCm/HIP: `hipcc` reports `HIP version: 7.13.26154-ca4b97ef2c`; Python `3.12.12`; torch installed but not used by hipENGINE hot path (`2.10.0+rocm7.13.0a20260417`).
+- hipENGINE env: `HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151`.
+- Model: `/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e` (`model.safetensors` 19.068 GiB). HF `refs/main` currently points to `176e57c1a5d823bd0f41605420d04e3441465bb4`, but both local snapshots share the same packed tensor payload.
+- GGUF comparison model: `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (file 21 GiB; llama.cpp record `model_size=20.604 GiB`).
+- APU memory caveat: `rocm-smi`/sysfs expose only a 512 MiB VRAM aperture. hipENGINE tracked allocator peak is meaningful; hipMemGetInfo sampled peaks were negative on this runtime and are not used. llama.cpp sysfs peak sampling is also aperture-limited and not a useful memory peak; the artifact records llama model size instead.
+
+Artifact: `benchmarks/results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-canonical-sweep-diagnostic.json`.
+
+Status: **diagnostic retained**, `performance_claim=false`. The max-layer smoke and all benchmark rows produced finite repeated-token previews (`9707` on full rows), but no shisa KL/top-1 E2E gate or repeated-run stats were run yet.
+
+### hipENGINE sweep
+
+Common command shape:
+
+```bash
+HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 scripts/qwen35_paro_bench.py \
+    --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+    --backend hip_gfx1151 --shared-expert-format packed_paro_w4 \
+    --token-id 9707 --prompt-length {P} --decode-tokens {D} \
+    --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 \
+    --graph-replay-decode --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt \
+    --require-cached-build [long-context chunk flags] --json /tmp/hipengine-gfx1151-shisa36-packed-20260517/...
+```
+
+Long-context chunk flags for 32K/128 and 128K/128: `--prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024`.
+
+| Workload | Prefill tok/s | Decode tok/s | Tracked peak | Decode seconds | Notes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 512/128 | 881.143 | 61.915 | 18.123 GiB | 2.067 | graph replay, no chunks |
+| 4K/128 | 630.585 | 63.364 | 19.995 GiB | 2.020 | graph replay, no chunks |
+| 32K/128 | 598.663 | 50.546 | 20.267 GiB | 2.532 | graph replay, parent-style chunks |
+| 128K/128 | 371.722 | 30.220 | 23.235 GiB | 4.236 | graph replay, parent-style chunks |
+| 4K/4K | 621.551 | 62.245 | 20.108 GiB | 65.805 | graph replay, no chunks |
+
+### llama.cpp HIP GGUF comparison
+
+Command shape via wrapper:
+
+```bash
+python3 scripts/llamacpp_bench_with_peak.py \
+  --llama-bench /home/lhl/llama.cpp/llama.cpp-lhl/build-gfx1151-unroll600/bin/llama-bench \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip --workloads 512/128 4K/128 32K/128 128K/128 \
+  --poll 10 --repetitions 1 --output /tmp/llamacpp-gfx1151-hip-qwen36-ud-q4km-20260517.json
+```
+
+and a separate `4K/4K` wrapper run. Binary reports llama.cpp build `e828394c2` / build number `8975`, backend `ROCm`, GPU `Radeon 8060S Graphics`.
+
+| Workload | Prefill tok/s | Decode tok/s | Memory note |
+| --- | ---: | ---: | --- |
+| 512/128 | 1039.909 | 51.018 | sysfs peak invalid on 512 MiB aperture; model size 20.604 GiB |
+| 4K/128 | 1014.702 | 49.074 | same |
+| 32K/128 | 728.519 | 43.474 | same |
+| 128K/128 | 376.264 | 31.322 | same |
+| 4K/4K | 1003.175 | 49.079 | same |
+
+On this Strix Halo run, hipENGINE decode beats local llama.cpp HIP on every matched row, but hipENGINE prefill trails llama.cpp at 512/4K/32K and is roughly tied/slightly behind at 128K. Keep as diagnostic until correctness/repetition gates are added.
