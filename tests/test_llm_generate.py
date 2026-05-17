@@ -54,6 +54,45 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
     )
 
 
+def test_llm_default_backend_auto_resolves_env_override(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class FakeGenerator:
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return ["ok"]
+
+    monkeypatch.setenv("HIPENGINE_BACKEND", "fake_auto_backend")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(
+        loading,
+        "load_weight_index",
+        lambda model: SimpleNamespace(
+            config={"architectures": ["FakeAuto"]},
+            model_path="/tmp/fake-model",
+        ),
+    )
+    monkeypatch.setattr(
+        models,
+        "resolve_model",
+        lambda architecture: SimpleNamespace(name="fake_auto"),
+    )
+    register_text_generator(
+        model="fake_auto",
+        backend="fake_auto_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", quant="fake_quant")
+
+    assert llm.generate("hello", SamplingParams(max_tokens=1)) == ["ok"]
+    assert llm.backend == "auto"
+    assert llm._resolved_backend == "fake_auto_backend"
+
+
 def test_llm_generate_normalizes_single_prompt(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading

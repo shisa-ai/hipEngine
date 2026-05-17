@@ -37,7 +37,7 @@ class ServerConfig:
     """Configuration for the optional OpenAI-compatible server."""
 
     model: str
-    backend: str = "hip_gfx1100"
+    backend: str = "auto"
     quant: str = "w4_paro"
     served_model_name: str | None = None
     api_key: str | None = None

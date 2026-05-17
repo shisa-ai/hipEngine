@@ -690,6 +690,12 @@ hipEngine has **four orthogonal plugin axes**. Each axis is a registry of implem
 
 Kernels are registered with the tuple `(backend, layer, quant, variant)`. The dispatcher resolves kernels at layer-build time; the fusion planner resolves at op-chain-build time.
 
+Public APIs and server entry points default to `backend="auto"`. Auto is a selector
+resolved before registry lookup, not a registry key: exact `gfx1100`/`gfx1151`
+detections map to the matching HIP backend, `HIPENGINE_BACKEND` can force a
+backend for nearby targets such as `gfx1101`/`gfx1102`, and unknown/no HIP
+detections warn before selecting `cpu_reference` where a CPU implementation exists.
+
 ### Backend Plugin
 
 ```python

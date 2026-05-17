@@ -16467,3 +16467,18 @@ Do not spend more time on global 64/128/512/1024 or broad full-factorial combina
 - Replaced the legacy project-name casing with `hipEngine` across tracked repository files using the tracked-file match list and a Python `str.replace` pass.
 - Verification used a constructed legacy-casing search string so this log entry does not reintroduce the old contiguous spelling: `OLD=$(printf 'hip%sNGINE' E); if git grep -n "$OLD" -- .; then exit 1; else echo "No legacy casing remains in tracked files"; fi`.
 - No runtime tests were run; this was a docs/comments/metadata/string-only rename.
+
+## 2026-05-18 — Backend auto-detection selector
+
+### Scope
+
+- Added `backend="auto"` selection in `hipengine.kernels.backends`, mapping detected ROCm `gfx1100`/`gfx1151` targets to `hip_gfx1100`/`hip_gfx1151` before registry lookup.
+- Added `HIPENGINE_BACKEND` as a force override for nearby targets; unknown/no HIP detections warn with `gfx1101`/`gfx1102` guidance and select `cpu_reference` where a CPU implementation exists.
+- Updated `LLM`, server defaults, Qwen3.5/PARO runner/script defaults, model metadata, and docs/API/README to use the selector without adding backend branches to dispatch/model code.
+
+### Validation
+
+- `python3 -m compileall -q hipengine tests/test_gfx1151_backend.py tests/test_llm_generate.py` passed.
+- `uv run pytest tests/test_gfx1151_backend.py tests/test_llm_generate.py tests/test_server_api.py -q` failed during collection because the transient uv environment did not include pytest/dev extras.
+- `uv run --extra dev python -m pytest tests/test_gfx1151_backend.py tests/test_llm_generate.py tests/test_server_api.py -q` passed: 19 tests.
+- `git diff --check` passed.

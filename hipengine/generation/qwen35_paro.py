@@ -28,7 +28,7 @@ class Qwen35ParoOneTokenGenerator:
     model_path: str | Path
     weight_index: WeightIndex
     model_plugin: Any
-    backend: str = "hip_gfx1100"
+    backend: str = "auto"
     lm_head_chunk: int = 4096
     _runner: Qwen35ParoNextTokenRunner | None = field(default=None, init=False, repr=False)
 

@@ -112,6 +112,13 @@ correctness status, source-lineage targets, and external comparison baselines.
 | `cuda_sm86` | NVIDIA Ampere consumer (3090-class) | Planned peer backend |
 | `cpu_reference` | Any CPU, numpy | Correctness oracle; CI without GPU |
 
+`backend="auto"` is the public API/server default. It maps exact `gfx1100` and
+`gfx1151` detections to the matching HIP backend; unknown ROCm targets warn and
+select `cpu_reference` where a CPU implementation exists. Users on nearby targets
+such as `gfx1101`/`gfx1102` can force a backend with `backend="hip_gfx1100"`,
+`--backend hip_gfx1100`, or `HIPENGINE_BACKEND=hip_gfx1100` after validating
+correctness/performance.
+
 Wave32 is the default for `hip_gfx1100` device code; wave64 is treated as an
 isolated experiment with its own gates (see
 [`docs/PLAN.md`](docs/PLAN.md#rdna3-wavefront-and-scheduling-caveat)).
@@ -179,7 +186,7 @@ The public API surface is stable:
 ```python
 from hipengine import LLM, SamplingParams
 
-llm = LLM("/path/to/model", backend="hip_gfx1100", quant="w4_paro")
+llm = LLM("/path/to/model", quant="w4_paro")  # backend="auto" by default
 outputs = llm.generate(
     ["Hello, hipEngine."],
     SamplingParams(max_tokens=64, temperature=0.0),
@@ -200,7 +207,6 @@ Install the optional server extra and run the FastAPI layer:
 pip install -e ".[server]"
 python -m hipengine.server \
   --model /path/to/model \
-  --backend hip_gfx1100 \
   --quant w4_paro \
   --served-model-name qwen-paro
 ```

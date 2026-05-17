@@ -12,7 +12,14 @@ from hipengine.server.api import ServerConfig, create_app
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the hipEngine OpenAI-compatible server")
     parser.add_argument("--model", required=True, help="Path or model id served by hipEngine")
-    parser.add_argument("--backend", default="hip_gfx1100", help="Kernel backend key")
+    parser.add_argument(
+        "--backend",
+        default="auto",
+        help=(
+            "Kernel backend key (default: auto-detect gfx1100/gfx1151; "
+            "use HIPENGINE_BACKEND or this flag to force)"
+        ),
+    )
     parser.add_argument("--quant", default="w4_paro", help="Quantization key")
     parser.add_argument("--served-model-name", help="Public model id exposed by /v1/models")
     parser.add_argument(

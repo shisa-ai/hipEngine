@@ -23,7 +23,7 @@ class Qwen35ParoMoeModel:
         "Qwen3_5MoeForCausalLM",
     )
     default_quant: str = "w4_paro"
-    default_backend: str = "hip_gfx1100"
+    default_backend: str = "auto"
     weight_name_templates: tuple[str, ...] = (
         "model.embed_tokens.weight",
         "model.layers.{layer}.input_layernorm.weight",

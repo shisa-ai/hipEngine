@@ -23,7 +23,11 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.tensor import Tensor
-from hipengine.kernels.backends import hip_target_arch_environment, hip_target_arch_for_backend
+from hipengine.kernels.backends import (
+    hip_target_arch_environment,
+    hip_target_arch_for_backend,
+    resolve_backend,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
     lm_head_argmax_stage1_blocks,
@@ -171,7 +175,7 @@ class Qwen35ParoNextTokenRunner:
         index: WeightIndex | None = None,
         runtime: HipRuntime | None = None,
         shared_expert_format: str | None = None,
-        backend: str = "hip_gfx1100",
+        backend: str = "auto",
     ) -> None:
         self.model = Path(model)
         self.index = index or load_weight_index(self.model)
@@ -179,8 +183,15 @@ class Qwen35ParoNextTokenRunner:
         self.normalized_infos = _normalized_infos(self.index)
         self.runtime = runtime or get_hip_runtime()
         self.shared_expert_format = shared_expert_format
-        self.backend = backend
-        self.target_arch = hip_target_arch_for_backend(backend)
+        self.backend = resolve_backend(backend)
+        try:
+            self.target_arch = hip_target_arch_for_backend(self.backend)
+        except ValueError as exc:
+            raise RuntimeError(
+                "Qwen35ParoNextTokenRunner requires a HIP backend. Auto backend selection "
+                "fell back to a non-HIP backend; pass backend='hip_gfx1100' or "
+                "backend='hip_gfx1151' after validating that target on your GPU."
+            ) from exc
 
     def run_next_token(
         self,

@@ -25,14 +25,16 @@ class LLM:
     """Minimal public LLM API.
 
     Phase-0 generation currently resolves to narrow bring-up implementations registered by
-    model/backend/quant. Unsupported keys fail explicitly instead of adding engine-level
-    backend or quant conditionals.
+    model/backend/quant. The default ``backend="auto"`` is resolved once to a concrete
+    backend before registry lookup; unsupported keys fail explicitly instead of adding
+    engine-level backend or quant conditionals.
     """
 
-    def __init__(self, model: str, *, backend: str = "hip_gfx1100", quant: str = "fp16"):
+    def __init__(self, model: str, *, backend: str = "auto", quant: str = "fp16"):
         self.model = model
         self.backend = backend
         self.quant = quant
+        self._resolved_backend: str | None = None
         self._weight_index: Any | None = None
         self._model_plugin: Any | None = None
 
@@ -54,9 +56,10 @@ class LLM:
 
         register_builtin_generators()
         weight_index, model_plugin = self._load_model_metadata()
+        backend = self._resolve_backend()
         factory = resolve_text_generator(
             model=model_plugin.name,
-            backend=self.backend,
+            backend=backend,
             quant=self.quant,
         )
         generator = factory(
@@ -73,6 +76,15 @@ class LLM:
                 ignore_eos=params.ignore_eos,
             )
         )
+
+    def _resolve_backend(self) -> str:
+        if self._resolved_backend is not None:
+            return self._resolved_backend
+
+        from hipengine.kernels.backends import resolve_backend
+
+        self._resolved_backend = resolve_backend(self.backend)
+        return self._resolved_backend
 
     def _load_model_metadata(self) -> tuple[Any, Any]:
         if self._weight_index is not None and self._model_plugin is not None:

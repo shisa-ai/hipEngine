@@ -82,9 +82,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--backend",
-        choices=("hip_gfx1100", "hip_gfx1151"),
-        default="hip_gfx1100",
-        help="Backend key for qwen35-paro-generate-hip.",
+        choices=("auto", "hip_gfx1100", "hip_gfx1151"),
+        default="auto",
+        help="Backend key for qwen35-paro-generate-hip (default: auto-detect gfx1100/gfx1151).",
     )
     parser.add_argument("--prompt", default="Hello", help="Prompt for qwen35-paro-generate-hip.")
     parser.add_argument("--max-tokens", type=int, default=1, help="Max tokens for generate smoke.")
@@ -368,7 +368,13 @@ def smoke_add_plan_smoke() -> int:
     return 0
 
 
-def qwen35_paro_generate_hip_smoke(model: str, prompt: str, max_tokens: int, *, backend: str = "hip_gfx1100") -> int:
+def qwen35_paro_generate_hip_smoke(
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    *,
+    backend: str = "auto",
+) -> int:
     from hipengine import LLM, SamplingParams
 
     llm = LLM(model, backend=backend, quant="w4_paro")
@@ -383,7 +389,7 @@ def qwen35_paro_generate_hip_smoke(model: str, prompt: str, max_tokens: int, *, 
                 "prompt": prompt,
                 "outputs": outputs,
                 "max_tokens": max_tokens,
-                "path": "LLM.generate/qwen3_5_moe_paro/hip_gfx1100/w4_paro",
+                "path": f"LLM.generate/qwen3_5_moe_paro/{llm._resolved_backend or backend}/w4_paro",
             },
             ensure_ascii=False,
         )

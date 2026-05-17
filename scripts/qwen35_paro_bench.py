@@ -39,9 +39,12 @@ def main() -> int:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument(
         "--backend",
-        choices=("hip_gfx1100", "hip_gfx1151"),
-        default="hip_gfx1100",
-        help="Kernel backend key; hip_gfx1151 builds native gfx1151 code objects.",
+        choices=("auto", "hip_gfx1100", "hip_gfx1151"),
+        default="auto",
+        help=(
+            "Kernel backend key; auto detects gfx1100/gfx1151, "
+            "hip_gfx1151 builds native gfx1151 code objects."
+        ),
     )
     parser.add_argument("--prompt", default="Hello")
     parser.add_argument("--token-id", type=int, default=9707, help="Repeated token id for fixed-length prompt")
@@ -274,7 +277,8 @@ def main() -> int:
         "schema": 1,
         "model": str(model),
         "quant": "w4_paro",
-        "backend": args.backend,
+        "backend": runner.backend,
+        "requested_backend": args.backend,
         "target_arch": runner.target_arch,
         "mode": "actual_autoregressive_resident",
         "prompt_source": "repeated_token_id" if args.token_id is not None else "prompt_tokenized_repeat",

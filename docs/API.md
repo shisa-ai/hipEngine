@@ -1,6 +1,6 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-05-17
+Last updated: 2026-05-18
 
 hipEngine ships a thin optional FastAPI layer that adapts OpenAI-style requests
 to the torch-free `hipengine.LLM.generate()` library API. It is installed only
@@ -18,7 +18,6 @@ pip install -e ".[server]"
 ```bash
 python -m hipengine.server \
   --model /path/to/qwen-paro-model \
-  --backend hip_gfx1100 \
   --quant w4_paro \
   --served-model-name qwen-paro \
   --host 127.0.0.1 \
@@ -30,6 +29,12 @@ After installation, the console script is equivalent:
 ```bash
 hipengine-server --model /path/to/model --served-model-name qwen-paro
 ```
+
+The server defaults to `--backend auto`, which maps exact `gfx1100`/`gfx1151`
+ROCm detections to `hip_gfx1100`/`hip_gfx1151`. Unknown HIP targets warn and
+select `cpu_reference` where a CPU implementation exists; nearby targets such as
+`gfx1101`/`gfx1102` can force a backend with `--backend hip_gfx1100` or
+`HIPENGINE_BACKEND=hip_gfx1100` after local validation.
 
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:

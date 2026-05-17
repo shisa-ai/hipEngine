@@ -24,9 +24,12 @@ def main() -> int:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument(
         "--backend",
-        choices=("hip_gfx1100", "hip_gfx1151"),
-        default="hip_gfx1100",
-        help="Kernel backend key; hip_gfx1151 builds native gfx1151 code objects.",
+        choices=("auto", "hip_gfx1100", "hip_gfx1151"),
+        default="auto",
+        help=(
+            "Kernel backend key; auto detects gfx1100/gfx1151, "
+            "hip_gfx1151 builds native gfx1151 code objects."
+        ),
     )
     parser.add_argument("--prompt", default="Hello")
     parser.add_argument("--token-id", type=int, default=None, help="Bypass tokenizer and decode this single token id")
