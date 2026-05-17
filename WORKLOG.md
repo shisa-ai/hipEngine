@@ -16709,3 +16709,38 @@ git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd log --oneline --reverse -S 'qwen35
 Both identify `nano-vllm-amd@2751f2f` (`feat(amd): INT8 per-token KV cache with vec16 read and parallel write`) as the source commit. Parent WORKLOG entry `/home/lhl/amd-gpu-tuning/WORKLOG.md:20081` records the INT8 KV implementation, scale shapes `[num_blocks, block_size, num_kv_heads]`, opt-in `--kv-cache-dtype int8`, and parent results: INT8 attention faster at 4K microbench but only ~+0.2% E2E at 4K/128 and 4K/D4K.
 
 Porting caution for K1: the parent writer must be audited against `docs/KVCACHE.md` before copying. The source claims per-head scales, but the current writer reduces max-abs over `total_size = num_kv_heads * head_dim` and then writes the same reduced max for each head; it also needs explicit zero-scale handling for all-zero rows. Task #2 will pin the hipEngine oracle semantics before any kernel port.
+
+## 2026-05-18 - K1 INT8 KV CPU oracle and fixtures
+
+Completed task #2: defined the CPU-reference semantics for dense paged `int8_per_token_head` KV before porting any HIP kernels.
+
+Implementation notes:
+
+- Added `quantize_kv_int8_per_token_head(...)`, `write_paged_kv_int8_per_token_head(...)`, `dequantize_kv_int8_per_token_head(...)`, and `paged_attn_decode_int8_per_token_head(...)` under `hipengine/kernels/cpu_reference/ops.py`.
+- Scale semantics are now pinned as separate K/V scales per token and per KV head. All-zero rows store scale `0` and all-zero int8 payload; quantization uses a safe scale internally so there is no divide-by-zero.
+- Added page-table-aware write and decode references so K1 GPU tests can catch logical-to-physical page-boundary mistakes.
+- Added committed CPU fixtures:
+  - `tests/fixtures/cpu_reference/kv_int8_dequant_per_token_head.json`
+  - `tests/fixtures/cpu_reference/paged_attn_decode_int8_per_token_head.json`
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_cpu_reference.py -q
+# 13 passed
+
+python3 scripts/check_fixtures.py
+# PASS all CPU-reference fixtures including the two INT8 KV fixtures
+
+python3 -m compileall -q hipengine/kernels/cpu_reference tests/test_cpu_reference.py
+# passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures && \
+python3 scripts/smoke.py --mode smoke-add-plan && \
+rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
+# pytest: 299 passed; fixtures/smokes passed; torch audit only found allowed docs/comments/diagnostic subprocess text.
+```

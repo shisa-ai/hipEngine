@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "name": "paged_attn_decode_int8_per_token_head",
+  "backend": "cpu_reference",
+  "layer": "paged_attn_decode",
+  "quant": "int8_per_token_head",
+  "inputs": {
+    "query": {
+      "dtype": "float32",
+      "data": [[1.0, 0.0]]
+    },
+    "key_cache": {
+      "dtype": "int8",
+      "data": [[[[2, 2]], [[0, 0]]], [[[2, 0]], [[0, 2]]]]
+    },
+    "value_cache": {
+      "dtype": "int8",
+      "data": [[[[10, 12]], [[0, 0]]], [[[2, 4]], [[6, 8]]]]
+    },
+    "k_scale": {
+      "dtype": "float32",
+      "data": [[[0.5], [0.0]], [[0.5], [0.5]]]
+    },
+    "v_scale": {
+      "dtype": "float32",
+      "data": [[[0.5], [0.0]], [[0.5], [0.5]]]
+    },
+    "live_counts": {
+      "dtype": "int64",
+      "data": [3]
+    },
+    "block_table": {
+      "dtype": "int32",
+      "data": [1, 0]
+    },
+    "block_size": 2,
+    "scale": 1.0,
+    "output_dtype": "float32"
+  },
+  "expected": {
+    "dtype": "float32",
+    "data": [[3.0, 4.0]]
+  },
+  "tolerances": {"atol": 1e-6, "rtol": 1e-6},
+  "metadata": {
+    "purpose": "INT8 paged decode oracle over a logical page boundary with per-token/head K/V scales."
+  }
+}
