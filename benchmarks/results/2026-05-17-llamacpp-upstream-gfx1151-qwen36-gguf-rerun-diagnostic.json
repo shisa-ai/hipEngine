@@ -1,0 +1,603 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "timestamp": "2026-05-17T21:20:00+09:00",
+  "run_tag": "llamacpp-upstream-gfx1151-qwen36-gguf-rerun",
+  "summary": "Upstream llama.cpp HIP and Vulkan rerun for Qwen3.6-35B-A3B UD-Q4_K_M on Strix Halo gfx1151, compared to existing hipENGINE shisa packed sweep.",
+  "hardware": {
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "arch": "gfx1151",
+    "note": "APU exposes a 512 MiB VRAM aperture through sysfs/rocm-smi; llama.cpp peak VRAM samples are aperture counters and are not useful for model-memory comparison."
+  },
+  "software": {
+    "hipengine_commit": "00fb5582709a8c1cdc83813f7138c6b95fe2a394",
+    "hipengine_dirty_before_artifact": false,
+    "python": "3.12.12",
+    "llamacpp_hip_binary": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench",
+    "llamacpp_vulkan_binary": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench",
+    "llamacpp_hip_build_commit": "fcae601e4",
+    "llamacpp_hip_build_number": 9197,
+    "llamacpp_vulkan_build_commit": "fcae601e4",
+    "llamacpp_vulkan_build_number": 9197
+  },
+  "models": {
+    "llamacpp": {
+      "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quant": "UD-Q4_K_M GGUF",
+      "model_size_gib": 20.604151248931885
+    },
+    "hipengine_reference": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+      "snapshot_revision": "501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+      "current_refs_main": "176e57c1a5d823bd0f41605420d04e3441465bb4",
+      "quant": "w4_paro / packed ParoQuant",
+      "safetensors_size_gib": 19.0683598741889,
+      "architecture": "Qwen3_5MoeForConditionalGeneration / qwen3_5_moe_text",
+      "layers": 40,
+      "hidden_size": 2048,
+      "num_experts": 256,
+      "num_experts_per_tok": 8
+    }
+  },
+  "measurements": {
+    "llamacpp_upstream_hip": [
+      {
+        "workload": "512/128",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "prefill_tok_s": 1058.737576,
+        "decode_tok_s": 50.536968,
+        "prefill_peak_vram_gib": 0.3544654846191406,
+        "decode_peak_vram_gib": 0.354461669921875,
+        "peak_vram_gib": 0.3544654846191406,
+        "prefill_peak_delta_gib": 0.007568359375,
+        "decode_peak_delta_gib": 0.000133514404296875,
+        "peak_delta_gib": 0.007568359375,
+        "json_path": "/tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-hip-gfx1151-unroll600.json",
+        "commands": {
+          "prefill": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 512 -n 0 -d 0",
+          "decode": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 0 -n 128 -d 512"
+        },
+        "model_size_gib": 20.604151248931885,
+        "build_commit": "fcae601e4",
+        "build_number": 9197,
+        "gpu_info": "Radeon 8060S Graphics",
+        "backend_recorded": "llamacpp_hip",
+        "aperture_peak_vram_gib_not_model_peak": 0.3544654846191406
+      },
+      {
+        "workload": "4K/128",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "prefill_tok_s": 1004.21996,
+        "decode_tok_s": 49.379432,
+        "prefill_peak_vram_gib": 0.354461669921875,
+        "decode_peak_vram_gib": 0.354461669921875,
+        "peak_vram_gib": 0.354461669921875,
+        "prefill_peak_delta_gib": 0.000152587890625,
+        "decode_peak_delta_gib": 0.000156402587890625,
+        "peak_delta_gib": 0.000156402587890625,
+        "json_path": "/tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-hip-gfx1151-unroll600.json",
+        "commands": {
+          "prefill": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 4096 -n 0 -d 0",
+          "decode": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 0 -n 128 -d 4096"
+        },
+        "model_size_gib": 20.604151248931885,
+        "build_commit": "fcae601e4",
+        "build_number": 9197,
+        "gpu_info": "Radeon 8060S Graphics",
+        "backend_recorded": "llamacpp_hip",
+        "aperture_peak_vram_gib_not_model_peak": 0.354461669921875
+      },
+      {
+        "workload": "32K/128",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "prefill_tok_s": 735.53422,
+        "decode_tok_s": 43.43536,
+        "prefill_peak_vram_gib": 0.3544654846191406,
+        "decode_peak_vram_gib": 0.3544654846191406,
+        "peak_vram_gib": 0.3544654846191406,
+        "prefill_peak_delta_gib": 0.000110626220703125,
+        "decode_peak_delta_gib": 0.00028228759765625,
+        "peak_delta_gib": 0.00028228759765625,
+        "json_path": "/tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-hip-gfx1151-unroll600.json",
+        "commands": {
+          "prefill": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 32768 -n 0 -d 0",
+          "decode": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 0 -n 128 -d 32768"
+        },
+        "model_size_gib": 20.604151248931885,
+        "build_commit": "fcae601e4",
+        "build_number": 9197,
+        "gpu_info": "Radeon 8060S Graphics",
+        "backend_recorded": "llamacpp_hip",
+        "aperture_peak_vram_gib_not_model_peak": 0.3544654846191406
+      },
+      {
+        "workload": "128K/128",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "prefill_tok_s": 376.069879,
+        "decode_tok_s": 31.285706,
+        "prefill_peak_vram_gib": 0.354461669921875,
+        "decode_peak_vram_gib": 0.3544731140136719,
+        "peak_vram_gib": 0.3544731140136719,
+        "prefill_peak_delta_gib": 0.000370025634765625,
+        "decode_peak_delta_gib": 0.000812530517578125,
+        "peak_delta_gib": 0.000812530517578125,
+        "json_path": "/tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-hip-gfx1151-unroll600.json",
+        "commands": {
+          "prefill": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 131072 -n 0 -d 0",
+          "decode": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 0 -n 128 -d 131072"
+        },
+        "model_size_gib": 20.604151248931885,
+        "build_commit": "fcae601e4",
+        "build_number": 9197,
+        "gpu_info": "Radeon 8060S Graphics",
+        "backend_recorded": "llamacpp_hip",
+        "aperture_peak_vram_gib_not_model_peak": 0.3544731140136719
+      },
+      {
+        "workload": "4K/4K",
+        "prompt_length": 4096,
+        "decode_tokens": 4096,
+        "prefill_tok_s": 990.725575,
+        "decode_tok_s": 49.070638,
+        "prefill_peak_vram_gib": 0.3544807434082031,
+        "decode_peak_vram_gib": 0.3544769287109375,
+        "peak_vram_gib": 0.3544807434082031,
+        "prefill_peak_delta_gib": 0.001132965087890625,
+        "decode_peak_delta_gib": 0.0001678466796875,
+        "peak_delta_gib": 0.001132965087890625,
+        "json_path": "/tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-hip-gfx1151-unroll600.json",
+        "commands": {
+          "prefill": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 4096 -n 0 -d 0",
+          "decode": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 0 -n 4096 -d 4096"
+        },
+        "model_size_gib": 20.604151248931885,
+        "build_commit": "fcae601e4",
+        "build_number": 9197,
+        "gpu_info": "Radeon 8060S Graphics",
+        "backend_recorded": "llamacpp_hip",
+        "aperture_peak_vram_gib_not_model_peak": 0.3544807434082031
+      }
+    ],
+    "llamacpp_upstream_vulkan": [
+      {
+        "workload": "512/128",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "prefill_tok_s": 638.00773,
+        "decode_tok_s": 57.615142,
+        "prefill_peak_vram_gib": 0.475982666015625,
+        "decode_peak_vram_gib": 0.4807891845703125,
+        "peak_vram_gib": 0.4807891845703125,
+        "prefill_peak_delta_gib": 0.1290740966796875,
+        "decode_peak_delta_gib": 0.08675384521484375,
+        "peak_delta_gib": 0.1290740966796875,
+        "json_path": "/tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-vulkan-gfx1151.json",
+        "commands": {
+          "prefill": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 512 -n 0 -d 0",
+          "decode": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 0 -n 128 -d 512"
+        },
+        "model_size_gib": 20.604151248931885,
+        "build_commit": "fcae601e4",
+        "build_number": 9197,
+        "gpu_info": "AMD Radeon 8060S Graphics",
+        "backend_recorded": "llamacpp_vulkan",
+        "aperture_peak_vram_gib_not_model_peak": 0.4807891845703125
+      },
+      {
+        "workload": "4K/128",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "prefill_tok_s": 595.400407,
+        "decode_tok_s": 55.027415,
+        "prefill_peak_vram_gib": 0.483184814453125,
+        "decode_peak_vram_gib": 0.4878082275390625,
+        "peak_vram_gib": 0.4878082275390625,
+        "prefill_peak_delta_gib": 0.13627243041992188,
+        "decode_peak_delta_gib": 0.14089584350585938,
+        "peak_delta_gib": 0.14089584350585938,
+        "json_path": "/tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-vulkan-gfx1151.json",
+        "commands": {
+          "prefill": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 4096 -n 0 -d 0",
+          "decode": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 0 -n 128 -d 4096"
+        },
+        "model_size_gib": 20.604151248931885,
+        "build_commit": "fcae601e4",
+        "build_number": 9197,
+        "gpu_info": "AMD Radeon 8060S Graphics",
+        "backend_recorded": "llamacpp_vulkan",
+        "aperture_peak_vram_gib_not_model_peak": 0.4878082275390625
+      },
+      {
+        "workload": "32K/128",
+        "prompt_length": 32768,
+        "decode_tokens": 128,
+        "prefill_tok_s": 407.984089,
+        "decode_tok_s": 44.575954,
+        "prefill_peak_vram_gib": 0.466339111328125,
+        "decode_peak_vram_gib": 0.4663734436035156,
+        "peak_vram_gib": 0.4663734436035156,
+        "prefill_peak_delta_gib": 0.072265625,
+        "decode_peak_delta_gib": 0.11896133422851562,
+        "peak_delta_gib": 0.11896133422851562,
+        "json_path": "/tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-vulkan-gfx1151.json",
+        "commands": {
+          "prefill": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 32768 -n 0 -d 0",
+          "decode": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 0 -n 128 -d 32768"
+        },
+        "model_size_gib": 20.604151248931885,
+        "build_commit": "fcae601e4",
+        "build_number": 9197,
+        "gpu_info": "AMD Radeon 8060S Graphics",
+        "backend_recorded": "llamacpp_vulkan",
+        "aperture_peak_vram_gib_not_model_peak": 0.4663734436035156
+      },
+      {
+        "workload": "128K/128",
+        "prompt_length": 131072,
+        "decode_tokens": 128,
+        "prefill_tok_s": 181.452787,
+        "decode_tok_s": 26.935416,
+        "prefill_peak_vram_gib": 0.467041015625,
+        "decode_peak_vram_gib": 0.4670143127441406,
+        "peak_vram_gib": 0.467041015625,
+        "prefill_peak_delta_gib": 0.12012863159179688,
+        "decode_peak_delta_gib": 0.1201019287109375,
+        "peak_delta_gib": 0.12012863159179688,
+        "json_path": "/tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-vulkan-gfx1151.json",
+        "commands": {
+          "prefill": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 131072 -n 0 -d 0",
+          "decode": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 0 -n 128 -d 131072"
+        },
+        "model_size_gib": 20.604151248931885,
+        "build_commit": "fcae601e4",
+        "build_number": 9197,
+        "gpu_info": "AMD Radeon 8060S Graphics",
+        "backend_recorded": "llamacpp_vulkan",
+        "aperture_peak_vram_gib_not_model_peak": 0.467041015625
+      },
+      {
+        "workload": "4K/4K",
+        "prompt_length": 4096,
+        "decode_tokens": 4096,
+        "prefill_tok_s": 590.391163,
+        "decode_tok_s": 54.24097,
+        "prefill_peak_vram_gib": 0.4833488464355469,
+        "decode_peak_vram_gib": 0.4668426513671875,
+        "peak_vram_gib": 0.4833488464355469,
+        "prefill_peak_delta_gib": 0.08928680419921875,
+        "decode_peak_delta_gib": 0.11912155151367188,
+        "peak_delta_gib": 0.11912155151367188,
+        "json_path": "/tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-vulkan-gfx1151.json",
+        "commands": {
+          "prefill": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 4096 -n 0 -d 0",
+          "decode": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk f16 -ctv f16 -r 1 -o json -p 0 -n 4096 -d 4096"
+        },
+        "model_size_gib": 20.604151248931885,
+        "build_commit": "fcae601e4",
+        "build_number": 9197,
+        "gpu_info": "AMD Radeon 8060S Graphics",
+        "backend_recorded": "llamacpp_vulkan",
+        "aperture_peak_vram_gib_not_model_peak": 0.4833488464355469
+      }
+    ],
+    "hipengine_reference": [
+      {
+        "workload": "512/128",
+        "prompt_tokens": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "json_path": "/tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-512-128.json",
+        "stdout_path": "/tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-512-128.stdout",
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 --graph-replay-decode --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-512-128.json",
+        "prefill_seconds": 0.581063744000005,
+        "decode_seconds": 2.067359212000042,
+        "load_seconds": 21.983764143999963,
+        "prefill_tok_s": 881.1425687574745,
+        "decode_tok_s": 61.914736083125064,
+        "decode_step_median_s": 0.01615124384375033,
+        "tracked_peak_allocated_gib": 18.123325088061392,
+        "owned_session_peak_gib": 1.5545942122116685,
+        "hip_used_peak_sampled_gib_raw": -39.35935401916504,
+        "tracked_current_gib_before_close": 17.909567528404295,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "target_arch": "gfx1151",
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.547565460205078
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.32843589782715
+          }
+        ]
+      },
+      {
+        "workload": "4K/128",
+        "prompt_tokens": 4096,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "json_path": "/tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-4096-128.json",
+        "stdout_path": "/tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-4096-128.stdout",
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 --graph-replay-decode --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-4096-128.json",
+        "prefill_seconds": 6.495560266000041,
+        "decode_seconds": 2.020058617000018,
+        "load_seconds": 16.69492454599998,
+        "prefill_tok_s": 630.5845581080741,
+        "decode_tok_s": 63.36449790258679,
+        "decode_step_median_s": 0.01578170794531264,
+        "tracked_peak_allocated_gib": 19.994833522476256,
+        "owned_session_peak_gib": 1.9300737464800477,
+        "hip_used_peak_sampled_gib_raw": -38.887399673461914,
+        "tracked_current_gib_before_close": 18.285047062672675,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "target_arch": "gfx1151",
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.512271881103516
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.89841651916504
+          }
+        ]
+      },
+      {
+        "workload": "32K/128",
+        "prompt_tokens": 32768,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "json_path": "/tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-32768-128.json",
+        "stdout_path": "/tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-32768-128.stdout",
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 32768 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 --graph-replay-decode --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-32768-128.json",
+        "prefill_seconds": 54.735340793000034,
+        "decode_seconds": 2.5323502439999857,
+        "load_seconds": 16.93105381800001,
+        "prefill_tok_s": 598.662573855585,
+        "decode_tok_s": 50.54593072315976,
+        "decode_step_median_s": 0.019783986281249888,
+        "tracked_peak_allocated_gib": 20.267377072013915,
+        "owned_session_peak_gib": 2.7427784288302064,
+        "hip_used_peak_sampled_gib_raw": -38.05138969421387,
+        "tracked_current_gib_before_close": 19.097751745022833,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "target_arch": "gfx1151",
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.186115264892578
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.086647033691406
+          }
+        ]
+      },
+      {
+        "workload": "128K/128",
+        "prompt_tokens": 131072,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 4,
+        "json_path": "/tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-131072-128.json",
+        "stdout_path": "/tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-131072-128.stdout",
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 131072 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 --graph-replay-decode --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --json /tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-131072-128.json",
+        "prefill_seconds": 352.60787258700003,
+        "decode_seconds": 4.235606372999996,
+        "load_seconds": 17.212922643000013,
+        "prefill_tok_s": 371.7217061501093,
+        "decode_tok_s": 30.21999419396948,
+        "decode_step_median_s": 0.03309067478906247,
+        "tracked_peak_allocated_gib": 23.235433750785887,
+        "owned_session_peak_gib": 5.710835107602179,
+        "hip_used_peak_sampled_gib_raw": -35.08459281921387,
+        "tracked_current_gib_before_close": 22.065808423794806,
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "target_arch": "gfx1151",
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.807741165161133
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 29.85659408569336
+          }
+        ]
+      },
+      {
+        "workload": "4K/4K",
+        "prompt_tokens": 4096,
+        "decode_tokens": 4096,
+        "warmup_decode_tokens": 4,
+        "json_path": "/tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-4096-4096.json",
+        "stdout_path": "/tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-4096-4096.stdout",
+        "command": "HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_paro_bench.py --model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1151 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 4096 --decode-tokens 4096 --warmup-decode-tokens 4 --max-layers 40 --attn-aotriton-min-tokens 512 --graph-replay-decode --compiler-version-file /tmp/hipengine-gfx1151-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gfx1151-shisa36-packed-20260517/packed-4096-4096.json",
+        "prefill_seconds": 6.589969984000163,
+        "decode_seconds": 65.80460406299972,
+        "load_seconds": 16.802298013999916,
+        "prefill_tok_s": 621.5506307228575,
+        "decode_tok_s": 62.2448848119896,
+        "decode_step_median_s": 0.01606557716381829,
+        "tracked_peak_allocated_gib": 20.108413153328,
+        "owned_session_peak_gib": 2.0436533773317933,
+        "hip_used_peak_sampled_gib_raw": -38.772165298461914,
+        "tracked_current_gib_before_close": 18.39862669352442,
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        },
+        "native_prefill_execution": "single_request_native_full",
+        "graph_replay": true,
+        "target_arch": "gfx1151",
+        "generated_preview": [
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.512271881103516
+          },
+          {
+            "token_id": 9707,
+            "token_text": ".Q",
+            "logit": 28.582761764526367
+          }
+        ]
+      }
+    ],
+    "comparison_hipengine_vs_upstream_hip": [
+      {
+        "workload": "512/128",
+        "hipengine_prefill_tok_s": 881.1425687574745,
+        "upstream_hip_prefill_tok_s": 1058.737576,
+        "prefill_delta_pct": -16.774223496770034,
+        "hipengine_decode_tok_s": 61.914736083125064,
+        "upstream_hip_decode_tok_s": 50.536968,
+        "decode_delta_pct": 22.51375286923636
+      },
+      {
+        "workload": "4K/128",
+        "hipengine_prefill_tok_s": 630.5845581080741,
+        "upstream_hip_prefill_tok_s": 1004.21996,
+        "prefill_delta_pct": -37.20653012034594,
+        "hipengine_decode_tok_s": 63.36449790258679,
+        "upstream_hip_decode_tok_s": 49.379432,
+        "decode_delta_pct": 28.321641898567783
+      },
+      {
+        "workload": "32K/128",
+        "hipengine_prefill_tok_s": 598.662573855585,
+        "upstream_hip_prefill_tok_s": 735.53422,
+        "prefill_delta_pct": -18.608467481555778,
+        "hipengine_decode_tok_s": 50.54593072315976,
+        "upstream_hip_decode_tok_s": 43.43536,
+        "decode_delta_pct": 16.37046572921177
+      },
+      {
+        "workload": "128K/128",
+        "hipengine_prefill_tok_s": 371.7217061501093,
+        "upstream_hip_prefill_tok_s": 376.069879,
+        "prefill_delta_pct": -1.1562140688993416,
+        "hipengine_decode_tok_s": 30.21999419396948,
+        "upstream_hip_decode_tok_s": 31.285706,
+        "decode_delta_pct": -3.406385670281886
+      },
+      {
+        "workload": "4K/4K",
+        "hipengine_prefill_tok_s": 621.5506307228575,
+        "upstream_hip_prefill_tok_s": 990.725575,
+        "prefill_delta_pct": -37.26308814397393,
+        "hipengine_decode_tok_s": 62.2448848119896,
+        "upstream_hip_decode_tok_s": 49.070638,
+        "decode_delta_pct": 26.847514825443277
+      }
+    ],
+    "comparison_hipengine_vs_upstream_vulkan": [
+      {
+        "workload": "512/128",
+        "hipengine_prefill_tok_s": 881.1425687574745,
+        "upstream_vulkan_prefill_tok_s": 638.00773,
+        "prefill_delta_pct": 38.108447174687754,
+        "hipengine_decode_tok_s": 61.914736083125064,
+        "upstream_vulkan_decode_tok_s": 57.615142,
+        "decode_delta_pct": 7.462611275218345
+      },
+      {
+        "workload": "4K/128",
+        "hipengine_prefill_tok_s": 630.5845581080741,
+        "upstream_vulkan_prefill_tok_s": 595.400407,
+        "prefill_delta_pct": 5.90932600892129,
+        "hipengine_decode_tok_s": 63.36449790258679,
+        "upstream_vulkan_decode_tok_s": 55.027415,
+        "decode_delta_pct": 15.150780574713153
+      },
+      {
+        "workload": "32K/128",
+        "hipengine_prefill_tok_s": 598.662573855585,
+        "upstream_vulkan_prefill_tok_s": 407.984089,
+        "prefill_delta_pct": 46.73674537724069,
+        "hipengine_decode_tok_s": 50.54593072315976,
+        "upstream_vulkan_decode_tok_s": 44.575954,
+        "decode_delta_pct": 13.392818745191093
+      },
+      {
+        "workload": "128K/128",
+        "hipengine_prefill_tok_s": 371.7217061501093,
+        "upstream_vulkan_prefill_tok_s": 181.452787,
+        "prefill_delta_pct": 104.85863694676087,
+        "hipengine_decode_tok_s": 30.21999419396948,
+        "upstream_vulkan_decode_tok_s": 26.935416,
+        "decode_delta_pct": 12.194273123420407
+      },
+      {
+        "workload": "4K/4K",
+        "hipengine_prefill_tok_s": 621.5506307228575,
+        "upstream_vulkan_prefill_tok_s": 590.391163,
+        "prefill_delta_pct": 5.277766619087676,
+        "hipengine_decode_tok_s": 62.2448848119896,
+        "upstream_vulkan_decode_tok_s": 54.24097,
+        "decode_delta_pct": 14.75621621809049
+      }
+    ]
+  },
+  "commands": {
+    "hip_wrapper": "python3 scripts/llamacpp_bench_with_peak.py --llama-bench /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip --workloads 512/128 4K/128 32K/128 128K/128 4K/4K --poll 10 --repetitions 1 --card-name card1 --output /tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-hip-gfx1151-unroll600.json",
+    "vulkan_wrapper": "python3 scripts/llamacpp_bench_with_peak.py --llama-bench /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend vulkan --workloads 512/128 4K/128 32K/128 128K/128 4K/4K --poll 10 --repetitions 1 --card-name card1 --output /tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-vulkan-gfx1151.json"
+  },
+  "correctness": {
+    "passed": false,
+    "status": "external_baseline_only_no_correctness_gate",
+    "reason_not_accepted": "Diagnostic comparison rerun; no model correctness gate or repeated-run statistics."
+  },
+  "memory": {
+    "note": "Memory diagnostics intentionally skipped/ignored for the comparison table because sysfs aperture counters are invalid on this APU."
+  }
+}

@@ -16172,3 +16172,61 @@ and a separate `4K/4K` wrapper run. Binary reports llama.cpp build `e828394c2` /
 | 4K/4K | 1003.175 | 49.079 | same |
 
 On this Strix Halo run, hipENGINE decode beats local llama.cpp HIP on every matched row, but hipENGINE prefill trails llama.cpp at 512/4K/32K and is roughly tied/slightly behind at 128K. Keep as diagnostic until correctness/repetition gates are added.
+
+## 2026-05-17 — upstream llama.cpp HIP/Vulkan gfx1151 rerun
+
+Reran the GGUF side of the Strix Halo comparison after pulling/building the latest upstream llama.cpp trees:
+
+- HIP binary: `/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench` (`libggml-hip`, ROCm gfx1151 libs, binary mtime 2026-05-17 19:48).
+- Vulkan binary: `/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench` (`libggml-vulkan`, AMD open-source Vulkan driver, binary mtime 2026-05-17 19:43).
+- GGUF model: `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`.
+- Wrapper: `scripts/llamacpp_bench_with_peak.py --card-name card1 --poll 10 --repetitions 1`.
+
+Artifact: `benchmarks/results/2026-05-17-llamacpp-upstream-gfx1151-qwen36-gguf-rerun-diagnostic.json`.
+
+Memory note: we intentionally skip memory diagnostics for the compare tables because Strix Halo sysfs/rocm-smi expose only a 512 MiB VRAM aperture; row-level throughput is the relevant comparison.
+
+### Upstream llama.cpp HIP rerun
+
+```bash
+python3 scripts/llamacpp_bench_with_peak.py \
+  --llama-bench /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-bench \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip --workloads 512/128 4K/128 32K/128 128K/128 4K/4K \
+  --poll 10 --repetitions 1 --card-name card1 \
+  --output /tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-hip-gfx1151-unroll600.json
+```
+
+| Workload | Prefill tok/s | Decode tok/s |
+| --- | ---: | ---: |
+| 512/128 | 1058.738 | 50.537 |
+| 4K/128 | 1004.220 | 49.379 |
+| 32K/128 | 735.534 | 43.435 |
+| 128K/128 | 376.070 | 31.286 |
+| 4K/4K | 990.726 | 49.071 |
+
+### Upstream llama.cpp Vulkan rerun
+
+```bash
+python3 scripts/llamacpp_bench_with_peak.py \
+  --llama-bench /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend vulkan --workloads 512/128 4K/128 32K/128 128K/128 4K/4K \
+  --poll 10 --repetitions 1 --card-name card1 \
+  --output /tmp/llamacpp-upstream-gfx1151-qwen36-20260517/llamacpp-upstream-vulkan-gfx1151.json
+```
+
+| Workload | Prefill tok/s | Decode tok/s |
+| --- | ---: | ---: |
+| 512/128 | 638.008 | 57.615 |
+| 4K/128 | 595.400 | 55.027 |
+| 32K/128 | 407.984 | 44.576 |
+| 128K/128 | 181.453 | 26.935 |
+| 4K/4K | 590.391 | 54.241 |
+
+Updated `scripts/qwen35_compare_tables.py` with `shisa-packed-gfx1151`, `llama.cpp-hip-gfx1151`, `llama.cpp-vulkan-gfx1151`, aliases (`--target gfx1151`, `hip-gfx1151`, `vulkan-gfx1151`), and `--no-memory` for throughput-only tables. Example commands:
+
+```bash
+python3 scripts/qwen35_compare_tables.py --target gfx1151 hip-gfx1151 --no-memory
+python3 scripts/qwen35_compare_tables.py --target gfx1151 vulkan-gfx1151 --no-memory
+```

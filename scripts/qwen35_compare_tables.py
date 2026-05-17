@@ -32,6 +32,8 @@ class Series:
 
 QWEN35_SOURCE = "benchmarks/results/2026-05-17-hipengine-qwen35-d31-d33-grouped-gqa-long-context-diagnostic.json"
 SHISA_SOURCE = "benchmarks/results/2026-05-17-hipengine-qwen36-shisa-packed-vs-legacy-refresh-diagnostic.json"
+SHISA_GFX1151_SOURCE = "benchmarks/results/2026-05-17-hipengine-gfx1151-shisa-qwen36-packed-canonical-sweep-diagnostic.json"
+LLAMACPP_GFX1151_SOURCE = "benchmarks/results/2026-05-17-llamacpp-upstream-gfx1151-qwen36-gguf-rerun-diagnostic.json"
 
 TARGETS: dict[str, Series] = {
     "qwen35-current": Series(
@@ -64,6 +66,23 @@ TARGETS: dict[str, Series] = {
             Row("4K/128", 2711.013, 113.231, 19.995),
             Row("32K/128", 2130.562, 97.779, 20.267),
             Row("128K/128", 1048.543, 62.014, 23.235),
+        ),
+    ),
+    "shisa-packed-gfx1151": Series(
+        key="shisa-packed-gfx1151",
+        display="hipENGINE shisa Qwen3.6 packed PARO (gfx1151)",
+        source=SHISA_GFX1151_SOURCE,
+        notes=(
+            "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed on Strix Halo/Radeon 8060S, "
+            "hip_gfx1151, graph-replay decode, AOTriton threshold 512. 32K/128K rows use "
+            "parent-style chunk flags. Diagnostic single-run; no shisa KL/top-1 gate yet."
+        ),
+        rows=(
+            Row("512/128", 881.143, 61.915, 18.123),
+            Row("4K/128", 630.585, 63.364, 19.995),
+            Row("32K/128", 598.663, 50.546, 20.267),
+            Row("128K/128", 371.722, 30.220, 23.235),
+            Row("4K/4K", 621.551, 62.245, 20.108),
         ),
     ),
     "shisa-legacy": Series(
@@ -127,6 +146,41 @@ BASELINES: dict[str, Series] = {
             Row("128K/128", 480.539, 64.478, 23.596),
         ),
     ),
+    "llama.cpp-hip-gfx1151": Series(
+        key="llama.cpp-hip-gfx1151",
+        display="llama.cpp HIP upstream (gfx1151)",
+        source=LLAMACPP_GFX1151_SOURCE,
+        notes=(
+            "Qwen3.6-35B-A3B UD-Q4_K_M GGUF with upstream llama.cpp-hip "
+            "build-gfx1151-unroll600, f16 KV, flash attention, split pp/tg rows. "
+            "Memory table is intentionally omitted for gfx1151 comparisons because sysfs/rocm-smi "
+            "report only the Strix Halo 512 MiB aperture."
+        ),
+        rows=(
+            Row("512/128", 1058.738, 50.537, None),
+            Row("4K/128", 1004.220, 49.379, None),
+            Row("32K/128", 735.534, 43.435, None),
+            Row("128K/128", 376.070, 31.286, None),
+            Row("4K/4K", 990.726, 49.071, None),
+        ),
+    ),
+    "llama.cpp-vulkan-gfx1151": Series(
+        key="llama.cpp-vulkan-gfx1151",
+        display="llama.cpp Vulkan upstream (gfx1151)",
+        source=LLAMACPP_GFX1151_SOURCE,
+        notes=(
+            "Qwen3.6-35B-A3B UD-Q4_K_M GGUF with upstream llama.cpp-vulkan build, "
+            "f16 KV, flash attention, split pp/tg rows. Memory table is intentionally omitted "
+            "for gfx1151 comparisons because sysfs/rocm-smi report only the Strix Halo 512 MiB aperture."
+        ),
+        rows=(
+            Row("512/128", 638.008, 57.615, None),
+            Row("4K/128", 595.400, 55.027, None),
+            Row("32K/128", 407.984, 44.576, None),
+            Row("128K/128", 181.453, 26.935, None),
+            Row("4K/4K", 590.391, 54.241, None),
+        ),
+    ),
 }
 
 BASELINE_ALIASES = {
@@ -142,6 +196,16 @@ BASELINE_ALIASES = {
     "llama.cpp-vulkan": "llama.cpp-vulkan",
     "llamacpp-vulkan": "llama.cpp-vulkan",
     "vulkan": "llama.cpp-vulkan",
+    "llama.cpp hip gfx1151": "llama.cpp-hip-gfx1151",
+    "llama.cpp-hip-gfx1151": "llama.cpp-hip-gfx1151",
+    "llamacpp-hip-gfx1151": "llama.cpp-hip-gfx1151",
+    "hip-gfx1151": "llama.cpp-hip-gfx1151",
+    "upstream-hip-gfx1151": "llama.cpp-hip-gfx1151",
+    "llama.cpp vulkan gfx1151": "llama.cpp-vulkan-gfx1151",
+    "llama.cpp-vulkan-gfx1151": "llama.cpp-vulkan-gfx1151",
+    "llamacpp-vulkan-gfx1151": "llama.cpp-vulkan-gfx1151",
+    "vulkan-gfx1151": "llama.cpp-vulkan-gfx1151",
+    "upstream-vulkan-gfx1151": "llama.cpp-vulkan-gfx1151",
 }
 
 TARGET_ALIASES = {
@@ -158,6 +222,12 @@ TARGET_ALIASES = {
     "packed-paro-w4": "shisa-packed",
     "packed_paro_w4": "shisa-packed",
     "shisa-packed": "shisa-packed",
+    "gfx1151": "shisa-packed-gfx1151",
+    "shisa-gfx1151": "shisa-packed-gfx1151",
+    "qwen36-gfx1151": "shisa-packed-gfx1151",
+    "qwen3.6-gfx1151": "shisa-packed-gfx1151",
+    "packed-gfx1151": "shisa-packed-gfx1151",
+    "shisa-packed-gfx1151": "shisa-packed-gfx1151",
     "legacy": "shisa-legacy",
     "legacy-fp16": "shisa-legacy",
     "legacy_fp16": "shisa-legacy",
@@ -174,7 +244,7 @@ def _normalize_baseline(value: str) -> str:
     key = _normalized_key(value)
     key = BASELINE_ALIASES.get(key, key)
     if key not in BASELINES and key != "all":
-        valid = ", ".join(["nano-vllm-amd", "llama.cpp-hip", "llama.cpp-vulkan", "all"])
+        valid = ", ".join([*BASELINES, "all"])
         raise SystemExit(f"unknown baseline {value!r}; choose one of: {valid}")
     return key
 
@@ -183,7 +253,7 @@ def _normalize_target(value: str) -> str:
     key = _normalized_key(value)
     key = TARGET_ALIASES.get(key, key)
     if key not in TARGETS:
-        valid = ", ".join(["qwen35-current", "shisa-packed", "shisa-legacy"])
+        valid = ", ".join(TARGETS)
         raise SystemExit(f"unknown target {value!r}; choose one of: {valid}")
     return key
 
@@ -230,7 +300,7 @@ def _shared_workloads(left: Series, right: Series) -> list[str]:
     return [row.workload for row in left.rows if row.workload in right_workloads]
 
 
-def print_comparison(target: Series, baseline: Series) -> None:
+def print_comparison(target: Series, baseline: Series, *, include_memory: bool = True) -> None:
     left = _row_map(target.rows)
     right = _row_map(baseline.rows)
     workloads = _shared_workloads(target, baseline)
@@ -268,22 +338,23 @@ def print_comparison(target: Series, baseline: Series) -> None:
         ],
     )
 
-    _print_table(
-        "Memory / peak GiB",
-        ("Workload", f"{target.display} peak GiB", f"{baseline.display} peak GiB", "Delta A vs B"),
-        [
-            (
-                workload,
-                _fmt_gib(left[workload].peak_gib),
-                _fmt_gib(right[workload].peak_gib),
-                _fmt_gib_delta(left[workload].peak_gib, right[workload].peak_gib),
-            )
-            for workload in workloads
-        ],
-    )
+    if include_memory:
+        _print_table(
+            "Memory / peak GiB",
+            ("Workload", f"{target.display} peak GiB", f"{baseline.display} peak GiB", "Delta A vs B"),
+            [
+                (
+                    workload,
+                    _fmt_gib(left[workload].peak_gib),
+                    _fmt_gib(right[workload].peak_gib),
+                    _fmt_gib_delta(left[workload].peak_gib, right[workload].peak_gib),
+                )
+                for workload in workloads
+            ],
+        )
 
 
-def print_target_comparison(target: Series, compare_target: Series) -> None:
+def print_target_comparison(target: Series, compare_target: Series, *, include_memory: bool = True) -> None:
     left = _row_map(target.rows)
     right = _row_map(compare_target.rows)
     workloads = _shared_workloads(target, compare_target)
@@ -322,19 +393,20 @@ def print_target_comparison(target: Series, compare_target: Series) -> None:
         ],
     )
 
-    _print_table(
-        "Memory / peak GiB",
-        ("Workload", "A peak GiB", "B peak GiB", "Delta A vs B"),
-        [
-            (
-                workload,
-                _fmt_gib(left[workload].peak_gib),
-                _fmt_gib(right[workload].peak_gib),
-                _fmt_gib_delta(left[workload].peak_gib, right[workload].peak_gib),
-            )
-            for workload in workloads
-        ],
-    )
+    if include_memory:
+        _print_table(
+            "Memory / peak GiB",
+            ("Workload", "A peak GiB", "B peak GiB", "Delta A vs B"),
+            [
+                (
+                    workload,
+                    _fmt_gib(left[workload].peak_gib),
+                    _fmt_gib(right[workload].peak_gib),
+                    _fmt_gib_delta(left[workload].peak_gib, right[workload].peak_gib),
+                )
+                for workload in workloads
+            ],
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -367,6 +439,11 @@ def parse_args() -> argparse.Namespace:
             "With no value, uses legacy when A is packed/shisa and packed when A is legacy."
         ),
     )
+    parser.add_argument(
+        "--no-memory",
+        action="store_true",
+        help="Only print prefill/decode throughput tables; skip peak-memory tables.",
+    )
     return parser.parse_args()
 
 
@@ -377,7 +454,7 @@ def main() -> None:
 
     if args.against_target is not None:
         compare_key = _auto_compare_target(target_key) if args.against_target == "auto" else _normalize_target(args.against_target)
-        print_target_comparison(target, TARGETS[compare_key])
+        print_target_comparison(target, TARGETS[compare_key], include_memory=not args.no_memory)
         return
 
     key = _normalize_baseline(args.baseline)
@@ -385,9 +462,9 @@ def main() -> None:
         for index, baseline in enumerate(BASELINES.values()):
             if index:
                 print("---\n")
-            print_comparison(target, baseline)
+            print_comparison(target, baseline, include_memory=not args.no_memory)
     else:
-        print_comparison(target, BASELINES[key])
+        print_comparison(target, BASELINES[key], include_memory=not args.no_memory)
 
 
 if __name__ == "__main__":
