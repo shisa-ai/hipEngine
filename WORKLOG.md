@@ -16678,3 +16678,34 @@ print('markdown links OK')
 PY
 # all passed
 ```
+
+## 2026-05-18 - K1 INT8 KV lineage preflight path repair
+
+Started dense INT8 KV bring-up on branch `kvcache-int8` with task #1.
+
+Changed `docs/source_lineage.json` paths from stale `/home/lhl/github/shisa-ai/amd-gpu-tuning/...`
+to the live `/home/lhl/amd-gpu-tuning/...` workspace so the required pre-port lineage check can run.
+
+Validation / evidence:
+
+```bash
+python3 -m json.tool docs/source_lineage.json >/tmp/hipengine-source-lineage.json
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: JSON validation passed; lineage check now runs without path errors. It reports expected parent drift:
+
+- repo `nano-vllm-amd`: `/home/lhl/amd-gpu-tuning/nano-vllm-amd`, branch `gfx1100-qwen3.5`, head `5d8f496`.
+- `csrc/amd/qwen35_expert.hip` drift since baseline `22405a9`: commits `6e2b19b`, `5fde418`, `b95eaa5`; diffstat `1011` lines. These are compact WMMA / tree recurrence / GDN tloop updates, not a new INT8 KV replacement.
+- Kernel catalog still lists the INT8 KV symbols under `docs/KERNELS.md`: `qwen35_paged_full_attn_decode_split_k_int8_kernel`, `qwen35_paged_full_attn_decode_split_k_ctx_tensor_int8_kernel`, `qwen35_write_paged_kv_int8_kernel`, and `qwen35_write_paged_kv_position_tensor_int8_kernel`.
+
+Parent INT8 KV source evidence:
+
+```bash
+git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd log --oneline --reverse -S 'qwen35_write_paged_kv_int8_kernel' -- csrc/amd/qwen35_expert.hip
+git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd log --oneline --reverse -S 'qwen35_paged_full_attn_decode_split_k_int8_kernel' -- csrc/amd/qwen35_expert.hip
+```
+
+Both identify `nano-vllm-amd@2751f2f` (`feat(amd): INT8 per-token KV cache with vec16 read and parallel write`) as the source commit. Parent WORKLOG entry `/home/lhl/amd-gpu-tuning/WORKLOG.md:20081` records the INT8 KV implementation, scale shapes `[num_blocks, block_size, num_kv_heads]`, opt-in `--kv-cache-dtype int8`, and parent results: INT8 attention faster at 4K microbench but only ~+0.2% E2E at 4K/128 and 4K/D4K.
+
+Porting caution for K1: the parent writer must be audited against `docs/KVCACHE.md` before copying. The source claims per-head scales, but the current writer reduces max-abs over `total_size = num_kv_heads * head_dim` and then writes the same reduced max for each head; it also needs explicit zero-scale handling for all-zero rows. Task #2 will pin the hipEngine oracle semantics before any kernel port.
