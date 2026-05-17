@@ -11,6 +11,7 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_bf16_add,
     gguf_gate_repeat_value_bf16,
+    gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
 )
 from hipengine.loading.materialize import float_array_to_bf16_bits
@@ -124,6 +125,64 @@ def test_gguf_ops_gate_repeat_value() -> None:
     np.testing.assert_array_equal(bf16_to_float32(out), bf16_to_float32(float_array_to_bf16_bits(expected)))
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_gguf_ops_qwen35_f32_weight_head_rmsnorm_rope() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_gguf_ops(load=True)
+    query = np.asarray([[1.0, -2.0, 0.5, 3.0], [-1.5, 0.25, 2.5, -0.75]], dtype=np.float32)
+    key = np.asarray([[0.75, -1.25, 1.5, -2.0]], dtype=np.float32)
+    q_weight = np.asarray([0.1, -0.2, 0.05, 0.3], dtype=np.float32)
+    k_weight = np.asarray([-0.15, 0.25, -0.05, 0.2], dtype=np.float32)
+    cos, sin = _rope_tables(max_positions=3, rotary_dim=4, base=10000.0)
+    position = np.asarray([2], dtype=np.int64)
+    query_out = np.empty_like(query)
+    key_out = np.empty_like(key)
+    bufs = []
+    try:
+        dq = _dev(query, runtime, bufs)
+        dk = _dev(key, runtime, bufs)
+        dqw = _dev(q_weight, runtime, bufs)
+        dkw = _dev(k_weight, runtime, bufs)
+        dcos = _dev(cos, runtime, bufs)
+        dsin = _dev(sin, runtime, bufs)
+        dpos = _dev(position, runtime, bufs)
+        dqo = malloc(query_out.nbytes, runtime=runtime)
+        dko = malloc(key_out.nbytes, runtime=runtime)
+        bufs.extend((dqo, dko))
+        gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
+            dq.ptr,
+            dk.ptr,
+            dqw.ptr,
+            dkw.ptr,
+            dcos.ptr,
+            dsin.ptr,
+            dpos.ptr,
+            dqo.ptr,
+            dko.ptr,
+            1.0e-6,
+            2,
+            1,
+            4,
+            4,
+            3,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(query_out), dqo, runtime=runtime)
+        copy_device_to_host(host_array_ptr(key_out), dko, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    expected_query = _apply_rope(_rmsnorm_offset(query, q_weight), cos[2], sin[2], 4)
+    expected_key = _apply_rope(_rmsnorm_offset(key, k_weight), cos[2], sin[2], 4)
+    np.testing.assert_allclose(query_out, expected_query, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(key_out, expected_key, rtol=1e-6, atol=1e-6)
+
+
 def _dev(array: np.ndarray, runtime, bufs: list):
     contiguous = np.ascontiguousarray(array)
     buf = malloc(contiguous.nbytes, runtime=runtime)
@@ -139,3 +198,30 @@ def _rmsnorm(x: np.ndarray, weight: np.ndarray) -> np.ndarray:
 
 def _sigmoid(value: float) -> float:
     return float(1.0 / (1.0 + np.exp(-value)))
+
+
+def _rmsnorm_offset(x: np.ndarray, weight: np.ndarray) -> np.ndarray:
+    inv_rms = 1.0 / np.sqrt(np.mean(x.astype(np.float32) ** 2, axis=-1, keepdims=True) + 1.0e-6)
+    return x.astype(np.float32) * inv_rms * (1.0 + weight.astype(np.float32))
+
+
+def _apply_rope(x: np.ndarray, cos: np.ndarray, sin: np.ndarray, rotary_dim: int) -> np.ndarray:
+    out = np.array(x, dtype=np.float32, copy=True)
+    half = rotary_dim // 2
+    first = out[..., :half].copy()
+    second = out[..., half:rotary_dim].copy()
+    out[..., :half] = first * cos[:half] - second * sin[:half]
+    out[..., half:rotary_dim] = second * cos[half:rotary_dim] + first * sin[half:rotary_dim]
+    return out
+
+
+def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[np.ndarray, np.ndarray]:
+    positions = np.arange(max_positions, dtype=np.float32)[:, None]
+    dims = np.arange(rotary_dim // 2, dtype=np.float32)[None, :]
+    inv_freq = np.power(np.float32(base), -2.0 * dims / np.float32(rotary_dim))
+    freqs = positions * inv_freq
+    cos_half = np.cos(freqs).astype(np.float32, copy=False)
+    sin_half = np.sin(freqs).astype(np.float32, copy=False)
+    cos = np.concatenate([cos_half, cos_half], axis=1).astype(np.float32, copy=False)
+    sin = np.concatenate([sin_half, sin_half], axis=1).astype(np.float32, copy=False)
+    return np.ascontiguousarray(cos), np.ascontiguousarray(sin)

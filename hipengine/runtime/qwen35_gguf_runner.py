@@ -7,20 +7,29 @@ from pathlib import Path
 
 import numpy as np
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
-from hipengine.kernels.hip_gfx1100.convert import f32_to_bf16
+from hipengine.core.tensor import Tensor
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+    qwen35_full_attn_gate_mul_bf16,
+    qwen35_paged_full_attn_decode_context_bf16_spans,
+)
+from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import qwen35_write_paged_kv_mixed_value_bf16_spans
+from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused import (
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_bf16_add,
+    gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
     silu_mul_dual_out_bf16,
 )
+from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgate_bf16
+from hipengine.kvcache import KVLiveSpans
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import qwen35_linear_attn_conv_decode_bf16
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import gguf_q6_k_embedding_bf16_out
-from hipengine.loading.gguf import GGUFReader
-from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
 from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFResidentWeights,
@@ -217,22 +226,10 @@ class Qwen35GGUFFullStackRunner:
     model_path: str | Path
     runtime: HipRuntime | None = None
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
-    _full_attn_q_norm: dict[int, np.ndarray] = field(default_factory=dict, init=False)
-    _full_attn_k_norm: dict[int, np.ndarray] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
         self.weights = materialize_qwen35_gguf_weights(self.model_path, runtime=self.runtime)
-        reader = GGUFReader(self.model_path)
-        assert self.weights is not None
-        for layer_id, layer_type in enumerate(self.weights.config.layer_types):
-            if layer_type == FULL_ATTENTION:
-                self._full_attn_q_norm[layer_id] = np.asarray(
-                    reader.tensor_data(f"blk.{layer_id}.attn_q_norm.weight"), dtype=np.float32
-                )
-                self._full_attn_k_norm[layer_id] = np.asarray(
-                    reader.tensor_data(f"blk.{layer_id}.attn_k_norm.weight"), dtype=np.float32
-                )
 
     @property
     def hidden_size(self) -> int:
@@ -298,6 +295,7 @@ class Qwen35GGUFFullStackRunner:
             src = hidden_a
             dst = hidden_b
             for position, token_id in enumerate(token_ids):
+                scratch.set_full_attention_position(position, runtime)
                 token_arr[0] = int(token_id)
                 copy_host_to_device(token_buf, host_array_ptr(token_arr), runtime=runtime)
                 gguf_q6_k_embedding_bf16_out(
@@ -492,6 +490,8 @@ class Qwen35GGUFFullStackRunner:
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
         runtime = self.runtime or get_hip_runtime()
+        if int(scratch.position_host[0]) != int(position):
+            scratch.set_full_attention_position(position, runtime)
         gguf_rmsnorm_bf16_f32_weight(
             hidden_ptr,
             layer.weight("attn_norm").allocation().tensor.ptr,
@@ -528,13 +528,72 @@ class Qwen35GGUFFullStackRunner:
             out_features=self.kv_width,
             runtime=runtime,
         )
-        runtime.device_synchronize()
-        q_full = _copy_bf16_device_to_f32(scratch.full_q, 2 * self.q_width, runtime=runtime)
-        key = _copy_bf16_device_to_f32(scratch.full_k, self.kv_width, runtime=runtime)
-        value = _copy_bf16_device_to_f32(scratch.full_v, self.kv_width, runtime=runtime)
-        context = self._host_full_attention(layer_id, q_full, key, value, scratch, position=position)
-        context_bits = float_array_to_bf16_bits(context.reshape(1, self.q_width))
-        copy_host_to_device(scratch.full_gated, host_array_ptr(context_bits), runtime=runtime)
+        qwen35_split_qgate_bf16(
+            scratch.full_q.ptr,
+            scratch.full_query_raw.ptr,
+            scratch.full_gate.ptr,
+            1,
+            cfg.head_count,
+            cfg.key_length,
+            runtime=runtime,
+        )
+        bf16_to_f32(
+            scratch.full_k.ptr,
+            scratch.full_key_raw.ptr,
+            self.kv_width,
+            runtime=runtime,
+        )
+        gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
+            scratch.full_query_raw.ptr,
+            scratch.full_key_raw.ptr,
+            layer.weight("attn_q_norm").allocation().tensor.ptr,
+            layer.weight("attn_k_norm").allocation().tensor.ptr,
+            scratch.cos_table.ptr,
+            scratch.sin_table.ptr,
+            scratch.position_tensor.ptr,
+            scratch.full_query.ptr,
+            scratch.full_key.ptr,
+            cfg.rms_norm_eps,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.rope_dimension_count,
+            scratch.max_positions,
+            runtime=runtime,
+        )
+        key_cache, value_cache = scratch.full_cache(layer_id)
+        qwen35_write_paged_kv_mixed_value_bf16_spans(
+            scratch.full_key.ptr,
+            scratch.full_v.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            scratch.append_spans,
+            scratch.block_size,
+            cfg.head_count_kv,
+            cfg.key_length,
+            runtime=runtime,
+        )
+        qwen35_paged_full_attn_decode_context_bf16_spans(
+            scratch.full_query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            scratch.full_attn_context.ptr,
+            scratch.decode_spans,
+            scratch.max_positions,
+            scratch.block_size,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.key_length ** -0.5,
+            runtime=runtime,
+        )
+        qwen35_full_attn_gate_mul_bf16(
+            scratch.full_attn_context.ptr,
+            scratch.full_gate.ptr,
+            scratch.full_gated.ptr,
+            self.q_width,
+            runtime=runtime,
+        )
         launch_gguf_linear(
             layer.weight("attn_output"),
             scratch.full_gated.ptr,
@@ -545,47 +604,6 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch)
-
-    def _host_full_attention(
-        self,
-        layer_id: int,
-        q_full: np.ndarray,
-        key: np.ndarray,
-        value: np.ndarray,
-        scratch,
-        *,
-        position: int,
-    ) -> np.ndarray:
-        assert self.weights is not None
-        cfg = self.weights.config
-        head_dim = cfg.key_length
-        q_full = q_full.reshape(cfg.head_count, 2 * head_dim)
-        query = _rmsnorm_host(q_full[:, :head_dim], 1.0 + self._full_attn_q_norm[layer_id], cfg.rms_norm_eps)
-        gate = q_full[:, head_dim:]
-        key = _rmsnorm_host(
-            key.reshape(cfg.head_count_kv, head_dim),
-            1.0 + self._full_attn_k_norm[layer_id],
-            cfg.rms_norm_eps,
-        )
-        value = value.reshape(cfg.head_count_kv, cfg.value_length)
-        query = _apply_rope_host(query, position, cfg.rope_dimension_count, cfg.rope_freq_base)
-        key = _apply_rope_host(key, position, cfg.rope_dimension_count, cfg.rope_freq_base)
-        scratch.full_k_history[layer_id].append(key.copy())
-        scratch.full_v_history[layer_id].append(value.copy())
-        keys = np.stack(scratch.full_k_history[layer_id], axis=0)
-        values = np.stack(scratch.full_v_history[layer_id], axis=0)
-        out = np.empty((cfg.head_count, cfg.value_length), dtype=np.float32)
-        group = cfg.head_count // cfg.head_count_kv
-        scale = 1.0 / np.sqrt(float(head_dim))
-        for head in range(cfg.head_count):
-            kv_head = head // group
-            scores = keys[:, kv_head, :] @ query[head]
-            scores = scores.astype(np.float32) * scale
-            scores = scores - np.max(scores)
-            probs = np.exp(scores).astype(np.float32)
-            probs /= np.sum(probs)
-            out[head] = probs @ values[:, kv_head, :]
-        return out * _sigmoid_host(gate)
 
     def _run_post_attention_ffn(self, layer_id: int, hidden_ptr: int, attn_out_ptr: int, out_ptr: int, scratch) -> None:
         assert self.weights is not None
@@ -655,11 +673,10 @@ class Qwen35GGUFResidentSession:
     """Persistent GGUF Qwen3.5 session for public greedy generation.
 
     The session materializes GGUF weights once, owns reusable device scratch, and
-    carries linear-attention recurrent state plus the current full-attention
-    history across decode steps.  Full-attention math is still the existing
-    CPU-hosted small-context bridge until the follow-up GPU KV/AOTriton work, but
-    the public path no longer recomputes the full prompt/context for every new
-    token.
+    carries linear-attention recurrent state plus paged full-attention K/V cache
+    across decode steps.  Full-attention q/k norm, RoPE, KV append, softmax, and
+    gate application now stay on GPU for the one-token resident path; rows>1
+    prefill and AOTriton are still follow-up work.
     """
 
     model_path: str | Path
@@ -737,6 +754,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident session buffers are closed")
         assert self.runner.weights is not None
         runtime = self.runtime or get_hip_runtime()
+        self.scratch.set_full_attention_position(position, runtime)
         self._token_host[0] = int(token_id)
         copy_host_to_device(self._token_buf, host_array_ptr(self._token_host), runtime=runtime)
         gguf_q6_k_embedding_bf16_out(
@@ -842,9 +860,31 @@ class _FullStackScratch:
     full_q: object
     full_k: object
     full_v: object
+    full_query_raw: object
+    full_key_raw: object
+    full_query: object
+    full_key: object
+    full_gate: object
+    full_attn_context: object
     full_gated: object
-    full_k_history: tuple[list[np.ndarray], ...]
-    full_v_history: tuple[list[np.ndarray], ...]
+    full_key_caches: tuple[object | None, ...]
+    full_value_caches: tuple[object | None, ...]
+    block_table: object
+    position_buf: object
+    context_buf: object
+    cos_table_buf: object
+    sin_table_buf: object
+    block_table_tensor: Tensor
+    position_tensor: Tensor
+    context_tensor: Tensor
+    append_spans: KVLiveSpans
+    decode_spans: KVLiveSpans
+    cos_table: Tensor
+    sin_table: Tensor
+    block_size: int
+    max_positions: int
+    position_host: np.ndarray
+    context_host: np.ndarray
     ffn_gate_up: object
     ffn_intermediate: object
     ffn_down: object
@@ -855,42 +895,81 @@ class _FullStackScratch:
         def buf(nbytes: int):
             return malloc(nbytes, runtime=runtime)
 
+        assert runner.weights is not None
+        cfg = runner.weights.config
+        device = Device("hip", 0)
+        block_size = 256
+        max_positions = min(int(cfg.context_length), block_size)
         hidden_bytes = runner.hidden_size * 2
         ffn_bytes = runner.ffn_size * 2
         linear_qkv_bytes = runner.linear_qkv_width * 2
-        ssm_inner_bytes = runner.weights.config.ssm_inner_size * 2
-        alpha_bytes = runner.weights.config.ssm_time_step_rank * 2
-        q_bytes = 2 * runner.q_width * 2
-        kv_bytes = runner.kv_width * 2
-        conv_zero = np.zeros(
-            (runner.linear_qkv_width, runner.weights.config.ssm_conv_kernel),
-            dtype=np.float32,
-        )
-        recurrent_zero = np.zeros(
-            (
-                runner.weights.config.ssm_time_step_rank,
-                runner.weights.config.ssm_state_size,
-                runner.ssm_value_dim,
-            ),
-            dtype=np.float32,
-        )
+        ssm_inner_bytes = cfg.ssm_inner_size * 2
+        alpha_bytes = cfg.ssm_time_step_rank * 2
+        q_proj_bytes = 2 * runner.q_width * 2
+        kv_bf16_bytes = runner.kv_width * 2
+        q_f32_bytes = runner.q_width * 4
+        kv_f32_bytes = runner.kv_width * 4
+        conv_zero = np.zeros((runner.linear_qkv_width, cfg.ssm_conv_kernel), dtype=np.float32)
+        recurrent_zero = np.zeros((cfg.ssm_time_step_rank, cfg.ssm_state_size, runner.ssm_value_dim), dtype=np.float32)
         layer_conv_states: list[object | None] = []
         layer_recurrent_states: list[object | None] = []
+        full_key_caches: list[object | None] = []
+        full_value_caches: list[object | None] = []
         state_buffers: list[object] = []
-        full_k_history: list[list[np.ndarray]] = []
-        full_v_history: list[list[np.ndarray]] = []
-        for layer_type in runner.weights.config.layer_types:
+        cache_buffers: list[object] = []
+        cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2
+        for layer_type in cfg.layer_types:
             if layer_type == LINEAR_ATTENTION:
                 conv_state = buf(conv_zero.nbytes)
                 recurrent_state = buf(recurrent_zero.nbytes)
                 state_buffers.extend((conv_state, recurrent_state))
                 layer_conv_states.append(conv_state)
                 layer_recurrent_states.append(recurrent_state)
+                full_key_caches.append(None)
+                full_value_caches.append(None)
             else:
+                key_cache = buf(cache_nbytes)
+                value_cache = buf(cache_nbytes)
+                cache_buffers.extend((key_cache, value_cache))
                 layer_conv_states.append(None)
                 layer_recurrent_states.append(None)
-            full_k_history.append([])
-            full_v_history.append([])
+                full_key_caches.append(key_cache)
+                full_value_caches.append(value_cache)
+        block_table_arr = np.asarray([0], dtype=np.int32)
+        position_host = np.asarray([0], dtype=np.int64)
+        context_host = np.asarray([1], dtype=np.int64)
+        cos_arr, sin_arr = _rope_tables(
+            max_positions=max_positions,
+            rotary_dim=cfg.rope_dimension_count,
+            base=cfg.rope_freq_base,
+        )
+        block_table = buf(block_table_arr.nbytes)
+        position_buf = buf(position_host.nbytes)
+        context_buf = buf(context_host.nbytes)
+        cos_table_buf = buf(cos_arr.nbytes)
+        sin_table_buf = buf(sin_arr.nbytes)
+        copy_host_to_device(block_table, host_array_ptr(block_table_arr), runtime=runtime)
+        copy_host_to_device(position_buf, host_array_ptr(position_host), runtime=runtime)
+        copy_host_to_device(context_buf, host_array_ptr(context_host), runtime=runtime)
+        copy_host_to_device(cos_table_buf, host_array_ptr(cos_arr), runtime=runtime)
+        copy_host_to_device(sin_table_buf, host_array_ptr(sin_arr), runtime=runtime)
+        block_table_tensor = Tensor.from_handle(block_table.ptr, block_table_arr.shape, DType.INT32, device)
+        position_tensor = Tensor.from_handle(position_buf.ptr, position_host.shape, DType.INT64, device)
+        context_tensor = Tensor.from_handle(context_buf.ptr, context_host.shape, DType.INT64, device)
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table_tensor,
+            live_counts=position_tensor,
+            max_live_count=max_positions - 1,
+            storage_dtype=DType.BF16,
+        )
+        decode_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table_tensor,
+            live_counts=context_tensor,
+            max_live_count=max_positions,
+            storage_dtype=DType.BF16,
+        )
+        cos_table = Tensor.from_handle(cos_table_buf.ptr, cos_arr.shape, DType.FP32, device)
+        sin_table = Tensor.from_handle(sin_table_buf.ptr, sin_arr.shape, DType.FP32, device)
         fields = {
             "norm": buf(hidden_bytes),
             "post_norm": buf(hidden_bytes),
@@ -901,26 +980,64 @@ class _FullStackScratch:
             "linear_alpha": buf(alpha_bytes),
             "linear_beta": buf(alpha_bytes),
             "conv_out": buf(runner.linear_qkv_width * 4),
-            "recurrent_out": buf(runner.weights.config.ssm_inner_size * 4),
+            "recurrent_out": buf(cfg.ssm_inner_size * 4),
             "recurrent_bf16": buf(ssm_inner_bytes),
-            "full_q": buf(q_bytes),
-            "full_k": buf(kv_bytes),
-            "full_v": buf(kv_bytes),
+            "full_q": buf(q_proj_bytes),
+            "full_k": buf(kv_bf16_bytes),
+            "full_v": buf(kv_bf16_bytes),
+            "full_query_raw": buf(q_f32_bytes),
+            "full_key_raw": buf(kv_f32_bytes),
+            "full_query": buf(q_f32_bytes),
+            "full_key": buf(kv_f32_bytes),
+            "full_gate": buf(runner.q_width * 2),
+            "full_attn_context": buf(q_f32_bytes),
             "full_gated": buf(runner.q_width * 2),
             "ffn_gate_up": buf(2 * ffn_bytes),
             "ffn_intermediate": buf(ffn_bytes),
             "ffn_down": buf(hidden_bytes),
         }
+        metadata_buffers = (block_table, position_buf, context_buf, cos_table_buf, sin_table_buf)
         return cls(
             **fields,
-            full_k_history=tuple(full_k_history),
-            full_v_history=tuple(full_v_history),
+            full_key_caches=tuple(full_key_caches),
+            full_value_caches=tuple(full_value_caches),
+            block_table=block_table,
+            position_buf=position_buf,
+            context_buf=context_buf,
+            cos_table_buf=cos_table_buf,
+            sin_table_buf=sin_table_buf,
+            block_table_tensor=block_table_tensor,
+            position_tensor=position_tensor,
+            context_tensor=context_tensor,
+            append_spans=append_spans,
+            decode_spans=decode_spans,
+            cos_table=cos_table,
+            sin_table=sin_table,
+            block_size=block_size,
+            max_positions=max_positions,
+            position_host=position_host,
+            context_host=context_host,
             layer_conv_states=tuple(layer_conv_states),
             layer_recurrent_states=tuple(layer_recurrent_states),
             conv_zero=conv_zero,
             recurrent_zero=recurrent_zero,
-            buffers=tuple(fields.values()) + tuple(state_buffers),
+            buffers=tuple(fields.values()) + tuple(state_buffers) + tuple(cache_buffers) + metadata_buffers,
         )
+
+    def full_cache(self, layer_id: int) -> tuple[object, object]:
+        key_cache = self.full_key_caches[layer_id]
+        value_cache = self.full_value_caches[layer_id]
+        if key_cache is None or value_cache is None:
+            raise ValueError(f"layer {layer_id} has no full-attention KV cache")
+        return key_cache, value_cache
+
+    def set_full_attention_position(self, position: int, runtime: HipRuntime) -> None:
+        if position < 0 or position >= self.max_positions:
+            raise ValueError(f"GGUF resident full-attention position {position} exceeds cache capacity {self.max_positions}")
+        self.position_host[0] = int(position)
+        self.context_host[0] = int(position) + 1
+        copy_host_to_device(self.position_buf, host_array_ptr(self.position_host), runtime=runtime)
+        copy_host_to_device(self.context_buf, host_array_ptr(self.context_host), runtime=runtime)
 
     def zero_states(self, runtime: HipRuntime) -> None:
         for conv_state, recurrent_state in zip(self.layer_conv_states, self.layer_recurrent_states, strict=True):
@@ -928,51 +1045,23 @@ class _FullStackScratch:
                 _zero(runtime, conv_state, self.conv_zero)
             if recurrent_state is not None:
                 _zero(runtime, recurrent_state, self.recurrent_zero)
-        for history in (*self.full_k_history, *self.full_v_history):
-            history.clear()
+        self.set_full_attention_position(0, runtime)
 
 
 def _zero(runtime: HipRuntime, buffer, zeros: np.ndarray) -> None:
     copy_host_to_device(buffer, host_array_ptr(zeros), runtime=runtime)
 
 
-def _copy_bf16_device_to_f32(buffer, elements: int, *, runtime: HipRuntime) -> np.ndarray:
-    bits = np.empty((elements,), dtype=np.uint16)
-    copy_device_to_host(host_array_ptr(bits), buffer, runtime=runtime)
-    return bf16_to_float32(bits)
-
-
-def _rmsnorm_host(x: np.ndarray, weight: np.ndarray, eps: float) -> np.ndarray:
-    x32 = np.asarray(x, dtype=np.float32)
-    mean_square = np.mean(x32 * x32, axis=-1, keepdims=True)
-    return x32 * (1.0 / np.sqrt(mean_square + np.float32(eps))) * weight.astype(np.float32)
-
-
-def _apply_rope_host(x: np.ndarray, position: int, rotary_dim: int, freq_base: float) -> np.ndarray:
-    out = np.array(x, dtype=np.float32, copy=True)
-    if rotary_dim <= 0:
-        return out
-    half = rotary_dim // 2
-    dims = np.arange(half, dtype=np.float32)
-    inv_freq = np.power(np.float32(freq_base), -dims / np.float32(half))
-    angles = np.float32(position) * inv_freq
-    cos = np.cos(angles).astype(np.float32)
-    sin = np.sin(angles).astype(np.float32)
-    first = out[..., :half].copy()
-    second = out[..., half:rotary_dim].copy()
-    out[..., :half] = first * cos - second * sin
-    out[..., half:rotary_dim] = second * cos + first * sin
-    return out
-
-
-def _sigmoid_host(x: np.ndarray) -> np.ndarray:
-    x32 = np.asarray(x, dtype=np.float32)
-    positive = x32 >= 0
-    out = np.empty_like(x32)
-    out[positive] = 1.0 / (1.0 + np.exp(-x32[positive]))
-    exp_x = np.exp(x32[~positive])
-    out[~positive] = exp_x / (1.0 + exp_x)
-    return out
+def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[np.ndarray, np.ndarray]:
+    positions = np.arange(max_positions, dtype=np.float32)[:, None]
+    dims = np.arange(rotary_dim // 2, dtype=np.float32)[None, :]
+    inv_freq = np.power(np.float32(base), -2.0 * dims / np.float32(rotary_dim))
+    freqs = positions * inv_freq
+    cos_half = np.cos(freqs).astype(np.float32, copy=False)
+    sin_half = np.sin(freqs).astype(np.float32, copy=False)
+    cos = np.concatenate([cos_half, cos_half], axis=1).astype(np.float32, copy=False)
+    sin = np.concatenate([sin_half, sin_half], axis=1).astype(np.float32, copy=False)
+    return np.ascontiguousarray(cos), np.ascontiguousarray(sin)
 
 
 __all__ = [

@@ -16033,3 +16033,103 @@ HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pyte
 ```
 
 Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-resident-session-diagnostic.json`; benchmark rollup/changelog updated as diagnostic-only (`performance_claim=false`).
+
+## 2026-05-17 GGUF full-attention GPU prelude + KV append
+
+Implemented task #45: the resident GGUF full-attention path no longer copies Q/K/V to host for q/k RMSNorm, RoPE, attention history, softmax, or gate application.
+
+Code changes:
+
+- Added `hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight` in `hipengine/kernels/hip_gfx1100/fused/gguf_ops.hip` with Python wrapper `gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(...)` and registry key `KernelKey("hip_gfx1100", "head_rmsnorm+partial_rotary", "gguf_f32_weight", "qwen35_position_f32")`.
+- Updated `Qwen35GGUFFullStackRunner._run_full_attention_layer` to run the production path on GPU:
+  - q/gate split via `qwen35_split_qgate_bf16`
+  - BF16 K projection cast to FP32 via `bf16_to_f32`
+  - GGUF F32-weight q/k RMSNorm + position-indexed RoPE via the new kernel
+  - K/V append via `qwen35_write_paged_kv_mixed_value_bf16_spans` and `KVLiveSpans`
+  - paged full-attention decode via `qwen35_paged_full_attn_decode_context_bf16_spans`
+  - BF16 gate via `qwen35_full_attn_gate_mul_bf16`
+- `_FullStackScratch` now owns per-full-layer BF16 paged K/V caches, block table, position/context tensors, cos/sin tables, `append_spans`, and `decode_spans`.
+- Removed the production `_host_full_attention` / `_copy_bf16_device_to_f32` bridge and host K/V histories from the runner. The CPU bridge now exists only as a test oracle in `tests/test_qwen35_gguf_full_attention_gpu.py`.
+
+Layer oracle:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 -m pytest tests/test_qwen35_gguf_full_attention_gpu.py -q
+# 1 passed
+```
+
+The test compares layer 3 (first full-attention layer) over prompt tokens `[760, 4087]` against the old CPU bridge and asserts hidden tolerance (`rtol<=2.5e-2`, `atol<=3.0e-2`), lm-head top-1 equality, and KL <= 0.05.
+
+Public E2E gate:
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+/usr/bin/time -f 'elapsed=%E exit=%x' \
+  env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+      PYTHONPATH=. \
+      python3 scripts/qwen35_gguf_e2e_correctness.py \
+        --repeat 2 --max-new-tokens 4 --json /tmp/gguf_task45_e2e_r2.json
+```
+
+Result:
+
+```text
+passed=true
+outputs=[' 1.\n\n', ' 1.\n\n']
+generated_token_ids=[220, 16, 13, 271]
+torch_loaded_by_generate=false
+elapsed=0:23.48 exit=0
+```
+
+Targeted tests:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest \
+  tests/test_gguf_ops.py tests/test_qwen35_gguf_full_attention_gpu.py \
+  tests/test_qwen35_gguf_runner.py tests/test_llm_gguf_generate_path.py \
+  tests/test_qwen35_gguf_tokenizer.py tests/test_gguf_e2e_acceptance.py \
+  tests/test_llm_generate.py tests/test_model_quant_and_imports.py -q
+# 23 passed
+```
+
+Profiler evidence:
+
+```bash
+env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format csv --output-file gguf_task45 \
+    --output-directory /tmp/hipengine-gguf-task45-rocprof.OoG279 \
+    -- python3 /tmp/profile_gguf_task45_generate.py
+# stdout: [' ']
+# total dispatches: 1254
+```
+
+Expected full-attention GPU path kernels in the trace:
+
+| Kernel | Launches |
+| --- | ---: |
+| `qwen35_split_qgate_bf16_kernel` | 18 |
+| `bf16_to_f32_kernel` | 18 |
+| `gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel` | 18 |
+| `qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>` | 18 |
+| `qwen35_paged_full_attn_decode_context_tensor_kernel` | 18 |
+| `qwen35_full_attn_gate_mul_bf16_kernel` | 18 |
+
+A production source grep found no matches for `_host_full_attention`, `_copy_bf16_device_to_f32`, `full_k_history`, `full_v_history`, or `context_bits` in `hipengine/runtime/qwen35_gguf_runner.py`.
+
+Diagnostic timing (not promoted):
+
+| Phase | Time | Tok/s |
+| --- | ---: | ---: |
+| load/materialize + session scratch/cache allocation | 10.489 s | — |
+| prefill 3-token prompt | 0.2048 s | 14.65 |
+| resident step after token 220 | 0.0635 s | 15.75 |
+| resident step after token 16 | 0.0642 s | 15.57 |
+| resident step after token 13 | 0.0631 s | 15.85 |
+| close/free | 0.0688 s | — |
+
+Tracked hipENGINE allocations after steps: `602,835,292 bytes` peak (`0.561 GiB`), `597` active allocations; after `close()`, active allocations returned to 0. This is neutral/slightly slower than the pre-P2 CPU bridge on the tiny fixture (`~16.6 tok/s`) because the GPU paged path pays extra launch/cache overhead at context <=6, but it removes the architectural blocker for AOTriton/full-attention prefill and graph replay. No throughput row promoted.
+
+Retained diagnostic artifact: `benchmarks/results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json`. Updated `docs/GGUF.md`, `docs/KERNELS.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+Final post-guard E2E rerun for task #45: `env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --repeat 2 --max-new-tokens 4 --json /tmp/gguf_task45_e2e_final.json` passed with outputs `[' 1.\n\n', ' 1.\n\n']`, generated IDs `[220,16,13,271]`, `torch_loaded_by_generate=false`, `/usr/bin/time` elapsed `0:23.37`, exit `0`.

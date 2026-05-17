@@ -126,13 +126,16 @@ Definition of done for GGUF E2E:
 7. `WORKLOG.md` records the exact command output and any benchmark artifact only
    after correctness passes.
 
-As of 2026-05-16, this command passes for the fixed target fixture. A cached
-`rocprofv3 --kernel-trace` smoke over `LLM.generate(max_tokens=1)` recorded 1205
-kernel dispatches across 14 unique kernel symbols, including Q4_K pack8 GEMV,
-Q5_K/Q6_K/Q8_0 raw GEMV, Q6_K embedding, GGUF RMSNorm/add-RMSNorm, linear-attn
-conv/GDN, BF16 casts, and SiLU. See
-`benchmarks/results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json`.
-Broader prompts, batched prefill, all-GPU full-attention prefill, and throughput
+As of 2026-05-17, this command passes for the fixed target fixture. Cached
+`rocprofv3 --kernel-trace` smokes over `LLM.generate(max_tokens=1)` confirm the
+native GGUF path: Q4_K pack8 GEMV, Q5_K/Q6_K/Q8_0 raw GEMV, Q6_K embedding, GGUF
+RMSNorm/add-RMSNorm, linear-attn conv/GDN, BF16 casts, SiLU, GGUF F32-weight
+head-RMSNorm+RoPE, span-shaped paged-KV append, paged full-attention decode, and
+BF16 gate application. See
+`benchmarks/results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json`
+and
+`benchmarks/results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json`.
+Broader prompts, batched prefill, AOTriton full-attention prefill, and throughput
 claims remain future work.
 
 ## Why GGUF is attractive for hipENGINE
@@ -643,8 +646,9 @@ public path, and current GGUF kernel symbols present in the profile.
 Status: implemented for the public Q4_K_M E2E path in
 `Qwen35GGUFResidentSession` as of
 `benchmarks/results/2026-05-17-hipengine-gguf-resident-session-diagnostic.json`.
-The remaining bottlenecks are still P2+ (CPU-hosted full-attention bridge,
-token-serial rows==1 prefill projections, and no decode graph replay).
+The remaining bottlenecks are now P3+ (token-serial rows==1 prefill
+projections, no AOTriton/full-attention prefill path, and no decode graph
+replay).
 
 Former bottleneck: `Qwen35GGUFFullStackRunner.sample_next_token(context_ids)`
 replayed the entire prompt plus generated history for each decode token, causing
@@ -670,11 +674,20 @@ promoted throughput row.
 
 ### P2: move full-attention prelude and KV append to GPU
 
-Current bottleneck: full-attention GGUF layers run Q/K/V projections on GPU but
-then copy Q/K/V to host for q/k RMSNorm, RoPE, small-context attention, and
+Status: implemented for the resident one-token Q4_K_M path as of
+`benchmarks/results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json`.
+The production path no longer copies full-attention Q/K/V to host for q/k
+RMSNorm, RoPE, history handling, softmax, or gate application. It now splits
+q/gate on GPU, converts K to FP32 on GPU, applies GGUF F32-weight q/k
+RMSNorm+RoPE, appends K/V through `KVLiveSpans` into BF16 paged caches, runs
+paged full-attention decode, and applies the BF16 gate before the output
+projection. The unfused CPU bridge remains only in the layer-level test oracle.
+
+Former bottleneck: full-attention GGUF layers ran Q/K/V projections on GPU but
+then copied Q/K/V to host for q/k RMSNorm, RoPE, small-context attention, and
 history handling before copying the result back to device.
 
-Implementation target:
+Implemented target:
 
 - Add or reuse kernels for Qwen3.5 GGUF full-attention post-projection work:
   F32-weight q/k RMSNorm, partial RoPE, q/gate split, and BF16/FP16 Q/K/V
@@ -683,9 +696,17 @@ Implementation target:
   `(block_table, context_len)` shortcut.
 - Keep an unfused CPU/reference path for layer-level oracles.
 
-Validation gate: layer-level CPU-reference fixtures pass tolerance/KL/top-1, the
-P0 E2E oracle still passes, and profiler evidence shows the host full-attention
-bridge is no longer on the production path.
+Validation result: `tests/test_qwen35_gguf_full_attention_gpu.py` compares the
+first full-attention layer against the old CPU bridge over two prompt positions
+and asserts hidden tolerance, lm-head top-1 agreement, and KL <= 0.05. The public
+E2E oracle still passes repeat=2 (`" 1.\n\n"`, IDs `[220, 16, 13, 271]`, no
+`torch` import). `rocprofv3 --kernel-trace` over `LLM.generate(max_tokens=1)`
+shows 18 launches each of `qwen35_split_qgate_bf16_kernel`, `bf16_to_f32_kernel`,
+`gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel`,
+`qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>`,
+`qwen35_paged_full_attn_decode_context_tensor_kernel`, and
+`qwen35_full_attn_gate_mul_bf16_kernel`; a source grep confirms the production
+runner no longer contains `_host_full_attention` or `_copy_bf16_device_to_f32`.
 
 ### P3: wire AOTriton V3 for GGUF full-attention prefill
 

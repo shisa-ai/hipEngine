@@ -164,6 +164,57 @@ def gguf_gate_repeat_value_bf16(
     )
 
 
+def gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
+    query_ptr: int,
+    key_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    cos_table_ptr: int,
+    sin_table_ptr: int,
+    position_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch GGUF F32-weight Qwen3.5 head RMSNorm + position-indexed RoPE."""
+
+    _check_common_attention_shape(num_q_heads, num_kv_heads, head_dim, rotary_dim)
+    _check_positive(max_positions, "max_positions")
+    _check_threads(threads)
+    _launch_head_rmsnorm_partial_rotary(
+        "hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight",
+        query_ptr,
+        key_ptr,
+        q_weight_ptr,
+        k_weight_ptr,
+        cos_table_ptr,
+        sin_table_ptr,
+        position_ptr,
+        query_out_ptr,
+        key_out_ptr,
+        eps,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        rotary_dim,
+        max_positions,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_gguf_ops(*, replace: bool = True) -> None:
     register(KernelKey("hip_gfx1100", "elementwise", "bf16", "add"), gguf_bf16_add, replace=replace)
     register(
@@ -179,6 +230,11 @@ def register_gguf_ops(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "attention", "gguf_qwen35", "gate_repeat_value_bf16"),
         gguf_gate_repeat_value_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "head_rmsnorm+partial_rotary", "gguf_f32_weight", "qwen35_position_f32"),
+        gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
         replace=replace,
     )
 
@@ -267,6 +323,75 @@ def _launch_add_rmsnorm(
         runtime.check(int(err))
 
 
+def _launch_head_rmsnorm_partial_rotary(
+    symbol: str,
+    query_ptr: int,
+    key_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    cos_table_ptr: int,
+    sin_table_ptr: int,
+    position_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    library = library or build_gguf_ops(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(q_weight_ptr),
+        ctypes.c_void_p(k_weight_ptr),
+        ctypes.c_void_p(cos_table_ptr),
+        ctypes.c_void_p(sin_table_ptr),
+        ctypes.c_void_p(position_ptr),
+        ctypes.c_void_p(query_out_ptr),
+        ctypes.c_void_p(key_out_ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(rotary_dim),
+        ctypes.c_int64(max_positions),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch(
     symbol: str,
     args: tuple[int, ...],
@@ -307,6 +432,17 @@ def _check_threads(threads: int) -> None:
         raise ValueError(f"threads must be one of {allowed}")
 
 
+def _check_common_attention_shape(num_q_heads: int, num_kv_heads: int, head_dim: int, rotary_dim: int) -> None:
+    _check_positive(num_q_heads, "num_q_heads")
+    _check_positive(num_kv_heads, "num_kv_heads")
+    _check_positive(head_dim, "head_dim")
+    _check_positive(rotary_dim, "rotary_dim")
+    if rotary_dim > head_dim:
+        raise ValueError("rotary_dim must be <= head_dim")
+    if rotary_dim % 2:
+        raise ValueError("rotary_dim must be even")
+
+
 register_gguf_ops()
 
 
@@ -316,6 +452,7 @@ __all__ = [
     "gguf_bf16_add",
     "gguf_rmsnorm_bf16_f32_weight",
     "gguf_gate_repeat_value_bf16",
+    "gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight",
     "plan_gguf_ops_build",
     "register_gguf_ops",
 ]
