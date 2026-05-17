@@ -16878,3 +16878,21 @@ cat /tmp/hipengine-dflash-prompts-validate.json
 git diff --check
 # pytest: 8 passed
 ```
+
+## 2026-05-18 — DFlash chain DraftBatch compiler
+
+### Scope
+
+- Added `hipengine/speculative/dflash.py`, a torch-free DFlash proposal scaffold that adapts legacy root-prefixed drafter output to candidate-only `DFlashDraftRequest` rows.
+- Added `DFlashChainCompiler`/`compile_dflash_chain` for fixed candidate budgets `{2,4,8}`. The compiler emits request-major `DraftBatch` candidates only, with `parent_positions`, `draft_depths`, `row_to_request`, `active_mask`, and `mode="verify_chain"`; root rows are still inserted only by `TargetVerifyBatch.from_draft()`.
+- Exported the DFlash chain helpers from `hipengine/speculative/__init__.py`.
+- Added CPU tests covering reject-at-root, partial accept, full accept, multi-request row mapping/padded inactive rows, budget validation, and root-prefixed output stripping.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/speculative/dflash.py hipengine/speculative/__init__.py tests/test_dflash_chain_compiler.py
+python3 -m pytest tests/test_dflash_chain_compiler.py tests/test_speculative_interfaces.py tests/test_model_quant_and_imports.py -q
+git diff --check
+# pytest: 26 passed
+```

@@ -1,5 +1,12 @@
 """Speculative decoding plugin interfaces."""
 
+from hipengine.speculative.dflash import (
+    DFLASH_CHAIN_CANDIDATE_BUDGETS,
+    DFlashChainCompiler,
+    DFlashDraftProvider,
+    DFlashDraftRequest,
+    compile_dflash_chain,
+)
 from hipengine.speculative.interfaces import (
     AcceptResult,
     DraftBatch,
@@ -14,6 +21,11 @@ from hipengine.speculative.interfaces import (
 )
 
 __all__ = [
+    "DFLASH_CHAIN_CANDIDATE_BUDGETS",
+    "DFlashChainCompiler",
+    "DFlashDraftProvider",
+    "DFlashDraftRequest",
+    "compile_dflash_chain",
     "AcceptResult",
     "DraftBatch",
     "DraftModel",
