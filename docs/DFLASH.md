@@ -126,6 +126,11 @@ Current status:
   exact `context_tokens` buckets have no reuse during decode, so it regresses to
   `133.8 ms/call` vs the no-graph `68.9 ms/call` baseline and remains diagnostic
   ([artifact](../benchmarks/results/2026-05-18-hipengine-dflash-drafter-graph-validate-diagnostic.json)).
+  A first QKV projection fusion is bit-exact vs the unfused GPU path and
+  rocprofv3 confirms `dflash_qkv_proj_bf16_mixed_kernel`, but the retained E2E
+  row is neutral (`69.6 ms/call`, `0.122x` AR), so it stays opt-in via
+  `--drafter-fusion qkv`
+  ([artifact](../benchmarks/results/2026-05-18-hipengine-dflash-drafter-qkv-fusion-diagnostic.json)).
 - no speculative throughput claim is allowed until the native compact/c-aware
   target verifier plus drafter path produces a retained chain win over
   same-session AR.
@@ -511,10 +516,14 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   path is still launch/kernel dominated.  The drafter graph prototype proves
   exact graph replay of the fixed-shape `propose()` body, but exact-context graph
   keys do not repeat in decode (`cache_entries=10`, no hits), so graph validation
-  doubles drafter time rather than reducing launch overhead.
+  doubles drafter time rather than reducing launch overhead.  The first QKV
+  projection fusion is correct and profiled, but neutral (`69.6 ms/call` vs
+  `68.9 ms/call` no-fusion) because the mixed-output branchy grid does not remove
+  the dominant work.
 - Remaining integration work: optimize/capture/fuse the native bulk verifier and
-  replace exact-context drafter graphs with reusable context-bucket-safe kernels
-  or fusion; promote only if the full-model chain beats same-session AR.
+  pursue higher-leverage drafter fusions (attention/O-proj or MLP families) or
+  reusable context-bucket-safe graph kernels; promote only if the full-model
+  chain beats same-session AR.
 
 ### Phase D4 — DDTree compiler and tree verify
 

@@ -18440,3 +18440,54 @@ neutral for drafter wall time (`+0.2%` ms/call in the back-to-back smoke).  It
 saves two launches per drafter layer, but the fused branchy grid over mixed
 Q/K/V outputs does not materially reduce the dominant path.  Keep the fusion
 behind `--drafter-fusion qkv`; do not enable by default or claim performance.
+
+## 2026-05-18 — DFlash QKV fusion retained artifact
+
+After committing the QKV fusion (`5aa4607`), regenerated clean validation and the
+retained diagnostic artifact.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_dflash_drafter.py tests/test_speculative_benchmark.py -q
+# 16 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_qkv_fusion_correctness.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-dflash-qkv-fusion-correctness-clean.json
+# passed=true; fused Q/K/V matches unfused GPU; V also matches NumPy BF16 oracle.
+
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-dflash-qkv-fusion-trace-clean \
+  --output-format csv -- python3 scripts/dflash_qkv_fusion_correctness.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-dflash-qkv-fusion-correctness-profiled-clean.json
+```
+
+rocprofv3 trace `/tmp/hipengine-dflash-qkv-fusion-trace-clean/strixhalo/3055894_kernel_trace.csv`
+confirmed `(anonymous namespace)::dflash_qkv_proj_bf16_mixed_kernel(...)` ran with
+`DurationNs=1603`, `Grid_Size=(5120,4,1)`, `Workgroup_Size_X=128`,
+`VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`.
+
+Retained artifact command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --drafter-fusion qkv \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 16 --draft-budgets 4 \
+  --json benchmarks/results/2026-05-18-hipengine-dflash-drafter-qkv-fusion-diagnostic.json
+```
+
+Result: clean software context `hipEngine@5aa4607`, dirty `false`; exact
+same-session AR equality passed; finite logits passed; GPU accept summary matched
+CPU oracle.  AR `64.46 tok/s`, DFlash `7.85 tok/s` (`0.122x`, `-87.8%` vs AR),
+`performance_claim=false`.  Drafter `0.696 s / 10 = 69.6 ms/call` vs no-fusion
+nativebulk baseline `68.9 ms/call` (neutral/slightly slower).  Fusion diagnostics:
+`draft_fusion.mode=qkv`, `draft_fusion.counts={'qkv': 80}`.
+
+Conclusion: QKV fusion is correct and profiled but not high enough leverage; keep
+it opt-in and continue with attention/O-proj, MLP, or context-bucket-safe graph
+work before any promotion.
