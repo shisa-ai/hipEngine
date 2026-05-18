@@ -17852,3 +17852,34 @@ git diff --check
 # pytest: 9 passed
 # graph artifact summary: captured_buckets=3, direct_fallbacks=1, all_captured_match_direct=true, fallback_semantics_preserved=true.
 ```
+
+## 2026-05-18 — DFlash DDTree budget-4 gate check (D17 blocker)
+
+### Finding
+
+- Task D17 is gated by "only after chain DFlash beats AR" and requires DDTree budget=4 to improve the winning chain by at least 5% before larger tree budgets are considered.
+- Current chain artifact is `benchmarks/results/2026-05-18-hipengine-dflash-chain-gfx1151-correctness-diagnostic.json`.
+- That artifact has `performance_claim=false` and no promoted rows. It is a deterministic correctness/schema sweep over scaffolded finite logits, not a full-model shisa packed target + z-lab DFlash throughput run.
+- Therefore there is no validated chain winner to top with DDTree yet. Implementing `dflash_accept_tree` / DDTree commit now would violate the task precondition and risk optimizing an unproven chain path.
+
+### Gate check
+
+```bash
+python3 - <<'PY'
+import json
+p='benchmarks/results/2026-05-18-hipengine-dflash-chain-gfx1151-correctness-diagnostic.json'
+a=json.load(open(p))
+print('performance_claim', a.get('performance_claim'))
+print('status', a.get('status'))
+print('rows', len(a['measurements']['rows']))
+print('all_correctness', a['measurements']['aggregate']['all_correctness_passed'])
+PY
+# performance_claim False
+# status diagnostic
+# rows 30
+# all_correctness True
+```
+
+### Next action
+
+- Leave Task D17 open. Revisit only after a full native chain DFlash throughput benchmark on gfx1151 has exact correctness, zero full-logit readbacks in the fast path, and a retained >1.10x AR promotion row.
