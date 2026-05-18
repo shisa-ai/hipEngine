@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-18
+
+- [partial optimization retained unblocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / qwen35moe task #5 P8.1 Q8_0 batched WMMA prefill 512/0: prefill `107.176 -> 172.822 tok/s` (`+61.25%`, wall-clock `4.777s -> 2.963s`) and total prefill kernel time `4768.0 -> 2953.6 ms` (`-38.05%`) by landing `gguf_q8_0_prefill_wmma_kernel<scalar_t,out_t,TM,TN>` (mirrors `awq_fusedw4_prefill_fp16_kernel` from `paro_awq_gemv.hip`, 32 threads/block, `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32` with Q8_0 dequant inside the K-loop) and wiring it into `gguf_linear.py` rows>1 dispatch behind a three-axis opt-in (env `HIPENGINE_GGUF_WMMA_PREFILL=1`, `PrefillConfig.use_wmma_prefill`, `use_wmma_prefill=` per-call kwarg). The Q8_0 dense/shared bucket collapses `1929.244 ms / 251 dispatches` (decode-shaped `gguf_k_prefill_out_kernel` + pack8 family) to `81.133 ms / 250 dispatches` (`gguf_q8_0_prefill_wmma_kernel`), a `-95.8%` bucket reduction. Selected MoE bucket (`2102.5 -> 2119.9 ms`, +0.83% noise) and GDN (`663.0 -> 676.4 ms`, +2% noise) unchanged. Tracked peak `20.886 GiB` unchanged on both runs. 69 correctness tests + 21 dispatch tests + on-GPU end-to-end pass. P8 plan acceptance floor (≤1500 ms total) NOT met yet because Q4_K/Q5_K/Q6_K selected MoE is the dominant cost (`-> P8.2/P8.4/P8.5`); `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-prefill-q8-wmma-p8_1.json`.
+
 ## 2026-05-17
 
 - [partial optimization retained blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / qwen35moe task #63 decode raw-pack8/dual iteration: graph 512/128 decode `49.864 -> 62.526 tok/s` (+25.39%) and prefill `99.898 -> 107.001` (+7.11%) via raw-byte pack8 Q8_0/Q5_K/Q6_K decode, Q4 selected dual gate+up, and Q8 shared dual; still `-37.47%` vs 100 tok/s and task remains open; `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-decode-pack8-raw-partial.json`.

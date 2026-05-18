@@ -18986,3 +18986,46 @@ Validation:
 - `pytest tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_linear_dispatch.py tests/test_gguf_k_gemv.py tests/test_gguf_q4_k_gemv.py` → 100 passed in 3.14s.
 
 Next: task #5 (qwen35moe 512/0 prefill bench with `HIPENGINE_GGUF_WMMA_PREFILL=1` vs default, rocprofv3 kernel-trace evidence, benchmarks/results artifact + WORKLOG comparison row).
+
+## 2026-05-18 qwen35moe GGUF P8.5: Q8_0 batched WMMA prefill measured on 512/0
+
+Measured P8.1's wall-clock impact on the qwen35moe Qwen3.6-35B-A3B-UD-Q4_K_M 512/0 prefill bench (`scripts/qwen35_gguf_bench.py --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --require-cached-build`). Captured `rocprofv3 --kernel-trace` traces for both runs.
+
+**Headline**: wall-clock prefill `107.176 -> 172.822 tok/s` (`+61.25%`), prefill_seconds `4.777s -> 2.963s` (-38.0%, -1.815 s saved per 512-token prefill). Variance low: baseline 0.14% stdev, WMMA 0.36% stdev.
+
+**Kernel-time breakdown (rocprofv3 totals, ms / dispatches)**:
+
+| Bucket | baseline (WMMA off) | WMMA on | Δ ms | Δ % |
+| --- | --- | --- | --- | --- |
+| Q8_0 dense/shared (`gguf_k_prefill_out_kernel` + `gguf_k_pack8_prefill_out_kernel`) | **1929.244 / 251** | 1.245 / 1 | -1927.999 | -99.94% |
+| Q8_0 WMMA prefill (`gguf_q8_0_prefill_wmma_kernel`) | 0.0 / 0 | **81.133 / 250** | +81.133 | n/a |
+| **Net Q8_0 dense/shared total** | **1929.244 ms** | **82.378 ms** | **-1846.866** | **-95.7%** |
+| Q4_K/Q5_K/Q6_K selected MoE (`*_selected_prefill_out_kernel` + `selected_pack8_prefill_out_kernel`) | 2102.520 / 120 | 2119.94 / 120 | +17.42 | +0.83% (noise) |
+| GDN recurrent (`qwen35_gdn_prefill_*`) | 663.04 / 30 | 676.37 / 30 | +13.33 | +2.0% (noise) |
+| Full-attn (AOTriton) | 39.00 / 10 | 40.81 / 10 | +1.81 | unchanged |
+| **Total prefill kernel time** | **4768.0 ms / 1175** | **2953.6 ms / 1175** | **-1814.4** | **-38.05%** |
+
+Same dispatch count (1175) before and after — the WMMA path is a 1:1 replacement for the decode-shaped Q8_0 prefill on every layer-projection that takes the Q8_0 path. The one remaining `1.245 ms` decode-shaped Q8_0 dispatch on the WMMA run is `gguf_k_pack8_prefill_out_kernel<unsigned short, float, 8>` — the Q8_0 lm-head logits projection (the runner passes `output_dtype='f32'` for the final tied lm-head and that single dispatch sits outside the rows>1 rewrite when no decode tokens follow). Not a regression; we can pick it up later via P8.7 lm-head WMMA prefill.
+
+**Memory**: tracked peak `20.886 GiB` unchanged on both runs (`+0.00 GiB`). HIP sampled peak `21.342 -> 21.344 GiB` (`+0.01%`). No new resident weight repack, as promised in the P8 plan.
+
+**P8 plan acceptance gate**: NOT yet met.
+- Acceptance floor: total prefill kernel time `<= 1500 ms`. We're at **2953.6 ms** — still above the floor because the unchanged Q4_K/Q5_K/Q6_K selected MoE bucket (`2102 ms`) dominates.
+- Stretch goal: `<= 700 ms`. Not yet.
+- P8.1 alone bought 38% wall-clock and 95.7% of its own bucket; that's the expected shape of progress, and the trajectory says P8.2/P8.4/P8.5 are exactly the right next levers.
+
+**Rocprof evidence (paths in artifact)**:
+- baseline CSV: `/tmp/p8_bench/rocprof-baseline/rocm/1054126_kernel_trace.csv`
+- WMMA CSV: `/tmp/p8_bench/rocprof-wmma/rocm/1054738_kernel_trace.csv`
+- WMMA kernel symbol confirmed present 250 times: `void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, ...>`.
+
+**Artifacts and rollup updates** (per AGENTS.md "Evidence Policy" + "Benchmark rollup stays current"):
+- `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-prefill-q8-wmma-p8_1.json` (full evidence + commands + comparisons + correctness summary + P8 plan gate status).
+- `benchmarks/README.md`: new diagnostic row in the "Blocked / diagnostic benchmark attempts" table; `Last updated` bumped to 2026-05-18.
+- `benchmarks/CHANGELOG.md`: new 2026-05-18 section with a single dated entry.
+
+**Open / next**:
+- P8.2: Q4_K dense single + dual WMMA prefill (same template, Q4_K dequant inside the K-loop; superblock K=256, 8 sub-blocks of 32, scales/mins via 12-byte packed 6/6, `fp16 d` + `fp16 dmin`).
+- P8.4: Q4_K dual selected MoE WMMA prefill (reuses `qwen35_moe_group_count/prefix/scatter_gather/wmma_tile_map` from `moe/group_scatter.hip`).
+- P8.5: Q5_K + Q6_K selected MoE WMMA prefill.
+- After P8.2 + P8.4 + P8.5: re-run this 512/0 bench, expect total prefill kernel time under the 1500 ms acceptance floor.
