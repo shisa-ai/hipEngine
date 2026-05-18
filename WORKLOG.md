@@ -18491,3 +18491,64 @@ nativebulk baseline `68.9 ms/call` (neutral/slightly slower).  Fusion diagnostic
 Conclusion: QKV fusion is correct and profiled but not high enough leverage; keep
 it opt-in and continue with attention/O-proj, MLP, or context-bucket-safe graph
 work before any promotion.
+
+## 2026-05-18 — Native verifier speed-gate attempt: remove per-row position-set launches
+
+Task #30 speed-gate work.  Tried a low-risk full-attention verifier cleanup: the
+native B+1 verifier already materializes row positions/context counts in
+`prefill_position_buf` / `prefill_context_count_buf`; full-attention row replay no
+longer needs to launch `set_decode_position_i64` for every verifier row in every
+full-attention layer.  Added row-view spans for the full-attention c=1 row loop
+and still restore the selected committed slot position once after accept.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_speculative_benchmark.py -q
+# 34 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 4 --draft-budgets 4 \
+  --json /tmp/hipengine-verifier-rowspans-d4.json
+# exact same-session AR equality passed; gpu_accept_match_cpu=true
+```
+
+Speed-gate matrix (8 decode tokens, same stable prompt, gfx1151, exact/finite in
+both modes):
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --max-prompts 1 --decode-tokens 8 \
+  --draft-budgets 1,2,4,8 --json /tmp/hipengine-verifier-speedgate-native-b1248-d8.json
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode serial_in_place_single_slot --max-prompts 1 --decode-tokens 8 \
+  --draft-budgets 1,2,4,8 --json /tmp/hipengine-verifier-speedgate-serial-b1248-d8.json
+```
+
+| B | native verify s | serial verify s | native/serial | native tok/s | serial tok/s | accept |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 0.332 | 0.129 | 2.6x slower | 13.52 | 20.60 | 3/4 |
+| 2 | 0.404 | 0.124 | 3.3x slower | 11.75 | 20.07 | 4/8 |
+| 4 | 0.524 | 0.128 | 4.1x slower | 9.84 | 18.99 | 4/14 |
+| 8 | 0.881 | 0.126 | 7.0x slower | 6.59 | 17.57 | 4/19 |
+
+rocprofv3 profile of the d4 native row after this cleanup still shows the
+position setter family is negligible (`set_decode_position_i64` + scalar setters
+~0.48 ms total across the profiled process).  Dominant costs are model kernels:
+AWQ MoE/GEMV families, GDN, linear/full-attention rotations/decodes, and lm-head.
+
+Conclusion: this cleanup preserves correctness but does not clear the speed gate.
+The blocker is algorithmic/kernel-level: fixed B+1 verification computes many
+candidate rows even at low DFlash acceptance, and the tiny-row target kernels are
+not efficient enough to amortize that extra work.  #30 remains open; likely next
+steps are a real c-aware verifier design (avoid/cheaply postpone suffix rows), or
+substantial fused target-layer kernels rather than launch cleanup.

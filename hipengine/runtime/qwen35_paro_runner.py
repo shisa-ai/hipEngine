@@ -2441,8 +2441,7 @@ class Qwen35ParoResidentSession:
         attention_scratch = self.full_scratch[layer_id]
         moe_scratch = self.moe_scratch[layer_id]
         for row, position in enumerate(positions):
-            self._set_slot_position(int(position), slot=base_slot, stream=stream)
-            position_tensor, append_spans, decode_spans = self._slot_spans(base_slot)
+            position_tensor, append_spans, decode_spans = self._verify_chain_row_spans(row)
             row_hidden = Tensor.from_handle(hidden.ptr + row * self.hidden_nbytes, (1, self.config.hidden_size), DType.FP16, self.device)
             row_out = Tensor.from_handle(next_hidden.ptr + row * self.hidden_nbytes, (1, self.config.hidden_size), DType.FP16, self.device)
             num_splits = max(1, (int(position) + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
@@ -2464,6 +2463,32 @@ class Qwen35ParoResidentSession:
                 stream=stream,
             )
             self.runtime.memcpy_async(row_out.ptr, out.ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+
+    def _verify_chain_row_spans(self, row: int) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
+        """Return c=1 full-attention spans for one verifier row.
+
+        The row positions/context counts are already materialized by
+        ``_write_verify_chain_metadata``.  Using row views avoids launching
+        ``set_decode_position_i64`` for every verifier row in every full-attention
+        layer; the committed resident slot position is restored once after the
+        verifier accept summary chooses the row.
+        """
+
+        position_tensor = Tensor.from_handle(self.prefill_position_buf.ptr + int(row) * DType.INT64.itemsize, (1,), DType.INT64, self.device)
+        context_tensor = Tensor.from_handle(self.prefill_context_count_buf.ptr + int(row) * DType.INT64.itemsize, (1,), DType.INT64, self.device)
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=self.block_table,
+            live_counts=position_tensor,
+            max_live_count=self.max_sequence_length - 1,
+            storage_dtype=DType.BF16,
+        )
+        decode_spans = KVLiveSpans.paged_uniform(
+            block_table=self.block_table,
+            live_counts=context_tensor,
+            max_live_count=self.max_sequence_length,
+            storage_dtype=DType.BF16,
+        )
+        return position_tensor, append_spans, decode_spans
 
     def _write_verify_chain_metadata(self, batch: TargetVerifyBatch, *, base_slot: int, stream: int = 0) -> None:
         rows = int(batch.rows)
