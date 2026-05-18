@@ -8,6 +8,7 @@ import pytest
 # Import built-ins so the registry has real kernels to restore after overrides.
 import hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv  # noqa: F401
+import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill  # noqa: F401
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.qwen35_gguf_materialize import LAYOUT_DENSE_BF16, LAYOUT_Q4_K_PACK8, LAYOUT_RAW_GGUF
 from hipengine.runtime.gguf_linear import (
@@ -158,6 +159,12 @@ def _reset_wmma_prefill_state(monkeypatch):
 _WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_bf16_bf16_out")
 _PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "prefill_bf16_bf16_out")
 _DECODE_PACK8_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
+_Q4_WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "wmma_prefill_bf16_bf16_out")
+_Q4_PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out")
+_Q4_GEMV_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_bf16_bf16_out")
+_Q4_PACK8_PREFILL_BF16 = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out"
+)
 
 
 def _capture_launch(
@@ -168,6 +175,7 @@ def _capture_launch(
     use_wmma_prefill: bool | None = None,
     quant_key: str = "gguf_q8_0",
     layout: str = LAYOUT_RAW_GGUF,
+    output_dtype: str = GGUF_OUTPUT_BF16,
     threads: int = 0,
     extra_keys: tuple[KernelKey, ...] = (),
 ) -> tuple[KernelKey, tuple, dict]:
@@ -181,7 +189,15 @@ def _capture_launch(
     # Pre-resolve which key the dispatch should pick so we can register a
     # fake kernel under exactly that key (and the alternates we care about,
     # so the dispatch doesn't fall through to the real .so kernel).
-    keys = (_WMMA_BF16, _PREFILL_BF16, _DECODE_PACK8_BF16) + extra_keys
+    keys = (
+        _WMMA_BF16,
+        _PREFILL_BF16,
+        _DECODE_PACK8_BF16,
+        _Q4_WMMA_BF16,
+        _Q4_PREFILL_BF16,
+        _Q4_GEMV_BF16,
+        _Q4_PACK8_PREFILL_BF16,
+    ) + extra_keys
     originals = {k: resolve(backend=k.backend, layer=k.layer, quant=k.quant, variant=k.variant) for k in keys}
 
     def make_fake(key: KernelKey):
@@ -202,6 +218,7 @@ def _capture_launch(
             rows=rows,
             in_features=in_features,
             out_features=out_features,
+            output_dtype=output_dtype,
             threads=threads,
             stream=7,
             runtime="runtime-sentinel",
@@ -310,8 +327,136 @@ def test_wmma_prefill_decode_path_unaffected_by_opt_in() -> None:
     assert key == _DECODE_PACK8_BF16
 
 
+def test_wmma_prefill_raw_q4_k_off_by_default_rows_gt_1() -> None:
+    """Raw Q4_K rows>1 keeps the decode-shaped prefill alias unless opted in."""
+
+    key, _, _ = _capture_launch(rows=4, quant_key="gguf_q4_k", layout=LAYOUT_RAW_GGUF)
+    assert key == _Q4_PREFILL_BF16
+
+
+def test_wmma_prefill_kwarg_opts_in_raw_q4_k_rows_gt_1() -> None:
+    """Per-call opt-in routes raw Q4_K rows>1 to the new P8.2 WMMA family."""
+
+    key, args, kwargs = _capture_launch(
+        rows=4,
+        quant_key="gguf_q4_k",
+        layout=LAYOUT_RAW_GGUF,
+        in_features=1024,
+        out_features=2048,
+        use_wmma_prefill=True,
+        threads=128,
+    )
+    assert key == _Q4_WMMA_BF16
+    assert args == (100, 10, 200, 4, 1024, 2048)
+    assert kwargs == {"stream": 7, "runtime": "runtime-sentinel"}
+
+
+@pytest.mark.parametrize(
+    ("output_dtype", "prefill_key", "wmma_key"),
+    [
+        (
+            GGUF_OUTPUT_FP16,
+            KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_fp16_out"),
+            KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "wmma_prefill_bf16_fp16_out"),
+        ),
+        (
+            GGUF_OUTPUT_F32,
+            KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_f32_out"),
+            KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "wmma_prefill_bf16_f32_out"),
+        ),
+    ],
+)
+def test_wmma_prefill_raw_q4_k_output_dtype_variants_route(
+    output_dtype: str, prefill_key: KernelKey, wmma_key: KernelKey
+) -> None:
+    """Raw Q4_K FP16/F32 output variants also rewrite to matching WMMA keys."""
+
+    key, _, _ = _capture_launch(
+        rows=4,
+        quant_key="gguf_q4_k",
+        layout=LAYOUT_RAW_GGUF,
+        output_dtype=output_dtype,
+        use_wmma_prefill=False,
+        extra_keys=(prefill_key, wmma_key),
+    )
+    assert key == prefill_key
+    key, args, kwargs = _capture_launch(
+        rows=4,
+        quant_key="gguf_q4_k",
+        layout=LAYOUT_RAW_GGUF,
+        output_dtype=output_dtype,
+        use_wmma_prefill=True,
+        extra_keys=(prefill_key, wmma_key),
+    )
+    assert key == wmma_key
+    assert args == (100, 10, 200, 4, 1024, 2048)
+    assert kwargs == {"stream": 7, "runtime": "runtime-sentinel"}
+
+
+def test_wmma_prefill_env_var_opts_in_raw_q4_k(monkeypatch) -> None:
+    """The env opt-in applies to raw Q4_K as well as Q8_0."""
+
+    monkeypatch.setenv("HIPENGINE_GGUF_WMMA_PREFILL", "1")
+    key, _, _ = _capture_launch(rows=4, quant_key="gguf_q4_k", layout=LAYOUT_RAW_GGUF)
+    assert key == _Q4_WMMA_BF16
+
+
+def test_wmma_prefill_session_opts_in_raw_q4_k() -> None:
+    """The session toggle applies to raw Q4_K and can be forced off per call."""
+
+    set_wmma_prefill_enabled(True)
+    key, _, _ = _capture_launch(rows=4, quant_key="gguf_q4_k", layout=LAYOUT_RAW_GGUF)
+    assert key == _Q4_WMMA_BF16
+    key, _, _ = _capture_launch(
+        rows=4,
+        quant_key="gguf_q4_k",
+        layout=LAYOUT_RAW_GGUF,
+        use_wmma_prefill=False,
+    )
+    assert key == _Q4_PREFILL_BF16
+
+
+def test_wmma_prefill_raw_q4_k_decode_path_unaffected_by_opt_in() -> None:
+    """rows==1 raw Q4_K stays on the scalar raw GEMV path."""
+
+    key, _, _ = _capture_launch(
+        rows=1,
+        quant_key="gguf_q4_k",
+        layout=LAYOUT_RAW_GGUF,
+        use_wmma_prefill=True,
+    )
+    assert key == _Q4_GEMV_BF16
+
+
+def test_wmma_prefill_q4_k_pack8_layout_keeps_pack8_fallback_under_opt_in() -> None:
+    """Dense 2D Q4_K pack8 materialization is not silently reinterpreted as raw."""
+
+    key, args, kwargs = _capture_launch(
+        rows=4,
+        quant_key="gguf_q4_k",
+        layout=LAYOUT_Q4_K_PACK8,
+        use_wmma_prefill=True,
+    )
+    assert key == _Q4_PACK8_PREFILL_BF16
+    assert args == (100, 11, 12, 13, 200, 4, 1024, 2048)
+    assert kwargs == {"stream": 7, "runtime": "runtime-sentinel"}
+
+
+def test_wmma_prefill_raw_q4_k_requires_256_aligned_in_features() -> None:
+    """Raw Q4_K WMMA requires in_features % 256 == 0; otherwise fallback."""
+
+    key, _, _ = _capture_launch(
+        rows=4,
+        quant_key="gguf_q4_k",
+        layout=LAYOUT_RAW_GGUF,
+        in_features=1000,
+        use_wmma_prefill=True,
+    )
+    assert key == _Q4_PREFILL_BF16
+
+
 def test_wmma_prefill_q5_k_not_yet_supported_keeps_decode_path() -> None:
-    """Q5_K does not yet ship a WMMA prefill family (lands in P8.3)."""
+    """Q5_K does not yet ship a WMMA prefill family (lands in P8.5)."""
 
     q5_prefill = KernelKey("hip_gfx1100", "linear", "gguf_q5_k", "prefill_bf16_bf16_out")
     key, _, _ = _capture_launch(
@@ -363,8 +508,95 @@ def test_wmma_prefill_pair_declines_fusion_when_q8_0_rows_gt_1() -> None:
     assert fused is False
 
 
+def test_wmma_prefill_pair_fuses_raw_q4_k_dual_prefill_when_opted_in() -> None:
+    """Raw Q4_K gate+up pair routes to the P8.2 dual WMMA path."""
+
+    weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q4_k")
+    weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q4_k")
+    import hipengine.runtime.gguf_linear as gl
+
+    pair_calls: list[tuple] = []
+
+    def fake_pair(*args, **kwargs):
+        pair_calls.append((args, kwargs))
+
+    original = gl.gguf_q4_k_wmma_prefill_dual_bf16_bf16_out
+    gl.gguf_q4_k_wmma_prefill_dual_bf16_bf16_out = fake_pair  # type: ignore[assignment]
+    try:
+        fused = launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=4,
+            in_features=1024,
+            out_features=2048,
+            stream=7,
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+        )
+    finally:
+        gl.gguf_q4_k_wmma_prefill_dual_bf16_bf16_out = original  # type: ignore[assignment]
+    assert fused is True
+    assert pair_calls == [
+        ((100, 10, 10, 200, 300, 4, 1024, 2048), {"stream": 7, "runtime": "runtime-sentinel"})
+    ]
+
+
+def test_wmma_prefill_pair_raw_q4_k_requires_opt_in() -> None:
+    """Raw Q4_K pair has no default-off pair fast path; callers fall back."""
+
+    weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q4_k")
+    weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q4_k")
+    fused = launch_gguf_linear_pair(
+        weight_a,
+        weight_b,
+        x_ptr=100,
+        out_a_ptr=200,
+        out_b_ptr=300,
+        rows=4,
+        in_features=1024,
+        out_features=2048,
+        use_wmma_prefill=False,
+    )
+    assert fused is False
+
+
+def test_wmma_prefill_pair_raw_q4_k_unaligned_falls_back() -> None:
+    """Raw Q4_K dual WMMA pair requires the 256-wide Q4_K block alignment."""
+
+    weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q4_k")
+    weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q4_k")
+    import hipengine.runtime.gguf_linear as gl
+
+    pair_calls: list[tuple] = []
+
+    def fake_pair(*args, **kwargs):
+        pair_calls.append((args, kwargs))
+
+    original = gl.gguf_q4_k_wmma_prefill_dual_bf16_bf16_out
+    gl.gguf_q4_k_wmma_prefill_dual_bf16_bf16_out = fake_pair  # type: ignore[assignment]
+    try:
+        fused = launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=4,
+            in_features=1000,
+            out_features=2048,
+            use_wmma_prefill=True,
+        )
+    finally:
+        gl.gguf_q4_k_wmma_prefill_dual_bf16_bf16_out = original  # type: ignore[assignment]
+    assert fused is False
+    assert pair_calls == []
+
+
 def test_wmma_prefill_pair_still_fuses_q4_k_pack8_dual_prefill() -> None:
-    """WMMA opt-in for Q8_0 does NOT poison the Q4_K pack8 dual prefill fast path."""
+    """WMMA opt-in does NOT poison the Q4_K pack8 dual prefill fast path."""
 
     weight_a = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
     weight_b = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")

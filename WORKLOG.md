@@ -19153,3 +19153,37 @@ Open for task #9:
 
 - Correctness is now locked for the raw dense Q4_K WMMA kernels, including dual gate+up.
 - Runtime dispatch still needs the raw-vs-pack8 materialization decision from task #6/#7: current dense 2D Q4_K allocations are `LAYOUT_Q4_K_PACK8`, so task #9 must only route to WMMA when raw bytes are actually available (or explicitly changes materialization under the opt-in without silently adding a resident sidecar copy).
+
+## 2026-05-18 P8.2 task #9: dense raw-Q4_K WMMA dispatch wired
+
+Wired the P8.2 dense raw-Q4_K WMMA prefill kernels into `hipengine/runtime/gguf_linear.py` behind the existing opt-in stack (`use_wmma_prefill=` kwarg > session toggle > `HIPENGINE_GGUF_WMMA_PREFILL` env var). Default behavior is unchanged.
+
+Dispatch rules after this change:
+
+- Q8_0 keeps its P8.1 behavior: rows>1 raw Q8_0 + opt-in + `in_features % 32 == 0` rewrites `prefill_*` -> `wmma_prefill_*`; rows==1 remains decode/pack8; pair fusion still declines Q8_0 rows>1 under opt-in so callers fall back to two WMMA singletons.
+- Raw Q4_K now participates in the same rewrite: rows>1 raw Q4_K + opt-in + `in_features % 256 == 0` rewrites `prefill_bf16_*_out` -> `wmma_prefill_bf16_*_out` and uses the `wmma_raw` ABI (threads stripped; wrapper chooses tile_m/tile_n).
+- Pack8 Q4_K remains the default/fallback for dense 2D materialized weights. The dispatch does **not** reinterpret `LAYOUT_Q4_K_PACK8` as raw and does not allocate a duplicate raw sidecar. That keeps task #6/#7's memory gotcha honored.
+- `launch_gguf_linear_pair` now has a raw-Q4_K dual WMMA fast path for gate+up when both sides are raw Q4_K, rows>1, opt-in is enabled, and `in_features % 256 == 0`. It calls `gguf_q4_k_wmma_prefill_dual_bf16_bf16_out(x, raw_a, raw_b, out_a, out_b, rows, in_features, out_features, ...)` directly, mirroring the existing direct pack8-dual pair call.
+- Raw-Q4_K pair with opt-in off returns `False` (no pair fusion) so the caller can use existing singleton fallback behavior. Raw-Q4_K pair with unaligned `in_features` also returns `False`. Pack8-Q4_K dual prefill still fuses under opt-in via `gguf_q4_k_pack8_dual_prefill_bf16_bf16_out`.
+
+Implementation notes:
+
+- Replaced the old hard-coded Q8_0 `%32` shape check with `_WMMA_PREFILL_QUANT_BLOCKS = {"gguf_q8_0": 32, "gguf_q4_k": 256}` and `_dispatch_can_use_wmma_prefill(...)`.
+- `_ensure_linear_kernel_registered(...)` now registers `register_gguf_q4_k_prefill_kernels()` in addition to the previous GGUF families, so registry-reset tests can recover the new keys.
+- No materialization changes in this task. Dense 2D Q4_K resident weights that are already pack8 stay pack8; task #10 can benchmark synthetic/raw paths, and future materialization policy changes must account for memory before using raw Q4_K in full-model dense paths.
+
+Dispatch tests added/updated in `tests/test_gguf_linear_dispatch.py`:
+
+- Raw Q4_K rows>1 off-by-default -> decode-shaped `prefill_bf16_bf16_out`.
+- Raw Q4_K kwarg/env/session opt-in -> `wmma_prefill_bf16_bf16_out`, raw ABI args `(x, raw, out, rows, in_features, out_features)`, `threads` stripped.
+- Raw Q4_K FP16/F32 output variants route from `prefill_bf16_{fp16,f32}_out` to matching `wmma_prefill_bf16_{fp16,f32}_out` under the opt-in.
+- Raw Q4_K rows==1 unaffected -> `gemv_bf16_bf16_out`.
+- Pack8 Q4_K layout under opt-in remains `pack8_prefill_bf16_bf16_out` and uses `(qweight, scales, mins)` ABI.
+- Raw Q4_K unaligned `in_features=1000` falls back to decode-shaped prefill.
+- Pair routing: raw Q4_K dual WMMA fuses only when opted in and aligned; raw Q4_K default-off and unaligned fall back; pack8 Q4_K dual prefill remains fused; Q8_0 rows>1 still declines pair fusion under WMMA opt-in.
+
+Validation:
+
+- `uv run --with pytest pytest tests/test_gguf_linear_dispatch.py -q` -> `33 passed`.
+- `uv run --with pytest pytest tests/test_gguf_linear_dispatch.py tests/test_gguf_q4_k_wmma_prefill.py tests/test_gguf_q4_k_gemv.py tests/test_gguf_q8_0_wmma_prefill.py -q` -> `158 passed`.
+- `uv run python -m py_compile hipengine/runtime/gguf_linear.py tests/test_gguf_linear_dispatch.py` -> OK.

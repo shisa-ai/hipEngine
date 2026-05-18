@@ -17,6 +17,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
     register_gguf_q4_k_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
+    gguf_q4_k_wmma_prefill_dual_bf16_bf16_out,
+    register_gguf_q4_k_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     register_gguf_q8_0_prefill_kernels,
 )
@@ -43,9 +47,15 @@ _WMMA_PREFILL_ENV = "HIPENGINE_GGUF_WMMA_PREFILL"
 # bench/diagnostic invocations.
 _wmma_prefill_session_enabled: bool | None = None
 
-# Quants currently shipping a batched ``wmma_prefill_*`` family. Extend as
-# Q4_K / Q5_K / Q6_K land in P8.2 / P8.3.
-_WMMA_PREFILL_SUPPORTED_QUANTS: frozenset[str] = frozenset({"gguf_q8_0"})
+# Quants currently shipping a batched ``wmma_prefill_*`` family. Values are
+# the raw GGUF K-block alignment constraints enforced before dispatching to
+# the WMMA wrappers. Q4_K is raw-layout only for now: dense 2D Q4_K resident
+# weights are still materialized as the lossless pack8 fallback layout, so
+# they never reach the raw WMMA ABI unless a caller explicitly has raw bytes.
+_WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
+    "gguf_q8_0": 32,
+    "gguf_q4_k": 256,
+}
 
 
 @dataclass(frozen=True)
@@ -182,9 +192,9 @@ def launch_gguf_linear(
     Hidden projections use ``output_dtype='bf16'``. The tied Q6_K lm-head path
     uses ``output_dtype='f32'`` to produce logits.
 
-    When ``rows > 1`` and the quant has a WMMA prefill kernel registered
-    (currently ``gguf_q8_0``), the dispatch rewrites to the
-    ``wmma_prefill_*`` family if any of these is true:
+    When ``rows > 1`` and the raw-layout quant has a WMMA prefill kernel
+    registered (currently ``gguf_q8_0`` and raw ``gguf_q4_k``), the dispatch
+    rewrites to the ``wmma_prefill_*`` family if any of these is true:
 
     * ``use_wmma_prefill=True`` is passed explicitly,
     * a runner has called :func:`set_wmma_prefill_enabled` with ``True``,
@@ -298,12 +308,11 @@ def launch_gguf_linear_pair(
 ) -> bool:
     """Launch a supported pair of GGUF projections, returning True when fused.
 
-    The pair fast paths (Q8_0 dual decode GEMV, Q4_K pack8 dual prefill) are
-    independent of the WMMA prefill family for now: there is no Q8_0 dual
-    WMMA prefill yet (it lands in a follow-up P8 step). When
-    ``use_wmma_prefill`` would otherwise route Q8_0 rows>1 to the WMMA
-    family, the pair function returns ``False`` so the caller falls back to
-    two singletons that each take the WMMA path via
+    The pair fast paths cover Q8_0 dual decode GEMV, Q4_K pack8 dual prefill,
+    and the P8.2 raw-Q4_K dual WMMA prefill. There is still no Q8_0 dual WMMA
+    prefill; when ``use_wmma_prefill`` would otherwise route Q8_0 rows>1 to
+    the WMMA family, the pair function returns ``False`` so the caller falls
+    back to two singletons that each take the WMMA path via
     :func:`launch_gguf_linear`.
     """
 
@@ -319,16 +328,36 @@ def launch_gguf_linear_pair(
         out_features=out_features,
     )
     if use_wmma and rows > 1:
-        # If either side would be routed to the WMMA prefill singleton,
-        # decline the pair fusion so the caller falls back to two
-        # singletons (each picks up the WMMA family via launch_gguf_linear).
+        q4_prefill_raw = KernelKey(
+            "hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out"
+        )
+        if (
+            dispatch_a.abi == "raw"
+            and dispatch_b.abi == "raw"
+            and dispatch_a.key == q4_prefill_raw
+            and dispatch_b.key == q4_prefill_raw
+            and _wmma_prefill_shape_supported("gguf_q4_k", in_features)
+        ):
+            gguf_q4_k_wmma_prefill_dual_bf16_bf16_out(
+                x_ptr,
+                weight_a.allocation("raw").tensor.ptr,
+                weight_b.allocation("raw").tensor.ptr,
+                out_a_ptr,
+                out_b_ptr,
+                rows,
+                in_features,
+                out_features,
+                stream=stream,
+                runtime=runtime,
+            )
+            return True
+
+        # If either side would be routed to a WMMA prefill singleton that does
+        # not have a dual pair path here (currently Q8_0), decline the pair
+        # fusion so the caller falls back to two singletons (each picks up the
+        # WMMA family via launch_gguf_linear).
         for d in (dispatch_a, dispatch_b):
-            if (
-                d.abi == "raw"
-                and d.key.quant in _WMMA_PREFILL_SUPPORTED_QUANTS
-                and d.key.variant.startswith("prefill_")
-                and in_features % 32 == 0
-            ):
+            if _dispatch_can_use_wmma_prefill(d, rows=rows, in_features=in_features):
                 return False
     q8_decode = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
     if rows == 1 and dispatch_a.key == q8_decode and dispatch_b.key == q8_decode:
@@ -447,25 +476,20 @@ def _wmma_prefill_dispatch(
     * ``dispatch.abi == "raw"`` (the WMMA kernel consumes raw GGUF bytes
       via the same single ``raw`` allocation as the decode-shaped path).
     * ``dispatch.key.quant`` ships a registered WMMA prefill family
-      (currently ``gguf_q8_0`` only; Q4_K / Q5_K / Q6_K extend this set in
-      P8.2 / P8.3).
+      (``gguf_q8_0`` or raw-layout ``gguf_q4_k``).
     * ``dispatch.key.variant`` is one of the ``prefill_*`` aliases (i.e.
       the rows>1 rewrite from ``_variant_for_rows`` already happened).
-    * ``in_features % 32 == 0`` (Q8_0 block size constraint enforced by
-      the kernel).
+    * ``in_features`` satisfies the quant's raw block-size constraint
+      (32 for Q8_0, 256 for Q4_K).
     """
 
     if not use_wmma or rows <= 1:
         return dispatch
     if dispatch.abi != "raw":
         return dispatch
-    if dispatch.key.quant not in _WMMA_PREFILL_SUPPORTED_QUANTS:
+    if not _dispatch_can_use_wmma_prefill(dispatch, rows=rows, in_features=in_features):
         return dispatch
     variant = dispatch.key.variant
-    if not variant.startswith("prefill_"):
-        return dispatch
-    if in_features % 32 != 0:
-        return dispatch
     return GGUFLinearDispatch(
         KernelKey(
             dispatch.key.backend,
@@ -474,6 +498,25 @@ def _wmma_prefill_dispatch(
             f"wmma_{variant}",
         ),
         "wmma_raw",
+    )
+
+
+def _wmma_prefill_shape_supported(quant: str, in_features: int) -> bool:
+    block = _WMMA_PREFILL_QUANT_BLOCKS.get(quant)
+    return block is not None and in_features % block == 0
+
+
+def _dispatch_can_use_wmma_prefill(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+) -> bool:
+    return (
+        rows > 1
+        and dispatch.abi == "raw"
+        and dispatch.key.variant.startswith("prefill_")
+        and _wmma_prefill_shape_supported(dispatch.key.quant, in_features)
     )
 
 
@@ -522,6 +565,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_dense_gemv_kernels()
     register_gguf_k_gemv_kernels()
     register_gguf_q4_k_gemv_kernels()
+    register_gguf_q4_k_prefill_kernels()
     register_gguf_q8_0_prefill_kernels()
 
 
