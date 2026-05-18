@@ -18957,3 +18957,32 @@ Validation:
 Noticed (pre-existing, NOT introduced by this task): the dense_bf16 parametrize case in `test_launch_gguf_linear_calls_registry_kernel_with_expected_abi` fails when collected alongside the broader `-k "prefill"` set on `HEAD`. Confirmed via `git stash` — exists before my changes. Some test in the prefill family clears the `dense_gemv/bf16/prefill_out` registration. Out of scope for task #3.
 
 Next: task #4 (formal `tests/test_gguf_q8_0_wmma_prefill.py` mirroring the existing `test_gguf_k_gemv.py` pattern, covering the dispatch + kernel surface) and task #5 (qwen35moe 512/0 prefill bench with `HIPENGINE_GGUF_WMMA_PREFILL=1`).
+
+## 2026-05-18 qwen35moe GGUF P8.4: formal correctness tests for Q8_0 WMMA prefill
+
+Added `tests/test_gguf_q8_0_wmma_prefill.py` (69 tests total, all green) covering three layers:
+
+1. **No-GPU surface (3 tests)** mirroring the existing `test_gguf_k_gemv.py` build-plan + contract pattern:
+   - Registry binding for all 9 dtype combos (`('hip_gfx1100', 'linear', 'gguf_q8_0', 'wmma_prefill_<in>_<out>_out')`).
+   - `plan_gguf_q8_0_prefill_build(compiler_version="test-compiler")` returns `gguf_q8_0_prefill.so` artifact with `gguf_q8_0_prefill.hip` source; dry-run matches.
+   - Default tile heuristic `_default_tiles(rows, out_features)`: rows>=32 → tile_n=32; rows<32 → 16; out_features<32 → tile_m=16.
+   - Wrapper contract: `ValueError` for `in_features % 32 != 0` ("Q8_0 block"), `rows<=0`, `out_features<=0`, unsupported tile sizes.
+
+2. **GPU correctness (65 tests)** using `tests/test_gguf_k_gemv.make_q8_0_weight` synthetic fixtures, compared via `np.testing.assert_allclose` against `cpu_reference.gguf_q8_0_gemv`:
+   - **Primary sweep (49 tests)**: bf16 → f32, rows ∈ {4, 16, 17, 32, 33, 48, 64} × (in, out) ∈ {(64,16), (64,24), (96,32), (128,48), (256,64), (256,80), (512,128)}. Tolerance `rtol=1e-4, atol=1e-5`. Covers all rows from the task description plus extras for tile boundaries; `out_features` deliberately straddles tile sizes 16 and 32.
+   - **Dtype matrix (9 tests)**: all combinations of `{bf16, fp16, f32}` in × `{bf16, fp16, f32}` out on (rows=32, in=256, out=128). bf16/fp16 outputs use one-ULP tolerance (`rtol=5e-3, atol=5e-2` for bf16; `rtol=5e-3, atol=1e-2` for fp16).
+   - **Explicit tile selection (6 tests)**: each `(tile_m, tile_n) ∈ {(16,16), (16,32), (32,16), (32,32), (64,16), (64,32)}` on a clean (64, 256, 64) shape.
+   - **Unaligned masking (1 test)**: rows=17, out=24, in=64 forces every active tile to be a boundary tile under the default (32, 32) heuristic.
+
+3. **Dispatch integration (1 test)**: end-to-end `launch_gguf_linear(..., use_wmma_prefill=True)` on real GPU buffers (rows=64, in=256, out=128, bf16→bf16). Confirms the new `wmma_raw` ABI handler + kernel build + bf16 output cast all work together.
+
+Helpers in the file:
+- `_hip_available()` mirrors `tests/test_gguf_q6_k_embedding.py`; tests that hit the GPU are `@pytest.mark.skipif(not _hip_available(), ...)`.
+- `_run_q8_0_wmma_prefill_gpu(...)` handles the malloc/copy/launch/sync/copy-back/free dance once.
+- `_TOLERANCES` matrix indexed by `(in_dtype, out_dtype)` keeps the per-output-format budget explicit (bf16/fp16 outputs forced to one-ULP; f32 outputs tight).
+
+Validation:
+- `pytest tests/test_gguf_q8_0_wmma_prefill.py -v` → 69 passed in 3.12s.
+- `pytest tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_linear_dispatch.py tests/test_gguf_k_gemv.py tests/test_gguf_q4_k_gemv.py` → 100 passed in 3.14s.
+
+Next: task #5 (qwen35moe 512/0 prefill bench with `HIPENGINE_GGUF_WMMA_PREFILL=1` vs default, rocprofv3 kernel-trace evidence, benchmarks/results artifact + WORKLOG comparison row).
