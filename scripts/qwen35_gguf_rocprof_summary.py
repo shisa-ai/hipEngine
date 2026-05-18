@@ -211,7 +211,7 @@ def classify_kernel(name: str) -> str:
         if ", 6" in name or ",6" in name:
             return "moe_q6_k_selected_legacy_decode"
     # ---------------------------------------------- Dense Q8_0 / Q4_K / Q6_K
-    if "gguf_q8_0_prefill_wmma" in base:
+    if "gguf_q8_0_prefill_wmma" in base or "gguf_q8_0_prefill_dual_wmma" in base:
         return "dense_q8_0_wmma_prefill"
     if "gguf_q8_0_pack8_gemv_decode" in base or "gguf_q8_0_pack8_dual_gate_up_gemv_decode" in base:
         return "dense_q8_0_pack8_gemv_decode_p9"

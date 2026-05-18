@@ -88,6 +88,7 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         ("gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>", "moe_q6_k_selected_legacy_decode"),
         # Dense Q8_0
         ("gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>", "dense_q8_0_wmma_prefill"),
+        ("gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>", "dense_q8_0_wmma_prefill"),
         ("gguf_q8_0_pack8_gemv_kernel<unsigned short>", "other"),  # legacy non-decode pack8
         ("gguf_q8_0_pack8_gemv_decode_kernel<unsigned short>", "dense_q8_0_pack8_gemv_decode_p9"),
         ("gguf_q8_0_pack8_dual_gate_up_gemv_decode_kernel<unsigned short>", "dense_q8_0_pack8_gemv_decode_p9"),

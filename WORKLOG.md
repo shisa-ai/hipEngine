@@ -19965,3 +19965,32 @@ Sweep evidence (Qwen3.6-35B-A3B-UD-Q4_K_M, 512/0, retained tile defaults Q4 `32x
 | 8 | 1427.166 | 0.358753 |
 
 Decision: retain `__launch_bounds__(32,2)`. Lowering to 1 does not help, and forcing 4/8 hurts. This does not close the P9.C1 gap; artifact updated with the launch-bounds negative evidence. Task #27 remains in_progress/blocked at the previously measured best retained combined target bucket `149.029 ms` vs `<=110 ms` target.
+
+## 2026-05-18 P9 task #27 continuation: Q8_0 shape-aware tile picker
+
+Continued task #27 only. The selected-MoE TM/TN and launch-bound sweeps were already exhausted, so focused on the remaining Q8_0 WMMA bucket.
+
+Finding: the previous Q8_0 `_default_tiles(rows, out_features)` heuristic was too coarse. qwen35moe has large Q8_0 shapes with the same `out>=4096` class but different best tiles. Targeted synthetic BF16/BF16 microbench on RX 7900 XTX/gfx1100 at rows=512:
+
+| shape (rows x in x out) | best tile | evidence |
+| --- | --- | --- |
+| 512 x 2048 x 8192 (`linear_qkv` / full-Q+gate) | `16x32` | `0.5379 ms`; old `64x32` was `0.8184 ms` |
+| 512 x 2048 x 4096 (`linear_gate`) | `16x32` | `0.4483 ms`; `64x32` `0.4525 ms` |
+| 512 x 4096 x 2048 (`ssm_out` / shared down) | `64x32` | `0.4517 ms`; `32x32` `0.5810 ms` |
+| 512 x 2048 x 512 (full-attn K/V) | `16x32` | `0.1573 ms`; `32x32` `0.1756 ms` |
+
+Code changes:
+
+- `gguf_q8_0_prefill.py`: `_default_tiles` now takes `(rows, in_features, out_features)` and implements the shape-aware decisions above. Single-kernel wrappers pass `in_features`; dual wrapper does too. Q8 dual shared-expert runtime path still explicitly pins `16x32`.
+- `scripts/qwen35_gguf_rocprof_summary.py`: classifier now buckets `gguf_q8_0_prefill_dual_wmma_kernel` as `dense_q8_0_wmma_prefill` instead of `copy`, so the P9.C1 target bucket includes all Q8_0 WMMA prefill work.
+- Tests updated: Q8_0 default-tile pins and P9.E1 classifier case for Q8 dual WMMA.
+
+Validation / measurement:
+
+- Q8/dispatch test subset passed: `tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_q8_0_wmma_prefill_dual.py tests/test_gguf_gemv_decode_dispatch.py::test_p9_c1_pair_concat_routes_q8_dual_wmma_prefill` -> pass.
+- 512/0 wall bench (3 measured runs, cached builds, `--use-wmma-prefill`): median `1678.004 tok/s` (`0.305124 s`). First sample was slow (`1478 tok/s`), so keep the full sample list in the artifact.
+- 512/0 rocprof + P9.E1 summary (classifier fixed): Q8_0 WMMA `52.187 ms / 210 dispatches` (includes 40 dual shared-expert dispatches), Q4_K selected dual `57.728 ms / 40`, Q5_K selected `26.833 ms / 37`, Q6_K selected `2.694 ms / 3`; combined P9.C1 target bucket `139.442 ms`.
+
+Acceptance still **blocked**: `139.442 ms > 110 ms`. This improves the retained blocked result from `149.029 ms` (or `~152.45 ms` when counting Q8 dual correctly) and from the original `170.410 ms` baseline, but leaves ~29 ms. Prior TM/TN and launch-bound sweeps show the generic raw selected-MoE path cannot close that remainder; next work likely needs a different selected-MoE design (expert-shape split, sidecar/repack, or lower-register-pressure kernel), not more tile picking.
+
+Updated `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c1-wmma-tile-sweep-blocked.json`, `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and `docs/KERNELS.md` with the improved blocked evidence. Task #27 remains in_progress.

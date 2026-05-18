@@ -77,32 +77,34 @@ def _symbol(variant: str) -> str:
     return f"hipengine_gguf_q8_0_{variant}"
 
 
-def _default_tiles(rows: int, out_features: int) -> tuple[int, int]:
+def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int, int]:
     """Heuristic default for (tile_m, tile_n) when the caller does not override.
 
-    P9.C1 tuning (microbench on RX 7900 XTX / gfx1100, rows=512, BF16/BF16):
+    P9.C1 tuning (microbench on RX 7900 XTX / gfx1100, rows=512, BF16/BF16)
+    is shape-specific; ``out_features`` alone was too coarse for qwen35moe:
 
-    * ``out_features >= 4096`` (shared-expert gate/up, FFN-class shapes):
-      ``(64, 32)`` is ~2x faster than the legacy ``(32, 32)`` default. The
-      large TM tile keeps grid sizes modest for big output dims, which keeps
-      the wave scheduler from oversubscribing the L2 with redundant
-      activation loads.
-    * ``out_features >= 2048`` (attention QKV/O at hidden_size=2048):
-      ``(32, 32)`` and ``(64, 32)`` are within ~1% of each other; we keep
-      ``(32, 32)`` for backwards compatibility with the P8.1 default
-      microbench evidence.
-    * Smaller ``out_features``: fall through to ``(32, 32)`` / ``(16, 32)``
-      as before.
+    * ``(in=2048, out=8192)`` (linear-attention qkv and full-attn q+gate):
+      ``(16,32)`` is the fastest measured tile (`~0.54 ms` synthetic). The
+      previous broad ``out>=4096 -> (64,32)`` rule over-tiled this shape.
+    * ``(in=2048, out=4096)`` (linear-attention gate): ``(16,32)`` slightly
+      wins over ``(64,32)`` and is retained to keep the large-input family
+      consistent.
+    * ``(in=4096, out=2048)`` (ssm/shared down): ``(64,32)`` is best.
+    * ``out<=512`` (full-attn k/v): ``(16,32)`` is best.
+    * Other medium shapes keep the stable P8/P9 ``(32,32)`` default.
     * ``rows < 32``: drop ``tile_n`` to 16 (the kernel still launches but
       the bigger TN under-utilises the WMMA tile).
 
-    See ``tests/test_gguf_q8_0_wmma_prefill.py::test_default_tiles_*`` for
-    the pinning tests that exercise each branch.
+    See ``tests/test_gguf_q8_0_wmma_prefill.py`` for dispatch pinning tests.
     """
 
     tile_n = 32 if rows >= 32 else 16
-    if out_features >= 4096:
+    if out_features <= 512:
+        tile_m = 16
+    elif in_features >= 4096 and out_features >= 2048:
         tile_m = 64
+    elif in_features <= 2048 and out_features >= 4096:
+        tile_m = 16
     elif out_features >= 32:
         tile_m = 32
     else:
@@ -134,7 +136,7 @@ def _launch(
     if in_features % 32 != 0:
         raise ValueError("in_features must be divisible by Q8_0 block size 32")
     if tile_m is None or tile_n is None:
-        tm_def, tn_def = _default_tiles(rows, out_features)
+        tm_def, tn_def = _default_tiles(rows, in_features, out_features)
         tile_m = tm_def if tile_m is None else tile_m
         tile_n = tn_def if tile_n is None else tile_n
     if (tile_m, tile_n) not in _ALLOWED_TILES:
@@ -230,7 +232,7 @@ def _launch_dual(
     if in_features % 32 != 0:
         raise ValueError("in_features must be divisible by Q8_0 block size 32")
     if tile_m is None or tile_n is None:
-        tm_def, tn_def = _default_tiles(rows, max(out_features_a, out_features_b))
+        tm_def, tn_def = _default_tiles(rows, in_features, max(out_features_a, out_features_b))
         tile_m = tm_def if tile_m is None else tile_m
         tile_n = tn_def if tile_n is None else tile_n
     if (tile_m, tile_n) not in _ALLOWED_TILES:

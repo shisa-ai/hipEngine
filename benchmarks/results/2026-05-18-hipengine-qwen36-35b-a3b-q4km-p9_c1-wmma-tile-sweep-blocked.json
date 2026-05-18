@@ -2,23 +2,23 @@
   "schema": 2,
   "status": "diagnostic_retained_blocked",
   "performance_claim": false,
-  "timestamp": "2026-05-18T16:00:45.242243+00:00",
+  "timestamp": "2026-05-18T16:28:45.071488+00:00",
   "run_tag": "hipengine-qwen36-q4km-p9_c1-wmma-tile-sweep-blocked",
   "task": "#27 P9.C1 compact MoE + Q8_0 WMMA prefill tile sweep",
-  "summary": "P9.C1 selected-MoE/Q8_0 WMMA tuning retained partial improvements but missed the <=110 ms combined WMMA bucket gate. Best retained default: Q4_K selected dual 32x16, Q5_K/Q6_K selected down legacy 16x16, Q8_0 shared gate+up dual concat WMMA at 16x32 plus single Q8_0 out>=4096 heuristic. Combined Q4 dual + Q5/Q6 down + Q8_0 WMMA bucket is 149.03 ms (target <=110 ms), down from 170.41 ms after P9.A3/P9.C1 partial (~12.5%). Launch-bounds min-block sweep (1/2/4/8) was also run after adding a compile-time sweep knob; min-blocks=2 remains retained because 1/4/8 did not improve 512/0 wall time.",
+  "summary": "P9.C1 selected-MoE/Q8_0 WMMA tuning retained partial improvements but missed the <=110 ms combined WMMA bucket gate. Best retained default now: Q4_K selected dual 32x16, Q5_K/Q6_K selected down legacy 16x16, selected launch-bound min-blocks 2, Q8_0 shape-aware single tiles (2048x8192 and 2048x4096 -> 16x32; 4096x2048 -> 64x32; 2048x512 -> 16x32), Q8_0 shared gate+up dual concat 16x32. Combined Q4 dual + Q5/Q6 down + all Q8_0 WMMA bucket is 139.44 ms (target <=110 ms), down from 170.41 ms (~18.2%).",
   "hardware": {
     "gpu": "AMD Radeon RX 7900 XTX / gfx1100 (local; W7900 not re-run)"
   },
   "software": {
-    "commit_at_measurement": "48c7ae68bb22199780dc9ea909cbea8d3e129ff5",
-    "git_status_at_measurement": "## gguf-bulk-prefill\n M hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.hip\n M hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.py\n M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip\n M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py\n M hipengine/runtime/gguf_linear.py\n M hipengine/runtime/qwen35_gguf_runner.py\n M tests/test_gguf_gemv_decode_dispatch.py\n M tests/test_gguf_k_selected_wmma_prefill.py\n M tests/test_gguf_q4_k_selected_wmma_prefill.py\n?? uv.lock",
+    "commit_at_measurement": "23854b22ddd90c96b3f73f253ae02aa991a41777",
+    "git_status_at_measurement": "## gguf-bulk-prefill\n M hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py\n M scripts/qwen35_gguf_rocprof_summary.py\n M tests/test_gguf_q8_0_wmma_prefill.py\n M tests/test_qwen35_gguf_rocprof_summary.py\n?? uv.lock",
     "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
   },
   "commands": {
     "tests": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt uv run --with pytest pytest tests/test_gguf_q8_0_wmma_prefill_dual.py tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q --no-header",
-    "bench_512_0": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c1b/final-default-512-0-3run.json",
-    "rocprof_512_0": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/p9_c1b/rocprof-default-q4-32-q8-16x32 -- python3 scripts/qwen35_gguf_bench.py [...] --prompt-length 512 --decode-tokens 0 --measured-runs 1 --use-wmma-prefill",
-    "rocprof_summary": "uv run python scripts/qwen35_gguf_rocprof_summary.py --csv /tmp/p9_c1b/rocprof-default-q4-32-q8-16x32/rocm/2891410_kernel_trace.csv --tokens-prefill 512 --top 12 --json /tmp/p9_c1b/rocprof-default-q4-32-q8-16x32-summary.json --quiet"
+    "bench_512_0": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c1d/q8-shape-aware-512-0-3run.json",
+    "rocprof_512_0": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/p9_c1d/rocprof-q8-shape-aware -- python3 scripts/qwen35_gguf_bench.py [...] --prompt-length 512 --decode-tokens 0 --measured-runs 1 --use-wmma-prefill",
+    "rocprof_summary": "uv run python scripts/qwen35_gguf_rocprof_summary.py --csv /tmp/p9_c1d/rocprof-q8-shape-aware/rocm/2945579_kernel_trace.csv --tokens-prefill 512 --top 20 --json /tmp/p9_c1d/rocprof-q8-shape-aware-summary-v2.json --quiet"
   },
   "correctness": {
     "passed": true,
@@ -28,36 +28,36 @@
     "wallclock_512_0": {
       "prefill_seconds": {
         "samples": [
-          0.36321821401361376,
-          0.3197908339789137,
-          0.31488452199846506
+          0.34637561498675495,
+          0.3030396940303035,
+          0.30512433097464964
         ],
-        "median": 0.3197908339789137,
-        "p95": 0.3197908339789137,
-        "min": 0.31488452199846506,
-        "max": 0.36321821401361376,
-        "stdev": 0.026602490540495786,
-        "stdev_pct_of_median": 8.318715771024848
+        "median": 0.30512433097464964,
+        "p95": 0.30512433097464964,
+        "min": 0.3030396940303035,
+        "max": 0.34637561498675495,
+        "stdev": 0.02444045890520101,
+        "stdev_pct_of_median": 8.00999999807671
       },
       "prefill_tok_s": {
         "samples": [
-          1409.620939275941,
-          1601.0465141529357,
-          1625.992909243395
+          1478.1641023418417,
+          1689.5476404117567,
+          1678.0044985745108
         ],
-        "median": 1601.0465141529357,
-        "p95": 1601.0465141529357,
-        "min": 1409.620939275941,
-        "max": 1625.992909243395,
-        "stdev": 118.37996926042426,
-        "stdev_pct_of_median": 7.393911932849462
+        "median": 1678.0044985745108,
+        "p95": 1678.0044985745108,
+        "min": 1478.1641023418417,
+        "max": 1689.5476404117567,
+        "stdev": 118.85034585341637,
+        "stdev_pct_of_median": 7.082838332935428
       }
     },
     "rocprof_summary_512_0": {
       "schema": "p9_gguf_rocprof_summary_v1",
-      "generated_at": "2026-05-18T15:57:33.662867+00:00",
+      "generated_at": "2026-05-18T16:27:54.161470+00:00",
       "inputs": {
-        "csv": "/tmp/p9_c1b/rocprof-default-q4-32-q8-16x32/rocm/2891410_kernel_trace.csv"
+        "csv": "/tmp/p9_c1d/rocprof-q8-shape-aware/rocm/2945579_kernel_trace.csv"
       },
       "tokens_prefill": 512,
       "tokens_decode": null,
@@ -97,115 +97,121 @@
       },
       "phases": {
         "prefill": {
-          "total_kernel_ms": 280.495584,
+          "total_kernel_ms": 264.157271,
           "total_dispatches": 1518,
           "tokens": 512,
-          "ms_per_token": 0.5478429375,
+          "ms_per_token": 0.515932169921875,
           "buckets": [
             {
-              "bucket": "dense_q8_0_wmma_prefill",
-              "total_ms": 60.488475,
-              "dispatches": 170,
-              "avg_dispatch_ms": 0.3558145588235294,
-              "share_of_phase": 0.21564858218944366,
-              "footprint_bytes_per_dispatch": 4456448,
-              "effective_gb_s": 12.524636470005236,
-              "kernel_names": [
-                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
-                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)"
-              ],
-              "per_kernel_ms": {
-                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 42.630884,
-                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 17.857591
-              },
-              "per_kernel_dispatches": {
-                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 70,
-                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 100
-              },
-              "ms_per_token": 0.118141552734375
-            },
-            {
               "bucket": "moe_q4_k_selected_dual_wmma_prefill",
-              "total_ms": 58.564417,
+              "total_ms": 57.727737,
               "dispatches": 40,
-              "avg_dispatch_ms": 1.464110425,
-              "share_of_phase": 0.20878908738898364,
+              "avg_dispatch_ms": 1.443193425,
+              "share_of_phase": 0.218535483734612,
               "footprint_bytes_per_dispatch": 75497472,
-              "effective_gb_s": 51.56542205482896,
+              "effective_gb_s": 52.31278821825286,
               "kernel_names": [
                 "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short, 32, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)"
               ],
               "per_kernel_ms": {
-                "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short, 32, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)": 58.564417
+                "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short, 32, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)": 57.727737
               },
               "per_kernel_dispatches": {
                 "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short, 32, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)": 40
               },
-              "ms_per_token": 0.114383626953125
+              "ms_per_token": 0.112749486328125
+            },
+            {
+              "bucket": "dense_q8_0_wmma_prefill",
+              "total_ms": 52.186824,
+              "dispatches": 210,
+              "avg_dispatch_ms": 0.2485086857142857,
+              "share_of_phase": 0.19755967269967745,
+              "footprint_bytes_per_dispatch": 4456448,
+              "effective_gb_s": 17.93276555783506,
+              "kernel_names": [
+                "void (anonymous namespace)::gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)",
+                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)"
+              ],
+              "per_kernel_ms": {
+                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 32.355593,
+                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 14.124205,
+                "void (anonymous namespace)::gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)": 3.419734,
+                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 2.287292
+              },
+              "per_kernel_dispatches": {
+                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 90,
+                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 40,
+                "void (anonymous namespace)::gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)": 40,
+                "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)": 40
+              },
+              "ms_per_token": 0.101927390625
             },
             {
               "bucket": "gdn_prefill_recurrent",
-              "total_ms": 51.417949,
+              "total_ms": 49.785853,
               "dispatches": 30,
-              "avg_dispatch_ms": 1.7139316333333332,
-              "share_of_phase": 0.18331108200263146,
+              "avg_dispatch_ms": 1.6595284333333333,
+              "share_of_phase": 0.1884705002119741,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
                 "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)"
               ],
               "per_kernel_ms": {
-                "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": 51.417949
+                "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": 49.785853
               },
               "per_kernel_dispatches": {
                 "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)": 30
               },
-              "ms_per_token": 0.100425681640625
+              "ms_per_token": 0.097237994140625
             },
             {
               "bucket": "full_attention_prefill",
-              "total_ms": 40.966785,
+              "total_ms": 40.933121,
               "dispatches": 10,
-              "avg_dispatch_ms": 4.0966785,
-              "share_of_phase": 0.1460514437189856,
+              "avg_dispatch_ms": 4.0933121,
+              "share_of_phase": 0.1549573890017966,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
                 "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)"
               ],
               "per_kernel_ms": {
-                "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)": 40.966785
+                "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)": 40.933121
               },
               "per_kernel_dispatches": {
                 "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)": 10
               },
-              "ms_per_token": 0.080013251953125
+              "ms_per_token": 0.079947501953125
             },
             {
               "bucket": "moe_q5_k_selected_wmma_prefill",
-              "total_ms": 27.288628,
+              "total_ms": 26.833081,
               "dispatches": 37,
-              "avg_dispatch_ms": 0.7375304864864866,
-              "share_of_phase": 0.09728719294204646,
+              "avg_dispatch_ms": 0.7252184054054055,
+              "share_of_phase": 0.10157994477464147,
               "footprint_bytes_per_dispatch": 46137344,
-              "effective_gb_s": 62.55652457133426,
+              "effective_gb_s": 63.61855084773902,
               "kernel_names": [
                 "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)"
               ],
               "per_kernel_ms": {
-                "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)": 27.288628
+                "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)": 26.833081
               },
               "per_kernel_dispatches": {
                 "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)": 37
               },
-              "ms_per_token": 0.0532981015625
+              "ms_per_token": 0.052408361328125
             },
             {
               "bucket": "router",
-              "total_ms": 14.490201,
+              "total_ms": 14.505128,
               "dispatches": 120,
-              "avg_dispatch_ms": 0.120751675,
-              "share_of_phase": 0.05165928387664028,
+              "avg_dispatch_ms": 0.12087606666666667,
+              "share_of_phase": 0.05491095492124463,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
@@ -213,43 +219,21 @@
                 "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)"
               ],
               "per_kernel_ms": {
-                "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)": 13.519315,
-                "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)": 0.970886
+                "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)": 13.5454,
+                "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)": 0.959728
               },
               "per_kernel_dispatches": {
                 "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)": 80,
                 "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)": 40
               },
-              "ms_per_token": 0.028301173828125
-            },
-            {
-              "bucket": "copy",
-              "total_ms": 5.258959,
-              "dispatches": 412,
-              "avg_dispatch_ms": 0.01276446359223301,
-              "share_of_phase": 0.018748812102510677,
-              "footprint_bytes_per_dispatch": null,
-              "effective_gb_s": null,
-              "kernel_names": [
-                "__amd_rocclr_copyBuffer",
-                "void (anonymous namespace)::gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)"
-              ],
-              "per_kernel_ms": {
-                "__amd_rocclr_copyBuffer": 1.785489,
-                "void (anonymous namespace)::gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)": 3.47347
-              },
-              "per_kernel_dispatches": {
-                "__amd_rocclr_copyBuffer": 372,
-                "void (anonymous namespace)::gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)": 40
-              },
-              "ms_per_token": 0.010271404296875
+              "ms_per_token": 0.028330328125
             },
             {
               "bucket": "other",
-              "total_ms": 4.298237,
+              "total_ms": 4.209191,
               "dispatches": 114,
-              "avg_dispatch_ms": 0.03770383333333334,
-              "share_of_phase": 0.01532372431218026,
+              "avg_dispatch_ms": 0.03692272807017544,
+              "share_of_phase": 0.015934412799108604,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
@@ -262,13 +246,13 @@
                 "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)"
               ],
               "per_kernel_ms": {
-                "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)": 0.01676,
-                "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)": 3.190868,
-                "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)": 0.774607,
-                "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)": 0.305762,
+                "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)": 0.01724,
+                "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)": 3.170224,
+                "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)": 0.712286,
+                "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)": 0.299681,
                 "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)": 0.00184,
-                "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)": 0.00524,
-                "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 0.00316
+                "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)": 0.00468,
+                "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 0.00324
               },
               "per_kernel_dispatches": {
                 "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)": 1,
@@ -279,14 +263,14 @@
                 "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)": 1,
                 "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 1
               },
-              "ms_per_token": 0.008394994140625
+              "ms_per_token": 0.008221076171875
             },
             {
               "bucket": "linear_attn_conv",
-              "total_ms": 3.277507,
+              "total_ms": 3.218618,
               "dispatches": 60,
-              "avg_dispatch_ms": 0.05462511666666667,
-              "share_of_phase": 0.011684700889979074,
+              "avg_dispatch_ms": 0.05364363333333333,
+              "share_of_phase": 0.012184476269820338,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
@@ -294,59 +278,59 @@
                 "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)"
               ],
               "per_kernel_ms": {
-                "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)": 3.190466,
-                "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)": 0.087041
+                "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)": 3.139176,
+                "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)": 0.079442
               },
               "per_kernel_dispatches": {
                 "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)": 30,
                 "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)": 30
               },
-              "ms_per_token": 0.006401380859375
+              "ms_per_token": 0.00628636328125
+            },
+            {
+              "bucket": "moe_q6_k_selected_wmma_prefill",
+              "total_ms": 2.694017,
+              "dispatches": 3,
+              "avg_dispatch_ms": 0.8980056666666666,
+              "share_of_phase": 0.010198534342066246,
+              "footprint_bytes_per_dispatch": 55049401,
+              "effective_gb_s": 61.301841450889135,
+              "kernel_names": [
+                "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)"
+              ],
+              "per_kernel_ms": {
+                "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)": 2.694017
+              },
+              "per_kernel_dispatches": {
+                "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)": 3
+              },
+              "ms_per_token": 0.005261751953125
             },
             {
               "bucket": "gdn_prepare",
-              "total_ms": 2.789221,
+              "total_ms": 2.080932,
               "dispatches": 30,
-              "avg_dispatch_ms": 0.09297403333333334,
-              "share_of_phase": 0.0099439034305795,
+              "avg_dispatch_ms": 0.06936439999999999,
+              "share_of_phase": 0.007877625295424861,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
                 "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)"
               ],
               "per_kernel_ms": {
-                "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)": 2.789221
+                "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)": 2.080932
               },
               "per_kernel_dispatches": {
                 "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)": 30
               },
-              "ms_per_token": 0.005447697265625
-            },
-            {
-              "bucket": "moe_q6_k_selected_wmma_prefill",
-              "total_ms": 2.687103,
-              "dispatches": 3,
-              "avg_dispatch_ms": 0.895701,
-              "share_of_phase": 0.009579840658026188,
-              "footprint_bytes_per_dispatch": 55049401,
-              "effective_gb_s": 61.45957300483085,
-              "kernel_names": [
-                "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)"
-              ],
-              "per_kernel_ms": {
-                "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)": 2.687103
-              },
-              "per_kernel_dispatches": {
-                "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)": 3
-              },
-              "ms_per_token": 0.005248248046875
+              "ms_per_token": 0.0040643203125
             },
             {
               "bucket": "moe_scheduler",
-              "total_ms": 2.104014,
+              "total_ms": 1.960692,
               "dispatches": 160,
-              "avg_dispatch_ms": 0.0131500875,
-              "share_of_phase": 0.007501059268013289,
+              "avg_dispatch_ms": 0.012254325,
+              "share_of_phase": 0.007422441913400899,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
@@ -356,10 +340,10 @@
                 "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)"
               ],
               "per_kernel_ms": {
-                "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)": 0.102561,
-                "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)": 0.263561,
-                "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)": 1.40653,
-                "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)": 0.331362
+                "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)": 0.10028,
+                "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)": 0.244881,
+                "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)": 1.31661,
+                "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)": 0.298921
               },
               "per_kernel_dispatches": {
                 "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)": 40,
@@ -367,14 +351,33 @@
                 "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)": 40,
                 "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)": 40
               },
-              "ms_per_token": 0.00410940234375
+              "ms_per_token": 0.0038294765625
+            },
+            {
+              "bucket": "copy",
+              "total_ms": 1.742245,
+              "dispatches": 372,
+              "avg_dispatch_ms": 0.004683454301075269,
+              "share_of_phase": 0.006595483794197738,
+              "footprint_bytes_per_dispatch": null,
+              "effective_gb_s": null,
+              "kernel_names": [
+                "__amd_rocclr_copyBuffer"
+              ],
+              "per_kernel_ms": {
+                "__amd_rocclr_copyBuffer": 1.742245
+              },
+              "per_kernel_dispatches": {
+                "__amd_rocclr_copyBuffer": 372
+              },
+              "ms_per_token": 0.003402822265625
             },
             {
               "bucket": "moe_combine",
-              "total_ms": 1.723496,
+              "total_ms": 1.587527,
               "dispatches": 120,
-              "avg_dispatch_ms": 0.014362466666666667,
-              "share_of_phase": 0.006144467500778907,
+              "avg_dispatch_ms": 0.013229391666666666,
+              "share_of_phase": 0.00600977968158976,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
@@ -383,23 +386,23 @@
                 "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)"
               ],
               "per_kernel_ms": {
-                "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)": 0.10004,
-                "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)": 1.176172,
-                "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long)": 0.447284
+                "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)": 0.09456,
+                "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)": 1.094806,
+                "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long)": 0.398161
               },
               "per_kernel_dispatches": {
                 "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)": 40,
                 "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)": 40,
                 "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long)": 40
               },
-              "ms_per_token": 0.003366203125
+              "ms_per_token": 0.003100638671875
             },
             {
               "bucket": "rmsnorm",
-              "total_ms": 1.613967,
+              "total_ms": 1.504408,
               "dispatches": 91,
-              "avg_dispatch_ms": 0.0177359010989011,
-              "share_of_phase": 0.005753983634908135,
+              "avg_dispatch_ms": 0.016531956043956044,
+              "share_of_phase": 0.005695122433332528,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
@@ -408,517 +411,598 @@
                 "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)"
               ],
               "per_kernel_ms": {
-                "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": 0.478362,
-                "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": 0.679721,
-                "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)": 0.455884
+                "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": 0.455682,
+                "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": 0.611044,
+                "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)": 0.437682
               },
               "per_kernel_dispatches": {
                 "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": 41,
                 "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": 40,
                 "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)": 10
               },
-              "ms_per_token": 0.003152279296875
+              "ms_per_token": 0.002938296875
             },
             {
               "bucket": "gdn_prefill_rmsnorm_gate",
-              "total_ms": 1.606567,
+              "total_ms": 1.293046,
               "dispatches": 30,
-              "avg_dispatch_ms": 0.05355223333333333,
-              "share_of_phase": 0.005727601757894342,
+              "avg_dispatch_ms": 0.04310153333333333,
+              "share_of_phase": 0.004894985457356576,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
                 "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)"
               ],
               "per_kernel_ms": {
-                "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)": 1.606567
+                "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)": 1.293046
               },
               "per_kernel_dispatches": {
                 "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)": 30
               },
-              "ms_per_token": 0.003137826171875
+              "ms_per_token": 0.00252548046875
             },
             {
               "bucket": "dense_q6_k_legacy_decode",
-              "total_ms": 0.958728,
+              "total_ms": 0.957406,
               "dispatches": 1,
-              "avg_dispatch_ms": 0.958728,
-              "share_of_phase": 0.003417978944010755,
+              "avg_dispatch_ms": 0.957406,
+              "share_of_phase": 0.0036243787512477746,
               "footprint_bytes_per_dispatch": 255248590,
-              "effective_gb_s": 266.23671155948296,
+              "effective_gb_s": 266.6043350469916,
               "kernel_names": [
                 "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)"
               ],
               "per_kernel_ms": {
-                "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)": 0.958728
+                "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)": 0.957406
               },
               "per_kernel_dispatches": {
                 "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)": 1
               },
-              "ms_per_token": 0.001872515625
+              "ms_per_token": 0.00186993359375
             },
             {
               "bucket": "silu_mul",
-              "total_ms": 0.891729,
+              "total_ms": 0.865165,
               "dispatches": 80,
-              "avg_dispatch_ms": 0.0111466125,
-              "share_of_phase": 0.0031791195685989837,
+              "avg_dispatch_ms": 0.0108145625,
+              "share_of_phase": 0.003275189044484034,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
                 "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)"
               ],
               "per_kernel_ms": {
-                "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)": 0.891729
+                "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)": 0.865165
               },
               "per_kernel_dispatches": {
                 "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)": 80
               },
-              "ms_per_token": 0.001741658203125
+              "ms_per_token": 0.001689775390625
             },
             {
               "bucket": "kv_write",
-              "total_ms": 0.069601,
+              "total_ms": 0.07228,
               "dispatches": 10,
-              "avg_dispatch_ms": 0.0069601,
-              "share_of_phase": 0.00024813581378878324,
+              "avg_dispatch_ms": 0.007228,
+              "share_of_phase": 0.0002736248740243838,
               "footprint_bytes_per_dispatch": null,
               "effective_gb_s": null,
               "kernel_names": [
                 "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)"
               ],
               "per_kernel_ms": {
-                "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 0.069601
+                "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 0.07228
               },
               "per_kernel_dispatches": {
                 "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)": 10
               },
-              "ms_per_token": 0.000135939453125
+              "ms_per_token": 0.000141171875
             }
           ],
           "top_kernels": [
             {
               "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short, 32, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
-              "total_ms": 58.564417,
+              "total_ms": 57.727737,
               "dispatches": 40,
-              "avg_dispatch_ms": 1.4641104249999999,
-              "share_of_phase": 0.20878908738898364,
+              "avg_dispatch_ms": 1.443193425,
+              "share_of_phase": 0.218535483734612,
               "bucket": "moe_q4_k_selected_dual_wmma_prefill",
-              "ms_per_token": 0.114383626953125
+              "ms_per_token": 0.112749486328125
             },
             {
               "kernel": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
-              "total_ms": 51.417949,
+              "total_ms": 49.785853,
               "dispatches": 30,
-              "avg_dispatch_ms": 1.7139316333333334,
-              "share_of_phase": 0.18331108200263146,
+              "avg_dispatch_ms": 1.6595284333333333,
+              "share_of_phase": 0.1884705002119741,
               "bucket": "gdn_prefill_recurrent",
-              "ms_per_token": 0.100425681640625
-            },
-            {
-              "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
-              "total_ms": 42.630884,
-              "dispatches": 70,
-              "avg_dispatch_ms": 0.6090126285714286,
-              "share_of_phase": 0.15198415387530664,
-              "bucket": "dense_q8_0_wmma_prefill",
-              "ms_per_token": 0.0832634453125
+              "ms_per_token": 0.097237994140625
             },
             {
               "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
-              "total_ms": 40.966785,
+              "total_ms": 40.933121,
               "dispatches": 10,
-              "avg_dispatch_ms": 4.0966785,
-              "share_of_phase": 0.1460514437189856,
+              "avg_dispatch_ms": 4.0933121,
+              "share_of_phase": 0.1549573890017966,
               "bucket": "full_attention_prefill",
-              "ms_per_token": 0.080013251953125
+              "ms_per_token": 0.079947501953125
+            },
+            {
+              "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              "total_ms": 32.355593,
+              "dispatches": 90,
+              "avg_dispatch_ms": 0.35950658888888887,
+              "share_of_phase": 0.12248609654965735,
+              "bucket": "dense_q8_0_wmma_prefill",
+              "ms_per_token": 0.063194517578125
             },
             {
               "kernel": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
-              "total_ms": 27.288628,
+              "total_ms": 26.833081,
               "dispatches": 37,
-              "avg_dispatch_ms": 0.7375304864864864,
-              "share_of_phase": 0.09728719294204646,
+              "avg_dispatch_ms": 0.7252184054054054,
+              "share_of_phase": 0.10157994477464147,
               "bucket": "moe_q5_k_selected_wmma_prefill",
-              "ms_per_token": 0.0532981015625
+              "ms_per_token": 0.052408361328125
             },
             {
-              "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
-              "total_ms": 17.857591,
-              "dispatches": 100,
-              "avg_dispatch_ms": 0.17857591,
-              "share_of_phase": 0.06366442831413702,
+              "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              "total_ms": 14.124205,
+              "dispatches": 40,
+              "avg_dispatch_ms": 0.353105125,
+              "share_of_phase": 0.053468923821521464,
               "bucket": "dense_q8_0_wmma_prefill",
-              "ms_per_token": 0.034878107421875
+              "ms_per_token": 0.027586337890625
             },
             {
               "kernel": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
-              "total_ms": 13.519315,
+              "total_ms": 13.5454,
               "dispatches": 80,
-              "avg_dispatch_ms": 0.1689914375,
-              "share_of_phase": 0.04819796022171957,
+              "avg_dispatch_ms": 0.1693175,
+              "share_of_phase": 0.0512777859519907,
               "bucket": "router",
-              "ms_per_token": 0.026404912109375
+              "ms_per_token": 0.026455859375
             },
             {
               "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)",
-              "total_ms": 3.47347,
+              "total_ms": 3.419734,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.08683674999999999,
-              "share_of_phase": 0.012383332209607977,
-              "bucket": "copy",
-              "ms_per_token": 0.00678412109375
+              "avg_dispatch_ms": 0.08549335,
+              "share_of_phase": 0.012945825746360017,
+              "bucket": "dense_q8_0_wmma_prefill",
+              "ms_per_token": 0.00667916796875
             },
             {
               "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
-              "total_ms": 3.190868,
+              "total_ms": 3.170224,
               "dispatches": 60,
-              "avg_dispatch_ms": 0.05318113333333333,
-              "share_of_phase": 0.01137582258692529,
+              "avg_dispatch_ms": 0.05283706666666667,
+              "share_of_phase": 0.012001274801177061,
               "bucket": "other",
-              "ms_per_token": 0.0062321640625
+              "ms_per_token": 0.00619184375
             },
             {
               "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
-              "total_ms": 3.190466,
+              "total_ms": 3.139176,
               "dispatches": 30,
-              "avg_dispatch_ms": 0.10634886666666667,
-              "share_of_phase": 0.011374389409282109,
+              "avg_dispatch_ms": 0.1046392,
+              "share_of_phase": 0.011883738759551312,
               "bucket": "linear_attn_conv",
-              "ms_per_token": 0.00623137890625
-            },
-            {
-              "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
-              "total_ms": 2.789221,
-              "dispatches": 30,
-              "avg_dispatch_ms": 0.09297403333333333,
-              "share_of_phase": 0.0099439034305795,
-              "bucket": "gdn_prepare",
-              "ms_per_token": 0.005447697265625
+              "ms_per_token": 0.006131203125
             },
             {
               "kernel": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
-              "total_ms": 2.687103,
+              "total_ms": 2.694017,
               "dispatches": 3,
-              "avg_dispatch_ms": 0.895701,
-              "share_of_phase": 0.009579840658026188,
+              "avg_dispatch_ms": 0.8980056666666667,
+              "share_of_phase": 0.010198534342066246,
               "bucket": "moe_q6_k_selected_wmma_prefill",
-              "ms_per_token": 0.005248248046875
+              "ms_per_token": 0.005261751953125
+            },
+            {
+              "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              "total_ms": 2.287292,
+              "dispatches": 40,
+              "avg_dispatch_ms": 0.0571823,
+              "share_of_phase": 0.008658826582138637,
+              "bucket": "dense_q8_0_wmma_prefill",
+              "ms_per_token": 0.0044673671875
+            },
+            {
+              "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+              "total_ms": 2.080932,
+              "dispatches": 30,
+              "avg_dispatch_ms": 0.06936439999999999,
+              "share_of_phase": 0.007877625295424861,
+              "bucket": "gdn_prepare",
+              "ms_per_token": 0.0040643203125
+            },
+            {
+              "kernel": "__amd_rocclr_copyBuffer",
+              "total_ms": 1.742245,
+              "dispatches": 372,
+              "avg_dispatch_ms": 0.004683454301075269,
+              "share_of_phase": 0.006595483794197738,
+              "bucket": "copy",
+              "ms_per_token": 0.003402822265625
+            },
+            {
+              "kernel": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
+              "total_ms": 1.31661,
+              "dispatches": 40,
+              "avg_dispatch_ms": 0.03291525,
+              "share_of_phase": 0.0049841898919375195,
+              "bucket": "moe_scheduler",
+              "ms_per_token": 0.00257150390625
+            },
+            {
+              "kernel": "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)",
+              "total_ms": 1.293046,
+              "dispatches": 30,
+              "avg_dispatch_ms": 0.04310153333333333,
+              "share_of_phase": 0.004894985457356576,
+              "bucket": "gdn_prefill_rmsnorm_gate",
+              "ms_per_token": 0.00252548046875
+            },
+            {
+              "kernel": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)",
+              "total_ms": 1.094806,
+              "dispatches": 40,
+              "avg_dispatch_ms": 0.02737015,
+              "share_of_phase": 0.004144523434299108,
+              "bucket": "moe_combine",
+              "ms_per_token": 0.00213829296875
+            },
+            {
+              "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+              "total_ms": 0.959728,
+              "dispatches": 40,
+              "avg_dispatch_ms": 0.0239932,
+              "share_of_phase": 0.003633168969253926,
+              "bucket": "router",
+              "ms_per_token": 0.00187446875
+            },
+            {
+              "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+              "total_ms": 0.957406,
+              "dispatches": 1,
+              "avg_dispatch_ms": 0.957406,
+              "share_of_phase": 0.0036243787512477746,
+              "bucket": "dense_q6_k_legacy_decode",
+              "ms_per_token": 0.00186993359375
+            },
+            {
+              "kernel": "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)",
+              "total_ms": 0.865165,
+              "dispatches": 80,
+              "avg_dispatch_ms": 0.0108145625,
+              "share_of_phase": 0.003275189044484034,
+              "bucket": "silu_mul",
+              "ms_per_token": 0.001689775390625
             }
           ],
           "per_kernel": [
             {
               "kernel": "void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short, 32, 16>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
-              "total_ms": 58.564417,
+              "total_ms": 57.727737,
               "dispatches": 40,
-              "avg_dispatch_ms": 1.4641104249999999,
-              "share_of_phase": 0.20878908738898364,
+              "avg_dispatch_ms": 1.443193425,
+              "share_of_phase": 0.218535483734612,
               "bucket": "moe_q4_k_selected_dual_wmma_prefill",
-              "ms_per_token": 0.114383626953125
+              "ms_per_token": 0.112749486328125
             },
             {
               "kernel": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
-              "total_ms": 51.417949,
+              "total_ms": 49.785853,
               "dispatches": 30,
-              "avg_dispatch_ms": 1.7139316333333334,
-              "share_of_phase": 0.18331108200263146,
+              "avg_dispatch_ms": 1.6595284333333333,
+              "share_of_phase": 0.1884705002119741,
               "bucket": "gdn_prefill_recurrent",
-              "ms_per_token": 0.100425681640625
-            },
-            {
-              "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
-              "total_ms": 42.630884,
-              "dispatches": 70,
-              "avg_dispatch_ms": 0.6090126285714286,
-              "share_of_phase": 0.15198415387530664,
-              "bucket": "dense_q8_0_wmma_prefill",
-              "ms_per_token": 0.0832634453125
+              "ms_per_token": 0.097237994140625
             },
             {
               "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
-              "total_ms": 40.966785,
+              "total_ms": 40.933121,
               "dispatches": 10,
-              "avg_dispatch_ms": 4.0966785,
-              "share_of_phase": 0.1460514437189856,
+              "avg_dispatch_ms": 4.0933121,
+              "share_of_phase": 0.1549573890017966,
               "bucket": "full_attention_prefill",
-              "ms_per_token": 0.080013251953125
+              "ms_per_token": 0.079947501953125
+            },
+            {
+              "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              "total_ms": 32.355593,
+              "dispatches": 90,
+              "avg_dispatch_ms": 0.35950658888888887,
+              "share_of_phase": 0.12248609654965735,
+              "bucket": "dense_q8_0_wmma_prefill",
+              "ms_per_token": 0.063194517578125
             },
             {
               "kernel": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 5>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
-              "total_ms": 27.288628,
+              "total_ms": 26.833081,
               "dispatches": 37,
-              "avg_dispatch_ms": 0.7375304864864864,
-              "share_of_phase": 0.09728719294204646,
+              "avg_dispatch_ms": 0.7252184054054054,
+              "share_of_phase": 0.10157994477464147,
               "bucket": "moe_q5_k_selected_wmma_prefill",
-              "ms_per_token": 0.0532981015625
+              "ms_per_token": 0.052408361328125
             },
             {
-              "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
-              "total_ms": 17.857591,
-              "dispatches": 100,
-              "avg_dispatch_ms": 0.17857591,
-              "share_of_phase": 0.06366442831413702,
+              "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              "total_ms": 14.124205,
+              "dispatches": 40,
+              "avg_dispatch_ms": 0.353105125,
+              "share_of_phase": 0.053468923821521464,
               "bucket": "dense_q8_0_wmma_prefill",
-              "ms_per_token": 0.034878107421875
+              "ms_per_token": 0.027586337890625
             },
             {
               "kernel": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, 4>(unsigned short const*, unsigned short const*, float*, long, long, long)",
-              "total_ms": 13.519315,
+              "total_ms": 13.5454,
               "dispatches": 80,
-              "avg_dispatch_ms": 0.1689914375,
-              "share_of_phase": 0.04819796022171957,
+              "avg_dispatch_ms": 0.1693175,
+              "share_of_phase": 0.0512777859519907,
               "bucket": "router",
-              "ms_per_token": 0.026404912109375
+              "ms_per_token": 0.026455859375
             },
             {
               "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int)",
-              "total_ms": 3.47347,
+              "total_ms": 3.419734,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.08683674999999999,
-              "share_of_phase": 0.012383332209607977,
-              "bucket": "copy",
-              "ms_per_token": 0.00678412109375
+              "avg_dispatch_ms": 0.08549335,
+              "share_of_phase": 0.012945825746360017,
+              "bucket": "dense_q8_0_wmma_prefill",
+              "ms_per_token": 0.00667916796875
             },
             {
               "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
-              "total_ms": 3.190868,
+              "total_ms": 3.170224,
               "dispatches": 60,
-              "avg_dispatch_ms": 0.05318113333333333,
-              "share_of_phase": 0.01137582258692529,
+              "avg_dispatch_ms": 0.05283706666666667,
+              "share_of_phase": 0.012001274801177061,
               "bucket": "other",
-              "ms_per_token": 0.0062321640625
+              "ms_per_token": 0.00619184375
             },
             {
               "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_kernel(float const*, float const*, float const*, float*, long, long, long)",
-              "total_ms": 3.190466,
+              "total_ms": 3.139176,
               "dispatches": 30,
-              "avg_dispatch_ms": 0.10634886666666667,
-              "share_of_phase": 0.011374389409282109,
+              "avg_dispatch_ms": 0.1046392,
+              "share_of_phase": 0.011883738759551312,
               "bucket": "linear_attn_conv",
-              "ms_per_token": 0.00623137890625
-            },
-            {
-              "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
-              "total_ms": 2.789221,
-              "dispatches": 30,
-              "avg_dispatch_ms": 0.09297403333333333,
-              "share_of_phase": 0.0099439034305795,
-              "bucket": "gdn_prepare",
-              "ms_per_token": 0.005447697265625
+              "ms_per_token": 0.006131203125
             },
             {
               "kernel": "void (anonymous namespace)::gguf_k_selected_wmma_prefill_compact_legacy_kernel<unsigned short, 6>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long)",
-              "total_ms": 2.687103,
+              "total_ms": 2.694017,
               "dispatches": 3,
-              "avg_dispatch_ms": 0.895701,
-              "share_of_phase": 0.009579840658026188,
+              "avg_dispatch_ms": 0.8980056666666667,
+              "share_of_phase": 0.010198534342066246,
               "bucket": "moe_q6_k_selected_wmma_prefill",
-              "ms_per_token": 0.005248248046875
+              "ms_per_token": 0.005261751953125
+            },
+            {
+              "kernel": "void (anonymous namespace)::gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              "total_ms": 2.287292,
+              "dispatches": 40,
+              "avg_dispatch_ms": 0.0571823,
+              "share_of_phase": 0.008658826582138637,
+              "bucket": "dense_q8_0_wmma_prefill",
+              "ms_per_token": 0.0044673671875
+            },
+            {
+              "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+              "total_ms": 2.080932,
+              "dispatches": 30,
+              "avg_dispatch_ms": 0.06936439999999999,
+              "share_of_phase": 0.007877625295424861,
+              "bucket": "gdn_prepare",
+              "ms_per_token": 0.0040643203125
             },
             {
               "kernel": "__amd_rocclr_copyBuffer",
-              "total_ms": 1.785489,
+              "total_ms": 1.742245,
               "dispatches": 372,
-              "avg_dispatch_ms": 0.004799701612903226,
-              "share_of_phase": 0.006365479892902699,
+              "avg_dispatch_ms": 0.004683454301075269,
+              "share_of_phase": 0.006595483794197738,
               "bucket": "copy",
-              "ms_per_token": 0.003487283203125
-            },
-            {
-              "kernel": "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)",
-              "total_ms": 1.606567,
-              "dispatches": 30,
-              "avg_dispatch_ms": 0.05355223333333334,
-              "share_of_phase": 0.005727601757894342,
-              "bucket": "gdn_prefill_rmsnorm_gate",
-              "ms_per_token": 0.003137826171875
+              "ms_per_token": 0.003402822265625
             },
             {
               "kernel": "(anonymous namespace)::qwen35_moe_group_scatter_gather_kernel(unsigned short const*, long const*, float const*, long const*, int*, long*, long*, float*, unsigned short*, long, long, long, long)",
-              "total_ms": 1.40653,
+              "total_ms": 1.31661,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.03516325,
-              "share_of_phase": 0.0050144461454337905,
+              "avg_dispatch_ms": 0.03291525,
+              "share_of_phase": 0.0049841898919375195,
               "bucket": "moe_scheduler",
-              "ms_per_token": 0.00274712890625
+              "ms_per_token": 0.00257150390625
+            },
+            {
+              "kernel": "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)",
+              "total_ms": 1.293046,
+              "dispatches": 30,
+              "avg_dispatch_ms": 0.04310153333333333,
+              "share_of_phase": 0.004894985457356576,
+              "bucket": "gdn_prefill_rmsnorm_gate",
+              "ms_per_token": 0.00252548046875
             },
             {
               "kernel": "void (anonymous namespace)::weighted_lanes_sum_out_kernel<unsigned short>(unsigned short const*, float const*, long const*, unsigned short*, long, long, long)",
-              "total_ms": 1.176172,
+              "total_ms": 1.094806,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.0294043,
-              "share_of_phase": 0.004193192574468481,
+              "avg_dispatch_ms": 0.02737015,
+              "share_of_phase": 0.004144523434299108,
               "bucket": "moe_combine",
-              "ms_per_token": 0.0022972109375
+              "ms_per_token": 0.00213829296875
             },
             {
               "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
-              "total_ms": 0.970886,
+              "total_ms": 0.959728,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.02427215,
-              "share_of_phase": 0.0034613236549207137,
+              "avg_dispatch_ms": 0.0239932,
+              "share_of_phase": 0.003633168969253926,
               "bucket": "router",
-              "ms_per_token": 0.00189626171875
+              "ms_per_token": 0.00187446875
             },
             {
               "kernel": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
-              "total_ms": 0.958728,
+              "total_ms": 0.957406,
               "dispatches": 1,
-              "avg_dispatch_ms": 0.958728,
-              "share_of_phase": 0.003417978944010755,
+              "avg_dispatch_ms": 0.957406,
+              "share_of_phase": 0.0036243787512477746,
               "bucket": "dense_q6_k_legacy_decode",
-              "ms_per_token": 0.001872515625
+              "ms_per_token": 0.00186993359375
             },
             {
               "kernel": "void (anonymous namespace)::silu_mul_dual_out_kernel<unsigned short>(unsigned short const*, unsigned short*, long, long)",
-              "total_ms": 0.891729,
+              "total_ms": 0.865165,
               "dispatches": 80,
-              "avg_dispatch_ms": 0.0111466125,
-              "share_of_phase": 0.0031791195685989837,
+              "avg_dispatch_ms": 0.0108145625,
+              "share_of_phase": 0.003275189044484034,
               "bucket": "silu_mul",
-              "ms_per_token": 0.001741658203125
+              "ms_per_token": 0.001689775390625
             },
             {
               "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
-              "total_ms": 0.774607,
+              "total_ms": 0.712286,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.019365175000000002,
-              "share_of_phase": 0.0027615657578409507,
+              "avg_dispatch_ms": 0.01780715,
+              "share_of_phase": 0.002696446693681962,
               "bucket": "other",
-              "ms_per_token": 0.001512904296875
+              "ms_per_token": 0.00139118359375
             },
             {
               "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
-              "total_ms": 0.679721,
+              "total_ms": 0.611044,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.016993025000000002,
-              "share_of_phase": 0.0024232859223908493,
+              "avg_dispatch_ms": 0.0152761,
+              "share_of_phase": 0.002313182588867675,
               "bucket": "rmsnorm",
-              "ms_per_token": 0.001327580078125
+              "ms_per_token": 0.0011934453125
             },
             {
               "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
-              "total_ms": 0.478362,
+              "total_ms": 0.455682,
               "dispatches": 41,
-              "avg_dispatch_ms": 0.011667365853658537,
-              "share_of_phase": 0.0017054172232529694,
+              "avg_dispatch_ms": 0.011114195121951219,
+              "share_of_phase": 0.0017250405346593697,
               "bucket": "rmsnorm",
-              "ms_per_token": 0.00093430078125
+              "ms_per_token": 0.00089000390625
             },
             {
               "kernel": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
-              "total_ms": 0.455884,
+              "total_ms": 0.437682,
               "dispatches": 10,
-              "avg_dispatch_ms": 0.0455884,
-              "share_of_phase": 0.001625280489264316,
+              "avg_dispatch_ms": 0.0437682,
+              "share_of_phase": 0.0016568993098054832,
               "bucket": "rmsnorm",
-              "ms_per_token": 0.0008903984375
+              "ms_per_token": 0.00085484765625
             },
             {
               "kernel": "void (anonymous namespace)::shared_gate_combine_residual_batch_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long)",
-              "total_ms": 0.447284,
+              "total_ms": 0.398161,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.0111821,
-              "share_of_phase": 0.00159462047003207,
+              "avg_dispatch_ms": 0.009954025,
+              "share_of_phase": 0.0015072876793915696,
               "bucket": "moe_combine",
-              "ms_per_token": 0.0008736015625
-            },
-            {
-              "kernel": "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)",
-              "total_ms": 0.331362,
-              "dispatches": 40,
-              "avg_dispatch_ms": 0.00828405,
-              "share_of_phase": 0.0011813448014924898,
-              "bucket": "moe_scheduler",
-              "ms_per_token": 0.00064719140625
+              "ms_per_token": 0.000777658203125
             },
             {
               "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
-              "total_ms": 0.305762,
+              "total_ms": 0.299681,
               "dispatches": 10,
-              "avg_dispatch_ms": 0.030576199999999998,
-              "share_of_phase": 0.001090077767498828,
+              "avg_dispatch_ms": 0.029968099999999998,
+              "share_of_phase": 0.0011344794669687513,
               "bucket": "other",
-              "ms_per_token": 0.00059719140625
+              "ms_per_token": 0.000585314453125
+            },
+            {
+              "kernel": "(anonymous namespace)::qwen35_moe_wmma_tile_map_kernel(long const*, long*, long*, long*, long)",
+              "total_ms": 0.298921,
+              "dispatches": 40,
+              "avg_dispatch_ms": 0.0074730249999999995,
+              "share_of_phase": 0.0011316023930304762,
+              "bucket": "moe_scheduler",
+              "ms_per_token": 0.000583830078125
             },
             {
               "kernel": "(anonymous namespace)::qwen35_moe_group_prefix_kernel(int const*, int*, long*, long*, long, long)",
-              "total_ms": 0.263561,
+              "total_ms": 0.244881,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.006589025,
-              "share_of_phase": 0.0009396262010313859,
+              "avg_dispatch_ms": 0.006122025,
+              "share_of_phase": 0.0009270272935246973,
               "bucket": "moe_scheduler",
-              "ms_per_token": 0.000514767578125
+              "ms_per_token": 0.000478283203125
             },
             {
               "kernel": "(anonymous namespace)::qwen35_moe_group_count_kernel(long const*, int*, long, long)",
-              "total_ms": 0.102561,
+              "total_ms": 0.10028,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.002564025,
-              "share_of_phase": 0.0003656421200556227,
+              "avg_dispatch_ms": 0.0025069999999999997,
+              "share_of_phase": 0.000379622334908207,
               "bucket": "moe_scheduler",
-              "ms_per_token": 0.000200314453125
+              "ms_per_token": 0.000195859375
             },
             {
               "kernel": "(anonymous namespace)::weighted_lanes_inverse_kernel(long const*, long*, long)",
-              "total_ms": 0.10004,
+              "total_ms": 0.09456,
               "dispatches": 40,
-              "avg_dispatch_ms": 0.002501,
-              "share_of_phase": 0.0003566544562783562,
+              "avg_dispatch_ms": 0.002364,
+              "share_of_phase": 0.00035796856789908313,
               "bucket": "moe_combine",
-              "ms_per_token": 0.000195390625
+              "ms_per_token": 0.0001846875
             },
             {
               "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)",
-              "total_ms": 0.087041,
+              "total_ms": 0.079442,
               "dispatches": 30,
-              "avg_dispatch_ms": 0.0029013666666666666,
-              "share_of_phase": 0.00031031148069696527,
+              "avg_dispatch_ms": 0.0026480666666666665,
+              "share_of_phase": 0.00030073751026902455,
               "bucket": "linear_attn_conv",
-              "ms_per_token": 0.000170001953125
+              "ms_per_token": 0.00015516015625
             },
             {
               "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
-              "total_ms": 0.069601,
+              "total_ms": 0.07228,
               "dispatches": 10,
-              "avg_dispatch_ms": 0.0069600999999999994,
-              "share_of_phase": 0.00024813581378878324,
+              "avg_dispatch_ms": 0.007228,
+              "share_of_phase": 0.0002736248740243838,
               "bucket": "kv_write",
-              "ms_per_token": 0.000135939453125
+              "ms_per_token": 0.000141171875
             },
             {
               "kernel": "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
-              "total_ms": 0.01676,
+              "total_ms": 0.01724,
               "dispatches": 1,
-              "avg_dispatch_ms": 0.01676,
-              "share_of_phase": 5.975138631772541e-05,
+              "avg_dispatch_ms": 0.01724,
+              "share_of_phase": 6.526415091561118e-05,
               "bucket": "other",
-              "ms_per_token": 3.2734375e-05
+              "ms_per_token": 3.3671875e-05
             },
             {
               "kernel": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
-              "total_ms": 0.00524,
+              "total_ms": 0.00468,
               "dispatches": 1,
-              "avg_dispatch_ms": 0.00524,
-              "share_of_phase": 1.8681221020577636e-05,
+              "avg_dispatch_ms": 0.00468,
+              "share_of_phase": 1.771671846201046e-05,
               "bucket": "other",
-              "ms_per_token": 1.0234375e-05
+              "ms_per_token": 9.140625e-06
             },
             {
               "kernel": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
-              "total_ms": 0.00316,
+              "total_ms": 0.00324,
               "dispatches": 1,
-              "avg_dispatch_ms": 0.00316,
-              "share_of_phase": 1.126577450859262e-05,
+              "avg_dispatch_ms": 0.00324,
+              "share_of_phase": 1.2265420473699548e-05,
               "bucket": "other",
-              "ms_per_token": 6.171875e-06
+              "ms_per_token": 6.328125e-06
             },
             {
               "kernel": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
               "total_ms": 0.00184,
               "dispatches": 1,
               "avg_dispatch_ms": 0.00184,
-              "share_of_phase": 6.559818068294437e-06,
+              "share_of_phase": 6.965547429508385e-06,
               "bucket": "other",
               "ms_per_token": 3.59375e-06
             }
@@ -930,7 +1014,7 @@
       ]
     },
     "wmma_bucket_target_ms": 110.0,
-    "wmma_bucket_actual_ms": 149.028623,
+    "wmma_bucket_actual_ms": 139.441659,
     "wmma_bucket_baseline_ms": 170.41,
     "tile_decisions": {
       "q4_k_selected_dual": {
@@ -962,6 +1046,26 @@
         "value": 2,
         "env_override": "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS",
         "reason": "P9.C1 launch-bounds sweep retained the P8 __launch_bounds__(32,2) hint."
+      },
+      "q8_0_single_shape_2048x8192": {
+        "tile_m": 16,
+        "tile_n": 32,
+        "reason": "P9.C1 targeted shape sweep: linear-attn qkv / full-attn q+gate shape best at 16x32 (0.538 ms synthetic vs 0.818 ms for 64x32)."
+      },
+      "q8_0_single_shape_2048x4096": {
+        "tile_m": 16,
+        "tile_n": 32,
+        "reason": "P9.C1 targeted shape sweep: linear-attn gate shape slightly best at 16x32."
+      },
+      "q8_0_single_shape_4096x2048": {
+        "tile_m": 64,
+        "tile_n": 32,
+        "reason": "P9.C1 targeted shape sweep: ssm/shared-down shape best at 64x32."
+      },
+      "q8_0_single_shape_2048x512": {
+        "tile_m": 16,
+        "tile_n": 32,
+        "reason": "P9.C1 targeted shape sweep: full-attn k/v shape best at 16x32."
       }
     },
     "selected_sweeps": {
@@ -975,7 +1079,41 @@
       },
       "q5q6_only_32x16_3run_tok_s_median": 1542.6734,
       "q4_only_32x16_3run_tok_s_median": 1584.6635,
-      "final_default_3run_tok_s_median": 1601.0465141529357
+      "final_default_3run_tok_s_median": 1601.0465141529357,
+      "q8_0_single_shape_sweep_ms": {
+        "512x2048x8192": {
+          "16x32": 0.5379,
+          "64x32": 0.8184,
+          "32x32": 1.0065,
+          "16x16": 1.0796,
+          "64x16": 1.1234,
+          "32x16": 1.6708
+        },
+        "512x2048x4096": {
+          "16x32": 0.4483,
+          "64x32": 0.4525,
+          "16x16": 0.5572,
+          "32x32": 0.6767,
+          "64x16": 0.7499,
+          "32x16": 0.8613
+        },
+        "512x4096x2048": {
+          "64x32": 0.4517,
+          "16x32": 0.5683,
+          "16x16": 0.5781,
+          "32x32": 0.581,
+          "64x16": 0.6796,
+          "32x16": 0.7965
+        },
+        "512x2048x512": {
+          "16x32": 0.1573,
+          "32x16": 0.1624,
+          "64x16": 0.1709,
+          "32x32": 0.1756,
+          "16x16": 0.1794,
+          "64x32": 0.1811
+        }
+      }
     },
     "launch_bounds_sweep": {
       "env": "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS",
@@ -999,10 +1137,11 @@
       },
       "retained_min_blocks": 2,
       "reason": "min-blocks=2 is the fastest single-run setting and matches the legacy P8 launch-bound hint; min-blocks=1 gives no benefit, while 4/8 are slower."
-    }
+    },
+    "wmma_bucket_delta_vs_baseline_pct": -18.17284255618802
   },
   "acceptance": {
     "passed": false,
-    "reason": "Combined WMMA bucket 149.03 ms > 110 ms target. Remaining gap is ~39 ms; multi-tile selected kernels reduce dispatch/block count but increase register pressure and are slower except Q4_K 32x16. Further gains likely require a different selected-MoE kernel design/repack/sidecar or splitting by expert occupancy, not the current raw generic TM/TN path. A follow-up launch-bounds sweep retained min-blocks=2; it does not close the remaining gap."
+    "reason": "Combined WMMA bucket 139.44 ms > 110 ms target. Shape-aware Q8_0 tiles reduced the gap materially, but remaining ~29 ms appears dominated by selected Q4/Q5 down kernels and Q8_0 large projection cost; previous TM/TN and launch-bounds sweeps show the generic raw selected multi-tile path cannot close it."
   }
 }

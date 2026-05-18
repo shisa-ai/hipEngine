@@ -128,16 +128,18 @@ def test_gguf_q8_0_wmma_prefill_default_tiles_match_paro_heuristic() -> None:
     # P9.C1 sweep: at rows=512 the optimal TN is 32 across all out_features.
     # rows < 32 falls back to TN=16 because the bigger TN under-utilises the
     # WMMA tile.
-    assert _default_tiles(rows=512, out_features=2048) == (32, 32)
-    assert _default_tiles(rows=512, out_features=4096) == (64, 32)  # shexp gate/up; 2x vs (32,32)
-    assert _default_tiles(rows=512, out_features=8192) == (64, 32)  # shexp gate+up concat (dual)
-    assert _default_tiles(rows=32, out_features=2048) == (32, 32)
-    assert _default_tiles(rows=32, out_features=4096) == (64, 32)
-    assert _default_tiles(rows=31, out_features=2048) == (32, 16)
-    assert _default_tiles(rows=31, out_features=4096) == (64, 16)
-    assert _default_tiles(rows=8, out_features=2048) == (32, 16)
-    # tile_m falls back to 16 only when out_features < 32 (rare; lm_head etc.).
-    assert _default_tiles(rows=512, out_features=16) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=8192) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=4096) == (16, 32)
+    assert _default_tiles(rows=512, in_features=4096, out_features=2048) == (64, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=2048) == (32, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=512) == (16, 32)
+    assert _default_tiles(rows=32, in_features=2048, out_features=8192) == (16, 32)
+    assert _default_tiles(rows=32, in_features=4096, out_features=2048) == (64, 32)
+    assert _default_tiles(rows=31, in_features=2048, out_features=8192) == (16, 16)
+    assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (64, 16)
+    assert _default_tiles(rows=8, in_features=2048, out_features=2048) == (32, 16)
+    # tile_m falls back to 16 when out_features < 32 (rare; lm_head etc.).
+    assert _default_tiles(rows=512, in_features=2048, out_features=16) == (16, 32)
 
     for tm, tn in _ALLOWED_TILES:
         assert tm in {16, 32, 64}
