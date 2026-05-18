@@ -19086,3 +19086,36 @@ Gotchas for task #7/#9:
 2. Do not just add `gguf_q4_k` to `_WMMA_PREFILL_SUPPORTED_QUANTS`: `_wmma_prefill_dispatch` currently checks `in_features % 32 == 0` for Q8_0. Q4_K must require `in_features % 256 == 0` and raw ABI availability.
 3. Existing `gguf_q4_k_pack8_dual_prefill_bf16_bf16_out` remains the rows>1 fallback for current pack8 dense gate+up until raw Q4_K WMMA dispatch/materialization is explicitly routed.
 4. Tests should reuse `tests/test_gguf_q4_k_gemv.py::make_q4_k_weight` and compare against `hipengine.kernels.cpu_reference.gguf_q4_k_gemv` / `gguf_quant_gemv` with Q4_K tolerances from `docs/GGUF.md`.
+
+## 2026-05-18 P8.2 task #7: dense raw-Q4_K WMMA prefill kernels landed
+
+Implemented the dense raw-Q4_K WMMA prefill family:
+
+- New HIP source: `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.hip`.
+- New ctypes/register wrapper: `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.py`.
+- Catalog row added in `docs/KERNELS.md`.
+
+Kernel surfaces:
+
+- Single output, raw `block_q4_K` weights, all 9 dtype combos registered under `('hip_gfx1100','linear','gguf_q4_k','wmma_prefill_<in>_<out>_out')` for `<in>,<out> in {bf16,fp16,f32}`.
+- Dense gate+up dual BF16 path registered under `('hip_gfx1100','linear','gguf_q4_k','wmma_prefill_dual_bf16_bf16_out')`.
+- Existing rows==1 raw GEMV and rows>1 pack8/decode-shaped fallbacks are untouched; task #9 still owns runtime/materialization dispatch.
+
+Implementation details:
+
+- Structure mirrors P8.1 Q8_0 WMMA and PARO `awq_fusedw4_prefill_fp16_kernel` / `awq_fusedw4_prefill_dual_fp16_kernel`: one wave32 block, grid `((out_features + tile_m - 1)/tile_m, (rows + tile_n - 1)/tile_n)`, supported tiles `(16,16),(16,32),(32,16),(32,32),(64,16),(64,32)`, `float8_t acc[TM][TN]`, `half16_t` WMMA operands, `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32`, PARO lane-to-output store mapping.
+- Launch bounds start at `__launch_bounds__(32, 4)` per task #6 audit (Q4_K dequant has more scalar unpack state than Q8_0).
+- Raw Q4_K dequant in the K-loop exactly follows `gguf_q4_k_gemv.hip`: each 144-byte block -> fp16 `d`, fp16 `dmin`, 12 packed scale/min bytes, 128 q4 bytes. Traversal is one 256-K block -> 8 subblocks of 32 -> two 16-wide WMMA K-tiles per subblock. For subblock `sb`, per-output `scale_f = d * scale(sb)`, `min_f = dmin * min(sb)`, q nibble from `qs[(sb >> 1) * 32 + lane32]` low/high by subblock parity, `a_reg[kk] = half(scale_f * q - min_f)`.
+- Dual kernel uses one shared `x` pointer and matching A/B `out_features` (hipENGINE GGUF dense pair ABI), but copies the AWQ dual grid split: first `out_tiles` x-tiles write A/gate, second `out_tiles` x-tiles write B/up.
+
+Validation run on W7900/gfx1100:
+
+- `uv run python -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.py` -> OK.
+- Registry/build plan smoke: `wmma_prefill_bf16_bf16_out` and `wmma_prefill_dual_bf16_bf16_out` resolve from the global registry; `plan_gguf_q4_k_prefill_build(compiler_version='test-compiler')` names `gguf_q4_k_prefill.so`; cached HIP build loads from `/home/lhl/.cache/hipengine/build/gguf_q4_k_prefill-47414a803883a1c6/gguf_q4_k_prefill.so`.
+- Inline synthetic GPU smoke (rows=17, in=512, out=48): f32->f32 WMMA matches an fp16-rounded operand reference with `max|d|=6.33e-4` (`max_rel_max1=2.15e-4`). The exact CPU raw-Q4_K GEMV differs by `max|d|=0.299` because WMMA intentionally consumes half operands (same precision model as PARO/Q8_0 WMMA), not because the Q4_K nibble/scale addressing is wrong. BF16 dual gate/up launches and both outputs match exact CPU within BF16 output rounding budget (`max|d|=0.776` on values up to ~265).
+- Existing fallback tests still pass: `uv run --with pytest pytest tests/test_gguf_q4_k_gemv.py -q` -> `5 passed`.
+
+Open for task #8/#9:
+
+- Task #8 should turn the inline smoke into formal tests. Compare f32/fp32-output paths either to a helper fp16-rounded CPU reference or use tolerances that explicitly cover the intentional half WMMA operand cast; compare BF16/FP16 outputs to exact CPU with output-ULP tolerances.
+- Task #9 must not just add `gguf_q4_k` to the Q8_0 WMMA dispatch set. Dense 2D Q4_K materialization currently uses `LAYOUT_Q4_K_PACK8` and drops raw bytes, so the runtime needs an explicit raw-availability/materialization decision before selecting the raw WMMA path. The existing pack8 dual prefill remains the fallback.
