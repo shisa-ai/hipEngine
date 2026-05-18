@@ -17566,3 +17566,34 @@ Result versus the prior blocked 256K artifact:
 - Remaining memory follow-up: task #19 should stream/remove `Qwen35ParoResidentSession._prefill_int8_oracle_cache` (`2 x [1025,256,2,256] bf16`, `1,074,790,400 B`) to reduce tracked high-water and larger-context prefill pressure.
 
 Retained artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-single-buffer-capacity-diagnostic.json`. Updated `docs/KVCACHE.md`, `docs/KERNELS.md`, `docs/TESTING.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` to mark the persistent prefill-buffer blocker resolved and distinguish sampled capacity from tracked high-water follow-up.
+
+## 2026-05-18 — task #19 rerun and scratch-overlap reduction
+
+After the user flagged possible GPU contention, checked `rocm-smi`: no KFD PIDs, GPU use 0%, VRAM used ~27.9 MB. Reran the 128K INT8 benchmark on the scratch-release change and then reran 256K.
+
+Code change under test: free token-1 decode scratch before bulk prefill (`_release_decode_scratch_for_prefill`) and clear rotate-fuse readiness for those freed workspaces; release the linear-prefill workspace before switching into full-attention prefill. This does **not** remove the BF16 INT8-prefill oracle itself, but it reduces scratch/oracle overlap and tracked high-water.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_bench_memory_audit.py -q
+# 36 passed
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --compiler-version-file /tmp/hipengine-task19-decode-scratch-release/hipcc-version.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-task19-decode-scratch-release/int8_accuracy.json
+# accepted, passed true
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 --kv-storage int8_per_token_head --compiler-version-file /tmp/hipengine-task19-decode-scratch-release/hipcc-version.txt --require-cached-build --json /tmp/hipengine-task19-decode-scratch-release/e2e-transition-release.json
+# passed true, max_kl=0.015328251530778358, top1=1.0, generated IDs match
+```
+
+Retained rerun measurements:
+
+- 128K/128 INT8 rerun command: `/tmp/hipengine-task19-decode-scratch-release/qwen35-paro-128k128-int8-scratch-phase-release-rerun.command`.
+  - Prefill/decode: `1011.440 / 61.196 tok/s` vs previous INT8 `1011.064 / 61.275`.
+  - Tracked peak: `24.545 -> 21.525 GiB` (`-3.020 GiB`).
+  - Sampled HIP peak: `21.170 -> 20.164 GiB`.
+- 256K/128 INT8 rerun command: `/tmp/hipengine-task19-decode-scratch-release/qwen35-paro-256k128-int8-scratch-phase-release-rerun.command`.
+  - Prefill/decode: `620.928 / 40.815 tok/s` vs single-buffer `626.127 / 40.856` (near-neutral decode, prefill `-0.83%`).
+  - Tracked peak: `24.699 -> 24.351 GiB` (`-0.348 GiB`); still above 24GiB because the BF16 oracle remains.
+  - Sampled HIP peak: `22.324 GiB`, still under the 24GiB sampled capacity target.
+  - Retained KV/scales unchanged: `2.708 GB`, no persistent BF16 shadow.
+
+Retained artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-scratch-release-diagnostic.json`. Updated `docs/KVCACHE.md`, `docs/KERNELS.md`, `docs/TESTING.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`. Task #19 remains open for true BF16 oracle streaming/removal because `prefill_execution_detail.int8_prefill_oracle` is still true and 256K tracked high-water remains `0.351 GiB` over 24GiB.

@@ -1252,6 +1252,7 @@ class Qwen35ParoResidentSession:
             )
         metadata = self._materialize_packed_prefill_metadata(slab)
         try:
+            self._release_decode_scratch_for_prefill()
             prefill_hidden = self._prefill_hidden_view_for_rows(slab.rows)
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
@@ -1276,6 +1277,7 @@ class Qwen35ParoResidentSession:
                 "slot_ids": list(slab.physical_slot_ids),
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
+                "decode_scratch_released_for_prefill": True,
             }
             return results
         finally:
@@ -1326,6 +1328,7 @@ class Qwen35ParoResidentSession:
             owns_token_buf = True
         copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
         try:
+            self._release_decode_scratch_for_prefill()
             self._prepare_prefill_context_counts(len(tokens), stream=0)
             prefill_hidden = self._prefill_hidden_view_for_rows(len(tokens))
             embedding_lookup_batch_fp16_i64(
@@ -1358,6 +1361,7 @@ class Qwen35ParoResidentSession:
                 "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
                 "kv_scale_granularity": self.kv_scale_granularity if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
                 "int8_prefill_oracle": self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD,
+                "decode_scratch_released_for_prefill": True,
             }
             if not sample:
                 return None
@@ -1387,6 +1391,7 @@ class Qwen35ParoResidentSession:
             owns_token_buf = True
         copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
         try:
+            self._release_decode_scratch_for_prefill()
             prefill_hidden = self._prefill_hidden_view_for_rows(len(tokens))
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
@@ -1423,6 +1428,7 @@ class Qwen35ParoResidentSession:
                 "full_native": False,
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
+                "decode_scratch_released_for_prefill": True,
             }
             if not sample:
                 return None
@@ -2200,9 +2206,25 @@ class Qwen35ParoResidentSession:
         workspace = getattr(self, "prefill_workspace", None)
         if workspace is not None:
             workspace.free()
+        prefill_state = getattr(self, "_prefill_scratch_state", None)
+        if prefill_state is not None:
+            prefill_state._rotate_fuse_ready.clear()
         self.prefill_linear_scratch = None
         self.prefill_full_scratch = None
         self.prefill_moe_scratch = None
+
+    def _release_decode_scratch_for_prefill(self) -> None:
+        """Free token-1 decode scratch before allocating bulk prefill workspaces."""
+
+        for state in getattr(self, "states", ()):
+            state.workspace.free()
+            state._rotate_fuse_ready.clear()
+        for name in ("linear_scratch", "full_scratch", "moe_scratch"):
+            scratch = getattr(self, name, None)
+            if scratch is None:
+                setattr(self, name, {})
+            else:
+                scratch.clear()
 
     def _ensure_linear_prefill_scratch(self, *, tokens: int) -> Qwen35ParoLinearAttentionScratch:
         scratch = getattr(self, "prefill_linear_scratch", None)
@@ -2278,8 +2300,12 @@ class Qwen35ParoResidentSession:
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = self._prefill_hidden_view_for_rows(tokens)
         use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(tokens)
+        previous_layer_type: str | None = None
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
+            if previous_layer_type is not None and layer_type != previous_layer_type:
+                self._release_prefill_workspace()
+            previous_layer_type = layer_type
             if layer_type == "linear_attention":
                 conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
                 chunk_size = self._linear_prefill_layer_chunk_size(tokens)

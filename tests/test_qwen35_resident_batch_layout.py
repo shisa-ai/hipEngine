@@ -144,6 +144,34 @@ def test_qwen35_resident_prefill_hidden_buffer_is_lazy_single_buffer() -> None:
     assert session.prefill_next_hidden.ptr == 0
 
 
+def test_qwen35_resident_release_decode_scratch_for_prefill_frees_state_workspaces() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.linear_scratch = {0: object()}
+    session.full_scratch = {1: object()}
+    session.moe_scratch = {0: object(), 1: object()}
+
+    class FakeWorkspace:
+        def __init__(self) -> None:
+            self.free_calls = 0
+
+        def free(self) -> None:
+            self.free_calls += 1
+
+    state0 = SimpleNamespace(workspace=FakeWorkspace(), _rotate_fuse_ready={0x1000})
+    state1 = SimpleNamespace(workspace=FakeWorkspace(), _rotate_fuse_ready={0x2000})
+    session.states = [state0, state1]
+
+    session._release_decode_scratch_for_prefill()
+
+    assert state0.workspace.free_calls == 1
+    assert state1.workspace.free_calls == 1
+    assert state0._rotate_fuse_ready == set()
+    assert state1._rotate_fuse_ready == set()
+    assert session.linear_scratch == {}
+    assert session.full_scratch == {}
+    assert session.moe_scratch == {}
+
+
 def test_qwen35_resident_full_kv_allocation_defaults_to_bf16_payload_only() -> None:
     session, captured = _resident_allocation_session(storage_dtype="bf16")
 
