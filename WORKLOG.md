@@ -17625,3 +17625,24 @@ git diff --check
 # smoke: tiny_decoder_topk final_abs=0.000e+00 logits_abs=1.490e-08 parent_abs=4.802e-03 topk=[[5, 9, 6], [8, 2, 5]].
 # rocprofv3 1.1.0 / gfx1151: all DFlash drafter kernels and topk_rows_i32_kernel ran with Scratch_Size=0; representative durations are recorded in docs/KERNELS.md.
 ```
+
+## 2026-05-18 — DFlash draft context KV cache owner and append reference (D13)
+
+### Scope
+
+- Added `hipengine/speculative/dflash_context.py` with:
+  - `DFlashDraftKVCacheSpec` and `DFlashDraftKVCacheOwner` for stable per-layer draft context K/V tensors (`keys[layer, capacity, kv_head, head_dim]` FP32 and `values[...]` BF16), positions, and live count;
+  - byte/capacity metadata (`key_bytes`, `value_bytes`, `metadata_bytes`, `total_bytes`);
+  - phase labels for benchmark artifacts: `full_context_rebuild`, `append_materialize`, `query_only_drafter`;
+  - `DFlashDraftKVAppendPlan` / `plan_dflash_draft_kv_append()` capacity validation;
+  - NumPy reference helpers for full-context rebuild and append-only materialization.
+- Added `tests/test_dflash_context_kv.py` proving append-only K/V rows match a full-context rebuild prefix and that rejected/suffix rows remain untouched.
+- Exported the context-KV API through `hipengine.speculative` and documented D13 status in `docs/DFLASH.md`.
+
+### Validation
+
+```bash
+python3 -m py_compile hipengine/speculative/dflash_context.py hipengine/speculative/__init__.py tests/test_dflash_context_kv.py
+python3 -m pytest -q tests/test_dflash_context_kv.py
+# 4 passed
+```
