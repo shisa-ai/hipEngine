@@ -131,6 +131,10 @@ Current status:
   row is neutral (`69.6 ms/call`, `0.122x` AR), so it stays opt-in via
   `--drafter-fusion qkv`
   ([artifact](../benchmarks/results/2026-05-18-hipengine-dflash-drafter-qkv-fusion-diagnostic.json)).
+  The latest native-verifier warm-scratch attempt improves B={1,2,4,8} verify
+  seconds by ~26-35% by avoiding verifier scratch churn and a pre-accept barrier,
+  but remains `1.8x-4.9x` slower than serial c=1
+  ([artifact](../benchmarks/results/2026-05-18-hipengine-dflash-verifier-warmscratch-speedgate-diagnostic.json)).
 - no speculative throughput claim is allowed until the native compact/c-aware
   target verifier plus drafter path produces a retained chain win over
   same-session AR.
@@ -519,7 +523,8 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   doubles drafter time rather than reducing launch overhead.  The first QKV
   projection fusion is correct and profiled, but neutral (`69.6 ms/call` vs
   `68.9 ms/call` no-fusion) because the mixed-output branchy grid does not remove
-  the dominant work.
+  the dominant work.  Warm verifier scratch and accept reordering reduce native
+  verifier latency, but B={1,2,4,8} still fails the faster-than-serial gate.
 - Remaining integration work: optimize/capture/fuse the native bulk verifier and
   pursue higher-leverage drafter fusions (attention/O-proj or MLP families) or
   reusable context-bucket-safe graph kernels; promote only if the full-model

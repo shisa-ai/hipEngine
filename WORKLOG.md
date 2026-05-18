@@ -18596,3 +18596,38 @@ remains open.  Next likely work needs either graph capture with stable verifier
 scratch and dynamic metadata, a c-aware verifier that avoids expensive rejected
 suffix rows, or fused target-layer kernels; launch/scratch cleanup alone is not
 enough.
+
+## 2026-05-18 — DFlash verifier warm-scratch retained diagnostic
+
+After committing warm verifier scratch / accept reordering (`41ed27c`), ran the
+clean B={1,2,4,8} speed-gate matrix and retained a compact diagnostic artifact:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 \
+  --json /tmp/hipengine-verifier-speedgate-native-warmscratch-b1248-d8-clean.json
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode serial_in_place_single_slot --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 \
+  --json /tmp/hipengine-verifier-speedgate-serial-warmscratch-b1248-d8-clean.json
+```
+
+Clean context: `hipEngine@41ed27c`, dirty `false`; exact/finite rows passed in
+both native and serial; native `gpu_accept_match_cpu=true` for all budgets.
+Retained artifact:
+`benchmarks/results/2026-05-18-hipengine-dflash-verifier-warmscratch-speedgate-diagnostic.json`.
+
+| B | native verify s | serial verify s | native/serial | native tok/s | serial tok/s | accept |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 0.231 | 0.127 | 1.8x slower | 16.12 | 20.37 | 3/4 |
+| 2 | 0.264 | 0.124 | 2.1x slower | 15.16 | 20.36 | 4/8 |
+| 4 | 0.387 | 0.125 | 3.1x slower | 11.76 | 19.25 | 4/14 |
+| 8 | 0.619 | 0.126 | 4.9x slower | 8.48 | 17.70 | 4/19 |
+
+Updated benchmark rollup/changelog and DFlash/MTP docs.  #30 remains open: the
+native verifier is improved but not faster than serial c=1 for any tested budget.

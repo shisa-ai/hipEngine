@@ -41,9 +41,11 @@ verifier is slower than the serial fallback. The drafter HIP graph prototype is
 also correctness-only: graph replay matches direct candidates, but exact context
 buckets do not repeat and drafter time regresses to `133.8 ms/call`. The first
 QKV projection fusion is bit-exact and profiled, but neutral (`69.6 ms/call` vs
-`68.9 ms/call` no-fusion), so it remains opt-in. MTP speed work stays blocked on
-verifier graph/fusion/tiny-row optimization and higher-leverage reusable proposal
-fusion work; it should not fork a separate verifier path.
+`68.9 ms/call` no-fusion), so it remains opt-in. Warm verifier scratch improves
+native B+1 verifier latency by ~26-35%, but B={1,2,4,8} is still `1.8x-4.9x`
+slower than serial c=1. MTP speed work stays blocked on verifier
+graph/fusion/tiny-row optimization and higher-leverage reusable proposal fusion
+work; it should not fork a separate verifier path.
 
 ## Alignment with existing hipEngine design
 
@@ -215,7 +217,9 @@ Current DFlash status: the exact native-B+1 row exists and should be reused for
 API/commit correctness, but it has not cleared this speed gate. Exact-context
 DFlash drafter graph capture also exists, but has no E2E cache-hit replay because
 `context_tokens` changes every cycle. QKV projection fusion exists as an opt-in
-correctness/profiling proof point, not as a promoted speed path.
+correctness/profiling proof point, not as a promoted speed path. Warm verifier
+scratch/accept reordering improves native latency but does not clear the
+faster-than-serial gate.
 
 MTP can use CPU/reference tests before M0, but retained speed work should wait.
 

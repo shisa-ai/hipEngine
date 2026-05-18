@@ -1,0 +1,145 @@
+{
+  "commands": {
+    "baseline_previous_native": "prior post-rowspan native matrix from /tmp/hipengine-verifier-speedgate-native-b1248-d8.json recorded in WORKLOG.md",
+    "native": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-verifier-speedgate-native-warmscratch-b1248-d8-clean.json",
+    "serial": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode serial_in_place_single_slot --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-verifier-speedgate-serial-warmscratch-b1248-d8-clean.json"
+  },
+  "correctness_gate": {
+    "finite_logits": true,
+    "gpu_accept_match_cpu": true,
+    "passed": true,
+    "same_session_ar_equality": true
+  },
+  "date": "2026-05-18",
+  "decision_reason": "warm scratch reuse improves native verifier latency but native B+1 remains slower than serial_in_place_single_slot for B=1/2/4/8",
+  "hardware": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S"
+  },
+  "measurements": {
+    "aggregate": {
+      "max_native_verify_delta_vs_previous_pct": -26.17759496106674,
+      "max_native_vs_serial_verify_ratio": 4.906972685088499,
+      "min_native_verify_delta_vs_previous_pct": -34.61869516456216,
+      "native_faster_than_serial_all_budgets": false
+    },
+    "rows": [
+      {
+        "accepted_draft_tokens": 3,
+        "draft_budget": 1,
+        "draft_tokens_proposed": 4,
+        "gpu_accept_match_cpu": true,
+        "native_decode_tok_s": 16.12281229808509,
+        "native_verify_delta_vs_previous_pct": -30.51055774934791,
+        "native_verify_delta_vs_previous_seconds": -0.1012128269940149,
+        "native_verify_seconds": 0.2305176770023536,
+        "native_vs_serial_verify_ratio": 1.8163307619699278,
+        "previous_native_verify_seconds": 0.3317305039963685,
+        "serial_decode_tok_s": 20.369764233385506,
+        "serial_verify_seconds": 0.12691393100249115,
+        "target_bulk_forward_calls": 4,
+        "target_serial_forward_calls": 1
+      },
+      {
+        "accepted_draft_tokens": 4,
+        "draft_budget": 2,
+        "draft_tokens_proposed": 8,
+        "gpu_accept_match_cpu": true,
+        "native_decode_tok_s": 15.15694288737184,
+        "native_verify_delta_vs_previous_pct": -34.61869516456216,
+        "native_verify_delta_vs_previous_seconds": -0.13977350101049524,
+        "native_verify_seconds": 0.2639779989985982,
+        "native_vs_serial_verify_ratio": 2.120782431347079,
+        "previous_native_verify_seconds": 0.40375150000909343,
+        "serial_decode_tok_s": 20.357819416841195,
+        "serial_verify_seconds": 0.12447198500740342,
+        "target_bulk_forward_calls": 4,
+        "target_serial_forward_calls": 0
+      },
+      {
+        "accepted_draft_tokens": 4,
+        "draft_budget": 4,
+        "draft_tokens_proposed": 14,
+        "gpu_accept_match_cpu": true,
+        "native_decode_tok_s": 11.756206767278139,
+        "native_verify_delta_vs_previous_pct": -26.17759496106674,
+        "native_verify_delta_vs_previous_seconds": -0.13706499298859853,
+        "native_verify_seconds": 0.38653159100795165,
+        "native_vs_serial_verify_ratio": 3.0841548974561195,
+        "previous_native_verify_seconds": 0.5235965839965502,
+        "serial_decode_tok_s": 19.25477002399097,
+        "serial_verify_seconds": 0.12532820297928993,
+        "target_bulk_forward_calls": 4,
+        "target_serial_forward_calls": 0
+      },
+      {
+        "accepted_draft_tokens": 4,
+        "draft_budget": 8,
+        "draft_tokens_proposed": 19,
+        "gpu_accept_match_cpu": true,
+        "native_decode_tok_s": 8.484490596188909,
+        "native_verify_delta_vs_previous_pct": -29.70799876365757,
+        "native_verify_delta_vs_previous_seconds": -0.2616381739935605,
+        "native_verify_seconds": 0.61906125000678,
+        "native_vs_serial_verify_ratio": 4.906972685088499,
+        "previous_native_verify_seconds": 0.8806994240003405,
+        "serial_decode_tok_s": 17.69991659184987,
+        "serial_verify_seconds": 0.12615950602048542,
+        "target_bulk_forward_calls": 4,
+        "target_serial_forward_calls": 0
+      }
+    ]
+  },
+  "models": {
+    "drafter": {
+      "dtype": "bf16",
+      "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
+      "snapshot_revision": "42d3b34d588423cdae7ba8f53a8cf7789346a719"
+    },
+    "target": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+      "quant": "w4_paro_packed",
+      "snapshot_revision": "501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
+    }
+  },
+  "performance_claim": false,
+  "schema_version": 1,
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-e1a6bc5663\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 43215c73116c407735c85a180d174f718798c328+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "hipengine_branch": "dflash",
+    "hipengine_commit": "41ed27cd1a5598fbc8db71b5acb1ff88bf40c6d8",
+    "hipengine_dirty": false,
+    "hipengine_status_porcelain": "",
+    "platform": "Linux-7.1.0-rc1-1-mainline-x86_64-with-glibc2.43",
+    "python": "3.12.12"
+  },
+  "source_artifacts": {
+    "native_tmp": "/tmp/hipengine-verifier-speedgate-native-warmscratch-b1248-d8-clean.json",
+    "previous_native_tmp": "/tmp/hipengine-verifier-speedgate-native-b1248-d8.json",
+    "serial_tmp": "/tmp/hipengine-verifier-speedgate-serial-warmscratch-b1248-d8-clean.json"
+  },
+  "status": "diagnostic_blocked",
+  "task": 30,
+  "title": "DFlash native B+1 verifier warm-scratch speed-gate matrix",
+  "workload": {
+    "backend": "hip_gfx1151",
+    "decode_tokens": 8,
+    "draft_budgets": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "max_prompts": 1,
+    "optimization": "keep verifier-sized scratch live between native cycles; queue GPU accept before top1 host readback",
+    "prompt_fixture": null,
+    "prompt_suite_sha256": "04a88c095fa0b05c81eaa09f62d58cac053272fc307e1dafae6ab076c214892f",
+    "verifier_modes": [
+      "native_bulk_bplus1",
+      "serial_in_place_single_slot"
+    ]
+  }
+}
