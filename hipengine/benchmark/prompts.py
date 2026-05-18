@@ -176,6 +176,40 @@ STABLE_PROMPT_SPECS: tuple[StablePromptSpec, ...] = (
             "from the ledger, and noticed that the final entry had been written "
         ),
     ),
+    StablePromptSpec(
+        category="general",
+        name="concise_summary",
+        benchmark_group="robustness",
+        source="amd-gpu-tuning QUALITY_PROMPTS-inspired general output guard",
+        text=(
+            "Summarize the following engineering note in three concise bullet points. "
+            "Focus on the practical tradeoffs, not marketing language.\n\n"
+            "Note: A speculative decoder can improve throughput only when the verifier "
+            "checks several candidate tokens for less work than separate autoregressive steps.\n\n"
+            "Summary:"
+        ),
+    ),
+    StablePromptSpec(
+        category="multilingual",
+        name="ja_gpu_batching",
+        benchmark_group="robustness",
+        source="amd-gpu-tuning prompt-suite multilingual robustness guard",
+        text=(
+            "次の質問に日本語で簡潔に答えてください。\n"
+            "小さなGPU推論リクエストをまとめてバッチ処理する利点を二つ挙げてください。\n"
+            "回答:"
+        ),
+    ),
+    StablePromptSpec(
+        category="multilingual",
+        name="zh_speculative_decode",
+        benchmark_group="robustness",
+        source="amd-gpu-tuning prompt-suite multilingual robustness guard",
+        text=(
+            "请用中文解释投机解码为什么需要目标模型验证草稿 token。"
+            "要求：回答简短，并指出一个正确性风险。\n回答："
+        ),
+    ),
 )
 
 

@@ -939,6 +939,109 @@ class Qwen35ParoResidentSession:
             return None
         return self._sample_from_hidden(hidden)
 
+    def step_with_hidden_taps(
+        self,
+        token_id: int,
+        *,
+        position: int,
+        capture_layer_ids: Sequence[int],
+        capture_hidden_concat: Tensor,
+        capture_row: int,
+        sample: bool = True,
+    ) -> Qwen35ParoAutoregressiveStepResult | None:
+        """Run one token and append DFlash target-hidden taps to a device row.
+
+        The taps are copied as BF16 in the order supplied by
+        ``capture_layer_ids``.  This is used by the full-model DFlash benchmark
+        driver to build the drafter context without copying hidden states to the
+        host.  It is still a c=1 resident step; bulk verifier paths remain
+        separate.
+        """
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        self._check_position(position)
+        self._set_token_embedding(int(token_id))
+        self._set_position(position)
+        hidden = self._run_layers(
+            position=position,
+            stream=0,
+            capture_layer_ids=capture_layer_ids,
+            capture_hidden_concat=capture_hidden_concat,
+            capture_row=capture_row,
+        )
+        if not sample:
+            return None
+        return self._sample_from_hidden(hidden)
+
+    def copy_slot_state(self, src_slot: int, dst_slot: int, *, stream: int = 0) -> None:
+        """Copy resident decode state/KV metadata between physical slots.
+
+        This is a correctness-first branch primitive for serial speculative
+        verification: slot ``dst_slot`` receives the same recurrent state,
+        full-attention KV cache, hidden scratch rows, and position/context
+        scalars as ``src_slot``.  It intentionally copies the whole per-slot KV
+        capacity; native DFlash verifier kernels avoid this cost with dedicated
+        tree scratch and compact commit.
+        """
+
+        self._check_slot(src_slot)
+        self._check_slot(dst_slot)
+        if src_slot == dst_slot:
+            return
+        for tensor, _state in ((self.batch_hidden, "hidden"), (self.batch_next_hidden, "next_hidden")):
+            stride = int(self.config.hidden_size) * tensor.dtype.itemsize
+            self.runtime.memcpy_async(
+                tensor.ptr + int(dst_slot) * stride,
+                tensor.ptr + int(src_slot) * stride,
+                stride,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        for layer_id in self.linear_states:
+            conv_state, recurrent_state, conv_buf, recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+            conv_stride = int(np.prod(conv_state.shape)) * conv_state.dtype.itemsize
+            recurrent_stride = int(np.prod(recurrent_state.shape)) * recurrent_state.dtype.itemsize
+            self.runtime.memcpy_async(
+                conv_buf.ptr + int(dst_slot) * conv_stride,
+                conv_buf.ptr + int(src_slot) * conv_stride,
+                conv_stride,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            self.runtime.memcpy_async(
+                recurrent_buf.ptr + int(dst_slot) * recurrent_stride,
+                recurrent_buf.ptr + int(src_slot) * recurrent_stride,
+                recurrent_stride,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        for layer_id in self.full_caches:
+            key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
+            cache_stride = int(np.prod(key_cache.shape)) * key_cache.dtype.itemsize
+            self.runtime.memcpy_async(
+                key_buf.ptr + int(dst_slot) * cache_stride,
+                key_buf.ptr + int(src_slot) * cache_stride,
+                cache_stride,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            self.runtime.memcpy_async(
+                value_buf.ptr + int(dst_slot) * cache_stride,
+                value_buf.ptr + int(src_slot) * cache_stride,
+                cache_stride,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        for buffer in (self.position_buf, self.context_buf, self.token_id_buf):
+            self.runtime.memcpy_async(
+                buffer.ptr + int(dst_slot) * DType.INT64.itemsize,
+                buffer.ptr + int(src_slot) * DType.INT64.itemsize,
+                DType.INT64.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+
     def step_batch_serial(
         self,
         token_ids: list[int] | tuple[int, ...],
@@ -2260,6 +2363,9 @@ class Qwen35ParoResidentSession:
         slot: int = 0,
         persist_aliases: bool = True,
         stream: int = 0,
+        capture_layer_ids: Sequence[int] | None = None,
+        capture_hidden_concat: Tensor | None = None,
+        capture_row: int = 0,
     ) -> Tensor:
         if slot == 0 and persist_aliases:
             hidden = self.hidden
@@ -2268,6 +2374,19 @@ class Qwen35ParoResidentSession:
             hidden = self._slot_hidden_view(self.batch_hidden, slot)
             next_hidden = self._slot_hidden_view(self.batch_next_hidden, slot)
         position_tensor, append_spans, decode_spans = self._slot_spans(slot)
+        capture_ids = tuple(int(x) for x in (capture_layer_ids or ()))
+        capture_offsets = {layer_id: idx for idx, layer_id in enumerate(capture_ids)}
+        if capture_hidden_concat is not None:
+            if capture_hidden_concat.dtype != DType.BF16:
+                raise ValueError("capture_hidden_concat must use BF16 storage")
+            if capture_hidden_concat.ndim != 2:
+                raise ValueError("capture_hidden_concat must be rank-2")
+            if capture_hidden_concat.shape[1] != len(capture_ids) * self.config.hidden_size:
+                raise ValueError("capture_hidden_concat width must equal captured layers * hidden_size")
+            if capture_row < 0 or capture_row >= capture_hidden_concat.shape[0]:
+                raise ValueError("capture_row outside capture_hidden_concat")
+        elif capture_ids:
+            raise ValueError("capture_hidden_concat is required when capture_layer_ids is set")
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
@@ -2305,6 +2424,19 @@ class Qwen35ParoResidentSession:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
             self.runtime.memcpy_async(next_hidden.ptr, out.ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
             hidden, next_hidden = next_hidden, hidden
+            capture_offset = capture_offsets.get(layer_id)
+            if capture_offset is not None and capture_hidden_concat is not None:
+                dst = capture_hidden_concat.ptr + (
+                    int(capture_row) * int(capture_hidden_concat.shape[1]) + capture_offset * self.config.hidden_size
+                ) * DType.BF16.itemsize
+                fp16_to_bf16(
+                    hidden.ptr,
+                    dst,
+                    self.config.hidden_size,
+                    stream=stream,
+                    library=self.libraries["cast"],
+                    runtime=self.runtime,
+                )
         if persist_aliases:
             self.hidden = hidden
             self.next_hidden = next_hidden

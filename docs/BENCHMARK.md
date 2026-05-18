@@ -173,9 +173,10 @@ harnesses:
 
 Use `fixtures/dflash/stable_prompts.jsonl` for deterministic no-remote prompt
 coverage. Its `code_promotion` rows are the first speed-promotion gate;
-`robustness` and `synthetic_stress` rows are diagnostic until code rows already
-beat AR. Rebuild/validate it with `scripts/dflash_prepare_prompts.py` when the
-retained tokenizer snapshot changes.
+robustness rows cover general, instruct/prose/math, and multilingual output,
+while `synthetic_stress` rows are diagnostic until code rows already beat AR.
+Rebuild/validate it with `scripts/dflash_prepare_prompts.py` when the retained
+tokenizer snapshot changes.
 
 A speculative row is promotable only when every row is exact/finite and aggregate
 speculative decode is >1.10× same-session AR. The checked-in

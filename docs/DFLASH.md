@@ -98,9 +98,14 @@ It records:
   gfx1151 `dflash_commit_chain_i32` smoke proves reject/partial/full plus
   multi-request copy/select commits do not leak rejected suffix rows into
   canonical linear state, KV, hidden taps, output ids, or context metadata;
-- no speculative throughput claim is allowed until Task #15 lands a native
-  compact/c-aware target verifier with selectable per-row state and GPU accept
-  summaries.
+- `scripts/dflash_chain_e2e_bench.py` now runs a same-session full-model AR
+  control and native DFlash chain smoke on the shisa packed target plus z-lab
+  drafter. The retained gfx1151 diagnostic artifact has exact finite equality
+  for a 2-token smoke but DFlash is slower than AR (`0.254x`) and remains
+  non-promotable because verification uses serial branch state copies;
+- no speculative throughput claim is allowed until a native compact/c-aware
+  target verifier with selectable per-row state and GPU accept summaries replaces
+  the serial branch verifier and produces a retained chain win.
 
 ## Prior W7900/gfx1100 evidence from `~/amd-gpu-tuning`
 
@@ -467,9 +472,17 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   commit-copy check, records generated ids and commit rows, matches same-session
   AR token streams exactly, keeps finite draft/verify flags true, and marks
   `throughput_claim_eligible=false`.
-- Remaining integration work: generalize the tiny block sequence into reusable
-  runtime workspaces over z-lab layer weights and connect real target lm-head
-  output rows to `DraftBatch` for throughput benchmarks.
+- **Landed 2026-05-18:** add `scripts/dflash_chain_e2e_bench.py`, a full-model
+  diagnostic driver that executes the packed target and native DFlash drafter in
+  one resident target session with same-session AR control. It captures target
+  hidden taps on device, proposes a top-1 chain through z-lab drafter weights,
+  verifies exactly via serial branch slot-state copies, and emits schema-2 rows
+  with acceptance, split timings, D2H counts, graph status, backend/arch, memory,
+  and promotion eligibility. The retained gfx1151 smoke artifact is exact/finite
+  but slower than AR (`0.254x`) and `performance_claim=false`.
+- Remaining integration work: replace serial branch verification with the native
+  compact/bulk target verifier and then promote only if full-model chain beats
+  same-session AR.
 
 ### Phase D4 — DDTree compiler and tree verify
 

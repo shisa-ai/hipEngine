@@ -17883,3 +17883,45 @@ PY
 ### Next action
 
 - Leave Task D17 open. Revisit only after a full native chain DFlash throughput benchmark on gfx1151 has exact correctness, zero full-logit readbacks in the fast path, and a retained >1.10x AR promotion row.
+
+## 2026-05-18 — DFlash full-model chain E2E benchmark path (D18)
+
+### Scope
+
+- Added a full-model DFlash chain benchmark driver at `scripts/dflash_chain_e2e_bench.py` that runs the real packed shisa target and native z-lab DFlash drafter in one resident target session.
+- Same-session control is enforced per row: slot 0 runs AR, slot 1 carries committed DFlash state, and slots 2..N are serial branch-verifier scratch slots.
+- The runner emits schema-2 speculative rows with exact AR equality, finite-logit gates, acceptance histogram inputs, verify rows/ETA, split timings, D2H counters, peak memory, graph status, backend/arch, and explicit promotion blockers.
+- The verifier remains `serial_branch_state_copy` and the drafter rebuilds full context per cycle, so retained artifacts are diagnostic only until a native bulk verifier replaces the serial branch path.
+- Expanded deterministic DFlash prompt coverage in `hipengine/benchmark/prompts.py` and `fixtures/dflash/stable_prompts.jsonl`: 15 rows total, including code (6), general (1), multilingual (2), instruct/math/prose (4), and synthetic (2).
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_speculative_benchmark.py tests/test_dflash_prompts.py tests/test_qwen35_resident_batch_layout.py -q
+python3 -m py_compile hipengine/benchmark/speculative.py hipengine/benchmark/prompts.py hipengine/runtime/qwen35_paro_runner.py scripts/dflash_chain_e2e_bench.py scripts/dflash_prepare_prompts.py
+python3 scripts/dflash_prepare_prompts.py --output fixtures/dflash/stable_prompts.jsonl --validate-only
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 900s \
+  python3 scripts/dflash_chain_e2e_bench.py \
+    --backend hip_gfx1151 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build \
+    --max-prompts 1 \
+    --decode-tokens 2 \
+    --draft-budgets 1 \
+    --json /tmp/hipengine-dflash-chain-e2e-smoke.json
+```
+
+Results:
+
+- pytest: `37 passed`.
+- prompt validation: `passed=true`, rows `15`, categories include `code=6`, `general=1`, `multilingual=2`.
+- full-model smoke artifact retained at `benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-smoke-diagnostic.json`:
+  - rows `1`, decode tokens `2`, same-session AR/DFlash exact equality `true`, finite logits `true`;
+  - AR decode `66.081 tok/s`, DFlash decode `16.761 tok/s`, speedup `0.254x`;
+  - target verify rows/output token `1.5`, D2H scalar/vector reads `3/2`, full-logit readbacks `0`;
+  - peak tracked allocation `18.948 GiB`, graph status `not_captured`, backend/arch `hip_gfx1151/gfx1151`;
+  - `status=diagnostic`, `performance_claim=false`, `decision.accepted=false` because the verifier is serial branch state-copy, not native bulk.
+
+### Gate impact
+
+- Task D17 / DDTree remains blocked: chain DFlash does **not** beat same-session AR in the full-model smoke, and no retained `performance_claim=true` chain row exists.

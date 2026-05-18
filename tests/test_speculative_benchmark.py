@@ -36,7 +36,12 @@ def test_normalize_speculative_row_records_required_dflash_metrics() -> None:
     row = normalize_speculative_row(schema_fixture_row())
 
     assert row["ar"]["same_session_control"] is True
+    assert row["ar"]["same_process_control"] is True
     assert row["ar"]["decode_tok_s"] == 2.0
+    assert row["spec"]["same_session_control"] is True
+    assert row["spec"]["native_bulk_verifier"] is True
+    assert row["spec"]["backend"] == "hip_gfx1151"
+    assert row["spec"]["target_arch"] == "gfx1151"
     assert row["spec"]["decode_tok_s"] == 8 / 3
     assert row["spec"]["speedup_vs_ar"] == (8 / 3) / 2
     assert row["correctness"]["exact_match_ar"] is True

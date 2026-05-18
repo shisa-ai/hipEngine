@@ -300,6 +300,7 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
         },
         "ar": {
             "same_session_control": _optional_bool(ar.get("same_session_control", ar.get("same_session_control_reused_for_prompt", True))),
+            "same_process_control": _optional_bool(ar.get("same_process_control")),
             "decode_seconds": ar_seconds,
             "decode_tok_s": ar_tok_s,
             "finite_logits": finite_ar,
@@ -331,6 +332,12 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
             "draft_calls": _optional_int(spec.get("draft_calls")),
             "commit_rows": _optional_int(spec.get("commit_rows", spec.get("commit_replay_rows"))),
             "generated_sample": spec_tokens[:32],
+            "same_session_control": _optional_bool(spec.get("same_session_control")),
+            "same_process_control": _optional_bool(spec.get("same_process_control")),
+            "verifier_mode": _optional_str(spec.get("verifier_mode")),
+            "native_bulk_verifier": _optional_bool(spec.get("native_bulk_verifier")),
+            "backend": _optional_str(spec.get("backend")),
+            "target_arch": _optional_str(spec.get("target_arch", spec.get("arch"))),
         },
         "acceptance": accepted,
         "correctness": {
@@ -548,6 +555,7 @@ def schema_fixture_row() -> dict[str, Any]:
         },
         "ar": {
             "same_session_control": True,
+            "same_process_control": True,
             "decode_seconds": 4.0,
             "finite_logits": True,
             "generated_ids": [101, 102, 103, 104, 105, 106, 107, 108],
@@ -569,6 +577,12 @@ def schema_fixture_row() -> dict[str, Any]:
             "finite_draft_logits": True,
             "finite_verify_logits": True,
             "generated_ids": [101, 102, 103, 104, 105, 106, 107, 108],
+            "same_session_control": True,
+            "same_process_control": True,
+            "verifier_mode": "native_bulk",
+            "native_bulk_verifier": True,
+            "backend": "hip_gfx1151",
+            "target_arch": "gfx1151",
             "d2h": {
                 "scalar_reads": 4,
                 "vector_reads": 1,
