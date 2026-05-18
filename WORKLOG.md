@@ -18295,3 +18295,54 @@ reads/values `71/71`, vector reads/values `40/180`, full-logit readbacks `0`.
 Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/DFLASH.md`, and
 `docs/MTP.md` to mark native verifier correctness landed but speed/promotion
 still blocked on graph/fusion/tiny-row verifier optimization.
+
+## 2026-05-18 — DFlash drafter HIP graph capture prototype (task #28)
+
+Implemented a prototype HIP graph capture path for `NativeDFlashChainDrafter.propose()`.
+The path is optional via `--drafter-graph {off,auto,validate}` and defaults to
+`off` for existing benchmark reproducibility.
+
+Implementation notes:
+
+- factored the fixed-shape drafter body (`noise_prepare`, 8 decoder layers,
+  final norm, W8A16 lm-head, row top-k) into a stream-aware kernel sequence;
+- context projection and append-only per-layer K/V cache updates remain outside
+  the graph and are synchronized before capture/replay;
+- graph buckets are keyed by exact `context_tokens` plus candidate budget,
+  block size, max context, layer count, hidden size, and context mode;
+- `validate` mode runs the direct fallback, captures/replays the same bucket,
+  and records direct-vs-graph candidate equality without using the graph for
+  future decode progress;
+- `auto` mode replays cached graphs on exact bucket hits and otherwise captures
+  + validates on misses;
+- artifacts now carry `spec.draft_graph` plus normalized row `graph` status,
+  bucket, replay count, validation status, and fallback/blocker reason.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py hipengine/benchmark/speculative.py
+python3 -m pytest tests/test_speculative_benchmark.py -q
+# 5 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --drafter-graph validate \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 4 --draft-budgets 4 \
+  --json /tmp/hipengine-dflash-drafter-graph-validate-d4-v3.json
+# exact same-session AR equality passed; finite logits passed;
+# graph status captured, replay_steps=2 validation_passed=true
+```
+
+Blocker evidence from the dirty-tree 16-token diagnostic before final clean
+artifact regeneration: graph validation produced identical candidates for all 10
+DFlash propose calls (`status_counts={'captured_validated': 10}`), but exact
+`context_tokens` buckets were unique (`cache_entries=10`, no cache hits), so graph
+capture/validation added overhead instead of reducing launch cost.  Drafter time
+was `1.367 s / 10 = 136.7 ms/call` versus the prior no-graph nativebulk retained
+baseline `0.689 s / 10 = 68.9 ms/call`.  Conclusion: exact-context HIP graph
+capture is correct but not useful for E2E DFlash decode until the drafter kernels
+accept a reusable context bucket/max-length shape (or are fused) so graphs can be
+replayed across cycles.

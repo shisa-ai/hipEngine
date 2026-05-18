@@ -79,6 +79,56 @@ class DraftResult:
     d2h_vector_reads: int
     d2h_vector_values: int
     phase_seconds: dict[str, float]
+    graph: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class DFlashDrafterGraphBucket:
+    candidate_budget: int
+    block_size: int
+    context_tokens: int
+    max_context_tokens: int
+    num_layers: int
+    hidden_size: int
+    mode: str = "append_only_projected_context_and_kv"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "candidate_budget": self.candidate_budget,
+            "block_size": self.block_size,
+            "context_tokens": self.context_tokens,
+            "max_context_tokens": self.max_context_tokens,
+            "num_layers": self.num_layers,
+            "hidden_size": self.hidden_size,
+            "mode": self.mode,
+        }
+
+    @property
+    def key(self) -> tuple[int, int, int, int, int, int, str]:
+        return (
+            self.candidate_budget,
+            self.block_size,
+            self.context_tokens,
+            self.max_context_tokens,
+            self.num_layers,
+            self.hidden_size,
+            self.mode,
+        )
+
+
+@dataclass
+class DFlashDrafterGraphEntry:
+    bucket: DFlashDrafterGraphBucket
+    graph: int
+    graph_exec: int
+    stream: int
+    validation_passed: bool
+    direct_tokens: tuple[int, ...]
+    graph_tokens: tuple[int, ...]
+    capture_seconds: float
+    instantiate_seconds: float
+    validation_seconds: float
+    replay_count: int = 0
 
 
 def _build_chain_target_batch(
@@ -127,12 +177,21 @@ class NativeDFlashChainDrafter:
         compiler_version: str | None,
         require_cached_build: bool,
         sync_draft_phases: bool = False,
+        graph_mode: str = "off",
     ) -> None:
         self.session = session
         self.runtime = session.runtime
         self.device = Device("hip", 0)
         self.candidate_budget = int(candidate_budget)
         self.sync_draft_phases = bool(sync_draft_phases)
+        if graph_mode not in {"off", "auto", "validate"}:
+            raise ValueError("graph_mode must be off, auto, or validate")
+        self.graph_mode = graph_mode
+        self._graph_cache: dict[tuple[int, int, int, int, int, int, str], DFlashDrafterGraphEntry] = {}
+        self._graph_status_counts: Counter[str] = Counter()
+        self._graph_validation_failures = 0
+        self._graph_fallback_reasons: Counter[str] = Counter()
+        self._graph_last: dict[str, Any] | None = None
         # Cache of how many context rows have already been projected through
         # ``fc + hidden_norm`` and live in self.projected_context_norm.  The
         # drafter only re-projects the newly committed tail rows per cycle.
@@ -181,7 +240,36 @@ class NativeDFlashChainDrafter:
     def target_hidden_concat(self) -> Tensor:
         return self._target_hidden_concat
 
+    @property
+    def graph_summary(self) -> dict[str, Any]:
+        validation_passed = None
+        if self._graph_cache:
+            validation_passed = self._graph_validation_failures == 0
+        return {
+            "mode": self.graph_mode,
+            "status_counts": dict(sorted(self._graph_status_counts.items())),
+            "cache_entries": len(self._graph_cache),
+            "validation_failures": self._graph_validation_failures,
+            "validation_passed": validation_passed,
+            "fallback_reasons": dict(sorted(self._graph_fallback_reasons.items())),
+            "last": self._graph_last,
+        }
+
     def close(self) -> None:
+        for entry in list(self._graph_cache.values()):
+            try:
+                self.runtime.graph_exec_destroy(entry.graph_exec)
+            except Exception:
+                pass
+            try:
+                self.runtime.graph_destroy(entry.graph)
+            except Exception:
+                pass
+            try:
+                self.runtime.stream_destroy(entry.stream)
+            except Exception:
+                pass
+        self._graph_cache.clear()
         self.weights.free(runtime=self.runtime)
         for buffer in reversed(self.buffers):
             free(buffer, runtime=self.runtime)
@@ -200,38 +288,56 @@ class NativeDFlashChainDrafter:
             raise ValueError("context_tokens exceeds DFlash context capacity")
         t0 = time.perf_counter()
         phases: dict[str, float] = {}
-        phase_t = time.perf_counter()
+        self._write_root_inputs(root_token=root_token, root_position=root_position)
+        phases["key_positions_h2d"] = 0.0
+        self._ensure_context_cache(context_tokens=context_tokens, phases=phases)
+
+        graph_info: dict[str, Any]
+        if self.graph_mode == "off":
+            self._run_propose_kernels(context_tokens=context_tokens, stream=0, phases=phases)
+            self.runtime.device_synchronize()
+            graph_info = self._graph_info(
+                status="disabled",
+                bucket=self._bucket_for(context_tokens),
+                replayed=False,
+                validation_passed=None,
+                fallback_reason="drafter graph mode is off",
+            )
+            self._graph_fallback_reasons["drafter graph mode is off"] += 1
+        else:
+            graph_info = self._run_or_validate_graph_bucket(context_tokens=context_tokens, phases=phases)
+
+        top1, top1_values = self._read_top1()
+        draft_seconds = time.perf_counter() - t0
+        phases["total"] = draft_seconds
+        phases["graph_overhead"] = float(graph_info.get("overhead_seconds") or 0.0)
+        if graph_info.get("status") == "replayed":
+            phases["graph_replay"] = phases["graph_overhead"]
+            phases.setdefault("noise_prepare", 0.0)
+            phases.setdefault("decoder_layers", 0.0)
+            phases.setdefault("final_norm", 0.0)
+            phases.setdefault("lm_head", 0.0)
+            phases.setdefault("topk_and_readback", 0.0)
+            phases.setdefault("slowest_decoder_layer", 0.0)
+        self._graph_last = graph_info
+        self._graph_status_counts[str(graph_info.get("status", "unknown"))] += 1
+        return DraftResult(
+            candidate_tokens=tuple(int(x) for x in top1.reshape(-1).tolist()),
+            draft_seconds=draft_seconds,
+            finite_logits=bool(np.isfinite(top1_values).all()),
+            d2h_vector_reads=2,
+            d2h_vector_values=2 * self.candidate_budget,
+            phase_seconds=phases,
+            graph=graph_info,
+        )
+
+    def _write_root_inputs(self, *, root_token: int, root_position: int) -> None:
         root = np.asarray([int(root_token)], dtype=np.int32)
         pos = np.asarray([int(root_position)], dtype=np.int32)
         copy_host_to_device(self._buffer_for(self.root_tokens), host_array_ptr(root), runtime=self.runtime)
         copy_host_to_device(self._buffer_for(self.root_positions), host_array_ptr(pos), runtime=self.runtime)
-        prepare = (
-            dflash_prepare_noise_inputs_bf16_i32
-            if self.session.embedding.tensor.dtype == DType.BF16
-            else dflash_prepare_noise_inputs_f16_to_bf16_i32
-        )
-        prepare(
-            self.root_tokens.ptr,
-            self.root_positions.ptr,
-            self.session.embedding.tensor.ptr,
-            self.noise_ids.ptr,
-            self.query_positions.ptr,
-            self.query_hidden_a.ptr,
-            1,
-            self.block_size,
-            self.hidden,
-            self.session.vocab_size,
-            self.config.mask_token_id,
-            threads=256,
-            library=self.library,
-            runtime=self.runtime,
-        )
-        self._record_phase(phases, "noise_prepare", phase_t)
-        # key_positions H2D is no longer required: with cached rotated K_ctx the
-        # per-cycle rotary only operates on the query block, so we only need
-        # query_positions (which is pre-filled by ``dflash_prepare_noise_inputs``
-        # for both Q and K_q rotary).
-        phases["key_positions_h2d"] = 0.0
+
+    def _ensure_context_cache(self, *, context_tokens: int, phases: dict[str, float]) -> None:
         phase_t = time.perf_counter()
         context_projection_rebuild_rows = 0
         if self._cache_invalidated or self._cached_projected_rows < context_tokens:
@@ -251,21 +357,50 @@ class NativeDFlashChainDrafter:
         phases["context_projection_rebuild_rows"] = float(context_projection_rebuild_rows)
         phases["context_projection_cached_rows"] = float(self._cached_projected_rows)
         phases["kv_cache_cached_rows"] = float(self._cached_kv_rows)
+
+    def _run_propose_kernels(self, *, context_tokens: int, stream: int = 0, phases: dict[str, float] | None = None) -> None:
+        phase_t = time.perf_counter()
+        prepare = (
+            dflash_prepare_noise_inputs_bf16_i32
+            if self.session.embedding.tensor.dtype == DType.BF16
+            else dflash_prepare_noise_inputs_f16_to_bf16_i32
+        )
+        prepare(
+            self.root_tokens.ptr,
+            self.root_positions.ptr,
+            self.session.embedding.tensor.ptr,
+            self.noise_ids.ptr,
+            self.query_positions.ptr,
+            self.query_hidden_a.ptr,
+            1,
+            self.block_size,
+            self.hidden,
+            self.session.vocab_size,
+            self.config.mask_token_id,
+            threads=256,
+            stream=stream,
+            library=self.library,
+            runtime=self.runtime,
+        )
+        if phases is not None:
+            self._record_phase(phases, "noise_prepare", phase_t)
         query_in = self.query_hidden_a
         query_out = self.query_hidden_b
         layer_seconds: list[float] = []
         layers_t = time.perf_counter()
         for layer in range(self.config.num_hidden_layers):
             layer_t = time.perf_counter()
-            query_out = self._run_layer(layer, context_tokens=context_tokens, query_in=query_in, query_out=query_out)
+            query_out = self._run_layer(layer, context_tokens=context_tokens, query_in=query_in, query_out=query_out, stream=stream)
             query_in, query_out = query_out, query_in
+            if phases is not None and self.sync_draft_phases:
+                self.runtime.device_synchronize()
+            if phases is not None:
+                layer_seconds.append(time.perf_counter() - layer_t)
+        if phases is not None:
             if self.sync_draft_phases:
                 self.runtime.device_synchronize()
-            layer_seconds.append(time.perf_counter() - layer_t)
-        if self.sync_draft_phases:
-            self.runtime.device_synchronize()
-        phases["decoder_layers"] = time.perf_counter() - layers_t
-        phases["slowest_decoder_layer"] = max(layer_seconds) if layer_seconds else 0.0
+            phases["decoder_layers"] = time.perf_counter() - layers_t
+            phases["slowest_decoder_layer"] = max(layer_seconds) if layer_seconds else 0.0
         phase_t = time.perf_counter()
         dflash_rmsnorm_bf16(
             query_in.ptr,
@@ -274,10 +409,12 @@ class NativeDFlashChainDrafter:
             self.block_size,
             self.hidden,
             threads=128,
+            stream=stream,
             library=self.library,
             runtime=self.runtime,
         )
-        self._record_phase(phases, "final_norm", phase_t)
+        if phases is not None:
+            self._record_phase(phases, "final_norm", phase_t)
         phase_t = time.perf_counter()
         logits_ptr = self.logits.ptr
         w8a16_linear_bf16_f32_out(
@@ -289,10 +426,12 @@ class NativeDFlashChainDrafter:
             self.hidden,
             self.vocab_size,
             threads=128,
+            stream=stream,
             library=self.session.libraries["w8a16"],
             runtime=self.runtime,
         )
-        self._record_phase(phases, "lm_head", phase_t)
+        if phases is not None:
+            self._record_phase(phases, "lm_head", phase_t)
         phase_t = time.perf_counter()
         topk_f32_rows_i32(
             logits_ptr,
@@ -302,25 +441,209 @@ class NativeDFlashChainDrafter:
             self.vocab_size,
             1,
             threads=256,
+            stream=stream,
             library=self.lm_library,
             runtime=self.runtime,
         )
-        self.runtime.device_synchronize()
+        if phases is not None:
+            self.runtime.device_synchronize()
+            phases["topk_and_readback"] = time.perf_counter() - phase_t
+
+    def _read_top1(self) -> tuple[np.ndarray, np.ndarray]:
         top1 = np.empty((self.candidate_budget, 1), dtype=np.int32)
         top1_values = np.empty((self.candidate_budget, 1), dtype=np.float32)
         copy_device_to_host(host_array_ptr(top1), self._buffer_for(self.top1_ids), runtime=self.runtime)
         copy_device_to_host(host_array_ptr(top1_values), self._buffer_for(self.top1_values), runtime=self.runtime)
-        phases["topk_and_readback"] = time.perf_counter() - phase_t
-        draft_seconds = time.perf_counter() - t0
-        phases["total"] = draft_seconds
-        return DraftResult(
-            candidate_tokens=tuple(int(x) for x in top1.reshape(-1).tolist()),
-            draft_seconds=draft_seconds,
-            finite_logits=bool(np.isfinite(top1_values).all()),
-            d2h_vector_reads=2,
-            d2h_vector_values=2 * self.candidate_budget,
-            phase_seconds=phases,
+        return top1, top1_values
+
+    def _bucket_for(self, context_tokens: int) -> DFlashDrafterGraphBucket:
+        return DFlashDrafterGraphBucket(
+            candidate_budget=self.candidate_budget,
+            block_size=self.block_size,
+            context_tokens=int(context_tokens),
+            max_context_tokens=self.max_context_tokens,
+            num_layers=int(self.config.num_hidden_layers),
+            hidden_size=self.hidden,
         )
+
+    def _graph_info(
+        self,
+        *,
+        status: str,
+        bucket: DFlashDrafterGraphBucket,
+        replayed: bool,
+        validation_passed: bool | None,
+        fallback_reason: str | None = None,
+        overhead_seconds: float = 0.0,
+        capture_seconds: float | None = None,
+        instantiate_seconds: float | None = None,
+        validation_seconds: float | None = None,
+        cache_hit: bool = False,
+        direct_tokens: tuple[int, ...] | None = None,
+        graph_tokens: tuple[int, ...] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "status": status,
+            "mode": self.graph_mode,
+            "bucket_key": bucket.as_dict(),
+            "replayed": bool(replayed),
+            "cache_hit": bool(cache_hit),
+            "validation_passed": validation_passed,
+            "fallback_reason": fallback_reason,
+            "overhead_seconds": float(overhead_seconds),
+            "capture_seconds": None if capture_seconds is None else float(capture_seconds),
+            "instantiate_seconds": None if instantiate_seconds is None else float(instantiate_seconds),
+            "validation_seconds": None if validation_seconds is None else float(validation_seconds),
+            "direct_tokens": None if direct_tokens is None else list(direct_tokens),
+            "graph_tokens": None if graph_tokens is None else list(graph_tokens),
+            "cache_entries": len(self._graph_cache),
+        }
+
+    def _run_or_validate_graph_bucket(self, *, context_tokens: int, phases: dict[str, float]) -> dict[str, Any]:
+        bucket = self._bucket_for(context_tokens)
+        entry = self._graph_cache.get(bucket.key)
+        if entry is not None and self.graph_mode == "auto":
+            launch_t = time.perf_counter()
+            # Context cache/materialization work above uses the default stream;
+            # synchronize before replaying on the graph-owned stream.
+            self.runtime.device_synchronize()
+            self.runtime.graph_launch(entry.graph_exec, entry.stream)
+            self.runtime.stream_synchronize(entry.stream)
+            entry.replay_count += 1
+            return self._graph_info(
+                status="replayed",
+                bucket=bucket,
+                replayed=True,
+                validation_passed=entry.validation_passed,
+                overhead_seconds=time.perf_counter() - launch_t,
+                capture_seconds=entry.capture_seconds,
+                instantiate_seconds=entry.instantiate_seconds,
+                validation_seconds=entry.validation_seconds,
+                cache_hit=True,
+                direct_tokens=entry.direct_tokens,
+                graph_tokens=entry.graph_tokens,
+            )
+
+        # Cache miss: run the normal direct path once for the value returned by
+        # this propose() call, then capture and replay the exact same fixed-shape
+        # body as a validation sample.  In decode workloads context_tokens changes
+        # every cycle, so this commonly records "captured_validated" without
+        # useful cache hits; the artifact makes that visible.
+        direct_t = time.perf_counter()
+        self._run_propose_kernels(context_tokens=context_tokens, stream=0, phases=phases)
+        self.runtime.device_synchronize()
+        direct_tokens_arr, _ = self._read_top1()
+        direct_tokens = tuple(int(x) for x in direct_tokens_arr.reshape(-1).tolist())
+        direct_seconds = time.perf_counter() - direct_t
+        graph = 0
+        stream = 0
+        capture_seconds = 0.0
+        instantiate_seconds = 0.0
+        validation_seconds = 0.0
+        try:
+            # Ensure root/position copies and context/KV cache updates are visible
+            # to the non-default capture stream.
+            self.runtime.device_synchronize()
+            stream = self.runtime.stream_create()
+            capture_t = time.perf_counter()
+            self.runtime.stream_begin_capture(stream)
+            try:
+                self._run_propose_kernels(context_tokens=context_tokens, stream=stream, phases=None)
+                graph = self.runtime.stream_end_capture(stream)
+            except Exception:
+                try:
+                    self.runtime.stream_end_capture(stream)
+                except Exception:
+                    pass
+                raise
+            capture_seconds = time.perf_counter() - capture_t
+            instantiate_t = time.perf_counter()
+            graph_exec = self.runtime.graph_instantiate(graph)
+            instantiate_seconds = time.perf_counter() - instantiate_t
+            validate_t = time.perf_counter()
+            self.runtime.graph_launch(graph_exec, stream)
+            self.runtime.stream_synchronize(stream)
+            graph_tokens_arr, _ = self._read_top1()
+            graph_tokens = tuple(int(x) for x in graph_tokens_arr.reshape(-1).tolist())
+            validation_seconds = time.perf_counter() - validate_t
+            validation_passed = graph_tokens == direct_tokens
+            if not validation_passed:
+                self._graph_validation_failures += 1
+                reason = "graph replay candidates differed from direct fallback"
+                self._graph_fallback_reasons[reason] += 1
+                # Restore direct fallback outputs before propose() performs its
+                # final readback; validation failure must not perturb the chain.
+                self._run_propose_kernels(context_tokens=context_tokens, stream=0, phases=None)
+                self.runtime.device_synchronize()
+                self.runtime.graph_exec_destroy(graph_exec)
+                self.runtime.graph_destroy(graph)
+                self.runtime.stream_destroy(stream)
+                return self._graph_info(
+                    status="validation_failed",
+                    bucket=bucket,
+                    replayed=False,
+                    validation_passed=False,
+                    fallback_reason=reason,
+                    overhead_seconds=time.perf_counter() - direct_t - direct_seconds,
+                    capture_seconds=capture_seconds,
+                    instantiate_seconds=instantiate_seconds,
+                    validation_seconds=validation_seconds,
+                    direct_tokens=direct_tokens,
+                    graph_tokens=graph_tokens,
+                )
+            entry = DFlashDrafterGraphEntry(
+                bucket=bucket,
+                graph=graph,
+                graph_exec=graph_exec,
+                stream=stream,
+                validation_passed=True,
+                direct_tokens=direct_tokens,
+                graph_tokens=graph_tokens,
+                capture_seconds=capture_seconds,
+                instantiate_seconds=instantiate_seconds,
+                validation_seconds=validation_seconds,
+                replay_count=1,
+            )
+            self._graph_cache[bucket.key] = entry
+            status = "captured_validated" if self.graph_mode == "validate" else "captured_validated_miss"
+            return self._graph_info(
+                status=status,
+                bucket=bucket,
+                replayed=self.graph_mode == "auto",
+                validation_passed=True,
+                overhead_seconds=time.perf_counter() - direct_t - direct_seconds,
+                capture_seconds=capture_seconds,
+                instantiate_seconds=instantiate_seconds,
+                validation_seconds=validation_seconds,
+                cache_hit=False,
+                direct_tokens=direct_tokens,
+                graph_tokens=graph_tokens,
+            )
+        except Exception as exc:
+            if graph:
+                try:
+                    self.runtime.graph_destroy(graph)
+                except Exception:
+                    pass
+            if stream:
+                try:
+                    self.runtime.stream_destroy(stream)
+                except Exception:
+                    pass
+            reason = f"capture_failed: {exc}"
+            self._graph_fallback_reasons[reason] += 1
+            return self._graph_info(
+                status="capture_failed_fallback",
+                bucket=bucket,
+                replayed=False,
+                validation_passed=None,
+                fallback_reason=reason,
+                overhead_seconds=time.perf_counter() - direct_t - direct_seconds,
+                capture_seconds=capture_seconds,
+                instantiate_seconds=instantiate_seconds,
+                validation_seconds=validation_seconds,
+                direct_tokens=direct_tokens,
+            )
 
     def _record_phase(self, phases: dict[str, float], name: str, started_at: float) -> None:
         if self.sync_draft_phases:
@@ -532,17 +855,17 @@ class NativeDFlashChainDrafter:
             (1, self.block_size, self.kv_features), DType.FP32
         )
 
-    def _run_layer(self, layer: int, *, context_tokens: int, query_in: Tensor, query_out: Tensor) -> Tensor:
+    def _run_layer(self, layer: int, *, context_tokens: int, query_in: Tensor, query_out: Tensor, stream: int = 0) -> Tensor:
         prefix = f"layers.{layer}"
         total_kv = context_tokens + self.block_size
         fp32_bytes = DType.FP32.itemsize
         bf16_bytes = DType.BF16.itemsize
         k_layer_base = self.kv_cache_keys.ptr + layer * self.max_context_tokens * self.kv_features * fp32_bytes
         v_layer_base = self.kv_cache_values.ptr + layer * self.max_context_tokens * self.kv_features * bf16_bytes
-        dflash_rmsnorm_bf16(query_in.ptr, self.weights.tensor(f"{prefix}.input_layernorm.weight").ptr, self.norm.ptr, self.block_size, self.hidden, threads=128, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.q_proj.weight").ptr, self.q_raw.ptr, self.block_size, self.hidden, self.attn_features, threads=128, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.k_proj.weight").ptr, self.k_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.v_proj.weight").ptr, self.v_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, library=self.library, runtime=self.runtime)
+        dflash_rmsnorm_bf16(query_in.ptr, self.weights.tensor(f"{prefix}.input_layernorm.weight").ptr, self.norm.ptr, self.block_size, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.q_proj.weight").ptr, self.q_raw.ptr, self.block_size, self.hidden, self.attn_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.k_proj.weight").ptr, self.k_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.v_proj.weight").ptr, self.v_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
         # Q-rotary + K_q-rotary on the query rows only.  Cached K_ctx_rotated is
         # concatenated below; no context-side rotary is recomputed.
         dflash_head_rmsnorm_rotary_f32(
@@ -565,6 +888,7 @@ class NativeDFlashChainDrafter:
             self.head_dim,
             self.cos.shape[0],
             threads=128,
+            stream=stream,
             library=self.library,
             runtime=self.runtime,
         )
@@ -577,6 +901,7 @@ class NativeDFlashChainDrafter:
             self.block_size,
             self.kv_features,
             threads=128,
+            stream=stream,
             library=self.library,
             runtime=self.runtime,
         )
@@ -589,18 +914,19 @@ class NativeDFlashChainDrafter:
             self.block_size,
             self.kv_features,
             threads=128,
+            stream=stream,
             library=self.library,
             runtime=self.runtime,
         )
-        dflash_gqa_attention_f32_bf16(self.q_rot.ptr, self.k_rot.ptr, self.v_all.ptr, self.attn.ptr, 1, self.block_size, total_kv, self.q_heads, self.kv_heads, self.head_dim, threads=128, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.attn.ptr, self.weights.tensor(f"{prefix}.self_attn.o_proj.weight").ptr, self.attn_proj.ptr, self.block_size, self.attn_features, self.hidden, threads=128, library=self.library, runtime=self.runtime)
-        dflash_add_bf16(query_in.ptr, self.attn_proj.ptr, self.hidden_attn.ptr, self.block_size * self.hidden, threads=256, library=self.library, runtime=self.runtime)
-        dflash_rmsnorm_bf16(self.hidden_attn.ptr, self.weights.tensor(f"{prefix}.post_attention_layernorm.weight").ptr, self.post.ptr, self.block_size, self.hidden, threads=128, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.post.ptr, self.weights.tensor(f"{prefix}.mlp.gate_proj.weight").ptr, self.gate.ptr, self.block_size, self.hidden, self.intermediate, threads=128, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.post.ptr, self.weights.tensor(f"{prefix}.mlp.up_proj.weight").ptr, self.up.ptr, self.block_size, self.hidden, self.intermediate, threads=128, library=self.library, runtime=self.runtime)
-        dflash_silu_mul_bf16(self.gate.ptr, self.up.ptr, self.act.ptr, self.block_size * self.intermediate, threads=256, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.act.ptr, self.weights.tensor(f"{prefix}.mlp.down_proj.weight").ptr, self.mlp.ptr, self.block_size, self.intermediate, self.hidden, threads=128, library=self.library, runtime=self.runtime)
-        dflash_add_bf16(self.hidden_attn.ptr, self.mlp.ptr, query_out.ptr, self.block_size * self.hidden, threads=256, library=self.library, runtime=self.runtime)
+        dflash_gqa_attention_f32_bf16(self.q_rot.ptr, self.k_rot.ptr, self.v_all.ptr, self.attn.ptr, 1, self.block_size, total_kv, self.q_heads, self.kv_heads, self.head_dim, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(self.attn.ptr, self.weights.tensor(f"{prefix}.self_attn.o_proj.weight").ptr, self.attn_proj.ptr, self.block_size, self.attn_features, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_add_bf16(query_in.ptr, self.attn_proj.ptr, self.hidden_attn.ptr, self.block_size * self.hidden, threads=256, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_rmsnorm_bf16(self.hidden_attn.ptr, self.weights.tensor(f"{prefix}.post_attention_layernorm.weight").ptr, self.post.ptr, self.block_size, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(self.post.ptr, self.weights.tensor(f"{prefix}.mlp.gate_proj.weight").ptr, self.gate.ptr, self.block_size, self.hidden, self.intermediate, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(self.post.ptr, self.weights.tensor(f"{prefix}.mlp.up_proj.weight").ptr, self.up.ptr, self.block_size, self.hidden, self.intermediate, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_silu_mul_bf16(self.gate.ptr, self.up.ptr, self.act.ptr, self.block_size * self.intermediate, threads=256, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(self.act.ptr, self.weights.tensor(f"{prefix}.mlp.down_proj.weight").ptr, self.mlp.ptr, self.block_size, self.intermediate, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_add_bf16(self.hidden_attn.ptr, self.mlp.ptr, query_out.ptr, self.block_size * self.hidden, threads=256, stream=stream, library=self.library, runtime=self.runtime)
         return query_out
 
 
@@ -689,6 +1015,7 @@ def run_dflash_tokens(
     compiler_version: str | None,
     require_cached_build: bool,
     prefill_config: PrefillConfig,
+    drafter_graph_mode: str = "off",
 ) -> tuple[list[int], dict[str, Any]]:
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_ids) + decode_tokens + candidate_budget + 2
@@ -710,6 +1037,7 @@ def run_dflash_tokens(
             candidate_budget=candidate_budget,
             compiler_version=compiler_version,
             require_cached_build=require_cached_build,
+            graph_mode=drafter_graph_mode,
         ) as drafter:
             t0 = time.perf_counter()
             next_result = None
@@ -848,6 +1176,7 @@ def run_same_session_pair(
     prefill_config: PrefillConfig,
     sync_draft_phases: bool = False,
     verifier_mode: str = "native_bulk_bplus1",
+    drafter_graph_mode: str = "off",
 ) -> tuple[tuple[list[int], dict[str, Any]], tuple[list[int], dict[str, Any]]]:
     """Run AR control and DFlash chain in one resident target session.
 
@@ -910,6 +1239,7 @@ def run_same_session_pair(
             compiler_version=compiler_version,
             require_cached_build=require_cached_build,
             sync_draft_phases=sync_draft_phases,
+            graph_mode=drafter_graph_mode,
         ) as drafter:
             spec_tokens, spec_meta = _run_dflash_chain_on_session(
                 session=session,
@@ -969,6 +1299,9 @@ def _run_dflash_chain_on_session(
     draft_tokens_proposed = 0
     verify_rows_total = 0
     draft_phase_seconds: dict[str, float] = {}
+    draft_graph_status_counts: Counter[str] = Counter()
+    draft_graph_validation_seen = False
+    draft_graph_validation_passed = True
     proposal_trace: list[dict[str, Any]] = []
     finite_draft = True
     finite_verify = True
@@ -1014,6 +1347,13 @@ def _run_dflash_chain_on_session(
                 draft_phase_seconds[phase_name] = max(draft_phase_seconds.get(phase_name, 0.0), value)
             else:
                 draft_phase_seconds[phase_name] = draft_phase_seconds.get(phase_name, 0.0) + value
+        graph_status = str(draft.graph.get("status", "unknown"))
+        draft_graph_status_counts[graph_status] += 1
+        validation = draft.graph.get("validation_passed")
+        if validation is not None:
+            draft_graph_validation_seen = True
+        if validation is False:
+            draft_graph_validation_passed = False
         finite_draft = finite_draft and draft.finite_logits
         d2h_vector_reads += draft.d2h_vector_reads
         d2h_vector_values += draft.d2h_vector_values
@@ -1096,6 +1436,8 @@ def _run_dflash_chain_on_session(
                     "committed_tokens": [int(token) for token in committed],
                     "bonus_token": int(bonus),
                     "verifier_mode": verifier_mode,
+                    "drafter_graph_status": graph_status,
+                    "drafter_graph_bucket": draft.graph.get("bucket_key"),
                 }
             )
         generated.extend(committed)
@@ -1124,6 +1466,11 @@ def _run_dflash_chain_on_session(
         "decode_cycles": cycles,
         "draft_tokens_proposed": draft_tokens_proposed,
         "draft_native_phase_seconds": draft_phase_seconds,
+        "draft_graph": {
+            **drafter.graph_summary,
+            "status_counts": dict(sorted(draft_graph_status_counts.items())),
+            "validation_passed": draft_graph_validation_passed if draft_graph_validation_seen else None,
+        },
         "proposal_trace_sample": proposal_trace,
         "proposal_trace_count": draft_calls,
         "finite_draft_logits": finite_draft,
@@ -1206,6 +1553,30 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
         draft_context_full_rebuild_seconds = float(phase_seconds.get("context_projection", spec_meta.get("draft_seconds") or 0.0))
         draft_context_append_seconds = 0.0
         draft_query_seconds = max(0.0, float(spec_meta.get("draft_seconds") or 0.0) - draft_context_full_rebuild_seconds)
+    draft_graph = spec_meta.get("draft_graph") or {}
+    graph_last = draft_graph.get("last") or {}
+    graph_counts = draft_graph.get("status_counts") or {}
+    graph_replay_steps = int(graph_counts.get("replayed", 0)) + int(graph_counts.get("captured_validated", 0)) + int(graph_counts.get("captured_validated_miss", 0))
+    if graph_counts.get("replayed"):
+        graph_status = "captured"
+        graph_fallback_reason = None
+    elif graph_counts.get("captured_validated") or graph_counts.get("captured_validated_miss"):
+        graph_status = "captured"
+        graph_fallback_reason = (
+            "validated graph capture, but no cache-hit replay in decode because context_tokens changes every cycle"
+            if not graph_counts.get("replayed")
+            else None
+        )
+    elif graph_counts.get("capture_failed_fallback"):
+        graph_status = "capture_failed"
+        graph_fallback_reason = graph_last.get("fallback_reason")
+    elif graph_counts.get("disabled"):
+        graph_status = "not_captured"
+        graph_fallback_reason = graph_last.get("fallback_reason") or "drafter graph mode is off"
+    else:
+        graph_status = "not_captured"
+        graph_fallback_reason = None
+    graph_bucket = graph_last.get("bucket_key") or {"mode": "dflash_drafter_propose", "draft_budget": budget, "verifier": spec_meta["verifier_mode"]}
 
     return {
         "prompt": {
@@ -1233,6 +1604,7 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "draft_context_append_seconds": draft_context_append_seconds,
             "draft_query_seconds": draft_query_seconds,
             "draft_native_phase_seconds": phase_seconds,
+            "draft_graph": draft_graph,
             "drafter_context_mode": spec_meta.get("drafter_context_mode"),
             "draft_phase_timing_mode": spec_meta.get("draft_phase_timing_mode"),
             "proposal_trace_sample": spec_meta.get("proposal_trace_sample", []),
@@ -1255,7 +1627,13 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "finite_verify_logits": spec_meta["finite_verify_logits"],
             "generated_ids": spec_tokens,
             "d2h": spec_meta["d2h"],
-            "graph": {"status": "not_captured", "replay_steps": 0, "bucket_key": {"mode": "verify_chain", "draft_budget": budget, "verifier": spec_meta["verifier_mode"]}, "validation_passed": None},
+            "graph": {
+                "status": graph_status,
+                "replay_steps": graph_replay_steps,
+                "bucket_key": graph_bucket,
+                "validation_passed": draft_graph.get("validation_passed"),
+                "fallback_reason": graph_fallback_reason,
+            },
             "verifier_mode": spec_meta["verifier_mode"],
             "native_bulk_verifier": spec_meta["native_bulk_verifier"],
             "same_session_control": bool(spec_meta.get("same_session_control", False)),
@@ -1304,6 +1682,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--sync-draft-phases", action="store_true", help="Diagnostic only: synchronize after major drafter phases before timing them")
     parser.add_argument("--verifier-mode", choices=("native_bulk_bplus1", "serial_in_place_single_slot"), default="native_bulk_bplus1")
+    parser.add_argument("--drafter-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native DFlash propose(); auto replays cache hits, validate records capture parity without requiring reuse")
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -1335,6 +1714,7 @@ def main(argv: list[str] | None = None) -> int:
                 prefill_config=prefill_config,
                 sync_draft_phases=args.sync_draft_phases,
                 verifier_mode=args.verifier_mode,
+                drafter_graph_mode=args.drafter_graph,
             )
             rows.append(_row_for_artifact(prompt, budget, ar, spec))
     artifact = build_speculative_artifact(
@@ -1364,6 +1744,7 @@ def main(argv: list[str] | None = None) -> int:
             "artifact_validation": validation,
             "verifier_mode": args.verifier_mode,
             "native_bulk_verifier": args.verifier_mode == "native_bulk_bplus1",
+            "drafter_graph_mode": args.drafter_graph,
             "promotion_blocker": (
                 "native B+1 verifier ran, but full chain must still beat same-session AR before promotion"
                 if args.verifier_mode == "native_bulk_bplus1"
