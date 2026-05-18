@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from hipengine.core.dtype import DType
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
-from hipengine.kernels.hip_gfx1100.norm.rmsnorm import paro_rmsnorm_out_bf16
 from hipengine.loading.dflash import DFlashDraftConfig, DFlashDrafterDeviceWeights
 from hipengine.speculative.dflash import DFlashDraftRequest, compile_dflash_chain
 from hipengine.speculative.interfaces import DraftBatch
@@ -197,17 +196,45 @@ def project_dflash_target_hidden_bf16(
         stream=stream,
         library=dense_lib,
     )
-    paro_rmsnorm_out_bf16(
-        scratch.ptr,
-        weights.tensor("hidden_norm.weight").ptr,
-        out_projected.ptr,
-        rows,
-        config.hidden_size,
-        eps=1.0e-6,
+    dflash_rmsnorm_bf16(
+        scratch,
+        weights.tensor("hidden_norm.weight"),
+        out_projected,
+        eps=config.rms_norm_eps,
         stream=stream,
         library=norm_lib,
+        threads=threads,
     )
     return out_projected
+
+
+def dflash_rmsnorm_bf16(
+    hidden: Tensor,
+    weight: Tensor,
+    out: Tensor,
+    *,
+    eps: float = 1.0e-6,
+    stream: int = 0,
+    library: object | None = None,
+    threads: int = 128,
+) -> Tensor:
+    """Apply standard DFlash RMSNorm with direct BF16 weight scaling."""
+
+    rows, hidden_size = _validate_rmsnorm_tensors(hidden, weight, out)
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_rmsnorm_bf16 as _launch_rmsnorm
+
+    _launch_rmsnorm(
+        hidden.ptr,
+        weight.ptr,
+        out.ptr,
+        rows,
+        hidden_size,
+        eps=eps,
+        threads=threads,
+        stream=stream,
+        library=library,  # type: ignore[arg-type]
+    )
+    return out
 
 
 def project_dflash_bf16_to_f32(
@@ -321,6 +348,22 @@ def draft_batch_from_topk(
     return compile_dflash_chain(requests, candidate_budget=candidate_budget, pad_token_id=pad_token_id)
 
 
+def _validate_rmsnorm_tensors(hidden: Tensor, weight: Tensor, out: Tensor) -> tuple[int, int]:
+    if hidden.ndim != 2 or out.ndim != 2 or weight.ndim != 1:
+        raise ValueError("DFlash RMSNorm tensors must be rank-2 hidden/out plus rank-1 weight")
+    rows, hidden_size = hidden.shape
+    if weight.shape != (hidden_size,):
+        raise ValueError("RMSNorm weight shape must match hidden_size")
+    if out.shape != hidden.shape:
+        raise ValueError("RMSNorm output shape must match hidden shape")
+    for name, tensor in (("hidden", hidden), ("weight", weight), ("out", out)):
+        if tensor.dtype != DType.BF16:
+            raise ValueError(f"{name} must use BF16 storage")
+        if tensor.device != hidden.device:
+            raise ValueError(f"{name} must live on the hidden tensor device")
+    return int(rows), int(hidden_size)
+
+
 def _validate_dense_projection_tensors(hidden: Tensor, weight: Tensor, out: Tensor) -> tuple[int, int, int]:
     if hidden.ndim != 2 or weight.ndim != 2 or out.ndim != 2:
         raise ValueError("DFlash dense projection tensors must be rank-2")
@@ -431,6 +474,7 @@ __all__ = [
     "DFlashRootQueryPlan",
     "DFlashRootQueryRequest",
     "dflash_gqa_attention_bf16",
+    "dflash_rmsnorm_bf16",
     "draft_batch_from_topk",
     "project_dflash_bf16_to_f32",
     "prepare_dflash_noise_inputs_bf16",

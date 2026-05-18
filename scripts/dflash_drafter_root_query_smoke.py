@@ -28,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_gqa_attention_f32_bf16,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
+    dflash_rmsnorm_bf16,
 )
 
 
@@ -44,6 +45,7 @@ def main() -> int:
         require_cached=args.require_cached_build,
     )
     _smoke_prepare_noise(runtime, library)
+    _smoke_rmsnorm(runtime, library)
     _smoke_dense_projection(runtime, library)
     _smoke_gqa_attention(runtime, library)
     print("dflash_drafter_root_query_smoke passed")
@@ -102,6 +104,39 @@ def _smoke_prepare_noise(runtime, library) -> None:
         np.testing.assert_array_equal(emb[0, 1], expected_table[8])
         np.testing.assert_array_equal(emb[1, 0], expected_table[5])
         print(f"prepare_noise_{name}: ids={ids.tolist()} positions={pos_out.tolist()}")
+
+
+def _smoke_rmsnorm(runtime, library) -> None:
+    rng = np.random.default_rng(2)
+    hidden = _f32_to_bf16_bits(rng.normal(size=(3, 8)).astype(np.float32) * 0.5)
+    weight = _f32_to_bf16_bits(0.75 + rng.random(size=(8,)).astype(np.float32) * 0.5)
+    out = np.empty_like(hidden)
+    hidden_f = _bf16_bits_to_f32(hidden)
+    weight_f = _bf16_bits_to_f32(weight)
+    rms = np.sqrt(np.mean(hidden_f * hidden_f, axis=1, keepdims=True) + 1.0e-6).astype(np.float32)
+    expected = _f32_to_bf16_bits((hidden_f / rms) * weight_f)
+    buffers = []
+    try:
+        hidden_dev = _dev(runtime, buffers, hidden)
+        weight_dev = _dev(runtime, buffers, weight)
+        out_dev = _empty(runtime, buffers, out)
+        dflash_rmsnorm_bf16(
+            hidden_dev.ptr,
+            weight_dev.ptr,
+            out_dev.ptr,
+            rows=3,
+            hidden_size=8,
+            eps=1.0e-6,
+            threads=64,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
+    finally:
+        _free_all(runtime, buffers)
+    np.testing.assert_array_equal(out, expected)
+    print(f"rmsnorm_bf16: sample={out.reshape(-1)[:4].tolist()}")
 
 
 def _smoke_dense_projection(runtime, library) -> None:

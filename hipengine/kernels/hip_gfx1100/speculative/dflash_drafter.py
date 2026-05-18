@@ -13,6 +13,7 @@ _SOURCE = Path(__file__).with_name("dflash_drafter.hip")
 _OUTPUT_NAME = "dflash_drafter.so"
 _SYMBOL_PREPARE_NOISE_BF16 = "hipengine_dflash_prepare_noise_inputs_bf16_i32"
 _SYMBOL_PREPARE_NOISE_F16_TO_BF16 = "hipengine_dflash_prepare_noise_inputs_f16_to_bf16_i32"
+_SYMBOL_RMSNORM_BF16 = "hipengine_dflash_rmsnorm_bf16"
 _SYMBOL_DENSE_BF16_TO_F32 = "hipengine_dflash_dense_bf16_to_f32"
 _SYMBOL_GQA_ATTENTION = "hipengine_dflash_gqa_attention_f32_bf16"
 _ALLOWED_THREADS = {64, 128, 256}
@@ -134,6 +135,50 @@ def dflash_prepare_noise_inputs_f16_to_bf16_i32(
         library=library,
         runtime=runtime,
     )
+
+
+def dflash_rmsnorm_bf16(
+    x_bf16_ptr: int,
+    weight_bf16_ptr: int,
+    out_bf16_ptr: int,
+    rows: int,
+    hidden_size: int,
+    *,
+    eps: float = 1.0e-6,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply standard DFlash/Qwen RMSNorm with direct BF16 weight scaling."""
+
+    _check_rmsnorm_shape(rows, hidden_size, threads)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_RMSNORM_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_bf16_ptr),
+        ctypes.c_void_p(weight_bf16_ptr),
+        ctypes.c_void_p(out_bf16_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_float(float(eps)),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def dflash_dense_bf16_to_f32(
@@ -258,6 +303,11 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "dflash_rmsnorm", "w4_paro", "bf16"),
+        dflash_rmsnorm_bf16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_f32"),
         dflash_dense_bf16_to_f32,
         replace=replace,
@@ -327,6 +377,15 @@ def _launch_prepare_noise_inputs(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def _check_rmsnorm_shape(rows: int, hidden_size: int, threads: int) -> None:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden_size <= 0:
+        raise ValueError("hidden_size must be positive")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64, 128, or 256")
 
 
 def _check_dense_shape(rows: int, in_features: int, out_features: int, threads: int) -> None:

@@ -86,6 +86,40 @@ bool valid_threads(int64_t threads) {
   return threads == 64 || threads == 128 || threads == 256;
 }
 
+__global__ void dflash_rmsnorm_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ weight,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps) {
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  extern __shared__ float partial[];
+  const int64_t base = row * hidden_size;
+  float sumsq = 0.0f;
+  for (int64_t dim = static_cast<int64_t>(threadIdx.x); dim < hidden_size; dim += blockDim.x) {
+    const float value = bf16_bits_to_float(x[base + dim]);
+    sumsq += value * value;
+  }
+  partial[threadIdx.x] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf((partial[0] / static_cast<float>(hidden_size)) + eps);
+  for (int64_t dim = static_cast<int64_t>(threadIdx.x); dim < hidden_size; dim += blockDim.x) {
+    const float value = bf16_bits_to_float(x[base + dim]);
+    const float scale = bf16_bits_to_float(weight[dim]);
+    out[base + dim] = float_to_bf16_bits(value * inv_rms * scale);
+  }
+}
+
 __global__ void dflash_dense_bf16_to_f32_kernel(
     const uint16_t* __restrict__ x,
     const uint16_t* __restrict__ weight,
@@ -196,6 +230,10 @@ bool valid_dense_shape(int64_t rows, int64_t in_features, int64_t out_features, 
   return rows > 0 && in_features > 0 && out_features > 0 && valid_threads(threads);
 }
 
+bool valid_rmsnorm_shape(int64_t rows, int64_t hidden_size, int64_t threads) {
+  return rows > 0 && hidden_size > 0 && valid_threads(threads);
+}
+
 bool valid_attention_shape(
     int64_t batch_size,
     int64_t query_len,
@@ -244,6 +282,33 @@ extern "C" int hipengine_dflash_prepare_noise_inputs_bf16_i32(
       hidden_size,
       vocab_size,
       mask_token_id);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_rmsnorm_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_rmsnorm_shape(rows, hidden_size, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      dflash_rmsnorm_bf16_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      hidden_size,
+      eps);
   return static_cast<int>(hipGetLastError());
 }
 

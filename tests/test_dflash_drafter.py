@@ -10,6 +10,7 @@ from hipengine.speculative import (
     DFlashRootQueryRequest,
     TargetVerifyBatch,
     dflash_gqa_attention_bf16,
+    dflash_rmsnorm_bf16,
     draft_batch_from_topk,
     prepare_dflash_noise_inputs_bf16,
     project_dflash_bf16_to_f32,
@@ -92,6 +93,21 @@ def test_dflash_draft_batch_from_topk_can_select_nonzero_rank() -> None:
     assert draft.candidate_tokens == (201, 202)
     with pytest.raises(ValueError, match="topk_rank"):
         draft_batch_from_topk(plan, topk_token_ids=(((101,),),), candidate_budget=2, topk_rank=1)
+
+
+def test_dflash_rmsnorm_validates_tensor_abi_before_loading_hip() -> None:
+    with pytest.raises(ValueError, match="rank-2"):
+        dflash_rmsnorm_bf16(
+            _tensor(0x1000, (2, 4, 1), dtype="bf16"),
+            _tensor(0x1100, (4,), dtype="bf16"),
+            _tensor(0x1200, (2, 4), dtype="bf16"),
+        )
+    with pytest.raises(ValueError, match="weight shape"):
+        dflash_rmsnorm_bf16(
+            _tensor(0x1000, (2, 4), dtype="bf16"),
+            _tensor(0x1100, (5,), dtype="bf16"),
+            _tensor(0x1200, (2, 4), dtype="bf16"),
+        )
 
 
 def test_project_dflash_bf16_to_f32_validates_tensor_abi_before_loading_hip() -> None:

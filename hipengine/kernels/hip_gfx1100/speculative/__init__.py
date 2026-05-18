@@ -18,6 +18,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     dflash_gqa_attention_f32_bf16,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
+    dflash_rmsnorm_bf16,
     plan_dflash_drafter_build,
     register_dflash_drafter_kernels,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "dflash_gqa_attention_f32_bf16",
     "dflash_prepare_noise_inputs_bf16_i32",
     "dflash_prepare_noise_inputs_f16_to_bf16_i32",
+    "dflash_rmsnorm_bf16",
     "plan_dflash_accept_build",
     "plan_dflash_commit_build",
     "plan_dflash_drafter_build",

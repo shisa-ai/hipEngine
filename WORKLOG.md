@@ -17418,3 +17418,67 @@ git diff --check
 # rocprofv3 1.1.0 / gfx1151: BF16 prep DurationNs=3807 Scratch_Size=0; FP16→BF16 prep DurationNs=6372 Scratch_Size=0; dflash_dense_bf16_to_f32_kernel DurationNs=3768 Scratch_Size=0; dflash_gqa_attention_f32_bf16_kernel DurationNs=4288 Scratch_Size=0.
 # lineage: expected pre-existing baseline drift; DFlash R1 tree entries clean.
 ```
+
+## 2026-05-18 — DFlash direct-weight RMSNorm primitive (partial D12)
+
+### Scope
+
+- Added `dflash_rmsnorm_bf16` to `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.{hip,py}` and registered it for `hip_gfx1100` / `hip_gfx1151` alias coverage.
+- Unlike the PARO target RMSNorm kernels, the z-lab DFlash drafter stores standard Qwen RMSNorm weights (direct scale, not `1 + weight`). `project_dflash_target_hidden_bf16()` now uses `dense_gemv_out_bf16` for `fc` followed by direct-weight `dflash_rmsnorm_bf16` for `hidden_norm`.
+- Added high-level `dflash_rmsnorm_bf16()` tensor validation and extended `scripts/dflash_drafter_root_query_smoke.py` with NumPy BF16-oracle parity.
+- Full decoder-block integration and parent/PyTorch top1/topk parity remain open.
+
+### Validation
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_drafter.py \
+  hipengine/speculative/__init__.py \
+  scripts/dflash_drafter_root_query_smoke.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+python3 -m pytest -q \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_dflash_metadata.py \
+  tests/test_dflash_chain_compiler.py \
+  tests/test_speculative_interfaces.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_drafter_root_query_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+rm -rf /tmp/hipengine-dflash-drafter-prof && mkdir -p /tmp/hipengine-dflash-drafter-prof
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  /opt/rocm/bin/rocprofv3 --kernel-trace --output-format csv \
+    --output-file /tmp/hipengine-dflash-drafter-prof/drafter -- \
+    python3 scripts/dflash_drafter_root_query_smoke.py \
+      --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+      --require-cached-build
+python3 - <<'PY'
+import csv
+from pathlib import Path
+path=Path('/tmp/hipengine-dflash-drafter-prof/drafter_kernel_trace.csv')
+rows=list(csv.DictReader(path.open()))
+for name in sorted({r['Kernel_Name'] for r in rows if 'dflash' in r['Kernel_Name']}):
+    vals=[]; scratch=[]
+    for r in rows:
+        if r['Kernel_Name']==name:
+            vals.append(int(float(r['DurationNs'])) if r.get('DurationNs') else int(float(r['End_Timestamp']))-int(float(r['Start_Timestamp'])))
+            if r.get('Scratch_Size'):
+                scratch.append(int(float(r['Scratch_Size'])))
+    print(name, len(vals), min(vals), max(vals), sorted(set(scratch)))
+PY
+python3 scripts/check_lineage.py --kind kernel --diff stat
+! grep -RInE 'import torch|torch\.' \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_drafter.py \
+  scripts/dflash_drafter_root_query_smoke.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+git diff --check
+# pytest: 40 passed
+# smoke: BF16 prep + FP16→BF16 prep passed; rmsnorm direct-weight oracle passed; dense_bf16_to_f32 max_abs=0.0; GQA attention max_abs=0.0 vs NumPy BF16 oracle.
+# rocprofv3 1.1.0 / gfx1151: BF16 prep DurationNs=3607 Scratch_Size=0; FP16→BF16 prep DurationNs=3005 Scratch_Size=0; dflash_rmsnorm_bf16_kernel DurationNs=2565 Scratch_Size=0; dflash_dense_bf16_to_f32_kernel DurationNs=2204 Scratch_Size=0; dflash_gqa_attention_f32_bf16_kernel DurationNs=15629 Scratch_Size=0.
+# lineage: expected pre-existing baseline drift; DFlash R1 tree entries clean.
+```
