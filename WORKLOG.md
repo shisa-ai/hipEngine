@@ -17444,3 +17444,61 @@ python3 scripts/smoke.py --mode registry && \
 python3 scripts/smoke.py --mode cpu-fixtures
 # pytest: 324 passed; CPU fixtures passed; registry smoke printed expected missing embed kernel; cpu-fixtures smoke passed.
 ```
+
+## 2026-05-18 — task #17 K1 INT8 KV documentation/rollup
+
+Updated the K1 documentation and benchmark rollup wording for the retained dense `int8_per_token_head` KV protocol/results. This was a docs/rollup-only pass; no new benchmark was run.
+
+Files updated:
+
+- `docs/KVCACHE.md`: changed K1 from planning-only to landed diagnostic/capacity path, added exact 128K/128 BF16 and INT8 benchmark commands, exact 256K/128 INT8 capacity command, results table, correctness/profiler summary, and the next memory targets.
+- `docs/TESTING.md`: added the K1 dense INT8 KV gate with targeted pytest, CPU fixtures, INT8 writer/decode smokes, layer-level accuracy, E2E fixture gate, memory audit, and rocprof artifact requirements.
+- `docs/KERNELS.md`: added model-level K1 evidence next to the landed INT8 writer/decode kernel catalog, including correctness, 128K/256K memory/timing, and selected-region rocprof summaries.
+- `benchmarks/README.md`: added a K1 status paragraph ahead of the blocked/diagnostic table, explicitly distinguishing storage/capacity from speed.
+- `benchmarks/CHANGELOG.md`: added a rollup/doc entry pointing to the existing 128K diagnostic and 256K blocked artifacts.
+
+K1 status recorded in docs:
+
+- Model/quant/backend/hardware: `Qwen3.5-35B-A3B-PARO`, `w4_paro`, `hip_gfx1100`, AMD Radeon Pro W7900 / gfx1100.
+- 128K/128 BF16 baseline: `1021.180` prefill / `63.299` decode tok/s, sampled/tracked peak `22.410/23.288 GiB`, retained KV `2.690 GB`.
+- 128K/128 INT8 KV diagnostic: `1011.064` prefill / `61.275` decode tok/s (`-0.99%/-3.20%` vs BF16), sampled/tracked peak `21.170/24.545 GiB`, retained KV `1.355 GB`, no persistent BF16 shadow.
+- 256K/128 INT8 KV blocked capacity attempt: completed at `624.224` prefill / `40.819` decode tok/s with correctness/no-shadow passing and retained KV `2.708 GB`, but sampled/tracked peak `24.330/25.700 GiB` exceeds the 24GiB-class target.
+- Correctness: E2E fixture gate `max_kl=0.015328251530778358`, top-1 agreement `1.0`, generated IDs match; layer-level INT8 HIP accuracy accepted for contexts 64 and 520.
+- Capacity-vs-speed wording: INT8 KV is retained as a storage/capacity diagnostic, not a speed win; 256K is blocked by full-prompt prefill double-buffer lifetime, not a persistent BF16 KV shadow.
+
+Artifact sanity validation:
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+required = [
+    Path('benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json'),
+    Path('benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json'),
+]
+for path in required:
+    data = json.loads(path.read_text())
+    assert data['model'] == 'Qwen3.5-35B-A3B-PARO'
+    assert data['quant'] == 'w4_paro'
+    assert data['backend'] == 'hip_gfx1100'
+    assert 'AMD Radeon Pro W7900' in data['hardware']
+    if '128k' in path.name:
+        assert data['status'] == 'diagnostic_retained'
+        assert data['correctness']['e2e_fixture_gate']['passed'] is True
+        assert data['benchmarks']['int8_per_token_head']['memory']['kv_memory_audit']['persistent_bf16_shadow_exists'] is False
+        assert data['benchmarks']['int8_per_token_head']['memory']['kv_memory_audit']['retained_kv_payload_bytes_per_element'] == 1.0
+        assert data['profiler']['int8_decode_graph_sample']['int8_decode_kernels']
+    else:
+        assert data['status'] == 'blocked'
+        assert data['capacity_target']['passed'] is False
+        assert data['correctness']['e2e_fixture_gate']['passed'] is True
+        assert data['memory']['no_shadow_audit']['persistent_bf16_shadow_exists'] is False
+        assert data['memory']['retained_kv']['payload_bytes_per_element'] == 1.0
+        assert data['memory_blocker_analysis']['exact_paths']
+    print(path.name, 'OK')
+PY
+# both artifacts OK
+
+git diff --check
+# clean
+```

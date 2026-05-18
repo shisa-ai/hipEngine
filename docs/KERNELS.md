@@ -80,6 +80,70 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, masked `atten
 | `paged_attn_decode` variants `gqa_splitk_spans`, `gqa_splitk_gate_bf16_spans`, `gqa_splitk_gate_fp16_spans` | `int8_per_token_head` Qwen3.5 grouped-GQA split-K decode, signed INT8 K/V cache with per-token/head scales | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_attn_decode_int8_gqa_splitk_spans(...)`, `qwen35_paged_attn_decode_int8_gqa_splitk_gate_{bf16,fp16}_spans(...)` | `python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --pseudo-vocab-size 32 --require-int8-hip --max-abs-threshold 2e-3 --json /tmp/hipengine-int8-hip-ctx64-520.json` → accepted; INT8 HIP vs CPU oracle max_abs `5.22e-08` at ctx64 and `1.86e-08` at ctx520 with top-1 `1.0`. `python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` validates direct FP32-scale ctx64 decode, unaligned split ctx384 (`chunk_size=128`), and FP16-scale ctx520 page-boundary decode plus FP16/BF16 gated outputs (`max_abs<=2.98e-08`, `gate_fp16_max_abs=1.53e-05`, `gate_bf16_max_abs=1.49e-08`). `rocprofv3` shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float,8,16,2>` (`DurationNs=65200`, `47363`) and `_Float16` scale launches (`88723`, `78883`, `85603` ns) plus reduce/gated reduce kernels on W7900. The GQA producer grid is `(kv_head, split)`, so each KV stream is scanned once while sharing K/V loads across the 8 Q heads in its group. |
 | `full_attn_prefill` variants `qwen35_causal_gqa_gate_fp16`, `qwen35_varlen_causal_gqa_gate_fp16` | `w4_paro` append-then-attend causal GQA prefill, BF16 KV cache, FP16 gate/output | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(...)`, `qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` → tiny paged causal-GQA fixture vs CPU `full_attn_prefill` oracle after prompt KV append, `prefill_gate_fp16_max_abs=0`, `prefill_gate_fp16_mismatch=0`; `python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` → two packed request segments with row-shaped block tables, `varlen_prefill_gate_fp16_max_abs=0`, mismatch `0`; `rocprofv3` shows prompt KV writer (`DurationNs=6880`) and `qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel` (`21520`) on W7900; all-layer 512 prefill after the shared-query cache/vector key-dot update, fixed `block_size=256` address fast path, and split short-row template shows `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true>` ran 10 times (`26.362 ms` total, avg `2636.2 us`) on W7900. Full single-request fixture gate accepted in `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json` (`max_kl=0.0168`, top-1 100%), and active multiloop fixture gate remains green (`max_kl=0.03406`, top-1 100%), but no throughput row promoted. |
 
+### K1 dense INT8 KV path evidence (**hipEngine landed, diagnostic/capacity path**)
+
+The K1 path is the dense/uniform `KVLiveSpans` path with
+`storage_dtype="int8_per_token_head"`, FP16 per-token/per-KV-head K/V scales, and
+no persistent BF16 KV shadow. It is registered as storage/quant-keyed kernel
+families rather than backend or quant branches in the engine:
+
+- writer: `paged_kv_write` / `per_token_head_spans`
+- decode: `paged_attn_decode` / `gqa_splitk_spans` and gated BF16/FP16 variants
+- policy: `FixedPagedKVPolicy(..., storage_dtype="int8_per_token_head",
+  scale_dtype="fp16", scale_granularity="per_token_head")`
+
+Correctness gate used for the retained K1 artifacts:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_kv_e2e_fixture_gate.py \
+  tests/test_qwen35_bench_memory_audit.py -q
+python3 scripts/check_fixtures.py
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 \
+  --scale-dtype fp16 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --require-int8-hip --json /tmp/hipengine-int8-accuracy.json
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-int8-kv-e2e-fixture-gate.json
+```
+
+Reference results on W7900/gfx1100, model `Qwen3.5-35B-A3B-PARO`, quant
+`w4_paro`:
+
+- Layer-level INT8 HIP accuracy accepted for contexts 64 and 520. INT8 HIP vs
+  CPU oracle max abs was `5.22e-08` / `1.86e-08`; quantized-vs-BF16 KL was
+  `2.34e-07` / `4.46e-08`; top-1 was `1.0` for both.
+- E2E fixture gate with `--kv-storage int8_per_token_head` accepted:
+  `max_kl=0.015328251530778358`, mean KL `0.001639289025262575`, top-1
+  agreement `1.0`, generated IDs match the BF16 reference and fixture expected
+  IDs.
+- 128K/128 BF16-vs-INT8 diagnostic artifact:
+  [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json).
+  BF16 baseline: `1021.180` prefill / `63.299` decode tok/s, sampled/tracked
+  peak `22.410/23.288 GiB`, retained KV `2.690 GB`. INT8: `1011.064` /
+  `61.275` tok/s, sampled/tracked peak `21.170/24.545 GiB`, retained KV
+  `1.355 GB` (`1.0 B/element` payload plus `10.506 MB` scales), no BF16 shadow.
+  This is a storage/capacity diagnostic, not a speed claim.
+- 256K/128 INT8 capacity artifact:
+  [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json).
+  The run completed and correctness/no-shadow passed at `624.224` prefill /
+  `40.819` decode tok/s with retained KV `2.708 GB`, but it is blocked for
+  24GiB-class promotion because sampled/tracked peaks reached `24.330/25.700
+  GiB`. The named blocker is persistent full-prompt prefill double-buffering
+  (`2 x [262277,4096] fp16 = 4.297 GB`) plus expected dense KV/scales and decode
+  scratch.
+
+Profiler summary from the 128K INT8 selected-region traces:
+
+- Prefill writer: `qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16>`
+  ran `320` calls, avg `54.848 us`, max `69.761 us`, `Scratch_Size=0`.
+- Decode producer: `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<_Float16,8,16,2>`
+  ran `160` calls in the sampled 16-replay trace, avg `621.500 us`, max
+  `641.850 us`, `Scratch_Size=0`; reduce-gate avg `159.271 us`; decode append
+  INT8 writer avg `4.363 us`.
+
 ### gfx1151 HIP backend (**initial port landed**)
 
 `hipengine/kernels/hip_gfx1151/` is now a peer backend key for Strix Halo / Radeon 8060S. The initial implementation reuses the current proven gfx11 kernel bodies from `hip_gfx1100` and registers them under `hip_gfx1151`; build artifacts are compiled as native `gfx1151` via `HIPENGINE_HIP_ARCH=gfx1151` / `--offload-arch=gfx1151`, which is included in the JIT cache key. This is a correctness/bring-up port, not a claim that W7900 wrapper defaults are optimal on 40-CU gfx1151.

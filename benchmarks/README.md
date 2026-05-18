@@ -108,6 +108,16 @@ we do not lose exact commands, hardware/software context, correctness status,
 and blocker evidence for attempted shapes. Their timing fields are diagnostic
 only unless a future artifact has `status="accepted"` and `performance_claim=true`.
 
+K1 dense INT8 KV status (2026-05-18): Qwen3.5-35B-A3B-PARO on W7900/gfx1100
+now has a retained `int8_per_token_head` KV path with FP16 per-token/head scales
+and no persistent BF16 KV shadow. The 128K/128 comparison is a storage/capacity
+diagnostic, not a speed claim: INT8 KV is `-0.99%` prefill and `-3.20%` decode
+vs BF16 while reducing sampled VRAM by `1.240 GiB` and retained KV by `49.6%`.
+The 256K/128 INT8 run completes with correctness/no-shadow passing, but is
+blocked for 24GiB-class promotion at sampled/tracked peaks `24.330/25.700 GiB`;
+the named blocker is persistent full-prompt prefill double-buffering, not a KV
+shadow.
+
 Shared-expert format finding (2026-05-17): shisa's unstripped checkpoint can run
 with either packed PARO sidecars or the fp16 fallback shared expert. Packed is now
 the default comparison A-side because it wins prefill and memory on every swept

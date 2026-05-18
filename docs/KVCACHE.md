@@ -1,6 +1,6 @@
 # KV Cache Roadmap — Dense INT8 First, Compact DMS Next
 
-_Status: planning document. Last updated: 2026-05-17._
+_Status: K1 dense INT8 KV landed as a diagnostic/capacity path; K2 compact DMS remains planned. Last updated: 2026-05-18._
 
 This document is the focused plan for extending hipEngine's KV-cache stack past
 current dense BF16 paged KV. It turns the current 128K-under-24GiB milestone
@@ -20,14 +20,32 @@ speed lever.
 
 ## Current baseline and memory math
 
-Current single-request Qwen3.5/PARO long-context evidence:
+Current single-request Qwen3.5/PARO long-context evidence on **AMD Radeon Pro
+W7900 / gfx1100**, model `Qwen3.5-35B-A3B-PARO`, quant `w4_paro`:
 
-- 128K/128 with long-prefill chunking fits below the 24GiB deployment envelope:
-  **23.656 GiB** tracked peak in `docs/PREFILL.md`.
-- Decode at 128K is already attention-dominated; `docs/ROOFLINE.md` records the
-  grouped-GQA producer as the first long-context bucket.
-- Parent dense BF16 128K/128 source-lineage row was **27.42 GiB**, so the
-  current chunked path is already materially better than the parent on memory.
+- 128K/128 dense BF16 KV with long-prefill chunking is the current baseline:
+  `1021.180` prefill tok/s, `63.299` decode tok/s, sampled HIP VRAM peak
+  `22.410 GiB`, tracked allocator peak `23.288 GiB`, retained KV
+  `2.690 GB`.
+- 128K/128 dense INT8 KV is **not a speed win** in the retained diagnostic row:
+  `1011.064` prefill tok/s (`-0.99%`) and `61.275` decode tok/s (`-3.20%`).
+  It is a storage/capacity feature: sampled HIP VRAM peak drops to
+  `21.170 GiB` and retained KV drops to `1.355 GB`, while tracked allocator
+  peak rises to `24.545 GiB` because the current INT8 prefill path still uses a
+  temporary BF16 oracle K/V workspace before releasing it for decode.
+- 256K/128 dense INT8 KV **runs and passes correctness**, but is **blocked for
+  24GiB-class promotion**: `624.224` prefill tok/s, `40.819` decode tok/s,
+  sampled HIP VRAM peak `24.330 GiB`, tracked allocator peak `25.700 GiB`,
+  retained KV `2.708 GB`. The promotion blocker is persistent full-prompt
+  prefill double-buffering (`2 x [262277,4096] fp16 = 4.297 GB`) plus dense
+  KV/scales and decode scratch; it is not a persistent BF16 KV shadow.
+
+Artifacts:
+
+- 128K BF16-vs-INT8 diagnostic:
+  [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json)
+- 256K INT8 capacity block:
+  [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json)
 
 For Qwen3.5/PARO, only the 10 full-attention layers own a dense KV cache:
 
@@ -37,17 +55,20 @@ per-token BF16 KV bytes =
 = 20,480 bytes/token ≈ 20 KiB/token
 ```
 
-Approximate arena sizes before allocator padding and scale metadata:
+Approximate retained KV sizes before allocator padding; INT8 includes measured
+FP16 per-token/per-head K/V scale metadata:
 
-| Context | BF16 KV | INT8 KV | Delta |
+| Context | BF16 retained KV | INT8 retained KV | Delta |
 | ---: | ---: | ---: | ---: |
-| 128K | ~2.50 GiB | ~1.25 GiB | ~1.25 GiB saved |
-| 256K | ~5.00 GiB | ~2.50 GiB | ~2.50 GiB saved |
+| 128K | `2.690 GB` | `1.355 GB` | `1.334 GB` saved (`-49.6%`) |
+| 256K | ~`5.37 GB` projected | `2.708 GB` measured | ~`2.66 GB` saved |
 
-Therefore 256K INT8 KV should have roughly the same raw KV footprint as 128K
-BF16 KV. That is why dense INT8 KV is the direct path to a 256K capacity row.
-The caveat is strict: this only holds if the implementation does **not** keep a
-persistent BF16 shadow/staging arena.
+Therefore 256K INT8 KV has roughly the same retained KV footprint as 128K BF16
+KV. That is why dense INT8 KV remains the direct path to a 256K capacity row.
+The caveat is strict: this only holds for retained KV if the implementation does
+**not** keep a persistent BF16 shadow/staging arena. The current K1 path meets
+that no-shadow rule, but still needs prefill-buffer lifetime work to keep the
+whole 256K run under the 24GiB-class target.
 
 ## Non-negotiable design rules
 
@@ -71,9 +92,14 @@ persistent BF16 shadow/staging arena.
 
 ### Goal
 
-Make the default paged-KV path support `storage_dtype=int8_per_token_head` so
-256K can fit in the 24GiB-class envelope. Treat speed as a bonus; parent notes
-already found dense INT8 KV neutral/negative at 32K and only marginal at 128K.
+Make the paged-KV path support `storage_dtype=int8_per_token_head` so 256K can
+fit in the 24GiB-class envelope. Treat speed as a bonus; parent notes already
+found dense INT8 KV neutral/negative at 32K and only marginal at 128K.
+
+K1 implementation status (2026-05-18): the storage policy, writer, grouped-GQA
+INT8 decode path, E2E correctness gate, no-shadow audit, and 128K/256K benchmark
+artifacts are landed. 256K is not promoted yet because total resident-session
+memory is still over the 24GiB-class target.
 
 ### Storage format
 
@@ -101,25 +127,31 @@ the decode producer.
 
 ### Kernels and host surfaces
 
-1. `paged_kv_write_int8_per_token_head`
+1. `paged_kv_write_int8_per_token_head` — **landed**
    - Input: post-RoPE BF16/FP16 K/V rows.
-   - Compute max-abs per `(row, kv_head, K/V)`, write INT8 row and scale.
+   - Compute max-abs per `(row, kv_head, K/V)`, write signed INT8 row and scale.
    - Update the same dense/uniform `KVLiveSpans` fields used by BF16.
-2. `paged_attn_decode_int8_gqa_splitk`
-   - Load INT8 K/V and scales directly.
+   - Public wrappers: `qwen35_write_paged_kv_int8_per_token_head_spans(...)`,
+     `qwen35_write_paged_kv_int8_per_token_head_{prompt,batch}_spans(...)`.
+2. `paged_attn_decode_int8_gqa_splitk` — **landed**
+   - Load INT8 K/V and FP16/FP32 scales directly.
    - Accumulate QK in FP32; apply softmax/reduce in the retained split-K/GQA
      shape; dequantize V inside the producer/reduce path.
-   - Avoid a separate INT8→BF16 cast kernel and avoid a BF16 cache-sized
+   - Avoid a separate INT8→BF16 cast kernel and avoid a BF16 cache-sized decode
      workspace.
-3. `paged_attn_prefill_int8_oracle_path`
-   - For initial correctness, prefill can still compute attention from the
-     chunk-local BF16 K/V before quantized append. The retained KV after prefill
-     must be INT8 only.
-   - A fully INT8 prefill-attention path is optional; the capacity issue is
-     retained KV, not temporary chunk math.
-4. Policy/registry plumbing
-   - `KVPolicy.paged_int8(scales="per_token_head")` or equivalent registered
-     policy.
+   - Public wrappers: `qwen35_paged_attn_decode_int8_gqa_splitk_spans(...)`,
+     `qwen35_paged_attn_decode_int8_gqa_splitk_gate_{bf16,fp16}_spans(...)`.
+3. `paged_attn_prefill_int8_oracle_path` — **landed as diagnostic bridge**
+   - For correctness and AOTriton parity, prefill computes full-attention from a
+     temporary BF16 oracle K/V workspace, then appends retained INT8 K/V plus
+     FP16 per-token/head scales.
+   - The workspace is reused across full-attention layers and released before
+     decode. It is not a persistent BF16 KV shadow, but it does raise the
+     allocator high-water mark. A fully streaming/native INT8 prefill path is
+     the next memory optimization if 256K+ runs OOM during prefill.
+4. Policy/registry plumbing — **landed**
+   - `FixedPagedKVPolicy` accepts `storage_dtype="int8_per_token_head"` with
+     `scale_dtype="fp16"` and `scale_granularity="per_token_head"`.
    - Kernel keys remain `(backend="hip_gfx1100", layer="paged_attn_decode",
      quant/storage="int8_per_token_head", variant="gqa_splitk")`.
 
@@ -150,6 +182,83 @@ Promotion policy:
   threshold, INT8 when admission would otherwise exceed the budget.
 - Promote the 256K row even if speed is neutral, if quality passes and memory
   stays under target. Capacity is the primary deliverable.
+
+### K1 measured protocol and results
+
+Common benchmark context: model `Qwen3.5-35B-A3B-PARO` from
+`/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd`,
+quant `w4_paro`, backend `hip_gfx1100`, hardware **AMD Radeon Pro W7900 /
+gfx1100**, HIP `7.2.53211-d40244d`, token id `9707`, `max_layers=40`,
+AOTriton prefill threshold `512`, graph replay decode, and long-context chunks
+`linear=1024`, `moe=1024`, `full_attn_query=4096`, `full_attn_post=1024`,
+`full_attn_rope=1024`.
+
+Exact benchmark commands:
+
+```bash
+# 128K/128 BF16 dense baseline
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 --kv-storage bf16 \
+  --json /tmp/hipengine-task15-128k-int8-kv/qwen35-paro-128k128-bf16-rerun.json
+
+# 128K/128 INT8 dense KV
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-task15-128k-int8-kv/hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage int8_per_token_head \
+  --json /tmp/hipengine-task15-128k-int8-kv/qwen35-paro-128k128-int8-rerun.json
+
+# 256K/128 INT8 dense KV capacity attempt
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 262144 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-task16-256k-int8-capacity/hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage int8_per_token_head \
+  --json /tmp/hipengine-task16-256k-int8-capacity/qwen35-paro-256k128-int8.json
+```
+
+| Row | Status | Prefill tok/s | Decode tok/s | Sampled VRAM peak | Tracked peak | Retained KV | Correctness |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 128K/128 BF16 KV | baseline diagnostic | `1021.180` | `63.299` | `22.410 GiB` | `23.288 GiB` | `2.690 GB` | benchmark preview matched INT8 seed/final token IDs |
+| 128K/128 INT8 KV | retained diagnostic, not speed claim | `1011.064` | `61.275` | `21.170 GiB` | `24.545 GiB` | `1.355 GB` | E2E fixture `max_kl=0.015328`, top-1 `100%`, generated IDs match; no BF16 shadow |
+| 256K/128 INT8 KV | blocked for 24GiB-class promotion | `624.224` | `40.819` | `24.330 GiB` | `25.700 GiB` | `2.708 GB` | same E2E fixture gate passes; no BF16 shadow |
+
+Profiler evidence for the 128K INT8 row used `rocprofv3 --kernel-trace
+--selected-regions true`:
+
+- Prefill selected region: `qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16>`
+  ran `320` calls, average `54.848 us`, max `69.761 us`, `Scratch_Size=0`.
+- Decode selected region sampled 16 measured graph replays from the 128-token
+  workload: `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<_Float16,8,16,2>`
+  ran `160` calls, average `621.500 us`, max `641.850 us`; reduce-gate ran
+  `160` calls, average `159.271 us`; decode append INT8 writer ran `160` calls,
+  average `4.363 us`. All reported `Scratch_Size=0`.
+
+Immediate memory work for making the 256K row fit under the 24GiB-class target:
+
+1. Replace the persistent full-prompt prefill hidden/next-hidden double buffer
+   with chunk-sized staging or free/reallocate it before decode. At 256K this is
+   `4.297 GB`, so it is the largest live blocker.
+2. Remove or stream the temporary BF16 INT8-prefill oracle K/V. It is already
+   reused and released before decode, but still raises allocator high-water and
+   can cause prefill-time OOM at larger contexts.
+3. Keep dense INT8 KV/scales as expected capacity cost: 256K retained payload is
+   `2.687 GB` at `1.0 B/element` plus `20.992 MB` of FP16 scales.
 
 ## Phase K2 — FastDMS-derived compact DMS
 
@@ -295,13 +404,17 @@ These are deliberately after dense INT8 and DMS:
 
 ## Immediate punchlist
 
-1. Add a dense INT8 KV storage policy and metadata structs.
-2. Add INT8 paged KV write with per-token/per-head scales.
-3. Add INT8 grouped-GQA split-K decode, no BF16 full-cache staging.
-4. Add memory-audit tests that fail if BF16 shadow KV is allocated.
-5. Run 128K/128 BF16-vs-INT8 quality/perf comparison.
-6. Run 256K/128 INT8 capacity row under the 24GiB-class target.
-7. Port FastDMS DMS metadata loader and compact allocator semantics.
-8. Train/import a Qwen3.5/PARO DMS retrofit before DMS quality claims.
-9. Port streaming pack and compact decode kernels to HIP.
-10. Combine `dms` + `int8_per_token_head` as the first promoted compact policy.
+1. [x] Add a dense INT8 KV storage policy and metadata structs.
+2. [x] Add INT8 paged KV write with per-token/per-head scales.
+3. [x] Add INT8 grouped-GQA split-K decode, no BF16 full-cache staging.
+4. [x] Add memory-audit tests that fail if BF16 shadow KV is allocated.
+5. [x] Run 128K/128 BF16-vs-INT8 quality/perf comparison.
+6. [!] Run 256K/128 INT8 capacity row under the 24GiB-class target: completed
+   with correctness/no-shadow passing, but blocked at sampled `24.330 GiB` and
+   tracked `25.700 GiB` until prefill buffer lifetime is reduced.
+7. [ ] Reduce persistent full-prompt prefill I/O buffers and/or stream the INT8
+   prefill oracle so 256K fits under 24GiB-class memory.
+8. [ ] Port FastDMS DMS metadata loader and compact allocator semantics.
+9. [ ] Train/import a Qwen3.5/PARO DMS retrofit before DMS quality claims.
+10. [ ] Port streaming pack and compact decode kernels to HIP.
+11. [ ] Combine `dms` + `int8_per_token_head` as the first promoted compact policy.
