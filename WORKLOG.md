@@ -19730,3 +19730,44 @@ P9.B kernels are now feature-complete:
 - P9.B4: Q4_K dense pack8 GEMV decode (single, with F32 lm-head variant).
 
 Next: task #24 formal correctness fixtures, then task #25 dispatch wiring.
+
+## 2026-05-18 P9 task #24: Decode GEMV correctness fixtures
+
+Added the formal correctness fixtures for P9.B1-P9.B4 decode GEMV kernels plus a new Q6_K dense kernel (P9.B4b) that the P9.B5 task scope required for the Q6_K F32 lm-head case.
+
+Files:
+
+- `tests/_gguf_synthetic_weights.py`: new shared helper module with safe `make_q4_k_weight` / `make_q5_k_weight` / `make_q6_k_weight` / `make_q8_0_weight` that use int64 intermediates so they don't overflow uint8 at `out_features > 127` (the existing helpers in `tests/test_gguf_q4_k_gemv.py` and `tests/test_gguf_k_gemv.py` overflow there; left unchanged to avoid touching P8 fixtures).
+- `tests/test_gguf_q4_k_selected_dual_pack8_gemv_decode.py`: 45 tests for P9.B1.
+- `tests/test_gguf_k_selected_pack8_gemv_decode.py`: 111 tests for P9.B2 (Q5_K and Q6_K combined).
+- `tests/test_gguf_q8_0_pack8_gemv_decode.py`: 21 tests for P9.B3 (single + dual).
+- `tests/test_gguf_q4_k_pack8_gemv_decode.py`: 23 tests for P9.B4 (dense Q4_K, all 4 dtype combos).
+- `tests/test_gguf_q6_k_pack8_gemv_decode.py`: 15 tests for the new P9.B4b Q6_K dense kernel.
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.hip` + `.py`: new dense Q6_K pack8 GEMV kernel. Mirrors the Q4_K dense P9.B4 structure exactly with the inner k loop swapped for raw Q6_K block dequant (reuses the same per-16-K int8 scale layout and `s_scale[128]` shared hoist as P9.B2). Four `(scalar_in_t, scalar_out_t)` instantiations under `linear / gguf_q6_k`: `pack8_gemv_decode_{bf16,fp16}_{bf16,fp16,f32}_out`.
+- `docs/KERNELS.md`: appended P9.B4b catalog row; updated P9.B4 row to point at the formal fixture.
+
+Coverage per kernel:
+
+- **P9.B1** (selected Q4_K dual): expert layouts in `{[8], [1], [3,5], [0,8], [4,0,4], [8,0], [2,0,0,3,0,5], [1,1,1,1,1,1,1,1]}` (qwen35moe top_k=8 decode shape); in_features in `{256, 512, 1024, 2048}`; out_features_a/b in `{16, 256, 512, 2048, 4096}`. BF16 and FP16 output combos.
+- **P9.B2** (selected Q5_K/Q6_K): same expert-layout matrix as B1 across both Q5_K and Q6_K, in_features in `{256, 512, 1024, 2048, 4096}`, out_features in `{8, 256, 512, 2048, 4096}` (including the pack8-tile-boundary `out_features=8`).
+- **P9.B3** (dense Q8_0 single + dual): rows in `{1, 4, 8}`, in_features in `{32, 256, 512, 1024, 2048, 4096}`, out_features (and a/b for dual) covering all the Qwen3.6 attention QKV/O + shared-expert shapes.
+- **P9.B4** (dense Q4_K): all 4 input/output dtype combos, in_features in `{256, 512, 1024, 2048, 4096}`, out_features in `{16, 256, 512, 2048, 4096}` for BF16 paths; lm-head F32 paths exercise out_features up to `32_768` (Qwen3.6-class vocab subset).
+- **P9.B4b** (dense Q6_K): same dtype matrix, lm-head F32 paths at in=2048 out=32_768 vocab.
+
+Tolerances:
+
+- BF16/BF16 and FP16/FP16: `atol=1e-3, rtol=1e-2` after rounding the F32 reference through BF16/FP16 first (the kernel writes the half-precision output, so the comparison stays about kernel math, not output dtype).
+- Q8_0: tightened to `atol=5e-4, rtol=5e-3` per the P9 task description (Q8_0 has the smallest block size and the dequant math is the simplest).
+- BF16/F32 and FP16/F32 (lm-head): `atol=5e-3, rtol=5e-3`. The actual measured deltas are <= 7.2e-5 absolute on the largest tested shapes; the looser threshold reflects the F32 accumulation tolerance the sampler is happy with.
+
+Validation on W7900/gfx1100 (RX 7900 XTX local):
+
+- `uv run --with pytest pytest tests/test_gguf_q4_k_selected_dual_pack8_gemv_decode.py tests/test_gguf_k_selected_pack8_gemv_decode.py tests/test_gguf_q8_0_pack8_gemv_decode.py tests/test_gguf_q4_k_pack8_gemv_decode.py tests/test_gguf_q6_k_pack8_gemv_decode.py -q` -> `215 passed`.
+- Full P9 bundle (above + P8.1/P8.4/P8.5 selected/WMMA + GDN + dispatch + compact MoE routing) -> `410 passed`.
+
+Scope note (P9.B4b):
+
+- Task #23 (P9.B4) covered Q4_K dense only. The P9.B5 task description (this task) asks for "F32 lm-head case for Q4_K and Q6_K", which requires a Q6_K dense kernel. I added a minimal Q6_K dense kernel and Python wrapper here so the fixture description can be honoured. The new kernel reuses the inner Q6_K dequant from the P9.B2 selected variant verbatim, so any future change to the Q6_K dequant only needs to land once (in a shared header) -- TODO follow-up to factor `q6_k_pack8_inner_loop` if any of the existing kernels need re-tuning.
+- Q5_K dense is intentionally not added (no current qwen35moe surface that uses dense Q5_K; if/when that changes the kernel is a small bolt-on to the Q4_K dense template).
+
+P9.B kernels are now formally test-gated against the CPU oracle. Next: task #25 dispatch wiring routes `rows == 1` GGUF projections through the new GEMV decode kernels.
