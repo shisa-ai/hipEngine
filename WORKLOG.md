@@ -18552,3 +18552,47 @@ candidate rows even at low DFlash acceptance, and the tiny-row target kernels ar
 not efficient enough to amortize that extra work.  #30 remains open; likely next
 steps are a real c-aware verifier design (avoid/cheaply postpone suffix rows), or
 substantial fused target-layer kernels rather than launch cleanup.
+
+## 2026-05-18 — Native verifier speed-gate attempt: keep verifier scratch live and reorder accept
+
+Continued task #30 after the row-span cleanup.  The previous implementation
+restored c=1 decode scratch after every B+1 verifier call, forcing the next
+verifier cycle to free/reallocate verifier-sized linear/MoE scratch.  Changed the
+verifier to keep verifier-sized scratch live between cycles; c=1 decode kernels
+consume only the first row of those scratch tensors, and the retained DFlash path
+remains exact.  Also moved `dflash_accept_chain_i32` before the host top-1
+readback, so top-1 diagnostics and GPU accept payload share one stream
+synchronization instead of inserting a pre-accept device-wide barrier.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_speculative_benchmark.py -q
+# 34 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 4 --draft-budgets 4 \
+  --json /tmp/hipengine-verifier-no-restore-acceptorder-d4.json
+# exact same-session AR equality passed; gpu_accept_match_cpu=true
+```
+
+Dirty-tree B={1,2,4,8} speed-gate matrix (8 decode tokens, same stable prompt,
+gfx1151, exact/finite in native and serial):
+
+| B | native verify s | serial verify s | native/serial | native tok/s | serial tok/s |
+|---|---:|---:|---:|---:|---:|
+| 1 | 0.232 | 0.129 | 1.8x slower | 15.98 | 20.60 |
+| 2 | 0.271 | 0.124 | 2.2x slower | 14.58 | 20.07 |
+| 4 | 0.377 | 0.128 | 2.9x slower | 11.84 | 18.99 |
+| 8 | 0.615 | 0.126 | 4.9x slower | 8.50 | 17.57 |
+
+This improves over the previous native verifier matrix (`0.332/0.404/0.524/0.881`
+verify seconds for B=1/2/4/8) but still does not clear the speed gate.  #30
+remains open.  Next likely work needs either graph capture with stable verifier
+scratch and dynamic metadata, a c-aware verifier that avoids expensive rejected
+suffix rows, or fused target-layer kernels; launch/scratch cleanup alone is not
+enough.

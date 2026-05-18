@@ -2384,11 +2384,15 @@ class Qwen35ParoResidentSession:
                         runtime=self.runtime,
                     )
             self._sample_verify_rows_from_hidden(hidden, rows, stream=stream)
-            self.runtime.device_synchronize()
+            # Launch the device accept summary immediately after row-wise top-1
+            # on the same stream, then do one synchronization/readback for both
+            # top-1 diagnostics and GPU accept payload.  The CPU oracle still
+            # checks the same top-1 path, but no longer inserts a pre-accept
+            # device-wide barrier.
+            gpu_payload = self._run_verify_accept_summary(batch, rows=rows, stream=stream)
             target_top1, target_values = self._read_verify_top1(rows)
             cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
             cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
-            gpu_payload = self._run_verify_accept_summary(batch, rows=rows, stream=stream)
             gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
             selected_row = int(cpu_summary.commit_rows[0])
             self._commit_bulk_linear_states(selected_row, base_slot=base_slot, stream=stream)
@@ -2410,10 +2414,11 @@ class Qwen35ParoResidentSession:
                 rows=rows,
             )
         finally:
-            # Restore decode-sized scratch after the B+1-row verifier has copied
-            # selected row state.  The workspace allocations used by the bulk
-            # pass are not valid for later split-K c=1 decode otherwise.
-            self._restore_decode_scratch_after_prefill()
+            # Keep verifier-sized scratch live between cycles; c=1 decode kernels
+            # only consume the first row/split of the scratch tensors, and
+            # avoiding bulk<->decode scratch churn keeps allocations stable for
+            # future verifier graph capture experiments.
+            pass
 
     def _run_full_attention_chain_c1_loop(
         self,
