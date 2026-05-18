@@ -17771,3 +17771,39 @@ git diff --check
 # harness summary: {'all_exact_match_ar': True, 'all_finite_logits': True, 'all_gpu_accept_match_cpu': True, 'all_gpu_commit_copy_match_cpu': True, 'rows': 9, 'throughput_claim_eligible': False}
 # pytest: 53 passed
 ```
+
+## 2026-05-18 — DFlash chain gfx1151 diagnostic benchmark sweep (D15)
+
+### Scope
+
+- Added `scripts/dflash_chain_bench.py`, a compact schema-2 diagnostic benchmark wrapper over the DFlash chain correctness harness.
+- Generated `benchmarks/results/2026-05-18-hipengine-dflash-chain-gfx1151-correctness-diagnostic.json` on native `gfx1151` with shisa packed target metadata and z-lab DFlash drafter metadata.
+- Sweep covers chain budgets `N={2,4,8}` with stable prompt rows ordered as code-promotion first (18 rows) and robustness second (12 rows). Synthetic-stress prompts stay out of the promotion sweep.
+- Artifact reports same-session AR equality, accepted histograms, rows/output, verify ETA, draft/context-append/query/verify/commit split fields, D2H counts (`full_logits_readbacks=0`), peak-memory fields, graph status (`not_captured`), backend target arch, prompt-suite SHA/summary, and comparison baselines for current hipEngine packed gfx1151 AR diagnostic rows (`512/128`, `4K/128`, `4K/4K`).
+- `performance_claim=false`; no row is promoted because this is a deterministic scaffold/diagnostic sweep, not a full-model throughput benchmark, even though correctness gates pass.
+
+### Validation
+
+```bash
+python3 -m py_compile scripts/dflash_chain_bench.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_bench.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build \
+    --json benchmarks/results/2026-05-18-hipengine-dflash-chain-gfx1151-correctness-diagnostic.json
+python3 - <<'PY'
+import json
+p='benchmarks/results/2026-05-18-hipengine-dflash-chain-gfx1151-correctness-diagnostic.json'
+a=json.load(open(p))
+assert a['performance_claim'] is False
+assert a['measurements']['aggregate']['all_correctness_passed']
+assert len(a['measurements']['rows']) == 30
+cats=[r['prompt']['category'] for r in a['measurements']['rows']]
+assert cats[:18] == ['code_promotion'] * 18
+assert set(cats[18:]) == {'robustness'}
+assert a['measurements']['aggregate']['d2h']['full_logits_readbacks'] == 0
+PY
+python3 scripts/dflash_validate_artifacts.py --raise-on-error --json /tmp/dflash-chain-model-metadata-validation.json
+# dflash_validate_artifacts: passed=true for local shisa packed target + z-lab DFlash drafter manifests; output kept in /tmp, benchmark artifact not overwritten.
+git diff --check
+```
