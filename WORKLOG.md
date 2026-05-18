@@ -19414,3 +19414,37 @@ Validation on W7900/gfx1100:
 Open for task #14:
 
 - Formal selected Q5_K/Q6_K tests should mirror task #12's compact fixture matrix: multiple experts, uneven row counts, padding rows, empty experts, BF16/FP16 wrappers, non-multiple-of-16 output boundaries, and rocprof symbol smoke for `gguf_k_selected_wmma_prefill_compact_kernel<unsigned short,5/6>`.
+
+## 2026-05-18 P8.5 task #14: selected Q5_K/Q6_K WMMA correctness tests landed
+
+Added `tests/test_gguf_k_selected_wmma_prefill.py` for the P8.5 selected raw-Q5_K/Q6_K compact-MoE down-projection WMMA kernels from task #13.
+
+Coverage:
+
+- No-GPU surface:
+  - Registry/build-plan/dry-run checks for both `gguf_q5_k` and `gguf_q6_k` `moe_linear` keys: `selected_wmma_prefill_compact_bf16_bf16_out`, shorthand `selected_wmma_prefill_bf16_bf16_out`, and `selected_wmma_prefill_compact_fp16_fp16_out`.
+  - Wrapper contract validation for positive compact rows/out features/experts, `in_features % 256`, and `wmma_total_rows % 16` across all four wrappers.
+- GPU correctness (HIP-skipped when `libamdhip64.so` is unavailable):
+  - Synthetic compact-MoE fixtures construct `expert_start_compact`, `expert_start_wmma`, and `tile_expert` exactly like task #12's selected-Q4 tests: actual per-expert row prefix, padded-16 WMMA row prefix, and one `tile_expert` entry per padded 16-row tile.
+  - BF16 sweep covers both Q5_K and Q6_K over counts `[4,0,5]`, `[16,17,31]`, `[0,33,1,16]`, `[7,18,0,33]`, `[32,0,0,17]` with `in_features` `{256,512,768}` and output widths `{17,40,65,32,48}`. This hits multiple experts, uneven rows, padding rows, empty experts at middle/start/tail, multi-Q5/Q6 K-block loops, and non-multiple-of-16 output boundary masks.
+  - FP16 sweep covers both Q5_K and Q6_K on uneven/empty cases with output widths `33` and `64`.
+  - Tiny BF16 launches (`counts=[1,0]`, `out=17`) are kept as explicit W7900 symbol-run smokes for both qtypes.
+
+Oracle/tolerance details:
+
+- CPU selected/MoE oracle is assembled per expert from `hipengine.kernels.cpu_reference.gguf_quant_gemv(x_expert, qweight_expert, GGMLQuantizationType.Q5_K/Q6_K)` and written into `[compact_rows, out_features]`.
+- Inputs are decoded and rounded through fp16 before the CPU GEMV to match the kernel's half WMMA activation operands. Raw Q5_K/Q6_K weights remain exact CPU-dequantized in the oracle, so tolerances cover the intentional half weight operand cast plus BF16/FP16 output rounding.
+- Fixture activations use `((arange % 13) - 6) / 64` to keep the test focused on compact addressing/dequant and boundary masks.
+
+Validation on W7900/gfx1100:
+
+- `uv run --with pytest pytest tests/test_gguf_k_selected_wmma_prefill.py -q` -> `22 passed`.
+- `uv run python -m py_compile tests/test_gguf_k_selected_wmma_prefill.py` -> OK.
+- `uv run --with pytest pytest tests/test_gguf_k_selected_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_gemv.py -q` -> `37 passed`.
+- `rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/p8_q5q6_selected_test_rocprof -- uv run --with pytest pytest tests/test_gguf_k_selected_wmma_prefill.py::test_gguf_k_selected_wmma_runs_exported_bf16_symbol_on_w7900 -q` confirms both selected WMMA instantiations appear: `/tmp/p8_q5q6_selected_test_rocprof/rocm/1614755_kernel_trace.csv`, `gguf_k_selected_wmma_prefill_compact_kernel<unsigned short, 5>` `DurationNs=23598` and `<unsigned short, 6>` `DurationNs=24680`.
+
+Updated `docs/KERNELS.md` P8.5 row to point to the formal test file and rocprof symbol evidence.
+
+Open for task #15:
+
+- P8.4 Q4_K selected gate+up and P8.5 Q5_K/Q6_K selected down kernels now all have formal compact correctness tests. Runtime wiring can focus on plumbing the existing grouped scheduler output into the compact WMMA calls and reconciling concatenated gate+up output before the existing silu/weighted-combine path.
