@@ -16921,3 +16921,29 @@ python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 4,9 \
   --pseudo-vocab-size 16 --json /tmp/hipengine-kv-int8-dispatch-smoke.json
 # pytest passed; CPU fixtures/smokes passed; CPU INT8 layer accuracy status=accepted.
 ```
+
+## 2026-05-18 - K1 resident INT8 KV allocation
+
+Completed task #10: wired resident full-attention KV allocation to the session KV policy.
+
+Implementation notes:
+
+- `Qwen35ParoResidentSession` now accepts an optional `FixedPagedKVPolicy` and keeps BF16 as the default storage policy.
+- Full-attention layers allocate the existing slot0/c>N payload layout as BF16 by default, or as INT8 payload when the policy storage dtype is `int8_per_token_head`.
+- INT8 resident caches also allocate separate K/V per-token/head scale buffers with slot0 and all-slot views, plus `KVScaleMetadata` for future writer/decode dispatch wiring.
+- Added `owned_buffer_summary()` and bench memory snapshots now include it; the summary reports per-layer payload dtype/bytes and INT8 scale dtype/bytes.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py tests/test_qwen35_resident_batch_layout.py && \
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q
+# 29 passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest passed; CPU fixtures and registry/cpu smokes passed.
+```

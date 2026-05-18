@@ -490,6 +490,8 @@ def _memory_snapshot(
     if session is not None:
         payload["owned_session_bytes"] = _owned_device_bytes(session)
         payload["owned_session_gib"] = _bytes_to_gib(payload["owned_session_bytes"])
+        if hasattr(session, "owned_buffer_summary"):
+            payload["owned_buffer_summary"] = session.owned_buffer_summary()
     return payload
 
 

@@ -11,6 +11,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.generation import CompactPromptSlab
+from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.prefill import resolve_prefill_config_for_sequence
 from hipengine.runtime.qwen35_paro import Qwen35ParoGroupedMoeScratch
@@ -44,6 +45,126 @@ def test_qwen35_resident_batch_layout_is_batch_shaped_with_slot0_aliases() -> No
     assert layout.slot0_hidden_shape == (1, 4096)
     assert layout.full_kv_shape == (4, 4, 256, 2, 256)
     assert layout.slot0_full_kv_shape == (4, 256, 2, 256)
+    assert layout.full_kv_scale_shape == (4, 4, 256, 2)
+    assert layout.flat_full_kv_scale_shape == (16, 256, 2)
+    assert layout.slot0_full_kv_scale_shape == (4, 256, 2)
+
+
+def _resident_allocation_session(*, storage_dtype: str = "bf16", scale_dtype: DType = DType.FP16):
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.max_batch_size = 2
+    session.blocks = 3
+    session.block_size = 256
+    session.config = SimpleNamespace(num_key_value_heads=2, head_dim=4)
+    session.batch_layout = Qwen35ParoResidentBatchLayout(
+        max_batch_size=session.max_batch_size,
+        hidden_size=8,
+        max_sequence_length=512,
+        block_size=session.block_size,
+        blocks=session.blocks,
+        num_key_value_heads=session.config.num_key_value_heads,
+        head_dim=session.config.head_dim,
+    )
+    session.kv_policy = FixedPagedKVPolicy(block_size=session.block_size, storage_dtype=storage_dtype)
+    session.kv_storage_dtype = session.kv_policy.storage_dtype
+    session.kv_scale_dtype = scale_dtype
+    session.full_caches = {}
+    session.full_cache_scales = {}
+    session.full_cache_scale_metadata = {}
+    session.buffers = []
+    session.allocations = []
+    captured: list[tuple[DeviceBuffer, tuple[int, ...], np.dtype]] = []
+    next_ptr = 0x100000
+
+    def fake_dev(self, array: np.ndarray) -> DeviceBuffer:
+        nonlocal next_ptr
+        contiguous = np.ascontiguousarray(array)
+        buf = DeviceBuffer(next_ptr, contiguous.nbytes)
+        next_ptr += max(contiguous.nbytes, 1) + 0x100
+        self.buffers.append(buf)
+        captured.append((buf, tuple(contiguous.shape), contiguous.dtype))
+        return buf
+
+    session._dev = MethodType(fake_dev, session)
+    return session, captured
+
+
+def test_qwen35_resident_full_kv_allocation_defaults_to_bf16_payload_only() -> None:
+    session, captured = _resident_allocation_session(storage_dtype="bf16")
+
+    session._allocate_full_attention_cache(2)
+
+    key_cache, value_cache, key_buf, value_buf = session.full_caches[2]
+    assert key_cache.dtype is DType.BF16
+    assert value_cache.dtype is DType.BF16
+    assert key_cache.shape == session.batch_layout.slot0_full_kv_shape
+    assert value_cache.shape == session.batch_layout.slot0_full_kv_shape
+    assert key_buf.nbytes == np.prod(session.batch_layout.full_kv_shape) * DType.BF16.itemsize
+    assert value_buf.nbytes == key_buf.nbytes
+    assert session.full_cache_scales == {}
+    assert [item[2] for item in captured] == [np.dtype(np.uint16), np.dtype(np.uint16)]
+
+    summary = session.owned_buffer_summary()
+    layer = summary["full_attention_layers"][0]
+    assert summary["kv_storage_dtype"] == "bf16"
+    assert summary["full_attention_kv_scale_bytes"] == 0
+    assert layer["storage_dtype"] == "bf16"
+    assert layer["payload_dtype"] == "bf16"
+    assert layer["scale_metadata"] is None
+
+
+def test_qwen35_resident_full_kv_allocation_uses_int8_payload_and_scales() -> None:
+    session, captured = _resident_allocation_session(storage_dtype="int8_per_token_head", scale_dtype=DType.FP16)
+
+    session._allocate_full_attention_cache(3)
+
+    key_cache, value_cache, key_buf, value_buf = session.full_caches[3]
+    assert key_cache.dtype is DType.INT8
+    assert value_cache.dtype is DType.INT8
+    assert key_cache.shape == session.batch_layout.slot0_full_kv_shape
+    payload_slot_bytes = np.prod(session.batch_layout.slot0_full_kv_shape) * DType.INT8.itemsize
+    assert key_buf.nbytes == np.prod(session.batch_layout.full_kv_shape) * DType.INT8.itemsize
+    assert value_buf.nbytes == key_buf.nbytes
+    key_slot1, value_slot1 = session._slot_full_cache(3, 1)
+    assert key_slot1.ptr == key_buf.ptr + payload_slot_bytes
+    assert value_slot1.ptr == value_buf.ptr + payload_slot_bytes
+    assert key_slot1.dtype is DType.INT8
+    k_scale, v_scale, k_scale_buf, v_scale_buf = session.full_cache_scales[3]
+    assert k_scale.shape == session.batch_layout.slot0_full_kv_scale_shape
+    assert v_scale.shape == session.batch_layout.slot0_full_kv_scale_shape
+    assert k_scale.dtype is DType.FP16
+    assert k_scale_buf.nbytes == np.prod(session.batch_layout.flat_full_kv_scale_shape) * DType.FP16.itemsize
+    assert v_scale_buf.nbytes == k_scale_buf.nbytes
+    assert [item[2] for item in captured] == [
+        np.dtype(np.int8),
+        np.dtype(np.int8),
+        np.dtype(np.float16),
+        np.dtype(np.float16),
+    ]
+
+    slot1_metadata = session._slot_full_scale_metadata(3, 1)
+    assert slot1_metadata is not None
+    slot_scale_bytes = np.prod(session.batch_layout.slot0_full_kv_scale_shape) * DType.FP16.itemsize
+    assert slot1_metadata.k_scale.ptr == k_scale_buf.ptr + slot_scale_bytes
+    assert slot1_metadata.v_scale.ptr == v_scale_buf.ptr + slot_scale_bytes
+    assert slot1_metadata.k_scale.shape == session.batch_layout.slot0_full_kv_scale_shape
+    all_slots_metadata = session._full_cache_scale_metadata_all_slots(3)
+    assert all_slots_metadata is not None
+    assert all_slots_metadata.k_scale.shape == session.batch_layout.flat_full_kv_scale_shape
+
+    summary = session.owned_buffer_summary()
+    layer = summary["full_attention_layers"][0]
+    assert summary["kv_storage_dtype"] == "int8_per_token_head"
+    assert summary["kv_scale_dtype"] == "fp16"
+    assert summary["full_attention_kv_payload_bytes"] == key_buf.nbytes + value_buf.nbytes
+    assert summary["full_attention_kv_scale_bytes"] == k_scale_buf.nbytes + v_scale_buf.nbytes
+    assert layer["storage_dtype"] == "int8_per_token_head"
+    assert layer["payload_dtype"] == "int8"
+    assert layer["scale_metadata"]["scale_dtype"] == "fp16"
+    assert layer["scale_metadata"]["granularity"] == "per_token_head"
+
 
 
 def test_qwen35_resident_native_prefill_plan_accepts_full_attention_layers() -> None:
