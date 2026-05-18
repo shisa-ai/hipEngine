@@ -326,6 +326,7 @@ class Qwen35ParoDecodeState:
         num_splits: int = 1,
         activation_dtype: str | DType = DType.BF16,
         gated_dtype: str | DType | None = None,
+        query_dtype: str | DType = DType.FP32,
     ) -> Qwen35ParoAttentionScratch:
         if tokens <= 0:
             raise ValueError("tokens must be positive")
@@ -340,6 +341,9 @@ class Qwen35ParoDecodeState:
         gated = lowp if gated_dtype is None else DType.parse(gated_dtype)
         if gated not in {DType.BF16, DType.FP16, DType.FP32}:
             raise ValueError("gated_dtype must be bf16, fp16, or fp32")
+        query_out_dtype = DType.parse(query_dtype)
+        if query_out_dtype not in {DType.BF16, DType.FP32}:
+            raise ValueError("query_dtype must be bf16 or fp32")
         q_proj_key = self.workspace.reserve_tensor("attn.q_proj_key", (tokens, 2 * q_width + kv_width), lowp)
         q_proj = Tensor.from_handle(q_proj_key.ptr, (tokens, 2 * q_width), lowp, q_proj_key.device)
         key_bf16 = Tensor.from_handle(
@@ -371,7 +375,7 @@ class Qwen35ParoDecodeState:
             key_bf16=key_bf16,
             query_raw=self.workspace.reserve_tensor("attn.query_raw", (tokens, cfg.num_attention_heads, cfg.head_dim), DType.FP32),
             key_raw=self.workspace.reserve_tensor("attn.key_raw", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
-            query=self.workspace.reserve_tensor("attn.query", (tokens, cfg.num_attention_heads, cfg.head_dim), DType.FP32),
+            query=self.workspace.reserve_tensor("attn.query", (tokens, cfg.num_attention_heads, cfg.head_dim), query_out_dtype),
             key=self.workspace.reserve_tensor("attn.key", (tokens, cfg.num_key_value_heads, cfg.head_dim), DType.FP32),
             value=value,
             kv_proj=kv_proj,
@@ -2515,8 +2519,10 @@ class Qwen35ParoDecodeState:
             raise ValueError("AOTriton key/value rows must cover query rows")
         if cu_seqlens_q.dtype is not DType.INT32 or cu_seqlens_k.dtype is not DType.INT32:
             raise ValueError("AOTriton compact-varlen prefill expects int32 cu_seqlens tensors")
-        if scratch.query.dtype is not DType.FP32 or scratch.key.dtype is not DType.FP32 or scratch.value.dtype is not DType.FP16:
-            raise ValueError("AOTriton prefill expects FP32 Q/K source tensors and FP16 V scratch tensor")
+        if scratch.key.dtype is not DType.FP32 or scratch.value.dtype is not DType.FP16:
+            raise ValueError("AOTriton prefill expects FP32 K source tensor and FP16 V scratch tensor")
+        if query_bf16 is None and scratch.query.dtype is not DType.FP32:
+            raise ValueError("AOTriton prefill expects an FP32 Q source tensor unless query_bf16 is provided")
         lse = self.workspace.reserve_tensor("attn.aotriton_lse", (self.config.num_attention_heads, rows), DType.FP32)
         q_heads = self.config.num_attention_heads
         kv_heads = self.config.num_key_value_heads
@@ -3218,10 +3224,16 @@ class Qwen35ParoDecodeState:
         )
         aotriton_query_bf16 = None
         if aotriton_attention:
-            aotriton_query_bf16 = self.workspace.reserve_tensor(
-                "attn.aotriton_q_bf16",
+            # Reuse the caller-owned prefill query buffer for AOTriton's BF16
+            # query input. Allocating this in each layer state's decode
+            # workspace makes long INT8 prefill accumulate one [chunk, Hq, D]
+            # BF16 buffer per full-attention layer even though only the current
+            # chunk needs it.
+            aotriton_query_bf16 = Tensor.from_handle(
+                attention_scratch.query.ptr,
                 attention_scratch.query.shape,
                 DType.BF16,
+                attention_scratch.query.device,
             )
         _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16(
             attention_scratch,

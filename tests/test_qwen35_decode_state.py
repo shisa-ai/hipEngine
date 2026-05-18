@@ -507,6 +507,81 @@ def test_qwen35_decode_state_run_full_attention_prefill_fp16_uses_grouped_moe(mo
     assert calls == ["input_norm", "rotate", "qkv", "rope", "append", "prefill_attn", "o_proj", "post_norm", "grouped_moe"]
 
 
+def test_qwen35_decode_state_aotriton_prefill_reuses_attention_query_buffer(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights())
+    hidden = _tensor(0xD000, (2, 4096), "fp16")
+    scratch = state.reserve_full_attention_scratch(
+        tokens=2,
+        num_splits=1,
+        activation_dtype="fp16",
+        gated_dtype="fp16",
+        query_dtype="bf16",
+    )
+    moe_scratch = state.reserve_moe_grouped_prefill_scratch(tokens=2, activation_dtype="fp16")
+    key_cache = _tensor(0xE000, (1, 256, 2, 256), "bf16")
+    value_cache = _tensor(0xF000, (1, 256, 2, 256), "bf16")
+    spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (2, 1), "int32"),
+        live_counts=_tensor(0x2000, (2,), "int64"),
+        max_live_count=2,
+        storage_dtype="bf16",
+        row_positions=_tensor(0x3000, (2,), "int64"),
+        span_role="prefill",
+    )
+    cu_q = _tensor(0x6000, (2,), "int32")
+    cu_k = _tensor(0x7000, (2,), "int32")
+    seen: dict[str, Tensor] = {}
+    calls: list[str] = []
+
+    monkeypatch.setattr(state, "input_rmsnorm_fp16", lambda *args, **kwargs: calls.append("input_norm") or scratch.attn_input)
+    monkeypatch.setattr(state, "rotate_full_attention_inputs_fp16", lambda *args, **kwargs: calls.append("rotate") or (scratch.q_rot, scratch.k_rot, scratch.v_rot))
+    monkeypatch.setattr(state, "project_full_attention_qkv_fp16", lambda *args, **kwargs: calls.append("qkv") or (scratch.q_proj, scratch.key_bf16, scratch.value))
+
+    def fake_prepare(*args, **kwargs):
+        calls.append("rope")
+        seen["query_bf16"] = kwargs["query_bf16_out"]
+        return kwargs["query_bf16_out"], scratch.key, scratch.value, scratch.gate
+
+    monkeypatch.setattr(state, "prepare_full_attention_qkv_fp16", fake_prepare)
+    monkeypatch.setattr(state, "append_full_attention_kv_fp16_batch", lambda *args, **kwargs: calls.append("append"))
+
+    def fake_aotriton(*args, **kwargs):
+        calls.append("aotriton")
+        assert kwargs["query_bf16"].ptr == seen["query_bf16"].ptr
+        return kwargs["attn_bf16_out"]
+
+    monkeypatch.setattr(state, "prefill_full_attention_aotriton_varlen_gqa_bf16", fake_aotriton)
+    monkeypatch.setattr(state, "project_full_attention_o_bf16_attn_gate_fp16", lambda *args, **kwargs: calls.append("o_proj") or scratch.o_proj)
+    monkeypatch.setattr(state, "post_attention_add_rmsnorm_fp16", lambda *args, **kwargs: calls.append("post_norm") or (moe_scratch.normed, moe_scratch.residual))
+    monkeypatch.setattr(state, "run_moe_grouped_compact_fp16", lambda *args, **kwargs: calls.append("grouped_moe") or moe_scratch.moe_out)
+
+    out = state.run_full_attention_moe_prefill_layer_fp16(
+        hidden,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        append_spans=spans,
+        prefill_spans=spans,
+        cos_table=_tensor(0x4000, (8, 4), "fp32"),
+        sin_table=_tensor(0x5000, (8, 4), "fp32"),
+        positions=spans.row_positions,
+        max_positions=8,
+        attention_scratch=scratch,
+        moe_scratch=moe_scratch,
+        cu_seqlens_q=cu_q,
+        cu_seqlens_k=cu_k,
+        aotriton_attention=True,
+        aotriton_kv_rows=2,
+        tokens=2,
+    )
+
+    assert out is moe_scratch.moe_out
+    assert seen["query_bf16"].ptr == scratch.query.ptr
+    assert seen["query_bf16"].dtype is DType.BF16
+    assert "attn.aotriton_q_bf16" not in state.workspace.names
+    assert calls == ["input_norm", "rotate", "qkv", "rope", "append", "aotriton", "o_proj", "post_norm", "grouped_moe"]
+
+
 def test_qwen35_decode_state_run_full_attention_prefill_fp16_can_force_c1_moe(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _full_attention_weights())

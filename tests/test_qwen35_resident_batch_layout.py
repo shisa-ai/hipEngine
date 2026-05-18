@@ -357,7 +357,7 @@ def test_qwen35_resident_native_prefill_layers_use_int8_retained_cache_and_bf16_
         ),
         session,
     )
-    session._ensure_full_prefill_scratch = MethodType(lambda self, *, tokens: object(), session)
+    session._ensure_full_prefill_scratch = MethodType(lambda self, *, tokens, **_kwargs: object(), session)
     session._ensure_moe_prefill_scratch = MethodType(lambda self, layer_id=None, *, tokens: object(), session)
 
     class FakeRuntime:

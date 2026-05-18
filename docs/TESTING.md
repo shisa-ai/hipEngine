@@ -233,11 +233,11 @@ The 2026-05-18 K1 artifacts are the current reference rows:
   `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json`
   (`max_kl=0.015328`, top-1 `100%`, no BF16 shadow; INT8 retained KV
   `1.355 GB`; speed `-0.99%` prefill / `-3.20%` decode vs BF16).
-- 128K/256K INT8 scratch-release diagnostic:
-  `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-scratch-release-diagnostic.json`
+- 128K/256K INT8 AOTriton query-reuse + q3072 diagnostic:
+  `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json`
   (correctness/no-shadow pass, retained KV `2.708 GB` at 256K, sampled
-  `22.324 GiB` passes the 24GiB-class target; tracked high-water `24.351 GiB`
-  remains a temporary-oracle follow-up).
+  `22.013 GiB` and tracked `23.766 GiB` pass the 24GiB-class target; the
+  temporary BF16 oracle workspace itself remains a follow-up).
 
 ### 6. Milestone closure
 

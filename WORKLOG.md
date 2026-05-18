@@ -17597,3 +17597,51 @@ Retained rerun measurements:
   - Retained KV/scales unchanged: `2.708 GB`, no persistent BF16 shadow.
 
 Retained artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-scratch-release-diagnostic.json`. Updated `docs/KVCACHE.md`, `docs/KERNELS.md`, `docs/TESTING.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`. Task #19 remains open for true BF16 oracle streaming/removal because `prefill_execution_detail.int8_prefill_oracle` is still true and 256K tracked high-water remains `0.351 GiB` over 24GiB.
+
+## 2026-05-18/19 — task #19 AOTriton prefill query workspace reduction (GPU blocked)
+
+Continued the INT8 KV temporary-oracle memory work after commit `328a1b3`. Implemented a lower-risk memory reduction that avoids accumulating one per-layer AOTriton BF16 query buffer during native prefill:
+
+- `Qwen35ParoDecodeState.reserve_full_attention_scratch()` now accepts `query_dtype` (`fp32` default, `bf16` for AOTriton prefill).
+- AOTriton prefill reinterprets/reuses the caller-owned `attention_scratch.query` buffer as the BF16 query tensor instead of reserving `attn.aotriton_q_bf16` in every full-attention layer state's decode workspace.
+- Resident native prefill requests BF16 query scratch when AOTriton prefill is active.
+- Added unit coverage that the AOTriton prefill path passes a BF16 tensor at `scratch.query.ptr` and does not reserve `attn.aotriton_q_bf16`.
+
+CPU validation completed:
+
+```bash
+python3 -m pytest -q
+python3 -m compileall -q hipengine tests scripts
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+git diff --check
+# all passed; pytest 325 passed
+```
+
+GPU validation/benchmark is blocked by external `llama-server` contention. Polls from ~04:36-04:40 JST showed PID churn (`382671`, `385644`, `389628`), GPU use `98-99%`, and ~18-20 GB VRAM in use. Do not retain a benchmark from this state. Next clean-GPU commands: rerun INT8 layer gate, E2E gate, then 128K/256K benchmark under `/tmp/hipengine-task19-aotriton-query-reuse/` to confirm whether tracked peak drops below the previous scratch-release artifact (`128K 21.525 GiB`, `256K 24.351 GiB`).
+
+## 2026-05-18/19 — task #19 AOTriton query reuse retained benchmark
+
+GPU became free (`rocm-smi`: no KFD PIDs, GPU use 0%, VRAM used ~27.9 MB). Reran gates and retained benchmarks for the AOTriton query-reuse change.
+
+Validation:
+
+```bash
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --compiler-version-file /tmp/hipengine-task19-aotriton-query-reuse/hipcc-version.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-task19-aotriton-query-reuse/int8_accuracy.json
+# accepted, passed true
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 --kv-storage int8_per_token_head --compiler-version-file /tmp/hipengine-task19-aotriton-query-reuse/hipcc-version.txt --require-cached-build --json /tmp/hipengine-task19-aotriton-query-reuse/e2e.json
+# passed true, max_kl=0.015328251530778358, top1=1.0, generated IDs match
+```
+
+An intermediate same-chunk (q4096) rerun confirmed the code change alone reduced tracked high-water:
+
+- 128K/128 q4096: `1019.828 / 61.327 tok/s`, tracked `21.1815 GiB`, sampled `19.851 GiB`.
+- 256K/128 q4096: `620.807 / 40.819 tok/s`, tracked `24.0075 GiB`, sampled `22.011 GiB`.
+
+Retained q3072 runs (full-attn query chunk `3072`, linear/moe/post/rope `1024`):
+
+- 128K/128: `1035.606 / 60.992 tok/s`, tracked `20.941 GiB`, sampled `19.851 GiB`; tracked delta vs previous scratch-release artifact `21.525 -> 20.941 GiB`.
+- 256K/128: `651.636 / 40.827 tok/s`, tracked `23.766 GiB`, sampled `22.013 GiB`; tracked delta vs previous scratch-release artifact `24.351 -> 23.766 GiB`, now under the 24GiB-class tracked target.
+
+Retained artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json`. Updated K1 docs/rollups. Important: `prefill_execution_detail.int8_prefill_oracle` is still true, so task #19 is not complete as oracle removal/streaming remains; this step removes per-layer AOTriton BF16 query accumulation and reduces chunk scratch high-water.

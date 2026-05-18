@@ -126,15 +126,16 @@ Reference results on W7900/gfx1100, model `Qwen3.5-35B-A3B-PARO`, quant
   `61.275` tok/s, sampled/tracked peak `21.170/24.545 GiB`, retained KV
   `1.355 GB` (`1.0 B/element` payload plus `10.506 MB` scales), no BF16 shadow.
   This is a storage/capacity diagnostic, not a speed claim.
-- 128K/256K INT8 scratch-release artifact:
-  [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-scratch-release-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-scratch-release-diagnostic.json).
-  The 256K run completed and correctness/no-shadow passed at `620.928` prefill /
-  `40.815` decode tok/s with retained KV `2.708 GB`; sampled/tracked peaks are
-  `22.324/24.351 GiB`. The previous persistent full-prompt prefill
+- 128K/256K INT8 AOTriton query-reuse + q3072 artifact:
+  [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json).
+  The 256K run completed and correctness/no-shadow passed at `651.636` prefill /
+  `40.827` decode tok/s with retained KV `2.708 GB`; sampled/tracked peaks are
+  `22.013/23.766 GiB`. The previous persistent full-prompt prefill
   double-buffering blocker (`2 x [262277,4096] fp16 = 4.297 GB`) is resolved,
-  decode/phase scratch overlap is lower, and the remaining tracked high-water
-  comes from transient INT8-prefill oracle workspace plus expected dense
-  KV/scales and decode scratch.
+  decode/phase scratch overlap is lower, AOTriton BF16 query input no longer
+  accumulates per full-attention layer, and q3072 chunks keep tracked high-water
+  below the 24GiB-class target. The remaining follow-up is streaming/removing the
+  transient INT8-prefill oracle workspace itself.
 
 Profiler summary from the 128K INT8 selected-region traces:
 

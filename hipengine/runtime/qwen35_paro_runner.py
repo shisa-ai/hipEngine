@@ -2237,15 +2237,22 @@ class Qwen35ParoResidentSession:
         self.prefill_linear_scratch = scratch
         return scratch
 
-    def _ensure_full_prefill_scratch(self, *, tokens: int) -> Qwen35ParoAttentionScratch:
+    def _ensure_full_prefill_scratch(
+        self,
+        *,
+        tokens: int,
+        aotriton_attention: bool = False,
+    ) -> Qwen35ParoAttentionScratch:
+        query_dtype = DType.BF16 if aotriton_attention else DType.FP32
         scratch = getattr(self, "prefill_full_scratch", None)
-        if scratch is not None and scratch.attn_input.shape[0] >= tokens:
+        if scratch is not None and scratch.attn_input.shape[0] >= tokens and scratch.query.dtype == query_dtype:
             return scratch
         scratch = self._prefill_scratch_owner().reserve_full_attention_scratch(
             tokens=tokens,
             num_splits=1,
             activation_dtype=DType.FP16,
             gated_dtype=DType.FP16,
+            query_dtype=query_dtype,
         )
         self.prefill_full_scratch = scratch
         return scratch
@@ -2366,7 +2373,10 @@ class Qwen35ParoResidentSession:
                         cu_seqlens_q, cu_seqlens_k = self._prefill_single_cu_seqlens_pair(rows, end)
                     else:
                         cu_seqlens_q = cu_seqlens_k = None
-                    attention_scratch = self._ensure_full_prefill_scratch(tokens=rows)
+                    attention_scratch = self._ensure_full_prefill_scratch(
+                        tokens=rows,
+                        aotriton_attention=use_aotriton_attention,
+                    )
                     moe_scratch = self._ensure_moe_prefill_scratch(layer_id, tokens=rows)
                     out = state.run_full_attention_moe_prefill_layer_fp16(
                         hidden_chunk,
