@@ -17116,3 +17116,125 @@ python3 scripts/smoke.py --mode registry && \
 python3 scripts/smoke.py --mode cpu-fixtures
 # full pytest, CPU fixtures, and registry/cpu smokes passed.
 ```
+
+## 2026-05-18 - K1 INT8 KV correctness gates
+
+Completed task #14: ran the INT8 KV narrow correctness gate stack on W7900/gfx1100 and captured INT8 write/decode kernel traces.
+
+Environment / setup:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')" && \
+rocminfo | grep -E 'Name:|gfx' | head -24
+# hip OK; rocminfo reported gfx1100 / AMD Radeon Pro W7900.
+
+command -v rocprofv3 && rocprofv3 --version | head -5 && \
+command -v hipcc && hipcc --version | head -10
+# rocprofv3=/home/lhl/mambaforge/envs/therock/bin/rocprofv3 version 1.2.3;
+# hipcc=/opt/rocm/bin/hipcc, HIP version 7.2.53211-d40244d.
+
+RUN=/tmp/hipengine-task14-int8-kv-gates
+rm -rf "$RUN" && mkdir -p "$RUN"
+hipcc --version > "$RUN/hipcc-version.txt"
+rocm-smi --showpids --showmeminfo vram --showuse
+# Before GPU gates: no KFD PIDs; GPU use 0%; VRAM used 27,942,912 B / 48,301,604,864 B.
+```
+
+Targeted tests / CPU fixtures:
+
+```bash
+python3 -m pytest tests/test_kv_dispatch.py tests/test_kvcache_policy.py \
+  tests/test_qwen35_kv_e2e_fixture_gate.py tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_bench_memory_audit.py -q | tee "$RUN/pytest-targeted.log"
+# 52 targeted tests passed.
+
+python3 scripts/check_fixtures.py | tee "$RUN/cpu-fixtures.log"
+# PASS for all CPU-reference fixtures, including kv_int8_dequant_per_token_head and
+# paged_attn_decode_int8_per_token_head.
+
+python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 64,520 \
+  --json "$RUN/qwen35-kv-int8-accuracy-cpu.json" | tee "$RUN/qwen35-kv-int8-accuracy-cpu.log"
+# status=accepted, passed=true.
+# ctx64: int8 CPU path max_abs=0, quantized-vs-BF16 KL=2.3352905641751685e-07, top1=1.0.
+# ctx520: int8 CPU path max_abs=0, quantized-vs-BF16 KL=4.459814455747262e-08, top1=1.0.
+```
+
+GPU smokes and layer-level HIP INT8 gate:
+
+```bash
+python3 scripts/smoke.py --mode smoke-add-hip --n 1024 \
+  --compiler-version-file "$RUN/hipcc-version.txt" | tee "$RUN/smoke-add-hip.log"
+# n=1024 max_abs=0.0.
+
+python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip \
+  --compiler-version-file "$RUN/hipcc-version.txt" | tee "$RUN/smoke-kv-write-int8.log"
+# 4/4 cases passed: decode_append_page_boundary_zero_rows, decode_append_fp16_scales,
+# prompt_append_crosses_page_boundary, batch_append_row_major_page_boundary;
+# all key/value mismatches=0 and scale/dequant max_abs=0.
+
+python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip \
+  --compiler-version-file "$RUN/hipcc-version.txt" | tee "$RUN/smoke-paged-attn-int8-gqa.log"
+# 3/3 cases passed. Max_abs by case:
+# ctx64 fp32=2.9802322387695312e-08;
+# ctx384 fp32 split-K=1.6763806343078613e-08;
+# ctx520 fp16 gated=2.0489096641540527e-08, gate_fp16=1.52587890625e-05, gate_bf16=1.4901161193847656e-08.
+
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-int8-hip \
+  --json "$RUN/qwen35-kv-int8-accuracy-hip.json" | tee "$RUN/qwen35-kv-int8-accuracy-hip.log"
+# status=accepted, passed=true.
+# ctx64: int8 HIP path max_abs=5.21540641784668e-08, pseudo-logit KL=1.2258514734364821e-15, top1=1.0;
+# quantized-vs-BF16 KL=2.3352905641751685e-07, top1=1.0.
+# ctx520: int8 HIP path max_abs=1.862645149230957e-08, pseudo-logit KL=1.1048968944809161e-16, top1=1.0;
+# quantized-vs-BF16 KL=4.459814455747262e-08, top1=1.0.
+```
+
+Qwen3.5/PARO BF16-vs-INT8 E2E fixture gate:
+
+```bash
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head \
+  --compiler-version-file "$RUN/hipcc-version.txt" \
+  --json "$RUN/qwen35-kv-e2e-fixture-gate-int8.json" \
+  | tee "$RUN/qwen35-kv-e2e-fixture-gate-int8.log"
+# status=accepted, passed=true on fixtures/qwen35_paro/parent_512_32_seed1234.json.
+# Logit gate: max_kl=0.015109600824453203 <= 0.05, mean_kl=0.0017163166981801242,
+# top1_agreement=1.0 >= 0.90 over 33 positions.
+# seed_match=true (token 4403), generated_match=true, expected_match=true.
+# generated ids: [1739, 220, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+# 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15].
+# INT8 retained KV audit passed after prefill and decode: payload_bytes=7,864,320,
+# payload_bytes_per_element=1.0, scale_bytes=61,440, persistent_bf16_kv_layers=[].
+```
+
+rocprofv3 INT8 kernel traces:
+
+```bash
+rm -rf "$RUN/rocprof-write" "$RUN/rocprof-decode"
+mkdir -p "$RUN/rocprof-write" "$RUN/rocprof-decode"
+
+timeout 180s rocprofv3 --kernel-trace --output-format csv -d "$RUN/rocprof-write" -- \
+  python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+  > "$RUN/rocprof-write/stdout.log" 2> "$RUN/rocprof-write/stderr.log"
+
+timeout 180s rocprofv3 --kernel-trace --output-format csv -d "$RUN/rocprof-decode" -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+  > "$RUN/rocprof-decode/stdout.log" 2> "$RUN/rocprof-decode/stderr.log"
+```
+
+Trace outputs and summaries:
+
+- Write CSV: `/tmp/hipengine-task14-int8-kv-gates/rocprof-write/epyc/22980_kernel_trace.csv`.
+  - `qwen35_write_paged_kv_int8_per_token_head_kernel<float>`: 3 calls, avg 8,506.7 ns, max 12,720 ns.
+  - `qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16>`: 1 call, 10,880 ns.
+- Decode CSV: `/tmp/hipengine-task14-int8-kv-gates/rocprof-decode/epyc/23054_kernel_trace.csv`.
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<_Float16, 8l, 16l, 2l>`: 3 calls, avg 81,708.7 ns, max 88,842 ns.
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float, 8l, 16l, 2l>`: 2 calls, avg 56,842.5 ns, max 66,441 ns.
+  - Expected split-K reduce/gate kernels also appeared with 3 reduce calls plus fp16/bf16 gate reduce calls.
+
+```bash
+rocm-smi --showpids --showmeminfo vram --showuse
+# After gates: no KFD PIDs; GPU use 0%; VRAM used 27,942,912 B / 48,301,604,864 B.
+```
