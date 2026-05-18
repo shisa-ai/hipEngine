@@ -319,6 +319,11 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
                 "append_materialize": draft_context_append_seconds,
                 "query_only_drafter": draft_query_seconds,
             },
+            "draft_native_phase_seconds": _float_dict(spec.get("draft_native_phase_seconds")),
+            "drafter_context_mode": _optional_str(spec.get("drafter_context_mode")),
+            "draft_phase_timing_mode": _optional_str(spec.get("draft_phase_timing_mode")),
+            "proposal_trace_sample": _json_list(spec.get("proposal_trace_sample")),
+            "proposal_trace_count": _optional_int(spec.get("proposal_trace_count")),
             "draft_kv_bytes": _optional_int(spec.get("draft_kv_bytes", spec.get("draft_context_kv_bytes"))),
             "draft_kv_capacity_tokens": _optional_int(spec.get("draft_kv_capacity_tokens", spec.get("draft_context_capacity_tokens"))),
             "target_verify_seconds": verify_seconds,
@@ -566,6 +571,13 @@ def schema_fixture_row() -> dict[str, Any]:
             "draft_context_full_rebuild_seconds": 0.20,
             "draft_context_append_seconds": 0.05,
             "draft_query_seconds": 0.10,
+            "draft_native_phase_seconds": {"context_projection": 0.02, "decoder_layers": 0.25, "lm_head": 0.03, "topk_and_readback": 0.01},
+            "drafter_context_mode": "append_kv_query_only",
+            "draft_phase_timing_mode": "synchronized",
+            "proposal_trace_sample": [
+                {"cycle": 1, "root_token": 101, "draft_candidates": [102, 103], "target_top1_path": [102, 103], "accepted": 2}
+            ],
+            "proposal_trace_count": 4,
             "draft_kv_bytes": 576,
             "draft_kv_capacity_tokens": 6,
             "target_verify_seconds": 2.25,
@@ -740,6 +752,27 @@ def _optional_str(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _float_dict(value: Any) -> dict[str, float]:
+    if not isinstance(value, Mapping):
+        return {}
+    out: dict[str, float] = {}
+    for key, raw in value.items():
+        parsed = _optional_float(raw)
+        if parsed is not None:
+            out[str(key)] = parsed
+    return out
+
+
+def _json_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return []
 
 
 def _dict_or_none(value: Any) -> dict[str, Any] | None:

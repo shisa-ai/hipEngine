@@ -40,6 +40,7 @@ class DFlashDraftConfig:
     num_attention_heads: int
     num_key_value_heads: int
     head_dim: int
+    rope_theta: float
     vocab_size: int
     dtype: str
     layer_types: tuple[str, ...]
@@ -59,6 +60,7 @@ class DFlashDraftConfig:
             "num_attention_heads": self.num_attention_heads,
             "num_key_value_heads": self.num_key_value_heads,
             "head_dim": self.head_dim,
+            "rope_theta": self.rope_theta,
             "vocab_size": self.vocab_size,
             "dtype": self.dtype,
             "layer_types": list(self.layer_types),
@@ -182,6 +184,7 @@ def dflash_draft_config_from_hf(config: Mapping[str, Any]) -> DFlashDraftConfig:
         num_attention_heads=num_attention_heads,
         num_key_value_heads=int(config.get("num_key_value_heads", num_attention_heads)),
         head_dim=head_dim,
+        rope_theta=float(config.get("rope_theta", 10000.0)),
         vocab_size=int(config["vocab_size"]),
         dtype=str(config.get("dtype", "bfloat16")),
         layer_types=layer_types,
@@ -212,6 +215,7 @@ def validate_dflash_drafter_metadata(
             num_attention_heads=0,
             num_key_value_heads=0,
             head_dim=0,
+            rope_theta=10000.0,
             vocab_size=0,
             dtype="",
             layer_types=(),

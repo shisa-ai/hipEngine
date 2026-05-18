@@ -38,6 +38,7 @@ def test_dflash_draft_config_captures_required_fields() -> None:
     assert cfg.num_attention_heads == 4
     assert cfg.num_key_value_heads == 2
     assert cfg.head_dim == 4
+    assert cfg.rope_theta == 10_000_000.0
     assert cfg.vocab_size == 100
 
 
@@ -139,6 +140,7 @@ def _draft_config() -> dict:
         "num_hidden_layers": 2,
         "num_key_value_heads": 2,
         "num_target_layers": 4,
+        "rope_theta": 10_000_000.0,
         "vocab_size": 100,
     }
 

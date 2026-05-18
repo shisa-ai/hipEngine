@@ -17925,3 +17925,57 @@ Results:
 ### Gate impact
 
 - Task D17 / DDTree remains blocked: chain DFlash does **not** beat same-session AR in the full-model smoke, and no retained `performance_claim=true` chain row exists.
+
+## 2026-05-18 — DFlash chain E2E diagnosis: drafter RoPE theta bug
+
+### Finding
+
+- The first full-model DFlash E2E smoke had zero acceptance and a slower-than-AR row. Instrumented proposal traces showed the native drafter proposing the wrong first candidate, and phase timing initially hid GPU work behind the final top-k sync.
+- Root cause found in `scripts/dflash_chain_e2e_bench.py`: drafter rotary tables used `_rotary_tables(... theta=10000.0)` while the z-lab DFlash config declares `rope_theta=10000000`. This is a math/config bug in the native drafter path, not a DDTree issue.
+
+### Fix
+
+- Extended `DFlashDraftConfig` to retain `rope_theta` from HF config and changed the E2E native drafter to build RoPE tables with `self.config.rope_theta`.
+- Added diagnostic fields to full-model rows: `draft_native_phase_seconds`, `draft_phase_timing_mode`, `proposal_trace_sample`, and `proposal_trace_count`.
+- Added `--sync-draft-phases` for diagnostic timing only; normal rows still avoid per-phase synchronization and label phase timing as `enqueue_until_final_sync`.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_dflash_metadata.py tests/test_dflash_drafter.py tests/test_speculative_benchmark.py tests/test_dflash_prompts.py tests/test_qwen35_resident_batch_layout.py -q
+python3 -m py_compile hipengine/loading/dflash.py hipengine/benchmark/speculative.py scripts/dflash_chain_e2e_bench.py hipengine/runtime/qwen35_paro_runner.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 1200s \
+  python3 scripts/dflash_chain_e2e_bench.py \
+    --backend hip_gfx1151 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build \
+    --max-prompts 1 \
+    --decode-tokens 4 \
+    --draft-budgets 4 \
+    --json /tmp/hipengine-dflash-chain-e2e-rope-fix.json
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 1200s \
+  python3 scripts/dflash_chain_e2e_bench.py \
+    --backend hip_gfx1151 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build \
+    --sync-draft-phases \
+    --max-prompts 1 \
+    --decode-tokens 4 \
+    --draft-budgets 4 \
+    --json /tmp/hipengine-dflash-chain-e2e-rope-fix-sync.json
+```
+
+Results:
+
+- pytest: `55 passed`.
+- Non-sync retained diagnostic artifact: `benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-rope-fix-diagnostic.json`.
+  - rows `1`, decode tokens `4`, exact same-session AR equality `true`, finite logits `true`;
+  - acceptance hist `{0:1,1:1}` (previous equivalent trace was `{0:3}` before the rope fix);
+  - AR decode `64.228 tok/s`, DFlash decode `15.509 tok/s`, speedup `0.241x`;
+  - target verify rows/output token `2.0`, D2H scalar/vector reads `8/4`, full-logit readbacks `0`;
+  - `status=diagnostic`, `performance_claim=false` because verifier is serial branch state-copy and the drafter still full-context rebuilds.
+- Sync-phase diagnostic confirms native drafter time is dominated by full-context work, not top-k: over two draft calls, `context_projection=52.1 ms`, `decoder_layers=134.3 ms`, `lm_head=20.2 ms`, `topk_and_readback=1.3 ms`.
+
+### Gate impact
+
+- DDTree remains blocked: chain DFlash is now mathematically less wrong and accepts one draft token in the smoke, but it is still only `0.241x` same-session AR and `performance_claim=false`.

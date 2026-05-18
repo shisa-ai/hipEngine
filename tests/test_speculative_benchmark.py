@@ -55,6 +55,11 @@ def test_normalize_speculative_row_records_required_dflash_metrics() -> None:
         "append_materialize": 0.05,
         "query_only_drafter": 0.10,
     }
+    assert row["spec"]["draft_native_phase_seconds"]["decoder_layers"] == 0.25
+    assert row["spec"]["drafter_context_mode"] == "append_kv_query_only"
+    assert row["spec"]["draft_phase_timing_mode"] == "synchronized"
+    assert row["spec"]["proposal_trace_sample"][0]["accepted"] == 2
+    assert row["spec"]["proposal_trace_count"] == 4
     assert row["spec"]["draft_kv_bytes"] == 576
     assert row["spec"]["draft_kv_capacity_tokens"] == 6
     assert row["d2h"]["scalar_reads"] == 4

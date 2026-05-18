@@ -100,9 +100,12 @@ It records:
   canonical linear state, KV, hidden taps, output ids, or context metadata;
 - `scripts/dflash_chain_e2e_bench.py` now runs a same-session full-model AR
   control and native DFlash chain smoke on the shisa packed target plus z-lab
-  drafter. The retained gfx1151 diagnostic artifact has exact finite equality
-  for a 2-token smoke but DFlash is slower than AR (`0.254x`) and remains
-  non-promotable because verification uses serial branch state copies;
+  drafter. A follow-up diagnostic fixed the drafter rotary table from a
+  hard-coded `10000` to the z-lab config `rope_theta=10000000`; the retained
+  gfx1151 smoke is exact/finite with non-zero acceptance (`{0:1,1:1}` over two
+  cycles) but remains slower than AR (`0.241x`) and non-promotable because
+  verification uses serial branch state copies and the drafter rebuilds full
+  context each cycle;
 - no speculative throughput claim is allowed until a native compact/c-aware
   target verifier with selectable per-row state and GPU accept summaries replaces
   the serial branch verifier and produces a retained chain win.
@@ -478,8 +481,9 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   hidden taps on device, proposes a top-1 chain through z-lab drafter weights,
   verifies exactly via serial branch slot-state copies, and emits schema-2 rows
   with acceptance, split timings, D2H counts, graph status, backend/arch, memory,
-  and promotion eligibility. The retained gfx1151 smoke artifact is exact/finite
-  but slower than AR (`0.254x`) and `performance_claim=false`.
+  and promotion eligibility. The retained gfx1151 smoke artifact after the
+  `rope_theta` fix is exact/finite but slower than AR (`0.241x`) and
+  `performance_claim=false`.
 - Remaining integration work: replace serial branch verification with the native
   compact/bulk target verifier and then promote only if full-model chain beats
   same-session AR.

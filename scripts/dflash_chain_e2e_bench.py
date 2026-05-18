@@ -75,6 +75,7 @@ class DraftResult:
     finite_logits: bool
     d2h_vector_reads: int
     d2h_vector_values: int
+    phase_seconds: dict[str, float]
 
 
 class NativeDFlashChainDrafter:
@@ -95,11 +96,13 @@ class NativeDFlashChainDrafter:
         candidate_budget: int,
         compiler_version: str | None,
         require_cached_build: bool,
+        sync_draft_phases: bool = False,
     ) -> None:
         self.session = session
         self.runtime = session.runtime
         self.device = Device("hip", 0)
         self.candidate_budget = int(candidate_budget)
+        self.sync_draft_phases = bool(sync_draft_phases)
         self.drafter_index = load_weight_index(drafter_model)
         self.weights = load_dflash_drafter_bf16_weights(
             self.drafter_index,
@@ -153,6 +156,8 @@ class NativeDFlashChainDrafter:
         if context_tokens > self.max_context_tokens:
             raise ValueError("context_tokens exceeds DFlash context capacity")
         t0 = time.perf_counter()
+        phases: dict[str, float] = {}
+        phase_t = time.perf_counter()
         root = np.asarray([int(root_token)], dtype=np.int32)
         pos = np.asarray([int(root_position)], dtype=np.int32)
         copy_host_to_device(self._buffer_for(self.root_tokens), host_array_ptr(root), runtime=self.runtime)
@@ -178,7 +183,11 @@ class NativeDFlashChainDrafter:
             library=self.library,
             runtime=self.runtime,
         )
+        self._record_phase(phases, "noise_prepare", phase_t)
+        phase_t = time.perf_counter()
         self._write_key_positions(context_tokens, root_position)
+        self._record_phase(phases, "key_positions_h2d", phase_t)
+        phase_t = time.perf_counter()
         dflash_dense_bf16_to_bf16(
             self.target_hidden_concat.ptr,
             self.weights.tensor("fc.weight").ptr,
@@ -200,11 +209,23 @@ class NativeDFlashChainDrafter:
             library=self.library,
             runtime=self.runtime,
         )
+        self._record_phase(phases, "context_projection", phase_t)
         query_in = self.query_hidden_a
         query_out = self.query_hidden_b
+        layer_seconds: list[float] = []
+        layers_t = time.perf_counter()
         for layer in range(self.config.num_hidden_layers):
+            layer_t = time.perf_counter()
             query_out = self._run_layer(layer, context_tokens=context_tokens, query_in=query_in, query_out=query_out)
             query_in, query_out = query_out, query_in
+            if self.sync_draft_phases:
+                self.runtime.device_synchronize()
+            layer_seconds.append(time.perf_counter() - layer_t)
+        if self.sync_draft_phases:
+            self.runtime.device_synchronize()
+        phases["decoder_layers"] = time.perf_counter() - layers_t
+        phases["slowest_decoder_layer"] = max(layer_seconds) if layer_seconds else 0.0
+        phase_t = time.perf_counter()
         dflash_rmsnorm_bf16(
             query_in.ptr,
             self.weights.tensor("norm.weight").ptr,
@@ -215,6 +236,8 @@ class NativeDFlashChainDrafter:
             library=self.library,
             runtime=self.runtime,
         )
+        self._record_phase(phases, "final_norm", phase_t)
+        phase_t = time.perf_counter()
         logits_ptr = self.logits.ptr
         w8a16_linear_bf16_f32_out(
             self.final_norm.ptr + self.hidden * DType.BF16.itemsize,
@@ -228,6 +251,8 @@ class NativeDFlashChainDrafter:
             library=self.session.libraries["w8a16"],
             runtime=self.runtime,
         )
+        self._record_phase(phases, "lm_head", phase_t)
+        phase_t = time.perf_counter()
         topk_f32_rows_i32(
             logits_ptr,
             self.top1_values.ptr,
@@ -244,14 +269,22 @@ class NativeDFlashChainDrafter:
         top1_values = np.empty((self.candidate_budget, 1), dtype=np.float32)
         copy_device_to_host(host_array_ptr(top1), self._buffer_for(self.top1_ids), runtime=self.runtime)
         copy_device_to_host(host_array_ptr(top1_values), self._buffer_for(self.top1_values), runtime=self.runtime)
+        phases["topk_and_readback"] = time.perf_counter() - phase_t
         draft_seconds = time.perf_counter() - t0
+        phases["total"] = draft_seconds
         return DraftResult(
             candidate_tokens=tuple(int(x) for x in top1.reshape(-1).tolist()),
             draft_seconds=draft_seconds,
             finite_logits=bool(np.isfinite(top1_values).all()),
             d2h_vector_reads=2,
             d2h_vector_values=2 * self.candidate_budget,
+            phase_seconds=phases,
         )
+
+    def _record_phase(self, phases: dict[str, float], name: str, started_at: float) -> None:
+        if self.sync_draft_phases:
+            self.runtime.device_synchronize()
+        phases[name] = time.perf_counter() - started_at
 
     def _allocate(self) -> None:
         self.root_tokens = self._empty((1,), DType.INT32)
@@ -286,8 +319,9 @@ class NativeDFlashChainDrafter:
         self.logits = self._empty((self.candidate_budget, self.vocab_size), DType.FP32)
         self.top1_values = self._empty((self.candidate_budget, 1), DType.FP32)
         self.top1_ids = self._empty((self.candidate_budget, 1), DType.INT32)
-        self.cos = self._load_array(_rotary_tables(self.max_context_tokens + self.block_size + 8, self.head_dim)[0], DType.FP32)
-        self.sin = self._load_array(_rotary_tables(self.max_context_tokens + self.block_size + 8, self.head_dim)[1], DType.FP32)
+        cos, sin = _rotary_tables(self.max_context_tokens + self.block_size + 8, self.head_dim, theta=float(self.config.rope_theta))
+        self.cos = self._load_array(cos, DType.FP32)
+        self.sin = self._load_array(sin, DType.FP32)
 
     def _run_layer(self, layer: int, *, context_tokens: int, query_in: Tensor, query_out: Tensor) -> Tensor:
         prefix = f"layers.{layer}"
@@ -567,6 +601,7 @@ def run_same_session_pair(
     compiler_version: str | None,
     require_cached_build: bool,
     prefill_config: PrefillConfig,
+    sync_draft_phases: bool = False,
 ) -> tuple[tuple[list[int], dict[str, Any]], tuple[list[int], dict[str, Any]]]:
     """Run AR control and DFlash chain in one resident target session.
 
@@ -627,6 +662,7 @@ def run_same_session_pair(
             candidate_budget=candidate_budget,
             compiler_version=compiler_version,
             require_cached_build=require_cached_build,
+            sync_draft_phases=sync_draft_phases,
         ) as drafter:
             spec_tokens, spec_meta = _run_dflash_chain_on_session(
                 session=session,
@@ -680,6 +716,8 @@ def _run_dflash_chain_on_session(
     draft_calls = 0
     draft_tokens_proposed = 0
     verify_rows_total = 0
+    draft_phase_seconds: dict[str, float] = {}
+    proposal_trace: list[dict[str, Any]] = []
     finite_draft = True
     finite_verify = True
     t1 = time.perf_counter()
@@ -714,6 +752,12 @@ def _run_dflash_chain_on_session(
         draft_calls += 1
         draft_tokens_proposed += active_budget
         draft_seconds_total += draft.draft_seconds
+        for phase_name, phase_seconds in draft.phase_seconds.items():
+            value = float(phase_seconds)
+            if phase_name == "slowest_decoder_layer":
+                draft_phase_seconds[phase_name] = max(draft_phase_seconds.get(phase_name, 0.0), value)
+            else:
+                draft_phase_seconds[phase_name] = draft_phase_seconds.get(phase_name, 0.0) + value
         finite_draft = finite_draft and draft.finite_logits
         d2h_vector_reads += draft.d2h_vector_reads
         d2h_vector_values += draft.d2h_vector_values
@@ -757,6 +801,19 @@ def _run_dflash_chain_on_session(
         t_commit = time.perf_counter()
         session.copy_slot_state(selected_slot, base_slot)
         committed = [root_token, *candidates[:accepted]]
+        if len(proposal_trace) < 16:
+            proposal_trace.append(
+                {
+                    "cycle": cycles,
+                    "root_position": context_tokens,
+                    "root_token": int(root_token),
+                    "draft_candidates": [int(token) for token in candidates],
+                    "target_top1_path": [int(token) for token in target_top1],
+                    "accepted": int(accepted),
+                    "committed_tokens": [int(token) for token in committed],
+                    "bonus_token": int(bonus),
+                }
+            )
         commit_seconds_total += time.perf_counter() - t_commit
         generated.extend(committed)
         root_token = int(bonus)
@@ -773,6 +830,9 @@ def _run_dflash_chain_on_session(
         "draft_calls": draft_calls,
         "decode_cycles": cycles,
         "draft_tokens_proposed": draft_tokens_proposed,
+        "draft_native_phase_seconds": draft_phase_seconds,
+        "proposal_trace_sample": proposal_trace,
+        "proposal_trace_count": draft_calls,
         "finite_draft_logits": finite_draft,
         "finite_verify_logits": finite_verify,
         "decode_tok_s": decode_tokens / decode_seconds if decode_seconds > 0 else None,
@@ -790,6 +850,7 @@ def _run_dflash_chain_on_session(
         "verifier_mode": "serial_branch_state_copy",
         "native_bulk_verifier": False,
         "drafter_context_mode": "full_context_rebuild_per_cycle",
+        "draft_phase_timing_mode": "synchronized" if drafter.sync_draft_phases else "enqueue_until_final_sync",
         "base_slot": base_slot,
         "branch_slot_start": branch_slot_start,
     }
@@ -861,6 +922,11 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "draft_context_full_rebuild_seconds": spec_meta["draft_seconds"],
             "draft_context_append_seconds": 0.0,
             "draft_query_seconds": spec_meta["draft_seconds"],
+            "draft_native_phase_seconds": spec_meta.get("draft_native_phase_seconds", {}),
+            "drafter_context_mode": spec_meta.get("drafter_context_mode"),
+            "draft_phase_timing_mode": spec_meta.get("draft_phase_timing_mode"),
+            "proposal_trace_sample": spec_meta.get("proposal_trace_sample", []),
+            "proposal_trace_count": spec_meta.get("proposal_trace_count", spec_meta["draft_calls"]),
             "target_verify_seconds": spec_meta["target_verify_seconds"],
             "commit_seconds": spec_meta["commit_seconds"],
             "target_verify_rows": spec_meta["target_verify_rows"],
@@ -920,6 +986,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-layers", type=int, default=0)
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--sync-draft-phases", action="store_true", help="Diagnostic only: synchronize after major drafter phases before timing them")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -948,6 +1015,7 @@ def main(argv: list[str] | None = None) -> int:
                 compiler_version=compiler_version,
                 require_cached_build=args.require_cached_build,
                 prefill_config=prefill_config,
+                sync_draft_phases=args.sync_draft_phases,
             )
             rows.append(_row_for_artifact(prompt, budget, ar, spec))
     artifact = build_speculative_artifact(
