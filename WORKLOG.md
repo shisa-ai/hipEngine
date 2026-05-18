@@ -19358,3 +19358,59 @@ Updated `docs/KERNELS.md` P8.4 row to point to the formal test file and rocprof 
 Open for task #15:
 
 - The selected kernel output is still PARO-style concatenated gate+up per compact row, not separate gate/up buffers. Runtime P8.6 must either consume that layout directly or explicitly split before `silu_mul_separate_out_bf16`.
+
+## 2026-05-18 P8.5 task #13: selected Q5_K/Q6_K MoE WMMA down kernels landed
+
+Implemented the grouped/selected compact-MoE Q5_K/Q6_K down-projection WMMA kernel family for P8.5.
+
+Files:
+
+- `hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.hip`
+- `hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.py`
+- `docs/KERNELS.md` catalog row
+
+Kernel/API surface:
+
+- C symbols:
+  - `hipengine_gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out`
+  - `hipengine_gguf_q5_k_selected_wmma_prefill_compact_fp16_fp16_out`
+  - `hipengine_gguf_q6_k_selected_wmma_prefill_compact_bf16_bf16_out`
+  - `hipengine_gguf_q6_k_selected_wmma_prefill_compact_fp16_fp16_out`
+- Python wrappers with matching names.
+- Registered keys under existing `moe_linear` layer:
+  - `('hip_gfx1100','moe_linear','gguf_q5_k','selected_wmma_prefill_compact_bf16_bf16_out')`
+  - `('hip_gfx1100','moe_linear','gguf_q5_k','selected_wmma_prefill_compact_fp16_fp16_out')`
+  - same two for `gguf_q6_k`
+  - shorthand aliases without `_compact_`: `selected_wmma_prefill_{bf16,fp16}_{bf16,fp16}_out` for both quants.
+
+ABI / layout:
+
+```text
+x                    [compact_rows, in_features]
+expert_start_compact [num_experts + 1]
+expert_start_wmma    [num_experts + 1]
+tile_expert          [wmma_total_rows / 16]
+qweight              raw GGUF [E, out_features, row_bytes]
+out                  [compact_rows, out_features]
+```
+
+This is the same compact scheduler ABI as P8.4 selected Q4_K and PARO compact WMMA. No new compact-MoE ABI, no resident weight sidecar, and no repack: Q5_K/Q6_K raw expert bytes stay on device and are dequantized into half WMMA operands inside the K loop.
+
+Implementation details:
+
+- One wave32 block per 16 compact rows x 16 output columns, `__launch_bounds__(32,2)`, `float8_t acc`, `half16_t` activation/weight operands, `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32`, and the same `expert_start_compact` / `wmma_expert_start` / `tile_expert` row lookup used by task #11.
+- Q5_K dequant mirrors `gguf_k_gemv.hip::q5_k_weight`: 176-byte block = fp16 `d`, fp16 `dmin`, 12 packed 6-bit scale/min bytes, 32 high-bit bytes, 128 q4 bytes. For each 16-wide WMMA K tile, dequant uses Q4_K scale/min decode and injects the high bit from `qh[lane32] >> subblock`.
+- Q6_K dequant mirrors `gguf_k_gemv.hip::q6_k_weight`: 210-byte block = 128 low-q bytes, 64 high-q bytes, 16 int8 scales, fp16 super-scale `d`. The K loop is naturally 16 tiles per block; each tile uses scale `scales[within >> 4]`, combines 4 low bits + 2 high bits, subtracts 32, then applies `d * scale * q`.
+- Unlike Q4_K dual gate/up, single down output supports non-multiple-of-16 `out_features`; boundary columns are masked in the store path. Wrapper validation requires only positive dims, `in_features % 256 == 0`, and `wmma_total_rows % 16 == 0`.
+
+Validation on W7900/gfx1100:
+
+- `uv run python -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.py` -> OK.
+- Registry/build-plan smoke: all compact and shorthand `moe_linear` keys resolve for `gguf_q5_k` and `gguf_q6_k`; dry plan names `gguf_k_selected_prefill.so`; cached HIP build loads from `/home/lhl/.cache/hipengine/build/gguf_k_selected_prefill-d5b5f3a32596b7f0/gguf_k_selected_prefill.so`.
+- Inline compact smoke vs CPU selected oracle assembled from `gguf_quant_gemv(..., GGMLQuantizationType.Q5_K/Q6_K)`: `counts=[17,0,5]`, `compact_rows=22`, `in_features=512`, `out_features=40`, three experts with the middle expert empty. BF16 results: Q5_K `max|d|=0.1073`, `max_rel_max1=0.015625`; Q6_K `max|d|=0.0305`, `max_rel_max1=0.00492`. These are within expected BF16/half-operand tolerance.
+- Narrow regression: `uv run --with pytest pytest tests/test_gguf_k_gemv.py tests/test_gguf_q4_k_selected_wmma_prefill.py -q` -> `15 passed`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` rerun; known PARO parent drift remains from earlier P8 audits and is not a blocker for this in-tree GGUF raw-dequant implementation.
+
+Open for task #14:
+
+- Formal selected Q5_K/Q6_K tests should mirror task #12's compact fixture matrix: multiple experts, uneven row counts, padding rows, empty experts, BF16/FP16 wrappers, non-multiple-of-16 output boundaries, and rocprof symbol smoke for `gguf_k_selected_wmma_prefill_compact_kernel<unsigned short,5/6>`.
