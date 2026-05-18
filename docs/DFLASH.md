@@ -444,12 +444,15 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   (`dflash_head_rmsnorm_rotary_f32`), and validate the correctness-first
   non-causal GQA attention primitive `dflash_gqa_attention_f32_bf16` against a
   NumPy BF16 oracle.
-- **Partial landed 2026-05-18:** add `DFlashDraftKVCacheOwner` /
+- **Landed 2026-05-18:** add `DFlashDraftKVCacheOwner` /
   `DFlashDraftKVCacheSpec` for fixed per-layer context K/V buffers, append-plan
   capacity checks, metadata reporting (`key_bytes`, `value_bytes`, `total_bytes`,
   phases `full_context_rebuild` / `append_materialize` / `query_only_drafter`),
-  and NumPy reference tests proving append-only K/V materialization matches a
-  full-context rebuild prefix without clobbering suffix rows.
+  NumPy reference tests proving append-only K/V materialization matches a
+  full-context rebuild prefix without clobbering suffix rows, and gfx1151
+  `materialize_dflash_draft_kv_append_from_projected()` smoke that projects only
+  newly appended rows, applies K norm/RoPE, writes fixed K/V cache rows, and
+  updates positions/live-count metadata.
 - Draft forward computes only root/query rows; context K/V are read from draft KV.
 - **Landed 2026-05-18:** add compact draft lm-head top-k primitive
   `topk_f32_rows_i32`, candidate-only `DraftBatch` emission from top-k rows, and

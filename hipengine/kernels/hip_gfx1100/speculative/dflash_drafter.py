@@ -21,6 +21,8 @@ _SYMBOL_SILU_MUL_BF16 = "hipengine_dflash_silu_mul_bf16"
 _SYMBOL_DENSE_BF16_TO_BF16 = "hipengine_dflash_dense_bf16_to_bf16"
 _SYMBOL_DENSE_BF16_TO_F32 = "hipengine_dflash_dense_bf16_to_f32"
 _SYMBOL_HEAD_RMS_ROTARY = "hipengine_dflash_head_rmsnorm_rotary_f32"
+_SYMBOL_KEY_RMS_ROTARY = "hipengine_dflash_key_rmsnorm_rotary_f32"
+_SYMBOL_UPDATE_KV_METADATA = "hipengine_dflash_update_kv_metadata_i32"
 _SYMBOL_GQA_ATTENTION = "hipengine_dflash_gqa_attention_f32_bf16"
 _ALLOWED_THREADS = {64, 128, 256}
 
@@ -378,6 +380,119 @@ def dflash_head_rmsnorm_rotary_f32(
         runtime.check(int(err))
 
 
+def dflash_key_rmsnorm_rotary_f32(
+    key_f32_ptr: int,
+    k_weight_bf16_ptr: int,
+    cos_table_f32_ptr: int,
+    sin_table_f32_ptr: int,
+    key_positions_i32_ptr: int,
+    key_out_f32_ptr: int,
+    rows: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    eps: float = 1.0e-6,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply direct-weight K head RMSNorm plus rotary for draft context materialization."""
+
+    _check_key_rotary_shape(rows, num_kv_heads, head_dim, rotary_dim, max_positions, threads)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_KEY_RMS_ROTARY)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_f32_ptr),
+        ctypes.c_void_p(k_weight_bf16_ptr),
+        ctypes.c_void_p(cos_table_f32_ptr),
+        ctypes.c_void_p(sin_table_f32_ptr),
+        ctypes.c_void_p(key_positions_i32_ptr),
+        ctypes.c_void_p(key_out_f32_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(rotary_dim),
+        ctypes.c_int64(max_positions),
+        ctypes.c_float(float(eps)),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dflash_update_kv_metadata_i32(
+    append_positions_i32_ptr: int,
+    cache_positions_i32_ptr: int,
+    live_count_i32_ptr: int,
+    *,
+    start: int,
+    count: int,
+    end: int,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Copy appended positions and update draft KV live count on device."""
+
+    if start < 0:
+        raise ValueError("start must be non-negative")
+    if count < 0:
+        raise ValueError("count must be non-negative")
+    if end < start:
+        raise ValueError("end must be no smaller than start")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64, 128, or 256")
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_UPDATE_KV_METADATA)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(append_positions_i32_ptr),
+        ctypes.c_void_p(cache_positions_i32_ptr),
+        ctypes.c_void_p(live_count_i32_ptr),
+        ctypes.c_int64(start),
+        ctypes.c_int64(count),
+        ctypes.c_int64(end),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def dflash_gqa_attention_f32_bf16(
     query_f32_ptr: int,
     key_f32_ptr: int,
@@ -493,6 +608,16 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dflash_head_rmsnorm_rotary", "w4_paro", "f32_bf16"),
         dflash_head_rmsnorm_rotary_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_key_rmsnorm_rotary", "w4_paro", "f32_bf16"),
+        dflash_key_rmsnorm_rotary_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_update_kv_metadata", "w4_paro", "i32"),
+        dflash_update_kv_metadata_i32,
         replace=replace,
     )
     register(
@@ -727,6 +852,22 @@ def _check_head_rotary_shape(
         ("query_len", query_len),
         ("kv_len", kv_len),
         ("num_q_heads", num_q_heads),
+        ("num_kv_heads", num_kv_heads),
+        ("head_dim", head_dim),
+        ("rotary_dim", rotary_dim),
+        ("max_positions", max_positions),
+    ):
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+    if rotary_dim > head_dim or rotary_dim % 2:
+        raise ValueError("rotary_dim must be even and no larger than head_dim")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64, 128, or 256")
+
+
+def _check_key_rotary_shape(rows: int, num_kv_heads: int, head_dim: int, rotary_dim: int, max_positions: int, threads: int) -> None:
+    for name, value in (
+        ("rows", rows),
         ("num_kv_heads", num_kv_heads),
         ("head_dim", head_dim),
         ("rotary_dim", rotary_dim),

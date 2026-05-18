@@ -22,10 +22,12 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
     dflash_head_rmsnorm_rotary_f32,
+    dflash_key_rmsnorm_rotary_f32,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
     dflash_rmsnorm_bf16,
     dflash_silu_mul_bf16,
+    dflash_update_kv_metadata_i32,
     plan_dflash_accept_build,
     plan_dflash_commit_build,
     plan_dflash_drafter_build,
@@ -122,6 +124,14 @@ def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
         is dflash_head_rmsnorm_rotary_f32
     )
     assert (
+        resolve(backend="hip_gfx1151", layer="dflash_key_rmsnorm_rotary", quant="w4_paro", variant="f32_bf16")
+        is dflash_key_rmsnorm_rotary_f32
+    )
+    assert (
+        resolve(backend="hip_gfx1151", layer="dflash_update_kv_metadata", quant="w4_paro", variant="i32")
+        is dflash_update_kv_metadata_i32
+    )
+    assert (
         resolve(backend="hip_gfx1151", layer="dflash_gqa_attention", quant="w4_paro", variant="f32_bf16")
         is dflash_gqa_attention_f32_bf16
     )
@@ -184,6 +194,22 @@ def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hi
             rotary_dim=9,
             max_positions=16,
         )
+    with pytest.raises(ValueError, match="rotary_dim"):
+        dflash_key_rmsnorm_rotary_f32(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            rows=1,
+            num_kv_heads=2,
+            head_dim=8,
+            rotary_dim=9,
+            max_positions=16,
+        )
+    with pytest.raises(ValueError, match="end"):
+        dflash_update_kv_metadata_i32(0, 0, 0, start=2, count=1, end=1)
     with pytest.raises(ValueError, match="num_q_heads"):
         dflash_gqa_attention_f32_bf16(
             0,

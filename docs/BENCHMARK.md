@@ -161,7 +161,11 @@ harnesses:
 - speculative tok/s, exact equality vs AR, finite AR/draft/verify logits;
 - acceptance histograms and cumulative `>=N` rates;
 - target-verify rows/output token and verify ETA vs AR per row;
-- draft / target-verify / commit split;
+- draft / target-verify / commit split, plus DFlash drafter sub-phase timings
+  `draft_context_full_rebuild_seconds`, `draft_context_append_seconds`, and
+  `draft_query_seconds` so artifacts distinguish full-context rebuild,
+  append-only materialization, and query-only drafter cost;
+- draft K/V cache capacity/bytes (`draft_kv_capacity_tokens`, `draft_kv_bytes`);
 - scalar/vector device-to-host readback counts, with full-logit readbacks called
   out explicitly;
 - graph capture/replay status and bucket key;

@@ -17646,3 +17646,82 @@ python3 -m py_compile hipengine/speculative/dflash_context.py hipengine/speculat
 python3 -m pytest -q tests/test_dflash_context_kv.py
 # 4 passed
 ```
+
+## 2026-05-18 — DFlash incremental draft context KV materializer (D13)
+
+### Scope
+
+- Added GPU append-only materialization for fixed DFlash draft context K/V caches:
+  - `dflash_key_rmsnorm_rotary_f32` applies direct-weight K head RMSNorm + RoPE to newly projected K rows;
+  - `dflash_update_kv_metadata_i32` copies appended positions and updates the live-count scalar;
+  - `materialize_dflash_draft_kv_append_from_projected()` composes per-layer K projection, K norm/RoPE, V projection, fixed-cache writes, and metadata update;
+  - `materialize_dflash_draft_kv_append()` additionally projects newly committed target hidden taps via `fc + hidden_norm` before appending.
+- Added `DFlashDraftKVLayerWeights`, `DFlashDraftKVMaterializerScratch`, and `DFlashDraftKVMaterializeResult` with benchmark metadata (`draft_kv_bytes`, `key_bytes`, `value_bytes`, `capacity_tokens`, phase names).
+- Added `scripts/dflash_context_kv_materializer_smoke.py`, which appends rows in two cycles, compares fixed-cache prefix against a full-context NumPy rebuild, verifies BF16 values exactly, proves suffix sentinel rows are untouched, and checks live-count/positions.
+- Extended the speculative benchmark schema with distinct `draft_context_full_rebuild_seconds`, `draft_context_append_seconds`, `draft_query_seconds`, `draft_kv_bytes`, and `draft_kv_capacity_tokens` fields so future benchmark rows can separate full-context rebuild, append-only materialization, and query-only drafter time.
+
+### Validation
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/kernels/hip_gfx1100/speculative/__init__.py \
+  hipengine/speculative/dflash_context.py \
+  hipengine/speculative/__init__.py \
+  scripts/dflash_context_kv_materializer_smoke.py \
+  tests/test_dflash_context_kv.py \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_speculative_benchmark.py
+python3 -m pytest -q \
+  tests/test_speculative_benchmark.py \
+  tests/test_dflash_context_kv.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_dflash_metadata.py \
+  tests/test_dflash_chain_compiler.py \
+  tests/test_speculative_interfaces.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_context_kv_materializer_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+rm -rf /tmp/hipengine-dflash-context-prof && mkdir -p /tmp/hipengine-dflash-context-prof
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  /opt/rocm/bin/rocprofv3 --kernel-trace --output-format csv \
+    --output-file /tmp/hipengine-dflash-context-prof/context -- \
+    python3 scripts/dflash_context_kv_materializer_smoke.py \
+      --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+      --require-cached-build
+python3 - <<'PY'
+import csv
+from pathlib import Path
+path=Path('/tmp/hipengine-dflash-context-prof/context_kernel_trace.csv')
+rows=list(csv.DictReader(path.open()))
+for name in sorted({r['Kernel_Name'] for r in rows if 'dflash' in r['Kernel_Name']}):
+    vals=[]; scratch=[]
+    for r in rows:
+        if r['Kernel_Name']==name:
+            vals.append(int(float(r['DurationNs'])) if r.get('DurationNs') else int(float(r['End_Timestamp']))-int(float(r['Start_Timestamp'])))
+            if r.get('Scratch_Size'):
+                scratch.append(int(float(r['Scratch_Size'])))
+    print(name, len(vals), min(vals), max(vals), sorted(set(scratch)))
+PY
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_drafter_root_query_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+python3 scripts/check_lineage.py --kind kernel --diff stat
+! grep -RInE 'import torch|torch\.' \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_context.py \
+  hipengine/speculative/dflash_drafter.py \
+  scripts/dflash_context_kv_materializer_smoke.py \
+  scripts/dflash_drafter_root_query_smoke.py \
+  tests/test_dflash_context_kv.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+git diff --check
+# pytest: 53 passed
+# materializer smoke: live_count=4, key_abs=2.384e-07, BF16 values exact, suffix sentinel rows preserved, bytes=576.
+# rocprofv3 1.1.0 / gfx1151: dense BF16→F32 count=4 DurationNs 1322–3768 Scratch_Size=0; key RMSNorm+RoPE count=4 DurationNs 1683–3447 Scratch_Size=0; dense BF16→BF16 count=4 DurationNs 1282–2084 Scratch_Size=0; metadata update count=2 DurationNs 1162–1684 Scratch_Size=0.
+# lineage: expected pre-existing baseline drift; DFlash R1 tree entries clean.
+```

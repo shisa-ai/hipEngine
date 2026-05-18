@@ -343,6 +343,58 @@ __global__ void dflash_head_rmsnorm_rotary_f32_kernel(
   }
 }
 
+__global__ void dflash_key_rmsnorm_rotary_f32_kernel(
+    const float* __restrict__ key,
+    const uint16_t* __restrict__ k_weight,
+    const float* __restrict__ cos_table,
+    const float* __restrict__ sin_table,
+    const int32_t* __restrict__ key_positions,
+    float* __restrict__ key_out,
+    int64_t rows,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    float eps) {
+  const int64_t head = static_cast<int64_t>(blockIdx.x);
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  if (row >= rows || head >= num_kv_heads) {
+    return;
+  }
+  const int64_t position = static_cast<int64_t>(key_positions[row]);
+  if (position < 0 || position >= max_positions) {
+    return;
+  }
+  extern __shared__ float partial[];
+  const int64_t offset = (row * num_kv_heads + head) * head_dim;
+  dflash_head_rmsnorm_rotary_row_impl(
+      key + offset,
+      k_weight,
+      cos_table + position * rotary_dim,
+      sin_table + position * rotary_dim,
+      key_out + offset,
+      eps,
+      head_dim,
+      rotary_dim,
+      partial);
+}
+
+__global__ void dflash_update_kv_metadata_i32_kernel(
+    const int32_t* __restrict__ append_positions,
+    int32_t* __restrict__ cache_positions,
+    int32_t* __restrict__ live_count,
+    int64_t start,
+    int64_t count,
+    int64_t end) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < count;
+       i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    cache_positions[start + i] = append_positions[i];
+  }
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    live_count[0] = static_cast<int32_t>(end);
+  }
+}
+
 __global__ void dflash_gqa_attention_f32_bf16_kernel(
     const float* __restrict__ query,
     const float* __restrict__ key,
@@ -447,6 +499,17 @@ bool valid_head_rotary_shape(
   return batch_size > 0 && query_len > 0 && kv_len > 0 && num_q_heads > 0 && num_kv_heads > 0 &&
          head_dim > 0 && rotary_dim > 0 && rotary_dim <= head_dim && (rotary_dim % 2) == 0 &&
          max_positions > 0 && valid_threads(threads);
+}
+
+bool valid_key_rotary_shape(
+    int64_t rows,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    int64_t threads) {
+  return rows > 0 && num_kv_heads > 0 && head_dim > 0 && rotary_dim > 0 && rotary_dim <= head_dim &&
+         (rotary_dim % 2) == 0 && max_positions > 0 && valid_threads(threads);
 }
 
 bool valid_attention_shape(
@@ -746,6 +809,74 @@ extern "C" int hipengine_dflash_head_rmsnorm_rotary_f32(
       rotary_dim,
       max_positions,
       eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_key_rmsnorm_rotary_f32(
+    const float* key,
+    const uint16_t* k_weight,
+    const float* cos_table,
+    const float* sin_table,
+    const int32_t* key_positions,
+    float* key_out,
+    int64_t rows,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_key_rotary_shape(rows, num_kv_heads, head_dim, rotary_dim, max_positions, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      dflash_key_rmsnorm_rotary_f32_kernel,
+      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      key,
+      k_weight,
+      cos_table,
+      sin_table,
+      key_positions,
+      key_out,
+      rows,
+      num_kv_heads,
+      head_dim,
+      rotary_dim,
+      max_positions,
+      eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_update_kv_metadata_i32(
+    const int32_t* append_positions,
+    int32_t* cache_positions,
+    int32_t* live_count,
+    int64_t start,
+    int64_t count,
+    int64_t end,
+    int64_t threads,
+    hipStream_t stream) {
+  if (start < 0 || count < 0 || end < start || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks = count <= 0 ? 1 : ((count + threads - 1) / threads);
+  const int64_t capped_blocks = blocks > 65535 ? 65535 : blocks;
+  hipLaunchKernelGGL(
+      dflash_update_kv_metadata_i32_kernel,
+      dim3(static_cast<unsigned int>(capped_blocks)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      append_positions,
+      cache_positions,
+      live_count,
+      start,
+      count,
+      end);
   return static_cast<int>(hipGetLastError());
 }
 

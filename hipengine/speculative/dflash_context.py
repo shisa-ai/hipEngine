@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Sequence
 
+from hipengine.loading.dflash import DFlashDrafterDeviceWeights
+
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType, dtype_itemsize
 from hipengine.core.tensor import Tensor
@@ -156,6 +158,70 @@ class DFlashDraftKVCacheOwner:
 
 
 @dataclass(frozen=True, slots=True)
+class DFlashDraftKVMaterializerScratch:
+    """Scratch tensors used by append-only draft K/V materialization."""
+
+    projected_hidden: Tensor
+    key_raw: Tensor
+
+    def validate(self, *, max_rows: int, hidden_size: int, kv_features: int, device: Device) -> None:
+        if self.projected_hidden.ndim != 2 or self.projected_hidden.shape[0] < max_rows or self.projected_hidden.shape[1] != hidden_size:
+            raise ValueError("projected_hidden scratch must have shape (>=append_count, hidden_size)")
+        if self.projected_hidden.dtype != DType.BF16 or self.projected_hidden.device != device:
+            raise ValueError("projected_hidden scratch must be BF16 on the draft KV device")
+        if self.key_raw.ndim != 2 or self.key_raw.shape[0] < max_rows or self.key_raw.shape[1] != kv_features:
+            raise ValueError("key_raw scratch must have shape (>=append_count, num_kv_heads * head_dim)")
+        if self.key_raw.dtype != DType.FP32 or self.key_raw.device != device:
+            raise ValueError("key_raw scratch must be FP32 on the draft KV device")
+
+
+@dataclass(frozen=True, slots=True)
+class DFlashDraftKVLayerWeights:
+    """Layer-local DFlash K/V projection weights."""
+
+    k_proj: Tensor
+    v_proj: Tensor
+    k_norm: Tensor
+
+    def validate(self, *, hidden_size: int, kv_features: int, head_dim: int, device: Device) -> None:
+        if self.k_proj.shape != (kv_features, hidden_size):
+            raise ValueError("k_proj weight shape must be (num_kv_heads * head_dim, hidden_size)")
+        if self.v_proj.shape != (kv_features, hidden_size):
+            raise ValueError("v_proj weight shape must be (num_kv_heads * head_dim, hidden_size)")
+        if self.k_norm.shape != (head_dim,):
+            raise ValueError("k_norm weight shape must be (head_dim,)")
+        for name, tensor in (("k_proj", self.k_proj), ("v_proj", self.v_proj), ("k_norm", self.k_norm)):
+            if tensor.dtype != DType.BF16:
+                raise ValueError(f"{name} must use BF16 storage")
+            if tensor.device != device:
+                raise ValueError(f"{name} must live on {device}")
+
+
+@dataclass(frozen=True, slots=True)
+class DFlashDraftKVMaterializeResult:
+    append_start: int
+    append_count: int
+    live_count: int
+    draft_kv_bytes: int
+    key_bytes: int
+    value_bytes: int
+    capacity_tokens: int
+    phases: tuple[str, ...]
+
+    def as_metadata(self) -> dict[str, object]:
+        return {
+            "append_start": self.append_start,
+            "append_count": self.append_count,
+            "live_count": self.live_count,
+            "draft_kv_bytes": self.draft_kv_bytes,
+            "key_bytes": self.key_bytes,
+            "value_bytes": self.value_bytes,
+            "capacity_tokens": self.capacity_tokens,
+            "phases": self.phases,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class DFlashDraftKVAppendPlan:
     """Append-only materialization plan for newly committed target-hidden rows."""
 
@@ -187,6 +253,212 @@ def plan_dflash_draft_kv_append(*, live_count: int, new_positions: Sequence[int]
     plan = DFlashDraftKVAppendPlan(start=int(live_count), count=len(positions), positions=positions)
     plan.validate_capacity(int(capacity_tokens))
     return plan
+
+
+def dflash_layer_kv_weights(weights: DFlashDrafterDeviceWeights, layer: int) -> DFlashDraftKVLayerWeights:
+    prefix = f"layers.{int(layer)}.self_attn"
+    return DFlashDraftKVLayerWeights(
+        k_proj=weights.tensor(f"{prefix}.k_proj.weight"),
+        v_proj=weights.tensor(f"{prefix}.v_proj.weight"),
+        k_norm=weights.tensor(f"{prefix}.k_norm.weight"),
+    )
+
+
+def materialize_dflash_draft_kv_append_from_projected(
+    *,
+    owner: DFlashDraftKVCacheOwner,
+    plan: DFlashDraftKVAppendPlan,
+    projected_hidden: Tensor,
+    positions: Tensor,
+    layer_weights: Sequence[DFlashDraftKVLayerWeights],
+    scratch: DFlashDraftKVMaterializerScratch,
+    cos_table: Tensor,
+    sin_table: Tensor,
+    stream: int = 0,
+    library=None,
+    runtime=None,
+    threads: int = 128,
+) -> DFlashDraftKVMaterializeResult:
+    """Append newly projected DFlash context rows into fixed draft K/V buffers."""
+
+    plan.validate_capacity(owner.spec.capacity_tokens)
+    _validate_materializer_inputs(owner, plan, projected_hidden, positions, layer_weights, scratch, cos_table, sin_table)
+    if plan.count == 0:
+        return _materialize_result(owner, plan)
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
+        dflash_dense_bf16_to_bf16,
+        dflash_dense_bf16_to_f32,
+        dflash_key_rmsnorm_rotary_f32,
+        dflash_update_kv_metadata_i32,
+    )
+
+    kv_features = owner.spec.num_kv_heads * owner.spec.head_dim
+    key_item = dtype_itemsize(owner.spec.key_dtype)
+    value_item = dtype_itemsize(owner.spec.value_dtype)
+    for layer, weights in enumerate(layer_weights):
+        key_dst_ptr = owner.keys.ptr + ((layer * owner.spec.capacity_tokens + plan.start) * kv_features * key_item)
+        value_dst_ptr = owner.values.ptr + ((layer * owner.spec.capacity_tokens + plan.start) * kv_features * value_item)
+        dflash_dense_bf16_to_f32(
+            projected_hidden.ptr,
+            weights.k_proj.ptr,
+            scratch.key_raw.ptr,
+            plan.count,
+            projected_hidden.shape[1],
+            kv_features,
+            threads=threads,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        dflash_key_rmsnorm_rotary_f32(
+            scratch.key_raw.ptr,
+            weights.k_norm.ptr,
+            cos_table.ptr,
+            sin_table.ptr,
+            positions.ptr,
+            key_dst_ptr,
+            plan.count,
+            owner.spec.num_kv_heads,
+            owner.spec.head_dim,
+            cos_table.shape[1],
+            cos_table.shape[0],
+            threads=threads,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        dflash_dense_bf16_to_bf16(
+            projected_hidden.ptr,
+            weights.v_proj.ptr,
+            value_dst_ptr,
+            plan.count,
+            projected_hidden.shape[1],
+            kv_features,
+            threads=threads,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+    dflash_update_kv_metadata_i32(
+        positions.ptr,
+        owner.positions.ptr,
+        owner.live_count.ptr,
+        start=plan.start,
+        count=plan.count,
+        end=plan.end,
+        threads=256,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+    return _materialize_result(owner, plan)
+
+
+def materialize_dflash_draft_kv_append(
+    *,
+    owner: DFlashDraftKVCacheOwner,
+    plan: DFlashDraftKVAppendPlan,
+    target_hidden_concat: Tensor,
+    positions: Tensor,
+    weights: DFlashDrafterDeviceWeights,
+    scratch: DFlashDraftKVMaterializerScratch,
+    cos_table: Tensor,
+    sin_table: Tensor,
+    stream: int = 0,
+    library=None,
+    runtime=None,
+    threads: int = 128,
+) -> DFlashDraftKVMaterializeResult:
+    """Project newly committed target-hidden rows, then append draft K/V rows."""
+
+    from hipengine.speculative.dflash_drafter import project_dflash_target_hidden_bf16
+
+    if target_hidden_concat.shape[0] < plan.count:
+        raise ValueError("target_hidden_concat rows must cover append count")
+    if scratch.projected_hidden.shape[0] < plan.count:
+        raise ValueError("projected_hidden scratch rows must cover append count")
+    projected_view = Tensor.from_handle(
+        scratch.projected_hidden.ptr,
+        (plan.count, weights.config.hidden_size),
+        scratch.projected_hidden.dtype,
+        scratch.projected_hidden.device,
+    )
+    target_view = Tensor.from_handle(
+        target_hidden_concat.ptr,
+        (plan.count, weights.config.target_hidden_concat_size),
+        target_hidden_concat.dtype,
+        target_hidden_concat.device,
+    )
+    project_dflash_target_hidden_bf16(
+        target_view,
+        projected_view,
+        projected_view,
+        weights,
+        stream=stream,
+        libraries={"norm": library} if library is not None else None,
+        threads=threads,
+    )
+    layer_weights = [dflash_layer_kv_weights(weights, layer) for layer in range(owner.spec.layer_count)]
+    return materialize_dflash_draft_kv_append_from_projected(
+        owner=owner,
+        plan=plan,
+        projected_hidden=projected_view,
+        positions=positions,
+        layer_weights=layer_weights,
+        scratch=scratch,
+        cos_table=cos_table,
+        sin_table=sin_table,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        threads=threads,
+    )
+
+
+def _validate_materializer_inputs(
+    owner: DFlashDraftKVCacheOwner,
+    plan: DFlashDraftKVAppendPlan,
+    projected_hidden: Tensor,
+    positions: Tensor,
+    layer_weights: Sequence[DFlashDraftKVLayerWeights],
+    scratch: DFlashDraftKVMaterializerScratch,
+    cos_table: Tensor,
+    sin_table: Tensor,
+) -> None:
+    if projected_hidden.ndim != 2 or projected_hidden.shape[0] < plan.count:
+        raise ValueError("projected_hidden must have at least append_count rows")
+    hidden_size = projected_hidden.shape[1]
+    kv_features = owner.spec.num_kv_heads * owner.spec.head_dim
+    if projected_hidden.dtype != DType.BF16 or projected_hidden.device != owner.spec.device:
+        raise ValueError("projected_hidden must be BF16 on the draft KV device")
+    scratch.validate(max_rows=plan.count, hidden_size=hidden_size, kv_features=kv_features, device=owner.spec.device)
+    if len(layer_weights) != owner.spec.layer_count:
+        raise ValueError("layer_weights length must match draft KV layer_count")
+    for weights in layer_weights:
+        weights.validate(hidden_size=hidden_size, kv_features=kv_features, head_dim=owner.spec.head_dim, device=owner.spec.device)
+    if positions.shape != (plan.count,) or positions.dtype != owner.spec.metadata_dtype or positions.device != owner.spec.device:
+        raise ValueError("positions tensor must have append_count rows on the draft KV device")
+    if cos_table.ndim != 2 or sin_table.shape != cos_table.shape:
+        raise ValueError("cos/sin tables must be matching rank-2 tensors")
+    if cos_table.dtype != DType.FP32 or sin_table.dtype != DType.FP32:
+        raise ValueError("cos/sin tables must use FP32 storage")
+    if cos_table.shape[1] <= 0 or cos_table.shape[1] > owner.spec.head_dim or cos_table.shape[1] % 2:
+        raise ValueError("rotary dimension must be even and no larger than head_dim")
+    if cos_table.device != owner.spec.device or sin_table.device != owner.spec.device:
+        raise ValueError("cos/sin tables must live on the draft KV device")
+
+
+def _materialize_result(owner: DFlashDraftKVCacheOwner, plan: DFlashDraftKVAppendPlan) -> DFlashDraftKVMaterializeResult:
+    return DFlashDraftKVMaterializeResult(
+        append_start=plan.start,
+        append_count=plan.count,
+        live_count=plan.end,
+        draft_kv_bytes=owner.spec.total_bytes,
+        key_bytes=owner.spec.key_bytes,
+        value_bytes=owner.spec.value_bytes,
+        capacity_tokens=owner.spec.capacity_tokens,
+        phases=("full_context_rebuild", "append_materialize", "query_only_drafter"),
+    )
 
 
 def append_materialized_kv_reference(existing_keys, existing_values, new_keys, new_values, *, start: int):
@@ -248,7 +520,13 @@ __all__ = [
     "DFlashDraftKVAppendPlan",
     "DFlashDraftKVCacheOwner",
     "DFlashDraftKVCacheSpec",
+    "DFlashDraftKVLayerWeights",
+    "DFlashDraftKVMaterializeResult",
+    "DFlashDraftKVMaterializerScratch",
     "append_materialized_kv_reference",
+    "dflash_layer_kv_weights",
     "full_context_kv_reference",
+    "materialize_dflash_draft_kv_append",
+    "materialize_dflash_draft_kv_append_from_projected",
     "plan_dflash_draft_kv_append",
 ]

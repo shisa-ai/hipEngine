@@ -237,6 +237,9 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
         verify_eta *= ar_tok_s
 
     draft_seconds = _optional_float(spec.get("draft_seconds"))
+    draft_context_full_rebuild_seconds = _optional_float(spec.get("draft_context_full_rebuild_seconds"))
+    draft_context_append_seconds = _optional_float(spec.get("draft_context_append_seconds"))
+    draft_query_seconds = _optional_float(spec.get("draft_query_seconds"))
     commit_seconds = _optional_float(
         spec.get("commit_seconds", spec.get("commit_install_seconds", spec.get("commit_replay_seconds")))
     )
@@ -307,6 +310,16 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
             "decode_tok_s": spec_tok_s,
             "speedup_vs_ar": _safe_div(spec_tok_s, ar_tok_s),
             "draft_seconds": draft_seconds,
+            "draft_context_full_rebuild_seconds": draft_context_full_rebuild_seconds,
+            "draft_context_append_seconds": draft_context_append_seconds,
+            "draft_query_seconds": draft_query_seconds,
+            "draft_context_phase_seconds": {
+                "full_context_rebuild": draft_context_full_rebuild_seconds,
+                "append_materialize": draft_context_append_seconds,
+                "query_only_drafter": draft_query_seconds,
+            },
+            "draft_kv_bytes": _optional_int(spec.get("draft_kv_bytes", spec.get("draft_context_kv_bytes"))),
+            "draft_kv_capacity_tokens": _optional_int(spec.get("draft_kv_capacity_tokens", spec.get("draft_context_capacity_tokens"))),
             "target_verify_seconds": verify_seconds,
             "commit_seconds": commit_seconds,
             "phase_split": split,
@@ -542,6 +555,11 @@ def schema_fixture_row() -> dict[str, Any]:
         "spec": {
             "decode_seconds": 3.0,
             "draft_seconds": 0.35,
+            "draft_context_full_rebuild_seconds": 0.20,
+            "draft_context_append_seconds": 0.05,
+            "draft_query_seconds": 0.10,
+            "draft_kv_bytes": 576,
+            "draft_kv_capacity_tokens": 6,
             "target_verify_seconds": 2.25,
             "commit_seconds": 0.40,
             "target_verify_rows": 16,

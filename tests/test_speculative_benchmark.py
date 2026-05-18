@@ -45,6 +45,13 @@ def test_normalize_speculative_row_records_required_dflash_metrics() -> None:
     assert row["acceptance"]["accept_histogram"] == {"1": 1, "2": 2, "3": 1}
     assert row["spec"]["target_verify_rows_per_output_token"] == 2.0
     assert row["spec"]["phase_split"]["target_verify_fraction"] == 0.75
+    assert row["spec"]["draft_context_phase_seconds"] == {
+        "full_context_rebuild": 0.20,
+        "append_materialize": 0.05,
+        "query_only_drafter": 0.10,
+    }
+    assert row["spec"]["draft_kv_bytes"] == 576
+    assert row["spec"]["draft_kv_capacity_tokens"] == 6
     assert row["d2h"]["scalar_reads"] == 4
     assert row["d2h"]["vector_reads"] == 1
     assert row["d2h"]["full_logits_readbacks"] == 0
