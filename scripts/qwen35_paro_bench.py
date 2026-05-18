@@ -25,9 +25,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.memory import memory_stats, reset_memory_stats
-from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
@@ -111,11 +111,10 @@ def main() -> int:
         default=0.0,
         help="Optional resident high-water budget for long-context chunk tuning; 0 derives a budget from device VRAM.",
     )
-    parser.add_argument(
-        "--kv-storage-dtype",
-        choices=("bf16", "int8_per_token_head"),
-        default="bf16",
-        help="Resident full-attention KV storage policy for prefill and decode.",
+    add_kv_policy_args(
+        parser,
+        legacy_storage_flags=("--kv-storage-dtype",),
+        help_prefix="Resident full-attention KV storage for prefill and decode",
     )
     parser.add_argument(
         "--native-prefill",
@@ -172,6 +171,7 @@ def main() -> int:
         shared_expert_format=shared_expert_format,
         backend=args.backend,
     )
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     reset_memory_stats()
     memory_snapshots: dict[str, Any] = {
         "before_load": _memory_snapshot("before_load", runner.runtime),
@@ -196,7 +196,9 @@ def main() -> int:
                 auto_tune_chunk_sizes=args.prefill_chunk_autotune,
                 chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
             ),
-            kv_policy=FixedPagedKVPolicy(block_size=256, storage_dtype=args.kv_storage_dtype),
+            kv_policy=kv_policy.create_policy(),
+            kv_scale_dtype=kv_policy.scale_dtype,
+            kv_scale_granularity=kv_policy.scale_granularity,
         )
     load_seconds = time.perf_counter() - load_start
     memory_snapshots["after_load"] = _memory_snapshot("after_load", session.runtime, session)
@@ -304,7 +306,8 @@ def main() -> int:
         "serial_prefill_diagnostic": bool(args.serial_prefill_diagnostic),
         "allow_rejected_native_prefill": bool(args.allow_rejected_native_prefill),
         "attn_aotriton_min_tokens": args.attn_aotriton_min_tokens,
-        "kv_storage_dtype": args.kv_storage_dtype,
+        "kv_storage_dtype": kv_policy.storage_dtype.value,
+        "kv_policy": kv_policy_json(kv_policy),
         "requested_prefill_chunk_sizes": {
             "linear": args.prefill_linear_chunk_size,
             "moe": args.prefill_moe_chunk_size,

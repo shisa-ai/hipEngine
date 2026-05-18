@@ -19,6 +19,9 @@ class SamplingParams:
     temperature: float = 0.0
     top_p: float = 1.0
     ignore_eos: bool = False
+    kv_storage: str = "auto"
+    kv_scale_dtype: str = "fp16"
+    kv_scale_granularity: str = "per_token_head"
 
 
 class LLM:
@@ -74,6 +77,9 @@ class LLM:
                 temperature=params.temperature,
                 top_p=params.top_p,
                 ignore_eos=params.ignore_eos,
+                kv_storage=params.kv_storage,
+                kv_scale_dtype=params.kv_scale_dtype,
+                kv_scale_granularity=params.kv_scale_granularity,
             )
         )
 

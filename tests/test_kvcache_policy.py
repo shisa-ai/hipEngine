@@ -7,7 +7,7 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import WorkItem, WorkKind
-from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata, KVTransaction
+from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata, KVTransaction, resolve_kv_policy
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str, device: Device | None = None) -> Tensor:
@@ -74,6 +74,32 @@ def test_kv_live_spans_validates_batch_row_metadata() -> None:
             storage_dtype="bf16",
             span_role="draft",
         )
+
+
+def test_resolve_kv_policy_records_explicit_and_admission_selection() -> None:
+    default = resolve_kv_policy("auto", block_size=256)
+    assert default.storage_dtype.value == "bf16"
+    assert default.to_json_dict()["int8_explicit"] is False
+    assert default.to_json_dict()["int8_admission_gated"] is False
+    assert default.to_json_dict()["scale_metadata_format"]["present"] is False
+
+    explicit = resolve_kv_policy("int8_per_token_head", scale_dtype="fp32")
+    payload = explicit.to_json_dict()
+    assert payload["resolved_storage_dtype"] == "int8_per_token_head"
+    assert payload["int8_explicit"] is True
+    assert payload["int8_admission_gated"] is False
+    assert payload["scale_metadata_format"] == {
+        "present": True,
+        "scale_dtype": "fp32",
+        "granularity": "per_token_head",
+        "k_scale": "per_token_head",
+        "v_scale": "per_token_head",
+    }
+
+    gated = resolve_kv_policy("auto", admission_gated_int8=True)
+    assert gated.storage_dtype.value == "int8_per_token_head"
+    assert gated.to_json_dict()["int8_explicit"] is False
+    assert gated.to_json_dict()["int8_admission_gated"] is True
 
 
 def test_fixed_paged_policy_c1_spans_and_admission_cap() -> None:

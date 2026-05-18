@@ -22,7 +22,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
@@ -38,6 +40,7 @@ def _run_once(
     max_layers: int,
     include_prefill_seed: bool,
     prefill_mode: str,
+    kv_policy: ResolvedKVPolicy,
 ) -> dict[str, Any]:
     """Run one resident c=1 prompt+decode pass.
 
@@ -49,7 +52,14 @@ def _run_once(
 
     max_sequence = len(prompt_tokens) + decode_tokens + 2
     out: list[dict[str, Any]] = []
-    with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence, max_layers=max_layers) as session:
+    with Qwen35ParoResidentSession(
+        runner,
+        max_sequence_length=max_sequence,
+        max_layers=max_layers,
+        kv_policy=kv_policy.create_policy(),
+        kv_scale_dtype=kv_policy.scale_dtype,
+        kv_scale_granularity=kv_policy.scale_granularity,
+    ) as session:
         owned_device_bytes = _owned_device_bytes(session)
         next_result = None
         prefill_start = time.perf_counter()
@@ -128,6 +138,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     decode_tokens = int(fixture["decode_len"]) if fixture is not None and args.max_new_tokens is None else int(args.max_new_tokens or 1)
     expected = _expected_tokens(args.expected_token_ids, fixture)
     runner = Qwen35ParoNextTokenRunner(args.model)
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     runs = [
         _run_once(
             runner,
@@ -136,6 +147,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             max_layers=args.max_layers,
             include_prefill_seed=include_prefill_seed,
             prefill_mode=args.prefill_mode,
+            kv_policy=kv_policy,
         )
         for _ in range(args.repeat)
     ]
@@ -158,6 +170,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "backend": "hip_gfx1100",
         "mode": "resident_c1_e2e_correctness",
         "prefill_mode": args.prefill_mode,
+        "kv_storage_dtype": kv_policy.storage_dtype.value,
+        "kv_policy": kv_policy_json(kv_policy),
         "batch_size": 1,
         "specdec_enabled": False,
         "prompt_source": "parent_fixture" if fixture is not None else "repeated_token_id",
@@ -212,6 +226,7 @@ def main() -> None:
     parser.add_argument("--repeat", type=int, default=2)
     parser.add_argument("--expected-token-ids", default="", help="Comma-separated expected generated token ids")
     parser.add_argument("--fixture", type=Path, help="Parent fixture JSON containing prompt_ids and expected_generated_token_ids")
+    add_kv_policy_args(parser, help_prefix="Resident KV storage for E2E correctness")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
     if args.max_new_tokens is not None and args.max_new_tokens <= 0:

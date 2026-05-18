@@ -18,7 +18,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.dispatch.fusion import FusionPlanner, resolve_plan
 from hipengine.kernels.registry import MissingKernelError
+from hipengine.kvcache import resolve_kv_policy
 from hipengine.models import resolve_model
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json
 
 DEFAULT_QWEN35_PARO_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
@@ -90,6 +92,7 @@ def main() -> int:
     )
     parser.add_argument("--prompt", default="Hello", help="Prompt for qwen35-paro-generate-hip.")
     parser.add_argument("--max-tokens", type=int, default=1, help="Max tokens for generate smoke.")
+    add_kv_policy_args(parser, help_prefix="LLM.generate KV storage for qwen35-paro-generate-hip")
     parser.add_argument(
         "--hidden-size",
         type=int,
@@ -118,7 +121,15 @@ def main() -> int:
     if args.mode == "smoke-add-plan":
         return smoke_add_plan_smoke()
     if args.mode == "qwen35-paro-generate-hip":
-        return qwen35_paro_generate_hip_smoke(args.model, args.prompt, args.max_tokens, backend=args.backend)
+        return qwen35_paro_generate_hip_smoke(
+            args.model,
+            args.prompt,
+            args.max_tokens,
+            backend=args.backend,
+            kv_storage=args.kv_storage,
+            kv_scale_dtype=args.kv_scale_dtype,
+            kv_scale_granularity=args.kv_scale_granularity,
+        )
     compiler_version = None
     if args.compiler_version_file is not None:
         compiler_version = _read_compiler_version(args.compiler_version_file)
@@ -386,13 +397,29 @@ def qwen35_paro_generate_hip_smoke(
     max_tokens: int,
     *,
     backend: str = "auto",
+    kv_storage: str = "auto",
+    kv_scale_dtype: str = "fp16",
+    kv_scale_granularity: str = "per_token_head",
 ) -> int:
     from hipengine import LLM, SamplingParams
 
     llm = LLM(model, backend=backend, quant="w4_paro")
     outputs = llm.generate(
         prompt,
-        SamplingParams(max_tokens=max_tokens, temperature=0.0, top_p=1.0),
+        SamplingParams(
+            max_tokens=max_tokens,
+            temperature=0.0,
+            top_p=1.0,
+            kv_storage=kv_storage,
+            kv_scale_dtype=kv_scale_dtype,
+            kv_scale_granularity=kv_scale_granularity,
+        ),
+    )
+    kv_policy = resolve_kv_policy(
+        kv_storage,
+        block_size=256,
+        scale_dtype=kv_scale_dtype,
+        scale_granularity=kv_scale_granularity,
     )
     print(
         json.dumps(
@@ -401,6 +428,8 @@ def qwen35_paro_generate_hip_smoke(
                 "prompt": prompt,
                 "outputs": outputs,
                 "max_tokens": max_tokens,
+                "kv_storage_dtype": kv_policy.storage_dtype.value,
+                "kv_policy": kv_policy_json(kv_policy),
                 "path": f"LLM.generate/qwen3_5_moe_paro/{llm._resolved_backend or backend}/w4_paro",
             },
             ensure_ascii=False,

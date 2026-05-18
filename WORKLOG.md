@@ -17025,3 +17025,37 @@ python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 4 --max-new-t
   --json /tmp/hipengine-int8-prefill-fixture-maxlayers4-task12.json
 # status=accepted; max KL=1.34e-05; memory audit passed.
 ```
+
+## 2026-05-18 - K1 INT8 KV CLI/API controls
+
+Completed task #13: INT8 KV storage controls are exposed consistently across the public API, server adapter, smokes, correctness gates, and resident benchmark harnesses.
+
+Implementation notes:
+
+- Added `resolve_kv_policy(...)` / `ResolvedKVPolicy` metadata with `requested_storage`, resolved storage dtype, scale dtype/granularity, and `int8_explicit` vs `int8_admission_gated` fields. `auto` resolves conservatively to BF16 unless a caller marks INT8 as admission-gated.
+- Public `SamplingParams` and `GenerationRequest` now carry `kv_storage`, `kv_scale_dtype`, and `kv_scale_granularity`; the Qwen3.5/PARO generator constructs `FixedPagedKVPolicy` from that metadata.
+- OpenAI-compatible completion/chat requests accept the same KV controls and validate them before calling `LLM.generate()`.
+- Added shared `scripts/qwen35_kv_policy_args.py` and wired `--kv-storage {auto,bf16,int8_per_token_head}`, `--kv-scale-dtype {fp16,fp32}`, and `--kv-scale-granularity per_token_head` through resident benchmark/correctness/smoke scripts. Legacy `--kv-storage-dtype` and `--native-kv-storage-dtype` aliases remain accepted.
+- Benchmark/correctness artifacts now include a `kv_policy` object that states resolved KV storage, scale metadata format, and whether INT8 was explicit or admission-gated; resident owned-buffer summaries also report scale granularity.
+
+Validation:
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest, CPU fixtures, and registry/cpu smokes passed.
+
+python3 scripts/qwen35_paro_bench.py --help >/tmp/qwen35_paro_bench_help.txt && \
+python3 scripts/qwen35_native_prefill_fixture_gate.py --help >/tmp/qwen35_native_prefill_fixture_gate_help.txt && \
+python3 scripts/smoke.py --help >/tmp/smoke_help.txt
+# help output exposes --kv-storage, --kv-scale-dtype, and --kv-scale-granularity.
+
+python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 4 \
+  --json /tmp/hipengine-kv-int8-accuracy-task13.json
+# status=accepted; artifact kv_policy reports resolved_storage_dtype=int8_per_token_head,
+# scale_metadata_format={present:true, scale_dtype:fp16, granularity:per_token_head},
+# int8_explicit=true, int8_admission_gated=false.
+```

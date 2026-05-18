@@ -24,8 +24,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, append_kv_policy_flags, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
@@ -78,6 +80,7 @@ def _run_once(
     prefill_config: PrefillConfig,
     decode_mode: str,
     graph_steps_per_replay: int,
+    kv_policy: ResolvedKVPolicy,
 ) -> dict[str, Any]:
     max_sequence = len(prompt_tokens) + decode_tokens + 2
     generated_ids: list[int]
@@ -89,6 +92,9 @@ def _run_once(
         compiler_version=compiler_version,
         require_cached_build=require_cached_build,
         prefill_config=prefill_config,
+        kv_policy=kv_policy.create_policy(),
+        kv_scale_dtype=kv_policy.scale_dtype,
+        kv_scale_granularity=kv_policy.scale_granularity,
     ) as session:
         prefill_start = time.perf_counter()
         seed = session.prefill_native(prompt_tokens, sample=True)
@@ -208,6 +214,7 @@ def _command(args: argparse.Namespace) -> str:
         command += f" --prefill-chunk-memory-budget-gib {args.prefill_chunk_memory_budget_gib}"
     if args.kl_threshold != 0.05:
         command += f" --kl-threshold {args.kl_threshold}"
+    command = append_kv_policy_flags(command, args)
     if args.json is not None:
         command += f" --json {args.json}"
     return command
@@ -224,6 +231,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("decode_tokens must be divisible by graph_steps_per_replay")
     compiler_version = _read_compiler_version(args.compiler_version_file)
     runner = Qwen35ParoNextTokenRunner(args.model)
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     prefill_config = PrefillConfig(
         linear_chunk_size=args.prefill_linear_chunk_size,
         moe_chunk_size=args.prefill_moe_chunk_size,
@@ -244,6 +252,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         prefill_config=prefill_config,
         decode_mode="eager",
         graph_steps_per_replay=args.graph_steps_per_replay,
+        kv_policy=kv_policy,
     )
     graph = _run_once(
         runner,
@@ -255,6 +264,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         prefill_config=prefill_config,
         decode_mode="graph",
         graph_steps_per_replay=args.graph_steps_per_replay,
+        kv_policy=kv_policy,
     )
     eager_ids = [int(item) for item in eager["generated_token_ids"]]
     graph_ids = [int(item) for item in graph["generated_token_ids"]]
@@ -282,6 +292,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "decode_tokens": decode_tokens,
         "max_layers": int(args.max_layers),
         "attn_aotriton_min_tokens": int(args.attn_aotriton_min_tokens),
+        "kv_storage_dtype": kv_policy.storage_dtype.value,
+        "kv_policy": kv_policy_json(kv_policy),
         "requested_prefill_chunk_sizes": {
             "linear": int(args.prefill_linear_chunk_size),
             "moe": int(args.prefill_moe_chunk_size),
@@ -343,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0)
     parser.add_argument("--prefill-chunk-autotune", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--prefill-chunk-memory-budget-gib", type=float, default=0.0)
+    add_kv_policy_args(parser, help_prefix="Resident KV storage for eager and graph decode")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args(argv)
     if args.max_new_tokens is not None and args.max_new_tokens <= 0:

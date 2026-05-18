@@ -53,6 +53,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
 )
 from hipengine.dispatch import ActiveBatch, RequestState
 from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata
+from hipengine.kvcache.policy import KV_SCALE_GRANULARITY_CHOICES
 from hipengine.loading import (
     WeightIndex,
     float_array_to_bf16_bits,
@@ -825,6 +826,7 @@ class Qwen35ParoResidentSession:
         prefill_config: PrefillConfig | None = None,
         kv_policy: FixedPagedKVPolicy | None = None,
         kv_scale_dtype: str | DType = DType.FP16,
+        kv_scale_granularity: str = "per_token_head",
     ) -> None:
         if max_sequence_length <= 0:
             raise ValueError("max_sequence_length must be positive")
@@ -854,6 +856,9 @@ class Qwen35ParoResidentSession:
         self.kv_scale_dtype = DType.parse(kv_scale_dtype)
         if self.kv_scale_dtype not in {DType.FP16, DType.FP32}:
             raise ValueError("resident INT8 KV scales must use fp16 or fp32")
+        if kv_scale_granularity not in KV_SCALE_GRANULARITY_CHOICES:
+            raise ValueError("resident INT8 KV scale granularity must be per_token_head")
+        self.kv_scale_granularity = kv_scale_granularity
         self.decode_chunk_size, self.max_splits = _paged_attn_decode_split_config(
             self.max_sequence_length,
             block_size=self.block_size,
@@ -1345,6 +1350,8 @@ class Qwen35ParoResidentSession:
                 "aotriton_attention": self._prefill_use_aotriton_attention(len(tokens)) and self.kv_storage_dtype == DType.BF16,
                 "attn_aotriton_min_tokens": self.prefill_config.attn_aotriton_min_tokens,
                 "kv_storage_dtype": self.kv_storage_dtype.value,
+                "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
+                "kv_scale_granularity": self.kv_scale_granularity if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
                 "int8_prefill_oracle": self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD,
             }
             if not sample:
@@ -1632,6 +1639,7 @@ class Qwen35ParoResidentSession:
                 v_scale.device,
             ),
             scale_dtype=k_scale.dtype,
+            granularity=self.kv_scale_granularity,
         )
 
     def _full_cache_scale_metadata_all_slots(self, layer_id: int) -> KVScaleMetadata | None:
@@ -1643,6 +1651,7 @@ class Qwen35ParoResidentSession:
             k_scale=Tensor.from_handle(k_buf.ptr, shape, k_scale.dtype, k_scale.device),
             v_scale=Tensor.from_handle(v_buf.ptr, shape, v_scale.dtype, v_scale.device),
             scale_dtype=k_scale.dtype,
+            granularity=self.kv_scale_granularity,
         )
 
     def _slot_spans(self, slot: int) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
@@ -1824,6 +1833,7 @@ class Qwen35ParoResidentSession:
         return {
             "kv_storage_dtype": self.kv_storage_dtype.value,
             "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
+            "kv_scale_granularity": self.kv_scale_granularity if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
             "full_attention_layer_count": len(full_layers),
             "full_attention_layers": full_layers,
             "full_attention_kv_payload_bytes": payload_bytes,
@@ -2741,6 +2751,7 @@ class Qwen35ParoResidentSession:
                 k_scale=k_scale,
                 v_scale=v_scale,
                 scale_dtype=self.kv_scale_dtype,
+                granularity=self.kv_scale_granularity,
             )
         else:
             self.full_cache_scales.pop(layer_id, None)

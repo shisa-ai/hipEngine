@@ -24,6 +24,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.benchmark.correctness import LogitCorrectness, evaluate_logits
+from hipengine.kvcache import resolve_kv_policy
 from hipengine.kernels.cpu_reference import (
     paged_attn_decode_int8_per_token_head,
     write_paged_kv_int8_per_token_head,
@@ -147,6 +148,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "kl_mean_max": float(args.kl_threshold),
             "top1_agreement_min": float(args.top1_threshold),
         },
+        "kv_policy": resolve_kv_policy(
+            "int8_per_token_head",
+            block_size=int(args.block_size),
+            scale_dtype=args.scale_dtype,
+            scale_granularity="per_token_head",
+        ).to_json_dict(),
         "shape": {
             "contexts": contexts,
             "block_size": int(args.block_size),

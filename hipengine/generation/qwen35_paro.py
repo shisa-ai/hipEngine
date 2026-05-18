@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.generation.registry import GenerationRequest, register_text_generator
+from hipengine.kvcache import resolve_kv_policy
 from hipengine.loading import WeightIndex
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoNextTokenRunner,
@@ -40,15 +41,35 @@ class Qwen35ParoOneTokenGenerator:
         if request.max_tokens == 0:
             return ["" for _ in request.prompts]
         runner = self._get_runner()
-        return [self._generate_one(runner, prompt, request.max_tokens, ignore_eos=request.ignore_eos) for prompt in request.prompts]
+        kv_policy = resolve_kv_policy(
+            request.kv_storage,
+            scale_dtype=request.kv_scale_dtype,
+            scale_granularity=request.kv_scale_granularity,
+        )
+        return [
+            self._generate_one(
+                runner,
+                prompt,
+                request.max_tokens,
+                ignore_eos=request.ignore_eos,
+                kv_policy=kv_policy,
+            )
+            for prompt in request.prompts
+        ]
 
-    def _generate_one(self, runner: Qwen35ParoNextTokenRunner, prompt: str, max_tokens: int, *, ignore_eos: bool) -> str:
+    def _generate_one(self, runner: Qwen35ParoNextTokenRunner, prompt: str, max_tokens: int, *, ignore_eos: bool, kv_policy) -> str:
         _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
         if not prompt_ids:
             raise ValueError("prompt produced no tokens")
         max_sequence_length = len(prompt_ids) + max_tokens + 1
         generated_text: list[str] = []
-        with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence_length) as session:
+        with Qwen35ParoResidentSession(
+            runner,
+            max_sequence_length=max_sequence_length,
+            kv_policy=kv_policy.create_policy(),
+            kv_scale_dtype=kv_policy.scale_dtype,
+            kv_scale_granularity=kv_policy.scale_granularity,
+        ) as session:
             next_result = session.prefill_native(prompt_ids, sample=True)
             if next_result is None:
                 raise RuntimeError("native prefill did not produce next-token logits")

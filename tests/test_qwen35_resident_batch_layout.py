@@ -70,6 +70,7 @@ def _resident_allocation_session(*, storage_dtype: str = "bf16", scale_dtype: DT
     session.kv_policy = FixedPagedKVPolicy(block_size=session.block_size, storage_dtype=storage_dtype)
     session.kv_storage_dtype = session.kv_policy.storage_dtype
     session.kv_scale_dtype = scale_dtype
+    session.kv_scale_granularity = "per_token_head"
     session.full_caches = {}
     session.full_cache_scales = {}
     session.full_cache_scale_metadata = {}
@@ -158,6 +159,7 @@ def test_qwen35_resident_full_kv_allocation_uses_int8_payload_and_scales() -> No
     layer = summary["full_attention_layers"][0]
     assert summary["kv_storage_dtype"] == "int8_per_token_head"
     assert summary["kv_scale_dtype"] == "fp16"
+    assert summary["kv_scale_granularity"] == "per_token_head"
     assert summary["full_attention_kv_payload_bytes"] == key_buf.nbytes + value_buf.nbytes
     assert summary["full_attention_kv_scale_bytes"] == k_scale_buf.nbytes + v_scale_buf.nbytes
     assert layer["storage_dtype"] == "int8_per_token_head"
