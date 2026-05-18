@@ -19771,3 +19771,42 @@ Scope note (P9.B4b):
 - Q5_K dense is intentionally not added (no current qwen35moe surface that uses dense Q5_K; if/when that changes the kernel is a small bolt-on to the Q4_K dense template).
 
 P9.B kernels are now formally test-gated against the CPU oracle. Next: task #25 dispatch wiring routes `rows == 1` GGUF projections through the new GEMV decode kernels.
+
+## 2026-05-18 P9 task #25: Decode dispatch wiring (P9.B6)
+
+Wired the `rows == 1` GGUF decode rewrite for the P9.B kernel family. Default-off; activated via the same kwarg / session-toggle / env-var precedence as `wmma_prefill_session(...)`.
+
+Files:
+
+- `hipengine/runtime/gguf_linear.py`: added a sibling `gemv_decode_session(...)` opt-in (`HIPENGINE_GGUF_GEMV_DECODE` env var, `set_gemv_decode_enabled`, `gguf_gemv_decode_enabled`, `_resolve_use_gemv_decode`). Added `_gemv_decode_dispatch` that runs after `_pack8_decode_dispatch` and rewrites `pack8_gemv_*_out` -> `pack8_gemv_decode_*_out` when (a) the opt-in is on, (b) `rows == 1`, (c) the dispatch is the `raw` ABI, (d) the rewritten registry key is **exactly** registered. The exact-key check uses the new `registry.is_registered(...)` primitive to avoid the cpu_reference fp16 fallback silently routing to `cpu_reference.linear` (which has an incompatible ABI). Both `launch_gguf_linear` and `launch_gguf_linear_pair` accept the new `use_gemv_decode` kwarg.
+- `hipengine/kernels/registry.py`: added `is_registered(key)` for exact-key dispatch checks.
+- `hipengine/runtime/qwen35_gguf_runner.py`:
+  - Added compact-MoE scratch fields to `_FullStackScratch` (decode scratch): `moe_group_counts`, `moe_padded_counts`, `moe_scatter_offsets`, `moe_expert_start_compact`, `moe_total_compact`, `moe_sorted_lanes`, `moe_sorted_experts`, `moe_sorted_weights`, `moe_lane_to_row`, `moe_shared_gate_logits`, plus host zero arrays + `moe_selected_rows_capacity`. Sizes are top_k (per-token decode lane count), so all buffers stay sub-KB per layer.
+  - Added `_COMPACT_MOE_Q4_DUAL_GEMV_KEYS` + `_COMPACT_MOE_DOWN_GEMV_KEYS` registry tables and `_resolve_compact_moe_gemv_kernels` / `_ensure_compact_moe_gemv_registered` mirroring the bulk WMMA equivalents. Reuses the P8.6 compact scheduler (`group_count`/`group_prefix`/`group_scatter_gather`) but **does not** call `wmma_tile_map` (GEMV has no WMMA tile space).
+  - Added `_try_run_post_attention_moe_c1_compact_gemv(...)` ~140-line runner helper. Same shape as `_try_run_post_attention_moe_rows_compact_wmma` but calls P9.B1 dual GEMV + P9.B2 down GEMV instead of P8.4/P8.5 WMMA, with `compact_rows = top_k`. Reuses `silu_mul_dual_out_bf16`, `weighted_lanes_sum_out_bf16_f32w`, `shared_gate_combine_residual_batch_out_bf16` + shared-expert primitives from the bulk path.
+  - Wired the new helper as the first opt-in branch in `_run_post_attention_moe_c1` (legacy `_launch_selected_raw_gguf_moe_pair` / `_linear` remains the default-off path).
+  - Added `Qwen35GGUFResidentSession.use_gemv_decode` mirroring `use_wmma_prefill`. Decode step wraps in `gemv_decode_session(self.use_gemv_decode)`; bulk prefill also wraps in `gemv_decode_session(...)` so the shared expert decode path (rows=1 inside bulk prefill) picks up the opt-in.
+
+Out of scope (documented as deferred):
+
+- Q4_K dense `LAYOUT_Q4_K_PACK8` projections (attention QKV/O) and the Q6_K pack8 lm-head: the resident weight is in separate `qweight`/`scales`/`mins` allocations, while the P9.B4/P9.B4b kernels read raw block bytes. Rewiring would need either a raw-side allocation in resident materialization or a pack8-input variant of the P9 kernels. Tracked under P9.D follow-up.
+- Q5_K dense decode: no P9 dense Q5_K kernel exists (qwen35moe has no Q5_K dense surface). Easy bolt-on if a future model needs it.
+
+Tests:
+
+- `tests/test_gguf_gemv_decode_dispatch.py`: 13 no-GPU dispatch tests covering default-off, kwarg/session/env opt-in, session-restore via context manager, kwarg overrides session, env-var truthy/falsy parsing, `gguf_gemv_decode_enabled` precedence, prefill-path-unaffected, missing-key fallback, Q6_K opt-in rewrite, Q5_K missing-kernel fallback.
+- `tests/test_qwen35_gguf_compact_moe_gemv_routing.py`: 4 no-GPU compact MoE c=1 routing tests: default-off uses legacy selected GEMV, opt-in routes through compact scheduler + P9.B1/B2 GEMV, missing-registry-kernel falls back, missing-compact-scratch falls back.
+
+Validation on W7900/gfx1100 (RX 7900 XTX local):
+
+- `py_compile` runner + gguf_linear: OK.
+- `uv run --with pytest pytest tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_gguf_gdn_prefill_correctness.py -q` -> `73 passed`.
+- Full P9.B fixture bundle (`tests/test_gguf_*pack8_gemv_decode.py`) + WMMA selected + dispatch + routing -> `352 passed`.
+
+Decision notes:
+
+- Sibling toggle vs piggybacking on `wmma_prefill_session`: kept them separate. They control orthogonal regimes (bulk prefill vs c=1 decode) and the bench script (P9.B7 task #26) will want to flip them independently so we can A/B "GDN k2 + GEMV decode" against "GDN k2 + legacy decode".
+- Compact scheduler reuse: the P8.6 scheduler is shape-agnostic in `rows`. The only WMMA-specific kernel in the bulk path is `wmma_tile_map`; the decode helper just omits it.
+- Registry exact-key check (`is_registered`): the cpu_reference fp16 fallback for `("cpu_reference", "linear", "fp16", "")` registers `cpu_reference.linear`, which doesn't take `stream`/`runtime` kwargs. Using `resolve(missing="none")` for the dispatch decision would silently route to this catch-all and crash at launch. The new `is_registered` primitive does an exact-key lookup, matching the dispatch intent.
+
+Next: task #26 (P9.B7) measures qwen35moe 512/128 decode tok/s with the new opt-in routing through the P9.B1/B3 kernels + rocprof symbol confirmation.

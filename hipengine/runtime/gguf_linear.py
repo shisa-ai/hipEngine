@@ -24,7 +24,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     register_gguf_q8_0_prefill_kernels,
 )
-from hipengine.kernels.registry import KernelKey, resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_Q4_K_PACK8,
@@ -46,6 +46,14 @@ _WMMA_PREFILL_ENV = "HIPENGINE_GGUF_WMMA_PREFILL"
 # ``None`` until set, so the env var still controls the default for plain
 # bench/diagnostic invocations.
 _wmma_prefill_session_enabled: bool | None = None
+
+# Opt-in env var for the GGUF pack8 GEMV decode family (P9.B). See
+# docs/GGUF.md "P9: closing the qwen35moe gap to PARO" for the wider
+# plan. This toggles the ``rows == 1`` decode rewrite that routes single-
+# token projections through the new ``pack8_gemv_decode_*`` kernels
+# (P9.B1-P9.B4b) instead of the legacy ``pack8_gemv_*`` decoders.
+_GEMV_DECODE_ENV = "HIPENGINE_GGUF_GEMV_DECODE"
+_gemv_decode_session_enabled: bool | None = None
 
 # Quants currently shipping a batched ``wmma_prefill_*`` family. Values are
 # the raw GGUF K-block alignment constraints enforced before dispatching to
@@ -96,6 +104,57 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
         "dense_bf16",
     ),
 }
+
+
+def set_gemv_decode_enabled(enabled: bool | None) -> None:
+    """Set the session-scoped opt-in for the GGUF pack8 GEMV decode family.
+
+    Pass ``True`` / ``False`` to override env + per-call kwargs for this
+    process. Pass ``None`` to clear the override and fall back to the env
+    var (``HIPENGINE_GGUF_GEMV_DECODE``). Intended to be called once by a
+    runner that drives ``Qwen35GGUFResidentSession.use_gemv_decode`` from
+    its public API. The kwarg path remains available for ad-hoc bisects.
+    """
+
+    global _gemv_decode_session_enabled
+    _gemv_decode_session_enabled = None if enabled is None else bool(enabled)
+
+
+@contextlib.contextmanager
+def gemv_decode_session(enabled: bool | None) -> Iterator[None]:
+    """Context manager wrapper around :func:`set_gemv_decode_enabled`."""
+
+    previous = _gemv_decode_session_enabled
+    set_gemv_decode_enabled(enabled)
+    try:
+        yield
+    finally:
+        set_gemv_decode_enabled(previous)
+
+
+def _env_gemv_decode_enabled() -> bool:
+    raw = os.environ.get(_GEMV_DECODE_ENV, "")
+    if not raw:
+        return False
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def gguf_gemv_decode_enabled(use_gemv_decode: bool | None = None) -> bool:
+    """Return the resolved GGUF pack8 GEMV decode opt-in state.
+
+    Precedence (highest first): explicit kwarg, session toggle, env var.
+    Mirrors :func:`gguf_wmma_prefill_enabled` for the decode-side rewrite.
+    """
+
+    return _resolve_use_gemv_decode(use_gemv_decode)
+
+
+def _resolve_use_gemv_decode(kwarg: bool | None) -> bool:
+    if kwarg is not None:
+        return bool(kwarg)
+    if _gemv_decode_session_enabled is not None:
+        return _gemv_decode_session_enabled
+    return _env_gemv_decode_enabled()
 
 
 def set_wmma_prefill_enabled(enabled: bool | None) -> None:
@@ -197,6 +256,7 @@ def launch_gguf_linear(
     libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
     use_wmma_prefill: bool | None = None,
+    use_gemv_decode: bool | None = None,
 ) -> None:
     """Launch a GGUF resident linear projection through the kernel registry.
 
@@ -222,6 +282,11 @@ def launch_gguf_linear(
         rows=rows,
     )
     dispatch = _pack8_decode_dispatch(dispatch, rows=rows, out_features=out_features)
+    dispatch = _gemv_decode_dispatch(
+        dispatch,
+        rows=rows,
+        use_gemv_decode=_resolve_use_gemv_decode(use_gemv_decode),
+    )
     dispatch = _wmma_prefill_dispatch(
         dispatch,
         rows=rows,
@@ -316,6 +381,7 @@ def launch_gguf_linear_pair(
     stream: int = 0,
     runtime=None,
     use_wmma_prefill: bool | None = None,
+    use_gemv_decode: bool | None = None,
 ) -> bool:
     """Launch a supported pair of GGUF projections, returning True when fused.
 
@@ -325,9 +391,16 @@ def launch_gguf_linear_pair(
     the WMMA family, the pair function returns ``False`` so the caller falls
     back to two singletons that each take the WMMA path via
     :func:`launch_gguf_linear`.
+
+    When ``use_gemv_decode`` is enabled (kwarg / session / env opt-in) and
+    ``rows == 1`` with a registered Q8_0 dual gate+up GEMV decode kernel,
+    the pair is fused through :func:`gguf_q8_0_pack8_dual_gate_up_gemv_decode_bf16_bf16_out`
+    (P9.B3); the output layout matches the legacy ``gguf_q8_0_dual_gemv``
+    concatenated layout that ``silu_mul_dual_out_*`` consumes downstream.
     """
 
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
+    use_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     dispatch_a = _pack8_decode_dispatch(
         resolve_gguf_linear_dispatch(weight_a, rows=rows),
         rows=rows,
@@ -469,6 +542,53 @@ def _pack8_decode_dispatch(
             dispatch.abi,
         )
     return dispatch
+
+
+def _gemv_decode_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    use_gemv_decode: bool,
+) -> GGUFLinearDispatch:
+    """Rewrite ``pack8_gemv_*`` -> ``pack8_gemv_decode_*`` for supported quants.
+
+    A no-op unless all of the following hold:
+
+    * ``use_gemv_decode`` is ``True`` (kwarg / session / env opt-in resolved).
+    * ``rows == 1`` (prefill / bulk paths are not affected).
+    * ``dispatch.abi == "raw"`` (the new GEMV decode kernel reads raw GGUF
+      bytes via the same single ``raw`` allocation as the legacy decoder).
+    * ``dispatch.key.quant`` ships a registered ``pack8_gemv_decode_*`` family
+      (currently P9.B3 ``gguf_q8_0``; the Q5_K/Q6_K dense decode variants
+      added in P9.B4b cover the lm-head case via separate runner wiring).
+    * ``dispatch.key.variant`` is one of the ``pack8_gemv_*`` aliases
+      (i.e. ``_pack8_decode_dispatch`` already rewrote the raw decoder).
+    * The rewritten registry key is actually registered. If not, the
+      function returns the original ``dispatch`` unchanged so the runtime
+      transparently falls back to the legacy decoder.
+    """
+
+    if not use_gemv_decode or rows != 1:
+        return dispatch
+    if dispatch.abi != "raw":
+        return dispatch
+    variant = dispatch.key.variant
+    if not variant.startswith("pack8_gemv_") or variant.startswith("pack8_gemv_decode_"):
+        return dispatch
+    rewritten_variant = f"pack8_gemv_decode_{variant[len('pack8_gemv_') :]}"
+    rewritten_key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        rewritten_variant,
+    )
+    if not is_registered(rewritten_key):
+        # Registry miss: fall back to the legacy decoder without raising.
+        # ``is_registered`` is an exact-key check so the cpu_reference fp16
+        # ``linear`` catch-all does not silently route to a kernel whose
+        # ABI does not match the GGUF launcher.
+        return dispatch
+    return GGUFLinearDispatch(rewritten_key, dispatch.abi)
 
 
 def _wmma_prefill_dispatch(
