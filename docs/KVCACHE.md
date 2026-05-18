@@ -1,6 +1,6 @@
 # KV Cache Roadmap — Dense INT8 First, Compact DMS Next
 
-_Status: K1 dense INT8 KV landed as a diagnostic/capacity path; 256K now passes the sampled 24GiB-class capacity target after prefill buffer lifetime reduction, while tracked high-water follow-up remains. K2 compact DMS remains planned. Last updated: 2026-05-18._
+_Status: K1 dense INT8 KV landed as a diagnostic/capacity path; 256K now passes both sampled and tracked 24GiB-class capacity targets after prefill buffer lifetime reductions and AOTriton query-scratch reuse. Correctness-preserving removal of the transient BF16 INT8-prefill oracle is deferred as future work. K2 compact DMS remains planned. Last updated: 2026-05-18._
 
 This document is the focused plan for extending hipEngine's KV-cache stack past
 current dense BF16 paged KV. It turns the current 128K-under-24GiB milestone
@@ -41,7 +41,8 @@ W7900 / gfx1100**, model `Qwen3.5-35B-A3B-PARO`, quant `w4_paro`:
   sampled HIP VRAM peak `22.013 GiB`, tracked allocator high-water
   `23.766 GiB`, retained KV `2.708 GB`. The previous persistent
   `prefill_hidden`/`prefill_next_hidden` blocker is resolved; the transient BF16
-  INT8-prefill oracle workspace still exists and remains the K1 follow-up.
+  INT8-prefill oracle workspace still exists, with correctness-preserving
+  removal deferred as future work.
 
 Artifacts:
 
@@ -77,8 +78,9 @@ KV. That is why dense INT8 KV remains the direct path to a 256K capacity row.
 The caveat is strict: this only holds for retained KV if the implementation does
 **not** keep a persistent BF16 shadow/staging arena. The current K1 path meets
 that no-shadow rule and no longer keeps full-prompt prefill I/O buffers live
-through decode. The remaining memory follow-up is tracked allocator high-water
-from the transient BF16 INT8-prefill oracle workspace.
+through decode. Its tracked high-water is under the 24GiB-class target; true
+removal of the transient BF16 INT8-prefill oracle is deferred because direct
+retained-INT8 prefill streaming failed the full E2E gate.
 
 ## Non-negotiable design rules
 
@@ -111,7 +113,8 @@ INT8 decode path, E2E correctness gate, no-shadow audit, and 128K/256K benchmark
 artifacts are landed. 256K passes sampled and tracked 24GiB-class capacity
 targets after single-buffer prefill staging, decode/phase scratch release,
 AOTriton BF16 query reuse, and q3072 full-attention prefill chunks. The temporary
-BF16 INT8-prefill oracle workspace still exists and remains a follow-up.
+BF16 INT8-prefill oracle workspace still exists; correctness-preserving removal
+is deferred to future work rather than a K1 capacity blocker.
 
 ### Storage format
 
@@ -273,9 +276,10 @@ Immediate memory work after the AOTriton query-reuse + q3072 diagnostic:
 3. [x] Reuse caller-owned AOTriton BF16 query scratch and retain q3072
    full-attention query chunks. This drops tracked peak further to `20.941 GiB`
    at 128K and `23.766 GiB` at 256K.
-4. [ ] Remove or stream the temporary BF16 INT8-prefill oracle K/V. It is already
-   reused and released before decode, and 256K total tracked high-water is below
-   24GiB, but the oracle workspace itself still exists.
+4. [ ] Future project: remove or stream the temporary BF16 INT8-prefill oracle
+   K/V without regressing the E2E gate. It is already reused and released before
+   decode, and 256K total tracked high-water is below 24GiB, but the oracle
+   workspace itself still exists.
 5. Keep dense INT8 KV/scales as expected capacity cost: 256K retained payload is
    `2.687 GB` at `1.0 B/element` plus `20.992 MB` of FP16 scales.
 

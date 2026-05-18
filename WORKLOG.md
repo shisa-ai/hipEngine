@@ -17661,3 +17661,19 @@ python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 --kv-storage int8_
 ```
 
 Conclusion: the temporary BF16 oracle is required by the current K1 correctness contract unless we also introduce a correctness-preserving prefill path (for example, a true streaming BF16 K/V oracle fed from non-quantized K/V, or a new E2E acceptance contract for INT8-prefill quantization). Reverted the experimental code; retained under-24GiB K1 result remains commit `f40bb26` (`256K/128` tracked peak `23.766 GiB`, sampled `22.013 GiB`, E2E `max_kl=0.015328`, top1 `100%`, generated IDs match) with `int8_prefill_oracle=true`.
+
+## 2026-05-18/19 — K1 docs button-up before main merge
+
+Cleaned up K1 wording so docs state the capacity target is complete: 256K/128 INT8 KV passes both sampled and tracked 24GiB-class targets (`22.013/23.766 GiB`) with correctness accepted and no persistent BF16 KV shadow. The transient BF16 INT8-prefill oracle remains in the accepted path; correctness-preserving removal is now documented as future work, not a K1 capacity blocker.
+
+Validation before merge:
+
+```bash
+python3 -m pytest -q
+python3 -m compileall -q hipengine tests scripts
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+git diff --check
+# all passed
+```
