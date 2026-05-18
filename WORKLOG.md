@@ -19487,3 +19487,75 @@ Notes for task #16:
 
 - Benchmark the qwen35moe path with `--use-wmma-prefill --force-bulk-prefill --bulk-prefill-attention-mode=bulk` (or `HIPENGINE_GGUF_WMMA_PREFILL=1`) and use rocprof to confirm `gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>` plus `gguf_k_selected_wmma_prefill_compact_kernel<unsigned short,5/6>` appear in the prefill trace.
 - The compact path currently copies the device `wmma_total_rows` scalar to host for Python launch sizing; this is a scheduler overhead to measure before considering a fused/dynamic launcher.
+
+## 2026-05-18 P8 task #16: compact-MoE WMMA acceptance benchmark
+
+Ran the P8 acceptance benchmark for qwen35moe GGUF after P8.2/P8.4/P8.5/P8.6 wiring.
+
+Hardware / env:
+
+- Available local device was **AMD Radeon RX 7900 XTX / gfx1100**, not W7900; W7900 performance remains unverified for this artifact.
+- `hipcc --version` captured in `/tmp/hipengine-hipcc-version.txt` and passed as both `HIPENGINE_COMPILER_VERSION_FILE` and `--compiler-version-file`.
+- `rocm-smi` was near idle before runs (`GPU use 1%`, ~28 MiB VRAM used).
+- Commands used cached resident builds (`--require-cached-build`) and prebuilt/lazily cached P8 libraries before rocprof.
+
+Correctness / sanity:
+
+- `uv run --with pytest pytest tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py tests/test_gguf_linear_dispatch.py -q` -> `68 passed`.
+  - This is the formal P8 selected compact WMMA fixture gate vs `kernels/cpu_reference/` GGUF quant GEMV oracles plus routing/default-off tests.
+- 512/128 graph benchmark produced finite logits and deterministic final token `796` across all three runs.
+- Optional serial-vs-WMMA bulk probe with `HIPENGINE_GGUF_WMMA_PREFILL=1` is diagnostic-only and **does not remain bit-exact**: serial token `4469`, compact/default token `248050`, KL `3.892`. This is recorded in the artifact as reduction-order/half-operand drift under the WMMA opt-in; the retained correctness gate is the CPU-reference kernel fixture bundle plus finite deterministic E2E sanity.
+
+Wall-clock benchmark commands:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 \
+  --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill \
+  --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/p8_accept/wmma-512-0.json
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p8_accept/wmma-512-128.json
+```
+
+Results:
+
+| Shape | Prefill tok/s median | Prefill seconds median | Decode tok/s median | Peak tracked GiB |
+| --- | ---: | ---: | ---: | ---: |
+| 512/0 | 534.406 | 0.958073 | n/a | 20.886038 |
+| 512/128 graph | 529.598 | 0.966771 | 62.584 | 20.886039 |
+
+Comparisons:
+
+- vs P8.1 512/0 Q8-only WMMA: prefill `172.822 -> 534.406 tok/s` (`+209.2%`) and clean prefill kernel time `2953.6 -> 907.8 ms` (`-69.3%`).
+- vs task #63 512/128 partial decode artifact: graph prefill `107.001 -> 529.598 tok/s` (`+394.9%`), decode `62.526 -> 62.584 tok/s` (`+0.1%`, effectively unchanged as expected).
+
+rocprof:
+
+- Clean 512/0 prefill trace: `/tmp/p8_accept/rocprof-512-0/rocm/1681213_kernel_trace.csv`.
+- 512/128 graph-replay rocprof timed out after 1800 s (same profiler pathology seen in earlier decode tasks), so full 512/128 symbol trace was captured with eager decode: `/tmp/p8_accept/rocprof-512-128-eager/rocm/1738166_kernel_trace.csv`; graph wall-clock benchmark above remains the throughput row.
+- Clean 512/0 total kernel time: `907.812576 ms` -> P8 acceptance target `<=1500 ms` met; stretch `<=700 ms` not met.
+- Top clean 512/0 buckets:
+  - GDN recurrent prefill: `666.877 ms / 30` dispatches.
+  - `gguf_q8_0_prefill_wmma_kernel`: `73.921 ms / 250`.
+  - `gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>`: `64.601 ms / 40`.
+  - `gguf_k_selected_wmma_prefill_compact_kernel<unsigned short,5>`: `27.339 ms / 37`.
+  - `gguf_k_selected_wmma_prefill_compact_kernel<unsigned short,6>`: `3.573 ms / 3`.
+- Decode-shaped `*_prefill_out_kernel` symbols disappear from selected-MoE prefill in the clean 512/0 trace. The only remaining decode-shaped prefill symbol is one `gguf_k_pack8_prefill_out_kernel<unsigned short,float,6>` dispatch (`0.976 ms`) for the tied Q6_K lm-head logits projection used to sample the first token, documented as an allowed fallback.
+
+Artifact / rollups:
+
+- Added `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p8-compact-moe-wmma-accepted.json`.
+- Updated `benchmarks/README.md` current-fastest table and diagnostic table.
+- Updated `benchmarks/CHANGELOG.md` with old->new deltas and target outcome.
