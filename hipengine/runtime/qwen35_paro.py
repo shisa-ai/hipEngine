@@ -24,6 +24,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans,
+    qwen35_write_paged_kv_int8_per_token_head_prompt_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
     qwen35_write_paged_kv_mixed_value_fp16_batch_spans,
     qwen35_write_paged_kv_mixed_value_fp16_prompt_spans,
@@ -2527,6 +2528,72 @@ class Qwen35ParoDecodeState:
             runtime=self.runtime,
         )
 
+    def append_full_attention_kv_int8_per_token_head_fp16_batch(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        rows: int,
+        block_size: int = 256,
+        library=None,
+        stream: int = 0,
+    ) -> None:
+        """Append FP16-prefill K/V rows into an INT8 retained KV cache."""
+
+        if spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+            raise ValueError("INT8 retained prefill append requires int8_per_token_head spans")
+        if key_cache.dtype is not DType.INT8 or value_cache.dtype is not DType.INT8:
+            raise ValueError("INT8 retained prefill append requires INT8 key/value cache tensors")
+        metadata = spans.scale_metadata
+        if metadata is None:
+            raise ValueError("INT8 retained prefill append requires scale metadata")
+        kv_width = self.config.num_key_value_heads * self.config.head_dim
+        if scratch.value.dtype is DType.FP32:
+            value_f32 = scratch.value
+        else:
+            value_f32 = scratch.key_raw
+            if value_f32.dtype is not DType.FP32 or value_f32.shape != scratch.value.shape:
+                raise ValueError("INT8 prefill append expects an FP32 key_raw scratch matching value shape")
+            cast_library = _library_for(library, "cast")
+            if scratch.value.dtype is DType.FP16:
+                fp16_to_f32(
+                    scratch.value.ptr,
+                    value_f32.ptr,
+                    rows * kv_width,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=self.runtime,
+                )
+            elif scratch.value.dtype is DType.BF16:
+                bf16_to_f32(
+                    scratch.value.ptr,
+                    value_f32.ptr,
+                    rows * kv_width,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=self.runtime,
+                )
+            else:
+                raise ValueError("INT8 prefill append value scratch must be fp16, bf16, or fp32")
+        qwen35_write_paged_kv_int8_per_token_head_prompt_spans(
+            scratch.key.ptr,
+            value_f32.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            metadata.k_scale.ptr,
+            metadata.v_scale.ptr,
+            spans,
+            rows,
+            block_size,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            stream=stream,
+            library=_library_for(library, "kv"),
+            runtime=self.runtime,
+        )
+
     def decode_full_attention_context_gate_fp16(
         self,
         scratch: Qwen35ParoAttentionScratch,
@@ -2924,6 +2991,9 @@ class Qwen35ParoDecodeState:
         cu_seqlens_k: Tensor | None = None,
         aotriton_attention: bool = False,
         aotriton_kv_rows: int | None = None,
+        retained_key_cache: Tensor | None = None,
+        retained_value_cache: Tensor | None = None,
+        retained_append_spans: KVLiveSpans | None = None,
         tokens: int,
         group_size: int = 128,
         block_size: int = 256,
@@ -2941,6 +3011,14 @@ class Qwen35ParoDecodeState:
 
         if tokens <= 1:
             raise ValueError("full-attention native prefill requires tokens > 1")
+        retained_int8 = retained_append_spans is not None
+        if retained_int8:
+            if retained_key_cache is None or retained_value_cache is None:
+                raise ValueError("INT8 retained prefill append requires retained key/value cache tensors")
+            if retained_append_spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+                raise ValueError("INT8 retained prefill append requires int8_per_token_head spans")
+            if aotriton_attention:
+                raise ValueError("AOTriton prefill is disabled when retained KV storage is int8_per_token_head")
         attention_scratch = attention_scratch or self.reserve_full_attention_scratch(
             tokens=tokens,
             num_splits=1,
@@ -3001,6 +3079,17 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if retained_int8:
+            self.append_full_attention_kv_int8_per_token_head_fp16_batch(
+                attention_scratch,
+                key_cache=retained_key_cache,
+                value_cache=retained_value_cache,
+                spans=retained_append_spans,
+                rows=tokens,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
         if aotriton_attention:
             if cu_seqlens_q is None or cu_seqlens_k is None:
                 raise ValueError("AOTriton prefill requires cu_seqlens_q/k tensors")

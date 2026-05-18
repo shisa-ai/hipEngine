@@ -16947,3 +16947,38 @@ python3 scripts/smoke.py --mode registry && \
 python3 scripts/smoke.py --mode cpu-fixtures
 # pytest passed; CPU fixtures and registry/cpu smokes passed.
 ```
+
+## 2026-05-18 - K1 INT8 native prefill oracle path
+
+Completed task #11: native single-request prefill can now keep retained full-attention KV in INT8+scale storage while using temporary BF16 oracle K/V for prefill attention.
+
+Implementation notes:
+
+- `Qwen35ParoDecodeState.run_full_attention_moe_prefill_layer_fp16` accepts optional retained INT8 cache/spans separately from the BF16 oracle cache/spans used by the causal prefill attention kernel.
+- Full-attention prefill writes chunk K/V into a temporary BF16 oracle cache, appends the same post-RoPE K/V to the retained INT8 cache via `qwen35_write_paged_kv_int8_per_token_head_prompt_spans`, and uses `scratch.key_raw` as the transient FP32 value buffer for INT8 quantization.
+- `Qwen35ParoResidentSession._run_native_prefill_layers` disables AOTriton when the resident KV policy is `int8_per_token_head`, allocates oracle K/V from the prefill workspace, and keeps retained full-attention layer buffers as INT8 payload plus K/V scales only.
+- The native prefill fixture gate now has `--native-kv-storage-dtype int8_per_token_head` for prefill-only (`--max-new-tokens 0`) checks and records an after-prefill KV memory audit from `owned_buffer_summary()`.
+- Compact c>N native prefill now fails fast for INT8 retained KV until a packed INT8 oracle path is wired, avoiding accidental BF16-cache reuse.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_native_prefill_fixture_gate.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py && \
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+# targeted tests passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest passed; CPU fixtures and registry/cpu smokes passed.
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 4 --max-new-tokens 0 \
+  --native-kv-storage-dtype int8_per_token_head \
+  --json /tmp/hipengine-int8-prefill-fixture-maxlayers4.json
+# status=accepted on W7900/gfx1100. Seed top-1 matched serial BF16 reference;
+# max KL=1.34e-05, top1_agreement=1.0. Native retained full-attn layer 3
+# summary: payload_dtype=int8, payload_bytes=786432, scale_bytes=6144,
+# persistent_bf16_kv_layers=[], aotriton_attention=false.
+```

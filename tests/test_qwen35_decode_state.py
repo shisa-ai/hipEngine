@@ -4,11 +4,12 @@ import pytest
 
 from hipengine.core.device import Device
 from pathlib import Path
+from types import SimpleNamespace
 
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
-from hipengine.kvcache import KVLiveSpans
+from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
 from hipengine.loading.materialize import DeviceTensorAllocation, DeviceWeightMap
 from hipengine.loading.qwen35_paro import Qwen35ParoConfig, Qwen35ParoLayerDeviceWeights
 from hipengine.loading.safetensors import TensorInfo
@@ -2416,3 +2417,76 @@ def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch)
         "shared_single_pack8",
         "combine",
     ]
+
+
+def test_qwen35_decode_state_int8_prefill_append_converts_fp16_value_and_passes_scales(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime)
+    device = Device("hip", 0)
+    rows = 2
+    kv_shape = (rows, state.config.num_key_value_heads, state.config.head_dim)
+    scratch = SimpleNamespace(
+        key=Tensor.from_handle(0x1000, kv_shape, DType.FP32, device),
+        value=Tensor.from_handle(0x2000, kv_shape, DType.FP16, device),
+        key_raw=Tensor.from_handle(0x3000, kv_shape, DType.FP32, device),
+    )
+    scales = KVScaleMetadata(
+        k_scale=Tensor.from_handle(0x4000, (1, 256, state.config.num_key_value_heads), DType.FP16, device),
+        v_scale=Tensor.from_handle(0x5000, (1, 256, state.config.num_key_value_heads), DType.FP16, device),
+    )
+    spans = KVLiveSpans.paged_uniform(
+        block_table=Tensor.from_handle(0x6000, (1,), DType.INT32, device),
+        live_counts=Tensor.from_handle(0x7000, (rows,), DType.INT64, device),
+        max_live_count=rows - 1,
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        scale_metadata=scales,
+    )
+    key_cache = Tensor.from_handle(0x8000, (1, 256, state.config.num_key_value_heads, state.config.head_dim), DType.INT8, device)
+    value_cache = Tensor.from_handle(0x9000, key_cache.shape, DType.INT8, device)
+    calls = []
+
+    def fake_fp16_to_f32(src, dst, count, **kwargs):
+        calls.append(("cast", src, dst, count, kwargs["stream"]))
+
+    def fake_writer(key_ptr, value_ptr, key_cache_ptr, value_cache_ptr, k_scale_ptr, v_scale_ptr, spans_arg, rows_arg, *args, **kwargs):
+        calls.append(
+            (
+                "writer",
+                key_ptr,
+                value_ptr,
+                key_cache_ptr,
+                value_cache_ptr,
+                k_scale_ptr,
+                v_scale_ptr,
+                spans_arg,
+                rows_arg,
+                kwargs["stream"],
+            )
+        )
+
+    monkeypatch.setattr(qwen_runtime, "fp16_to_f32", fake_fp16_to_f32)
+    monkeypatch.setattr(qwen_runtime, "qwen35_write_paged_kv_int8_per_token_head_prompt_spans", fake_writer)
+
+    state.append_full_attention_kv_int8_per_token_head_fp16_batch(
+        scratch,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        spans=spans,
+        rows=rows,
+        library={},
+        stream=7,
+    )
+
+    assert calls[0] == ("cast", scratch.value.ptr, scratch.key_raw.ptr, rows * state.config.num_key_value_heads * state.config.head_dim, 7)
+    assert calls[1] == (
+        "writer",
+        scratch.key.ptr,
+        scratch.key_raw.ptr,
+        key_cache.ptr,
+        value_cache.ptr,
+        scales.k_scale.ptr,
+        scales.v_scale.ptr,
+        spans,
+        rows,
+        7,
+    )

@@ -1233,6 +1233,8 @@ class Qwen35ParoResidentSession:
             raise ValueError("compact prompt slab block_count exceeds session block capacity")
         if slab.block_size != self.block_size:
             raise ValueError("compact prompt slab block_size must match session block_size")
+        if getattr(self, "kv_storage_dtype", DType.BF16) == DType.INT8_PER_TOKEN_HEAD:
+            raise NotImplementedError("compact c>N native prefill is not wired for int8_per_token_head retained KV")
         self._resolve_prefill_config_for_length(max(len(row) for row in slab.token_rows))
         native_prefill_plan = self.native_prefill_plan()
         if not native_prefill_plan.full_layer_limit_native:
@@ -1340,8 +1342,10 @@ class Qwen35ParoResidentSession:
                 "full_native": True,
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
-                "aotriton_attention": self._prefill_use_aotriton_attention(len(tokens)),
+                "aotriton_attention": self._prefill_use_aotriton_attention(len(tokens)) and self.kv_storage_dtype == DType.BF16,
                 "attn_aotriton_min_tokens": self.prefill_config.attn_aotriton_min_tokens,
+                "kv_storage_dtype": self.kv_storage_dtype.value,
+                "int8_prefill_oracle": self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD,
             }
             if not sample:
                 return None
@@ -1708,8 +1712,11 @@ class Qwen35ParoResidentSession:
         *,
         start: int = 0,
         total_tokens: int | None = None,
+        storage_dtype: str | DType | None = None,
+        scale_metadata: KVScaleMetadata | None = None,
     ) -> tuple[KVLiveSpans, KVLiveSpans]:
         total = rows if total_tokens is None else int(total_tokens)
+        storage = getattr(self, "kv_storage_dtype", DType.BF16) if storage_dtype is None else DType.parse(storage_dtype)
         block_table = self._prefill_block_table_rows(rows, start=start)
         positions = self._prefill_rows_tensor(self.prefill_positions, rows, start=start)
         context_counts = Tensor.from_handle(
@@ -1722,19 +1729,30 @@ class Qwen35ParoResidentSession:
             block_table=block_table,
             live_counts=positions,
             max_live_count=total - 1,
-            storage_dtype=DType.BF16,
+            storage_dtype=storage,
             row_positions=positions,
             span_role="prefill",
+            scale_metadata=scale_metadata,
         )
         prefill_spans = KVLiveSpans.paged_uniform(
             block_table=block_table,
             live_counts=context_counts,
             max_live_count=total,
-            storage_dtype=DType.BF16,
+            storage_dtype=storage,
             row_positions=positions,
             span_role="prefill",
+            scale_metadata=scale_metadata,
         )
         return append_spans, prefill_spans
+
+    def _prefill_int8_oracle_cache(self, layer_id: int, *, total_tokens: int) -> tuple[Tensor, Tensor]:
+        """Return temporary BF16 K/V cache used only for INT8 native prefill attention."""
+
+        blocks = max(1, (int(total_tokens) + self.block_size - 1) // self.block_size)
+        shape = (blocks, self.block_size, self.config.num_key_value_heads, self.config.head_dim)
+        key = self.prefill_workspace.reserve_tensor(f"prefill.int8_oracle_key.{int(layer_id)}", shape, DType.BF16)
+        value = self.prefill_workspace.reserve_tensor(f"prefill.int8_oracle_value.{int(layer_id)}", shape, DType.BF16)
+        return key, value
 
     def _full_cache_all_slots(self, layer_id: int) -> tuple[Tensor, Tensor]:
         key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
@@ -2079,7 +2097,7 @@ class Qwen35ParoResidentSession:
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
-        use_aotriton_attention = self._prefill_use_aotriton_attention(tokens)
+        use_aotriton_attention = self._prefill_use_aotriton_attention(tokens) and self.kv_storage_dtype == DType.BF16
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
@@ -2112,12 +2130,31 @@ class Qwen35ParoResidentSession:
                         stream,
                     )
             elif layer_type == "full_attention":
-                key_cache, value_cache = self._slot_full_cache(layer_id, 0)
+                retained_key_cache, retained_value_cache = self._slot_full_cache(layer_id, 0)
+                int8_retained = self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                if int8_retained:
+                    key_cache, value_cache = self._prefill_int8_oracle_cache(layer_id, total_tokens=tokens)
+                else:
+                    key_cache, value_cache = retained_key_cache, retained_value_cache
                 chunk_size = self._full_attention_prefill_layer_chunk_size(tokens)
                 for start, end in self._chunk_ranges(tokens, chunk_size, min_chunk_size=2):
                     rows = end - start
                     hidden_chunk = self._prefill_row_matrix_view(hidden, start, rows)
-                    append_spans, prefill_spans = self._prefill_full_attention_spans(rows, start=start, total_tokens=tokens)
+                    append_spans, prefill_spans = self._prefill_full_attention_spans(
+                        rows,
+                        start=start,
+                        total_tokens=tokens,
+                        storage_dtype=DType.BF16,
+                    )
+                    retained_append_spans = None
+                    if int8_retained:
+                        retained_append_spans, _ = self._prefill_full_attention_spans(
+                            rows,
+                            start=start,
+                            total_tokens=tokens,
+                            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+                            scale_metadata=self._slot_full_scale_metadata(layer_id, 0),
+                        )
                     positions = self._prefill_rows_tensor(self.prefill_positions, rows, start=start)
                     if use_aotriton_attention:
                         cu_seqlens_q, cu_seqlens_k = self._prefill_single_cu_seqlens_pair(rows, end)
@@ -2141,6 +2178,9 @@ class Qwen35ParoResidentSession:
                         cu_seqlens_k=cu_seqlens_k,
                         aotriton_attention=use_aotriton_attention,
                         aotriton_kv_rows=end,
+                        retained_key_cache=retained_key_cache if int8_retained else None,
+                        retained_value_cache=retained_value_cache if int8_retained else None,
+                        retained_append_spans=retained_append_spans,
                         tokens=rows,
                         block_size=self.block_size,
                         library=self.libraries,

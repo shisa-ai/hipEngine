@@ -166,6 +166,84 @@ def test_qwen35_resident_full_kv_allocation_uses_int8_payload_and_scales() -> No
     assert layer["scale_metadata"]["granularity"] == "per_token_head"
 
 
+def test_qwen35_resident_native_prefill_layers_use_int8_retained_cache_and_bf16_oracle() -> None:
+    device = Device("hip", 0)
+    session, _captured = _resident_allocation_session(storage_dtype="int8_per_token_head")
+    session.config = SimpleNamespace(
+        hidden_size=8,
+        layer_types=("full_attention",),
+        num_key_value_heads=2,
+        head_dim=4,
+        linear_conv_kernel_dim=1,
+    )
+    session.max_sequence_length = 8
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.prefill_config = PrefillConfig(attn_aotriton_min_tokens=1)
+    session.prefill_hidden = _tensor(0x1000, (4, 8), DType.FP16)
+    session.prefill_next_hidden = _tensor(0x2000, (4, 8), DType.FP16)
+    session.prefill_positions = _tensor(0x3000, (4,), DType.INT64)
+    session.prefill_context_count_buf = DeviceBuffer(0x4000, 4 * DType.INT64.itemsize)
+    session.prefill_block_table_buf = DeviceBuffer(0x5000, 4 * session.blocks * DType.INT32.itemsize)
+    session.cos = _tensor(0x6000, (8, 4), DType.FP32)
+    session.sin = _tensor(0x7000, (8, 4), DType.FP32)
+    session.libraries = {}
+    session._allocate_full_attention_cache(0)
+    session._full_attention_prefill_layer_chunk_size = MethodType(lambda self, tokens: 2, session)
+    session._ensure_full_prefill_scratch = MethodType(lambda self, *, tokens: object(), session)
+    session._ensure_moe_prefill_scratch = MethodType(lambda self, layer_id=None, *, tokens: object(), session)
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.memcpy_async_calls = []
+
+        def memcpy_async(self, *args):
+            self.memcpy_async_calls.append(args)
+
+    class FakeWorkspace:
+        def __init__(self) -> None:
+            self.calls = []
+            self.next_ptr = 0x8000
+
+        def reserve_tensor(self, name, shape, dtype):
+            self.calls.append((name, tuple(shape), DType.parse(dtype)))
+            tensor = Tensor.from_handle(self.next_ptr, tuple(shape), dtype, device)
+            self.next_ptr += tensor.numel * tensor.dtype.itemsize + 0x100
+            return tensor
+
+    class FakeFullPrefillState:
+        def __init__(self) -> None:
+            self.run_calls = []
+
+        def run_full_attention_moe_prefill_layer_fp16(self, hidden, **kwargs):
+            self.run_calls.append((hidden, kwargs))
+            return Tensor.from_handle(0xA000 + len(self.run_calls) * 0x100, hidden.shape, DType.FP16, device)
+
+    runtime = FakeRuntime()
+    workspace = FakeWorkspace()
+    state = FakeFullPrefillState()
+    session.runtime = runtime
+    session.prefill_workspace = workspace
+    session.states = [state]
+
+    out = session._run_native_prefill_layers(tokens=4)
+
+    assert out.shape == (4, 8)
+    assert len(state.run_calls) == 2
+    assert [call[1]["tokens"] for call in state.run_calls] == [2, 2]
+    assert all(call[1]["aotriton_attention"] is False for call in state.run_calls)
+    assert [item[0] for item in workspace.calls] == ["prefill.int8_oracle_key.0", "prefill.int8_oracle_value.0"]
+    for _hidden, kwargs in state.run_calls:
+        assert kwargs["key_cache"].dtype is DType.BF16
+        assert kwargs["value_cache"].dtype is DType.BF16
+        assert kwargs["append_spans"].storage_dtype is DType.BF16
+        assert kwargs["prefill_spans"].storage_dtype is DType.BF16
+        assert kwargs["retained_key_cache"].dtype is DType.INT8
+        assert kwargs["retained_value_cache"].dtype is DType.INT8
+        assert kwargs["retained_append_spans"].storage_dtype is DType.INT8_PER_TOKEN_HEAD
+        assert kwargs["retained_append_spans"].scale_metadata is not None
+        assert kwargs["retained_append_spans"].scale_metadata.k_scale.dtype is DType.FP16
+    assert len(runtime.memcpy_async_calls) == 2
+
 
 def test_qwen35_resident_native_prefill_plan_accepts_full_attention_layers() -> None:
     layer_types = ("linear_attention", "linear_attention", "full_attention", "linear_attention")
