@@ -121,6 +121,11 @@ Current status:
   (`target_bulk_forward_calls=10`, `target_forwards_per_draft_call=1.0`), but is
   slower (`0.124x` AR, `performance_claim=false`; artifact
   [`2026-05-18-hipengine-dflash-chain-full-model-e2e-nativebulk-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-nativebulk-diagnostic.json)).
+  A follow-up drafter HIP graph prototype captures and replays the fixed-shape
+  `propose()` body exactly (`validation_passed=true`, 10/10 candidate paths), but
+  exact `context_tokens` buckets have no reuse during decode, so it regresses to
+  `133.8 ms/call` vs the no-graph `68.9 ms/call` baseline and remains diagnostic
+  ([artifact](../benchmarks/results/2026-05-18-hipengine-dflash-drafter-graph-validate-diagnostic.json)).
 - no speculative throughput claim is allowed until the native compact/c-aware
   target verifier plus drafter path produces a retained chain win over
   same-session AR.
@@ -503,9 +508,13 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   decode tok/s rose from `~14.7` to `~18.3` (median across 5 runs, +24%).  The
   follow-up retained native-B+1 artifact is exact and proves one target verifier
   call per draft cycle, but regresses to `0.124x` AR because the tiny-row verifier
-  path is still launch/kernel dominated.
+  path is still launch/kernel dominated.  The drafter graph prototype proves
+  exact graph replay of the fixed-shape `propose()` body, but exact-context graph
+  keys do not repeat in decode (`cache_entries=10`, no hits), so graph validation
+  doubles drafter time rather than reducing launch overhead.
 - Remaining integration work: optimize/capture/fuse the native bulk verifier and
-  then promote only if the full-model chain beats same-session AR.
+  replace exact-context drafter graphs with reusable context-bucket-safe kernels
+  or fusion; promote only if the full-model chain beats same-session AR.
 
 ### Phase D4 — DDTree compiler and tree verify
 
@@ -542,6 +551,12 @@ Goal: convert fixed `N` rows into low-overhead graph replay.
   `benchmarks/results/2026-05-18-hipengine-dflash-verify-graph-buckets-diagnostic.json`.
   Rare page-bucket shapes fall back to direct launch semantics with an explicit
   fallback reason.
+- **Landed 2026-05-18:** `scripts/dflash_chain_e2e_bench.py --drafter-graph
+  {off,auto,validate}` prototypes HIP graph capture for the native DFlash
+  drafter `propose()` body.  Validation mode proves graph replay candidate
+  equality vs direct fallback, but the retained E2E artifact records the blocker:
+  exact `context_tokens` buckets are unique per decode cycle, so there are no
+  cache-hit replays and no speedup.
 - Warm up JIT/build outside capture.
 - Capture only kernels and device copies whose addresses are stable.
 - Do not bake per-cycle scalar values into graph nodes unless they live in

@@ -18346,3 +18346,35 @@ baseline `0.689 s / 10 = 68.9 ms/call`.  Conclusion: exact-context HIP graph
 capture is correct but not useful for E2E DFlash decode until the drafter kernels
 accept a reusable context bucket/max-length shape (or are fused) so graphs can be
 replayed across cycles.
+
+## 2026-05-18 — DFlash drafter graph retained artifact
+
+After committing the graph prototype (`6e65c48`), regenerated the clean retained
+artifact:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --drafter-graph validate \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 16 --draft-budgets 4 \
+  --json benchmarks/results/2026-05-18-hipengine-dflash-drafter-graph-validate-diagnostic.json
+```
+
+Result: exact same-session AR equality passed; finite logits passed; GPU accept
+summary matched CPU oracle.  Graph validation replay matched direct candidates
+for all 10 DFlash propose calls: `graph.status=captured`, `replay_steps=10`,
+`validation_passed=true`, `draft_graph.status_counts={'captured_validated': 10}`.
+Clean software context: `hipEngine@6e65c48`, dirty `false`.
+
+Metrics: AR `61.97 tok/s`, DFlash `6.04 tok/s` (`0.097x`, `-90.3%` vs AR),
+`performance_claim=false`.  Drafter time `1.338 s / 10 = 133.8 ms/call`, worse
+than the no-graph nativebulk baseline `0.689 s / 10 = 68.9 ms/call`, because
+exact `context_tokens` buckets were unique (`cache_entries=10`, no cache-hit
+replay).  Artifact blocker: exact-context graph capture is correct but cannot
+reduce launch overhead in decode until kernels support reusable context buckets
+or fusion avoids the per-context graph key.
+
+Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/DFLASH.md`, and
+`docs/MTP.md` with the retained diagnostic and blocker.

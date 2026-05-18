@@ -37,9 +37,11 @@ device-side accept, and state/KV commit are exact and faster than serial c=1.
 As of the retained 2026-05-18 native-B+1 DFlash row, the shared verifier is
 exact/finite and GPU accept matches the CPU oracle, but the full chain remains
 purely diagnostic (`performance_claim=false`, `0.124x` AR) because the native
-verifier is slower than the serial fallback. MTP speed work stays blocked on
-verifier graph/fusion/tiny-row optimization and should not fork a separate
-verifier path.
+verifier is slower than the serial fallback. The drafter HIP graph prototype is
+also correctness-only: graph replay matches direct candidates, but exact context
+buckets do not repeat and drafter time regresses to `133.8 ms/call`. MTP speed
+work stays blocked on verifier graph/fusion/tiny-row optimization and reusable
+proposal graph/fusion work; it should not fork a separate verifier path.
 
 ## Alignment with existing hipEngine design
 
@@ -208,7 +210,9 @@ least these pieces:
 - benchmark rows proving the verifier is faster than serial c=1 verification.
 
 Current DFlash status: the exact native-B+1 row exists and should be reused for
-API/commit correctness, but it has not cleared this speed gate.
+API/commit correctness, but it has not cleared this speed gate. Exact-context
+DFlash drafter graph capture also exists, but has no E2E cache-hit replay because
+`context_tokens` changes every cycle.
 
 MTP can use CPU/reference tests before M0, but retained speed work should wait.
 
