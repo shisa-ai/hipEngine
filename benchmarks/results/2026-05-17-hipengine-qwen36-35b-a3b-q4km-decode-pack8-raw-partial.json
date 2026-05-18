@@ -1,0 +1,546 @@
+{
+  "schema": 2,
+  "status": "partial_optimization_retained_blocked",
+  "performance_claim": true,
+  "timestamp": "2026-05-18T00:24:19.969235+00:00",
+  "run_tag": "hipengine-qwen36-q4km-decode-pack8-raw-partial",
+  "task": "#63 Optimize qwen35moe GGUF decode to PARO range",
+  "summary": "Implemented correctness-safe raw-byte pack8 decode kernels for GGUF Q8_0/Q5_K/Q6_K, Q4_K raw selected gate+up dual kernels, and Q8_0 raw shared gate+up dual dispatch. 512/128 graph decode improves from 49.864 to 62.526 tok/s (+25.39%) and prefill improves from 99.898 to 107.001 tok/s, but the PARO/~100 tok/s decode target is not met; task #63 remains blocked/open.",
+  "hardware": {
+    "gpu": "attached RX 7900 XTX / gfx1100 in this session; project default claims remain W7900/gfx1100 unless separately verified",
+    "device_total_gib": 23.984375
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "commit_before_commit": "435d47e",
+    "git_status_at_artifact": "## gguf-bulk-prefill\n M hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip\n M hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py\n M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip\n M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py\n M hipengine/runtime/gguf_linear.py\n M hipengine/runtime/qwen35_gguf_runner.py\n"
+  },
+  "changes": [
+    "Added raw-byte pack8 Q8_0/Q5_K/Q6_K GEMV kernels for rows=1 decode and selected expert down paths; no packed sidecar residency required.",
+    "Routed raw GGUF decode linear dispatch through pack8 variants for Q8_0 hidden projections and Q6_K lm_head/output when out_features is divisible by 8.",
+    "Added Q4_K raw selected dual gate+up kernel for decode (x_rows==1 only) to halve gate/up dispatches while preserving reduction order.",
+    "Added Q8_0 raw dual gate+up dispatch for shared expert gate/up; retained graph replay path."
+  ],
+  "commands": {
+    "targeted_tests": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_gguf_k_gemv.py tests/test_gguf_q4_k_gemv.py tests/test_qwen35_gguf_runner.py::test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback",
+    "bulk_parity_gate": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bulk_parity.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task63/bulk-parity-pack8raw-q4q8dual.json",
+    "public_generate_gate": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --json /tmp/hipengine-task63/public-e2e.json",
+    "benchmark_512_128_3run": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task63/default-512-128-pack8raw-q4q8dual-3run.json",
+    "rocprof_prefill_subtract": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task63/rocprof-final-prefill -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task63/final-prefill-only-rocprof-run.json",
+    "rocprof_eager_decode": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task63/rocprof-final-eager -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task63/final-eager-512-128-rocprof-run.json"
+  },
+  "correctness": {
+    "targeted_tests_passed": true,
+    "bulk_parity_passed": true,
+    "bulk_parity_summary": {
+      "serial_token_id": 4469,
+      "default_token_id": 4469,
+      "default_top1_match": true,
+      "default_kl_serial_to_default": 0.0,
+      "default_max_abs_logit": 0.0,
+      "native_attention_bulk_ffn_token_id": 4469,
+      "native_attention_bulk_ffn_top1_match": true,
+      "native_attention_bulk_ffn_kl_serial_to_bulk": 0.0,
+      "native_attention_bulk_ffn_max_abs_logit": 0.0,
+      "fast_bulk_attention_token_id": 4469,
+      "fast_bulk_attention_top1_match": true,
+      "fast_bulk_attention_kl_serial_to_bulk": 0.0,
+      "fast_bulk_attention_max_abs_logit": 0.0,
+      "first_fast_bulk_hidden_drift_limit": null,
+      "first_aotriton_hidden_drift_limit": null,
+      "first_native_full_attention_hidden_drift_limit": null
+    },
+    "public_generate_passed": true,
+    "public_outputs": [
+      "izio."
+    ],
+    "public_generated_token_ids": [
+      43482,
+      13
+    ],
+    "torch_loaded_by_generate": false,
+    "benchmark_finite_final_logits_all": true,
+    "benchmark_final_token_ids": [
+      11,
+      11,
+      11
+    ]
+  },
+  "measurements": {
+    "baseline_task62_graph_512_128": {
+      "prefill_tok_s": 99.89800181856906,
+      "decode_tok_s": 49.86362608025813,
+      "artifact": "2026-05-17-hipengine-qwen36-35b-a3b-q4km-decode-profile-diagnostic.json"
+    },
+    "optimized_graph_512_128": {
+      "prefill_tok_s": {
+        "samples": [
+          106.68552070900148,
+          107.04231266310643,
+          107.00139885374936
+        ],
+        "median": 107.00139885374936,
+        "p95": 107.00139885374936,
+        "min": 106.68552070900148,
+        "max": 107.04231266310643,
+        "stdev": 0.19525771032129982,
+        "stdev_pct_of_median": 0.18248145576879804
+      },
+      "decode_tok_s": {
+        "samples": [
+          62.52625098043462,
+          62.53551333135274,
+          62.51755904071189
+        ],
+        "median": 62.52625098043462,
+        "p95": 62.52625098043462,
+        "min": 62.51755904071189,
+        "max": 62.53551333135274,
+        "stdev": 0.008978655366016304,
+        "stdev_pct_of_median": 0.014359817237124704
+      },
+      "prefill_seconds": {
+        "samples": [
+          4.799151718034409,
+          4.783155251992866,
+          4.78498417296214
+        ],
+        "median": 4.78498417296214,
+        "p95": 4.78498417296214,
+        "min": 4.783155251992866,
+        "max": 4.799151718034409,
+        "stdev": 0.008755486005022222,
+        "stdev_pct_of_median": 0.18297836917613347
+      },
+      "decode_seconds": {
+        "samples": [
+          2.04714016901562,
+          2.0468369600130245,
+          2.047424786956981
+        ],
+        "median": 2.04714016901562,
+        "p95": 2.04714016901562,
+        "min": 2.0468369600130245,
+        "max": 2.047424786956981,
+        "stdev": 0.00029396246581279837,
+        "stdev_pct_of_median": 0.0143596647783113
+      },
+      "graph_capture_seconds": {
+        "samples": [
+          0.15284639899618924,
+          0.14650995697593316,
+          0.14443664700957015
+        ],
+        "median": 0.14650995697593316,
+        "p95": 0.14650995697593316,
+        "min": 0.14443664700957015,
+        "max": 0.15284639899618924,
+        "stdev": 0.0043812677040846425,
+        "stdev_pct_of_median": 2.990423172948131
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          20.885867577046156,
+          20.885867577046156,
+          20.885867577046156
+        ],
+        "median": 20.885867577046156,
+        "p95": 20.885867577046156,
+        "min": 20.885867577046156,
+        "max": 20.885867577046156,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "samples": [
+          21.34375,
+          21.345703125,
+          21.34765625
+        ],
+        "median": 21.345703125,
+        "p95": 21.345703125,
+        "min": 21.34375,
+        "max": 21.34765625,
+        "stdev": 0.001953125,
+        "stdev_pct_of_median": 0.009149967975112087
+      }
+    }
+  },
+  "comparisons": {
+    "decode_vs_task62_baseline": {
+      "old_tok_s": 49.86362608025813,
+      "new_tok_s": 62.52625098043462,
+      "delta_pct": 25.394512785322366,
+      "ms_per_token_old": 20.05469875757626,
+      "ms_per_token_new": 15.99328257043453
+    },
+    "prefill_vs_task62_baseline": {
+      "old_tok_s": 99.89800181856906,
+      "new_tok_s": 107.00139885374936,
+      "delta_pct": 7.110649768632227
+    },
+    "decode_vs_100_tok_s_floor": {
+      "new_tok_s": 62.52625098043462,
+      "target_tok_s": 100.0,
+      "delta_pct": -37.47374901956538,
+      "speedup_needed": 1.599328257043453
+    },
+    "decode_vs_paro": {
+      "new_tok_s": 62.52625098043462,
+      "target_tok_s": 116.05,
+      "delta_pct": -46.12128308450269,
+      "speedup_needed": 1.8560204422989273
+    },
+    "decode_vs_llamacpp_hip_q4km": {
+      "new_tok_s": 62.52625098043462,
+      "target_tok_s": 85.487,
+      "delta_pct": -26.858761004088784,
+      "speedup_needed": 1.3672177470987368
+    }
+  },
+  "rocprof": {
+    "method": "Like task #62, final profile subtracts a 512-token prefill-only trace from a 512/128 eager decode trace by kernel name to get exact 128-token decode dispatch counts; graph replay wall timing is from the 3-run benchmark.",
+    "prefill_csv": "/tmp/hipengine-task63/rocprof-final-prefill/rocm/870348_kernel_trace.csv",
+    "eager_csv": "/tmp/hipengine-task63/rocprof-final-eager/rocm/870710_kernel_trace.csv",
+    "decode_delta": {
+      "total_kernel_ms": 2597.885301,
+      "dispatches": 105985,
+      "buckets": [
+        {
+          "bucket": "selected Q4 raw-dual gate/up",
+          "total_ms": 742.707637,
+          "share_pct": 28.58893103225576,
+          "count": 5120,
+          "ms_per_token": 5.8024034140625,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "bucket": "dense/shared Q8 raw-pack8",
+          "total_ms": 470.980923,
+          "share_pct": 18.129396352437347,
+          "count": 21760,
+          "ms_per_token": 3.6795384609375,
+          "dispatches_per_token": 170.0
+        },
+        {
+          "bucket": "selected Q5 raw-pack8 down",
+          "total_ms": 363.524887,
+          "share_pct": 13.993107657988938,
+          "count": 4736,
+          "ms_per_token": 2.8400381796875,
+          "dispatches_per_token": 37.0
+        },
+        {
+          "bucket": "full-attn/cache",
+          "total_ms": 348.825657,
+          "share_pct": 13.427292454587086,
+          "count": 8960,
+          "ms_per_token": 2.7252004453125,
+          "dispatches_per_token": 70.0
+        },
+        {
+          "bucket": "lm_head Q6 raw-pack8",
+          "total_ms": 198.104776,
+          "share_pct": 7.625616724639222,
+          "count": 128,
+          "ms_per_token": 1.5476935625,
+          "dispatches_per_token": 1.0
+        },
+        {
+          "bucket": "router",
+          "total_ms": 113.613915,
+          "share_pct": 4.373322985286023,
+          "count": 15360,
+          "ms_per_token": 0.8876087109375,
+          "dispatches_per_token": 120.0
+        },
+        {
+          "bucket": "rmsnorm",
+          "total_ms": 101.632145,
+          "share_pct": 3.912110552412722,
+          "count": 11648,
+          "ms_per_token": 0.7940011328125,
+          "dispatches_per_token": 91.0
+        },
+        {
+          "bucket": "gdn",
+          "total_ms": 79.025306,
+          "share_pct": 3.041908969944936,
+          "count": 3840,
+          "ms_per_token": 0.617385203125,
+          "dispatches_per_token": 30.0
+        },
+        {
+          "bucket": "shared gate/up Q8 raw-dual",
+          "total_ms": 57.3298,
+          "share_pct": 2.2067871887158423,
+          "count": 5120,
+          "ms_per_token": 0.4478890625,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "bucket": "dense bf16 alpha/beta",
+          "total_ms": 35.111838,
+          "share_pct": 1.3515545888990732,
+          "count": 7680,
+          "ms_per_token": 0.274311234375,
+          "dispatches_per_token": 60.0
+        },
+        {
+          "bucket": "activation",
+          "total_ms": 32.098276,
+          "share_pct": 1.2355540095494,
+          "count": 10240,
+          "ms_per_token": 0.25076778125,
+          "dispatches_per_token": 80.0
+        },
+        {
+          "bucket": "combine",
+          "total_ms": 20.760119,
+          "share_pct": 0.7991160730617645,
+          "count": 5120,
+          "ms_per_token": 0.1621884296875,
+          "dispatches_per_token": 40.0
+        },
+        {
+          "bucket": "other",
+          "total_ms": 19.046244,
+          "share_pct": 0.733144145843104,
+          "count": 5760,
+          "ms_per_token": 0.14879878125,
+          "dispatches_per_token": 45.0
+        },
+        {
+          "bucket": "selected Q6 raw-pack8 down",
+          "total_ms": 13.091278,
+          "share_pct": 0.5039205539582827,
+          "count": 384,
+          "ms_per_token": 0.102275609375,
+          "dispatches_per_token": 3.0
+        },
+        {
+          "bucket": "copy/fill",
+          "total_ms": 1.429066,
+          "share_pct": 0.05500881811255916,
+          "count": 129,
+          "ms_per_token": 0.011164578125,
+          "dispatches_per_token": 1.0078125
+        },
+        {
+          "bucket": "selected Q4 raw single",
+          "total_ms": 0.603434,
+          "share_pct": 0.023227892307936808,
+          "count": 0,
+          "ms_per_token": 0.004714328125,
+          "dispatches_per_token": 0.0
+        }
+      ],
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::gguf_q4_k_selected_dual_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 742.707637,
+          "share_pct": 28.58893103225576,
+          "count": 5120
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "total_ms": 470.980923,
+          "share_pct": 18.129396352437347,
+          "count": 21760
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int, int)",
+          "total_ms": 363.524887,
+          "share_pct": 13.993107657988938,
+          "count": 4736
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "total_ms": 317.840451,
+          "share_pct": 12.23458367764174,
+          "count": 1280
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)",
+          "total_ms": 198.104776,
+          "share_pct": 7.625616724639222,
+          "count": 128
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "total_ms": 79.025306,
+          "share_pct": 3.041908969944936,
+          "count": 3840
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+          "total_ms": 59.308494,
+          "share_pct": 2.282952753039962,
+          "count": 5120
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          "total_ms": 57.3298,
+          "share_pct": 2.2067871887158423,
+          "count": 5120
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short>(unsigned short const*, unsigned short const*, float*, long, long)",
+          "total_ms": 54.283939,
+          "share_pct": 2.089543328918508,
+          "count": 10240
+        },
+        {
+          "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "total_ms": 47.531047,
+          "share_pct": 1.8296052940329561,
+          "count": 5120
+        },
+        {
+          "name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "total_ms": 44.13874,
+          "share_pct": 1.699025741552552,
+          "count": 5248
+        },
+        {
+          "name": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "total_ms": 35.111838,
+          "share_pct": 1.3515545888990732,
+          "count": 7680
+        },
+        {
+          "name": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 32.098276,
+          "share_pct": 1.2355540095494,
+          "count": 10240
+        },
+        {
+          "name": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long)",
+          "total_ms": 20.649602,
+          "share_pct": 0.7948619591500588,
+          "count": 5120
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>(unsigned short const*, float*, float const*, float*, long, long)",
+          "total_ms": 17.678326,
+          "share_pct": 0.6804890883055964,
+          "count": 3840
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int, int)",
+          "total_ms": 13.091278,
+          "share_pct": 0.5039205539582827,
+          "count": 384
+        },
+        {
+          "name": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "total_ms": 12.014383,
+          "share_pct": 0.4624678000747501,
+          "count": 3840
+        },
+        {
+          "name": "gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)",
+          "total_ms": 9.962358,
+          "share_pct": 0.3834795168272135,
+          "count": 1280
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "total_ms": 4.844809,
+          "share_pct": 0.18649048894249085,
+          "count": 1280
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "total_ms": 4.243871,
+          "share_pct": 0.16335867477930657,
+          "count": 1280
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "total_ms": 4.2182,
+          "share_pct": 0.16237052491795134,
+          "count": 1280
+        },
+        {
+          "name": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "total_ms": 3.910235,
+          "share_pct": 0.1505160754593299,
+          "count": 1280
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 0.872909,
+          "share_pct": 0.03360075210649186,
+          "count": 0
+        },
+        {
+          "name": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "total_ms": 0.846968,
+          "share_pct": 0.03260220917659366,
+          "count": 128
+        },
+        {
+          "name": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+          "total_ms": 0.767047,
+          "share_pct": 0.029525822395035754,
+          "count": 128
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_k_selected_prefill_out_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+          "total_ms": 0.603434,
+          "share_pct": 0.023227892307936808,
+          "count": 0
+        },
+        {
+          "name": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "total_ms": 0.565805,
+          "share_pct": 0.021779444988668496,
+          "count": 128
+        },
+        {
+          "name": "__amd_rocclr_copyBuffer",
+          "total_ms": 0.556157,
+          "share_pct": 0.021408066006067292,
+          "count": 129
+        },
+        {
+          "name": "gguf_q8_0_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "total_ms": 0.534685,
+          "share_pct": 0.02058154760697805,
+          "count": 128
+        },
+        {
+          "name": "(anonymous namespace)::set_i64_scalar_kernel(long*, long)",
+          "total_ms": 0.407121,
+          "share_pct": 0.015671246141747964,
+          "count": 128
+        }
+      ]
+    }
+  },
+  "rejected_or_limited_iterations": [
+    {
+      "name": "Q4_K raw selected pack8 for gate/up",
+      "result": "Rejected from dispatch path: it was correctness-safe but slower than Q4 raw single/dual for decode (one-run graph decode 56.887 tok/s before Q4 dual; rocprof showed 951 ms in Q4 raw-pack8 gate/up vs 754 ms with raw-dual). Kernel/wrapper remains available only as an unused experiment."
+    },
+    {
+      "name": "Q4_K selected dual first attempt",
+      "result": "Rejected until fixed: back-to-back reduce_block_sum calls reused shared scratch without an inter-reduction barrier and broke parity at layer 1. Added __syncthreads() between reductions; bulk parity is exact after the fix."
+    },
+    {
+      "name": "Use Q4 dual for bulk prefill rows",
+      "result": "Limited to x_rows==1 decode only. The dual raw one-output kernel slowed long-prompt prefill; bulk prefill keeps the previous row-bulk raw path."
+    }
+  ],
+  "blocker": {
+    "accepted_target_met": false,
+    "summary": "The retained optimization is a meaningful +25.4% decode gain, but still needs 1.60x to reach 100 tok/s and 1.86x to reach the PARO 116.05 tok/s row. The final profile still spends 742.7 ms/128 tokens in selected Q4 raw-dual gate/up, 471.0 ms in Q8 raw-pack8, 363.5 ms in selected Q5 raw-pack8 down, 348.8 ms in attention/cache, and 198.1 ms in lm_head Q6 raw-pack8. Raw-byte pack8 reduced some bottlenecks, but raw Q4 expert gate/up remains a major limiter without a resident packed/sidecar decode memory plan.",
+    "next_actions": [
+      "Implement a resident packed Q4 expert decode path without exceeding the 24 GiB budget, likely by omitting raw expert weights or packing only hot decode tensors with raw fallback replaced.",
+      "Implement tiled/grouped selected expert decode that reuses expert rows across top-k and reduces the 40-dispatch/token Q4 gate/up and 40-dispatch/token down path.",
+      "Add tensor-name profiling for Q8_0 family and target the largest subfamilies beyond shared gate/up; raw-pack8 still leaves 170 Q8 dispatches/token.",
+      "Optimize full-attention/cache only after MoE/Q8/lm_head, or port a faster decode attention microkernel if MoE work stalls."
+    ]
+  }
+}

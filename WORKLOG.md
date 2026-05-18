@@ -18776,3 +18776,114 @@ Next likely work:
 2. Q8_0 dense/shared: add wrapper counters or profiling markers by tensor so the 250 dispatches/token can be split into shared expert vs attention/linear projections, then replace the biggest subfamily.
 3. lm-head/output: optimize Q6_K lm-head and consider top-k/argmax integration; argmax alone is not worth chasing.
 4. Deprioritize graph replay granularity and memory for 512/128 decode until the device kernel families above move.
+
+## 2026-05-17 qwen35moe GGUF task #63 partial decode optimization
+
+Task #63 attempted to push qwen35moe GGUF 512/128 decode toward the PARO/~100 tok/s range. The retained code change is a correctness-safe partial optimization, but it does **not** meet the acceptance target, so task #63 remains open after this commit.
+
+Implemented:
+
+- Raw-byte pack8 GGUF K kernels for decode-shaped Q8_0/Q5_K/Q6_K GEMV:
+  - `pack8_gemv_bf16_bf16_out` and `pack8_gemv_bf16_f32_out` for rows=1 raw GGUF linear dispatch.
+  - `selected_pack8_gemv_bf16_bf16_out` for Q5_K/Q6_K selected expert down paths.
+  - These reduce blocks and repeated activation reads without requiring the 23.8 GiB expert sidecar cache.
+- Q4_K raw selected dual gate+up kernel for decode (`x_rows == 1`) that computes both expert gate/up outputs in one launch while preserving the raw reduction order.
+- Q8_0 raw dual gate+up dispatch for the shared expert gate/up pair.
+- Kept graph replay and raw resident weights; no torch import or sidecar residency change.
+
+Important rejected/limited iterations:
+
+- Q4_K raw selected pack8 gate/up was correctness-safe but slower than the raw selected path for decode. A one-run graph benchmark before Q4 dual reached only `56.887 tok/s`, and rocprof showed `951 ms` in Q4 raw-pack8 gate/up versus `742.7 ms` in the final Q4 raw-dual path. The kernel/wrapper remains in-tree as an unused experiment but is not routed by default.
+- The first Q4 dual attempt failed parity because two consecutive `reduce_block_sum()` calls reused shared scratch without a barrier. Adding `__syncthreads()` between reductions restored exact bulk parity.
+- Q4 dual is decode-only (`x_rows == 1`). Using the one-output dual kernel for bulk prefill slowed long-prompt prefill, so row-bulk prefill keeps the previous raw selected gate/up launches.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py \
+  hipengine/runtime/gguf_linear.py \
+  hipengine/runtime/qwen35_gguf_runner.py
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q \
+  tests/test_gguf_k_gemv.py \
+  tests/test_gguf_q4_k_gemv.py \
+  tests/test_qwen35_gguf_runner.py::test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback
+# 11 passed
+```
+
+Correctness gates:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bulk_parity.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task63/bulk-parity-pack8raw-q4q8dual.json
+# serial/default/native/fast token 4469, KL 0, max logit diff 0, no hidden drift
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json \
+  --json /tmp/hipengine-task63/public-e2e.json
+# passed=true; output izio.; IDs [43482, 13]; torch_loaded_by_generate=false
+```
+
+512/128 benchmark after optimization (attached RX 7900 XTX/gfx1100, cached HIP builds):
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-task63/default-512-128-pack8raw-q4q8dual-3run.json
+# prefill tok/s: 106.686, 107.042, 107.001; median 107.001
+# decode tok/s: 62.526, 62.536, 62.518; median 62.526
+# decode 15.993 ms/token; final token id 11 in all runs
+# peak tracked 20.885868 GiB; HIP sampled peak 21.345703 GiB
+```
+
+Comparison vs task #62 baseline:
+
+- Decode `49.864 -> 62.526 tok/s` (`+25.39%`, `20.05 -> 15.99 ms/token`).
+- Prefill `99.898 -> 107.001 tok/s` (`+7.11%`).
+- Still below targets: `-37.47%` vs 100 tok/s floor (needs `1.60x`) and `-46.12%` vs PARO `116.05` (needs `1.86x`).
+
+Final rocprof decode profile (prefill-only trace subtracted from 512/128 eager decode trace by kernel name):
+
+```bash
+# prefill subtraction trace
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task63/rocprof-final-prefill -- \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 \
+    --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build --json /tmp/hipengine-task63/final-prefill-only-rocprof-run.json
+
+# eager decode trace for dispatch counts
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task63/rocprof-final-eager -- \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 \
+    --measured-runs 1 --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build --json /tmp/hipengine-task63/final-eager-512-128-rocprof-run.json
+```
+
+Final decode delta buckets:
+
+- Q4 selected raw-dual gate/up: `742.708 ms` / 128 tokens (`28.59%`, `5.802 ms/token`, `40` dispatches/token).
+- Dense/shared Q8 raw-pack8: `470.981 ms` (`18.13%`, `3.680 ms/token`, `170` dispatches/token), plus Q8 shared gate/up dual: `57.330 ms` (`2.21%`, `40` dispatches/token).
+- Q5 selected raw-pack8 down: `363.525 ms` (`13.99%`, `2.840 ms/token`, `37` dispatches/token).
+- Full-attn/cache: `348.826 ms` (`13.43%`, `2.725 ms/token`, `70` dispatches/token).
+- lm-head Q6 raw-pack8: `198.105 ms` (`7.63%`, `1.548 ms/token`, `1` dispatch/token).
+
+Retained artifact: `benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-decode-pack8-raw-partial.json`.
+
+Blocker / next work for task #63:
+
+1. Need a resident packed Q4 expert decode path within the 24 GiB budget. Raw Q4 expert gate/up is still the largest bucket; sidecar/prepacked Q4 would likely help, but full sidecar+raw residency does not fit.
+2. Need grouped/tiled selected-MoE decode that reuses expert data across top-k rather than 40 Q4 dispatches/token plus down dispatches.
+3. Need tensor-name profiling for the remaining Q8 family; raw-pack8 reduced it, but it still has 170 Q8 pack8 dispatches/token plus 40 Q8 dual dispatches/token.
+4. Attention/cache is now comparable to Q5 down and may matter after MoE/Q8/lm-head move, but it is not the first blocker.

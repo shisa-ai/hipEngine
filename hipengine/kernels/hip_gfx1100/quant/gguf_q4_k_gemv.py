@@ -19,6 +19,8 @@ _SYMBOL_BF16_F32_OUT = "hipengine_gguf_q4_k_gemv_bf16_f32_out"
 _SYMBOL_BF16_FP16_OUT = "hipengine_gguf_q4_k_gemv_bf16_fp16_out"
 _SYMBOL_BF16_BF16_OUT = "hipengine_gguf_q4_k_gemv_bf16_bf16_out"
 _SYMBOL_SELECTED_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_gemv_bf16_bf16_out"
+_SYMBOL_SELECTED_DUAL_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_dual_gemv_bf16_bf16_out"
+_SYMBOL_SELECTED_PACK8_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_pack8_gemv_bf16_bf16_out"
 _SYMBOL_PACK8_F32_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_f32_f32_out"
 _SYMBOL_PACK8_F32_FP16_OUT = "hipengine_gguf_q4_k_pack8_gemv_f32_fp16_out"
 _SYMBOL_PACK8_FP16_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_fp16_f32_out"
@@ -647,6 +649,62 @@ def _make_pack8_wrapper(symbol: str):
     return wrapper
 
 
+def gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_selected(x_rows, rows, num_experts, in_features, out_features, threads)
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SELECTED_DUAL_BF16_BF16_OUT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_a_ptr),
+        ctypes.c_void_p(out_b_ptr),
+        ctypes.c_int64(x_rows),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def _make_selected_wrapper(symbol: str):
     def wrapper(*args, **kwargs) -> None:
         kwargs.setdefault("threads", 128)
@@ -659,6 +717,7 @@ def _make_selected_wrapper(symbol: str):
 
 
 gguf_q4_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper(_SYMBOL_SELECTED_BF16_BF16_OUT)
+gguf_q4_k_selected_pack8_gemv_bf16_bf16_out = _make_selected_wrapper(_SYMBOL_SELECTED_PACK8_BF16_BF16_OUT)
 gguf_q4_k_gemv_f32_fp16_out = _make_raw_wrapper(_SYMBOL_F32_FP16_OUT)
 gguf_q4_k_gemv_fp16_fp16_out = _make_raw_wrapper(_SYMBOL_FP16_FP16_OUT)
 gguf_q4_k_gemv_bf16_fp16_out = _make_raw_wrapper(_SYMBOL_BF16_FP16_OUT)
@@ -684,6 +743,8 @@ _EXTRA_Q4_K_WRAPPERS = {
     "gemv_f32_fp16_out": gguf_q4_k_gemv_f32_fp16_out,
     "gemv_fp16_fp16_out": gguf_q4_k_gemv_fp16_fp16_out,
     "gemv_bf16_fp16_out": gguf_q4_k_gemv_bf16_fp16_out,
+    "selected_dual_gemv_bf16_bf16_out": gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+    "selected_pack8_gemv_bf16_bf16_out": gguf_q4_k_selected_pack8_gemv_bf16_bf16_out,
     "prefill_f32_f32_out": gguf_q4_k_prefill_f32_f32_out,
     "prefill_f32_fp16_out": gguf_q4_k_prefill_f32_fp16_out,
     "prefill_fp16_f32_out": gguf_q4_k_prefill_fp16_f32_out,
@@ -712,6 +773,8 @@ __all__ = [
     "gguf_q4_k_gemv_bf16_f32_out",
     "gguf_q4_k_gemv_bf16_fp16_out",
     "gguf_q4_k_selected_gemv_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_gemv_bf16_bf16_out",
+    "gguf_q4_k_selected_pack8_gemv_bf16_bf16_out",
     "gguf_q4_k_gemv_f32_f32_out",
     "gguf_q4_k_gemv_f32_fp16_out",
     "gguf_q4_k_gemv_fp16_f32_out",

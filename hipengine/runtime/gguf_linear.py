@@ -7,7 +7,10 @@ from dataclasses import dataclass
 from typing import Mapping
 
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import register_dense_gemv_kernels
-from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import register_gguf_k_gemv_kernels
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+    gguf_q8_0_dual_gemv_bf16_bf16_out,
+    register_gguf_k_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
     register_gguf_q4_k_gemv_kernels,
@@ -121,6 +124,7 @@ def launch_gguf_linear(
         backend=backend,
         rows=rows,
     )
+    dispatch = _pack8_decode_dispatch(dispatch, rows=rows, out_features=out_features)
     _ensure_linear_kernel_registered(dispatch.key)
     fn = resolve(
         backend=dispatch.key.backend,
@@ -201,8 +205,32 @@ def launch_gguf_linear_pair(
 ) -> bool:
     """Launch a supported pair of GGUF projections, returning True when fused."""
 
-    dispatch_a = resolve_gguf_linear_dispatch(weight_a, rows=rows)
-    dispatch_b = resolve_gguf_linear_dispatch(weight_b, rows=rows)
+    dispatch_a = _pack8_decode_dispatch(
+        resolve_gguf_linear_dispatch(weight_a, rows=rows),
+        rows=rows,
+        out_features=out_features,
+    )
+    dispatch_b = _pack8_decode_dispatch(
+        resolve_gguf_linear_dispatch(weight_b, rows=rows),
+        rows=rows,
+        out_features=out_features,
+    )
+    q8_decode = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
+    if rows == 1 and dispatch_a.key == q8_decode and dispatch_b.key == q8_decode:
+        gguf_q8_0_dual_gemv_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
     q4_prefill = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out")
     if rows > 1 and dispatch_a.key == q4_prefill and dispatch_b.key == q4_prefill:
         gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
@@ -261,6 +289,31 @@ def _launch_dense_bf16(fn, weight, x_ptr, out_ptr, rows, in_features, out_featur
         out_features,
         **kwargs,
     )
+
+
+def _pack8_decode_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    if (
+        dispatch.abi == "raw"
+        and rows == 1
+        and out_features % 8 == 0
+        and dispatch.key.quant in {"gguf_q8_0", "gguf_q5_k", "gguf_q6_k"}
+        and dispatch.key.variant in {"gemv_bf16_bf16_out", "gemv_bf16_f32_out"}
+    ):
+        return GGUFLinearDispatch(
+            KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                f"pack8_{dispatch.key.variant}",
+            ),
+            dispatch.abi,
+        )
+    return dispatch
 
 
 def _variant_for_rows(variant: str, *, rows: int) -> str:

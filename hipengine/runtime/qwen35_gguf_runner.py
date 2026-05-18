@@ -62,9 +62,14 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_selected_gemv_bf16_bf16_out,
+    gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
     gguf_q6_k_selected_gemv_bf16_bf16_out,
+    gguf_q6_k_selected_pack8_gemv_bf16_bf16_out,
 )
-from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import gguf_q4_k_selected_gemv_bf16_bf16_out
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+    gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+    gguf_q4_k_selected_gemv_bf16_bf16_out,
+)
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16,
@@ -1405,23 +1410,12 @@ class Qwen35GGUFFullStackRunner:
         down_weight = layer.weight("ffn_down_exps")
         selected_rows = top_k
         gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
-        _launch_selected_raw_gguf_moe_linear(
+        if not _launch_selected_raw_gguf_moe_pair(
             gate_weight,
-            scratch.post_norm.ptr,
-            scratch.moe_selected_experts.ptr,
-            scratch.ffn_gate_up.ptr,
-            x_rows=1,
-            rows=selected_rows,
-            num_experts=cfg.expert_count,
-            in_features=self.hidden_size,
-            out_features=cfg.expert_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        )
-        _launch_selected_raw_gguf_moe_linear(
             up_weight,
             scratch.post_norm.ptr,
             scratch.moe_selected_experts.ptr,
+            scratch.ffn_gate_up.ptr,
             scratch.ffn_gate_up.ptr + gate_rows_nbytes,
             x_rows=1,
             rows=selected_rows,
@@ -1430,7 +1424,33 @@ class Qwen35GGUFFullStackRunner:
             out_features=cfg.expert_feed_forward_length,
             stream=stream,
             runtime=runtime,
-        )
+        ):
+            _launch_selected_raw_gguf_moe_linear(
+                gate_weight,
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_gate_up.ptr,
+                x_rows=1,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+            _launch_selected_raw_gguf_moe_linear(
+                up_weight,
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                x_rows=1,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
         silu_mul_separate_out_bf16(
             scratch.ffn_gate_up.ptr,
             scratch.ffn_gate_up.ptr + gate_rows_nbytes,
@@ -1625,7 +1645,21 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
                 library=getattr(self, "_expert_pack8_library", None),
             )
-        else:
+        elif not _launch_selected_raw_gguf_moe_pair(
+            gate_weight,
+            up_weight,
+            scratch.post_norm.ptr,
+            scratch.moe_selected_experts.ptr,
+            scratch.ffn_gate_up.ptr,
+            scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+            x_rows=rows,
+            rows=selected_rows,
+            num_experts=cfg.expert_count,
+            in_features=self.hidden_size,
+            out_features=cfg.expert_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        ):
             _launch_selected_raw_gguf_moe_linear(
                 gate_weight,
                 scratch.post_norm.ptr,
@@ -3161,6 +3195,44 @@ def _required_ptr(buffer: DeviceBuffer | None, name: str, quant_key: str) -> int
     return buffer.ptr
 
 
+def _launch_selected_raw_gguf_moe_pair(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    selected_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    *,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    if x_rows != 1:
+        return False
+    if weight_a.spec.quant_key != "gguf_q4_k" or weight_b.spec.quant_key != "gguf_q4_k":
+        return False
+    gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
+        x_ptr,
+        selected_ptr,
+        weight_a.allocation("raw").tensor.ptr,
+        weight_b.allocation("raw").tensor.ptr,
+        out_a_ptr,
+        out_b_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
 def _launch_selected_raw_gguf_moe_linear(
     weight: Qwen35GGUFDeviceWeight,
     x_ptr: int,
@@ -3178,8 +3250,12 @@ def _launch_selected_raw_gguf_moe_linear(
     quant_key = weight.spec.quant_key
     if quant_key == "gguf_q4_k":
         fn = gguf_q4_k_selected_gemv_bf16_bf16_out
+    elif quant_key == "gguf_q5_k" and out_features % 8 == 0:
+        fn = gguf_q5_k_selected_pack8_gemv_bf16_bf16_out
     elif quant_key == "gguf_q5_k":
         fn = gguf_q5_k_selected_gemv_bf16_bf16_out
+    elif quant_key == "gguf_q6_k" and out_features % 8 == 0:
+        fn = gguf_q6_k_selected_pack8_gemv_bf16_bf16_out
     elif quant_key == "gguf_q6_k":
         fn = gguf_q6_k_selected_gemv_bf16_bf16_out
     else:

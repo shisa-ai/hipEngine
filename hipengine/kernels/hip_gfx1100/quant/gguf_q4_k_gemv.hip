@@ -240,6 +240,198 @@ __global__ void gguf_q4_k_selected_prefill_out_kernel(
   }
 }
 
+template <typename scalar_t, typename out_t>
+__launch_bounds__(256, 2)
+__global__ void gguf_q4_k_selected_dual_prefill_out_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    out_t* __restrict__ out_a,
+    out_t* __restrict__ out_b,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int lanes_per_x_row = rows / x_rows;
+  const int x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const int row_bytes = (in_features / QK_K) * Q4_K_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const uint8_t* __restrict__ weight_a =
+      qweight_a + expert_id * expert_bytes + static_cast<int64_t>(out_col) * row_bytes;
+  const uint8_t* __restrict__ weight_b =
+      qweight_b + expert_id * expert_bytes + static_cast<int64_t>(out_col) * row_bytes;
+  const scalar_t* __restrict__ x_row_ptr =
+      x + static_cast<int64_t>(x_row) * in_features;
+
+  float acc_a = 0.0f;
+  float acc_b = 0.0f;
+  for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
+    const float xv = scalar_to_float<scalar_t>(x_row_ptr[k]);
+    acc_a += xv * gguf_q4_k_weight(weight_a, k);
+    acc_b += xv * gguf_q4_k_weight(weight_b, k);
+  }
+  const float total_a = reduce_block_sum(acc_a);
+  // reduce_block_sum's shared scratch is safe for single-use kernels; a dual
+  // kernel needs an extra barrier so nonzero lanes do not overwrite the scratch
+  // for acc_b while lane 0 is still summing acc_a wave totals.
+  __syncthreads();
+  const float total_b = reduce_block_sum(acc_b);
+  if (threadIdx.x == 0) {
+    const int64_t out_idx = static_cast<int64_t>(row) * out_features + out_col;
+    store_output<out_t>(out_a, out_idx, total_a);
+    store_output<out_t>(out_b, out_idx, total_b);
+  }
+}
+
+template <typename scalar_t, typename out_t>
+__launch_bounds__(256, 2)
+__global__ void gguf_q4_k_selected_pack8_prefill_out_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features,
+    int out_packed) {
+  const int out_pack = blockIdx.x;
+  const int row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (out_pack >= out_packed || row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int lanes_per_x_row = rows / x_rows;
+  const int x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const int out_col = out_pack << 3;
+  const int row_bytes = (in_features / QK_K) * Q4_K_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const uint8_t* __restrict__ expert_base = qweight + expert_id * expert_bytes;
+  const scalar_t* __restrict__ x_row_ptr = x + static_cast<int64_t>(x_row) * in_features;
+  const uint8_t* __restrict__ w0 = expert_base + static_cast<int64_t>(out_col + 0) * row_bytes;
+  const uint8_t* __restrict__ w1 = expert_base + static_cast<int64_t>(out_col + 1) * row_bytes;
+  const uint8_t* __restrict__ w2 = expert_base + static_cast<int64_t>(out_col + 2) * row_bytes;
+  const uint8_t* __restrict__ w3 = expert_base + static_cast<int64_t>(out_col + 3) * row_bytes;
+  const uint8_t* __restrict__ w4 = expert_base + static_cast<int64_t>(out_col + 4) * row_bytes;
+  const uint8_t* __restrict__ w5 = expert_base + static_cast<int64_t>(out_col + 5) * row_bytes;
+  const uint8_t* __restrict__ w6 = expert_base + static_cast<int64_t>(out_col + 6) * row_bytes;
+  const uint8_t* __restrict__ w7 = expert_base + static_cast<int64_t>(out_col + 7) * row_bytes;
+
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    const float xv = scalar_to_float<scalar_t>(x_row_ptr[k]);
+    acc0 += xv * gguf_q4_k_weight(w0, k);
+    acc1 += xv * gguf_q4_k_weight(w1, k);
+    acc2 += xv * gguf_q4_k_weight(w2, k);
+    acc3 += xv * gguf_q4_k_weight(w3, k);
+    acc4 += xv * gguf_q4_k_weight(w4, k);
+    acc5 += xv * gguf_q4_k_weight(w5, k);
+    acc6 += xv * gguf_q4_k_weight(w6, k);
+    acc7 += xv * gguf_q4_k_weight(w7, k);
+  }
+
+  GGUF_Q4K_PACK8_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7,
+                        r0, r1, r2, r3, r4, r5, r6, r7);
+  if (tid == 0) {
+    const int64_t out_base = static_cast<int64_t>(row) * out_features + out_col;
+    store_output<out_t>(out, out_base + 0, r0);
+    store_output<out_t>(out, out_base + 1, r1);
+    store_output<out_t>(out, out_base + 2, r2);
+    store_output<out_t>(out, out_base + 3, r3);
+    store_output<out_t>(out, out_base + 4, r4);
+    store_output<out_t>(out, out_base + 5, r5);
+    store_output<out_t>(out, out_base + 6, r6);
+    store_output<out_t>(out, out_base + 7, r7);
+  }
+}
+
+
+template <typename scalar_t, typename out_t>
+int launch_gguf_q4_k_selected_dual_gemv_out(
+    const scalar_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    out_t* out_a,
+    out_t* out_b,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || qweight_a == nullptr || qweight_b == nullptr ||
+      out_a == nullptr || out_b == nullptr || x_rows <= 0 || rows <= 0 ||
+      (rows % x_rows) != 0 || num_experts <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % QK_K) != 0 || (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows));
+  gguf_q4_k_selected_dual_prefill_out_kernel<scalar_t, out_t><<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      qweight_a,
+      qweight_b,
+      out_a,
+      out_b,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+
+template <typename scalar_t, typename out_t>
+int launch_gguf_q4_k_selected_pack8_gemv_out(
+    const scalar_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || qweight == nullptr || out == nullptr ||
+      x_rows <= 0 || rows <= 0 || (rows % x_rows) != 0 || num_experts <= 0 ||
+      in_features <= 0 || out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % 8) != 0 || (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(static_cast<unsigned int>(out_packed), static_cast<unsigned int>(rows));
+  gguf_q4_k_selected_pack8_prefill_out_kernel<scalar_t, out_t><<<grid, block, 0, stream>>>(
+      x,
+      selected,
+      qweight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features),
+      static_cast<int>(out_packed));
+  return static_cast<int>(hipGetLastError());
+}
+
 
 template <typename scalar_t, typename out_t>
 int launch_gguf_q4_k_gemv_out(
@@ -710,6 +902,41 @@ extern "C" int hipengine_gguf_q4_k_selected_gemv_bf16_bf16_out(
     int64_t threads,
     hipStream_t stream) {
   return launch_gguf_q4_k_selected_gemv_out<uint16_t, uint16_t>(
+      x, selected, qweight, out, x_rows, rows, num_experts, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_selected_dual_gemv_out<uint16_t, uint16_t>(
+      x, selected, qweight_a, qweight_b, out_a, out_b, x_rows, rows, num_experts,
+      in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_pack8_gemv_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_selected_pack8_gemv_out<uint16_t, uint16_t>(
       x, selected, qweight, out, x_rows, rows, num_experts, in_features, out_features, threads, stream);
 }
 
