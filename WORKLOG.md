@@ -19187,3 +19187,84 @@ Validation:
 - `uv run --with pytest pytest tests/test_gguf_linear_dispatch.py -q` -> `33 passed`.
 - `uv run --with pytest pytest tests/test_gguf_linear_dispatch.py tests/test_gguf_q4_k_wmma_prefill.py tests/test_gguf_q4_k_gemv.py tests/test_gguf_q8_0_wmma_prefill.py -q` -> `158 passed`.
 - `uv run python -m py_compile hipengine/runtime/gguf_linear.py tests/test_gguf_linear_dispatch.py` -> OK.
+
+## 2026-05-18 P8.2 task #10: dense Q4_K WMMA benchmark diagnostic
+
+Benchmarked the P8.2 dense raw-Q4_K WMMA prefill kernels from tasks #7-#9. This task produced a retained diagnostic artifact, not a full-model promotion, because current dense 2D Q4_K materialization still uses `LAYOUT_Q4_K_PACK8` and therefore does not exercise the raw WMMA path in normal Qwen3.5-0.8B resident runs.
+
+### Targeted actual-GGUF raw tensor A/B (Qwen3.5-0.8B-Q4_K_M layer 0)
+
+Driver: `/tmp/p8_q4_dense_gguf_tensor_bench.py` (artifact records SHA256). It loads actual raw `block_q4_K` tensor bytes with `GGUFReader`, allocates raw device weights, and calls `launch_gguf_linear` / `launch_gguf_linear_pair` with `use_wmma_prefill={False,True}`.
+
+Commands used the reproducible cache setup:
+
+```bash
+PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=0|1 \
+python3 /tmp/p8_q4_dense_gguf_tensor_bench.py \
+  --mode single --slot-a attn_gate --rows 512 --warmup-iters 2 --measured-iters 7 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/p8_q4_bench/gguf-attn_gate-{baseline,wmma}.json
+
+PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=0|1 \
+python3 /tmp/p8_q4_dense_gguf_tensor_bench.py \
+  --mode dual --slot-a ffn_gate --slot-b ffn_up --rows 512 --warmup-iters 2 --measured-iters 7 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/p8_q4_bench/gguf-ffn_gate_up-{baseline,wmma}.json
+```
+
+Results (7-run medians, W7900/gfx1100):
+
+| Workload | Baseline | WMMA | Speedup | Notes |
+| --- | ---: | ---: | ---: | --- |
+| actual GGUF `attn_gate.weight` raw single, rows=512, in=1024, out=2048 | `5.236 ms` | `0.378 ms` | `13.87x` | tok/s `97.8k -> 1.356M`, memory `4.125 MiB` unchanged |
+| actual GGUF `ffn_gate.weight + ffn_up.weight` raw dual, rows=512, in=1024, out=3584 | `15.604 ms` | `0.540 ms` | `28.88x` | tok/s `32.8k -> 947.5k`, memory `11.938 MiB` unchanged |
+| synthetic Qwen-shaped raw single, rows=512, in=1024, out=2048 | `6.015 ms` | `0.363 ms` | `16.57x` | cross-check independent of actual GGUF values |
+| synthetic Qwen-shaped raw dual, rows=512, in=1024, out=3584 | `15.656 ms` | `0.546 ms` | `28.68x` | cross-check independent of actual GGUF values |
+
+rocprofv3 targeted evidence:
+
+- synthetic single baseline: `/tmp/p8_q4_bench/rocprof-single-baseline/rocm/1528834_kernel_trace.csv`, `gguf_q4_k_prefill_out_kernel<unsigned short,unsigned short>` `6.8449 ms / 1`.
+- synthetic single WMMA: `/tmp/p8_q4_bench/rocprof-single-wmma/rocm/1528873_kernel_trace.csv`, `gguf_q4_k_prefill_wmma_kernel<unsigned short,unsigned short,32,32>` `0.1486 ms / 1`.
+- synthetic dual baseline: `/tmp/p8_q4_bench/rocprof-dual-baseline/rocm/1529365_kernel_trace.csv`, decode-shaped `gguf_q4_k_prefill_out_kernel` `23.9247 ms / 2`.
+- synthetic dual WMMA: `/tmp/p8_q4_bench/rocprof-dual-wmma/rocm/1529411_kernel_trace.csv`, `gguf_q4_k_prefill_dual_wmma_kernel<unsigned short,unsigned short,32,32>` `0.3493 ms / 1`.
+- actual-GGUF dual baseline: `/tmp/p8_q4_bench/rocprof-gguf-dual-baseline/rocm/1536972_kernel_trace.csv`, decode-shaped `gguf_q4_k_prefill_out_kernel` `23.9027 ms / 2`.
+- actual-GGUF dual WMMA: `/tmp/p8_q4_bench/rocprof-gguf-dual-wmma/rocm/1537004_kernel_trace.csv`, `gguf_q4_k_prefill_dual_wmma_kernel<unsigned short,unsigned short,32,32>` `0.3448 ms / 1`.
+
+### Full-model dense-Qwen diagnostic (Qwen3.5-0.8B-Q4_K_M 512/0)
+
+Ran the real resident bench to answer: does the normal small dense-Qwen path exercise P8.2 raw Q4_K WMMA today?
+
+```bash
+PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_WMMA_PREFILL=0|1 \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 3 --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p8_q4_bench/full-qwen/{baseline,wmma}-512-0.json
+```
+
+Full-model result: effectively unchanged, as expected:
+
+- wall-clock prefill: `3066.140 -> 3081.978 tok/s` (`+0.52%`, noise / Q8_0-only effect), `0.166985 -> 0.166127 s`.
+- tracked peak: `0.955737 GiB -> 0.955737 GiB` unchanged.
+- HIP sampled peak: `1.201172 -> 1.203125 GiB` (+0.002 GiB).
+- rocprof full baseline `/tmp/p8_q4_bench/full-qwen/rocprof-baseline/rocm/1541447_kernel_trace.csv`: total prefill kernel `159.375 ms / 535 dispatches`; total Q4 pack8 prefill bucket `61.597 ms` (`37.171 ms / 24` dual + `24.4265 ms / 50` single), Q4 WMMA `0 dispatches`.
+- rocprof full WMMA-env `/tmp/p8_q4_bench/full-qwen/rocprof-wmma/rocm/1540628_kernel_trace.csv`: total prefill kernel `159.697 ms / 535 dispatches`; total Q4 pack8 prefill bucket `61.788 ms` (`37.164 ms / 24` dual + `24.6249 ms / 50` single), Q4 WMMA `0 dispatches`; Q8_0 WMMA appears `0.6492 ms / 36` (P8.1 path), replacing raw Q8 decode except one logits leftover.
+
+Materialization diagnostic confirms the blocker:
+
+- Qwen3.5-0.8B-Q4_K_M has `98` `('gguf_q4_k','q4_k_pack8',('qweight','scales','mins'))` dense 2D tensors and **zero** raw dense Q4_K tensors. Examples: `layers.0.ffn_gate`, `layers.0.ffn_up`, `layers.0.attn_gate`.
+- The P8.2 raw kernels are therefore reachable only from explicit raw-tensor microbench/future materialization policy, not from the current resident full-model path.
+
+### qwen35moe 512/0 diagnostic
+
+No qwen35moe 512/0 rerun for P8.2 because this dense Q4_K path is not exercised there either. Qwen3.6-35B-A3B-UD-Q4_K_M materialization has raw Q4_K tensors, but they are rank-3 expert tensors (`layers.N.ffn_gate_exps`, `layers.N.ffn_up_exps`) consumed by selected-MoE kernels, not dense `gguf_linear` / `launch_gguf_linear_pair`. P8.4 selected Q4_K MoE WMMA is the next qwen35moe Q4_K lever; P8.5 handles Q5_K/Q6_K selected down.
+
+### Artifact / rollup
+
+- Artifact: `benchmarks/results/2026-05-18-hipengine-p8_2-dense-q4k-wmma-prefill-diagnostic.json`.
+- `benchmarks/README.md`: added a blocked/diagnostic row.
+- `benchmarks/CHANGELOG.md`: added a 2026-05-18 P8.2 diagnostic entry.
+
+Conclusion: P8.2 raw dense Q4_K WMMA is performance-positive and rocprof-visible (`13.9x` single, `28.9x` dual on actual Qwen3.5 raw tensors), but it is not a full-model win yet because current dense-Q4_K resident materialization uses pack8 fallback. Do not count this toward qwen35moe P8 acceptance. Next useful qwen35moe work remains P8.4/P8.5 selected-MoE WMMA.
