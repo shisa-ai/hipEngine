@@ -17645,3 +17645,19 @@ Retained q3072 runs (full-attn query chunk `3072`, linear/moe/post/rope `1024`):
 - 256K/128: `651.636 / 40.827 tok/s`, tracked `23.766 GiB`, sampled `22.013 GiB`; tracked delta vs previous scratch-release artifact `24.351 -> 23.766 GiB`, now under the 24GiB-class tracked target.
 
 Retained artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json`. Updated K1 docs/rollups. Important: `prefill_execution_detail.int8_prefill_oracle` is still true, so task #19 is not complete as oracle removal/streaming remains; this step removes per-layer AOTriton BF16 query accumulation and reduces chunk scratch high-water.
+
+## 2026-05-18/19 — task #19 oracle-removal experiment blocked by E2E correctness
+
+Tried removing the temporary BF16 INT8-prefill oracle by streaming retained INT8 K/V through AOTriton: added experimental INT8→BF16 dequant and AOTriton partial-merge kernels locally, skipped the BF16 oracle append, and used retained INT8 cache for prefill attention. The experiment confirmed the oracle is not just dead memory: it preserves BF16-prefill logits while decode uses retained INT8. Direct INT8-prefill attention passed the standalone layer accuracy gate but failed the full E2E gate versus BF16 prefill.
+
+Commands/results from `/tmp/hipengine-task19-remove-oracle/` before reverting the experiment:
+
+```bash
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --compiler-version-file /tmp/hipengine-task19-remove-oracle/hipcc-version.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-task19-remove-oracle/int8_accuracy.json
+# accepted, passed true
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 --kv-storage int8_per_token_head --compiler-version-file /tmp/hipengine-task19-remove-oracle/hipcc-version.txt --require-cached-build --json /tmp/hipengine-task19-remove-oracle/e2e.json
+# failed: max_kl=9.002305619944993, top1=0.48484848484848486, generated mismatch at index 5
+# prefill_execution_detail showed int8_prefill_oracle=false and int8_prefill_streaming=true; memory audit still passed
+```
+
+Conclusion: the temporary BF16 oracle is required by the current K1 correctness contract unless we also introduce a correctness-preserving prefill path (for example, a true streaming BF16 K/V oracle fed from non-quantized K/V, or a new E2E acceptance contract for INT8-prefill quantization). Reverted the experimental code; retained under-24GiB K1 result remains commit `f40bb26` (`256K/128` tracked peak `23.766 GiB`, sampled `22.013 GiB`, E2E `max_kl=0.015328`, top1 `100%`, generated IDs match) with `int8_prefill_oracle=true`.
