@@ -24,6 +24,7 @@ from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.hip_gfx1100.speculative import (
     build_dflash_drafter,
+    dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
@@ -43,6 +44,7 @@ def main() -> int:
         require_cached=args.require_cached_build,
     )
     _smoke_prepare_noise(runtime, library)
+    _smoke_dense_projection(runtime, library)
     _smoke_gqa_attention(runtime, library)
     print("dflash_drafter_root_query_smoke passed")
     return 0
@@ -100,6 +102,39 @@ def _smoke_prepare_noise(runtime, library) -> None:
         np.testing.assert_array_equal(emb[0, 1], expected_table[8])
         np.testing.assert_array_equal(emb[1, 0], expected_table[5])
         print(f"prepare_noise_{name}: ids={ids.tolist()} positions={pos_out.tolist()}")
+
+
+def _smoke_dense_projection(runtime, library) -> None:
+    rng = np.random.default_rng(3)
+    hidden_f32 = rng.normal(size=(3, 8)).astype(np.float32) * 0.5
+    weight_f32 = rng.normal(size=(5, 8)).astype(np.float32) * 0.25
+    hidden = _f32_to_bf16_bits(hidden_f32)
+    weight = _f32_to_bf16_bits(weight_f32)
+    out = np.empty((3, 5), dtype=np.float32)
+    expected = _bf16_bits_to_f32(hidden).astype(np.float32) @ _bf16_bits_to_f32(weight).astype(np.float32).T
+    buffers = []
+    try:
+        hidden_dev = _dev(runtime, buffers, hidden)
+        weight_dev = _dev(runtime, buffers, weight)
+        out_dev = _empty(runtime, buffers, out)
+        dflash_dense_bf16_to_f32(
+            hidden_dev.ptr,
+            weight_dev.ptr,
+            out_dev.ptr,
+            rows=3,
+            in_features=8,
+            out_features=5,
+            threads=64,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
+    finally:
+        _free_all(runtime, buffers)
+    max_abs = float(np.max(np.abs(out - expected)))
+    assert max_abs <= 1.0e-5, max_abs
+    print(f"dense_bf16_to_f32: max_abs={max_abs:.3e} sample={out.reshape(-1)[:4].tolist()}")
 
 
 def _smoke_gqa_attention(runtime, library) -> None:

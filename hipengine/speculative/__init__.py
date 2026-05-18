@@ -19,6 +19,7 @@ from hipengine.speculative.dflash_drafter import (
     dflash_gqa_attention_bf16,
     draft_batch_from_topk,
     prepare_dflash_noise_inputs_bf16,
+    project_dflash_bf16_to_f32,
     project_dflash_target_hidden_bf16,
 )
 from hipengine.speculative.interfaces import (
@@ -59,6 +60,7 @@ __all__ = [
     "dflash_gqa_attention_bf16",
     "draft_batch_from_topk",
     "prepare_dflash_noise_inputs_bf16",
+    "project_dflash_bf16_to_f32",
     "project_dflash_target_hidden_bf16",
     "AcceptResult",
     "DraftBatch",

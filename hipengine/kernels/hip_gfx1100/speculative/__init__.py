@@ -14,6 +14,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_commit import (
 )
 from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     build_dflash_drafter,
+    dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
@@ -27,6 +28,7 @@ __all__ = [
     "build_dflash_drafter",
     "dflash_accept_chain_i32",
     "dflash_commit_chain_i32",
+    "dflash_dense_bf16_to_f32",
     "dflash_gqa_attention_f32_bf16",
     "dflash_prepare_noise_inputs_bf16_i32",
     "dflash_prepare_noise_inputs_f16_to_bf16_i32",

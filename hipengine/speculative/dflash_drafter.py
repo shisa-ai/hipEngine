@@ -210,6 +210,34 @@ def project_dflash_target_hidden_bf16(
     return out_projected
 
 
+def project_dflash_bf16_to_f32(
+    hidden: Tensor,
+    weight: Tensor,
+    out: Tensor,
+    *,
+    stream: int = 0,
+    library: object | None = None,
+    threads: int = 128,
+) -> Tensor:
+    """Run a BF16 drafter projection and keep FP32 logits/heads for downstream math."""
+
+    rows, in_features, out_features = _validate_dense_projection_tensors(hidden, weight, out)
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_dense_bf16_to_f32
+
+    dflash_dense_bf16_to_f32(
+        hidden.ptr,
+        weight.ptr,
+        out.ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,  # type: ignore[arg-type]
+    )
+    return out
+
+
 def dflash_gqa_attention_bf16(
     query: Tensor,
     key: Tensor,
@@ -291,6 +319,24 @@ def draft_batch_from_topk(
             )
         )
     return compile_dflash_chain(requests, candidate_budget=candidate_budget, pad_token_id=pad_token_id)
+
+
+def _validate_dense_projection_tensors(hidden: Tensor, weight: Tensor, out: Tensor) -> tuple[int, int, int]:
+    if hidden.ndim != 2 or weight.ndim != 2 or out.ndim != 2:
+        raise ValueError("DFlash dense projection tensors must be rank-2")
+    rows, in_features = hidden.shape
+    out_features, weight_in = weight.shape
+    if weight_in != in_features:
+        raise ValueError("projection weight input dimension must match hidden rows")
+    if out.shape != (rows, out_features):
+        raise ValueError(f"projection output must have shape {(rows, out_features)}")
+    if hidden.dtype != DType.BF16 or weight.dtype != DType.BF16:
+        raise ValueError("projection hidden and weight tensors must use BF16 storage")
+    if out.dtype != DType.FP32:
+        raise ValueError("projection output must use FP32 storage")
+    if weight.device != hidden.device or out.device != hidden.device:
+        raise ValueError("projection tensors must live on the same device")
+    return int(rows), int(in_features), int(out_features)
 
 
 def _validate_attention_tensors(query: Tensor, key: Tensor, value: Tensor, out: Tensor) -> tuple[int, int, int, int, int, int]:
@@ -386,6 +432,7 @@ __all__ = [
     "DFlashRootQueryRequest",
     "dflash_gqa_attention_bf16",
     "draft_batch_from_topk",
+    "project_dflash_bf16_to_f32",
     "prepare_dflash_noise_inputs_bf16",
     "project_dflash_target_hidden_bf16",
 ]

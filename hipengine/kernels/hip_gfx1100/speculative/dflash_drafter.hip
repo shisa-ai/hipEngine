@@ -86,6 +86,38 @@ bool valid_threads(int64_t threads) {
   return threads == 64 || threads == 128 || threads == 256;
 }
 
+__global__ void dflash_dense_bf16_to_f32_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ weight,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = static_cast<int64_t>(blockIdx.x);
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  if (row >= rows || out_col >= out_features) {
+    return;
+  }
+  extern __shared__ float partial[];
+  const int64_t x_base = row * in_features;
+  const int64_t w_base = out_col * in_features;
+  float acc = 0.0f;
+  for (int64_t dim = static_cast<int64_t>(threadIdx.x); dim < in_features; dim += blockDim.x) {
+    acc = fmaf(bf16_bits_to_float(x[x_base + dim]), bf16_bits_to_float(weight[w_base + dim]), acc);
+  }
+  partial[threadIdx.x] = acc;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    out[row * out_features + out_col] = partial[0];
+  }
+}
+
 __global__ void dflash_gqa_attention_f32_bf16_kernel(
     const float* __restrict__ query,
     const float* __restrict__ key,
@@ -160,6 +192,10 @@ __global__ void dflash_gqa_attention_f32_bf16_kernel(
   }
 }
 
+bool valid_dense_shape(int64_t rows, int64_t in_features, int64_t out_features, int64_t threads) {
+  return rows > 0 && in_features > 0 && out_features > 0 && valid_threads(threads);
+}
+
 bool valid_attention_shape(
     int64_t batch_size,
     int64_t query_len,
@@ -208,6 +244,33 @@ extern "C" int hipengine_dflash_prepare_noise_inputs_bf16_i32(
       hidden_size,
       vocab_size,
       mask_token_id);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_dense_bf16_to_f32(
+    const uint16_t* x,
+    const uint16_t* weight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_dense_shape(rows, in_features, out_features, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      dflash_dense_bf16_to_f32_kernel,
+      dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
   return static_cast<int>(hipGetLastError());
 }
 
