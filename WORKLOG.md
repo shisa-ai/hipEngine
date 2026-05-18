@@ -19838,3 +19838,43 @@ Methodology note (matches `docs/ROOFLINE.md` 12.4):
 - For the largest dense MoE buckets in the smoke run, the effective GB/s is ~5-7% of the 864 GB/s W7900 peak. That number tracks the prefill compute-bound regime described in ROOFLINE.md (prefill is dominated by WMMA throughput, not memory bandwidth, so the back-calculated GB/s under-represents actual hardware utilisation).
 
 Next: tasks #19 (P9.A3) and #26 (P9.B7) consume this helper in their retained artifacts.
+
+## 2026-05-18 P9 task #19: P9.A3 retained GDN prefill benchmark
+
+Retained the GDN-chain benchmark row for qwen35moe Qwen3.6-35B-A3B-UD-Q4_K_M on the available RX 7900 XTX/gfx1100. Default-off opt-in matrix: `--use-wmma-prefill=True` (so the compact-MoE WMMA prefill engages) and `use_gemv_decode=False` (P9.B6 decode opt-in not yet measured here; that row is task #26 P9.B7).
+
+Acceptance against the P9.A3 gate:
+
+- **GDN prefill bucket <= 200 ms**: actual `56.274 ms / 90 disp` across the chain (prepare + segments_k2 + rmsnorm_gate), a `~11.85x` reduction vs the P8 baseline `666.877 ms / 30 disp` (single fused `decode_order_bf16`). Well under the target.
+- **rocprof shows only the new GDN symbols**: confirmed via P9.E1 helper. Linear-attention prefill kernels in the 512/0 trace are exactly `qwen35_gdn_prefill_recurrent_segments_k2_kernel`, `qwen35_linear_attn_prefill_prepare_kernel<unsigned short>`, and `qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel`. `decode_order_kernel_dispatch_count = 0`.
+- **KL/top-1 E2E gate**: P9.A2 fixture passes (18 tests). E2E parity on the GDN-isolated path (`native_attention_bulk_ffn`) is **bit-exact** with the row-GEMV serial reference (KL `0.0`, max abs logit delta `0.0`, top-1 match token `4469`). Cumulative compact-MoE WMMA path (`fast_bulk_attention`) keeps the carryover KL `0.707` from task #16 (down from `3.892` then); that's tracked under tasks #28/#30 as a P8 drift, not a GDN issue.
+
+Wall-clock summary (3 measured runs each on cached builds):
+
+| Workload | Pre-P9 (task #16) | Post-P9.A1 (this run) | Delta |
+| --- | ---: | ---: | ---: |
+| 512/0 prefill | 534.406 tok/s | 1508.696 tok/s | +182.30% |
+| 512/128 graph prefill | 529.598 tok/s | 1505.969 tok/s | +184.36% |
+| 512/128 graph decode | 62.584 tok/s | 62.688 tok/s | +0.17% (unchanged, expected) |
+| 512/0 rocprof total prefill kernel ms | 907.813 ms | 296.756 ms | -3.06x |
+
+Validation commands:
+
+- Kernel correctness bundle: `uv run --with pytest pytest tests/test_qwen35_gguf_gdn_prefill_correctness.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_linear_attn_gdn_plan.py -q` -> `18 passed`.
+- E2E parity probe: `python3 scripts/qwen35_gguf_bulk_parity.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --require-cached-build --json /tmp/p9_a3/bulk-parity.json` (full command in artifact).
+- Wall + rocprof: `scripts/qwen35_gguf_bench.py` with `--use-wmma-prefill` + `--require-cached-build` + `--compiler-version-file /tmp/hipengine-hipcc-version.txt` (full commands in artifact).
+- Rocprof summary: `scripts/qwen35_gguf_rocprof_summary.py --prefill-csv ... --decode-csv ... --strip-prefill-prefix --tokens-prefill 512 --tokens-decode 128 --json /tmp/p9_a3/rocprof-summary.json`.
+
+Artifact / rollups:
+
+- New retained artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_a3-gdn-k2-chain-accepted.json`.
+- `benchmarks/README.md` current-fastest 512/128 row updated (`529.598 -> 1505.969 tok/s` prefill); diagnostic table prepended with the P9.A3 row and the task #16 row marked "superseded by task #19".
+- `benchmarks/CHANGELOG.md`: dated P9.A3 entry with bucket-level deltas + rocprof evidence.
+
+Notes:
+
+- Hardware is the local RX 7900 XTX / gfx1100. The PARO `~2700 tok/s / ~115 tok/s` comparison rows in `benchmarks/README.md` are on the matched W7900; do not directly compare wall-clock without rerunning on W7900.
+- 512/128 graph rocprof times out after 1800 s (same pathology as task #16). The retained full-run rocprof trace is eager-decode for symbol visibility; the graph wall-clock numbers come from the dedicated wall bench (no rocprof).
+- The remaining `gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>` (`~1.06 ms`, 1 dispatch) at 512/0 is the Q6_K lm-head logits projection -- a documented allowed fallback, not a regression.
+
+Next: task #26 (P9.B7) flips `--use-gemv-decode` to measure the decode-side row.
