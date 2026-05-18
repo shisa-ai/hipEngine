@@ -18912,3 +18912,24 @@ Added a "P8: real batched prefill GEMM (active)" plan section to `docs/GGUF.md`.
 Phased order: P8.1 dense Q8_0 → P8.2 dense Q4_K (single + dual) → P8.3 dense Q5_K/Q6_K → P8.4 selected Q4_K dual MoE → P8.5 selected Q5_K/Q6_K MoE → P8.6 scheduler wiring → P8.7 lm_head → optional P8.8 Q8_1+I8 WMMA. Acceptance floor: 512/0 total prefill kernel time `<= 1500 ms` (vs current `~5114 ms`), with public LLM.generate Q4_K_M and qwen35moe smoke gates passing and no decode-shaped `_prefill_out_kernel` symbols appearing in the 512/0 rocprof.
 
 No code yet — this commit lands the plan only. Next commit: P8.1 Q8_0 batched WMMA prefill kernel + CPU-reference tests + registry rewire.
+
+## 2026-05-18 qwen35moe GGUF P8.1: Q8_0 batched WMMA prefill kernel landed
+
+Wrote the first kernel in the P8 plan: `gguf_q8_0_prefill_wmma_kernel<scalar_t, out_t, AWQ_TILE_M, AWQ_TILE_N>` in `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.hip`. The structure mirrors `awq_fusedw4_prefill_fp16_kernel` from `paro_awq_gemv.hip` line-by-line: 32 threads/block, grid `((out_features + tile_m - 1)/tile_m, (rows + tile_n - 1)/tile_n)`, `__launch_bounds__(32, 8)`, `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32` accumulator, `tid & 15` lane mapping, `float8_t` accumulators, output store pattern. The only delta is the inner K-loop dequant block: instead of AWQ W4 unpack (qzeros + scales + shift + 4-bit unpack), we now read the GGUF Q8_0 byte stream directly — each output column reads its 34-byte block (`fp16 d` + `int8 qs[32]`), the `d` becomes the per-K-tile half scale, and `a_reg[kk] = d_h * (half)qs[k_off + kk]`. K-tile size stays 16; Q8_0 block size 32 → 2 K-tiles per block.
+
+Activation/output type matrix: 9 combinations covering `{bf16, fp16, f32}` for both input and output. bf16 input upcasts to fp16 per-element inside `load_act_half16<scalar_t>`; fp16 input uses a `*reinterpret_cast<const half16_t*>(p)` fast path. Output uses the existing `store_output<out_t>` with `float_to_bf16_bits` specialization. Tile menu: `(16, 16), (16, 32), (32, 16), (32, 32), (64, 16), (64, 32)`, matching the PARO `fusedw4_prefill_fp16` set.
+
+Python wrapper module `gguf_q8_0_prefill.py` exposes one wrapper per dtype combo and registers under `KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_<in>_<out>_out")`. The decode-shaped `prefill_*` aliases in `gguf_k_gemv.py` are untouched; runtime dispatch in `gguf_linear.py` will swap to the WMMA family in task P8.6.
+
+Build & correctness validation on W7900 (gfx1100):
+- `build_gguf_q8_0_prefill(load=True)` compiles cleanly via hipcc; loaded `.so` exports all 9 `hipengine_gguf_q8_0_wmma_prefill_<in>_<out>_out` symbols.
+- Inline smoke vs `hipengine.kernels.cpu_reference.gguf_q8_0_gemv` for rows ∈ {8, 16, 17, 32, 33, 48, 64}, in_features ∈ {64, 96, 128, 192, 256, 512}, out_features ∈ {16, 24, 32, 48, 64, 80, 128}:
+  - bf16 → f32: `max|d| < 1.2e-6`, `mean|d| ~ 3e-8`, `max_rel < 5e-4`.
+  - f32 → f32: `max|d| = 2.4e-7` (single-ULP).
+  - bf16 → bf16: `max|d| = 3.13e-2`, `max_rel = 3.83e-3` (one bf16 ULP, expected).
+- Non-multiple-of-tile rows (17, 33, 48) and out_features (24, 48, 80) covered; masking via `safe_out` / `safe_token` / boundary `if (col < out_features)` store works.
+- Registry isolation verified: `prefill_bf16_bf16_out` still resolves to the decode-shaped alias, `wmma_prefill_bf16_bf16_out` resolves to the new WMMA wrapper.
+
+Updated `docs/KERNELS.md` with a row for `gguf_q8_0_prefill.hip`. No `docs/source_lineage.json` changes needed: the algorithmic template is in-tree (`paro_awq_gemv.hip`), not external. No performance row retained yet — perf claim waits on P8.6 (runtime wiring) + the qwen35moe 512/0 bench in task P8 #5.
+
+Next: tasks #3 (wire WMMA prefill into `gguf_linear.py` rows>1 dispatch, behind an opt-in) and #4 (formal `tests/test_gguf_q8_0_wmma_prefill.py` covering the matrix above plus a build-plan test).
