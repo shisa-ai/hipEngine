@@ -16716,3 +16716,68 @@ uv run --no-sync python -m twine check dist/*
 # Successfully built hipengine-0.1.0.tar.gz and hipengine-0.1.0-py3-none-manylinux_2_39_x86_64.whl
 # twine check: PASSED for wheel and sdist
 ```
+
+## 2026-05-18 — z-lab Qwen3.6-27B-PARO gfx1100 diagnostic benchmark
+
+Asked whether `z-lab/Qwen3.6-27B-PARO` can be benchmarked with hipEngine on the
+W7900/gfx1100 host. It can run through the resident Qwen3.5/PARO harness as a
+dense PARO model, but the resulting rows are diagnostic only: single run, no
+committed 27B KL/top-1 oracle, and the current harness does not emit the full
+`finite_prefill_logits` / `decode_step_graph_validation` booleans required for
+an accepted performance row.
+
+### Environment and model
+
+- Repo commit during run: `0d08b279d4bfd609b1715437ee0385aed5aacfe9`; worktree
+  had a pre-existing unrelated untracked `docs/SPECULATIVE-DECODE.md`.
+- GPU: AMD Radeon Pro W7900, `gfx1100`; HIP runtime available; `hipcc --version`
+  head saved to `/tmp/hipengine-hipcc-version.txt` (`HIP version:
+  7.2.53211-d40244d`).
+- Python env: `/home/lhl/mambaforge/envs/therock/bin/python3`; torch check only
+  for environment context reported `2.11.0+rocm7.13.0a20260423`, HIP
+  `7.13.26162`, GPU W7900. hipEngine runtime path remains torch-free.
+- Model snapshot:
+  `/models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/f0797088d8e0312aac0b5969bec1e6e5c6fb3ff3`.
+- Config: dense `qwen3_5_text`, 64 layers, hidden 5120, 24 query heads, 4 KV
+  heads, intermediate 17408; local safetensors total `17.485 GiB`.
+
+### Commands and results
+
+First `--require-cached-build` smoke failed because `aotriton_wrap` was not in
+the gfx1100 cache, so I prebuilt outside the measured rows with a max-layer smoke
+(no `--require-cached-build`):
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 scripts/qwen35_paro_bench.py \
+  --model /models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/f0797088d8e0312aac0b5969bec1e6e5c6fb3ff3 \
+  --backend hip_gfx1100 --prompt-length 8 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --max-layers 1 --attn-aotriton-min-tokens 512 --no-graph-replay-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/qwen36-27b-paro-gfx1100-smoke-maxlayer1-prebuild.json
+# prefill 680.804 tok/s, decode 372.890 tok/s, tracked peak 3.876 GiB, generated logits finite
+```
+
+Measured full-model rows used `--require-cached-build`, token id `9707`,
+AOTriton threshold `512`, warmup decode `4`, and graph replay decode unless
+noted.  The 4K row used the default >1K prefill chunk policy
+`1024/1024/4096/1024/1024`.
+
+| Workload | Decode mode | Prefill tok/s | Decode tok/s | Wall excl. load | Tracked peak | After-load tracked | hipMemGetInfo sampled peak |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | graph replay | 630.739 | 32.955 | 4.821 s | 24.233 GiB | 23.788 GiB | 24.925 GiB |
+| 512/128 | eager | 632.640 | 32.013 | 4.933 s | 24.233 GiB | 23.788 GiB | 24.923 GiB |
+| 4K/128 | graph replay | 631.673 | 29.567 | 10.956 s | 26.839 GiB | 24.083 GiB | 25.926 GiB |
+| 4K/128 | eager | 636.451 | 28.777 | 11.025 s | 26.839 GiB | 24.083 GiB | 25.924 GiB |
+
+Graph replay completed on gfx1100 and modestly improved decode vs eager
+(`+2.9%` at 512, `+2.7%` at 4K). The repeated-token generated previews stayed on
+ID `9707` across graph/eager for both measured shapes; sampled prefill logits
+were finite. Both full-model rows exceed the project 24 GiB tracked-peak gate,
+though they fit comfortably in W7900 VRAM.
+
+### Artifact / rollup
+
+- Added `benchmarks/results/2026-05-18-hipengine-gfx1100-qwen36-27b-paro-diagnostic.json`.
+- Updated `benchmarks/README.md` blocked/diagnostic table.
+- Updated `benchmarks/CHANGELOG.md` with the gfx1100 27B diagnostic line.
