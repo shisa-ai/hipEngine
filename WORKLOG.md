@@ -19591,3 +19591,27 @@ Notes:
 - Segment threshold default 256 picks `segments_k2` at 512/0; in our rocprof the segments variant ran fast (`1.73 ms/layer`) so I did not switch back to plain `k2`. If a single-segment-shaped run shows `k2` is faster, the threshold env var (`HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`) lets us A/B without code changes; task #19 (`P9.A3`) will measure and pick the final default.
 - Token IDs at 512/128 changed from the previous P8 acceptance run (`796 -> 220`); this is reduction-order/half-operand drift between the fused decode_order_bf16 path and the prepare+k2+rmsnorm_gate chain (PARO native uses the chain at BF16 already). Task #18 (`P9.A2`) is the formal CPU-reference correctness gate; this WORKLOG note records the drift so it doesn't surprise reviewers.
 - No new compact-MoE ABI, no resident weight repack, no `if quant ==` / `if backend ==` branches added.
+
+## 2026-05-18 P9 task #18: GDN k2/segments_k2 correctness fixture
+
+Added a CPU-reference correctness fixture for the three qwen35 GGUF GDN prefill paths (`decode_order_bf16`, `prepare + k2 + rmsnorm_gate`, `prepare + segments_k2 + rmsnorm_gate`) and ran the existing `scripts/qwen35_gguf_bulk_parity.py` post-task-#17 to record the end-to-end gate.
+
+Files:
+
+- `tests/test_qwen35_gguf_gdn_prefill_correctness.py`: new (7 tests). Builds synthetic small (8 tokens, 1/2/128/128) and Qwen3.6-35B-A3B-shaped (64 tokens, 16/32/128/128) inputs, plus the segment-threshold boundary triplet (rows = 255 / 256 / 257). Computes a CPU oracle via `gdn_prefill_recurrent_segments` + Python prepare and rmsnorm_gate. Compares all three GPU paths to the oracle (final state + BF16 output) and pins the chain-vs-fused drift to the post-task-#17 budget. The kernel-side bug we hit while authoring: rmsnorm_gate applies `SiLU(gate)` (`x * sigmoid(x)`), not bare `sigmoid(gate)`; the CPU oracle was first written with the wrong activation and the test caught it immediately.
+- `docs/KERNELS.md`: appended P9.A2 catalog note with test pointer and E2E gate evidence.
+
+Validation on W7900/gfx1100 (RX 7900 XTX local):
+
+- `uv run --with pytest pytest tests/test_qwen35_gguf_gdn_prefill_correctness.py -q` -> `7 passed` (registry alias + small + Qwen-shape + 255/256/257 boundary + drift budget).
+- `scripts/qwen35_gguf_bulk_parity.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build`:
+  - **row-GEMV serial reference**: token `4469`, logit `9.825`.
+  - **native attention + bulk FFN/MoE (`use_bulk=True, bulk_attention_mode="native"`)**: token `4469`, logit `9.825`, `top1_match=True`, `KL(serial||candidate)=0.0`, `max_abs_logit_delta=0.0`. **Bit-exact**. This is the path that exercises the new GDN chain *without* compact-MoE WMMA, so it isolates the GDN change and confirms the chain is correctness-clean.
+  - **fast fully-bulk + compact-MoE WMMA (`use_bulk=True, bulk_attention_mode="bulk"`)**: token `11`, KL `0.707`, top-1 mismatch. This is the P8 cumulative path. Task #16 recorded `KL=3.892` here; it has dropped to `KL=0.707` post task #17 GDN chain (GDN now matches serial bit-exactly in the native-attention path), but the residual `0.707` KL is **carryover from compact-MoE WMMA drift, not the GDN chain**. Closing the cumulative E2E gate is the responsibility of task #28 (small-op fusion gated by KL) and task #30 (formal E2E KL fixture); this WORKLOG entry records the current drift baseline.
+
+Decision: P9.A2 acceptance is met. The GDN-chain-only correctness gate is satisfied (synthetic CPU oracle + bit-exact E2E in the isolated path). The compound WMMA E2E gate remains open under tasks #28/#30, with the KL trend now improving (3.892 -> 0.707 -> target <= 0.05).
+
+Notes for downstream:
+
+- `_cpu_rmsnorm_gate` matches the kernel only when SiLU(gate) is used, not sigmoid; this is documented inline in the test file and again here so the next person who ports the kernel to a different output dtype doesn't get the wrong oracle.
+- Bulk parity artifact stored at `/tmp/p9_a2/bulk_parity_post_task17.json`; not committed (transient diagnostic).
