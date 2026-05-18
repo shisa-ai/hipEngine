@@ -19640,3 +19640,30 @@ Design notes for downstream:
 - The kernel deliberately drops the P8.4 WMMA-only fields (`expert_start_wmma`, `tile_expert`) at the kernel boundary; the compact-MoE scheduler still emits them for the WMMA prefill path, and the runtime dispatch (task #25 / P9.B6) routes `rows == 1` projections through this decode GEMV while keeping the existing prefill WMMA path intact. The shared `expert_start_compact` field is what makes both paths plug-compatible with the P8.6 scheduler.
 - Per-block scale/min hoist is the main improvement over the current `gguf_q4_k_selected_pack8_prefill_out_kernel` family (which calls `gguf_q4_k_weight()` per K, reloading the block header every iteration). The new kernel reads each Q4_K block header once across all 8 output channels of the pack via 64 cooperative threads, then iterates the 256-K block with a register-resident inner loop.
 - Formal compact-MoE correctness fixture (uneven counts, empty experts, padding, all-empty, tile-boundary out widths) is task #24 (P9.B5). This worklog entry records the inline smoke as a hand-verified seed for that test.
+
+## 2026-05-18 P9 task #21: GGUF Q5_K/Q6_K selected pack8 GEMV decode kernels
+
+Implemented the P9.B2 decode-shaped pack8 GEMVs for raw GGUF Q5_K and Q6_K compact selected MoE down projections, mirroring `paro_awq_gemv.hip::gemv_awq_selected_pack8_kernel` but consuming the P8.5 compact-MoE ABI instead of the PARO `selected[row]` mapping.
+
+Files:
+
+- `hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_pack8_gemv.hip`: new HIP source. Templated `gguf_k_selected_pack8_gemv_kernel<scalar_t, qtype>` with `qtype ∈ {5, 6}`. PARO-style `__launch_bounds__(128, 4)` 4 wave32 waves per block. Per-block scale/min hoist via `__shared__ float s_scale[128]` + `s_min[64]` (Q5_K uses 64+64; Q6_K uses 128 scale only). Inner-loop ordering: Q5_K reads Q4_K-style packed nibble (`qs[(sb>>1)*32+lane32]` shifted by `(sb&1)*4`) + 1 high bit per lane from `qh[lane32]` shifted by `sb`; Q6_K reads quartet-packed nibble (`ql[base64 + ql_group*32 + lane]` shifted by `low_nibble ? 0 : 4`) + 2 high bits from `qh[qh_base+lane]` shifted by `2*(group32 & 3)`, with int8 super-scale offset of `-32`. Wave-level reduction inlines `__shfl_down(16/8/4/2/1)` and a cross-wave `xchg[4*8]` sum.
+- `hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_pack8_gemv.py`: BF16 + FP16 wrappers for both Q5_K and Q6_K. Registers 8 `moe_linear` keys (`selected_pack8_gemv_decode_compact_*` + shorthand aliases under each of `gguf_q5_k` and `gguf_q6_k`).
+- `docs/KERNELS.md`: appended P9.B2 catalog row with inline GPU smoke deltas.
+
+Validation on W7900/gfx1100 (RX 7900 XTX local):
+
+- `py_compile` wrapper: OK; registry smoke confirms all 8 variant keys resolve.
+- HIP build via `build_gguf_k_selected_pack8_gemv(load=True)` produces `gguf_k_selected_pack8_gemv.so` with all 4 extern "C" symbols.
+- Inline GPU smoke vs CPU `gguf_quant_gemv(..., GGMLQuantizationType.Q5_K/Q6_K)`:
+  - BF16 Q5_K (compact_rows=12, in=256, out=24, E=3, layout `[4, 0, 8]`): max|delta|=1.604 max_rel(eps=1)=0.0037 (~1.4% absolute on outputs up to 112; BF16 output rounding).
+  - BF16 Q6_K (same shape, separate run with `make_q6_k_weight`): max|delta|=0.214 max_rel=0.0038.
+  - FP16 Q5_K (compact_rows=8, in=256, out=16, E=2, layout `[4, 4]`): max|delta|=0.106 max_rel=0.00043.
+  - FP16 Q6_K (same): max|delta|=0.027 max_rel=0.00042.
+- Adjacent regression bundle (`test_gguf_k_selected_wmma_prefill.py`, `test_gguf_q4_k_selected_wmma_prefill.py`, `test_gguf_linear_dispatch.py`, `test_qwen35_gguf_compact_moe_wmma_routing.py`, `test_qwen35_gguf_gdn_prefill_correctness.py`) -> `75 passed`.
+
+Design notes for downstream (task #25 / P9.B6):
+
+- Both Q5_K and Q6_K kernels share the same wrapper ABI -- no per-quant if-branch in dispatch code, just a `KernelKey` lookup per `(quant, layer, variant)`. The runtime will dispatch raw Q5_K down to this kernel only when the row count is 1 (decode shape); for prefill shapes the P8.5 WMMA kernel remains the right pick.
+- The shared-memory layout uses a single `s_scale[128]` buffer sized for the larger Q6_K case (128 entries). Q5_K touches only the first 64 entries plus `s_min[64]`. Total static shared usage stays under 1 KiB which keeps occupancy at the `__launch_bounds__(128, 4)` hint level.
+- Formal compact-MoE correctness fixtures with uneven row counts, empty experts (middle/start/tail), non-multiple-of-16 out widths, and multi-K-block coverage land in task #24 (P9.B5). This worklog entry records the inline smoke as a hand-verified seed for that test.
