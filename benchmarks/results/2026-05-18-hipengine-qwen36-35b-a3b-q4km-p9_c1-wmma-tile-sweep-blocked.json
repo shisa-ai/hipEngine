@@ -2,7 +2,7 @@
   "schema": 2,
   "status": "diagnostic_retained_blocked",
   "performance_claim": false,
-  "timestamp": "2026-05-18T16:28:45.071488+00:00",
+  "timestamp": "2026-05-18T17:33:30.105624+00:00",
   "run_tag": "hipengine-qwen36-q4km-p9_c1-wmma-tile-sweep-blocked",
   "task": "#27 P9.C1 compact MoE + Q8_0 WMMA prefill tile sweep",
   "summary": "P9.C1 selected-MoE/Q8_0 WMMA tuning retained partial improvements but missed the <=110 ms combined WMMA bucket gate. Best retained default now: Q4_K selected dual 32x16, Q5_K/Q6_K selected down legacy 16x16, selected launch-bound min-blocks 2, Q8_0 shape-aware single tiles (2048x8192 and 2048x4096 -> 16x32; 4096x2048 -> 64x32; 2048x512 -> 16x32), Q8_0 shared gate+up dual concat 16x32. Combined Q4 dual + Q5/Q6 down + all Q8_0 WMMA bucket is 139.44 ms (target <=110 ms), down from 170.41 ms (~18.2%).",
@@ -12,7 +12,9 @@
   "software": {
     "commit_at_measurement": "23854b22ddd90c96b3f73f253ae02aa991a41777",
     "git_status_at_measurement": "## gguf-bulk-prefill\n M hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.py\n M scripts/qwen35_gguf_rocprof_summary.py\n M tests/test_gguf_q8_0_wmma_prefill.py\n M tests/test_qwen35_gguf_rocprof_summary.py\n?? uv.lock",
-    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "commit_at_design_study": "c5f171a66802f52e73ef9642ea84faa5bbe5f506",
+    "git_status_at_design_study": "## gguf-bulk-prefill\n?? uv.lock"
   },
   "commands": {
     "tests": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt uv run --with pytest pytest tests/test_gguf_q8_0_wmma_prefill_dual.py tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q --no-header",
@@ -1138,7 +1140,97 @@
       "retained_min_blocks": 2,
       "reason": "min-blocks=2 is the fastest single-run setting and matches the legacy P8 launch-bound hint; min-blocks=1 gives no benefit, while 4/8 are slower."
     },
-    "wmma_bucket_delta_vs_baseline_pct": -18.17284255618802
+    "wmma_bucket_delta_vs_baseline_pct": -18.17284255618802,
+    "moe_design_study": {
+      "current_profile": {
+        "selected_moe_ms": 87.254835,
+        "dense_q8_0_wmma_ms": 52.186824,
+        "selected_moe_is_highest_impact": true,
+        "selected_moe_components_ms": {
+          "moe_q4_k_selected_dual_wmma_prefill": 57.727737,
+          "moe_q5_k_selected_wmma_prefill": 26.833081,
+          "moe_q6_k_selected_wmma_prefill": 2.694017
+        }
+      },
+      "routing_distribution_512_0_repeated_token_9707": {
+        "padding_summary": {
+          "('gguf_q4_k', 'gguf_q5_k')": {
+            "layers": 37,
+            "compact": 151552,
+            "wmma": 171312,
+            "padding": 19760
+          },
+          "('gguf_q4_k', 'gguf_q6_k')": {
+            "layers": 3,
+            "compact": 12288,
+            "wmma": 14560,
+            "padding": 2272
+          }
+        },
+        "expert_count_summary": {
+          "layers": 40,
+          "experts_per_layer": 128,
+          "nonzero_expert_fraction": 0.1919921875,
+          "nonzero_count_p50": 3.0,
+          "nonzero_count_p90": 404.0,
+          "nonzero_count_p99": 510.0,
+          "max_count": 512,
+          "experts_ge16_total": 715,
+          "experts_ge32_total": 604,
+          "experts_ge64_total": 501
+        },
+        "interpretation": "Routing is highly skewed: only ~19% of experts are nonzero; hot experts often have hundreds of rows while most nonzero experts have tiny tails. Padding is measurable (13-18%) but insufficient alone to close the ~29 ms acceptance gap."
+      },
+      "option_tests": {
+        "tail_no_padding_hybrid": {
+          "status": "bounded_not_sufficient_alone",
+          "evidence": "wmma padded rows exceed compact rows by 13.0% for Q5 layers and 18.5% for Q6 layers; ideal removal saves at most ~11 ms of the 87 ms selected-MoE bucket, below the ~29 ms residual gap.",
+          "next_if_pursued": "Use WMMA for full 16-row expert tiles and compact GEMV/tail kernel for <16-row tails; useful as secondary optimization only."
+        },
+        "bulk_compact_gemv_no_padding": {
+          "status": "rejected_slow",
+          "evidence": "Temporary rows>1 route through existing P9.B compact GEMV kernels: 512/0 prefill 1.958 s = 261.49 tok/s, far slower than retained WMMA path (~0.305 s / 1678 tok/s)."
+        },
+        "expert_pack8_sidecar_with_wmma_prefill": {
+          "status": "rejected_no_benefit",
+          "evidence": "Benchmark with --use-expert-sidecar --preload-expert-sidecars and WMMA prefill still used raw selected WMMA kernels; 3-run median 1648.13 tok/s, below retained 1678.00 tok/s."
+        },
+        "expert_pack8_sidecar_without_wmma_prefill": {
+          "status": "rejected_slow",
+          "evidence": "Benchmark with --no-use-wmma-prefill --use-expert-sidecar: 7.343 s = 69.73 tok/s."
+        },
+        "awq_pack8_wmma_sidecar_proxy": {
+          "status": "rejected_for_current_shape",
+          "evidence": "Synthetic same-routing proxy using existing PARO/AWQ pack8 WMMA: Q4 dual layer 6.65 ms and down layer 3.44 ms, much slower than raw selected WMMA average (Q4 dual ~1.44 ms/layer; Q5 down ~0.73 ms/layer).",
+          "caveat": "This tests the existing AWQ layout/kernel as a proxy, not a custom GGUF-K sidecar WMMA design."
+        },
+        "selected_tm_tn_and_launch_bounds": {
+          "status": "exhausted_retained_partial",
+          "evidence": "Previous P9.C1 sweeps retained Q4 32x16, Q5/Q6 legacy 16x16, launch_bounds min-blocks 2. Generic multi-tile variants increase register pressure and slow down except Q4 32x16."
+        }
+      },
+      "most_fruitful_next_paths_ranked": [
+        {
+          "rank": 1,
+          "path": "custom raw GGUF-K selected WMMA redesign for hot experts",
+          "why": "Only path with enough headroom: selected-MoE needs ~1.34x improvement (87.3 -> ~58 ms). Focus on Q4 dual (57.7 ms) and Q5 down (26.8 ms), not scheduler/copy/silu.",
+          "design_sketch": "Specialize for skewed routing: hot experts with >=64 rows use a lower-register-pressure raw kernel with predecoded per-block scale/min sidecar or split Q4 scale/min decode from WMMA inner loop; sparse tails use existing legacy/tail path. Preserve compact ABI and CPU-reference fixtures.",
+          "test_plan": "Prototype one Q4 hot-expert kernel for rows multiple-of-16/full experts using the real expert_start map; target Q4 dual <40 ms before touching Q5."
+        },
+        {
+          "rank": 2,
+          "path": "tail/no-padding hybrid",
+          "why": "Can recover padding/tiny-expert overhead but max ideal saving is ~11 ms, so it cannot hit target alone.",
+          "test_plan": "Add tail GEMV kernel only for experts with count % 16 != 0 or count < 16; measure selected-MoE bucket delta."
+        },
+        {
+          "rank": 3,
+          "path": "new GGUF-K sidecar/repack WMMA (not existing AWQ/pack8 GEMV)",
+          "why": "Existing AWQ proxy and pack8 GEMV sidecar are slower; a useful sidecar would need to preserve GGUF-K math while reducing Q4 scale/min decode and register pressure.",
+          "test_plan": "Microbench one layer with preexpanded Q4 scale/min sidecar before integrating runtime materialization."
+        }
+      ]
+    }
   },
   "acceptance": {
     "passed": false,

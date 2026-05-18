@@ -19994,3 +19994,31 @@ Validation / measurement:
 Acceptance still **blocked**: `139.442 ms > 110 ms`. This improves the retained blocked result from `149.029 ms` (or `~152.45 ms` when counting Q8 dual correctly) and from the original `170.410 ms` baseline, but leaves ~29 ms. Prior TM/TN and launch-bound sweeps show the generic raw selected-MoE path cannot close that remainder; next work likely needs a different selected-MoE design (expert-shape split, sidecar/repack, or lower-register-pressure kernel), not more tile picking.
 
 Updated `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c1-wmma-tile-sweep-blocked.json`, `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and `docs/KERNELS.md` with the improved blocked evidence. Task #27 remains in_progress.
+
+## 2026-05-18 P9 task #27 continuation: MoE design option profiling
+
+Focused only on task #27. Current retained P9.C1 profile confirms selected MoE is now the highest-impact target bucket: Q4 dual `57.728 ms`, Q5 down `26.833 ms`, Q6 down `2.694 ms` => selected MoE `87.255 ms`, versus dense Q8_0 WMMA `52.187 ms`.
+
+Measured routing / padding for 512/0 repeated-token prompt:
+
+- 40 MoE layers recorded.
+- Q4 gate/up + Q5 down layers: compact rows `151,552`, WMMA padded rows `171,312`, padding `19,760` (`+13.04%`).
+- Q4 gate/up + Q6 down layers: compact rows `12,288`, WMMA padded rows `14,560`, padding `2,272` (`+18.49%`).
+- Expert distribution is highly skewed: only `~19.2%` of experts are nonzero; nonzero-count p50 `3`, p90 `404`, p99 `510`, max `512`; across all layers `501` expert instances have `>=64` selected rows.
+- Interpretation: a tail/no-padding hybrid can help, but ideal padding elimination is only around `~11 ms` of selected-MoE work and cannot close the residual `~29 ms` alone.
+
+Option tests:
+
+1. Bulk compact GEMV / no-padding route (temporary monkeypatch using existing P9.B compact GEMV kernels for rows>1): `1.958 s` for 512/0 (`261.49 tok/s`) and different final token in the diagnostic route. Rejected: far slower than retained WMMA path (`~0.305 s`).
+2. Expert pack8 sidecar with WMMA prefill enabled: 3-run median `1648.13 tok/s`; rocprof still shows raw selected WMMA kernels (`Q4 59.2 ms`, `Q5 27.3 ms`, `Q6 3.1 ms`). Rejected/no benefit: sidecar does not replace the WMMA compact selected path.
+3. Expert pack8 sidecar without WMMA prefill: `7.343 s` (`69.73 tok/s`). Rejected.
+4. Existing PARO/AWQ pack8 WMMA as a sidecar/repack proxy (synthetic same-routing first-layer shape): Q4 dual proxy `6.65 ms`, down proxy `3.44 ms`. Rejected for current shape: much slower than raw selected WMMA average (`~1.44 ms/layer` Q4 dual, `~0.73 ms/layer` Q5 down). Caveat: this tests the existing AWQ layout/kernel, not a custom GGUF-K sidecar design.
+5. Previously exhausted TM/TN + launch-bound sweeps remain as recorded: retained Q4 `32x16`, Q5/Q6 legacy `16x16`, selected launch-bound min-blocks `2`.
+
+Ranked next paths:
+
+1. **Most fruitful:** custom raw GGUF-K selected WMMA redesign for hot experts. Need ~1.34x selected-MoE speedup (`87.3 -> ~58 ms`) to hit the overall `<=110 ms` target with current Q8. Focus Q4 dual first. Candidate design: specialize hot experts (`>=64` rows) and reduce per-output Q4 scale/min decode/register pressure, possibly with a predecoded Q4 scale/min sidecar while preserving GGUF-K math. First prototype target: Q4 dual bucket `<40 ms` before touching Q5.
+2. Tail/no-padding hybrid: useful secondary optimization, but bounded by padding overhead (`~11 ms` ideal). Use WMMA for full 16-row tiles and compact GEMV/tail kernel for <16-row tails.
+3. New GGUF-K sidecar/repack WMMA: existing pack8/AWQ options are not good proxies; if pursued, sidecar must specifically reduce GGUF-K decode/register pressure rather than use current AWQ pack8 layout.
+
+Updated blocked artifact with `measurements.moe_design_study`. Task #27 remains in_progress/blocked.
