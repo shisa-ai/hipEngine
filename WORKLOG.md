@@ -16771,3 +16771,40 @@ python3 scripts/smoke.py --mode smoke-add-plan && \
 rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
 # pytest: 304 passed; fixtures/smokes passed; torch audit only found allowed docs/comments/diagnostic subprocess text.
 ```
+
+## 2026-05-18 - K1 INT8 KV layer accuracy tooling
+
+Completed task #3: added `scripts/qwen35_kv_int8_accuracy.py` plus CPU-only tests.
+
+Tool behavior:
+
+- Generates deterministic synthetic paged-KV cases at short and page-boundary long contexts.
+- Runs BF16 and `int8_per_token_head` paths side by side against CPU-reference oracles.
+- Reports attention `max_abs` / `max_rel` plus synthetic projected-logit KL/top-1 via `hipengine.benchmark.correctness.evaluate_logits`.
+- Emits compact JSON with status, thresholds, shapes, per-case path metrics, and BF16-vs-INT8 quantization diagnostics.
+- `--device hip` is wired to run the existing BF16 HIP writer/decode path. The INT8 HIP path checks for future exact registry keys (`paged_kv_write/int8_per_token_head/per_token_head_spans`, `paged_attn_decode/int8_per_token_head/gqa_splitk_spans`) and has an adapter for the expected task #8/#9 wrapper signatures; until those wrappers land it reports a clear blocked reason. `--require-int8-hip` makes that a hard gate for K1 promotion.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_kv_int8_accuracy.py -q
+# 3 passed
+
+python3 scripts/qwen35_kv_int8_accuracy.py \
+  --device cpu --contexts 4,9 --block-size 4 --num-q-heads 4 --num-kv-heads 2 \
+  --head-dim 8 --pseudo-vocab-size 16 \
+  --json /tmp/hipengine-kv-int8-accuracy-smoke.json
+python3 -m json.tool /tmp/hipengine-kv-int8-accuracy-smoke.json >/tmp/hipengine-kv-int8-accuracy-smoke.pretty.json
+# status=accepted; ctx9 crosses a page boundary; BF16 and INT8 path max_abs=0 vs their CPU oracles.
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 4,9 --block-size 4 --num-q-heads 4 --num-kv-heads 2 --head-dim 8 --pseudo-vocab-size 16 --json /tmp/hipengine-kv-int8-accuracy-smoke.json && \
+python3 -m json.tool /tmp/hipengine-kv-int8-accuracy-smoke.json >/tmp/hipengine-kv-int8-accuracy-smoke.pretty.json && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures && \
+python3 scripts/smoke.py --mode smoke-add-plan && \
+rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
+# pytest: 307 passed; fixtures/smokes passed; torch audit only found allowed docs/comments/diagnostic subprocess text.
+```
