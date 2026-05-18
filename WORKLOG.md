@@ -18674,3 +18674,56 @@ Conclusion: this is a layout-correctness cleanup needed before reusable verifier
 graph/staging work, but it does not clear the speed gate.  #30 remains open;
 next speed work should avoid dynamic hidden-tap destination pointers by staging
 captures (to enable graph reuse) and/or reduce candidate-row model compute.
+
+## 2026-05-18 — Native verifier graph replay prototype (task #30)
+
+Implemented an optional verifier graph path for the native B+1 verifier:
+
+- `scripts/dflash_chain_e2e_bench.py --verifier-graph {off,auto,validate}`;
+- graph buckets keyed by fixed verifier rows, capture width, and base slot;
+- metadata H2D copies stay outside the graph so token/position/active-mask values
+  can vary while graph node addresses remain fixed;
+- hidden taps are captured into a stable verifier staging buffer, then the
+  accepted prefix is copied into the drafter's absolute `target_hidden_concat`
+  rows after CPU/GPU accept agreement;
+- graph validation compares row-wise target top-1 and GPU accept payload vs the
+  direct fallback before allowing replay.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_cast_plan.py tests/test_qwen35_resident_batch_layout.py \
+  tests/test_speculative_benchmark.py -q
+# 37 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --verifier-graph auto \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 4 --draft-budgets 4 \
+  --json /tmp/hipengine-verifier-graph-auto-d4.json
+# exact same-session AR equality passed; gpu_accept_match_cpu=true;
+# verifier_graph status_counts={'captured_validated_miss': 1, 'replayed': 1}
+```
+
+Graph replay correctness works, but speed does not.  Dirty-tree measurements:
+
+- B={1,2,4,8}, 8 decode tokens, `--verifier-graph auto` after removing
+  unnecessary device-wide synchronizes around graph replay/capture:
+  - native verify seconds `0.302 / 0.347 / 0.485 / 0.761`;
+  - graph status for each row `{'captured_validated_miss': 1, 'replayed': 3}`;
+  - slower than warm-scratch off-graph `0.231 / 0.264 / 0.387 / 0.619` and much
+    slower than serial `0.127 / 0.124 / 0.125 / 0.126`.
+- B=4, 16 decode tokens (pre-sync-removal diagnostic), graph amortized over 9
+  draft calls:
+  - graph auto verify `0.961 s`, DFlash `10.08 tok/s`, status
+    `{'captured_validated_miss': 1, 'replayed': 8}`;
+  - off-graph verify `0.830 s`, DFlash `10.90 tok/s`.
+
+Conclusion: fixed-address verifier graph replay is exact but slower than direct
+launch.  The extra graph stream synchronization/staging/copy and first-cycle
+capture/validation overhead outweigh any launch savings for these tiny-row target
+kernels.  #30 remains blocked; next useful work needs to reduce model compute
+(e.g. c-aware suffix skipping or fused target-layer kernels), not only graph the
+existing fixed B+1 work.

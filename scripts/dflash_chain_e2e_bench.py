@@ -1214,6 +1214,7 @@ def run_same_session_pair(
     prefill_config: PrefillConfig,
     sync_draft_phases: bool = False,
     verifier_mode: str = "native_bulk_bplus1",
+    verifier_graph_mode: str = "off",
     drafter_graph_mode: str = "off",
     drafter_fusion_mode: str = "off",
 ) -> tuple[tuple[list[int], dict[str, Any]], tuple[list[int], dict[str, Any]]]:
@@ -1290,6 +1291,7 @@ def run_same_session_pair(
                 base_slot=1,
                 branch_slot_start=2,
                 verifier_mode=verifier_mode,
+                verifier_graph_mode=verifier_graph_mode,
             )
         spec_meta["same_session_control"] = True
         spec_meta["same_process_control"] = True
@@ -1306,6 +1308,7 @@ def _run_dflash_chain_on_session(
     base_slot: int,
     branch_slot_start: int,
     verifier_mode: str = "native_bulk_bplus1",
+    verifier_graph_mode: str = "off",
 ) -> tuple[list[int], dict[str, Any]]:
     t0 = time.perf_counter()
     next_result = None
@@ -1349,6 +1352,10 @@ def _run_dflash_chain_on_session(
     target_bulk_forward_calls = 0
     target_serial_forward_calls = 0
     target_bulk_rows_total = 0
+    verifier_graph_status_counts: Counter[str] = Counter()
+    verifier_graph_last: dict[str, Any] | None = None
+    verifier_graph_validation_seen = False
+    verifier_graph_validation_passed = True
     target_accept_scalar_reads = 0
     target_accept_scalar_values = 0
     t1 = time.perf_counter()
@@ -1412,12 +1419,22 @@ def _run_dflash_chain_on_session(
                 capture_layer_ids=drafter.config.target_layer_ids,
                 capture_hidden_concat=drafter.target_hidden_concat,
                 capture_row_start=context_tokens,
+                graph_mode=verifier_graph_mode,
             )
             target_top1 = list(verify_result.target_top1[: 1 + active_budget])
             accepted = int(verify_result.accepted_count)
             bonus = int(verify_result.next_token) if verify_result.next_token is not None else int(target_top1[-1])
             finite_verify = finite_verify and bool(verify_result.finite_logits)
             gpu_accept_match_cpu = gpu_accept_match_cpu and bool(verify_result.gpu_accept_match_cpu)
+            if verify_result.graph:
+                verifier_graph_last = verify_result.graph
+                graph_status = str(verify_result.graph.get("status", "unknown"))
+                verifier_graph_status_counts[graph_status] += 1
+                validation = verify_result.graph.get("validation_passed")
+                if validation is not None:
+                    verifier_graph_validation_seen = True
+                if validation is False:
+                    verifier_graph_validation_passed = False
             target_bulk_forward_calls += int(verify_result.target_forward_calls)
             target_bulk_rows_total += int(verify_result.rows)
             target_accept_scalar_reads += 7
@@ -1502,6 +1519,12 @@ def _run_dflash_chain_on_session(
             else (target_serial_forward_calls / draft_calls if draft_calls else None)
         ),
         "gpu_accept_match_cpu": gpu_accept_match_cpu,
+        "verifier_graph": {
+            "mode": verifier_graph_mode,
+            "status_counts": dict(sorted(verifier_graph_status_counts.items())),
+            "validation_passed": verifier_graph_validation_passed if verifier_graph_validation_seen else None,
+            "last": verifier_graph_last,
+        },
         "draft_calls": draft_calls,
         "decode_cycles": cycles,
         "draft_tokens_proposed": draft_tokens_proposed,
@@ -1529,6 +1552,7 @@ def _run_dflash_chain_on_session(
         "backend": session.backend,
         "target_arch": session.target_arch,
         "verifier_mode": verifier_mode,
+        "verifier_graph_mode": verifier_graph_mode,
         "native_bulk_verifier": verifier_mode == "native_bulk_bplus1",
         "drafter_context_mode": "append_only_projected_context_and_kv",
         "draft_phase_timing_mode": "synchronized" if drafter.sync_draft_phases else "enqueue_until_final_sync",
@@ -1660,6 +1684,7 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "target_bulk_rows": spec_meta.get("target_bulk_rows"),
             "target_forwards_per_draft_call": spec_meta.get("target_forwards_per_draft_call"),
             "gpu_accept_match_cpu": spec_meta.get("gpu_accept_match_cpu"),
+            "verifier_graph": spec_meta.get("verifier_graph"),
             "draft_tokens_proposed": spec_meta.get("draft_tokens_proposed", spec_meta["draft_calls"] * budget),
             "draft_tokens": spec_meta.get("draft_tokens_proposed", spec_meta["draft_calls"] * budget),
             "accepted_draft_tokens": sum(int(x) for x in spec_meta["accepted_lengths"]),
@@ -1724,6 +1749,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--sync-draft-phases", action="store_true", help="Diagnostic only: synchronize after major drafter phases before timing them")
     parser.add_argument("--verifier-mode", choices=("native_bulk_bplus1", "serial_in_place_single_slot"), default="native_bulk_bplus1")
+    parser.add_argument("--verifier-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native B+1 verifier forward+accept; auto replays fixed rows/capture-width buckets")
     parser.add_argument("--drafter-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native DFlash propose(); auto replays cache hits, validate records capture parity without requiring reuse")
     parser.add_argument("--drafter-fusion", choices=("off", "qkv"), default="off", help="Enable prototype DFlash drafter kernel fusions; qkv fuses query-side Q/K/V projections with unfused fallback available")
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
@@ -1757,6 +1783,7 @@ def main(argv: list[str] | None = None) -> int:
                 prefill_config=prefill_config,
                 sync_draft_phases=args.sync_draft_phases,
                 verifier_mode=args.verifier_mode,
+                verifier_graph_mode=args.verifier_graph,
                 drafter_graph_mode=args.drafter_graph,
                 drafter_fusion_mode=args.drafter_fusion,
             )
@@ -1787,6 +1814,7 @@ def main(argv: list[str] | None = None) -> int:
             "prompt_suite_sha256": file_sha256(args.prompt_fixture),
             "artifact_validation": validation,
             "verifier_mode": args.verifier_mode,
+            "verifier_graph_mode": args.verifier_graph,
             "native_bulk_verifier": args.verifier_mode == "native_bulk_bplus1",
             "drafter_graph_mode": args.drafter_graph,
             "drafter_fusion_mode": args.drafter_fusion,

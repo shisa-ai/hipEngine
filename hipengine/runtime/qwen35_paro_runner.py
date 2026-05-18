@@ -760,6 +760,7 @@ class Qwen35ParoBulkVerifyResult:
     gpu_accept_match_cpu: bool
     rows: int
     target_forward_calls: int = 1
+    graph: dict[str, Any] | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -776,7 +777,20 @@ class Qwen35ParoBulkVerifyResult:
             "gpu_accept_match_cpu": self.gpu_accept_match_cpu,
             "rows": self.rows,
             "target_forward_calls": self.target_forward_calls,
+            "graph": self.graph,
         }
+
+
+@dataclass
+class Qwen35ParoVerifierGraphEntry:
+    rows: int
+    capture_width: int
+    base_slot: int
+    graph: int
+    graph_exec: int
+    stream: int
+    validation_passed: bool
+    replay_count: int = 0
 
 
 def qwen35_paro_native_prefill_plan(
@@ -952,6 +966,21 @@ class Qwen35ParoResidentSession:
         # process.  Synchronize before releasing any device allocations.
         self.runtime.device_synchronize()
         self.closed = True
+        for entry in list(getattr(self, "_verify_graph_cache", {}).values()):
+            try:
+                self.runtime.graph_exec_destroy(entry.graph_exec)
+            except Exception:
+                pass
+            try:
+                self.runtime.graph_destroy(entry.graph)
+            except Exception:
+                pass
+            try:
+                self.runtime.stream_destroy(entry.stream)
+            except Exception:
+                pass
+        if hasattr(self, "_verify_graph_cache"):
+            self._verify_graph_cache.clear()
         self._release_prefill_workspace()
         for state in reversed(self.states):
             state.free()
@@ -2281,6 +2310,7 @@ class Qwen35ParoResidentSession:
         capture_hidden_concat: Tensor,
         capture_row_start: int,
         stream: int = 0,
+        graph_mode: str = "off",
     ) -> Qwen35ParoBulkVerifyResult:
         """Run one native root+candidate verifier forward and commit the selected row.
 
@@ -2315,24 +2345,53 @@ class Qwen35ParoResidentSession:
             raise ValueError("capture_hidden_concat width must match captured layers * hidden_size")
         if capture_row_start < 0 or capture_row_start + rows > capture_hidden_concat.shape[0]:
             raise ValueError("capture rows outside capture_hidden_concat")
+        if graph_mode not in {"off", "auto", "validate"}:
+            raise ValueError("graph_mode must be off, auto, or validate")
+
+        capture_target = capture_hidden_concat
+        capture_target_start = capture_row_start
+        if graph_mode != "off":
+            capture_target = self._verify_capture_staging_tensor(rows=rows, width=int(capture_hidden_concat.shape[1]))
+            capture_target_start = 0
 
         self._write_verify_chain_metadata(batch, base_slot=base_slot, stream=stream)
         try:
-            self._launch_verify_chain_forward_accept(
-                batch,
-                base_slot=base_slot,
-                capture_ids=capture_ids,
-                capture_hidden_concat=capture_hidden_concat,
-                capture_row_start=capture_row_start,
-                rows=rows,
-                stream=stream,
-            )
+            if graph_mode == "off":
+                graph_info: dict[str, Any] = {"mode": "off", "status": "disabled", "replayed": False, "validation_passed": None}
+                self._launch_verify_chain_forward_accept(
+                    batch,
+                    base_slot=base_slot,
+                    capture_ids=capture_ids,
+                    capture_hidden_concat=capture_target,
+                    capture_row_start=capture_target_start,
+                    rows=rows,
+                    stream=stream,
+                )
+            else:
+                graph_info = self._run_verify_graph_or_direct(
+                    batch,
+                    base_slot=base_slot,
+                    capture_ids=capture_ids,
+                    capture_hidden_concat=capture_target,
+                    capture_row_start=capture_target_start,
+                    rows=rows,
+                    graph_mode=graph_mode,
+                    stream=stream,
+                )
             gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
             target_top1, target_values = self._read_verify_top1(rows)
             cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
             cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
             gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
             selected_row = int(cpu_summary.commit_rows[0])
+            if graph_mode != "off":
+                self._copy_verify_capture_prefix(
+                    capture_target,
+                    capture_hidden_concat,
+                    capture_row_start=capture_row_start,
+                    rows=int(cpu_summary.accepted_counts[0]) + 1,
+                    stream=stream,
+                )
             self._commit_bulk_linear_states(selected_row, base_slot=base_slot, stream=stream)
             self._set_slot_position(int(cpu_summary.commit_positions[0]), slot=base_slot, stream=stream)
             self.runtime.stream_synchronize(stream)
@@ -2350,6 +2409,7 @@ class Qwen35ParoResidentSession:
                 finite_logits=all(math.isfinite(float(value)) for value in target_values),
                 gpu_accept_match_cpu=bool(gpu_accept_match),
                 rows=rows,
+                graph=graph_info,
             )
         finally:
             # Keep verifier-sized scratch live between cycles; c=1 decode kernels
@@ -2357,6 +2417,177 @@ class Qwen35ParoResidentSession:
             # avoiding bulk<->decode scratch churn keeps allocations stable for
             # future verifier graph capture experiments.
             pass
+
+    def _verify_capture_staging_tensor(self, *, rows: int, width: int) -> Tensor:
+        if rows <= 0 or rows > self.max_batch_size:
+            raise ValueError("rows outside verifier staging capacity")
+        max_width = len(self.config.layer_types) * self.config.hidden_size
+        if width <= 0 or width > max_width:
+            raise ValueError("capture width outside verifier staging capacity")
+        return Tensor.from_handle(self.verify_capture_hidden_concat.ptr, (rows, width), DType.BF16, self.device)
+
+    def _copy_verify_capture_prefix(
+        self,
+        src: Tensor,
+        dst: Tensor,
+        *,
+        capture_row_start: int,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        if rows <= 0:
+            return
+        if src.dtype != DType.BF16 or dst.dtype != DType.BF16 or src.ndim != 2 or dst.ndim != 2:
+            raise ValueError("capture tensors must be rank-2 BF16")
+        if src.shape[1] != dst.shape[1]:
+            raise ValueError("capture staging width mismatch")
+        if capture_row_start < 0 or capture_row_start + rows > dst.shape[0] or rows > src.shape[0]:
+            raise ValueError("capture prefix range outside tensor")
+        row_nbytes = int(src.shape[1]) * DType.BF16.itemsize
+        self.runtime.memcpy_async(
+            dst.ptr + int(capture_row_start) * row_nbytes,
+            src.ptr,
+            int(rows) * row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
+
+    def _run_verify_graph_or_direct(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        base_slot: int,
+        capture_ids: Sequence[int],
+        capture_hidden_concat: Tensor,
+        capture_row_start: int,
+        rows: int,
+        graph_mode: str,
+        stream: int = 0,
+    ) -> dict[str, Any]:
+        key = (int(rows), int(capture_hidden_concat.shape[1]), int(base_slot))
+        entry = self._verify_graph_cache.get(key)
+        if graph_mode == "auto" and entry is not None:
+            self.runtime.graph_launch(entry.graph_exec, entry.stream)
+            self.runtime.stream_synchronize(entry.stream)
+            entry.replay_count += 1
+            return {
+                "mode": graph_mode,
+                "status": "replayed",
+                "replayed": True,
+                "validation_passed": entry.validation_passed,
+                "bucket_key": {"rows": rows, "capture_width": int(capture_hidden_concat.shape[1]), "base_slot": base_slot},
+                "replay_count": entry.replay_count,
+            }
+
+        self._launch_verify_chain_forward_accept(
+            batch,
+            base_slot=base_slot,
+            capture_ids=capture_ids,
+            capture_hidden_concat=capture_hidden_concat,
+            capture_row_start=capture_row_start,
+            rows=rows,
+            stream=stream,
+        )
+        self.runtime.stream_synchronize(stream)
+        direct_top1, _ = self._read_verify_top1(rows)
+        direct_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
+        graph = 0
+        graph_stream = 0
+        try:
+            graph_stream = self.runtime.stream_create()
+            self.runtime.stream_begin_capture(graph_stream)
+            try:
+                self._launch_verify_chain_forward_accept(
+                    batch,
+                    base_slot=base_slot,
+                    capture_ids=capture_ids,
+                    capture_hidden_concat=capture_hidden_concat,
+                    capture_row_start=capture_row_start,
+                    rows=rows,
+                    stream=graph_stream,
+                )
+                graph = self.runtime.stream_end_capture(graph_stream)
+            except Exception:
+                try:
+                    self.runtime.stream_end_capture(graph_stream)
+                except Exception:
+                    pass
+                raise
+            graph_exec = self.runtime.graph_instantiate(graph)
+            self.runtime.graph_launch(graph_exec, graph_stream)
+            self.runtime.stream_synchronize(graph_stream)
+            graph_top1, _ = self._read_verify_top1(rows)
+            graph_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=graph_stream)
+            validation_passed = tuple(graph_top1) == tuple(direct_top1) and graph_payload == direct_payload
+            if not validation_passed:
+                self.runtime.graph_exec_destroy(graph_exec)
+                self.runtime.graph_destroy(graph)
+                self.runtime.stream_destroy(graph_stream)
+                # Restore direct outputs for the caller.
+                self._launch_verify_chain_forward_accept(
+                    batch,
+                    base_slot=base_slot,
+                    capture_ids=capture_ids,
+                    capture_hidden_concat=capture_hidden_concat,
+                    capture_row_start=capture_row_start,
+                    rows=rows,
+                    stream=stream,
+                )
+                return {
+                    "mode": graph_mode,
+                    "status": "validation_failed_fallback",
+                    "replayed": False,
+                    "validation_passed": False,
+                    "bucket_key": {"rows": rows, "capture_width": int(capture_hidden_concat.shape[1]), "base_slot": base_slot},
+                }
+            entry = Qwen35ParoVerifierGraphEntry(
+                rows=rows,
+                capture_width=int(capture_hidden_concat.shape[1]),
+                base_slot=base_slot,
+                graph=graph,
+                graph_exec=graph_exec,
+                stream=graph_stream,
+                validation_passed=True,
+                replay_count=1,
+            )
+            self._verify_graph_cache[key] = entry
+            return {
+                "mode": graph_mode,
+                "status": "captured_validated" if graph_mode == "validate" else "captured_validated_miss",
+                "replayed": graph_mode == "auto",
+                "validation_passed": True,
+                "bucket_key": {"rows": rows, "capture_width": int(capture_hidden_concat.shape[1]), "base_slot": base_slot},
+                "replay_count": entry.replay_count,
+            }
+        except Exception as exc:
+            if graph:
+                try:
+                    self.runtime.graph_destroy(graph)
+                except Exception:
+                    pass
+            if graph_stream:
+                try:
+                    self.runtime.stream_destroy(graph_stream)
+                except Exception:
+                    pass
+            # Restore direct outputs for the caller after capture failure.
+            self._launch_verify_chain_forward_accept(
+                batch,
+                base_slot=base_slot,
+                capture_ids=capture_ids,
+                capture_hidden_concat=capture_hidden_concat,
+                capture_row_start=capture_row_start,
+                rows=rows,
+                stream=stream,
+            )
+            return {
+                "mode": graph_mode,
+                "status": "capture_failed_fallback",
+                "replayed": False,
+                "validation_passed": None,
+                "fallback_reason": str(exc),
+                "bucket_key": {"rows": rows, "capture_width": int(capture_hidden_concat.shape[1]), "base_slot": base_slot},
+            }
 
     def _launch_verify_chain_forward_accept(
         self,
@@ -3164,6 +3395,11 @@ class Qwen35ParoResidentSession:
         self.verify_full_accept = malloc(self.max_batch_size * DType.BOOL.itemsize, runtime=self.runtime)
         self.verify_committed_output_ids = malloc(self.max_batch_size * verify_rows * DType.INT32.itemsize, runtime=self.runtime)
         self.verify_committed_output_lengths = malloc(self.max_batch_size * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_capture_hidden_concat = malloc(
+            verify_rows * len(self.config.layer_types) * self.config.hidden_size * DType.BF16.itemsize,
+            runtime=self.runtime,
+        )
+        self._verify_graph_cache: dict[tuple[int, int, int], Qwen35ParoVerifierGraphEntry] = {}
         self.buffers.extend(
             (
                 self.verify_token_ids_i64,
@@ -3187,6 +3423,7 @@ class Qwen35ParoResidentSession:
                 self.verify_full_accept,
                 self.verify_committed_output_ids,
                 self.verify_committed_output_lengths,
+                self.verify_capture_hidden_concat,
             )
         )
 
