@@ -99,6 +99,9 @@ class CompletionRequest(_OpenAIBaseModel):
     echo: bool = False
     logprobs: int | None = None
     ignore_eos: bool = False
+    kv_storage: str | None = None
+    kv_scale_dtype: str | None = None
+    kv_scale_granularity: str | None = None
 
 
 class ChatMessage(_OpenAIBaseModel):
@@ -117,6 +120,9 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     stream: bool = False
     stop: str | list[str] | None = None
     ignore_eos: bool = False
+    kv_storage: str | None = None
+    kv_scale_dtype: str | None = None
+    kv_scale_granularity: str | None = None
 
 
 @dataclass(frozen=True)
@@ -199,6 +205,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             temperature=float(request.temperature if request.temperature is not None else 0.0),
             top_p=float(request.top_p if request.top_p is not None else 1.0),
             ignore_eos=bool(request.ignore_eos),
+            kv_storage=request.kv_storage or "auto",
+            kv_scale_dtype=request.kv_scale_dtype or "fp16",
+            kv_scale_granularity=request.kv_scale_granularity or "per_token_head",
         )
         engine = get_llm()
         try:
@@ -375,6 +384,16 @@ def _validate_generation_request(request: CompletionRequest | ChatCompletionRequ
             code="unsupported_parameter",
             param="logprobs",
         )
+    try:
+        from hipengine.kvcache import resolve_kv_policy
+
+        resolve_kv_policy(
+            request.kv_storage or "auto",
+            scale_dtype=request.kv_scale_dtype or "fp16",
+            scale_granularity=request.kv_scale_granularity or "per_token_head",
+        )
+    except ValueError as exc:
+        raise OpenAIHTTPError(400, str(exc), code="invalid_kv_policy", param="kv_storage") from exc
 
 
 def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:

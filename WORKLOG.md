@@ -16869,3 +16869,1015 @@ required.
    `reference/atlas/kernels/gb10/common/gated_delta_rule_wy.cu`, with a CPU
    reference oracle bit-equal to the existing serial recurrent kernel at
    `chunk_size=1`.
+## 2026-05-18 - K1 INT8 KV lineage preflight path repair
+
+Started dense INT8 KV bring-up on branch `kvcache-int8` with task #1.
+
+Changed `docs/source_lineage.json` paths from stale `/home/lhl/github/shisa-ai/amd-gpu-tuning/...`
+to the live `/home/lhl/amd-gpu-tuning/...` workspace so the required pre-port lineage check can run.
+
+Validation / evidence:
+
+```bash
+python3 -m json.tool docs/source_lineage.json >/tmp/hipengine-source-lineage.json
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: JSON validation passed; lineage check now runs without path errors. It reports expected parent drift:
+
+- repo `nano-vllm-amd`: `/home/lhl/amd-gpu-tuning/nano-vllm-amd`, branch `gfx1100-qwen3.5`, head `5d8f496`.
+- `csrc/amd/qwen35_expert.hip` drift since baseline `22405a9`: commits `6e2b19b`, `5fde418`, `b95eaa5`; diffstat `1011` lines. These are compact WMMA / tree recurrence / GDN tloop updates, not a new INT8 KV replacement.
+- Kernel catalog still lists the INT8 KV symbols under `docs/KERNELS.md`: `qwen35_paged_full_attn_decode_split_k_int8_kernel`, `qwen35_paged_full_attn_decode_split_k_ctx_tensor_int8_kernel`, `qwen35_write_paged_kv_int8_kernel`, and `qwen35_write_paged_kv_position_tensor_int8_kernel`.
+
+Parent INT8 KV source evidence:
+
+```bash
+git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd log --oneline --reverse -S 'qwen35_write_paged_kv_int8_kernel' -- csrc/amd/qwen35_expert.hip
+git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd log --oneline --reverse -S 'qwen35_paged_full_attn_decode_split_k_int8_kernel' -- csrc/amd/qwen35_expert.hip
+```
+
+Both identify `nano-vllm-amd@2751f2f` (`feat(amd): INT8 per-token KV cache with vec16 read and parallel write`) as the source commit. Parent WORKLOG entry `/home/lhl/amd-gpu-tuning/WORKLOG.md:20081` records the INT8 KV implementation, scale shapes `[num_blocks, block_size, num_kv_heads]`, opt-in `--kv-cache-dtype int8`, and parent results: INT8 attention faster at 4K microbench but only ~+0.2% E2E at 4K/128 and 4K/D4K.
+
+Porting caution for K1: the parent writer must be audited against `docs/KVCACHE.md` before copying. The source claims per-head scales, but the current writer reduces max-abs over `total_size = num_kv_heads * head_dim` and then writes the same reduced max for each head; it also needs explicit zero-scale handling for all-zero rows. Task #2 will pin the hipEngine oracle semantics before any kernel port.
+
+## 2026-05-18 - K1 INT8 KV CPU oracle and fixtures
+
+Completed task #2: defined the CPU-reference semantics for dense paged `int8_per_token_head` KV before porting any HIP kernels.
+
+Implementation notes:
+
+- Added `quantize_kv_int8_per_token_head(...)`, `write_paged_kv_int8_per_token_head(...)`, `dequantize_kv_int8_per_token_head(...)`, and `paged_attn_decode_int8_per_token_head(...)` under `hipengine/kernels/cpu_reference/ops.py`.
+- Scale semantics are now pinned as separate K/V scales per token and per KV head. All-zero rows store scale `0` and all-zero int8 payload; quantization uses a safe scale internally so there is no divide-by-zero.
+- Added page-table-aware write and decode references so K1 GPU tests can catch logical-to-physical page-boundary mistakes.
+- Added committed CPU fixtures:
+  - `tests/fixtures/cpu_reference/kv_int8_dequant_per_token_head.json`
+  - `tests/fixtures/cpu_reference/paged_attn_decode_int8_per_token_head.json`
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_cpu_reference.py -q
+# 13 passed
+
+python3 scripts/check_fixtures.py
+# PASS all CPU-reference fixtures including the two INT8 KV fixtures
+
+python3 -m compileall -q hipengine/kernels/cpu_reference tests/test_cpu_reference.py
+# passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures && \
+python3 scripts/smoke.py --mode smoke-add-plan && \
+rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
+# pytest: 299 passed; fixtures/smokes passed; torch audit only found allowed docs/comments/diagnostic subprocess text.
+```
+
+## 2026-05-18 - K1 INT8 KV metadata and policy plumbing
+
+Completed task #6: added host/storage metadata for dense paged `int8_per_token_head` KV without adding engine/backend branches.
+
+Implementation notes:
+
+- Added `DType.INT8_PER_TOKEN_HEAD` with payload itemsize `1`.
+- Added `KVScaleMetadata` for separate K/V scale tensors with `scale_dtype in {fp16, fp32}` and `granularity="per_token_head"`.
+- `KVLiveSpans` now carries optional scale metadata and requires it when `storage_dtype="int8_per_token_head"`; BF16 spans reject stray scale metadata.
+- `KVReservation` / `FixedPagedKVPolicy.register(...)` / `batch_spans(...)` now preserve INT8 scale metadata so the scheduler-facing policy can produce uniform INT8 spans through the existing `KVLiveSpans` ABI.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_kvcache_spans.py tests/test_kvcache_policy.py -q
+# 16 passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures && \
+python3 scripts/smoke.py --mode smoke-add-plan && \
+rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
+# pytest: 304 passed; fixtures/smokes passed; torch audit only found allowed docs/comments/diagnostic subprocess text.
+```
+
+## 2026-05-18 - K1 INT8 KV layer accuracy tooling
+
+Completed task #3: added `scripts/qwen35_kv_int8_accuracy.py` plus CPU-only tests.
+
+Tool behavior:
+
+- Generates deterministic synthetic paged-KV cases at short and page-boundary long contexts.
+- Runs BF16 and `int8_per_token_head` paths side by side against CPU-reference oracles.
+- Reports attention `max_abs` / `max_rel` plus synthetic projected-logit KL/top-1 via `hipengine.benchmark.correctness.evaluate_logits`.
+- Emits compact JSON with status, thresholds, shapes, per-case path metrics, and BF16-vs-INT8 quantization diagnostics.
+- `--device hip` is wired to run the existing BF16 HIP writer/decode path. The INT8 HIP path checks for future exact registry keys (`paged_kv_write/int8_per_token_head/per_token_head_spans`, `paged_attn_decode/int8_per_token_head/gqa_splitk_spans`) and has an adapter for the expected task #8/#9 wrapper signatures; until those wrappers land it reports a clear blocked reason. `--require-int8-hip` makes that a hard gate for K1 promotion.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_kv_int8_accuracy.py -q
+# 3 passed
+
+python3 scripts/qwen35_kv_int8_accuracy.py \
+  --device cpu --contexts 4,9 --block-size 4 --num-q-heads 4 --num-kv-heads 2 \
+  --head-dim 8 --pseudo-vocab-size 16 \
+  --json /tmp/hipengine-kv-int8-accuracy-smoke.json
+python3 -m json.tool /tmp/hipengine-kv-int8-accuracy-smoke.json >/tmp/hipengine-kv-int8-accuracy-smoke.pretty.json
+# status=accepted; ctx9 crosses a page boundary; BF16 and INT8 path max_abs=0 vs their CPU oracles.
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 4,9 --block-size 4 --num-q-heads 4 --num-kv-heads 2 --head-dim 8 --pseudo-vocab-size 16 --json /tmp/hipengine-kv-int8-accuracy-smoke.json && \
+python3 -m json.tool /tmp/hipengine-kv-int8-accuracy-smoke.json >/tmp/hipengine-kv-int8-accuracy-smoke.pretty.json && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures && \
+python3 scripts/smoke.py --mode smoke-add-plan && \
+rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
+# pytest: 307 passed; fixtures/smokes passed; torch audit only found allowed docs/comments/diagnostic subprocess text.
+```
+
+## 2026-05-18 - K1 INT8 paged KV write kernel
+
+Completed task #8: added the gfx1100 INT8 per-token/head paged-KV writer and raw-pointer wrappers.
+
+Implementation notes:
+
+- `paged_kv_write.hip` now has a hipEngine-native `qwen35_write_paged_kv_int8_per_token_head_kernel` that takes FP32 post-RoPE K/V rows, computes independent max-abs scales for every `(row, kv_head, K/V)`, writes signed INT8 payloads, and writes separate K/V scale tensors.
+- All-zero K/V rows store zero scale and all-zero INT8 payloads; quantization never divides by zero.
+- Python wrappers are torch-free raw-pointer wrappers for c=1 decode append, prompt append, and row-major batch append. They require `storage_dtype="int8_per_token_head"`, int64 positions, matching `KVScaleMetadata` scale pointers, and scale tensor shape `[blocks, block_size, num_kv_heads]` before loading the HIP library.
+- Registered the write-side exact key `hip_gfx1100/paged_kv_write/int8_per_token_head/per_token_head_spans`; decode registration remains blocked on task #9.
+- Updated `scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip` and `docs/KERNELS.md` with the accepted writer smoke.
+
+Validation:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# Parent drift remains documented for qwen35/paro sources; INT8 writer here is hipEngine-native rather than copied from the collapsed-scale parent path.
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode qwen35-paged-kv-write-hip && \
+python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip
+# pytest: 307 passed; CPU fixtures passed; BF16 writer smoke bit-exact; INT8 writer smoke accepted.
+# INT8 cases: c=1 decode append with FP32 scales, c=1 decode append with FP16 scales,
+# prompt page-boundary append, and row-major batch append all had key_mismatch=0,
+# value_mismatch=0, scale_max_abs=0, dequant_max_abs=0 on W7900/gfx1100.
+
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-format csv --output-file /tmp/hipengine-kv-int8-write -- \
+  python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# rocprofv3 captured 4 launches of qwen35_write_paged_kv_int8_per_token_head_kernel
+# with Workgroup_Size_X=256; durations from End_Timestamp-Start_Timestamp: 12881 ns,
+# 11081 ns, 7161 ns, 5801 ns.
+```
+
+## 2026-05-18 - K1 INT8 grouped-GQA split-K decode
+
+Completed task #9: added direct INT8 per-token/head grouped-GQA split-K decode wrappers and kernels.
+
+Implementation notes:
+
+- Added `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<scale_t,8,16,2>` in `paged_attn_decode.hip`.
+- The producer grid is `(kv_head, split)` rather than `(q_head, split)`, so each KV stream is scanned once per split and its K/V loads are shared across the 8 Q heads in that KV group.
+- The kernel reads signed INT8 K/V plus K/V scale tensors directly, accumulates QK in FP32, dequantizes V inside the producer path, and writes the existing FP32 split partials. It does not allocate or cast a BF16 full-cache workspace.
+- Added raw-pointer wrappers for ungated output plus BF16/FP16 gated reduce outputs: `gqa_splitk_spans`, `gqa_splitk_gate_bf16_spans`, and `gqa_splitk_gate_fp16_spans` under `quant="int8_per_token_head"`.
+- Wrapper validation rejects non-INT8 spans, non-int64 live counts, non-Qwen3.5 GQA shapes, invalid scale pointers, and invalid scale tensor shapes before loading HIP.
+- Added `scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip` and enabled the existing layer accuracy tool to run the registered INT8 HIP path as a hard gate.
+
+Validation:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# Parent qwen35/PARO drift remains documented; this INT8 grouped-GQA decode path is hipEngine-native.
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures && \
+python3 scripts/smoke.py --mode smoke-add-plan && \
+python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip && \
+python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip && \
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 \
+  --pseudo-vocab-size 32 --require-int8-hip --max-abs-threshold 2e-3 \
+  --json /tmp/hipengine-int8-hip-ctx64-520.json
+# pytest: 307 passed; fixtures/smokes passed.
+# INT8 GQA smoke: ctx64 FP32-scale max_abs=2.98e-08; ctx384 chunk_size=128 max_abs=1.68e-08;
+# ctx520 FP16-scale max_abs=2.05e-08, gate_fp16_max_abs=1.53e-05,
+# gate_bf16_max_abs=1.49e-08.
+# Layer accuracy tool accepted BF16 + INT8 HIP paths; INT8 HIP vs CPU oracle max_abs=5.22e-08
+# at ctx64 and 1.86e-08 at ctx520, top-1 agreement 1.0.
+
+rocprofv3 --kernel-trace --output-format csv --output-file /tmp/hipengine-int8-gqa-decode -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# rocprofv3 captured `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel`
+# with FP32-scale durations 65200 ns and 47363 ns, FP16-scale durations 88723 ns,
+# 78883 ns, and 85603 ns, plus reduce/gated-reduce launches on W7900/gfx1100.
+```
+
+## 2026-05-18 - K1 INT8 KV registry dispatch keys
+
+Completed task #7: made INT8 KV write/decode dispatch selectable through storage-aware registry metadata instead of hardcoded quant/variant lookups.
+
+Implementation notes:
+
+- Added `hipengine.dispatch.kv` selection helpers for paged-KV writes and paged-attention decode. They derive `KernelKey(layer, quant, variant)` from `KVLiveSpans.storage_dtype` / `FixedPagedKVPolicy` metadata via table-driven routes, with no backend or quant branches in dispatch.
+- Registered INT8 writer keys for decode, prompt, and row-major batch append: `per_token_head_spans`, `per_token_head_prompt_spans`, and `per_token_head_batch_spans`.
+- Kept existing INT8 decode keys and added storage-explicit aliases: `per_token_head_gqa_splitk_spans`, `per_token_head_gqa_splitk_gate_bf16_spans`, and `per_token_head_gqa_splitk_gate_fp16_spans`.
+- Updated INT8 accuracy tooling to resolve the HIP writer/decode through the new dispatch helpers once `KVLiveSpans` metadata is available.
+- Added tests that resolve INT8 and BF16 paged-attention paths from policy-created spans, verify missing/duplicate registry errors, and assert BF16 `w4_paro` variants remain unchanged.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/dispatch/kv.py hipengine/dispatch/__init__.py scripts/qwen35_kv_int8_accuracy.py && \
+python3 -m pytest tests/test_kv_dispatch.py tests/test_qwen35_paged_kv_write_plan.py tests/test_qwen35_paged_attn_decode_plan.py -q
+# 9 passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures && \
+python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 4,9 \
+  --block-size 4 --num-q-heads 4 --num-kv-heads 2 --head-dim 8 \
+  --pseudo-vocab-size 16 --json /tmp/hipengine-kv-int8-dispatch-smoke.json
+# pytest passed; CPU fixtures/smokes passed; CPU INT8 layer accuracy status=accepted.
+```
+
+## 2026-05-18 - K1 resident INT8 KV allocation
+
+Completed task #10: wired resident full-attention KV allocation to the session KV policy.
+
+Implementation notes:
+
+- `Qwen35ParoResidentSession` now accepts an optional `FixedPagedKVPolicy` and keeps BF16 as the default storage policy.
+- Full-attention layers allocate the existing slot0/c>N payload layout as BF16 by default, or as INT8 payload when the policy storage dtype is `int8_per_token_head`.
+- INT8 resident caches also allocate separate K/V per-token/head scale buffers with slot0 and all-slot views, plus `KVScaleMetadata` for future writer/decode dispatch wiring.
+- Added `owned_buffer_summary()` and bench memory snapshots now include it; the summary reports per-layer payload dtype/bytes and INT8 scale dtype/bytes.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py tests/test_qwen35_resident_batch_layout.py && \
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py -q
+# 29 passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest passed; CPU fixtures and registry/cpu smokes passed.
+```
+
+## 2026-05-18 - K1 INT8 native prefill oracle path
+
+Completed task #11: native single-request prefill can now keep retained full-attention KV in INT8+scale storage while using temporary BF16 oracle K/V for prefill attention.
+
+Implementation notes:
+
+- `Qwen35ParoDecodeState.run_full_attention_moe_prefill_layer_fp16` accepts optional retained INT8 cache/spans separately from the BF16 oracle cache/spans used by the causal prefill attention kernel.
+- Full-attention prefill writes chunk K/V into a temporary BF16 oracle cache, appends the same post-RoPE K/V to the retained INT8 cache via `qwen35_write_paged_kv_int8_per_token_head_prompt_spans`, and uses `scratch.key_raw` as the transient FP32 value buffer for INT8 quantization.
+- `Qwen35ParoResidentSession._run_native_prefill_layers` disables AOTriton when the resident KV policy is `int8_per_token_head`, allocates oracle K/V from the prefill workspace, and keeps retained full-attention layer buffers as INT8 payload plus K/V scales only.
+- The native prefill fixture gate now has `--native-kv-storage-dtype int8_per_token_head` for prefill-only (`--max-new-tokens 0`) checks and records an after-prefill KV memory audit from `owned_buffer_summary()`.
+- Compact c>N native prefill now fails fast for INT8 retained KV until a packed INT8 oracle path is wired, avoiding accidental BF16-cache reuse.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_native_prefill_fixture_gate.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py && \
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+# targeted tests passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest passed; CPU fixtures and registry/cpu smokes passed.
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 4 --max-new-tokens 0 \
+  --native-kv-storage-dtype int8_per_token_head \
+  --json /tmp/hipengine-int8-prefill-fixture-maxlayers4.json
+# status=accepted on W7900/gfx1100. Seed top-1 matched serial BF16 reference;
+# max KL=1.34e-05, top1_agreement=1.0. Native retained full-attn layer 3
+# summary: payload_dtype=int8, payload_bytes=786432, scale_bytes=6144,
+# persistent_bf16_kv_layers=[], aotriton_attention=false.
+```
+
+## 2026-05-18 - K1 INT8 runtime decode policy routing
+
+Completed task #12: resident decode now routes paged-KV append and split-K decode through storage-aware KV policy/span metadata.
+
+Implementation notes:
+
+- `Qwen35ParoDecodeState` resolves paged-KV writers with `resolve_paged_kv_write(...)`; BF16 storage keeps the existing BF16/FP16 writer routes, while `int8_per_token_head` spans resolve the INT8 writer keys and pass per-token/head scale tensors from `KVScaleMetadata`.
+- INT8 decode spans force split-K decode and resolve `PagedAttnDecodeKind.GQA_SPLITK_GATE_*` through `resolve_paged_attn_decode(...)`, then launch the direct INT8 K/V+scale grouped-GQA wrappers. BF16 short-context defaults continue to use the existing dense BF16 path unless the split threshold is reached.
+- `Qwen35ParoResidentSession` now creates layer-specific decode/append spans with the active resident KV storage dtype and scale metadata, so eager decode and graph replay use the same policy-selected path.
+- `scripts/qwen35_paro_bench.py` exposes `--kv-storage-dtype {bf16,int8_per_token_head}` so BF16 and INT8 decode run through the same public resident benchmark interface.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py scripts/qwen35_native_prefill_fixture_gate.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py && \
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py tests/test_kv_dispatch.py -q
+# targeted tests passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest passed; CPU fixtures and registry/cpu smokes passed.
+
+python3 scripts/qwen35_paro_bench.py --max-layers 4 --prompt-length 8 --decode-tokens 1 \
+  --warmup-decode-tokens 0 --kv-storage-dtype int8_per_token_head \
+  --json /tmp/hipengine-qwen35-bench-int8-decode-smoke.json
+# W7900/gfx1100 graph_replay=true; after_decode owned buffer summary reports
+# kv_storage_dtype=int8_per_token_head, full-attn payload_dtype=int8, scale_bytes=2048.
+
+python3 scripts/qwen35_paro_bench.py --max-layers 4 --prompt-length 8 --decode-tokens 1 \
+  --warmup-decode-tokens 0 --kv-storage-dtype bf16 \
+  --json /tmp/hipengine-qwen35-bench-bf16-decode-smoke.json
+# W7900/gfx1100 graph_replay=true; after_decode owned buffer summary reports
+# kv_storage_dtype=bf16 and payload_dtype=bf16.
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 4 --max-new-tokens 0 \
+  --native-kv-storage-dtype int8_per_token_head \
+  --json /tmp/hipengine-int8-prefill-fixture-maxlayers4-task12.json
+# status=accepted; max KL=1.34e-05; memory audit passed.
+```
+
+## 2026-05-18 - K1 INT8 KV CLI/API controls
+
+Completed task #13: INT8 KV storage controls are exposed consistently across the public API, server adapter, smokes, correctness gates, and resident benchmark harnesses.
+
+Implementation notes:
+
+- Added `resolve_kv_policy(...)` / `ResolvedKVPolicy` metadata with `requested_storage`, resolved storage dtype, scale dtype/granularity, and `int8_explicit` vs `int8_admission_gated` fields. `auto` resolves conservatively to BF16 unless a caller marks INT8 as admission-gated.
+- Public `SamplingParams` and `GenerationRequest` now carry `kv_storage`, `kv_scale_dtype`, and `kv_scale_granularity`; the Qwen3.5/PARO generator constructs `FixedPagedKVPolicy` from that metadata.
+- OpenAI-compatible completion/chat requests accept the same KV controls and validate them before calling `LLM.generate()`.
+- Added shared `scripts/qwen35_kv_policy_args.py` and wired `--kv-storage {auto,bf16,int8_per_token_head}`, `--kv-scale-dtype {fp16,fp32}`, and `--kv-scale-granularity per_token_head` through resident benchmark/correctness/smoke scripts. Legacy `--kv-storage-dtype` and `--native-kv-storage-dtype` aliases remain accepted.
+- Benchmark/correctness artifacts now include a `kv_policy` object that states resolved KV storage, scale metadata format, and whether INT8 was explicit or admission-gated; resident owned-buffer summaries also report scale granularity.
+
+Validation:
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest, CPU fixtures, and registry/cpu smokes passed.
+
+python3 scripts/qwen35_paro_bench.py --help >/tmp/qwen35_paro_bench_help.txt && \
+python3 scripts/qwen35_native_prefill_fixture_gate.py --help >/tmp/qwen35_native_prefill_fixture_gate_help.txt && \
+python3 scripts/smoke.py --help >/tmp/smoke_help.txt
+# help output exposes --kv-storage, --kv-scale-dtype, and --kv-scale-granularity.
+
+python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 4 \
+  --json /tmp/hipengine-kv-int8-accuracy-task13.json
+# status=accepted; artifact kv_policy reports resolved_storage_dtype=int8_per_token_head,
+# scale_metadata_format={present:true, scale_dtype:fp16, granularity:per_token_head},
+# int8_explicit=true, int8_admission_gated=false.
+```
+
+## 2026-05-18 - K1 INT8 KV E2E fixture gate
+
+Completed task #4: added a dedicated BF16-vs-candidate KV end-to-end fixture gate for Qwen3.5/PARO.
+
+Implementation notes:
+
+- New `scripts/qwen35_kv_e2e_fixture_gate.py` runs the fixed parent prompt/decode fixture twice: BF16 KV native prefill/decode as the reference and `--kv-storage {auto,bf16,int8_per_token_head}` as the candidate; the gate defaults to the INT8 candidate and still allows forcing BF16.
+- The gate collects full lm-head logits at the prefill seed and each decode step, computes KL and top-1 agreement, and records generated-token equality vs both the BF16 reference and fixture expected IDs.
+- JSON artifacts include fixture path, storage dtype, reference/candidate KV policy metadata, thresholds, generated IDs, logit position labels, KL/top-1 gate results, memory audit for INT8 payload/scales, and pass/fail.
+- Added unit coverage with fake resident sessions for accepted INT8 metadata/logit gates and generated-token mismatch rejection.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/qwen35_kv_e2e_fixture_gate.py tests/test_qwen35_kv_e2e_fixture_gate.py && \
+python3 -m pytest tests/test_qwen35_kv_e2e_fixture_gate.py -q
+# targeted tests passed.
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# full pytest, CPU fixtures, and registry/cpu smokes passed.
+
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --help >/tmp/qwen35_kv_e2e_fixture_gate_help.txt
+# help output exposes --kv-storage, --kv-scale-dtype, --kv-scale-granularity,
+# --kl-threshold, and --top1-threshold.
+```
+
+## 2026-05-18 - K1 INT8 KV no-BF16-shadow memory audit
+
+Completed task #5: retained KV memory introspection now audits INT8 sessions for payload byte size, scale metadata, and persistent BF16 shadows.
+
+Implementation notes:
+
+- `Qwen35ParoResidentSession.owned_buffer_summary()` now reports per-layer retained KV key/value shapes, full backing shapes, elements, payload bytes, payload bytes/element, and scale metadata elements/bytes.
+- Added `Qwen35ParoResidentSession.kv_memory_audit()` to return pass/fail metadata for INT8 retained KV: payload must be `int8`, payload bytes/element must be 1.0, scale metadata must exist, and no persistent BF16 retained KV or BF16 full-cache/int8-oracle workspace tensor may remain after prefill.
+- `scripts/qwen35_paro_bench.py` now includes `kv_memory_audit` in each session memory snapshot and rolls the latest audit plus tracked allocator peak and sampled HIP VRAM peak into `memory.kv_memory_audit`.
+- Added tests proving INT8 retained KV is accounted at 1 byte/element plus scale metadata, persistent BF16 retained caches/shadow tensors are flagged, and benchmark memory summaries retain allocator/HIP peak evidence.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py \
+  tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_bench_memory_audit.py && \
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_bench_memory_audit.py -q
+# targeted tests passed.
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# full pytest, CPU fixtures, and registry/cpu smokes passed.
+```
+
+## 2026-05-18 - K1 INT8 KV correctness gates
+
+Completed task #14: ran the INT8 KV narrow correctness gate stack on W7900/gfx1100 and captured INT8 write/decode kernel traces.
+
+Environment / setup:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')" && \
+rocminfo | grep -E 'Name:|gfx' | head -24
+# hip OK; rocminfo reported gfx1100 / AMD Radeon Pro W7900.
+
+command -v rocprofv3 && rocprofv3 --version | head -5 && \
+command -v hipcc && hipcc --version | head -10
+# rocprofv3=/home/lhl/mambaforge/envs/therock/bin/rocprofv3 version 1.2.3;
+# hipcc=/opt/rocm/bin/hipcc, HIP version 7.2.53211-d40244d.
+
+RUN=/tmp/hipengine-task14-int8-kv-gates
+rm -rf "$RUN" && mkdir -p "$RUN"
+hipcc --version > "$RUN/hipcc-version.txt"
+rocm-smi --showpids --showmeminfo vram --showuse
+# Before GPU gates: no KFD PIDs; GPU use 0%; VRAM used 27,942,912 B / 48,301,604,864 B.
+```
+
+Targeted tests / CPU fixtures:
+
+```bash
+python3 -m pytest tests/test_kv_dispatch.py tests/test_kvcache_policy.py \
+  tests/test_qwen35_kv_e2e_fixture_gate.py tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_bench_memory_audit.py -q | tee "$RUN/pytest-targeted.log"
+# 52 targeted tests passed.
+
+python3 scripts/check_fixtures.py | tee "$RUN/cpu-fixtures.log"
+# PASS for all CPU-reference fixtures, including kv_int8_dequant_per_token_head and
+# paged_attn_decode_int8_per_token_head.
+
+python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 64,520 \
+  --json "$RUN/qwen35-kv-int8-accuracy-cpu.json" | tee "$RUN/qwen35-kv-int8-accuracy-cpu.log"
+# status=accepted, passed=true.
+# ctx64: int8 CPU path max_abs=0, quantized-vs-BF16 KL=2.3352905641751685e-07, top1=1.0.
+# ctx520: int8 CPU path max_abs=0, quantized-vs-BF16 KL=4.459814455747262e-08, top1=1.0.
+```
+
+GPU smokes and layer-level HIP INT8 gate:
+
+```bash
+python3 scripts/smoke.py --mode smoke-add-hip --n 1024 \
+  --compiler-version-file "$RUN/hipcc-version.txt" | tee "$RUN/smoke-add-hip.log"
+# n=1024 max_abs=0.0.
+
+python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip \
+  --compiler-version-file "$RUN/hipcc-version.txt" | tee "$RUN/smoke-kv-write-int8.log"
+# 4/4 cases passed: decode_append_page_boundary_zero_rows, decode_append_fp16_scales,
+# prompt_append_crosses_page_boundary, batch_append_row_major_page_boundary;
+# all key/value mismatches=0 and scale/dequant max_abs=0.
+
+python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip \
+  --compiler-version-file "$RUN/hipcc-version.txt" | tee "$RUN/smoke-paged-attn-int8-gqa.log"
+# 3/3 cases passed. Max_abs by case:
+# ctx64 fp32=2.9802322387695312e-08;
+# ctx384 fp32 split-K=1.6763806343078613e-08;
+# ctx520 fp16 gated=2.0489096641540527e-08, gate_fp16=1.52587890625e-05, gate_bf16=1.4901161193847656e-08.
+
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-int8-hip \
+  --json "$RUN/qwen35-kv-int8-accuracy-hip.json" | tee "$RUN/qwen35-kv-int8-accuracy-hip.log"
+# status=accepted, passed=true.
+# ctx64: int8 HIP path max_abs=5.21540641784668e-08, pseudo-logit KL=1.2258514734364821e-15, top1=1.0;
+# quantized-vs-BF16 KL=2.3352905641751685e-07, top1=1.0.
+# ctx520: int8 HIP path max_abs=1.862645149230957e-08, pseudo-logit KL=1.1048968944809161e-16, top1=1.0;
+# quantized-vs-BF16 KL=4.459814455747262e-08, top1=1.0.
+```
+
+Qwen3.5/PARO BF16-vs-INT8 E2E fixture gate:
+
+```bash
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head \
+  --compiler-version-file "$RUN/hipcc-version.txt" \
+  --json "$RUN/qwen35-kv-e2e-fixture-gate-int8.json" \
+  | tee "$RUN/qwen35-kv-e2e-fixture-gate-int8.log"
+# status=accepted, passed=true on fixtures/qwen35_paro/parent_512_32_seed1234.json.
+# Logit gate: max_kl=0.015109600824453203 <= 0.05, mean_kl=0.0017163166981801242,
+# top1_agreement=1.0 >= 0.90 over 33 positions.
+# seed_match=true (token 4403), generated_match=true, expected_match=true.
+# generated ids: [1739, 220, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+# 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15].
+# INT8 retained KV audit passed after prefill and decode: payload_bytes=7,864,320,
+# payload_bytes_per_element=1.0, scale_bytes=61,440, persistent_bf16_kv_layers=[].
+```
+
+rocprofv3 INT8 kernel traces:
+
+```bash
+rm -rf "$RUN/rocprof-write" "$RUN/rocprof-decode"
+mkdir -p "$RUN/rocprof-write" "$RUN/rocprof-decode"
+
+timeout 180s rocprofv3 --kernel-trace --output-format csv -d "$RUN/rocprof-write" -- \
+  python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+  > "$RUN/rocprof-write/stdout.log" 2> "$RUN/rocprof-write/stderr.log"
+
+timeout 180s rocprofv3 --kernel-trace --output-format csv -d "$RUN/rocprof-decode" -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+  > "$RUN/rocprof-decode/stdout.log" 2> "$RUN/rocprof-decode/stderr.log"
+```
+
+Trace outputs and summaries:
+
+- Write CSV: `/tmp/hipengine-task14-int8-kv-gates/rocprof-write/epyc/22980_kernel_trace.csv`.
+  - `qwen35_write_paged_kv_int8_per_token_head_kernel<float>`: 3 calls, avg 8,506.7 ns, max 12,720 ns.
+  - `qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16>`: 1 call, 10,880 ns.
+- Decode CSV: `/tmp/hipengine-task14-int8-kv-gates/rocprof-decode/epyc/23054_kernel_trace.csv`.
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<_Float16, 8l, 16l, 2l>`: 3 calls, avg 81,708.7 ns, max 88,842 ns.
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float, 8l, 16l, 2l>`: 2 calls, avg 56,842.5 ns, max 66,441 ns.
+  - Expected split-K reduce/gate kernels also appeared with 3 reduce calls plus fp16/bf16 gate reduce calls.
+
+```bash
+rocm-smi --showpids --showmeminfo vram --showuse
+# After gates: no KFD PIDs; GPU use 0%; VRAM used 27,942,912 B / 48,301,604,864 B.
+```
+
+## 2026-05-18 — task #15 128K BF16-vs-INT8 KV quality/perf comparison
+
+Ran the 128K/128 Qwen3.5/PARO BF16 dense-KV baseline vs `int8_per_token_head` dense-KV row on W7900/gfx1100. During the first INT8 128K run, native causal prefill without AOTriton hit `HIP error 1: invalid argument` in `qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans`: INT8 retained prefill was forcing the shared-memory native prefill path even though it already builds a temporary BF16 oracle K/V cache. Fixed the runtime to allow the same AOTriton BF16-attention prefill path for `int8_per_token_head`; retained INT8 K/V is still written in parallel and the BF16 oracle prefill workspace is released before decode.
+
+Environment / setup:
+
+```bash
+RUN=/tmp/hipengine-task15-128k-int8-kv
+hipcc --version > "$RUN/hipcc-version.txt"
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -24
+rocm-smi --showpids --showmeminfo vram --showuse --showtemp
+# hip OK; rocminfo reported gfx1100 / AMD Radeon Pro W7900.
+# Before run: no KFD PIDs; VRAM used 27,942,912 B / 48,301,604,864 B.
+```
+
+Validation / correctness gates after the INT8-AOTriton prefill fix:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_kv_e2e_fixture_gate.py tests/test_qwen35_bench_memory_audit.py -q
+# 37 passed.
+
+python3 scripts/check_fixtures.py
+# PASS for all CPU-reference fixtures.
+
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build --require-int8-hip \
+  --json "$RUN/qwen35-kv-int8-accuracy-hip-after-aotriton.json"
+# status=accepted, passed=true.
+# ctx64 INT8 HIP max_abs=5.2154e-08; quantized-vs-BF16 KL=2.3353e-07, top1=1.0.
+# ctx520 INT8 HIP max_abs=1.8626e-08; quantized-vs-BF16 KL=4.4598e-08, top1=1.0.
+
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head --compiler-version-file "$RUN/hipcc-version.txt" \
+  --require-cached-build --json "$RUN/qwen35-kv-e2e-fixture-gate-int8-after-aotriton.json"
+# status=accepted, passed=true on fixtures/qwen35_paro/parent_512_32_seed1234.json.
+# max_kl=0.015328251530778358 <= 0.05; mean_kl=0.001639289025262575;
+# top1_agreement=1.0; generated_match=true; expected_match=true.
+```
+
+Standard 128K/128 benchmark protocol (single run each, graph replay decode, warmup 4, max_layers 40, token id 9707, AOTriton threshold 512, chunks `1024/1024/4096/1024/1024`):
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage bf16 --json "$RUN/qwen35-paro-128k128-bf16-rerun.json"
+# BF16: prefill 1021.180385981866 tok/s; decode 63.29851597273583 tok/s;
+# tracked_peak=23.287733250297606 GiB; sampled_hip_peak=22.409912109375 GiB;
+# retained KV payload=2,689,597,440 B (2.0 B/element); generated preview [9707, 9707].
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage int8_per_token_head --json "$RUN/qwen35-paro-128k128-int8-rerun.json"
+# INT8: prefill 1011.0640439636841 tok/s; decode 61.2745382533185 tok/s;
+# tracked_peak=24.545076542533934 GiB; sampled_hip_peak=21.169677734375 GiB;
+# retained KV payload=1,344,798,720 B (1.0 B/element), scale metadata=10,506,240 B;
+# audit passed: no persistent BF16 KV shadow; generated preview [9707, 9707].
+```
+
+Comparison: INT8 vs BF16 128K/128 is `-0.99%` prefill and `-3.20%` decode. Sampled HIP VRAM peak drops by `1.240 GiB`; retained KV total bytes drop from `2,689,597,440` to `1,355,304,960` bytes (`-49.6%`). The tracked allocator peak rises by `+1.257 GiB` because prefill temporarily holds the BF16 oracle K/V plus retained INT8 K/V before releasing the prefill workspace.
+
+Profiler evidence (selected-region rocprofv3; raw CSVs under `$RUN/rocprof-int8-*`):
+
+```bash
+LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override:${LD_LIBRARY_PATH:-} \
+  timeout 2400s rocprofv3 --kernel-trace --selected-regions true --output-format csv \
+  -d "$RUN/rocprof-int8-prefill" -o int8-prefill -- \
+  python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 \
+    --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 \
+    --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+    --attn-aotriton-min-tokens 512 \
+    --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+    --prefill-full-attn-query-chunk-size 4096 \
+    --prefill-full-attn-post-chunk-size 1024 \
+    --prefill-full-attn-rope-chunk-size 1024 \
+    --kv-storage int8_per_token_head --rocprof-selected-region prefill \
+    --json "$RUN/rocprof-int8-prefill/bench.json"
+# Trace: $RUN/rocprof-int8-prefill/int8-prefill_kernel_trace.csv
+# qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16>: 320 calls,
+# avg 54,847.7 ns, median 54,620.5 ns, max 69,761 ns.
+
+LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override:${LD_LIBRARY_PATH:-} \
+  timeout 2400s rocprofv3 --kernel-trace --selected-regions true --output-format csv \
+  -d "$RUN/rocprof-int8-decode16" -o int8-decode16 -- \
+  python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 \
+    --decode-tokens 16 --warmup-decode-tokens 4 --max-layers 40 \
+    --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+    --attn-aotriton-min-tokens 512 \
+    --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+    --prefill-full-attn-query-chunk-size 4096 \
+    --prefill-full-attn-post-chunk-size 1024 \
+    --prefill-full-attn-rope-chunk-size 1024 \
+    --kv-storage int8_per_token_head --rocprof-selected-region measured_decode_graph \
+    --json "$RUN/rocprof-int8-decode16/bench.json"
+# Trace: $RUN/rocprof-int8-decode16/int8-decode16_kernel_trace.csv
+# qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<_Float16,8,16,2>:
+# 160 calls, avg 621,500.2 ns, median 621,429 ns, max 641,850 ns.
+# qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<_Float16>:
+# 160 calls, avg 159,271.4 ns, max 167,482 ns.
+# qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16> during decode append:
+# 160 calls, avg 4,362.5 ns, max 4,760 ns.
+```
+
+Committed compact artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json`; updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` rollups. Diagnostic retained only (`performance_claim=false`) because resident-runner throughput is not yet a promoted public `LLM.generate()` row.
+
+Post-change validation:
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest: 324 passed; CPU fixtures passed; registry smoke printed expected missing embed kernel; cpu-fixtures smoke passed.
+```
+
+## 2026-05-18 — task #16 256K INT8 KV capacity attempt
+
+Ran the 256K/128 dense `int8_per_token_head` KV capacity row on W7900/gfx1100. Before the capacity run I changed the INT8 prefill BF16 oracle workspace from per-full-attention-layer names to layer-reused names (`prefill.int8_oracle_key/value`). The oracle K/V is only needed while processing the current full-attention layer, so reusing it avoids retaining ten full BF16 oracle caches during long-context prefill; the workspace is still released before decode and no persistent BF16 shadow remains.
+
+Environment / setup:
+
+```bash
+RUN=/tmp/hipengine-task16-256k-int8-capacity
+hipcc --version > "$RUN/hipcc-version.txt"
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -24
+rocm-smi --showpids --showmeminfo vram --showuse --showtemp
+# hip OK; rocminfo reported gfx1100 / AMD Radeon Pro W7900.
+# Before run: no KFD PIDs; VRAM used 27,942,912 B / 48,301,604,864 B.
+```
+
+Correctness / no-shadow gates:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_bench_memory_audit.py -q
+# 34 passed.
+
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build --require-int8-hip \
+  --json "$RUN/qwen35-kv-int8-accuracy-hip.json"
+# status=accepted, passed=true.
+# ctx64 INT8 HIP max_abs=5.2154e-08; quantized-vs-BF16 KL=2.3353e-07, top1=1.0.
+# ctx520 INT8 HIP max_abs=1.8626e-08; quantized-vs-BF16 KL=4.4598e-08, top1=1.0.
+
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head --compiler-version-file "$RUN/hipcc-version.txt" \
+  --require-cached-build --json "$RUN/qwen35-kv-e2e-fixture-gate-int8.json"
+# status=accepted, passed=true; max_kl=0.015328251530778358;
+# top1_agreement=1.0; generated_match=true; expected_match=true.
+```
+
+Capacity command:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 262144 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage int8_per_token_head \
+  --json "$RUN/qwen35-paro-256k128-int8.json"
+```
+
+Result: completed but **blocked for 24 GiB-class promotion**.
+
+- Timing (diagnostic only): prefill `624.2235817135025 tok/s`, decode `40.81907685897756 tok/s`.
+- Correctness/no-shadow: audit passed, no persistent BF16 KV shadow; generated preview `[9707, 9707]`.
+- Memory: tracked peak `25.69975107256323 GiB`; sampled HIP VRAM peak `24.329833984375 GiB`.
+- 24 GiB target deltas: sampled `+0.329833984375 GiB`, tracked `+1.699751072563231 GiB`.
+- Retained KV/scales: payload `2,686,976,000 B` (`1.0 B/element`), scale metadata `20,992,000 B`, total `2,707,968,000 B`.
+- Exact promotion blockers recorded in artifact:
+  - persistent full-prompt prefill double buffer from `_allocate_common_buffers`: `2 x [262277,4096] fp16` = `4,297,146,368 B` total, live through decode;
+  - dense INT8 KV/scales plus decode scratch;
+  - temporary BF16 oracle K/V is now one reused K/V pair (`537,395,200 B`) and is released before decode, so it affects tracked high-water only and is not a persistent shadow.
+
+Artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json`. Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the blocked capacity attempt. Next implementation target for 256K under 24 GiB is reducing persistent full-prompt prefill I/O buffering (for example, chunk-sized output staging or freeing/reallocating prefill buffers around decode); not a KV shadow issue.
+
+Post-change validation:
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest: 324 passed; CPU fixtures passed; registry smoke printed expected missing embed kernel; cpu-fixtures smoke passed.
+```
+
+## 2026-05-18 — task #17 K1 INT8 KV documentation/rollup
+
+Updated the K1 documentation and benchmark rollup wording for the retained dense `int8_per_token_head` KV protocol/results. This was a docs/rollup-only pass; no new benchmark was run.
+
+Files updated:
+
+- `docs/KVCACHE.md`: changed K1 from planning-only to landed diagnostic/capacity path, added exact 128K/128 BF16 and INT8 benchmark commands, exact 256K/128 INT8 capacity command, results table, correctness/profiler summary, and the next memory targets.
+- `docs/TESTING.md`: added the K1 dense INT8 KV gate with targeted pytest, CPU fixtures, INT8 writer/decode smokes, layer-level accuracy, E2E fixture gate, memory audit, and rocprof artifact requirements.
+- `docs/KERNELS.md`: added model-level K1 evidence next to the landed INT8 writer/decode kernel catalog, including correctness, 128K/256K memory/timing, and selected-region rocprof summaries.
+- `benchmarks/README.md`: added a K1 status paragraph ahead of the blocked/diagnostic table, explicitly distinguishing storage/capacity from speed.
+- `benchmarks/CHANGELOG.md`: added a rollup/doc entry pointing to the existing 128K diagnostic and 256K blocked artifacts.
+
+K1 status recorded in docs:
+
+- Model/quant/backend/hardware: `Qwen3.5-35B-A3B-PARO`, `w4_paro`, `hip_gfx1100`, AMD Radeon Pro W7900 / gfx1100.
+- 128K/128 BF16 baseline: `1021.180` prefill / `63.299` decode tok/s, sampled/tracked peak `22.410/23.288 GiB`, retained KV `2.690 GB`.
+- 128K/128 INT8 KV diagnostic: `1011.064` prefill / `61.275` decode tok/s (`-0.99%/-3.20%` vs BF16), sampled/tracked peak `21.170/24.545 GiB`, retained KV `1.355 GB`, no persistent BF16 shadow.
+- 256K/128 INT8 KV blocked capacity attempt: completed at `624.224` prefill / `40.819` decode tok/s with correctness/no-shadow passing and retained KV `2.708 GB`, but sampled/tracked peak `24.330/25.700 GiB` exceeds the 24GiB-class target.
+- Correctness: E2E fixture gate `max_kl=0.015328251530778358`, top-1 agreement `1.0`, generated IDs match; layer-level INT8 HIP accuracy accepted for contexts 64 and 520.
+- Capacity-vs-speed wording: INT8 KV is retained as a storage/capacity diagnostic, not a speed win; 256K is blocked by full-prompt prefill double-buffer lifetime, not a persistent BF16 KV shadow.
+
+Artifact sanity validation:
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+required = [
+    Path('benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json'),
+    Path('benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json'),
+]
+for path in required:
+    data = json.loads(path.read_text())
+    assert data['model'] == 'Qwen3.5-35B-A3B-PARO'
+    assert data['quant'] == 'w4_paro'
+    assert data['backend'] == 'hip_gfx1100'
+    assert 'AMD Radeon Pro W7900' in data['hardware']
+    if '128k' in path.name:
+        assert data['status'] == 'diagnostic_retained'
+        assert data['correctness']['e2e_fixture_gate']['passed'] is True
+        assert data['benchmarks']['int8_per_token_head']['memory']['kv_memory_audit']['persistent_bf16_shadow_exists'] is False
+        assert data['benchmarks']['int8_per_token_head']['memory']['kv_memory_audit']['retained_kv_payload_bytes_per_element'] == 1.0
+        assert data['profiler']['int8_decode_graph_sample']['int8_decode_kernels']
+    else:
+        assert data['status'] == 'blocked'
+        assert data['capacity_target']['passed'] is False
+        assert data['correctness']['e2e_fixture_gate']['passed'] is True
+        assert data['memory']['no_shadow_audit']['persistent_bf16_shadow_exists'] is False
+        assert data['memory']['retained_kv']['payload_bytes_per_element'] == 1.0
+        assert data['memory_blocker_analysis']['exact_paths']
+    print(path.name, 'OK')
+PY
+# both artifacts OK
+
+git diff --check
+# clean
+```
+
+## 2026-05-18 — task #18 prefill single-buffer memory reduction (validation in progress)
+
+Implemented the first 256K INT8-KV memory lever locally: native resident prefill now allocates one lazy `prefill_hidden_buffer` sized to the actual prompt rows, writes layer outputs back in-place after each layer/chunk, and releases that buffer in `_restore_decode_scratch_after_prefill()` before decode scratch is rebuilt. `_allocate_common_buffers()` no longer keeps persistent `prefill_hidden` / `prefill_next_hidden` full-prompt double buffers, and `prefill_next_hidden` is a compatibility alias for probes/manual sessions. Updated the bench owned-byte helper to count the lazy buffer if sampled while live, and updated native stage probes to request the lazy prefill view explicitly.
+
+Validation completed so far:
+
+```bash
+python3 -m pytest -q
+# 324 passed
+python3 -m compileall -q hipengine tests scripts
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+# all passed
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 4 \
+  --decode-tokens 1 --warmup-decode-tokens 0 --token-id 9707 \
+  --compiler-version-file /tmp/hipengine-task18-prefill-single-buffer/hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-task18-prefill-single-buffer/smoke-maxlayers1.json
+# small resident GPU smoke passed
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 \
+  --scale-dtype fp16 --compiler-version-file /tmp/hipengine-task18-prefill-single-buffer/hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-task18-prefill-single-buffer/int8_accuracy.json
+# status accepted, passed true
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head \
+  --compiler-version-file /tmp/hipengine-task18-prefill-single-buffer/hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-task18-prefill-single-buffer/e2e.json
+# passed true; max_kl=0.015328251530778358; top1_agreement=1.0; generated IDs match
+```
+
+Clean 128K/256K benchmark validation is still pending because the GPU is not idle: `rocm-smi` shows an unrelated `llama-server` process (`PID 269877`) using about `22.7 GB` VRAM with GPU busy at `100%`. Do not retain speed/sampled-VRAM artifacts until that process is stopped or the card is otherwise idle; any benchmark now would have invalid absolute sampled-VRAM and throughput.
+
+## 2026-05-18 — task #18 256K INT8 KV single-buffer capacity result
+
+Reran the standard 256K/128 dense `int8_per_token_head` benchmark on idle W7900/gfx1100 after the single-buffer prefill change.
+
+Exact command:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 262144 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-task18-prefill-single-buffer/hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage int8_per_token_head \
+  --json /tmp/hipengine-task18-prefill-single-buffer/qwen35-paro-256k128-int8-singlebuf.json
+```
+
+Result versus the prior blocked 256K artifact:
+
+- Correctness/no-shadow still passes: layer INT8 HIP accuracy accepted; E2E fixture `max_kl=0.015328251530778358`, top-1 agreement `1.0`, generated IDs match; persistent BF16 KV shadow absent.
+- Timing is neutral/slightly positive: prefill `624.224 -> 626.127 tok/s` (`+0.30%`), decode `40.819 -> 40.856 tok/s` (`+0.09%`). This remains diagnostic, not a public `LLM.generate()` throughput claim.
+- Sampled HIP VRAM peak drops `24.330 -> 22.326 GiB`, so the sampled 24GiB-class capacity target now passes.
+- Tracked allocator high-water drops `25.700 -> 24.699 GiB`; still above 24GiB because it includes transient prefill allocations, especially the reused BF16 INT8-prefill oracle K/V workspace.
+- Retained KV/scales unchanged and expected: total `2,707,968,000 B`, payload `2,686,976,000 B` at `1.0 B/element`, FP16 scales `20,992,000 B`.
+- Resolved blocker: persistent full-prompt `prefill_hidden`/`prefill_next_hidden` double buffer (`2 x [262277,4096] fp16`, `4.297 GB`) is gone and no full-prompt prefill hidden buffer remains live through decode.
+- Remaining memory follow-up: task #19 should stream/remove `Qwen35ParoResidentSession._prefill_int8_oracle_cache` (`2 x [1025,256,2,256] bf16`, `1,074,790,400 B`) to reduce tracked high-water and larger-context prefill pressure.
+
+Retained artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-single-buffer-capacity-diagnostic.json`. Updated `docs/KVCACHE.md`, `docs/KERNELS.md`, `docs/TESTING.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` to mark the persistent prefill-buffer blocker resolved and distinguish sampled capacity from tracked high-water follow-up.
+
+## 2026-05-18 — task #19 rerun and scratch-overlap reduction
+
+After the user flagged possible GPU contention, checked `rocm-smi`: no KFD PIDs, GPU use 0%, VRAM used ~27.9 MB. Reran the 128K INT8 benchmark on the scratch-release change and then reran 256K.
+
+Code change under test: free token-1 decode scratch before bulk prefill (`_release_decode_scratch_for_prefill`) and clear rotate-fuse readiness for those freed workspaces; release the linear-prefill workspace before switching into full-attention prefill. This does **not** remove the BF16 INT8-prefill oracle itself, but it reduces scratch/oracle overlap and tracked high-water.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_bench_memory_audit.py -q
+# 36 passed
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --compiler-version-file /tmp/hipengine-task19-decode-scratch-release/hipcc-version.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-task19-decode-scratch-release/int8_accuracy.json
+# accepted, passed true
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 --kv-storage int8_per_token_head --compiler-version-file /tmp/hipengine-task19-decode-scratch-release/hipcc-version.txt --require-cached-build --json /tmp/hipengine-task19-decode-scratch-release/e2e-transition-release.json
+# passed true, max_kl=0.015328251530778358, top1=1.0, generated IDs match
+```
+
+Retained rerun measurements:
+
+- 128K/128 INT8 rerun command: `/tmp/hipengine-task19-decode-scratch-release/qwen35-paro-128k128-int8-scratch-phase-release-rerun.command`.
+  - Prefill/decode: `1011.440 / 61.196 tok/s` vs previous INT8 `1011.064 / 61.275`.
+  - Tracked peak: `24.545 -> 21.525 GiB` (`-3.020 GiB`).
+  - Sampled HIP peak: `21.170 -> 20.164 GiB`.
+- 256K/128 INT8 rerun command: `/tmp/hipengine-task19-decode-scratch-release/qwen35-paro-256k128-int8-scratch-phase-release-rerun.command`.
+  - Prefill/decode: `620.928 / 40.815 tok/s` vs single-buffer `626.127 / 40.856` (near-neutral decode, prefill `-0.83%`).
+  - Tracked peak: `24.699 -> 24.351 GiB` (`-0.348 GiB`); still above 24GiB because the BF16 oracle remains.
+  - Sampled HIP peak: `22.324 GiB`, still under the 24GiB sampled capacity target.
+  - Retained KV/scales unchanged: `2.708 GB`, no persistent BF16 shadow.
+
+Retained artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-scratch-release-diagnostic.json`. Updated `docs/KVCACHE.md`, `docs/KERNELS.md`, `docs/TESTING.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`. Task #19 remains open for true BF16 oracle streaming/removal because `prefill_execution_detail.int8_prefill_oracle` is still true and 256K tracked high-water remains `0.351 GiB` over 24GiB.
+
+## 2026-05-18/19 — task #19 AOTriton prefill query workspace reduction (GPU blocked)
+
+Continued the INT8 KV temporary-oracle memory work after commit `328a1b3`. Implemented a lower-risk memory reduction that avoids accumulating one per-layer AOTriton BF16 query buffer during native prefill:
+
+- `Qwen35ParoDecodeState.reserve_full_attention_scratch()` now accepts `query_dtype` (`fp32` default, `bf16` for AOTriton prefill).
+- AOTriton prefill reinterprets/reuses the caller-owned `attention_scratch.query` buffer as the BF16 query tensor instead of reserving `attn.aotriton_q_bf16` in every full-attention layer state's decode workspace.
+- Resident native prefill requests BF16 query scratch when AOTriton prefill is active.
+- Added unit coverage that the AOTriton prefill path passes a BF16 tensor at `scratch.query.ptr` and does not reserve `attn.aotriton_q_bf16`.
+
+CPU validation completed:
+
+```bash
+python3 -m pytest -q
+python3 -m compileall -q hipengine tests scripts
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+git diff --check
+# all passed; pytest 325 passed
+```
+
+GPU validation/benchmark is blocked by external `llama-server` contention. Polls from ~04:36-04:40 JST showed PID churn (`382671`, `385644`, `389628`), GPU use `98-99%`, and ~18-20 GB VRAM in use. Do not retain a benchmark from this state. Next clean-GPU commands: rerun INT8 layer gate, E2E gate, then 128K/256K benchmark under `/tmp/hipengine-task19-aotriton-query-reuse/` to confirm whether tracked peak drops below the previous scratch-release artifact (`128K 21.525 GiB`, `256K 24.351 GiB`).
+
+## 2026-05-18/19 — task #19 AOTriton query reuse retained benchmark
+
+GPU became free (`rocm-smi`: no KFD PIDs, GPU use 0%, VRAM used ~27.9 MB). Reran gates and retained benchmarks for the AOTriton query-reuse change.
+
+Validation:
+
+```bash
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --compiler-version-file /tmp/hipengine-task19-aotriton-query-reuse/hipcc-version.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-task19-aotriton-query-reuse/int8_accuracy.json
+# accepted, passed true
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 --kv-storage int8_per_token_head --compiler-version-file /tmp/hipengine-task19-aotriton-query-reuse/hipcc-version.txt --require-cached-build --json /tmp/hipengine-task19-aotriton-query-reuse/e2e.json
+# passed true, max_kl=0.015328251530778358, top1=1.0, generated IDs match
+```
+
+An intermediate same-chunk (q4096) rerun confirmed the code change alone reduced tracked high-water:
+
+- 128K/128 q4096: `1019.828 / 61.327 tok/s`, tracked `21.1815 GiB`, sampled `19.851 GiB`.
+- 256K/128 q4096: `620.807 / 40.819 tok/s`, tracked `24.0075 GiB`, sampled `22.011 GiB`.
+
+Retained q3072 runs (full-attn query chunk `3072`, linear/moe/post/rope `1024`):
+
+- 128K/128: `1035.606 / 60.992 tok/s`, tracked `20.941 GiB`, sampled `19.851 GiB`; tracked delta vs previous scratch-release artifact `21.525 -> 20.941 GiB`.
+- 256K/128: `651.636 / 40.827 tok/s`, tracked `23.766 GiB`, sampled `22.013 GiB`; tracked delta vs previous scratch-release artifact `24.351 -> 23.766 GiB`, now under the 24GiB-class tracked target.
+
+Retained artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json`. Updated K1 docs/rollups. Important: `prefill_execution_detail.int8_prefill_oracle` is still true, so task #19 is not complete as oracle removal/streaming remains; this step removes per-layer AOTriton BF16 query accumulation and reduces chunk scratch high-water.
+
+## 2026-05-18/19 — task #19 oracle-removal experiment blocked by E2E correctness
+
+Tried removing the temporary BF16 INT8-prefill oracle by streaming retained INT8 K/V through AOTriton: added experimental INT8→BF16 dequant and AOTriton partial-merge kernels locally, skipped the BF16 oracle append, and used retained INT8 cache for prefill attention. The experiment confirmed the oracle is not just dead memory: it preserves BF16-prefill logits while decode uses retained INT8. Direct INT8-prefill attention passed the standalone layer accuracy gate but failed the full E2E gate versus BF16 prefill.
+
+Commands/results from `/tmp/hipengine-task19-remove-oracle/` before reverting the experiment:
+
+```bash
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --compiler-version-file /tmp/hipengine-task19-remove-oracle/hipcc-version.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-task19-remove-oracle/int8_accuracy.json
+# accepted, passed true
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 --kv-storage int8_per_token_head --compiler-version-file /tmp/hipengine-task19-remove-oracle/hipcc-version.txt --require-cached-build --json /tmp/hipengine-task19-remove-oracle/e2e.json
+# failed: max_kl=9.002305619944993, top1=0.48484848484848486, generated mismatch at index 5
+# prefill_execution_detail showed int8_prefill_oracle=false and int8_prefill_streaming=true; memory audit still passed
+```
+
+Conclusion: the temporary BF16 oracle is required by the current K1 correctness contract unless we also introduce a correctness-preserving prefill path (for example, a true streaming BF16 K/V oracle fed from non-quantized K/V, or a new E2E acceptance contract for INT8-prefill quantization). Reverted the experimental code; retained under-24GiB K1 result remains commit `f40bb26` (`256K/128` tracked peak `23.766 GiB`, sampled `22.013 GiB`, E2E `max_kl=0.015328`, top1 `100%`, generated IDs match) with `int8_prefill_oracle=true`.
+
+## 2026-05-18/19 — K1 docs button-up before main merge
+
+Cleaned up K1 wording so docs state the capacity target is complete: 256K/128 INT8 KV passes both sampled and tracked 24GiB-class targets (`22.013/23.766 GiB`) with correctness accepted and no persistent BF16 KV shadow. The transient BF16 INT8-prefill oracle remains in the accepted path; correctness-preserving removal is now documented as future work, not a K1 capacity blocker.
+
+Validation before merge:
+
+```bash
+python3 -m pytest -q
+python3 -m compileall -q hipengine tests scripts
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+git diff --check
+# all passed
+```
+
+## 2026-05-18/19 — merge kvcache-int8 into main
+
+Pulled `origin/main` (`1cbf77f -> c4259d8`) and merged branch `kvcache-int8`. Merge conflicts were limited to append/rollup files (`WORKLOG.md`, `benchmarks/CHANGELOG.md`, `benchmarks/README.md`); resolved by preserving both main's Qwen3.6-27B diagnostic entries and the K1 INT8 KV entries. Re-ran CPU validation after conflict resolution:
+
+```bash
+python3 -m pytest -q
+python3 -m compileall -q hipengine tests scripts
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+git diff --check
+# all passed
+```

@@ -2,16 +2,16 @@
   "schema": 1,
   "description": "External source-lineage files hipEngine ports from or audits before a port.",
   "evidence_paths": [
-    "/home/lhl/github/shisa-ai/amd-gpu-tuning/WORKLOG.md",
-    "/home/lhl/github/shisa-ai/amd-gpu-tuning/docs/OPTIMAL.md",
-    "/home/lhl/github/shisa-ai/amd-gpu-tuning/docs/PARO.md",
-    "/home/lhl/github/shisa-ai/amd-gpu-tuning/PLAN-PAROQUANT.md",
-    "/home/lhl/github/shisa-ai/amd-gpu-tuning/PLAN-PAROQUANT2.md",
-    "/home/lhl/github/shisa-ai/amd-gpu-tuning/PLAN-MOE2.md"
+    "/home/lhl/amd-gpu-tuning/WORKLOG.md",
+    "/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md",
+    "/home/lhl/amd-gpu-tuning/docs/PARO.md",
+    "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT.md",
+    "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md",
+    "/home/lhl/amd-gpu-tuning/PLAN-MOE2.md"
   ],
   "repositories": {
     "nano-vllm-amd": {
-      "path": "/home/lhl/github/shisa-ai/amd-gpu-tuning/nano-vllm-amd",
+      "path": "/home/lhl/amd-gpu-tuning/nano-vllm-amd",
       "baseline_ref": "22405a9",
       "baseline_note": "Last manual KERNELS.md catalog audit before adding scripts/check_lineage.py."
     }

@@ -64,6 +64,8 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
             "temperature": 0.0,
             "top_p": 1.0,
             "stop": "<stop>",
+            "kv_storage": "int8_per_token_head",
+            "kv_scale_dtype": "fp32",
         },
     )
 
@@ -77,7 +79,14 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     assert fake.calls == [
         (
             ("one", "two"),
-            SamplingParams(max_tokens=3, temperature=0.0, top_p=1.0, ignore_eos=False),
+            SamplingParams(
+                max_tokens=3,
+                temperature=0.0,
+                top_p=1.0,
+                ignore_eos=False,
+                kv_storage="int8_per_token_head",
+                kv_scale_dtype="fp32",
+            ),
         )
     ]
 

@@ -27,6 +27,7 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
@@ -110,6 +111,11 @@ def main() -> int:
         default=0.0,
         help="Optional resident high-water budget for long-context chunk tuning; 0 derives a budget from device VRAM.",
     )
+    add_kv_policy_args(
+        parser,
+        legacy_storage_flags=("--kv-storage-dtype",),
+        help_prefix="Resident full-attention KV storage for prefill and decode",
+    )
     parser.add_argument(
         "--native-prefill",
         action="store_true",
@@ -165,6 +171,7 @@ def main() -> int:
         shared_expert_format=shared_expert_format,
         backend=args.backend,
     )
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     reset_memory_stats()
     memory_snapshots: dict[str, Any] = {
         "before_load": _memory_snapshot("before_load", runner.runtime),
@@ -189,6 +196,9 @@ def main() -> int:
                 auto_tune_chunk_sizes=args.prefill_chunk_autotune,
                 chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
             ),
+            kv_policy=kv_policy.create_policy(),
+            kv_scale_dtype=kv_policy.scale_dtype,
+            kv_scale_granularity=kv_policy.scale_granularity,
         )
     load_seconds = time.perf_counter() - load_start
     memory_snapshots["after_load"] = _memory_snapshot("after_load", session.runtime, session)
@@ -296,6 +306,8 @@ def main() -> int:
         "serial_prefill_diagnostic": bool(args.serial_prefill_diagnostic),
         "allow_rejected_native_prefill": bool(args.allow_rejected_native_prefill),
         "attn_aotriton_min_tokens": args.attn_aotriton_min_tokens,
+        "kv_storage_dtype": kv_policy.storage_dtype.value,
+        "kv_policy": kv_policy_json(kv_policy),
         "requested_prefill_chunk_sizes": {
             "linear": args.prefill_linear_chunk_size,
             "moe": args.prefill_moe_chunk_size,
@@ -474,7 +486,9 @@ def _owned_device_bytes(session: Qwen35ParoResidentSession) -> int:
             int(prefill_workspace.allocation(name).buffer.nbytes)
             for name in prefill_workspace.names
         )
-    return allocation_bytes + buffer_bytes + state_workspace_bytes + prefill_workspace_bytes
+    prefill_hidden = getattr(session, "prefill_hidden_buffer", None)
+    prefill_hidden_bytes = int(prefill_hidden.nbytes) if prefill_hidden is not None else 0
+    return allocation_bytes + buffer_bytes + state_workspace_bytes + prefill_workspace_bytes + prefill_hidden_bytes
 
 
 def _memory_snapshot(
@@ -490,6 +504,10 @@ def _memory_snapshot(
     if session is not None:
         payload["owned_session_bytes"] = _owned_device_bytes(session)
         payload["owned_session_gib"] = _bytes_to_gib(payload["owned_session_bytes"])
+        if hasattr(session, "owned_buffer_summary"):
+            payload["owned_buffer_summary"] = session.owned_buffer_summary()
+        if hasattr(session, "kv_memory_audit"):
+            payload["kv_memory_audit"] = session.kv_memory_audit()
     return payload
 
 
@@ -531,6 +549,15 @@ def _memory_summary(snapshots: dict[str, Any]) -> dict[str, Any]:
         if snapshot.get("hip", {}).get("available")
     ]
     hip_used_peak = max(hip_used_values) if hip_used_values else None
+    kv_audit_snapshots = {
+        label: snapshot["kv_memory_audit"]
+        for label, snapshot in snapshots.items()
+        if "kv_memory_audit" in snapshot
+    }
+    latest_kv_audit_label = next(
+        (label for label in ("before_close", "after_decode", "after_warmup_decode", "after_prefill", "after_load") if label in kv_audit_snapshots),
+        None,
+    )
     summary = {
         "tracked_peak_allocated_bytes": tracked_peak,
         "tracked_peak_allocated_gib": _bytes_to_gib(tracked_peak),
@@ -542,6 +569,16 @@ def _memory_summary(snapshots: dict[str, Any]) -> dict[str, Any]:
         "owned_session_peak_gib": _bytes_to_gib(owned_peak),
         "hip_used_peak_sampled_bytes": hip_used_peak,
         "hip_used_peak_sampled_gib": _bytes_to_gib(hip_used_peak) if hip_used_peak is not None else None,
+        "kv_memory_audit": {
+            "passed": all(bool(audit.get("passed", True)) for audit in kv_audit_snapshots.values()),
+            "latest_label": latest_kv_audit_label,
+            "latest": kv_audit_snapshots.get(latest_kv_audit_label) if latest_kv_audit_label is not None else None,
+            "snapshots": kv_audit_snapshots,
+            "tracked_peak_allocated_bytes": tracked_peak,
+            "tracked_peak_allocated_gib": _bytes_to_gib(tracked_peak),
+            "hip_used_peak_sampled_bytes": hip_used_peak,
+            "hip_used_peak_sampled_gib": _bytes_to_gib(hip_used_peak) if hip_used_peak is not None else None,
+        },
         "notes": [
             "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
             "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",

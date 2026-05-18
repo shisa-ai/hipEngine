@@ -52,7 +52,8 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     set_i64_vector,
 )
 from hipengine.dispatch import ActiveBatch, RequestState
-from hipengine.kvcache import KVLiveSpans
+from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata
+from hipengine.kvcache.policy import KV_SCALE_GRANULARITY_CHOICES
 from hipengine.loading import (
     WeightIndex,
     float_array_to_bf16_bits,
@@ -649,6 +650,18 @@ class Qwen35ParoResidentBatchLayout:
     def slot0_full_kv_shape(self) -> tuple[int, int, int, int]:
         return (self.blocks, self.block_size, self.num_key_value_heads, self.head_dim)
 
+    @property
+    def full_kv_scale_shape(self) -> tuple[int, int, int, int]:
+        return (self.max_batch_size, self.blocks, self.block_size, self.num_key_value_heads)
+
+    @property
+    def flat_full_kv_scale_shape(self) -> tuple[int, int, int]:
+        return (self.max_batch_size * self.blocks, self.block_size, self.num_key_value_heads)
+
+    @property
+    def slot0_full_kv_scale_shape(self) -> tuple[int, int, int]:
+        return (self.blocks, self.block_size, self.num_key_value_heads)
+
 
 @dataclass(frozen=True)
 class Qwen35ParoNativePrefillPlan:
@@ -811,6 +824,9 @@ class Qwen35ParoResidentSession:
         require_cached_build: bool = False,
         progress: Callable[[dict[str, Any]], None] | None = None,
         prefill_config: PrefillConfig | None = None,
+        kv_policy: FixedPagedKVPolicy | None = None,
+        kv_scale_dtype: str | DType = DType.FP16,
+        kv_scale_granularity: str = "per_token_head",
     ) -> None:
         if max_sequence_length <= 0:
             raise ValueError("max_sequence_length must be positive")
@@ -830,6 +846,19 @@ class Qwen35ParoResidentSession:
         self.max_sequence_length = int(max_sequence_length)
         self.block_size = int(block_size)
         self.chunk_size = int(chunk_size)
+        self.kv_policy = kv_policy or FixedPagedKVPolicy(block_size=self.block_size, storage_dtype=DType.BF16)
+        policy_block_size = int(getattr(self.kv_policy, "block_size", self.block_size))
+        if policy_block_size != self.block_size:
+            raise ValueError("resident KV policy block_size must match session block_size")
+        self.kv_storage_dtype = DType.parse(getattr(self.kv_policy, "storage_dtype", DType.BF16))
+        if self.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
+            raise ValueError("resident full-attention KV storage must be bf16 or int8_per_token_head")
+        self.kv_scale_dtype = DType.parse(kv_scale_dtype)
+        if self.kv_scale_dtype not in {DType.FP16, DType.FP32}:
+            raise ValueError("resident INT8 KV scales must use fp16 or fp32")
+        if kv_scale_granularity not in KV_SCALE_GRANULARITY_CHOICES:
+            raise ValueError("resident INT8 KV scale granularity must be per_token_head")
+        self.kv_scale_granularity = kv_scale_granularity
         self.decode_chunk_size, self.max_splits = _paged_attn_decode_split_config(
             self.max_sequence_length,
             block_size=self.block_size,
@@ -864,10 +893,14 @@ class Qwen35ParoResidentSession:
         self.states: list[Qwen35ParoDecodeState] = []
         self.linear_states: dict[int, tuple[Tensor, Tensor, DeviceBuffer, DeviceBuffer, np.ndarray, np.ndarray]] = {}
         self.full_caches: dict[int, tuple[Tensor, Tensor, DeviceBuffer, DeviceBuffer]] = {}
+        self.full_cache_scales: dict[int, tuple[Tensor, Tensor, DeviceBuffer, DeviceBuffer]] = {}
+        self.full_cache_scale_metadata: dict[int, KVScaleMetadata] = {}
         self.linear_scratch = {}
         self.full_scratch = {}
         self.moe_scratch = {}
         self.prefill_workspace = RuntimeWorkspace(runtime=self.runtime)
+        self.prefill_hidden_buffer: DeviceBuffer | None = None
+        self.prefill_hidden_capacity_rows = 0
         self._prefill_scratch_state: Qwen35ParoDecodeState | None = None
         self.prefill_linear_scratch: Qwen35ParoLinearAttentionScratch | None = None
         self.prefill_full_scratch: Qwen35ParoAttentionScratch | None = None
@@ -914,6 +947,7 @@ class Qwen35ParoResidentSession:
         self.runtime.device_synchronize()
         self.closed = True
         self._release_prefill_workspace()
+        self._release_prefill_hidden_buffer()
         for state in reversed(self.states):
             state.free()
         for allocation in reversed(self.allocations):
@@ -1207,6 +1241,8 @@ class Qwen35ParoResidentSession:
             raise ValueError("compact prompt slab block_count exceeds session block capacity")
         if slab.block_size != self.block_size:
             raise ValueError("compact prompt slab block_size must match session block_size")
+        if getattr(self, "kv_storage_dtype", DType.BF16) == DType.INT8_PER_TOKEN_HEAD:
+            raise NotImplementedError("compact c>N native prefill is not wired for int8_per_token_head retained KV")
         self._resolve_prefill_config_for_length(max(len(row) for row in slab.token_rows))
         native_prefill_plan = self.native_prefill_plan()
         if not native_prefill_plan.full_layer_limit_native:
@@ -1216,10 +1252,12 @@ class Qwen35ParoResidentSession:
             )
         metadata = self._materialize_packed_prefill_metadata(slab)
         try:
+            self._release_decode_scratch_for_prefill()
+            prefill_hidden = self._prefill_hidden_view_for_rows(slab.rows)
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
                 metadata.token_ids.ptr,
-                self.prefill_hidden.ptr,
+                prefill_hidden.ptr,
                 slab.rows,
                 self.config.hidden_size,
                 self.vocab_size,
@@ -1239,6 +1277,7 @@ class Qwen35ParoResidentSession:
                 "slot_ids": list(slab.physical_slot_ids),
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
+                "decode_scratch_released_for_prefill": True,
             }
             return results
         finally:
@@ -1289,11 +1328,13 @@ class Qwen35ParoResidentSession:
             owns_token_buf = True
         copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
         try:
+            self._release_decode_scratch_for_prefill()
             self._prepare_prefill_context_counts(len(tokens), stream=0)
+            prefill_hidden = self._prefill_hidden_view_for_rows(len(tokens))
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
                 token_buf.ptr,
-                self.prefill_hidden.ptr,
+                prefill_hidden.ptr,
                 len(tokens),
                 self.config.hidden_size,
                 self.vocab_size,
@@ -1314,8 +1355,13 @@ class Qwen35ParoResidentSession:
                 "full_native": True,
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
-                "aotriton_attention": self._prefill_use_aotriton_attention(len(tokens)),
+                "aotriton_attention": self._prefill_use_aotriton_attention_resolved(len(tokens)),
                 "attn_aotriton_min_tokens": self.prefill_config.attn_aotriton_min_tokens,
+                "kv_storage_dtype": self.kv_storage_dtype.value,
+                "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
+                "kv_scale_granularity": self.kv_scale_granularity if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
+                "int8_prefill_oracle": self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD,
+                "decode_scratch_released_for_prefill": True,
             }
             if not sample:
                 return None
@@ -1345,10 +1391,12 @@ class Qwen35ParoResidentSession:
             owns_token_buf = True
         copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
         try:
+            self._release_decode_scratch_for_prefill()
+            prefill_hidden = self._prefill_hidden_view_for_rows(len(tokens))
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
                 token_buf.ptr,
-                self.prefill_hidden.ptr,
+                prefill_hidden.ptr,
                 len(tokens),
                 self.config.hidden_size,
                 self.vocab_size,
@@ -1380,6 +1428,7 @@ class Qwen35ParoResidentSession:
                 "full_native": False,
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
+                "decode_scratch_released_for_prefill": True,
             }
             if not sample:
                 return None
@@ -1582,6 +1631,41 @@ class Qwen35ParoResidentSession:
             Tensor.from_handle(value_buf.ptr + int(slot) * cache_nbytes, value_cache.shape, value_cache.dtype, value_cache.device),
         )
 
+    def _slot_full_scale_metadata(self, layer_id: int, slot: int) -> KVScaleMetadata | None:
+        self._check_slot(slot)
+        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+            return None
+        k_scale, v_scale, k_buf, v_buf = self.full_cache_scales[layer_id]
+        scale_nbytes = int(np.prod(k_scale.shape)) * k_scale.dtype.itemsize
+        return KVScaleMetadata(
+            k_scale=Tensor.from_handle(
+                k_buf.ptr + int(slot) * scale_nbytes,
+                k_scale.shape,
+                k_scale.dtype,
+                k_scale.device,
+            ),
+            v_scale=Tensor.from_handle(
+                v_buf.ptr + int(slot) * scale_nbytes,
+                v_scale.shape,
+                v_scale.dtype,
+                v_scale.device,
+            ),
+            scale_dtype=k_scale.dtype,
+            granularity=self.kv_scale_granularity,
+        )
+
+    def _full_cache_scale_metadata_all_slots(self, layer_id: int) -> KVScaleMetadata | None:
+        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+            return None
+        k_scale, v_scale, k_buf, v_buf = self.full_cache_scales[layer_id]
+        shape = self.batch_layout.flat_full_kv_scale_shape
+        return KVScaleMetadata(
+            k_scale=Tensor.from_handle(k_buf.ptr, shape, k_scale.dtype, k_scale.device),
+            v_scale=Tensor.from_handle(v_buf.ptr, shape, v_scale.dtype, v_scale.device),
+            scale_dtype=k_scale.dtype,
+            granularity=self.kv_scale_granularity,
+        )
+
     def _slot_spans(self, slot: int) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
         position_tensor = self._slot_scalar_tensor(self.position_buf, slot, DType.INT64)
         context_tensor = self._slot_scalar_tensor(self.context_buf, slot, DType.INT64)
@@ -1596,6 +1680,26 @@ class Qwen35ParoResidentSession:
             live_counts=context_tensor,
             max_live_count=self.max_sequence_length,
             storage_dtype=DType.BF16,
+        )
+        return position_tensor, append_spans, decode_spans
+
+    def _slot_full_spans(self, layer_id: int, slot: int) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
+        position_tensor = self._slot_scalar_tensor(self.position_buf, slot, DType.INT64)
+        context_tensor = self._slot_scalar_tensor(self.context_buf, slot, DType.INT64)
+        scale_metadata = self._slot_full_scale_metadata(layer_id, slot)
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=self.block_table,
+            live_counts=position_tensor,
+            max_live_count=self.max_sequence_length - 1,
+            storage_dtype=self.kv_storage_dtype,
+            scale_metadata=scale_metadata,
+        )
+        decode_spans = KVLiveSpans.paged_uniform(
+            block_table=self.block_table,
+            live_counts=context_tensor,
+            max_live_count=self.max_sequence_length,
+            storage_dtype=self.kv_storage_dtype,
+            scale_metadata=scale_metadata,
         )
         return position_tensor, append_spans, decode_spans
 
@@ -1649,8 +1753,11 @@ class Qwen35ParoResidentSession:
         *,
         start: int = 0,
         total_tokens: int | None = None,
+        storage_dtype: str | DType | None = None,
+        scale_metadata: KVScaleMetadata | None = None,
     ) -> tuple[KVLiveSpans, KVLiveSpans]:
         total = rows if total_tokens is None else int(total_tokens)
+        storage = getattr(self, "kv_storage_dtype", DType.BF16) if storage_dtype is None else DType.parse(storage_dtype)
         block_table = self._prefill_block_table_rows(rows, start=start)
         positions = self._prefill_rows_tensor(self.prefill_positions, rows, start=start)
         context_counts = Tensor.from_handle(
@@ -1663,19 +1770,36 @@ class Qwen35ParoResidentSession:
             block_table=block_table,
             live_counts=positions,
             max_live_count=total - 1,
-            storage_dtype=DType.BF16,
+            storage_dtype=storage,
             row_positions=positions,
             span_role="prefill",
+            scale_metadata=scale_metadata,
         )
         prefill_spans = KVLiveSpans.paged_uniform(
             block_table=block_table,
             live_counts=context_counts,
             max_live_count=total,
-            storage_dtype=DType.BF16,
+            storage_dtype=storage,
             row_positions=positions,
             span_role="prefill",
+            scale_metadata=scale_metadata,
         )
         return append_spans, prefill_spans
+
+    def _prefill_int8_oracle_cache(self, layer_id: int, *, total_tokens: int) -> tuple[Tensor, Tensor]:
+        """Return temporary BF16 K/V cache used only for INT8 native prefill attention."""
+
+        blocks = max(1, (int(total_tokens) + self.block_size - 1) // self.block_size)
+        shape = (blocks, self.block_size, self.config.num_key_value_heads, self.config.head_dim)
+        # The BF16 oracle cache is needed only while processing the current
+        # full-attention layer. Reuse the same workspace slots across layers so
+        # long-context INT8 prefill does not retain one full BF16 shadow per
+        # layer before _restore_decode_scratch_after_prefill() releases the
+        # prefill workspace.
+        _ = layer_id
+        key = self.prefill_workspace.reserve_tensor("prefill.int8_oracle_key", shape, DType.BF16)
+        value = self.prefill_workspace.reserve_tensor("prefill.int8_oracle_value", shape, DType.BF16)
+        return key, value
 
     def _full_cache_all_slots(self, layer_id: int) -> tuple[Tensor, Tensor]:
         key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
@@ -1684,6 +1808,189 @@ class Qwen35ParoResidentSession:
             Tensor.from_handle(key_buf.ptr, shape, key_cache.dtype, key_cache.device),
             Tensor.from_handle(value_buf.ptr, shape, value_cache.dtype, value_cache.device),
         )
+
+    def owned_buffer_summary(self) -> dict[str, Any]:
+        """Return a compact accounting of session-owned resident buffers."""
+
+        full_layers: list[dict[str, Any]] = []
+        payload_bytes = 0
+        payload_elements = 0
+        scale_bytes = 0
+        scale_elements = 0
+        for layer_id in sorted(self.full_caches):
+            key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
+            key_elements = int(key_buf.nbytes) // key_cache.dtype.itemsize
+            value_elements = int(value_buf.nbytes) // value_cache.dtype.itemsize
+            layer_payload_elements = key_elements + value_elements
+            layer_payload_bytes = int(key_buf.nbytes) + int(value_buf.nbytes)
+            payload_bytes += layer_payload_bytes
+            payload_elements += layer_payload_elements
+            entry: dict[str, Any] = {
+                "layer_id": int(layer_id),
+                "storage_dtype": self.kv_storage_dtype.value,
+                "payload_dtype": key_cache.dtype.value,
+                "key_shape": list(key_cache.shape),
+                "value_shape": list(value_cache.shape),
+                "key_full_shape": list(getattr(self.batch_layout, "full_kv_shape", key_cache.shape)),
+                "value_full_shape": list(getattr(self.batch_layout, "full_kv_shape", value_cache.shape)),
+                "key_elements": key_elements,
+                "value_elements": value_elements,
+                "payload_elements": layer_payload_elements,
+                "key_buffer_bytes": int(key_buf.nbytes),
+                "value_buffer_bytes": int(value_buf.nbytes),
+                "payload_bytes": layer_payload_bytes,
+                "payload_bytes_per_element": (layer_payload_bytes / layer_payload_elements) if layer_payload_elements else None,
+                "scale_metadata": None,
+            }
+            scales = self.full_cache_scales.get(layer_id)
+            if scales is not None:
+                k_scale, v_scale, k_scale_buf, v_scale_buf = scales
+                k_scale_elements = int(k_scale_buf.nbytes) // k_scale.dtype.itemsize
+                v_scale_elements = int(v_scale_buf.nbytes) // v_scale.dtype.itemsize
+                layer_scale_elements = k_scale_elements + v_scale_elements
+                layer_scale_bytes = int(k_scale_buf.nbytes) + int(v_scale_buf.nbytes)
+                scale_bytes += layer_scale_bytes
+                scale_elements += layer_scale_elements
+                metadata = self.full_cache_scale_metadata[layer_id]
+                entry["scale_metadata"] = {
+                    "granularity": metadata.granularity,
+                    "scale_dtype": metadata.scale_dtype.value,
+                    "k_scale_shape": list(k_scale.shape),
+                    "v_scale_shape": list(v_scale.shape),
+                    "k_scale_full_shape": list(getattr(self.batch_layout, "flat_full_kv_scale_shape", k_scale.shape)),
+                    "v_scale_full_shape": list(getattr(self.batch_layout, "flat_full_kv_scale_shape", v_scale.shape)),
+                    "k_scale_elements": k_scale_elements,
+                    "v_scale_elements": v_scale_elements,
+                    "scale_elements": layer_scale_elements,
+                    "k_scale_buffer_bytes": int(k_scale_buf.nbytes),
+                    "v_scale_buffer_bytes": int(v_scale_buf.nbytes),
+                    "scale_bytes": layer_scale_bytes,
+                    "scale_bytes_per_element": (layer_scale_bytes / layer_scale_elements) if layer_scale_elements else None,
+                }
+            full_layers.append(entry)
+        buffer_bytes = sum(int(buffer.nbytes) for buffer in getattr(self, "buffers", ()))
+        allocation_bytes = sum(int(allocation.buffer.nbytes) for allocation in getattr(self, "allocations", ()))
+        return {
+            "kv_storage_dtype": self.kv_storage_dtype.value,
+            "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
+            "kv_scale_granularity": self.kv_scale_granularity if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
+            "full_attention_layer_count": len(full_layers),
+            "full_attention_layers": full_layers,
+            "full_attention_kv_payload_bytes": payload_bytes,
+            "full_attention_kv_payload_elements": payload_elements,
+            "full_attention_kv_payload_bytes_per_element": (payload_bytes / payload_elements) if payload_elements else None,
+            "full_attention_kv_scale_bytes": scale_bytes,
+            "full_attention_kv_scale_elements": scale_elements,
+            "full_attention_kv_total_bytes": payload_bytes + scale_bytes,
+            "buffer_bytes": buffer_bytes,
+            "allocation_bytes": allocation_bytes,
+            "owned_direct_bytes": buffer_bytes + allocation_bytes,
+        }
+
+    def kv_memory_audit(self) -> dict[str, Any]:
+        """Audit retained KV storage and flag BF16 shadows for INT8 sessions."""
+
+        summary = self.owned_buffer_summary()
+        storage_dtype = DType.parse(summary["kv_storage_dtype"])
+        requires_int8 = storage_dtype == DType.INT8_PER_TOKEN_HEAD
+        retained_layers = list(summary.get("full_attention_layers", ()))
+        persistent_bf16_layers: list[int] = []
+        missing_scale_layers: list[int] = []
+        payload_dtype_mismatch_layers: list[int] = []
+        payload_element_size_mismatch_layers: list[int] = []
+        violations: list[str] = []
+        for layer in retained_layers:
+            layer_id = int(layer.get("layer_id", -1))
+            payload_dtype = str(layer.get("payload_dtype"))
+            storage_value = str(layer.get("storage_dtype"))
+            bytes_per_element = layer.get("payload_bytes_per_element")
+            if requires_int8:
+                if storage_value != DType.INT8_PER_TOKEN_HEAD.value or payload_dtype == DType.BF16.value:
+                    persistent_bf16_layers.append(layer_id)
+                if payload_dtype != DType.INT8.value:
+                    payload_dtype_mismatch_layers.append(layer_id)
+                if bytes_per_element is None or abs(float(bytes_per_element) - 1.0) > 1.0e-6:
+                    payload_element_size_mismatch_layers.append(layer_id)
+                metadata = layer.get("scale_metadata")
+                if not metadata or int(metadata.get("scale_bytes", 0)) <= 0:
+                    missing_scale_layers.append(layer_id)
+        bf16_shadow_candidates = self._bf16_full_cache_shadow_candidates() if requires_int8 else []
+        if persistent_bf16_layers:
+            violations.append(f"INT8 retained KV has BF16 payload/storage layers: {persistent_bf16_layers}")
+        if payload_dtype_mismatch_layers:
+            violations.append(f"INT8 retained KV payload dtype mismatch layers: {payload_dtype_mismatch_layers}")
+        if payload_element_size_mismatch_layers:
+            violations.append(f"INT8 retained KV payload is not 1 byte/element for layers: {payload_element_size_mismatch_layers}")
+        if missing_scale_layers:
+            violations.append(f"INT8 retained KV missing scale metadata layers: {missing_scale_layers}")
+        if bf16_shadow_candidates:
+            names = [f"{item['workspace']}:{item['name']}" for item in bf16_shadow_candidates]
+            violations.append(f"persistent BF16 full-cache shadow tensors after prefill: {names}")
+        return {
+            "required": bool(requires_int8),
+            "passed": not violations,
+            "kv_storage_dtype": storage_dtype.value,
+            "retained_kv_buffers": retained_layers,
+            "retained_kv_payload_bytes": int(summary.get("full_attention_kv_payload_bytes", 0)),
+            "retained_kv_payload_elements": int(summary.get("full_attention_kv_payload_elements", 0)),
+            "retained_kv_payload_bytes_per_element": summary.get("full_attention_kv_payload_bytes_per_element"),
+            "retained_kv_scale_bytes": int(summary.get("full_attention_kv_scale_bytes", 0)),
+            "retained_kv_scale_elements": int(summary.get("full_attention_kv_scale_elements", 0)),
+            "retained_kv_total_bytes": int(summary.get("full_attention_kv_total_bytes", 0)),
+            "persistent_bf16_kv_layers": persistent_bf16_layers,
+            "missing_int8_scale_layers": missing_scale_layers,
+            "payload_dtype_mismatch_layers": payload_dtype_mismatch_layers,
+            "payload_element_size_mismatch_layers": payload_element_size_mismatch_layers,
+            "bf16_shadow_candidates": bf16_shadow_candidates,
+            "persistent_bf16_shadow_exists": bool(persistent_bf16_layers or bf16_shadow_candidates),
+            "violations": violations,
+        }
+
+    def _bf16_full_cache_shadow_candidates(self) -> list[dict[str, Any]]:
+        full_cache_shapes = {
+            tuple(getattr(self.batch_layout, "slot0_full_kv_shape", ())),
+            tuple(getattr(self.batch_layout, "full_kv_shape", ())),
+        }
+        full_cache_shapes.discard(())
+        candidates: list[dict[str, Any]] = []
+        seen_workspaces: set[int] = set()
+
+        def visit_workspace(label: str, workspace: Any) -> None:
+            if workspace is None or id(workspace) in seen_workspaces:
+                return
+            seen_workspaces.add(id(workspace))
+            for name in getattr(workspace, "names", ()):  # RuntimeWorkspace.names is a tuple; fakes may expose any iterable.
+                try:
+                    allocation = workspace.allocation(name)
+                except Exception:
+                    continue
+                tensor = getattr(allocation, "tensor", None)
+                buffer = getattr(allocation, "buffer", None)
+                if tensor is None or DType.parse(tensor.dtype) != DType.BF16:
+                    continue
+                reasons: list[str] = []
+                if "int8_oracle" in str(name):
+                    reasons.append("int8_prefill_oracle")
+                if tuple(tensor.shape) in full_cache_shapes:
+                    reasons.append("full_cache_shape")
+                if reasons:
+                    candidates.append(
+                        {
+                            "workspace": label,
+                            "name": str(name),
+                            "dtype": tensor.dtype.value,
+                            "shape": list(tensor.shape),
+                            "bytes": int(getattr(buffer, "nbytes", tensor.numel * tensor.dtype.itemsize)),
+                            "reasons": reasons,
+                        }
+                    )
+
+        visit_workspace("prefill_workspace", getattr(self, "prefill_workspace", None))
+        scratch_state = getattr(self, "_prefill_scratch_state", None)
+        visit_workspace("prefill_scratch_state.workspace", getattr(scratch_state, "workspace", None))
+        for layer_id, state in enumerate(getattr(self, "states", ())):
+            visit_workspace(f"state[{layer_id}].workspace", getattr(state, "workspace", None))
+        return candidates
 
     def _prefill_single_cu_seqlens(self, tokens: int) -> Tensor:
         arr = np.asarray([0, int(tokens)], dtype=np.int32)
@@ -1738,6 +2045,15 @@ class Qwen35ParoResidentSession:
     def _prefill_use_aotriton_attention(self, tokens: int) -> bool:
         threshold = int(self.prefill_config.attn_aotriton_min_tokens)
         return threshold > 0 and int(tokens) >= threshold
+
+    def _prefill_use_aotriton_attention_resolved(self, tokens: int) -> bool:
+        if not self._prefill_use_aotriton_attention(tokens):
+            return False
+        # INT8-retained sessions still build a temporary BF16 oracle K/V cache
+        # during native prefill, so the BF16 AOTriton attention path is valid
+        # and avoids the shared-memory-limited native causal prefill kernel at
+        # long contexts. The BF16 oracle workspace is released before decode.
+        return self.kv_storage_dtype in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}
 
     def _materialize_packed_prefill_metadata(self, slab) -> Qwen35ParoPackedPrefillMetadata:
         if slab.rows > self.prefill_capacity_rows:
@@ -1890,9 +2206,25 @@ class Qwen35ParoResidentSession:
         workspace = getattr(self, "prefill_workspace", None)
         if workspace is not None:
             workspace.free()
+        prefill_state = getattr(self, "_prefill_scratch_state", None)
+        if prefill_state is not None:
+            prefill_state._rotate_fuse_ready.clear()
         self.prefill_linear_scratch = None
         self.prefill_full_scratch = None
         self.prefill_moe_scratch = None
+
+    def _release_decode_scratch_for_prefill(self) -> None:
+        """Free token-1 decode scratch before allocating bulk prefill workspaces."""
+
+        for state in getattr(self, "states", ()):
+            state.workspace.free()
+            state._rotate_fuse_ready.clear()
+        for name in ("linear_scratch", "full_scratch", "moe_scratch"):
+            scratch = getattr(self, name, None)
+            if scratch is None:
+                setattr(self, name, {})
+            else:
+                scratch.clear()
 
     def _ensure_linear_prefill_scratch(self, *, tokens: int) -> Qwen35ParoLinearAttentionScratch:
         scratch = getattr(self, "prefill_linear_scratch", None)
@@ -1905,15 +2237,22 @@ class Qwen35ParoResidentSession:
         self.prefill_linear_scratch = scratch
         return scratch
 
-    def _ensure_full_prefill_scratch(self, *, tokens: int) -> Qwen35ParoAttentionScratch:
+    def _ensure_full_prefill_scratch(
+        self,
+        *,
+        tokens: int,
+        aotriton_attention: bool = False,
+    ) -> Qwen35ParoAttentionScratch:
+        query_dtype = DType.BF16 if aotriton_attention else DType.FP32
         scratch = getattr(self, "prefill_full_scratch", None)
-        if scratch is not None and scratch.attn_input.shape[0] >= tokens:
+        if scratch is not None and scratch.attn_input.shape[0] >= tokens and scratch.query.dtype == query_dtype:
             return scratch
         scratch = self._prefill_scratch_owner().reserve_full_attention_scratch(
             tokens=tokens,
             num_splits=1,
             activation_dtype=DType.FP16,
             gated_dtype=DType.FP16,
+            query_dtype=query_dtype,
         )
         self.prefill_full_scratch = scratch
         return scratch
@@ -1966,11 +2305,14 @@ class Qwen35ParoResidentSession:
         return scratch
 
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
-        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
-        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
-        use_aotriton_attention = self._prefill_use_aotriton_attention(tokens)
+        hidden = self._prefill_hidden_view_for_rows(tokens)
+        use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(tokens)
+        previous_layer_type: str | None = None
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
+            if previous_layer_type is not None and layer_type != previous_layer_type:
+                self._release_prefill_workspace()
+            previous_layer_type = layer_type
             if layer_type == "linear_attention":
                 conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
                 chunk_size = self._linear_prefill_layer_chunk_size(tokens)
@@ -1994,25 +2336,47 @@ class Qwen35ParoResidentSession:
                         stream=stream,
                     )
                     self.runtime.memcpy_async(
-                        next_hidden.ptr + start * self.hidden_nbytes,
+                        hidden_chunk.ptr,
                         out.ptr,
                         rows * self.hidden_nbytes,
                         HipMemcpyKind.DEVICE_TO_DEVICE,
                         stream,
                     )
             elif layer_type == "full_attention":
-                key_cache, value_cache = self._slot_full_cache(layer_id, 0)
+                retained_key_cache, retained_value_cache = self._slot_full_cache(layer_id, 0)
+                int8_retained = self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+                if int8_retained:
+                    key_cache, value_cache = self._prefill_int8_oracle_cache(layer_id, total_tokens=tokens)
+                else:
+                    key_cache, value_cache = retained_key_cache, retained_value_cache
                 chunk_size = self._full_attention_prefill_layer_chunk_size(tokens)
                 for start, end in self._chunk_ranges(tokens, chunk_size, min_chunk_size=2):
                     rows = end - start
                     hidden_chunk = self._prefill_row_matrix_view(hidden, start, rows)
-                    append_spans, prefill_spans = self._prefill_full_attention_spans(rows, start=start, total_tokens=tokens)
+                    append_spans, prefill_spans = self._prefill_full_attention_spans(
+                        rows,
+                        start=start,
+                        total_tokens=tokens,
+                        storage_dtype=DType.BF16,
+                    )
+                    retained_append_spans = None
+                    if int8_retained:
+                        retained_append_spans, _ = self._prefill_full_attention_spans(
+                            rows,
+                            start=start,
+                            total_tokens=tokens,
+                            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+                            scale_metadata=self._slot_full_scale_metadata(layer_id, 0),
+                        )
                     positions = self._prefill_rows_tensor(self.prefill_positions, rows, start=start)
                     if use_aotriton_attention:
                         cu_seqlens_q, cu_seqlens_k = self._prefill_single_cu_seqlens_pair(rows, end)
                     else:
                         cu_seqlens_q = cu_seqlens_k = None
-                    attention_scratch = self._ensure_full_prefill_scratch(tokens=rows)
+                    attention_scratch = self._ensure_full_prefill_scratch(
+                        tokens=rows,
+                        aotriton_attention=use_aotriton_attention,
+                    )
                     moe_scratch = self._ensure_moe_prefill_scratch(layer_id, tokens=rows)
                     out = state.run_full_attention_moe_prefill_layer_fp16(
                         hidden_chunk,
@@ -2030,13 +2394,16 @@ class Qwen35ParoResidentSession:
                         cu_seqlens_k=cu_seqlens_k,
                         aotriton_attention=use_aotriton_attention,
                         aotriton_kv_rows=end,
+                        retained_key_cache=retained_key_cache if int8_retained else None,
+                        retained_value_cache=retained_value_cache if int8_retained else None,
+                        retained_append_spans=retained_append_spans,
                         tokens=rows,
                         block_size=self.block_size,
                         library=self.libraries,
                         stream=stream,
                     )
                     self.runtime.memcpy_async(
-                        next_hidden.ptr + start * self.hidden_nbytes,
+                        hidden_chunk.ptr,
                         out.ptr,
                         rows * self.hidden_nbytes,
                         HipMemcpyKind.DEVICE_TO_DEVICE,
@@ -2044,7 +2411,6 @@ class Qwen35ParoResidentSession:
                     )
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
-            hidden, next_hidden = next_hidden, hidden
         return hidden
 
     def _run_native_prefill_packed_layers(
@@ -2055,8 +2421,7 @@ class Qwen35ParoResidentSession:
         stream: int = 0,
     ) -> Tensor:
         rows = int(slab.rows)
-        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
-        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        hidden = self._prefill_hidden_view_for_rows(rows)
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
@@ -2102,13 +2467,11 @@ class Qwen35ParoResidentSession:
                 )
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
-            self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
-            hidden, next_hidden = next_hidden, hidden
+            self.runtime.memcpy_async(hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
         return hidden
 
     def _run_linear_prefill_layers(self, *, tokens: int, layer_limit: int | None = None, stream: int = 0) -> Tensor:
-        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
-        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
+        hidden = self._prefill_hidden_view_for_rows(tokens)
         limit = len(self.states) if layer_limit is None else int(layer_limit)
         if limit < 0 or limit > len(self.states):
             raise ValueError("layer_limit outside resident state range")
@@ -2136,8 +2499,7 @@ class Qwen35ParoResidentSession:
                 library=self.libraries,
                 stream=stream,
             )
-            self.runtime.memcpy_async(next_hidden.ptr, out.ptr, tokens * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
-            hidden, next_hidden = next_hidden, hidden
+            self.runtime.memcpy_async(hidden.ptr, out.ptr, tokens * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
         return hidden
 
     def _prefill_row_hidden_view(self, tensor: Tensor, row: int) -> Tensor:
@@ -2169,7 +2531,6 @@ class Qwen35ParoResidentSession:
             self._set_position(position, stream=stream)
             hidden = self._prefill_row_hidden_view(hidden_rows, position)
             next_hidden = self.next_hidden
-            position_tensor, append_spans, decode_spans = self._slot_spans(0)
             for layer_id in range(start_layer, len(self.states)):
                 state = self.states[layer_id]
                 layer_type = self.config.layer_types[layer_id]
@@ -2186,6 +2547,7 @@ class Qwen35ParoResidentSession:
                     )
                 elif layer_type == "full_attention":
                     key_cache, value_cache = self._slot_full_cache(layer_id, 0)
+                    position_tensor, append_spans, decode_spans = self._slot_full_spans(layer_id, 0)
                     num_splits = max(1, (position + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
                     out = state.run_full_attention_moe_c1_layer_fp16(
                         hidden,
@@ -2215,6 +2577,7 @@ class Qwen35ParoResidentSession:
 
     def _restore_decode_scratch_after_prefill(self) -> None:
         self._release_prefill_workspace()
+        self._release_prefill_hidden_buffer()
         for layer_id, state in enumerate(self.states):
             self.moe_scratch[layer_id] = self._reserve_mlp_scratch(state, tokens=1)
             if self.config.layer_types[layer_id] == "linear_attention":
@@ -2242,7 +2605,6 @@ class Qwen35ParoResidentSession:
         else:
             hidden = self._slot_hidden_view(self.batch_hidden, slot)
             next_hidden = self._slot_hidden_view(self.batch_next_hidden, slot)
-        position_tensor, append_spans, decode_spans = self._slot_spans(slot)
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
@@ -2258,6 +2620,7 @@ class Qwen35ParoResidentSession:
                 )
             elif layer_type == "full_attention":
                 key_cache, value_cache = self._slot_full_cache(layer_id, slot)
+                position_tensor, append_spans, decode_spans = self._slot_full_spans(layer_id, slot)
                 num_splits = num_splits_override or max(1, (position + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
                 out = state.run_full_attention_moe_c1_layer_fp16(
                     hidden,
@@ -2407,14 +2770,65 @@ class Qwen35ParoResidentSession:
         self.allocations.extend((self.lm_head_weight, self.lm_head_scale))
         self._emit("load_lm_head_done", vocab_size=self.vocab_size, mode="w8a16")
 
+    def _set_empty_prefill_hidden_views(self) -> None:
+        empty = Tensor.from_handle(0, (0, self.config.hidden_size), DType.FP16, self.device)
+        self.prefill_hidden = empty
+        # Historical diagnostics accessed ``prefill_next_hidden`` directly. The
+        # retained prefill path is now single-buffer/in-place, so this is only a
+        # compatibility alias unless an older diagnostic script allocates its own
+        # tensor on a manually-constructed session.
+        self.prefill_next_hidden = empty
+
+    def _ensure_prefill_hidden_capacity(self, rows: int) -> Tensor:
+        rows = int(rows)
+        if rows <= 0:
+            raise ValueError("prefill hidden rows must be positive")
+        if rows > self.prefill_capacity_rows:
+            raise ValueError(
+                f"prefill rows {rows} exceed session capacity {self.prefill_capacity_rows}"
+            )
+        nbytes = rows * self.hidden_nbytes
+        current = getattr(self, "prefill_hidden_buffer", None)
+        current_rows = int(getattr(self, "prefill_hidden_capacity_rows", 0) or 0)
+        if current is None or current.nbytes < nbytes:
+            if current is not None:
+                free(current, runtime=self.runtime)
+            current = malloc(nbytes, runtime=self.runtime)
+            self.prefill_hidden_buffer = current
+            self.prefill_hidden_capacity_rows = rows
+            current_rows = rows
+        self.prefill_hidden = Tensor.from_handle(
+            current.ptr,
+            (current_rows, self.config.hidden_size),
+            DType.FP16,
+            self.device,
+        )
+        self.prefill_next_hidden = self.prefill_hidden
+        return Tensor.from_handle(current.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+
+    def _prefill_hidden_view_for_rows(self, rows: int) -> Tensor:
+        rows = int(rows)
+        hidden = getattr(self, "prefill_hidden", None)
+        if hidden is None or hidden.ptr == 0 or int(hidden.shape[0]) < rows:
+            return self._ensure_prefill_hidden_capacity(rows)
+        device = getattr(self, "device", hidden.device)
+        return Tensor.from_handle(hidden.ptr, (rows, self.config.hidden_size), DType.FP16, device)
+
+    def _release_prefill_hidden_buffer(self) -> None:
+        current = getattr(self, "prefill_hidden_buffer", None)
+        if current is None:
+            return
+        free(current, runtime=self.runtime)
+        self.prefill_hidden_buffer = None
+        self.prefill_hidden_capacity_rows = 0
+        self._set_empty_prefill_hidden_views()
+
     def _allocate_common_buffers(self) -> None:
         hidden_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         next_hidden_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         norm_out_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         norm_out_bf16_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
-        prefill_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
-        prefill_next_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
-        self.buffers.extend((hidden_buf, next_hidden_buf, norm_out_buf, norm_out_bf16_buf, prefill_hidden_buf, prefill_next_hidden_buf))
+        self.buffers.extend((hidden_buf, next_hidden_buf, norm_out_buf, norm_out_bf16_buf))
         self.batch_hidden = Tensor.from_handle(hidden_buf.ptr, self.batch_layout.hidden_shape, DType.FP16, self.device)
         self.batch_next_hidden = Tensor.from_handle(next_hidden_buf.ptr, self.batch_layout.hidden_shape, DType.FP16, self.device)
         self.batch_norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.hidden_shape, DType.FP16, self.device)
@@ -2423,18 +2837,7 @@ class Qwen35ParoResidentSession:
         self.next_hidden = Tensor.from_handle(next_hidden_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.FP16, self.device)
         self.norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.FP16, self.device)
         self.norm_out_bf16 = Tensor.from_handle(norm_out_bf16_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
-        self.prefill_hidden = Tensor.from_handle(
-            prefill_hidden_buf.ptr,
-            (self.prefill_capacity_rows, self.config.hidden_size),
-            DType.FP16,
-            self.device,
-        )
-        self.prefill_next_hidden = Tensor.from_handle(
-            prefill_next_hidden_buf.ptr,
-            (self.prefill_capacity_rows, self.config.hidden_size),
-            DType.FP16,
-            self.device,
-        )
+        self._set_empty_prefill_hidden_views()
 
         block_table_arr = np.arange(self.blocks, dtype=np.int32)
         prefill_block_table_arr = np.tile(block_table_arr, (self.prefill_capacity_rows, 1))
@@ -2524,6 +2927,58 @@ class Qwen35ParoResidentSession:
         self.lm_out_value = malloc(DType.FP32.itemsize, runtime=self.runtime)
         self.buffers.extend((self.lm_logits, self.lm_block_values, self.lm_block_indices, self.lm_out_index, self.lm_out_value))
 
+    @staticmethod
+    def _zero_array_dtype(dtype: DType):
+        if dtype == DType.BF16:
+            return np.uint16
+        if dtype == DType.INT8:
+            return np.int8
+        if dtype == DType.FP16:
+            return np.float16
+        if dtype == DType.FP32:
+            return np.float32
+        raise ValueError(f"cannot allocate zeroed resident buffer for dtype {dtype.value!r}")
+
+    def _allocate_full_attention_cache(self, layer_id: int) -> None:
+        payload_dtype = DType.INT8 if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else DType.BF16
+        key_zero = np.zeros(self.batch_layout.full_kv_shape, dtype=self._zero_array_dtype(payload_dtype))
+        value_zero = np.zeros_like(key_zero)
+        key_buf = self._dev(key_zero)
+        value_buf = self._dev(value_zero)
+        key_cache = Tensor.from_handle(key_buf.ptr, self.batch_layout.slot0_full_kv_shape, payload_dtype, self.device)
+        value_cache = Tensor.from_handle(value_buf.ptr, self.batch_layout.slot0_full_kv_shape, payload_dtype, self.device)
+        self.full_caches[layer_id] = (key_cache, value_cache, key_buf, value_buf)
+
+        if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+            scale_zero = np.zeros(
+                self.batch_layout.flat_full_kv_scale_shape,
+                dtype=self._zero_array_dtype(self.kv_scale_dtype),
+            )
+            k_scale_buf = self._dev(scale_zero)
+            v_scale_buf = self._dev(np.zeros_like(scale_zero))
+            k_scale = Tensor.from_handle(
+                k_scale_buf.ptr,
+                self.batch_layout.slot0_full_kv_scale_shape,
+                self.kv_scale_dtype,
+                self.device,
+            )
+            v_scale = Tensor.from_handle(
+                v_scale_buf.ptr,
+                self.batch_layout.slot0_full_kv_scale_shape,
+                self.kv_scale_dtype,
+                self.device,
+            )
+            self.full_cache_scales[layer_id] = (k_scale, v_scale, k_scale_buf, v_scale_buf)
+            self.full_cache_scale_metadata[layer_id] = KVScaleMetadata(
+                k_scale=k_scale,
+                v_scale=v_scale,
+                scale_dtype=self.kv_scale_dtype,
+                granularity=self.kv_scale_granularity,
+            )
+        else:
+            self.full_cache_scales.pop(layer_id, None)
+            self.full_cache_scale_metadata.pop(layer_id, None)
+
     def _materialize_layers(self) -> None:
         self.states = self.runner._materialize_resident_states(self.layer_limit, emit=self._emit)
         qkv_width = (
@@ -2568,13 +3023,7 @@ class Qwen35ParoResidentSession:
                 self.linear_states[layer_id] = (conv_state, recurrent_state, conv_buf, recurrent_buf, conv_zero, recurrent_zero)
                 self.linear_scratch[layer_id] = state.reserve_linear_attention_scratch(tokens=1, activation_dtype=DType.FP16)
             elif layer_type == "full_attention":
-                key_zero = np.zeros(self.batch_layout.full_kv_shape, dtype=np.uint16)
-                value_zero = np.zeros_like(key_zero)
-                key_buf = self._dev(key_zero)
-                value_buf = self._dev(value_zero)
-                key_cache = Tensor.from_handle(key_buf.ptr, self.batch_layout.slot0_full_kv_shape, DType.BF16, self.device)
-                value_cache = Tensor.from_handle(value_buf.ptr, self.batch_layout.slot0_full_kv_shape, DType.BF16, self.device)
-                self.full_caches[layer_id] = (key_cache, value_cache, key_buf, value_buf)
+                self._allocate_full_attention_cache(layer_id)
                 self.full_scratch[layer_id] = state.reserve_full_attention_scratch(
                     tokens=1,
                     num_splits=self.max_splits,

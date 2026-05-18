@@ -27,7 +27,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.generation import GeneratedToken, ResidentBatchScheduler
+from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
@@ -153,6 +155,7 @@ def _run_scheduler_serial_bench(
     decode_tokens: int,
     compiler_version: str | None,
     require_cached_build: bool,
+    kv_policy: ResolvedKVPolicy,
 ) -> dict[str, Any]:
     batch_size = len(prompts)
     prompt_lengths = {len(prompt) for prompt in prompts}
@@ -187,6 +190,9 @@ def _run_scheduler_serial_bench(
         max_batch_size=batch_size,
         compiler_version=compiler_version,
         require_cached_build=require_cached_build,
+        kv_policy=kv_policy.create_policy(),
+        kv_scale_dtype=kv_policy.scale_dtype,
+        kv_scale_granularity=kv_policy.scale_granularity,
     ) as session:
         load_seconds = time.perf_counter() - load_start
         batch_execution = session.batch_execution_metadata(scheduler_owned=True).to_json_dict()
@@ -298,6 +304,7 @@ def _decode_scheduler_step(
 
 
 def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: dict[str, Any], prompt_lengths: list[int]) -> dict[str, Any]:
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     aggregate_prefill_tokens = args.batch_size * args.prompt_length
     aggregate_decode_tokens = args.batch_size * args.decode_tokens
     prefill_tok_s = aggregate_prefill_tokens / bench["prefill_seconds"] if bench["prefill_seconds"] > 0 else None
@@ -335,7 +342,8 @@ def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: 
             "concurrency": args.batch_size,
             "prompt_lengths": prompt_lengths,
             "max_layers": args.max_layers,
-            "kv_policy": "dense_paged",
+            "kv_policy": kv_policy_json(kv_policy),
+            "kv_storage_dtype": kv_policy.storage_dtype.value,
             "scheduler_path": "scheduler_serial_slot_bridge",
             "native_compact_prefill": False,
             "native_caware_decode": False,
@@ -379,7 +387,8 @@ def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: 
         "memory": {
             "max_batch_size": args.batch_size,
             "max_sequence_length": args.prompt_length + args.warmup_decode_tokens + args.decode_tokens + 1,
-            "kv_policy": "dense_paged",
+            "kv_policy": kv_policy_json(kv_policy),
+            "kv_storage_dtype": kv_policy.storage_dtype.value,
             "allocator_reserved_peak_bytes": None,
         },
         "profiler": {"status": "not_captured", "notes": "No kernel port or retained performance claim in this diagnostic iteration."},
@@ -405,6 +414,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-layers", type=int, default=40)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    add_kv_policy_args(parser, help_prefix="Resident KV storage for scheduler serial benchmark")
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
     args = parser.parse_args(argv)
 
@@ -419,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
 
     prompts = _load_prompt_slices(Path(args.fixture), prompt_length=args.prompt_length, batch_size=args.batch_size)
     runner = Qwen35ParoNextTokenRunner(Path(args.model))
+    kv_policy = resolve_args_kv_policy(args, block_size=256)
     bench = _run_scheduler_serial_bench(
         runner,
         prompts,
@@ -427,6 +438,7 @@ def main(argv: list[str] | None = None) -> int:
         decode_tokens=args.decode_tokens,
         compiler_version=_compiler_version(args.compiler_version_file),
         require_cached_build=args.require_cached_build,
+        kv_policy=kv_policy,
     )
     payload = _build_payload(args, argv, bench, [len(prompt) for prompt in prompts])
     text = json.dumps(payload, indent=2, ensure_ascii=False)

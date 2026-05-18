@@ -70,13 +70,81 @@ Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, masked `atten
 | `linear_attn_conv_decode` variants `f32`, `bf16`, `fp16`; `linear_attn_conv_prefill` variants `f32`, `f32_segments` | `w4_paro` linear-attention decode/prefill | `hipengine/kernels/hip_gfx1100/linear_attn/conv.hip` | `qwen35_linear_attn_conv_decode_f32(...)`, `qwen35_linear_attn_conv_decode_bf16(...)`, `qwen35_linear_attn_conv_decode_fp16(...)`, `qwen35_linear_attn_conv_prefill_f32(...)`, `qwen35_linear_attn_conv_prefill_segments_f32(...)` | Decode: `python3 scripts/smoke.py --mode qwen35-linear-attn-conv-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → `f32_out_max_abs=7.45e-09`, `bf16_out_max_abs=7.45e-09`, `fp16_out_max_abs=7.45e-09`, state max abs `0`; `rocprofv3` shows FP16 `qwen35_linear_attn_conv_decode_lowp_kernel<_Float16>` (`DurationNs=5680`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`) on W7900. Prefill: `qwen35-linear-attn-prefill-hip` → `conv_out_max_abs=1.49e-08`, `conv_state_max_abs=0`. Segment prefill: `qwen35-linear-attn-segments-hip` → `segment_conv_out_max_abs=1.86e-09`, `segment_conv_state_max_abs=0`; `rocprofv3` shows `qwen35_linear_attn_conv_prefill_segments_kernel` (`DurationNs=5800`) and segment state kernel (`2200`) on W7900. |
 | `gdn_recurrent_rmsnorm_gate` variants `bf16_lowp`, `fp16_lowp`; `linear_attn_prefill_prepare` variants `f32_bf16`, `f32_fp16`; `gdn_prefill_recurrent` variants `f32`, `f32_k2`, `f32_k2_segments`; `gdn_prefill_rmsnorm_gate` variants `bf16`, `fp16`; `gdn_prefill_rmsnorm_gate_rotate` variant `fp16` | `w4_paro` linear-attention decode/prefill | `hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip` | `qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(...)`, `qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16(...)`, `qwen35_linear_attn_prefill_prepare_f32_bf16(...)`, `qwen35_linear_attn_prefill_prepare_f32_fp16(...)`, `qwen35_gdn_prefill_recurrent*_f32(...)`, `qwen35_gdn_prefill_recurrent_segments_k2_f32(...)`, `qwen35_gdn_prefill_rmsnorm_gate_{bf16,fp16}(...)`, `qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16(...)` | Decode: `python3 scripts/smoke.py --mode qwen35-linear-attn-gdn-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → BF16/FP16 `out_max_abs=2.98e-08`, `state_max_abs=1.49e-08`; `rocprofv3` shows FP16 `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16>` (`DurationNs=9920`, `VGPR_Count=56`, `Scratch_Size=0`, `LDS_Block_Size=1616`). Prefill: `qwen35-linear-attn-prefill-hip` → BF16 `gated_mismatch=0`, FP16 `fp16_gated_mismatch=0`, fused FP16 gate+rotate `fused_rotate_mismatch=0`, `fp16_prepare_max_abs=5.96e-08`; `qwen35-linear-attn-segments-hip` → `segment_gdn_out_max_abs=1.86e-09`, `segment_gdn_state_max_abs=9.31e-10`; `rocprofv3` shows `qwen35_gdn_prefill_recurrent_k2_segments_kernel` (`DurationNs=5480`) on W7900; all-layer 512 prefill after the fixed two-wave k2 reduction specialization shows `qwen35_gdn_prefill_recurrent_k2_kernel` ran 30 times (`40.993 ms` total, avg `1366.4 us`) on W7900. |
 | `paged_kv_write` variants `mixed_bf16_spans`, `mixed_fp16_spans`, `mixed_bf16_batch_spans`, `mixed_fp16_batch_spans`, `mixed_fp16_prompt_spans`, `f32_spans` | `w4_paro` full-attention KV append, BF16 cache | `hipengine/kernels/hip_gfx1100/attention/paged_kv_write.hip` | `qwen35_write_paged_kv_mixed_value_{bf16,fp16}_spans(...)`, `qwen35_write_paged_kv_mixed_value_{bf16,fp16}_batch_spans(...)`, `qwen35_write_paged_kv_mixed_value_fp16_prompt_spans(...)`, `qwen35_write_paged_kv_f32_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-kv-write-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact KV append (`mixed_mismatch=0/0`, `mixed_fp16_mismatch=0/0`, `f32_mismatch=0/0`, `untouched_nonzero=0`); public wrapper accepts `KVLiveSpans`, where fixed-page `base_offsets` carries the parent block table and `live_counts` carries the position tensor; batched smoke validates row-major c>1 append, while `qwen35-paged-attn-prefill-hip` now validates single-request prompt append plus causal prefill attention; `rocprofv3` shows prompt writer `qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<_Float16>` (`DurationNs=12078`) and prefill attention (`DurationNs=26036`) on W7900 |
+| `paged_kv_write` variant `per_token_head_spans` | `int8_per_token_head` full-attention KV append, signed INT8 cache plus separate per-token/per-KV-head K/V scales | `hipengine/kernels/hip_gfx1100/attention/paged_kv_write.hip` | `qwen35_write_paged_kv_int8_per_token_head_spans(...)`, `qwen35_write_paged_kv_int8_per_token_head_{prompt,batch}_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip` → decode c=1 append with FP32/FP16 scale tensors, prompt page-boundary append, and row-major batch append match the NumPy `int8_per_token_head` oracle exactly (`key_mismatch=0`, `value_mismatch=0`, `scale_max_abs=0`, `dequant_max_abs=0`) on W7900; wrapper signatures are torch-free raw pointers and validate `KVLiveSpans.scale_metadata`/scale pointers before loading the HIP library. |
 | `full_attn_decode` variant `bf16_context`; `full_attn_gate_mul` variants `bf16`, `fp16` | `w4_paro` short-context full-attention decode, BF16 dense KV cache, lowp gated output | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_full_attn_decode_context_bf16(...)`, `qwen35_full_attn_gate_mul_bf16(...)`, `qwen35_full_attn_gate_mul_fp16(...)` | `python3 scripts/smoke.py --mode qwen35-full-attn-decode-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → NumPy softmax oracle `max_abs=1.19e-07`, BF16/FP16 gate outputs bit-exact (`gated_bf16_mismatch=0`, `gated_fp16_mismatch=0`); resident Qwen3.5/PARO uses this dense parent kernel for max context <1024 before the paged path; `rocprofv3` shows FP16 `qwen35_full_attn_gate_mul_fp16_kernel` (`DurationNs=1360`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=0`) on W7900 |
 | `paged_attn_decode` variants `bf16_context_spans`, `bf16_context_batch_spans` | `w4_paro` full-attention decode, BF16 KV cache | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_decode_context_bf16_spans(...)`, `qwen35_paged_full_attn_decode_context_bf16_batch_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-decode-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → NumPy softmax oracle `max_abs=2.98e-08`; public wrapper accepts `KVLiveSpans` (`base_offsets` page table, `live_counts` context tensor); c>1 row-major smoke `batched paged kv+attn smoke OK` validates uneven context lengths; `rocprofv3` shows scalar `qwen35_paged_full_attn_decode_context_tensor_kernel` with `DurationNs=7640`, `VGPR_Count=40`, `Scratch_Size=0`, `Workgroup_Size_X=256` on W7900 |
 | `paged_attn_decode` variant `bf16_split_k_spans` | `w4_paro` long-context full-attention decode, BF16 KV cache | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_decode_split_k_bf16_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-split-k-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → NumPy softmax oracle `max_abs=5.96e-08`; public wrapper runs parent split-K context kernel then reduce using caller-provided workspaces; `rocprofv3` shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel` (`DurationNs=17320`, `VGPR_Count=32`, `Scratch_Size=0`) and `qwen35_paged_full_attn_decode_split_k_reduce_kernel` (`DurationNs=6320`, `VGPR_Count=16`, `Scratch_Size=0`) on W7900 |
 | `paged_attn_decode` variant `bf16_split_k_gate_f32_spans` | `w4_paro` long-context full-attention decode + gate, BF16 KV cache, FP32 gate/out | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_decode_split_k_gate_f32_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-gate-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → NumPy softmax+sigmoid oracle `gated_max_abs=4.47e-08`; `rocprofv3` shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel` (`DurationNs=16320`, `VGPR_Count=32`, `Scratch_Size=0`) and `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<float>` (`DurationNs=5000`, `VGPR_Count=16`, `Scratch_Size=0`) on W7900 |
 | `paged_attn_decode` variants `bf16_split_k_gate_bf16_spans`, `bf16_split_k_gate_fp16_spans` | `w4_paro` long-context full-attention decode + gate, BF16 KV cache, BF16/FP16 gate/out | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_decode_split_k_gate_bf16_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gate_fp16_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-gate-bf16-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact BF16 and FP16 outputs (`bf16_mismatch=0`, `fp16_mismatch=0`, max abs `0`); wrappers instantiate the parent gated reduce with `hip_bfloat16` and `_Float16`, not integer casts; `rocprofv3` shows FP16 `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<_Float16>` (`DurationNs=10040`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=24`) on W7900 |
 | `paged_attn_decode` variants `bf16_split_k_warp_spans`, `bf16_split_k_gqa_spans`, `bf16_split_k_gqa_gate_bf16_spans`, `bf16_split_k_gqa_gate_fp16_spans` | `w4_paro` Qwen3.5 GQA-specialized long-context full-attention decode | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_decode_split_k_warp_bf16_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_gate_{bf16,fp16}_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → Qwen3.5 shape `[16,256] / 2 KV`, `ctx=512`, NumPy oracle `warp_max_abs=4.1e-08`, `gqa_max_abs=4.1e-08`, BF16 gated output bit-exact (`gqa_gate_bf16_mismatch=0`); FP16 GQA gated wrapper shares the same `_Float16` reduce instantiated by `qwen35-paged-attn-gate-bf16-hip`. `python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-state-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` drives KV append + GQA gated decode through `Qwen35ParoDecodeState` and is bit-exact (`appended_key_mismatch=0`, `appended_value_mismatch=0`, `gqa_gate_bf16_mismatch=0`); `rocprofv3` shows state-path KV append (`DurationNs=3080`, `Scratch_Size=0`), `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>` (`DurationNs=67560`, `VGPR_Count=80`, `Scratch_Size=0`), and BF16 gated reduce (`DurationNs=2760`, `Scratch_Size=0`) on W7900 |
+| `paged_attn_decode` variants `gqa_splitk_spans`, `gqa_splitk_gate_bf16_spans`, `gqa_splitk_gate_fp16_spans` | `int8_per_token_head` Qwen3.5 grouped-GQA split-K decode, signed INT8 K/V cache with per-token/head scales | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_attn_decode_int8_gqa_splitk_spans(...)`, `qwen35_paged_attn_decode_int8_gqa_splitk_gate_{bf16,fp16}_spans(...)` | `python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --pseudo-vocab-size 32 --require-int8-hip --max-abs-threshold 2e-3 --json /tmp/hipengine-int8-hip-ctx64-520.json` → accepted; INT8 HIP vs CPU oracle max_abs `5.22e-08` at ctx64 and `1.86e-08` at ctx520 with top-1 `1.0`. `python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` validates direct FP32-scale ctx64 decode, unaligned split ctx384 (`chunk_size=128`), and FP16-scale ctx520 page-boundary decode plus FP16/BF16 gated outputs (`max_abs<=2.98e-08`, `gate_fp16_max_abs=1.53e-05`, `gate_bf16_max_abs=1.49e-08`). `rocprofv3` shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float,8,16,2>` (`DurationNs=65200`, `47363`) and `_Float16` scale launches (`88723`, `78883`, `85603` ns) plus reduce/gated reduce kernels on W7900. The GQA producer grid is `(kv_head, split)`, so each KV stream is scanned once while sharing K/V loads across the 8 Q heads in its group. |
 | `full_attn_prefill` variants `qwen35_causal_gqa_gate_fp16`, `qwen35_varlen_causal_gqa_gate_fp16` | `w4_paro` append-then-attend causal GQA prefill, BF16 KV cache, FP16 gate/output | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(...)`, `qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` → tiny paged causal-GQA fixture vs CPU `full_attn_prefill` oracle after prompt KV append, `prefill_gate_fp16_max_abs=0`, `prefill_gate_fp16_mismatch=0`; `python3 scripts/smoke.py --mode qwen35-paged-attn-prefill-varlen-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` → two packed request segments with row-shaped block tables, `varlen_prefill_gate_fp16_max_abs=0`, mismatch `0`; `rocprofv3` shows prompt KV writer (`DurationNs=6880`) and `qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel` (`21520`) on W7900; all-layer 512 prefill after the shared-query cache/vector key-dot update, fixed `block_size=256` address fast path, and split short-row template shows `qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true>` ran 10 times (`26.362 ms` total, avg `2636.2 us`) on W7900. Full single-request fixture gate accepted in `benchmarks/results/2026-05-15-hipengine-qwen35-native-prefill-full-single-request-accepted.json` (`max_kl=0.0168`, top-1 100%), and active multiloop fixture gate remains green (`max_kl=0.03406`, top-1 100%), but no throughput row promoted. |
+
+### K1 dense INT8 KV path evidence (**hipEngine landed, diagnostic/capacity path**)
+
+The K1 path is the dense/uniform `KVLiveSpans` path with
+`storage_dtype="int8_per_token_head"`, FP16 per-token/per-KV-head K/V scales, and
+no persistent BF16 KV shadow. It is registered as storage/quant-keyed kernel
+families rather than backend or quant branches in the engine:
+
+- writer: `paged_kv_write` / `per_token_head_spans`
+- decode: `paged_attn_decode` / `gqa_splitk_spans` and gated BF16/FP16 variants
+- policy: `FixedPagedKVPolicy(..., storage_dtype="int8_per_token_head",
+  scale_dtype="fp16", scale_granularity="per_token_head")`
+
+Correctness gate used for the retained K1 artifacts:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_kv_e2e_fixture_gate.py \
+  tests/test_qwen35_bench_memory_audit.py -q
+python3 scripts/check_fixtures.py
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 \
+  --scale-dtype fp16 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --require-int8-hip --json /tmp/hipengine-int8-accuracy.json
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-int8-kv-e2e-fixture-gate.json
+```
+
+Reference results on W7900/gfx1100, model `Qwen3.5-35B-A3B-PARO`, quant
+`w4_paro`:
+
+- Layer-level INT8 HIP accuracy accepted for contexts 64 and 520. INT8 HIP vs
+  CPU oracle max abs was `5.22e-08` / `1.86e-08`; quantized-vs-BF16 KL was
+  `2.34e-07` / `4.46e-08`; top-1 was `1.0` for both.
+- E2E fixture gate with `--kv-storage int8_per_token_head` accepted:
+  `max_kl=0.015328251530778358`, mean KL `0.001639289025262575`, top-1
+  agreement `1.0`, generated IDs match the BF16 reference and fixture expected
+  IDs.
+- 128K/128 BF16-vs-INT8 diagnostic artifact:
+  [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json).
+  BF16 baseline: `1021.180` prefill / `63.299` decode tok/s, sampled/tracked
+  peak `22.410/23.288 GiB`, retained KV `2.690 GB`. INT8: `1011.064` /
+  `61.275` tok/s, sampled/tracked peak `21.170/24.545 GiB`, retained KV
+  `1.355 GB` (`1.0 B/element` payload plus `10.506 MB` scales), no BF16 shadow.
+  This is a storage/capacity diagnostic, not a speed claim.
+- 128K/256K INT8 AOTriton query-reuse + q3072 artifact:
+  [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-aotriton-query-reuse-diagnostic.json).
+  The 256K run completed and correctness/no-shadow passed at `651.636` prefill /
+  `40.827` decode tok/s with retained KV `2.708 GB`; sampled/tracked peaks are
+  `22.013/23.766 GiB`. The previous persistent full-prompt prefill
+  double-buffering blocker (`2 x [262277,4096] fp16 = 4.297 GB`) is resolved,
+  decode/phase scratch overlap is lower, AOTriton BF16 query input no longer
+  accumulates per full-attention layer, and q3072 chunks keep tracked high-water
+  below the 24GiB-class target. The remaining follow-up is streaming/removing the
+  transient INT8-prefill oracle workspace itself.
+
+Profiler summary from the 128K INT8 selected-region traces:
+
+- Prefill writer: `qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16>`
+  ran `320` calls, avg `54.848 us`, max `69.761 us`, `Scratch_Size=0`.
+- Decode producer: `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<_Float16,8,16,2>`
+  ran `160` calls in the sampled 16-replay trace, avg `621.500 us`, max
+  `641.850 us`, `Scratch_Size=0`; reduce-gate avg `159.271 us`; decode append
+  INT8 writer avg `4.363 us`.
 
 ### gfx1151 HIP backend (**initial port landed**)
 
@@ -229,7 +297,7 @@ The stable source-lineage port set at the current hipEngine catalog baseline is 
 - `attention/full_attn_decode.hip` (2):
   - `qwen35_full_attn_decode_kernel`
   - `qwen35_full_attn_decode_context_tensor_kernel`
-- `attention/paged_attn_decode.hip` (13):
+- `attention/paged_attn_decode.hip` (14):
   - `qwen35_paged_full_attn_decode_kernel`
   - `qwen35_paged_full_attn_decode_context_tensor_kernel`
   - `qwen35_paged_full_attn_decode_8k_context_tensor_kernel`
@@ -239,6 +307,7 @@ The stable source-lineage port set at the current hipEngine catalog baseline is 
   - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel`
   - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel`
   - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel`
+  - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel`
   - `qwen35_paged_full_attn_decode_split_k_int8_kernel`
   - `qwen35_paged_full_attn_decode_split_k_ctx_tensor_int8_kernel`
   - `qwen35_paged_full_attn_decode_split_k_reduce_kernel`
@@ -248,9 +317,9 @@ The stable source-lineage port set at the current hipEngine catalog baseline is 
   - `qwen35_write_paged_kv_position_tensor_kernel`
   - `qwen35_write_paged_kv_mixed_value_kernel`
   - `qwen35_write_paged_kv_mixed_value_position_tensor_kernel`
+  - `qwen35_write_paged_kv_mixed_value_batch_position_tensor_kernel`
   - `qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel`
-  - `qwen35_write_paged_kv_int8_kernel`
-  - `qwen35_write_paged_kv_position_tensor_int8_kernel`
+  - `qwen35_write_paged_kv_int8_per_token_head_kernel`
 - `quant/paro_awq_gemv.hip` stable PARO GEMV/projection subset (7; projection-pair fused variants are called out again below):
   - `gemv_awq_v8_kernel`
   - `gemv_awq_pack8_kernel`

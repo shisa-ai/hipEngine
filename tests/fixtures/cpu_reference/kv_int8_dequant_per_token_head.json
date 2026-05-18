@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "name": "kv_int8_dequant_per_token_head",
+  "backend": "cpu_reference",
+  "layer": "kv_dequant",
+  "quant": "int8_per_token_head",
+  "inputs": {
+    "key_cache": {
+      "dtype": "int8",
+      "data": [[[[2, 2]], [[0, 0]]], [[[2, 0]], [[0, 2]]]]
+    },
+    "value_cache": {
+      "dtype": "int8",
+      "data": [[[[10, 12]], [[0, 0]]], [[[2, 4]], [[6, 8]]]]
+    },
+    "k_scale": {
+      "dtype": "float32",
+      "data": [[[0.5], [0.0]], [[0.5], [0.5]]]
+    },
+    "v_scale": {
+      "dtype": "float32",
+      "data": [[[0.5], [0.0]], [[0.5], [0.5]]]
+    }
+  },
+  "expected": {
+    "dtype": "float32",
+    "data": [[[[[1.0, 1.0]], [[0.0, 0.0]]], [[[1.0, 0.0]], [[0.0, 1.0]]]], [[[[5.0, 6.0]], [[0.0, 0.0]]], [[[1.0, 2.0]], [[3.0, 4.0]]]]]
+  },
+  "tolerances": {"atol": 1e-6, "rtol": 1e-6},
+  "metadata": {
+    "purpose": "INT8 KV dequantization with per-token/per-head K/V scales and an all-zero scale row."
+  }
+}

@@ -7,19 +7,28 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import WorkItem, WorkKind
-from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVTransaction
+from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata, KVTransaction, resolve_kv_policy
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str, device: Device | None = None) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, device or Device("hip", 0))
 
 
+def _scale_metadata(ptr_base: int, *, shape: tuple[int, ...] = (4, 16, 2)) -> KVScaleMetadata:
+    return KVScaleMetadata(
+        k_scale=_tensor(ptr_base, shape, "fp16"),
+        v_scale=_tensor(ptr_base + 0x100, shape, "fp16"),
+    )
+
+
 def _register(policy: FixedPagedKVPolicy, request_id: int, *, ptr_base: int) -> None:
+    scale_metadata = _scale_metadata(ptr_base + 0x200) if policy.storage_dtype.value == "int8_per_token_head" else None
     policy.register(
         request_id,
         block_table=_tensor(ptr_base, (4,), "int32"),
         live_counts=_tensor(ptr_base + 0x100, (1,), "int64"),
         max_live_count=3,
+        scale_metadata=scale_metadata,
     )
 
 
@@ -67,6 +76,32 @@ def test_kv_live_spans_validates_batch_row_metadata() -> None:
         )
 
 
+def test_resolve_kv_policy_records_explicit_and_admission_selection() -> None:
+    default = resolve_kv_policy("auto", block_size=256)
+    assert default.storage_dtype.value == "bf16"
+    assert default.to_json_dict()["int8_explicit"] is False
+    assert default.to_json_dict()["int8_admission_gated"] is False
+    assert default.to_json_dict()["scale_metadata_format"]["present"] is False
+
+    explicit = resolve_kv_policy("int8_per_token_head", scale_dtype="fp32")
+    payload = explicit.to_json_dict()
+    assert payload["resolved_storage_dtype"] == "int8_per_token_head"
+    assert payload["int8_explicit"] is True
+    assert payload["int8_admission_gated"] is False
+    assert payload["scale_metadata_format"] == {
+        "present": True,
+        "scale_dtype": "fp32",
+        "granularity": "per_token_head",
+        "k_scale": "per_token_head",
+        "v_scale": "per_token_head",
+    }
+
+    gated = resolve_kv_policy("auto", admission_gated_int8=True)
+    assert gated.storage_dtype.value == "int8_per_token_head"
+    assert gated.to_json_dict()["int8_explicit"] is False
+    assert gated.to_json_dict()["int8_admission_gated"] is True
+
+
 def test_fixed_paged_policy_c1_spans_and_admission_cap() -> None:
     policy = FixedPagedKVPolicy(block_size=16, storage_dtype="bf16")
     _register(policy, 101, ptr_base=0x1000)
@@ -79,6 +114,36 @@ def test_fixed_paged_policy_c1_spans_and_admission_cap() -> None:
     assert spans.max_live_count == 3
     assert spans.span_role == "decode"
     assert policy.admission_cap(req) == 64 - 3
+
+
+def test_fixed_paged_policy_accepts_int8_scale_metadata() -> None:
+    policy = FixedPagedKVPolicy(block_size=16, storage_dtype="int8_per_token_head")
+    metadata = _scale_metadata(0x3000)
+    reservation = policy.register(
+        202,
+        block_table=_tensor(0x1000, (4,), "int32"),
+        live_counts=_tensor(0x2000, (1,), "int64"),
+        max_live_count=3,
+        scale_metadata=metadata,
+    )
+    spans = policy.batch_spans([202])
+
+    assert reservation.storage_dtype.value == "int8_per_token_head"
+    assert reservation.scale_metadata is metadata
+    assert spans.storage_dtype.value == "int8_per_token_head"
+    assert spans.scale_metadata is metadata
+    assert policy.admission_cap(202) == 64 - 3
+
+
+def test_fixed_paged_policy_requires_int8_scale_metadata() -> None:
+    policy = FixedPagedKVPolicy(block_size=16, storage_dtype="int8_per_token_head")
+    with pytest.raises(ValueError, match="require scale metadata"):
+        policy.register(
+            303,
+            block_table=_tensor(0x1000, (4,), "int32"),
+            live_counts=_tensor(0x2000, (1,), "int64"),
+            max_live_count=3,
+        )
 
 
 def test_fixed_paged_policy_requires_packed_metadata_for_c_gt_1() -> None:

@@ -107,6 +107,215 @@ def attention_decode(
     return np.matmul(weights, v)
 
 
+def quantize_kv_int8_per_token_head(
+    key: ArrayLike,
+    value: ArrayLike,
+    *,
+    scale_dtype: str | np.dtype | type = np.float32,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Quantize K/V rows with separate per-token/per-KV-head INT8 scales.
+
+    The last dimension is ``head_dim``.  Every leading token/page/head location
+    gets one K scale and one V scale.  All-zero rows use scale ``0`` and store
+    all-zero INT8 payload so dequantization is well-defined and never divides by
+    zero.
+    """
+
+    k = np.asarray(key, dtype=np.float32)
+    v = np.asarray(value, dtype=np.float32)
+    if k.shape != v.shape:
+        raise ValueError("key and value must have the same shape")
+    if k.ndim not in {3, 4}:
+        raise ValueError("key/value must have shape [tokens, Hkv, D] or [blocks, block, Hkv, D]")
+    qk, ks = _quantize_int8_rows(k, scale_dtype)
+    qv, vs = _quantize_int8_rows(v, scale_dtype)
+    return qk, qv, ks, vs
+
+
+def write_paged_kv_int8_per_token_head(
+    key: ArrayLike,
+    value: ArrayLike,
+    positions: ArrayLike,
+    block_table: ArrayLike,
+    *,
+    block_size: int,
+    cache_blocks: int | None = None,
+    scale_dtype: str | np.dtype | type = np.float32,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Reference paged INT8 K/V append for one request.
+
+    ``key`` and ``value`` are row-major ``[rows, Hkv, D]`` post-RoPE rows.
+    ``positions`` are logical token positions.  ``block_table`` maps logical
+    blocks to physical cache blocks; this catches page-boundary and indirection
+    mistakes independently from GPU kernels.
+    """
+
+    k_rows = np.asarray(key, dtype=np.float32)
+    v_rows = np.asarray(value, dtype=np.float32)
+    pos = np.asarray(positions, dtype=np.int64)
+    table = np.asarray(block_table, dtype=np.int64).reshape(-1)
+    if k_rows.shape != v_rows.shape:
+        raise ValueError("key and value must have the same shape")
+    if k_rows.ndim != 3:
+        raise ValueError("key/value rows must have shape [rows, Hkv, D]")
+    if pos.shape != (k_rows.shape[0],):
+        raise ValueError("positions must have shape [rows]")
+    block = int(block_size)
+    if block <= 0:
+        raise ValueError("block_size must be positive")
+    if table.size == 0:
+        raise ValueError("block_table must not be empty")
+    if np.any(table < 0):
+        raise ValueError("block_table must not contain negative physical blocks")
+    inferred_blocks = int(np.max(table)) + 1
+    blocks = inferred_blocks if cache_blocks is None else int(cache_blocks)
+    if blocks < inferred_blocks or blocks <= 0:
+        raise ValueError("cache_blocks must cover the block_table physical blocks")
+
+    qk, qv, ks, vs = quantize_kv_int8_per_token_head(k_rows, v_rows, scale_dtype=scale_dtype)
+    key_cache = np.zeros((blocks, block, k_rows.shape[1], k_rows.shape[2]), dtype=np.int8)
+    value_cache = np.zeros_like(key_cache)
+    k_scale = np.zeros((blocks, block, k_rows.shape[1]), dtype=np.dtype(scale_dtype))
+    v_scale = np.zeros_like(k_scale)
+    for row, position in enumerate(pos):
+        if position < 0:
+            raise ValueError("positions must be non-negative")
+        logical_block = int(position) // block
+        block_offset = int(position) % block
+        if logical_block >= table.size:
+            raise ValueError("position exceeds block_table length")
+        physical_block = int(table[logical_block])
+        key_cache[physical_block, block_offset] = qk[row]
+        value_cache[physical_block, block_offset] = qv[row]
+        k_scale[physical_block, block_offset] = ks[row]
+        v_scale[physical_block, block_offset] = vs[row]
+    return key_cache, value_cache, k_scale, v_scale
+
+
+def dequantize_kv_int8_per_token_head(
+    key_cache: ArrayLike,
+    value_cache: ArrayLike,
+    k_scale: ArrayLike,
+    v_scale: ArrayLike,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Dequantize INT8 K/V cache using per-token/per-head K and V scales."""
+
+    kq = np.asarray(key_cache, dtype=np.int8)
+    vq = np.asarray(value_cache, dtype=np.int8)
+    ks = np.asarray(k_scale, dtype=np.float32)
+    vs = np.asarray(v_scale, dtype=np.float32)
+    _validate_int8_kv_cache_shapes(kq, vq, ks, vs)
+    return kq.astype(np.float32) * ks[..., None], vq.astype(np.float32) * vs[..., None]
+
+
+def kv_dequant_int8_per_token_head(
+    key_cache: ArrayLike,
+    value_cache: ArrayLike,
+    k_scale: ArrayLike,
+    v_scale: ArrayLike,
+) -> np.ndarray:
+    """Fixture-friendly K/V dequantization; returns ``stack([K, V])``."""
+
+    key, value = dequantize_kv_int8_per_token_head(key_cache, value_cache, k_scale, v_scale)
+    return np.stack((key, value), axis=0)
+
+
+def paged_attn_decode_int8_per_token_head(
+    query: ArrayLike,
+    key_cache: ArrayLike,
+    value_cache: ArrayLike,
+    k_scale: ArrayLike,
+    v_scale: ArrayLike,
+    live_counts: ArrayLike,
+    *,
+    block_table: ArrayLike | None = None,
+    block_size: int | None = None,
+    scale: float | None = None,
+    output_dtype: str | np.dtype | type | None = np.float32,
+) -> np.ndarray:
+    """Reference paged GQA decode over INT8 K/V plus per-token/head scales."""
+
+    key, value = dequantize_kv_int8_per_token_head(key_cache, value_cache, k_scale, v_scale)
+    q = np.asarray(query, dtype=np.float32)
+    squeeze_row = False
+    if q.ndim == 2:
+        q = q[None, ...]
+        squeeze_row = True
+    if q.ndim != 3:
+        raise ValueError("query must have shape [Q, D] or [rows, Q, D]")
+    counts = np.asarray(live_counts, dtype=np.int64).reshape(-1)
+    if counts.shape != (q.shape[0],):
+        raise ValueError("live_counts must have one entry per query row")
+    if key.shape != value.shape:
+        raise ValueError("key_cache and value_cache must have the same shape")
+    if key.ndim == 3:
+        dense_cache = True
+        inferred_block = key.shape[0]
+        num_kv_heads = key.shape[1]
+        head_dim = key.shape[2]
+    elif key.ndim == 4:
+        dense_cache = False
+        inferred_block = key.shape[1]
+        num_kv_heads = key.shape[2]
+        head_dim = key.shape[3]
+    else:
+        raise ValueError("key_cache must have shape [S, Hkv, D] or [B, block, Hkv, D]")
+    if q.shape[2] != head_dim:
+        raise ValueError("query head_dim must match cache head_dim")
+    num_q_heads = q.shape[1]
+    if num_q_heads % num_kv_heads != 0:
+        raise ValueError("num_q_heads must be divisible by num_kv_heads")
+    kv_group = num_q_heads // num_kv_heads
+    block = inferred_block if block_size is None else int(block_size)
+    if block <= 0:
+        raise ValueError("block_size must be positive")
+    tables = _normalize_block_tables(block_table, rows=q.shape[0])
+    scale_value = (head_dim ** -0.5) if scale is None else float(scale)
+    out = np.empty_like(q, dtype=np.float32)
+    for row in range(q.shape[0]):
+        context = int(counts[row])
+        if context <= 0:
+            raise ValueError("live_counts must be positive")
+        row_table = None if tables is None else tables[row]
+        for q_head in range(num_q_heads):
+            kv_head = q_head // kv_group
+            keys = np.stack(
+                [
+                    _cache_row(
+                        key,
+                        cache_pos,
+                        kv_head,
+                        dense_cache=dense_cache,
+                        block_size=block,
+                        block_table=row_table,
+                    )
+                    for cache_pos in range(context)
+                ],
+                axis=0,
+            )
+            values = np.stack(
+                [
+                    _cache_row(
+                        value,
+                        cache_pos,
+                        kv_head,
+                        dense_cache=dense_cache,
+                        block_size=block,
+                        block_table=row_table,
+                    )
+                    for cache_pos in range(context)
+                ],
+                axis=0,
+            )
+            weights = _softmax(np.matmul(keys, q[row, q_head]) * scale_value, axis=0)
+            out[row, q_head] = np.matmul(weights, values)
+    if squeeze_row:
+        out = out[0]
+    if output_dtype is None:
+        return out
+    return out.astype(np.dtype(output_dtype))
+
+
 def linear_attn_conv_prefill_segments(
     hidden_states: ArrayLike,
     conv_state: ArrayLike,
@@ -439,6 +648,8 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "qkv_proj": qkv_proj,
         "rotate": rotate,
         "attention_decode": attention_decode,
+        "kv_dequant": kv_dequant_int8_per_token_head,
+        "paged_attn_decode": paged_attn_decode_int8_per_token_head,
         "full_attn_prefill": full_attn_prefill,
         "full_attn_prefill_varlen": full_attn_prefill_varlen,
         "linear_attn_conv_prefill_segments": linear_attn_conv_prefill_segments,
@@ -447,12 +658,51 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "lm_head": lm_head,
     }
     for layer, fn in kernels.items():
-        register(KernelKey("cpu_reference", layer, "fp16"), fn, replace=replace)
+        quant = "int8_per_token_head" if layer in {"kv_dequant", "paged_attn_decode"} else "fp16"
+        register(KernelKey("cpu_reference", layer, quant), fn, replace=replace)
     register(
         KernelKey("cpu_reference", "full_attn_prefill", "w4_paro", "qwen35_causal_gqa_gate_fp16"),
         full_attn_prefill,
         replace=replace,
     )
+
+
+def _quantize_int8_rows(value: np.ndarray, scale_dtype: str | np.dtype | type) -> tuple[np.ndarray, np.ndarray]:
+    scale_np_dtype = np.dtype(scale_dtype)
+    if scale_np_dtype not in {np.dtype(np.float16), np.dtype(np.float32)}:
+        raise ValueError("scale_dtype must be float16 or float32")
+    max_abs = np.max(np.abs(value), axis=-1)
+    scale = max_abs / np.float32(127.0)
+    safe_scale = np.where(scale > 0.0, scale, 1.0).astype(np.float32)
+    quantized = np.rint(value / safe_scale[..., None])
+    quantized = np.clip(quantized, -127.0, 127.0).astype(np.int8)
+    quantized = np.where(scale[..., None] > 0.0, quantized, 0).astype(np.int8)
+    return quantized, scale.astype(scale_np_dtype)
+
+
+def _validate_int8_kv_cache_shapes(kq: np.ndarray, vq: np.ndarray, ks: np.ndarray, vs: np.ndarray) -> None:
+    if kq.shape != vq.shape:
+        raise ValueError("key_cache and value_cache must have the same shape")
+    if kq.ndim not in {3, 4}:
+        raise ValueError("key_cache/value_cache must have shape [S, Hkv, D] or [B, block, Hkv, D]")
+    expected_scale_shape = kq.shape[:-1]
+    if ks.shape != expected_scale_shape or vs.shape != expected_scale_shape:
+        raise ValueError("k_scale and v_scale must match key/value shape without head_dim")
+
+
+def _normalize_block_tables(block_table: ArrayLike | None, *, rows: int) -> np.ndarray | None:
+    if block_table is None:
+        return None
+    table = np.asarray(block_table, dtype=np.int64)
+    if table.ndim == 1:
+        if rows != 1:
+            raise ValueError("1D block_table is only valid for one query row")
+        table = table[None, :]
+    if table.ndim != 2 or table.shape[0] != rows:
+        raise ValueError("block_table must have shape [block_table_len] or [rows, block_table_len]")
+    if table.shape[1] == 0:
+        raise ValueError("block_table must not be empty")
+    return table
 
 
 def _validate_segments(cu: np.ndarray, slots: np.ndarray, total_rows: int, state_slots: int) -> None:
