@@ -19810,3 +19810,31 @@ Decision notes:
 - Registry exact-key check (`is_registered`): the cpu_reference fp16 fallback for `("cpu_reference", "linear", "fp16", "")` registers `cpu_reference.linear`, which doesn't take `stream`/`runtime` kwargs. Using `resolve(missing="none")` for the dispatch decision would silently route to this catch-all and crash at launch. The new `is_registered` primitive does an exact-key lookup, matching the dispatch intent.
 
 Next: task #26 (P9.B7) measures qwen35moe 512/128 decode tok/s with the new opt-in routing through the P9.B1/B3 kernels + rocprof symbol confirmation.
+
+## 2026-05-18 P9 task #29: rocprof bandwidth-utilization summary helper (P9.E1)
+
+Added a read-only rocprofv3 CSV summary helper. No kernel/runtime changes; this is tooling for future P9 perf rows (tasks #19 P9.A3 and #26 P9.B7) to standardise the retained artifact shape.
+
+Files:
+
+- `scripts/qwen35_gguf_rocprof_summary.py`: new CLI. Takes either `--csv` (single, e.g. 512/0 prefill-only) or `--prefill-csv` + `--decode-csv` (paired). `--strip-prefill-prefix` slices the leading prefill dispatch count off the paired decode CSV so the decode phase reports only the decode-phase kernels. Outputs JSON keyed by `"prefill"` / `"decode"` phases with per-kernel + per-bucket rollups (`total_ms`, `dispatches`, `avg_dispatch_ms`, `share_of_phase`, `ms_per_token`) and an optional back-calculated `effective_gb_s` per bucket using a per-dispatch byte footprint dict.
+- Bucket classifier is GGUF-aware: distinguishes P8 WMMA prefill (`*_wmma_prefill_*`), P9.B decode GEMV (`*_pack8_gemv_decode_*`), and legacy `*_prefill_out_*` per quant template number (`<5>` / `<6>` / `<8>`); plus GDN (`gdn_prefill_recurrent`, `gdn_prefill_rmsnorm_gate`, `gdn_prepare`, `gdn_decode`), full attention (prefill / decode), router, MoE scheduler, SiLU, MoE combine, RMSNorm, KV write, and runtime copy.
+- Default footprints cover Qwen3.6-35B-A3B-UD-Q4_K_M (hidden=2048, expert_ffn=4096, top_k=8, vocab=151_936). Densities use the GGUF block bytes-per-weight: Q4_K ~0.5625, Q5_K ~0.6875, Q6_K ~0.8203, Q8_0 ~1.0625. Buckets without a meaningful per-dispatch footprint (GDN, router, scheduler, combine, etc.) emit `None` so the missing data is visible rather than guessed.
+- Override or extend the dict via `--config-json` (JSON object mapping bucket -> bytes-per-dispatch or `null`).
+
+Validation on W7900/gfx1100 (RX 7900 XTX local):
+
+- `py_compile` on both files: OK.
+- `uv run --with pytest pytest tests/test_qwen35_gguf_rocprof_summary.py -q` -> `54 passed` (43 parametrised classifier cases + CSV parsing edge cases + per-phase aggregation + footprint-based GB/s override + paired-mode prefix strip + CLI validation).
+- Smoke against the post-P9.A1 512/0 CSV (`/tmp/p9_a1/rocprof-512-0/rocm/2441463_kernel_trace.csv`):
+  - Total: `297.265 ms / 1558 dispatches / 0.581 ms per prefill token`.
+  - Top buckets: dense Q8_0 WMMA prefill `75.0 ms / 250 disp / ~14.8 GB/s`, MoE Q4_K selected dual WMMA `65.0 ms / 40 disp / ~46.5 GB/s`, GDN recurrent `52.1 ms / 30 disp`, full attention prefill `39.5 ms / 10 disp`, MoE Q5_K selected WMMA `27.3 ms / 37 disp / ~62.5 GB/s`.
+- Adjacent regression bundle (dispatch + routing + GDN): `111 passed`.
+
+Methodology note (matches `docs/ROOFLINE.md` 12.4):
+
+- `effective_gb_s = footprint_bytes_per_dispatch * dispatches / (total_seconds)`.
+- Reported values are "rough back-calculations, not direct measurements". They are useful for trend analysis (e.g. did the P9.B GEMV decode bucket move closer to the 864 GB/s peak after a tuning change?), not for absolute claims.
+- For the largest dense MoE buckets in the smoke run, the effective GB/s is ~5-7% of the 864 GB/s W7900 peak. That number tracks the prefill compute-bound regime described in ROOFLINE.md (prefill is dominated by WMMA throughput, not memory bandwidth, so the back-calculated GB/s under-represents actual hardware utilisation).
+
+Next: tasks #19 (P9.A3) and #26 (P9.B7) consume this helper in their retained artifacts.
