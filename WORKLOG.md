@@ -19693,3 +19693,40 @@ Design notes for downstream (task #25 / P9.B6):
 - The single variant drops in for any dense GGUF Q8_0 projection at decode (rows=1), e.g. attention QKV/O and the qwen35moe shared expert down. The dual variant is the fused gate+up entry point for the qwen35moe shared expert decode bundle (`silu_mul_dual_out_*` consumes the concatenated layout directly).
 - Q8_0's small block size (32 K) means no shared-memory hoist is needed: the 8-K-per-thread pattern already lands all `j` lanes in one block, and the `d` load is amortised inside one iteration. This keeps the kernel small and gives the compiler room to schedule the 8 FMA chains.
 - Formal correctness fixture (multi-row, attention-shape, shared-expert-shape, edge cases) lands in task #24 (P9.B5). This worklog entry records the inline smoke as a hand-verified seed for that test.
+
+## 2026-05-18 P9 task #23: GGUF Q4_K dense pack8 GEMV decode kernel
+
+Implemented the P9.B4 dense decode-shaped pack8 GEMV for raw GGUF Q4_K weights, covering the qwen35moe dense surfaces (attention Q/K/V/O projections + the lm-head logits projection when the tied output is Q4_K). Mirrors `paro_awq_gemv.hip::gemv_awq_pack8_kernel` single-output structure with the inner k loop swapped for raw GGUF Q4_K block dequant.
+
+Files:
+
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_pack8_gemv.hip`: new HIP source. Templated `gguf_q4_k_pack8_gemv_kernel<scalar_in_t, scalar_out_t>` with `__launch_bounds__(128, 4)`. Same per-block hoist as P9.B1 (`s_scale[64]` + `s_min[64]`, 64 cooperative threads), same wave-level reduction (`__shfl_down(16/8/4/2/1)` + `xchg[4*8]` cross-wave sum). Mixed input/output dtypes via dual template params; the `float_to_scalar<float>` specialization is added so F32 output goes through a passthrough store.
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_pack8_gemv.py`: 4 wrappers built via a `_make_launch(symbol)` factory. Registers 4 keys under `linear / gguf_q4_k`: `pack8_gemv_decode_{bf16,fp16}_{bf16,fp16,f32}_out`.
+- `docs/KERNELS.md`: appended P9.B4 catalog row with inline GPU smoke deltas.
+
+Validation on W7900/gfx1100 (RX 7900 XTX local):
+
+- `py_compile` wrapper: OK; registry smoke confirms all 4 variant keys resolve under `(hip_gfx1100, linear, gguf_q4_k, ...)`.
+- HIP build via `build_gguf_q4_k_pack8_gemv(load=True)` produces `gguf_q4_k_pack8_gemv.so` with all 4 extern "C" symbols.
+- Inline GPU smoke vs CPU `gguf_quant_gemv(..., GGMLQuantizationType.Q4_K)` on (rows=4, in=512, out=32):
+  - BF16/BF16: max|delta|=0.939, max_rel(eps=1)=0.0035 (BF16 output rounding boundary).
+  - FP16/FP16: max|delta|=0.061, max_rel=0.00044 (tighter; FP16 mantissa is wider than BF16).
+  - **BF16/F32 (lm-head)**: max|delta|=6.1e-5, max_rel=2.5e-6 (essentially bit-exact -- F32 output preserves the full accumulation).
+  - **FP16/F32 (lm-head)**: max|delta|=7.2e-5, max_rel=2.1e-5 (same bit-exact regime).
+- Adjacent regression bundle (`test_gguf_q4_k_wmma_prefill.py`, `test_gguf_q8_0_wmma_prefill.py`, `test_gguf_q4_k_selected_wmma_prefill.py`, `test_gguf_k_selected_wmma_prefill.py`, `test_gguf_linear_dispatch.py`, `test_qwen35_gguf_compact_moe_wmma_routing.py`, `test_qwen35_gguf_gdn_prefill_correctness.py`) -> `195 passed`.
+
+Design notes for downstream (task #25 / P9.B6):
+
+- Attention QKV/O surfaces use BF16/BF16 (matches hidden state dtype in qwen35moe today). Lm-head logits projection uses BF16/F32: F32 output is critical for stable softmax in the sampler.
+- The kernel is generic in `scalar_in_t` and `scalar_out_t`, so FP16 hidden states are also supported in case a non-qwen35 model lands later.
+- The two BF16-input wrappers share the same Q4_K dequant inner loop -- only `scalar_out_t` differs. The F32 wrappers are essentially the bit-exact reference baseline that confirms the BF16-output rounding error is purely the output-side rounding, not the dequant math.
+- Formal correctness fixture (multi-row, varied in/out shapes, edge-case shape boundaries) lands in task #24 (P9.B5). This worklog entry records the inline smoke as the hand-verified seed for that test.
+
+P9.B kernels are now feature-complete:
+
+- P9.B1: Q4_K selected dual pack8 GEMV decode (compact MoE gate+up).
+- P9.B2: Q5_K/Q6_K selected pack8 GEMV decode (compact MoE down).
+- P9.B3: Q8_0 dense pack8 GEMV decode (single + fused gate+up).
+- P9.B4: Q4_K dense pack8 GEMV decode (single, with F32 lm-head variant).
+
+Next: task #24 formal correctness fixtures, then task #25 dispatch wiring.
