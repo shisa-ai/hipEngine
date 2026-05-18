@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-05-17
+Last updated: 2026-05-18
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -14,7 +14,8 @@ working on.
 | [`PLAN.md`](PLAN.md) | Source of truth for architecture, plugin boundaries, phase roadmap, LoC budgets, and invariants. |
 | [`IMPLEMENTATION.md`](IMPLEMENTATION.md) | Current implementation status, concrete milestones, and integration notes. |
 | [`API.md`](API.md) | OpenAI-compatible FastAPI server usage, endpoint support, and current limitations. |
-| [`OPTIMIZE.md`](OPTIMIZE.md) | Active optimization board and accepted/rejected/deferred candidate decisions. |
+| [`OPTIMIZE.md`](OPTIMIZE.md) | Active optimization board for Qwen3.5-35B-A3B-PARO MoE; accepted/rejected/deferred candidates. |
+| [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) | Active optimization board for Qwen3.6-27B-PARO dense; mirror lane structure to `OPTIMIZE.md`. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
 
 ## Validation and benchmarking

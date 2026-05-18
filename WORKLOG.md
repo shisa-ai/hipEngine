@@ -16781,3 +16781,91 @@ though they fit comfortably in W7900 VRAM.
 - Added `benchmarks/results/2026-05-18-hipengine-gfx1100-qwen36-27b-paro-diagnostic.json`.
 - Updated `benchmarks/README.md` blocked/diagnostic table.
 - Updated `benchmarks/CHANGELOG.md` with the gfx1100 27B diagnostic line.
+
+## 2026-05-18 — Add docs/OPTIMIZE-DENSE.md punchlist for Qwen3.6-27B dense path
+
+### Context
+
+Reviewed the dense PARO MLP and linear-attention prefill paths after the
+2026-05-18 Qwen3.6-27B-PARO diagnostic showed hipEngine at `631.7` prefill
+tok/s vs llama.cpp HIP `Q4_K_M` at `818.6` tok/s on the same W7900/gfx1100 4K
+prompt (`-22.8%` prefill gap; decode is `+16.4%` ahead at `29.6` vs `25.4`
+tok/s). MoE 35B-A3B already beats llama.cpp HIP, so the dense path needs its
+own punchlist tracking the structural deltas and corresponding candidates.
+
+### Source-structure findings (no kernel work yet)
+
+- `qwen35_gdn_prefill_recurrent_k2_kernel`
+  (`hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip`) iterates tokens
+  serially with `__syncthreads` between every step. Qwen3.6-27B-PARO has 48
+  `linear_attention` layers, so 4K prefill walks ~196k strictly sequential
+  token-steps with no parallelism over time. Upstream stacks
+  (`reference/atlas/kernels/gb10/qwen3.6-27b/nvfp4/gated_delta_rule.cu`,
+  FLA `chunk_gated_delta_rule`, vllm `gdn_linear_attn`,
+  exllamav3 `qwen3_next.py`) all use chunkwise / WY-chunkwise reformulations.
+- Dense MLP prefill chains `paro_rotate2_fp16 -> awq_fusedw4_prefill_dual ->
+  silu_mul_separate -> paro_rotate1_fp16 -> awq_fusedw4_prefill -> combine`.
+  The two `paro_rotate*` calls are full activation read+write passes before
+  each W4 prefill kernel, scaling with `intermediate=17408`. Rotation is
+  row-local and can be folded into the head of `awq_fusedw4_prefill_*`.
+- Both `awq_fusedw4_prefill_*_kernel` and the MoE
+  `gemm_awq_selected_*_pack8_wmma_compact_kernel` already use RDNA3 WMMA
+  (`__builtin_amdgcn_wmma_f32_16x16x16_f16_w32`); the dense gap is not WMMA
+  itself, it is the surrounding launch / activation / recurrence shape.
+
+### Document and changes
+
+- New `docs/OPTIMIZE-DENSE.md` (mirror of `docs/OPTIMIZE.md` lane format)
+  with `Q36D-` ID prefix:
+  - Lane M (Q36D-M.1..M.4): rocprofv3 selected-region kernel-trace audit and
+    Amdahl tables for the dense 27B prefill/decode windows. Hard prereq
+    before any Lane P row opens.
+  - Lane K (Q36D-K.1..K.2): land Qwen3.6-27B KL/top-1 oracle and complete the
+    bench JSON quality booleans (`finite_prefill_logits`,
+    `decode_step_graph_validation`).
+  - Lane P1 (Q36D-P1.1..P1.3): chunkwise / WY-chunkwise GDN prefill port; the
+    largest expected lever.
+  - Lane P2 (Q36D-P2.1..P2.3): fold `paro_rotate{1,2}` into the head of
+    `awq_fusedw4_prefill_*` so the dense MLP loses 1-2 full activation
+    passes per layer per chunk.
+  - Lane P3 (Q36D-P3.1..P3.2): `silu_mul + rotate1` fusion, then a deferred
+    full producer-consumer dense MLP fusion gated by Lane P1+P2 results.
+  - Lane P4: AOTriton path confirmation, W4 tile/launch-bounds sweep
+    (deferred), `unroll-threshold-local=600` ablation, dense MLP token-branch
+    audit.
+  - §7 anti-rabbit-hole list pulls forward `ROOFLINE.md`/`LESSONS-LEARNED.md`
+    rules: no wave64 default, no rocBLAS for the W4 dense shapes, no dp4a /
+    sudot4 micro-opts before the structural Lane P1 lands, no MoE compact
+    WMMA for the dense path, no GDN reinvention without a CPU oracle.
+  - §8 out of scope: `c>N`, long-context, DFlash, gfx1151.
+  - §9 reproduction commands for the diagnostic baseline and the Lane M.1
+    rocprof capture.
+- Updated `docs/README.md` index with the new doc and bumped
+  `Last updated` to 2026-05-18.
+
+### Verification
+
+Documentation-only change. Per `AGENTS.md` Verification table no GPU run is
+required.
+
+- `wc -l docs/OPTIMIZE-DENSE.md`: 423 lines.
+- `grep -c '^| Q36D-' docs/OPTIMIZE-DENSE.md`: 18 candidate rows across
+  M / K / P1 / P2 / P3 / P4.
+- All Lane P / Lane K rows enter the punchlist with status `pending`,
+  `pending, blocked-by: ...`, or `deferred (...)` per the OPTIMIZE.md
+  promotion-status legend.
+
+### Next actions
+
+1. Q36D-M.1: prebuild + selected-region rocprof for 4K/128 dense prefill;
+   commit the compact summary under `benchmarks/results/`. This signs the
+   hypothesis that GDN recurrent is the top kernel-time bucket and decides
+   Lane P1 vs Lane P2 priority.
+2. Q36D-K.1: capture and commit the Qwen3.6-27B-PARO KL/top-1 oracle so any
+   future Lane P retained row has a correctness gate.
+3. Open Q36D-P1.1 only after #1 and #2 land. Port plan starts from
+   `reference/atlas/kernels/gb10/qwen3.6-27b/nvfp4/gated_delta_rule.cu`
+   `gated_delta_rule_chunk2/chunk3` and the WY-chunkwise spec in
+   `reference/atlas/kernels/gb10/common/gated_delta_rule_wy.cu`, with a CPU
+   reference oracle bit-equal to the existing serial recurrent kernel at
+   `chunk_size=1`.
