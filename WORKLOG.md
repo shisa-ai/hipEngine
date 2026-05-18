@@ -19324,3 +19324,37 @@ Open for task #12:
 
 - Formal tests need to cover multiple experts, uneven compact row counts, padding/empty experts, and aligned output feature boundaries. Include a wrapper-contract check that `out_features_a/out_features_b` must be multiples of 16.
 - If future GGUF runtime wants the separate-buffer `silu_mul_separate_out_bf16` path instead of PARO-style concatenated gate/up rows, add an explicit post-GEMM split or a separate-output kernel variant deliberately. Do not silently reinterpret the compact output layout.
+
+## 2026-05-18 P8.4 task #12: selected Q4_K MoE WMMA correctness tests landed
+
+Added `tests/test_gguf_q4_k_selected_wmma_prefill.py` for the P8.4 selected raw-Q4_K compact-MoE dual gate+up WMMA kernel from task #11.
+
+Coverage:
+
+- No-GPU surface:
+  - Registry/build-plan/dry-run checks for `moe_linear` keys `selected_dual_wmma_prefill_compact_bf16_bf16_out`, `selected_dual_wmma_prefill_bf16_bf16_out` shorthand, and `selected_dual_wmma_prefill_compact_fp16_fp16_out`.
+  - Wrapper contract validation for positive compact rows, `in_features % 256`, `out_features_a % 16`, `out_features_b % 16`, and `wmma_total_rows % 16`.
+- GPU correctness (HIP-skipped when `libamdhip64.so` is unavailable):
+  - Synthetic compact-MoE fixtures construct `expert_start_compact`, `expert_start_wmma`, and `tile_expert` exactly like the existing compact scheduler ABI: per-expert actual row prefix, padded-16 WMMA row prefix, and one `tile_expert` entry per padded 16-row tile.
+  - BF16 sweep covers counts `[4,0,5]`, `[16,17,31]`, `[0,33,1,16]`, `[7,18,0,33]`, `[32,0,0,17]` with `in_features` `{256,512,768}` and gate/up shapes `{16,16}`, `{32,32}`, `{48,32}`, `{64,16}`, `{64,48}`. This hits multiple experts, uneven rows, padding rows, empty experts at middle/start/tail, multi-Q4_K-block K loops, and output tile boundaries.
+  - FP16 sweep covers `[5,11,0,23]` and `[0,16,17]` with compact padding/empty experts and wider output tiles.
+  - A tiny BF16 launch (`counts=[1,0]`, `out_a=out_b=16`) is kept as the explicit W7900 symbol-run smoke.
+
+Oracle/tolerance details:
+
+- CPU selected/MoE oracle is assembled per expert from `hipengine.kernels.cpu_reference.gguf_quant_gemv(x_expert, qweight_expert, GGMLQuantizationType.Q4_K)` for gate and up, then concatenated into the PARO-style compact output layout `[compact_rows, out_features_a + out_features_b]`.
+- Inputs are decoded and rounded through fp16 before the CPU GEMV to match the kernel's half WMMA activation operands. Raw Q4_K weights are still exact CPU-dequantized in the oracle, so tolerances cover the intentional half weight operand cast plus BF16/FP16 output rounding.
+- Fixture activations use `((arange % 13) - 6) / 64` to keep this an addressing/dequant correctness test rather than an fp16 operand stress test.
+
+Validation on W7900/gfx1100:
+
+- `uv run --with pytest pytest tests/test_gguf_q4_k_selected_wmma_prefill.py -q` -> `10 passed`.
+- `uv run python -m py_compile tests/test_gguf_q4_k_selected_wmma_prefill.py` -> OK.
+- `uv run --with pytest pytest tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_q4_k_wmma_prefill.py tests/test_gguf_linear_dispatch.py -q` -> 94 tests pass (pytest progress reaches 100%; no failures).
+- `rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/p8_q4_selected_test_rocprof -- uv run --with pytest pytest tests/test_gguf_q4_k_selected_wmma_prefill.py::test_gguf_q4_k_selected_wmma_runs_exported_bf16_symbol_on_w7900 -q` confirms the selected WMMA kernel symbol appears once: `/tmp/p8_q4_selected_test_rocprof/rocm/1586964_kernel_trace.csv`, `void (anonymous namespace)::gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>(...)`, `DurationNs=18438`.
+
+Updated `docs/KERNELS.md` P8.4 row to point to the formal test file and rocprof symbol evidence.
+
+Open for task #15:
+
+- The selected kernel output is still PARO-style concatenated gate+up per compact row, not separate gate/up buffers. Runtime P8.6 must either consume that layout directly or explicitly split before `silu_mul_separate_out_bf16`.
