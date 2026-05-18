@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-05-18
 
+- [diagnostic retained] hipEngine / DFlash verify graph buckets / gfx1151 chain N={2,4,8}: no prior graph bucket artifact -> 3 fixed-address replay buckets match direct mode exactly plus 1 rare page-bucket direct fallback with preserved semantics; `performance_claim=false`; `benchmarks/results/2026-05-18-hipengine-dflash-verify-graph-buckets-diagnostic.json`.
 - [diagnostic retained] hipEngine / shisa-ai Qwen3.6-35B-A3B-PARO packed + z-lab DFlash / gfx1151 chain N={2,4,8}: no prior DFlash chain sweep -> 30 diagnostic rows with exact same-session AR equality, GPU accept/commit parity, code-promotion rows first then robustness; `performance_claim=false` and 0 promoted rows because full-model throughput is not wired; `benchmarks/results/2026-05-18-hipengine-dflash-chain-gfx1151-correctness-diagnostic.json`.
 
 - [diagnostic retained] hipEngine / shisa Qwen3.6-35B-A3B-PARO packed / gfx1100 default >1K chunk refresh: previous packed refresh -> current default rows with 512 unchunked and >1K chunks `1024/1024/4096/1024/1024`; 4K prefill `2711.013 -> 2899.685 tok/s` (+6.96%) and tracked peak `19.995 -> 19.455 GiB`, while 512/32K/128K stay within single-run noise (`2500.565/2115.050/1054.291` prefill); compare tables and README updated; `benchmarks/results/2026-05-18-hipengine-gfx1100-shisa-qwen36-packed-gt1k-default-diagnostic.json`.

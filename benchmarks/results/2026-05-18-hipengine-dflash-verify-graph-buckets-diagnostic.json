@@ -1,0 +1,203 @@
+{
+  "backend": "hip_gfx1151",
+  "commands": {
+    "graph_validation": "scripts/dflash_verify_graph_capture_smoke.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json benchmarks/results/2026-05-18-hipengine-dflash-verify-graph-buckets-diagnostic.json"
+  },
+  "hardware": {
+    "arch": "gfx1151",
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S"
+  },
+  "name": "dflash_verify_graph_capture_buckets",
+  "performance_claim": false,
+  "schema": 1,
+  "status": "diagnostic",
+  "summary": {
+    "all_captured_match_direct": true,
+    "captured_buckets": 3,
+    "direct_fallbacks": 1,
+    "fallback_semantics_preserved": true
+  },
+  "validations": [
+    {
+      "bucket_key": {
+        "active_c": 1,
+        "backend": "hip_gfx1151",
+        "context_bucket": 4096,
+        "draft_depth": 2,
+        "experts_per_token": 8,
+        "mode": "verify_chain",
+        "page_bucket": 128,
+        "replay_steps": 2,
+        "top_k": 1,
+        "tree_shape": [
+          0,
+          1
+        ]
+      },
+      "direct_match": true,
+      "direct_output_fingerprint": "5a47390e94ae3ceaccc971a8fdf67298d63d41e9510a4302c59432711144e200",
+      "fallback_reason": null,
+      "fixed_address_fingerprint": "10c584c8168f6d51793f6a78d1c53fe181ddead854d0bd80b9b6db638d5e6ccc",
+      "fixed_buffer_addresses": {
+        "accepted_counts": "0x7fdbf8e06000",
+        "active_mask": "0x7fdbf8e04000",
+        "commit_positions": "0x7fdbf8e09000",
+        "commit_rows": "0x7fdbf8e07000",
+        "commit_tokens": "0x7fdbf8e08000",
+        "committed_output_ids": "0x7fdbf8e0c000",
+        "committed_output_lengths": "0x7fdbf8e0d000",
+        "context_lengths": "0x7fdbf8e15000",
+        "draft_depths": "0x7fdbf8e03000",
+        "full_accept": "0x7fdbf8e0b000",
+        "kv_dst": "0x7fdbf8e11000",
+        "kv_src": "0x7fdbf8e10000",
+        "last_positions": "0x7fdbf8e14000",
+        "linear_dst": "0x7fdbf8e0f000",
+        "linear_src": "0x7fdbf8e0e000",
+        "next_tokens": "0x7fdbf8e0a000",
+        "output_ids": "0x7fdbf8e12000",
+        "output_lengths": "0x7fdbf8e13000",
+        "parent_rows": "0x7fdbf8e02000",
+        "positions": "0x7fdbf8e01000",
+        "token_ids": "0x7fdbf8e00000",
+        "top1": "0x7fdbf8e05000"
+      },
+      "graph_output_fingerprint": "5a47390e94ae3ceaccc971a8fdf67298d63d41e9510a4302c59432711144e200",
+      "graph_validation_passed": true,
+      "replay_steps": 2,
+      "status": "captured"
+    },
+    {
+      "bucket_key": {
+        "active_c": 1,
+        "backend": "hip_gfx1151",
+        "context_bucket": 4096,
+        "draft_depth": 4,
+        "experts_per_token": 8,
+        "mode": "verify_chain",
+        "page_bucket": 128,
+        "replay_steps": 2,
+        "top_k": 1,
+        "tree_shape": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "direct_match": true,
+      "direct_output_fingerprint": "5dfbe30a75abf500038a1a7b5fe9c0bb7aa7dbaa1f5d30925fa80aff0ee1b3c3",
+      "fallback_reason": null,
+      "fixed_address_fingerprint": "10c584c8168f6d51793f6a78d1c53fe181ddead854d0bd80b9b6db638d5e6ccc",
+      "fixed_buffer_addresses": {
+        "accepted_counts": "0x7fdbf8e06000",
+        "active_mask": "0x7fdbf8e04000",
+        "commit_positions": "0x7fdbf8e09000",
+        "commit_rows": "0x7fdbf8e07000",
+        "commit_tokens": "0x7fdbf8e08000",
+        "committed_output_ids": "0x7fdbf8e0c000",
+        "committed_output_lengths": "0x7fdbf8e0d000",
+        "context_lengths": "0x7fdbf8e15000",
+        "draft_depths": "0x7fdbf8e03000",
+        "full_accept": "0x7fdbf8e0b000",
+        "kv_dst": "0x7fdbf8e11000",
+        "kv_src": "0x7fdbf8e10000",
+        "last_positions": "0x7fdbf8e14000",
+        "linear_dst": "0x7fdbf8e0f000",
+        "linear_src": "0x7fdbf8e0e000",
+        "next_tokens": "0x7fdbf8e0a000",
+        "output_ids": "0x7fdbf8e12000",
+        "output_lengths": "0x7fdbf8e13000",
+        "parent_rows": "0x7fdbf8e02000",
+        "positions": "0x7fdbf8e01000",
+        "token_ids": "0x7fdbf8e00000",
+        "top1": "0x7fdbf8e05000"
+      },
+      "graph_output_fingerprint": "5dfbe30a75abf500038a1a7b5fe9c0bb7aa7dbaa1f5d30925fa80aff0ee1b3c3",
+      "graph_validation_passed": true,
+      "replay_steps": 2,
+      "status": "captured"
+    },
+    {
+      "bucket_key": {
+        "active_c": 1,
+        "backend": "hip_gfx1151",
+        "context_bucket": 4096,
+        "draft_depth": 8,
+        "experts_per_token": 8,
+        "mode": "verify_chain",
+        "page_bucket": 128,
+        "replay_steps": 2,
+        "top_k": 1,
+        "tree_shape": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "direct_match": true,
+      "direct_output_fingerprint": "710b39ceed796f68a79cac8cee587c5ecc002ac13ef7f62d01b6d0798b90e5bd",
+      "fallback_reason": null,
+      "fixed_address_fingerprint": "10c584c8168f6d51793f6a78d1c53fe181ddead854d0bd80b9b6db638d5e6ccc",
+      "fixed_buffer_addresses": {
+        "accepted_counts": "0x7fdbf8e06000",
+        "active_mask": "0x7fdbf8e04000",
+        "commit_positions": "0x7fdbf8e09000",
+        "commit_rows": "0x7fdbf8e07000",
+        "commit_tokens": "0x7fdbf8e08000",
+        "committed_output_ids": "0x7fdbf8e0c000",
+        "committed_output_lengths": "0x7fdbf8e0d000",
+        "context_lengths": "0x7fdbf8e15000",
+        "draft_depths": "0x7fdbf8e03000",
+        "full_accept": "0x7fdbf8e0b000",
+        "kv_dst": "0x7fdbf8e11000",
+        "kv_src": "0x7fdbf8e10000",
+        "last_positions": "0x7fdbf8e14000",
+        "linear_dst": "0x7fdbf8e0f000",
+        "linear_src": "0x7fdbf8e0e000",
+        "next_tokens": "0x7fdbf8e0a000",
+        "output_ids": "0x7fdbf8e12000",
+        "output_lengths": "0x7fdbf8e13000",
+        "parent_rows": "0x7fdbf8e02000",
+        "positions": "0x7fdbf8e01000",
+        "token_ids": "0x7fdbf8e00000",
+        "top1": "0x7fdbf8e05000"
+      },
+      "graph_output_fingerprint": "710b39ceed796f68a79cac8cee587c5ecc002ac13ef7f62d01b6d0798b90e5bd",
+      "graph_validation_passed": true,
+      "replay_steps": 2,
+      "status": "captured"
+    },
+    {
+      "bucket_key": {
+        "active_c": 1,
+        "backend": "hip_gfx1151",
+        "context_bucket": 123,
+        "draft_depth": 2,
+        "experts_per_token": 8,
+        "mode": "verify_chain",
+        "page_bucket": 17,
+        "replay_steps": 1,
+        "top_k": 1,
+        "tree_shape": [
+          0,
+          1
+        ]
+      },
+      "direct_match": true,
+      "direct_output_fingerprint": "b6a8b12939e5654b380d40d5338bfb829830877eff6c9815d408c89bf0c48ff6",
+      "fallback_reason": "unsupported page_bucket 17",
+      "fixed_address_fingerprint": null,
+      "fixed_buffer_addresses": null,
+      "graph_output_fingerprint": null,
+      "graph_validation_passed": null,
+      "replay_steps": 1,
+      "status": "direct_fallback"
+    }
+  ]
+}

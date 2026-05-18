@@ -17807,3 +17807,48 @@ python3 scripts/dflash_validate_artifacts.py --raise-on-error --json /tmp/dflash
 # dflash_validate_artifacts: passed=true for local shisa packed target + z-lab DFlash drafter manifests; output kept in /tmp, benchmark artifact not overwritten.
 git diff --check
 ```
+
+## 2026-05-18 — DFlash verify graph-capture buckets (D16)
+
+### Scope
+
+- Added `hipengine/speculative/verify_graph.py` with `DFlashVerifyGraphBucketKey`, fixed-address fingerprints, graph validation rows, and rare-shape fallback policy.
+- Added `scripts/dflash_verify_graph_capture_smoke.py`, which captures/replays fixed DFlash chain verify buckets `N={2,4,8}` as HIP graphs on gfx1151:
+  - bucket key fields include backend, active C, context bucket, page bucket, `verify_chain` mode, draft depth, tree shape, top-k, experts/token, and replay steps;
+  - supported buckets reuse fixed device buffer addresses, capture the accept+commit launch sequence into a HIP graph, and replay it;
+  - direct and replay output fingerprints match exactly for every supported bucket;
+  - rare page-bucket shape falls back to direct launches with unchanged semantics and explicit fallback reason.
+- Added artifact `benchmarks/results/2026-05-18-hipengine-dflash-verify-graph-buckets-diagnostic.json` and benchmark rollup/changelog entries.
+- Updated `docs/DFLASH.md` Phase D5 status.
+
+### Validation
+
+```bash
+python3 -m py_compile \
+  hipengine/speculative/verify_graph.py \
+  hipengine/speculative/__init__.py \
+  scripts/dflash_verify_graph_capture_smoke.py \
+  tests/test_dflash_verify_graph.py
+python3 -m pytest -q tests/test_dflash_verify_graph.py tests/test_dflash_accept_kernels.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_verify_graph_capture_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build \
+    --json benchmarks/results/2026-05-18-hipengine-dflash-verify-graph-buckets-diagnostic.json
+python3 - <<'PY'
+import json
+p='benchmarks/results/2026-05-18-hipengine-dflash-verify-graph-buckets-diagnostic.json'
+a=json.load(open(p))
+assert a['summary']['captured_buckets']==3
+assert a['summary']['direct_fallbacks']==1
+assert a['summary']['all_captured_match_direct']
+assert a['summary']['fallback_semantics_preserved']
+PY
+! grep -RInE 'import torch|torch\.' \
+  hipengine/speculative/verify_graph.py \
+  scripts/dflash_verify_graph_capture_smoke.py \
+  tests/test_dflash_verify_graph.py
+git diff --check
+# pytest: 9 passed
+# graph artifact summary: captured_buckets=3, direct_fallbacks=1, all_captured_match_direct=true, fallback_semantics_preserved=true.
+```

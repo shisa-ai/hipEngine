@@ -42,6 +42,13 @@ from hipengine.speculative.dflash_drafter import (
     project_dflash_target_hidden_bf16,
     dflash_silu_mul_bf16,
 )
+from hipengine.speculative.verify_graph import (
+    DFlashVerifyGraphAddresses,
+    DFlashVerifyGraphBucketKey,
+    DFlashVerifyGraphValidation,
+    dflash_verify_graph_decision,
+    fingerprint_int_arrays,
+)
 from hipengine.speculative.interfaces import (
     AcceptResult,
     DraftBatch,
@@ -82,6 +89,9 @@ __all__ = [
     "DFlashDraftRequest",
     "DFlashRootQueryPlan",
     "DFlashRootQueryRequest",
+    "DFlashVerifyGraphAddresses",
+    "DFlashVerifyGraphBucketKey",
+    "DFlashVerifyGraphValidation",
     "append_materialized_kv_reference",
     "compile_dflash_chain",
     "dflash_layer_kv_weights",
@@ -90,7 +100,9 @@ __all__ = [
     "dflash_gqa_attention_bf16",
     "dflash_head_rmsnorm_rotary_f32",
     "dflash_rmsnorm_bf16",
+    "dflash_verify_graph_decision",
     "draft_batch_from_topk",
+    "fingerprint_int_arrays",
     "full_context_kv_reference",
     "materialize_dflash_draft_kv_append",
     "materialize_dflash_draft_kv_append_from_projected",

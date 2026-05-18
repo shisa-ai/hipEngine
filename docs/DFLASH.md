@@ -497,13 +497,21 @@ Goal: implement topk>1 DDTree without changing the target verifier shape.
 
 Goal: convert fixed `N` rows into low-overhead graph replay.
 
-- Fixed graph buckets: chain `N={2,4,8}` and DDTree `N=5` first.
+- **Landed 2026-05-18:** fixed verify graph bucket keys for chain `N={2,4,8}`
+  include backend, active C, context/page buckets, mode, draft depth, tree shape,
+  top-k, experts, replay steps, and fixed buffer address fingerprints.
+- **Landed 2026-05-18:** `scripts/dflash_verify_graph_capture_smoke.py`
+  validates fixed-address replay for N={2,4,8} against direct mode exactly and
+  records graph validation in
+  `benchmarks/results/2026-05-18-hipengine-dflash-verify-graph-buckets-diagnostic.json`.
+  Rare page-bucket shapes fall back to direct launch semantics with an explicit
+  fallback reason.
 - Warm up JIT/build outside capture.
 - Capture only kernels and device copies whose addresses are stable.
 - Do not bake per-cycle scalar values into graph nodes unless they live in
   device buffers read at replay time.
 - Validation: graph replay exact output equality vs direct mode for every bucket;
-  report `decode_step_graph_validation=true`.
+  report `decode_step_graph_validation=true` / graph validation artifact fields.
 
 ### Phase D6 — Benchmark and promotion
 
