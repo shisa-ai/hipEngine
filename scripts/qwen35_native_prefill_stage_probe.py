@@ -156,21 +156,16 @@ def _run_native_layer0_stages(
         plan = session.native_prefill_plan().to_json_dict()
         token_arr = np.asarray(prompt_tokens, dtype=np.int64)
         token_buf = session._dev(token_arr)
+        hidden = session._prefill_hidden_view_for_rows(tokens)
         embedding_lookup_batch_fp16_i64(
             session.embedding.tensor.ptr,
             token_buf.ptr,
-            session.prefill_hidden.ptr,
+            hidden.ptr,
             tokens,
             session.config.hidden_size,
             session.vocab_size,
             library=session.libraries["runtime_state"],
             runtime=session.runtime,
-        )
-        hidden = Tensor.from_handle(
-            session.prefill_hidden.ptr,
-            (tokens, session.config.hidden_size),
-            DType.FP16,
-            session.device,
         )
         state = session.states[0]
         scratch = state.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)

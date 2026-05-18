@@ -17502,3 +17502,67 @@ PY
 git diff --check
 # clean
 ```
+
+## 2026-05-18 — task #18 prefill single-buffer memory reduction (validation in progress)
+
+Implemented the first 256K INT8-KV memory lever locally: native resident prefill now allocates one lazy `prefill_hidden_buffer` sized to the actual prompt rows, writes layer outputs back in-place after each layer/chunk, and releases that buffer in `_restore_decode_scratch_after_prefill()` before decode scratch is rebuilt. `_allocate_common_buffers()` no longer keeps persistent `prefill_hidden` / `prefill_next_hidden` full-prompt double buffers, and `prefill_next_hidden` is a compatibility alias for probes/manual sessions. Updated the bench owned-byte helper to count the lazy buffer if sampled while live, and updated native stage probes to request the lazy prefill view explicitly.
+
+Validation completed so far:
+
+```bash
+python3 -m pytest -q
+# 324 passed
+python3 -m compileall -q hipengine tests scripts
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+# all passed
+python3 scripts/qwen35_paro_bench.py --max-layers 1 --prompt-length 4 \
+  --decode-tokens 1 --warmup-decode-tokens 0 --token-id 9707 \
+  --compiler-version-file /tmp/hipengine-task18-prefill-single-buffer/hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-task18-prefill-single-buffer/smoke-maxlayers1.json
+# small resident GPU smoke passed
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 \
+  --scale-dtype fp16 --compiler-version-file /tmp/hipengine-task18-prefill-single-buffer/hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-task18-prefill-single-buffer/int8_accuracy.json
+# status accepted, passed true
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head \
+  --compiler-version-file /tmp/hipengine-task18-prefill-single-buffer/hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-task18-prefill-single-buffer/e2e.json
+# passed true; max_kl=0.015328251530778358; top1_agreement=1.0; generated IDs match
+```
+
+Clean 128K/256K benchmark validation is still pending because the GPU is not idle: `rocm-smi` shows an unrelated `llama-server` process (`PID 269877`) using about `22.7 GB` VRAM with GPU busy at `100%`. Do not retain speed/sampled-VRAM artifacts until that process is stopped or the card is otherwise idle; any benchmark now would have invalid absolute sampled-VRAM and throughput.
+
+## 2026-05-18 — task #18 256K INT8 KV single-buffer capacity result
+
+Reran the standard 256K/128 dense `int8_per_token_head` benchmark on idle W7900/gfx1100 after the single-buffer prefill change.
+
+Exact command:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 262144 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-task18-prefill-single-buffer/hipcc-version.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage int8_per_token_head \
+  --json /tmp/hipengine-task18-prefill-single-buffer/qwen35-paro-256k128-int8-singlebuf.json
+```
+
+Result versus the prior blocked 256K artifact:
+
+- Correctness/no-shadow still passes: layer INT8 HIP accuracy accepted; E2E fixture `max_kl=0.015328251530778358`, top-1 agreement `1.0`, generated IDs match; persistent BF16 KV shadow absent.
+- Timing is neutral/slightly positive: prefill `624.224 -> 626.127 tok/s` (`+0.30%`), decode `40.819 -> 40.856 tok/s` (`+0.09%`). This remains diagnostic, not a public `LLM.generate()` throughput claim.
+- Sampled HIP VRAM peak drops `24.330 -> 22.326 GiB`, so the sampled 24GiB-class capacity target now passes.
+- Tracked allocator high-water drops `25.700 -> 24.699 GiB`; still above 24GiB because it includes transient prefill allocations, especially the reused BF16 INT8-prefill oracle K/V workspace.
+- Retained KV/scales unchanged and expected: total `2,707,968,000 B`, payload `2,686,976,000 B` at `1.0 B/element`, FP16 scales `20,992,000 B`.
+- Resolved blocker: persistent full-prompt `prefill_hidden`/`prefill_next_hidden` double buffer (`2 x [262277,4096] fp16`, `4.297 GB`) is gone and no full-prompt prefill hidden buffer remains live through decode.
+- Remaining memory follow-up: task #19 should stream/remove `Qwen35ParoResidentSession._prefill_int8_oracle_cache` (`2 x [1025,256,2,256] bf16`, `1,074,790,400 B`) to reduce tracked high-water and larger-context prefill pressure.
+
+Retained artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-single-buffer-capacity-diagnostic.json`. Updated `docs/KVCACHE.md`, `docs/KERNELS.md`, `docs/TESTING.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` to mark the persistent prefill-buffer blocker resolved and distinguish sampled capacity from tracked high-water follow-up.

@@ -126,14 +126,14 @@ Reference results on W7900/gfx1100, model `Qwen3.5-35B-A3B-PARO`, quant
   `61.275` tok/s, sampled/tracked peak `21.170/24.545 GiB`, retained KV
   `1.355 GB` (`1.0 B/element` payload plus `10.506 MB` scales), no BF16 shadow.
   This is a storage/capacity diagnostic, not a speed claim.
-- 256K/128 INT8 capacity artifact:
-  [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json).
-  The run completed and correctness/no-shadow passed at `624.224` prefill /
-  `40.819` decode tok/s with retained KV `2.708 GB`, but it is blocked for
-  24GiB-class promotion because sampled/tracked peaks reached `24.330/25.700
-  GiB`. The named blocker is persistent full-prompt prefill double-buffering
-  (`2 x [262277,4096] fp16 = 4.297 GB`) plus expected dense KV/scales and decode
-  scratch.
+- 256K/128 INT8 single-buffer capacity artifact:
+  [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-single-buffer-capacity-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-single-buffer-capacity-diagnostic.json).
+  The run completed and correctness/no-shadow passed at `626.127` prefill /
+  `40.856` decode tok/s with retained KV `2.708 GB`; sampled/tracked peaks are
+  `22.326/24.699 GiB`. The previous persistent full-prompt prefill
+  double-buffering blocker (`2 x [262277,4096] fp16 = 4.297 GB`) is resolved;
+  the remaining tracked high-water comes from transient INT8-prefill oracle
+  workspace plus expected dense KV/scales and decode scratch.
 
 Profiler summary from the 128K INT8 selected-region traces:
 

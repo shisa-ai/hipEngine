@@ -92,6 +92,58 @@ def _resident_allocation_session(*, storage_dtype: str = "bf16", scale_dtype: DT
     return session, captured
 
 
+def test_qwen35_resident_prefill_hidden_buffer_is_lazy_single_buffer() -> None:
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.config = SimpleNamespace(hidden_size=8)
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.prefill_capacity_rows = 4
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.next_ptr = 0x7000
+            self.mallocs: list[tuple[int, int]] = []
+            self.frees: list[int] = []
+
+        def malloc(self, nbytes: int) -> int:
+            ptr = self.next_ptr
+            self.next_ptr += max(int(nbytes), 1) + 0x100
+            self.mallocs.append((ptr, int(nbytes)))
+            return ptr
+
+        def free(self, ptr: int) -> None:
+            self.frees.append(int(ptr))
+
+    runtime = FakeRuntime()
+    session.runtime = runtime
+    session.prefill_hidden_buffer = None
+    session.prefill_hidden_capacity_rows = 0
+    session._set_empty_prefill_hidden_views()
+
+    hidden = session._ensure_prefill_hidden_capacity(3)
+
+    assert hidden.shape == (3, 8)
+    assert session.prefill_hidden.ptr == hidden.ptr
+    assert session.prefill_next_hidden.ptr == hidden.ptr
+    assert runtime.mallocs == [(0x7000, 3 * session.hidden_nbytes)]
+
+    same = session._ensure_prefill_hidden_capacity(2)
+    assert same.ptr == hidden.ptr
+    assert runtime.mallocs == [(0x7000, 3 * session.hidden_nbytes)]
+
+    larger = session._ensure_prefill_hidden_capacity(4)
+    assert larger.ptr != hidden.ptr
+    assert runtime.frees == [hidden.ptr]
+    assert runtime.mallocs[-1] == (0x7000 + 3 * session.hidden_nbytes + 0x100, 4 * session.hidden_nbytes)
+
+    session._release_prefill_hidden_buffer()
+
+    assert runtime.frees == [hidden.ptr, larger.ptr]
+    assert session.prefill_hidden.ptr == 0
+    assert session.prefill_next_hidden.ptr == 0
+
+
 def test_qwen35_resident_full_kv_allocation_defaults_to_bf16_payload_only() -> None:
     session, captured = _resident_allocation_session(storage_dtype="bf16")
 
@@ -334,6 +386,7 @@ def test_qwen35_resident_native_prefill_layers_use_int8_retained_cache_and_bf16_
         assert kwargs["retained_append_spans"].scale_metadata is not None
         assert kwargs["retained_append_spans"].scale_metadata.k_scale.dtype is DType.FP16
     assert len(runtime.memcpy_async_calls) == 2
+    assert [call[0] for call in runtime.memcpy_async_calls] == [0x1000, 0x1000 + 2 * session.hidden_nbytes]
 
 
 def test_qwen35_resident_native_prefill_plan_accepts_full_attention_layers() -> None:

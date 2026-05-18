@@ -139,18 +139,17 @@ def _run_native_linear_prefix(session: Qwen35ParoResidentSession, prompt_tokens:
     tokens = len(prompt_tokens)
     token_arr = np.asarray(prompt_tokens, dtype=np.int64)
     token_buf = session._dev(token_arr)
+    hidden = session._prefill_hidden_view_for_rows(tokens)
     embedding_lookup_batch_fp16_i64(
         session.embedding.tensor.ptr,
         token_buf.ptr,
-        session.prefill_hidden.ptr,
+        hidden.ptr,
         tokens,
         session.config.hidden_size,
         session.vocab_size,
         library=session.libraries["runtime_state"],
         runtime=session.runtime,
     )
-    hidden = Tensor.from_handle(session.prefill_hidden.ptr, (tokens, session.config.hidden_size), DType.FP16, session.device)
-    next_hidden = Tensor.from_handle(session.prefill_next_hidden.ptr, (tokens, session.config.hidden_size), DType.FP16, session.device)
     for layer_id in range(LINEAR_PREFIX_LAYERS):
         state = session.states[layer_id]
         conv_state, recurrent_state = session._slot_linear_state(layer_id, 0)
@@ -171,8 +170,7 @@ def _run_native_linear_prefix(session: Qwen35ParoResidentSession, prompt_tokens:
             tokens=tokens,
             library=session.libraries,
         )
-        session.runtime.memcpy_async(next_hidden.ptr, out.ptr, tokens * session.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
-        hidden, next_hidden = next_hidden, hidden
+        session.runtime.memcpy_async(hidden.ptr, out.ptr, tokens * session.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
     session.runtime.stream_synchronize(0)
     return hidden
 

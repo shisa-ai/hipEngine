@@ -899,6 +899,8 @@ class Qwen35ParoResidentSession:
         self.full_scratch = {}
         self.moe_scratch = {}
         self.prefill_workspace = RuntimeWorkspace(runtime=self.runtime)
+        self.prefill_hidden_buffer: DeviceBuffer | None = None
+        self.prefill_hidden_capacity_rows = 0
         self._prefill_scratch_state: Qwen35ParoDecodeState | None = None
         self.prefill_linear_scratch: Qwen35ParoLinearAttentionScratch | None = None
         self.prefill_full_scratch: Qwen35ParoAttentionScratch | None = None
@@ -945,6 +947,7 @@ class Qwen35ParoResidentSession:
         self.runtime.device_synchronize()
         self.closed = True
         self._release_prefill_workspace()
+        self._release_prefill_hidden_buffer()
         for state in reversed(self.states):
             state.free()
         for allocation in reversed(self.allocations):
@@ -1249,10 +1252,11 @@ class Qwen35ParoResidentSession:
             )
         metadata = self._materialize_packed_prefill_metadata(slab)
         try:
+            prefill_hidden = self._prefill_hidden_view_for_rows(slab.rows)
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
                 metadata.token_ids.ptr,
-                self.prefill_hidden.ptr,
+                prefill_hidden.ptr,
                 slab.rows,
                 self.config.hidden_size,
                 self.vocab_size,
@@ -1323,10 +1327,11 @@ class Qwen35ParoResidentSession:
         copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
         try:
             self._prepare_prefill_context_counts(len(tokens), stream=0)
+            prefill_hidden = self._prefill_hidden_view_for_rows(len(tokens))
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
                 token_buf.ptr,
-                self.prefill_hidden.ptr,
+                prefill_hidden.ptr,
                 len(tokens),
                 self.config.hidden_size,
                 self.vocab_size,
@@ -1382,10 +1387,11 @@ class Qwen35ParoResidentSession:
             owns_token_buf = True
         copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
         try:
+            prefill_hidden = self._prefill_hidden_view_for_rows(len(tokens))
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
                 token_buf.ptr,
-                self.prefill_hidden.ptr,
+                prefill_hidden.ptr,
                 len(tokens),
                 self.config.hidden_size,
                 self.vocab_size,
@@ -2270,8 +2276,7 @@ class Qwen35ParoResidentSession:
         return scratch
 
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
-        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
-        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
+        hidden = self._prefill_hidden_view_for_rows(tokens)
         use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(tokens)
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
@@ -2298,7 +2303,7 @@ class Qwen35ParoResidentSession:
                         stream=stream,
                     )
                     self.runtime.memcpy_async(
-                        next_hidden.ptr + start * self.hidden_nbytes,
+                        hidden_chunk.ptr,
                         out.ptr,
                         rows * self.hidden_nbytes,
                         HipMemcpyKind.DEVICE_TO_DEVICE,
@@ -2362,7 +2367,7 @@ class Qwen35ParoResidentSession:
                         stream=stream,
                     )
                     self.runtime.memcpy_async(
-                        next_hidden.ptr + start * self.hidden_nbytes,
+                        hidden_chunk.ptr,
                         out.ptr,
                         rows * self.hidden_nbytes,
                         HipMemcpyKind.DEVICE_TO_DEVICE,
@@ -2370,7 +2375,6 @@ class Qwen35ParoResidentSession:
                     )
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
-            hidden, next_hidden = next_hidden, hidden
         return hidden
 
     def _run_native_prefill_packed_layers(
@@ -2381,8 +2385,7 @@ class Qwen35ParoResidentSession:
         stream: int = 0,
     ) -> Tensor:
         rows = int(slab.rows)
-        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
-        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        hidden = self._prefill_hidden_view_for_rows(rows)
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
@@ -2428,13 +2431,11 @@ class Qwen35ParoResidentSession:
                 )
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
-            self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
-            hidden, next_hidden = next_hidden, hidden
+            self.runtime.memcpy_async(hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
         return hidden
 
     def _run_linear_prefill_layers(self, *, tokens: int, layer_limit: int | None = None, stream: int = 0) -> Tensor:
-        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
-        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
+        hidden = self._prefill_hidden_view_for_rows(tokens)
         limit = len(self.states) if layer_limit is None else int(layer_limit)
         if limit < 0 or limit > len(self.states):
             raise ValueError("layer_limit outside resident state range")
@@ -2462,8 +2463,7 @@ class Qwen35ParoResidentSession:
                 library=self.libraries,
                 stream=stream,
             )
-            self.runtime.memcpy_async(next_hidden.ptr, out.ptr, tokens * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
-            hidden, next_hidden = next_hidden, hidden
+            self.runtime.memcpy_async(hidden.ptr, out.ptr, tokens * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
         return hidden
 
     def _prefill_row_hidden_view(self, tensor: Tensor, row: int) -> Tensor:
@@ -2541,6 +2541,7 @@ class Qwen35ParoResidentSession:
 
     def _restore_decode_scratch_after_prefill(self) -> None:
         self._release_prefill_workspace()
+        self._release_prefill_hidden_buffer()
         for layer_id, state in enumerate(self.states):
             self.moe_scratch[layer_id] = self._reserve_mlp_scratch(state, tokens=1)
             if self.config.layer_types[layer_id] == "linear_attention":
@@ -2733,14 +2734,65 @@ class Qwen35ParoResidentSession:
         self.allocations.extend((self.lm_head_weight, self.lm_head_scale))
         self._emit("load_lm_head_done", vocab_size=self.vocab_size, mode="w8a16")
 
+    def _set_empty_prefill_hidden_views(self) -> None:
+        empty = Tensor.from_handle(0, (0, self.config.hidden_size), DType.FP16, self.device)
+        self.prefill_hidden = empty
+        # Historical diagnostics accessed ``prefill_next_hidden`` directly. The
+        # retained prefill path is now single-buffer/in-place, so this is only a
+        # compatibility alias unless an older diagnostic script allocates its own
+        # tensor on a manually-constructed session.
+        self.prefill_next_hidden = empty
+
+    def _ensure_prefill_hidden_capacity(self, rows: int) -> Tensor:
+        rows = int(rows)
+        if rows <= 0:
+            raise ValueError("prefill hidden rows must be positive")
+        if rows > self.prefill_capacity_rows:
+            raise ValueError(
+                f"prefill rows {rows} exceed session capacity {self.prefill_capacity_rows}"
+            )
+        nbytes = rows * self.hidden_nbytes
+        current = getattr(self, "prefill_hidden_buffer", None)
+        current_rows = int(getattr(self, "prefill_hidden_capacity_rows", 0) or 0)
+        if current is None or current.nbytes < nbytes:
+            if current is not None:
+                free(current, runtime=self.runtime)
+            current = malloc(nbytes, runtime=self.runtime)
+            self.prefill_hidden_buffer = current
+            self.prefill_hidden_capacity_rows = rows
+            current_rows = rows
+        self.prefill_hidden = Tensor.from_handle(
+            current.ptr,
+            (current_rows, self.config.hidden_size),
+            DType.FP16,
+            self.device,
+        )
+        self.prefill_next_hidden = self.prefill_hidden
+        return Tensor.from_handle(current.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+
+    def _prefill_hidden_view_for_rows(self, rows: int) -> Tensor:
+        rows = int(rows)
+        hidden = getattr(self, "prefill_hidden", None)
+        if hidden is None or hidden.ptr == 0 or int(hidden.shape[0]) < rows:
+            return self._ensure_prefill_hidden_capacity(rows)
+        device = getattr(self, "device", hidden.device)
+        return Tensor.from_handle(hidden.ptr, (rows, self.config.hidden_size), DType.FP16, device)
+
+    def _release_prefill_hidden_buffer(self) -> None:
+        current = getattr(self, "prefill_hidden_buffer", None)
+        if current is None:
+            return
+        free(current, runtime=self.runtime)
+        self.prefill_hidden_buffer = None
+        self.prefill_hidden_capacity_rows = 0
+        self._set_empty_prefill_hidden_views()
+
     def _allocate_common_buffers(self) -> None:
         hidden_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         next_hidden_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         norm_out_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
         norm_out_bf16_buf = malloc(self.batch_hidden_nbytes, runtime=self.runtime)
-        prefill_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
-        prefill_next_hidden_buf = malloc(self.prefill_hidden_nbytes, runtime=self.runtime)
-        self.buffers.extend((hidden_buf, next_hidden_buf, norm_out_buf, norm_out_bf16_buf, prefill_hidden_buf, prefill_next_hidden_buf))
+        self.buffers.extend((hidden_buf, next_hidden_buf, norm_out_buf, norm_out_bf16_buf))
         self.batch_hidden = Tensor.from_handle(hidden_buf.ptr, self.batch_layout.hidden_shape, DType.FP16, self.device)
         self.batch_next_hidden = Tensor.from_handle(next_hidden_buf.ptr, self.batch_layout.hidden_shape, DType.FP16, self.device)
         self.batch_norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.hidden_shape, DType.FP16, self.device)
@@ -2749,18 +2801,7 @@ class Qwen35ParoResidentSession:
         self.next_hidden = Tensor.from_handle(next_hidden_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.FP16, self.device)
         self.norm_out = Tensor.from_handle(norm_out_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.FP16, self.device)
         self.norm_out_bf16 = Tensor.from_handle(norm_out_bf16_buf.ptr, self.batch_layout.slot0_hidden_shape, DType.BF16, self.device)
-        self.prefill_hidden = Tensor.from_handle(
-            prefill_hidden_buf.ptr,
-            (self.prefill_capacity_rows, self.config.hidden_size),
-            DType.FP16,
-            self.device,
-        )
-        self.prefill_next_hidden = Tensor.from_handle(
-            prefill_next_hidden_buf.ptr,
-            (self.prefill_capacity_rows, self.config.hidden_size),
-            DType.FP16,
-            self.device,
-        )
+        self._set_empty_prefill_hidden_views()
 
         block_table_arr = np.arange(self.blocks, dtype=np.int32)
         prefill_block_table_arr = np.tile(block_table_arr, (self.prefill_capacity_rows, 1))

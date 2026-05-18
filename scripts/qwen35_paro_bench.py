@@ -486,7 +486,9 @@ def _owned_device_bytes(session: Qwen35ParoResidentSession) -> int:
             int(prefill_workspace.allocation(name).buffer.nbytes)
             for name in prefill_workspace.names
         )
-    return allocation_bytes + buffer_bytes + state_workspace_bytes + prefill_workspace_bytes
+    prefill_hidden = getattr(session, "prefill_hidden_buffer", None)
+    prefill_hidden_bytes = int(prefill_hidden.nbytes) if prefill_hidden is not None else 0
+    return allocation_bytes + buffer_bytes + state_workspace_bytes + prefill_workspace_bytes + prefill_hidden_bytes
 
 
 def _memory_snapshot(
