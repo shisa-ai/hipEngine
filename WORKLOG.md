@@ -18887,3 +18887,28 @@ Blocker / next work for task #63:
 2. Need grouped/tiled selected-MoE decode that reuses expert data across top-k rather than 40 Q4 dispatches/token plus down dispatches.
 3. Need tensor-name profiling for the remaining Q8 family; raw-pack8 reduced it, but it still has 170 Q8 pack8 dispatches/token plus 40 Q8 dual dispatches/token.
 4. Attention/cache is now comparable to Q5 down and may matter after MoE/Q8/lm-head move, but it is not the first blocker.
+
+## 2026-05-18 qwen35moe GGUF P8 plan: real batched prefill GEMM
+
+After tasks #62/#63 closed decode optimization but left prefill at ~107 tok/s (`~4.8 s` for a 512-token prompt vs ~2 s for PARO/llama.cpp on the same hardware), audited `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py` and `gguf_k_gemv.hip`. Finding: every `gguf_*_prefill_*` registry symbol is a Python alias for the matching `gguf_*_gemv_*` symbol. The underlying HIP kernel family (`gguf_k_prefill_out_kernel`, `gguf_k_pack8_prefill_out_kernel`, selected variants, Q4_K equivalents) launches grid `(out_features_or_pack, rows)` with `__launch_bounds__(256, 2)` and does an in-block K-reduction. There is no row reuse and no WMMA. At rows=512 every quantized weight block is dequantized 512 times.
+
+Task #61 prefill profile evidence: dense/shared Q8_0 row GEMVs `~1931 ms`, selected expert row GEMVs `~2441 ms`, GDN recurrent `~664 ms`, attention/cache `<1 %`. To close the gap to a llama.cpp/PARO-class prefill, the dense+selected buckets must collapse by ~10x; that needs an algorithm change, not knob tuning.
+
+Added a "P8: real batched prefill GEMM (active)" plan section to `docs/GGUF.md`. The plan reuses in-tree gfx1100 references rather than inventing new infra:
+
+- **Reuse-as-is (already registered, no new code):**
+  - `qwen35_moe_group_count_kernel`, `qwen35_moe_group_prefix_kernel`, `qwen35_moe_group_scatter_gather_kernel`, `qwen35_moe_wmma_tile_map_kernel`, `qwen35_moe_gather_packed_hidden_kernel` in `hipengine/kernels/hip_gfx1100/moe/group_scatter.hip` for selected MoE scheduling.
+  - `qwen35_router_*` in `hipengine/kernels/hip_gfx1100/moe/router.hip` for router/top-k.
+  - `silu_mul_separate_out_bf16` for compact-row activation.
+  - `gguf_q4_k_pack8_dual_prefill_bf16_bf16_out` retained as rows>1 fallback.
+
+- **Algorithm template (copy structure, swap dequant):**
+  - `awq_fusedw4_prefill_fp16_kernel<TM, TN, qweight_transposed>` and `awq_fusedw4_prefill_dual_fp16_kernel<TM, TN>` in `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip` for dense (P8.1 Q8_0, P8.2 Q4_K, P8.3 Q5_K/Q6_K).
+  - `gemm_awq_selected_pack8_wmma_compact_kernel<scalar_t>` and `gemm_awq_selected_dual_pack8_wmma_compact_kernel<scalar_t>` in `hipengine/kernels/hip_gfx1100/wmma/paro_awq_wmma.hip` for selected MoE (P8.4 Q4_K dual gate+up, P8.5 Q5_K/Q6_K down).
+  - All templates already use `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32`, 32-thread blocks, `__launch_bounds__(32, ...)`, `tid & 15` lane mapping. Only the inner K-loop dequant changes per quant type.
+
+- **Algorithmic cross-checks (read, do not port):** llama.cpp HIP `mmq.cuh`, llama.cpp Vulkan `mul_mmq.comp`, nano-vllm-amd `qwen35_wmma_i8_*` (held in reserve for P8.8 I8 WMMA / Q8_1 activation quant).
+
+Phased order: P8.1 dense Q8_0 → P8.2 dense Q4_K (single + dual) → P8.3 dense Q5_K/Q6_K → P8.4 selected Q4_K dual MoE → P8.5 selected Q5_K/Q6_K MoE → P8.6 scheduler wiring → P8.7 lm_head → optional P8.8 Q8_1+I8 WMMA. Acceptance floor: 512/0 total prefill kernel time `<= 1500 ms` (vs current `~5114 ms`), with public LLM.generate Q4_K_M and qwen35moe smoke gates passing and no decode-shaped `_prefill_out_kernel` symbols appearing in the 512/0 rocprof.
+
+No code yet — this commit lands the plan only. Next commit: P8.1 Q8_0 batched WMMA prefill kernel + CPU-reference tests + registry rewire.

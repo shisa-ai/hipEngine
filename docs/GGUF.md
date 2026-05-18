@@ -1046,3 +1046,396 @@ The scanner, quant table, Qwen3.5 tensor-name map, Q4_K_M resident weight materi
 ## Bottom line
 
 hipENGINE can now load and execute the Qwen3.5-0.8B Q4_K_M GGUF fixture correctly with resident state, all-GPU attention/KV, layer-level AOTriton prefill attention, multirow projection surfaces, decode graph replay, and retained diagnostic 512/128 + 4K/128 parity measurements. It is still not a promoted performance path: public full-model bulk prefill and accepted throughput parity rows remain. GGUF must keep GGML quant math and its own quant layouts while borrowing PARO's scheduling, registry, and memory-discipline patterns.
+
+## P8: real batched prefill GEMM (active)
+
+Date added: 2026-05-18. Branch: `gguf-bulk-prefill`.
+
+### Why we are here
+
+After P4 there is a `prefill_*` kernel family registered for every GGUF quant
+type, and the runtime calls them when `rows > 1`. But every `prefill_*` symbol
+in `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py` is **literally an alias
+for the matching `gemv_*` symbol**:
+
+```python
+gguf_q8_0_prefill_bf16_bf16_out = gguf_q8_0_gemv_bf16_bf16_out
+gguf_q5_k_prefill_bf16_bf16_out = gguf_q5_k_gemv_bf16_bf16_out
+gguf_q6_k_prefill_bf16_bf16_out = gguf_q6_k_gemv_bf16_bf16_out
+# ... same for Q4_K
+```
+
+The corresponding HIP kernels (`gguf_k_prefill_out_kernel`,
+`gguf_k_pack8_prefill_out_kernel`, `gguf_k_selected_prefill_out_kernel`,
+`gguf_q4_k_*_prefill_out_kernel`) are **shape-batched but algorithmically
+decode-shaped**:
+
+- Grid `(out_features_or_pack, rows)`, one block per `(row, out_col_pack)`.
+- 256 threads in `blockDim.x`, each summing `in_features / 256` K-elements,
+  then `reduce_block_sum` across the wave.
+- The quantized weight blocks for a single output column are re-read and
+  re-dequantized `rows` times. No reuse across rows.
+- No WMMA / MFMA. Each thread does FP32 scalar accumulation.
+
+At `rows == 512`, every Q8_0 / Q4_K / Q5_K / Q6_K weight block is dequantized
+512 times. This is the entire prefill bottleneck.
+
+Task #61 prefill profile (Qwen3.6-35B-A3B-UD-Q4_K_M, 512 tokens, no decode):
+
+| Bucket | ms | % of prefill kernel time | Why decode-shaped |
+| --- | ---: | ---: | --- |
+| Dense / shared Q8_0 row GEMVs | 1931 | 37.8 % | `gguf_q8_0_*_prefill` aliases to `gemv` |
+| Selected expert row GEMVs (Q4_K gate/up + Q5_K/Q6_K down) | 2441 | 47.7 % | `gguf_*_selected_*_prefill` aliases to `selected_gemv` |
+| GDN recurrent | 664 | 13.0 % | Real recurrent kernel, deferred |
+| Full-attn / KV | < 1 % | < 0.1 % | Already routed through AOTriton V3 |
+
+To hit a llama.cpp/PARO-class prefill (2000+ tok/s @ 512), the dense and
+selected-expert buckets need to collapse by roughly 10×. Knob-turning the
+GEMV kernels cannot get there; the algorithm must change.
+
+### Reference implementations (read these first, in this order)
+
+These are the kernels and helpers we are **reusing or copying the algorithm
+from**. Anything not listed here is either decode-shaped (and being replaced)
+or outside the scope of P8.
+
+#### Reuse-as-is (call directly, no new kernel needed)
+
+| Component | Path / symbol | What it does | Where P8 calls it |
+| --- | --- | --- | --- |
+| Token → expert count | `hipengine/kernels/hip_gfx1100/moe/group_scatter.hip::qwen35_moe_group_count_kernel` | `counts[e] = #{r : selected[r] == e}` from `[rows*top_k]` selected list. | Step 1 of the new selected MoE prefill scheduler (P8.4 / P8.6). |
+| Expert prefix sum | `group_scatter.hip::qwen35_moe_group_prefix_kernel` | Padded prefix into `expert_start_compact[E+1]`; pads each expert count to `pad_multiple` (8/16) so compact-WMMA tiles align. | Step 2 of the same scheduler. |
+| Scatter + gather hidden | `group_scatter.hip::qwen35_moe_group_scatter_gather_kernel` | In one kernel, sort `(row, expert)` pairs by `expert` AND gather the corresponding hidden rows into a compact `[total_compact_rows, in_features]` slab. | Step 3 of the scheduler; outputs the compact A-side input to the WMMA GEMM. |
+| WMMA tile map | `group_scatter.hip::qwen35_moe_wmma_tile_map_kernel` | Derives `wmma_expert_start[E+1]` (rounded to 16-row multiples) and `tile_expert[T]` so each 16-row WMMA tile knows which expert it belongs to. | Step 4: passed to the new selected WMMA GEMM. |
+| Weighted scatter-back combine | `group_scatter.hip::qwen35_moe_gather_packed_hidden_kernel` (alias `weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w` in the runtime wrapper) | Scatters compact `[total_compact_rows, hidden]` outputs back into `[rows, hidden]` with `routing_weights[r, k]`, fuses the shared-expert gate combine and residual add. | Step 7: post-down-projection combine. |
+| Router top-k (already on device) | `hipengine/kernels/hip_gfx1100/moe/router.hip::qwen35_router_logits*` / `qwen35_router_select` | Per-row router logits and top-k selection. | Step 0: produces `[rows*top_k]` selected expert ids + weights. |
+| Compact SiLU / mul | `hipengine/kernels/hip_gfx1100/fused/...::silu_mul_separate_out_bf16` | Pointwise `silu(gate) * up` over compact rows. | Step 6 between gate+up GEMM and down GEMM. |
+| Q4_K pack8 batched dual prefill (existing) | `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip::gguf_q4_k_pack8_dual_prefill_bf16_bf16_out` | The one **existing** batched (not WMMA) Q4_K prefill kernel; used today by `launch_gguf_linear_pair` for dense FFN gate+up when both projections are Q4_K pack8. | Kept as the rows>1 fallback for tile boundary / shape cases the new WMMA kernel cannot cover yet. |
+
+These have CPU-reference oracles and runtime wrappers already. P8 does **not**
+touch them; it only adds new GEMM kernels that consume their outputs.
+
+#### Algorithm template (copy structure, swap dequant)
+
+These are the in-tree gfx1100 kernels we are mirroring line-by-line. P8
+kernels keep the same wave shape, the same lane-to-output mapping, the same
+WMMA call sequence, and the same output-store pattern. The **only** delta is
+the inner K-loop dequant.
+
+| Source kernel | File | Used as template for |
+| --- | --- | --- |
+| `awq_fusedw4_prefill_fp16_kernel<TM, TN, qweight_transposed>` | `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip` | P8.1 Q8_0 dense WMMA prefill, P8.2 Q4_K dense, P8.3 Q5_K/Q6_K dense (single output). |
+| `awq_fusedw4_prefill_dual_fp16_kernel<TM, TN>` | same file | P8.2 Q4_K **dual** (gate+up) dense WMMA prefill; same trick of halving the block-x grid between the two output tensors. |
+| `gemm_awq_selected_pack8_wmma_compact_kernel<scalar_t>` | `hipengine/kernels/hip_gfx1100/wmma/paro_awq_wmma.hip` | P8.4/P8.5 selected (grouped MoE) Q4_K / Q5_K / Q6_K WMMA prefill (single output, e.g. `ffn_down_exps`). |
+| `gemm_awq_selected_dual_pack8_wmma_compact_kernel<scalar_t>` | same file | P8.4 selected Q4_K dual (gate+up) MoE WMMA prefill. |
+
+All four templates already use `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32`,
+`half16_t` operands, `float8_t` accumulators, `__launch_bounds__(32, ...)`,
+and the standard `tid & 15` lane-to-output mapping. The MoE variants already
+consume the exact `(expert_start_compact, wmma_expert_start, tile_expert)`
+ABI emitted by `group_scatter.hip`. **Do not invent a new compact-MoE ABI**;
+P8 kernels read these arrays verbatim.
+
+What changes inside each templated kernel for GGUF:
+
+- The AWQ W4 dequant block (read `qzeros`/`scales`, unpack `pw`, compute
+  `a_reg[kk] = sc_h * (half)q - zp_h`) is replaced with the GGUF dequant for
+  the target quant type per the table in "Algorithm: WMMA `f32_16x16x16_f16_w32`
+  with K-loop dequant" above.
+- AWQ's `group_size=128` becomes the GGUF block / super-block size (32 for
+  Q8_0, 256 for Q4_K / Q5_K / Q6_K). The K-tile size stays at 16 so the WMMA
+  shape and lane mapping do not change.
+- AWQ's `(qweight, qzeros, scales)` triple becomes a single `uint8_t*` to the
+  raw GGUF block stream. Address arithmetic uses `block_q*_K_BYTES` and the
+  block layout in `~/llama.cpp/llama.cpp-hip-therock/ggml/src/ggml-common.h`.
+- The activation side (`half_t* x` for dense, compact-rowed `scalar_t* x` for
+  selected) and the output store (`half_t* out` for dense, compact-rowed for
+  selected) are byte-identical to the PARO templates.
+
+Selected kernels additionally read `expert_start_compact[E+1]`,
+`wmma_expert_start[E+1]`, `tile_expert[T]`, and the rank-3 expert weight
+tensor `[E, out_features, raw_bytes_per_row]`, just like the AWQ compact
+MoE kernels read those plus `qweight[E, out_packed, in_features]` etc.
+
+#### Algorithmic cross-checks (read, do not port)
+
+| Source | Path | Why it is here |
+| --- | --- | --- |
+| llama.cpp HIP MMQ | `~/llama.cpp/llama.cpp-hip-therock/ggml/src/ggml-cuda/mmq.cuh` (4176 lines), `mmq.cu`, `template-instances/mmq-instance-q{4,5,6}_k.cu`, `mmq-instance-q8_0.cu` | Cross-check that GGUF block decoding is correct (`load_tiles_q4_K_device`, `vec_dot_q4_K_q8_1_mma`). Reference for the Q8_1 activation-quant trick if P8.8 is opened. **Do not port the dispatcher or scheduler.** |
+| llama.cpp Vulkan MMQ | `~/llama.cpp/llama.cpp-vulkan/ggml/src/ggml-vulkan/vulkan-shaders/mul_mmq.comp` plus `mul_mmq_funcs.glsl` and `mul_mmq_shmem_types.glsl` | Same algorithm, cooperative-matrix shader. Sanity check when an `mmq.cuh` corner case is unclear. |
+| nano-vllm-amd I8 WMMA | `~/amd-gpu-tuning/nano-vllm-amd/csrc/amd/qwen35_expert.hip`: `qwen35_wmma_i8_tile_kernel`, `qwen35_wmma_i8_gemm_a_row_major_kernel`, `qwen35_wmma_i8_gemm_grouped_a_row_major_kernel` | Pattern for `__builtin_amdgcn_wmma_i32_16x16x16_iu8_w32` on gfx1100 if P8.8 (Q8_1-quant + I8 WMMA) is opened. Already proven to land on this hardware. |
+| nano-vllm-amd W8A16 shared bulk | same file: `w8a16_shared_gate_up_bulk_kernel`, `w8a16_shared_gate_up_bulk4_kernel`, `w8a16_shared_down_bulk_combine_kernel` | The shape parent for hipENGINE's `w8a16_shared_*` family in `hipengine/kernels/hip_gfx1100/quant/w8a16_linear.hip`. Useful if a Q8_0 shared-expert specialization is needed beyond P8.1. |
+| nano-vllm-amd grouped MoE dispatch | `~/amd-gpu-tuning/nano-vllm-amd/nanovllm/native/qwen35/expert.py` | The Python-side reference for how grouped MoE prefill is sequenced (count → prefix → scatter → GEMM → combine). Matches `_run_post_attention_moe_rows` we are about to add a WMMA path to. |
+
+#### What is **not** being reused
+
+- `gguf_k_prefill_out_kernel`, `gguf_k_pack8_prefill_out_kernel`,
+  `gguf_k_selected_prefill_out_kernel`, `gguf_k_selected_pack8_prefill_out_kernel`
+  in `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip` are the
+  decode-shaped "prefill" kernels P8 replaces. They stay registered for the
+  rows==1 / fallback path but lose their `prefill_*` registry alias once the
+  new WMMA kernels land.
+- Same story for the Q4_K family in
+  `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip`. The one exception
+  is `gguf_q4_k_pack8_dual_prefill_bf16_bf16_out`, which is already a real
+  batched (non-WMMA) kernel and is kept as a rows>1 fallback for shapes the
+  WMMA tile sizing does not cover cleanly.
+- The pack8 expert sidecar (`hipengine/loading/qwen35_gguf_expert_sidecar.py`)
+  and its kernels (`hipengine/kernels/hip_gfx1100/quant/gguf_expert_pack8_gemv.hip`)
+  are not used. Tasks #59/#60 already showed that the residency cost
+  outweighed the kernel-time win, and P8 does not change that calculus. Do
+  not regrow the sidecar.
+
+#### What a future agent should do before adding a new kernel here
+
+1. `grep -rn '__global__' hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip
+   hipengine/kernels/hip_gfx1100/wmma/paro_awq_wmma.hip
+   hipengine/kernels/hip_gfx1100/moe/group_scatter.hip` and read each match.
+   These three files **are** the template.
+2. Read the matching CPU reference
+   `hipengine/kernels/cpu_reference/ops.py::gguf_quant_gemv` (and its
+   selected/MoE callers) before writing the kernel; the test will compare
+   against it.
+3. Check `docs/KERNELS.md` for any drift entries on the parent files used as
+   sources, and follow `AGENTS.md` § "Before Starting" / "During Work" /
+   "After Changes".
+4. Only then write the new `.hip` file. Mirror the PARO `__launch_bounds__`,
+   block dim, grid dim, lane mapping, and accumulator type. Only change the
+   dequant block.
+
+### Algorithm: WMMA `f32_16x16x16_f16_w32` with K-loop dequant
+
+The PARO `awq_fusedw4_prefill_fp16_kernel` shape is the target. One block of
+32 threads (one gfx1100 WMMA wave) computes a `TM × TN` output tile, where
+`TM` is the count of output channels and `TN` is the count of token rows. The
+relevant constants:
+
+- Block: `dim3(32)`. `__launch_bounds__(32, 8)` on dense, `(32, 2)` on the
+  grouped compact variant. Pick to match the per-quant register pressure.
+- Grid: `((out_features + TM - 1) / TM, (rows + TN - 1) / TN)`.
+- WMMA op: `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, c)` where
+  - `a` is `half16_t` interpreted as a `[16, 16]` matrix tile by lane
+    `tid & 15` (`a[lane, kk]` lives in thread `lane`'s `a[kk]` register).
+  - `b` is `half16_t` along the K axis for one of the TN rows.
+  - `c` is the running `float8_t` accumulator (8 floats per lane; lanes 0
+    and 16 each hold half of the 16 output rows of one tile).
+- Inner loop: for each K block of size 16 (`k_tiles_per_group`), load 16
+  activation halves into `b_reg` and 16 dequantized weight halves into
+  `a_reg`, accumulate.
+- Output: each lane writes 8 output values into its `(out_row, out_col)`
+  slots in the result `[rows, out_features]` matrix.
+
+The entire structure is quant-orthogonal. The only thing that changes
+between Q8_0 / Q4_K / Q5_K / Q6_K is the dequant block in the inner K loop
+that fills `a_reg[kk]` for `kk \in [0, 16)`.
+
+Dequant per quant type (see `ggml-common.h` block layout for the source of
+truth):
+
+| Quant | Super-block K size | Per-K-tile scale source | Inner dequant of one 16-K tile |
+| --- | ---: | --- | --- |
+| Q8_0 | 32 | `fp16 d` at start of block | `weight[k] = (half) (int8) qs[k] * d`. Two K-tiles per block (k=0..15, k=16..31). |
+| Q4_K | 256 | `fp16 d`, `fp16 dmin`, 12-byte packed 6/6 (`scales/mins`) | Decode 8 sub-blocks: each has 6-bit `sc` and 6-bit `m`; per 32-K sub-block `weight[k] = d * sc * (q4(k)) - dmin * m`. Two K-tiles per 32-K sub-block. |
+| Q5_K | 256 | `fp16 d`, `fp16 dmin`, same 12-byte scales/mins, plus 32-byte hi-bits | Same as Q4_K with `q4(k) | (hi(k) << 4)` (5-bit). |
+| Q6_K | 256 | `fp16 d` plus per-16-K int8 `sc[16]` | `weight[k] = d * sc[k/16] * (q6(k) - 32)`. K-tiles of 16 each see one `sc[]` element. |
+
+Key design choices we are committing to up front:
+
+1. **Dequant happens inside the K loop, not as a separate pre-pass.** Same as
+   PARO `awq_fusedw4_prefill_fp16_kernel`. No host-side or device-side full
+   dequant of the weight tensor. Memory footprint is unchanged; only kernel
+   time changes.
+2. **First batched kernels accumulate in F32 with half_t WMMA operands.** No
+   activation-side quantization. Correctness is then identical to the existing
+   row-GEMV path modulo the order-of-summation rounding that WMMA implies.
+3. **No new resident weight repack.** GGUF block bytes stay on-device exactly
+   as raw GGUF. The kernel reads raw block bytes, decodes scales/mins/qs in
+   registers, and produces dequantized half values just-in-time. This avoids
+   the 24 GiB residency pressure that killed the pack8 expert sidecar in
+   task #59/#60.
+4. **One kernel file per quant family** (Q8_0 is dense-only, Q4/Q5/Q6 each get
+   dense + selected variants when needed). Keeps the dequant logic local and
+   keeps each `.so` build small.
+5. **Existing `gguf_*_prefill_*` registry keys point to the new WMMA kernels.**
+   The aliases to `gemv_*` in `gguf_k_gemv.py` go away. The dispatch surface in
+   `hipengine/runtime/gguf_linear.py` does not branch on backend/quant;
+   `_variant_for_rows` already maps `gemv_*` → `prefill_*` for `rows > 1` and
+   that mapping is preserved.
+6. **Selected variants reuse the existing PARO compact MoE machinery.** The
+   token sort, expert prefix, and WMMA tile-map kernels in
+   `hipengine/kernels/hip_gfx1100/moe/group_scatter.hip` are reused
+   verbatim. Only the inner expert GEMM kernel is new.
+
+### Phased kernel order
+
+P8.1 — **Dense Q8_0 batched WMMA prefill** (the first kernel and the largest
+single decode-time bucket). Replaces `gguf_q8_0_prefill_*` aliases. Affected
+call sites: shared-expert gate/up/down, attention Q/K/V projections,
+linear-attention `attn_qkv`/`attn_gate`/`ssm_out`, dense FFN gate/up/down in
+non-MoE Qwen3.5, lm_head when the model has untied Q8_0 output (qwen35moe).
+The symmetry of Q8_0 (no zero, no min, single `fp16 d` per 32 values) makes
+this the cleanest starting point and gives the largest single-kernel-family
+uplift. Estimated bench impact: 1931 ms → ~250 ms at 512/0 if the kernel
+reaches half of PARO's compact-WMMA throughput.
+
+P8.2 — **Dense Q4_K batched WMMA prefill**. Same pattern with Q4_K dequant.
+Affected call sites: dense Qwen3.5 ffn gate/up (`Q4_K_M` is the dominant Qwen
+GGUF quant), lm_head on tied-Q6 models is unaffected (that goes through Q6_K
+in P8.3), `attn_qkv` on Q4-quant models. Includes a `dual` variant for the
+ffn gate+up pair (mirrors `awq_fusedw4_prefill_dual_fp16_kernel`).
+
+P8.3 — **Dense Q5_K and Q6_K batched WMMA prefill**. Q5_K just adds the
+hi-bit byte lane to Q4_K's dequant. Q6_K replaces the 12-byte scale/min block
+with per-16-K int8 scales and one super-block `d`. Affected call sites: dense
+Q5_K linear-attn `ssm_out`, dense Q6_K lm_head (tied path) and any Q6_K
+attention projections.
+
+P8.4 — **Grouped/selected Q4_K MoE prefill** (gate + up). Compact slab
+layout: tokens are sorted by expert via
+`qwen35_moe_group_scatter_gather_kernel`. The kernel takes the compact
+hidden, `expert_start_compact`, `tile_expert`, and the full Q4_K expert
+tensor `[E, out_features, in_features_bytes]`. Per-tile, look up
+`expert_id = tile_expert[row_tile]`, offset into that expert's weight bytes,
+and run the same WMMA inner loop. Affected: `ffn_gate_exps`, `ffn_up_exps`.
+Includes a `dual` variant matching `gemm_awq_selected_dual_pack8_wmma_compact_kernel`.
+
+P8.5 — **Grouped/selected Q5_K and Q6_K MoE prefill** (down). Same pattern
+with Q5_K / Q6_K dequant. Affected: `ffn_down_exps`. Note: Qwen3.6-35B-A3B
+uses Q5_K for `ffn_down_exps` in `Q4_K_M`, but K-quant tier may vary across
+GGUF builds; the dispatch path must check each tensor's actual quant.
+
+P8.6 — **Scheduler wiring**: the GGUF runner switches the fast-bulk MoE path
+from "selected row GEMVs over `rows * top_k` lanes" to:
+
+```text
+router_top_k          — already on-device
+  -> qwen35_moe_group_count
+  -> qwen35_moe_group_prefix         (expert_start_compact)
+  -> qwen35_moe_group_scatter_gather (sort + gather hidden into compact slab)
+  -> qwen35_moe_wmma_tile_map        (wmma_expert_start, tile_expert)
+  -> gguf_q4_k_selected_dual_wmma_prefill   (compact gate+up GEMM)
+  -> silu_mul_separate_out_bf16             (over compact rows)
+  -> gguf_q5_k_selected_wmma_prefill        (compact down GEMM)
+  -> weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w (scatter combine)
+```
+
+P8.7 — **lm_head** Q6_K batched WMMA prefill (one-shot final-row case, plus
+the "sample all rows" debug case used in stage probes).
+
+P8.8 — **(Optional) Q8_1-style activation quantization plus I8 WMMA**
+(`__builtin_amdgcn_wmma_i32_16x16x16_iu8_w32`). This is the llama.cpp MMQ
+algorithm and what nano-vllm-amd already uses for W8A8. Doubles the WMMA
+throughput per op vs F16 WMMA. Only attempt if P8.1 – P8.7 do not close the
+gap to the PARO-class prefill row, and only with a dedicated KL gate because
+activation quantization changes the result rounding more than weight-only
+dequant does.
+
+### Tile sizing
+
+For the first batched kernels we follow the PARO defaults: TM ∈ {16, 32, 64},
+TN ∈ {16, 32}. The dispatch picks the largest tile that:
+
+- divides `(out_features + TM - 1) / TM` and `(rows + TN - 1) / TN` to
+  avoid wave divergence on boundary tiles,
+- keeps the per-block register pressure below the gfx1100 budget
+  (`__launch_bounds__(32, 8)` for dense, `(32, 2)` for grouped compact, see
+  `paro_awq_gemv.hip`),
+- avoids LDS for the first version (PARO compact-WMMA does not need LDS for
+  W4; we should not need it for Q8_0 / Q4_K either since dequant happens in
+  registers).
+
+Default tile after measurement: TM=32, TN=32 for `rows \geq 32`; TM=32, TN=16
+for `rows \in [16, 32)`. Smaller `rows` should not run batched WMMA; rows ==
+1 keeps using the existing decode pack8 GEMV.
+
+### Correctness gates
+
+Every new batched prefill kernel must:
+
+1. Match `hipengine/kernels/cpu_reference/ops.py::gguf_quant_gemv` (or its
+   selected/MoE equivalent for P8.4 / P8.5) to within F32 tolerance
+   `atol = 1e-3, rtol = 1e-2` for synthetic Q4_K/Q5_K/Q6_K weights and
+   `atol = 5e-4, rtol = 5e-3` for Q8_0. WMMA F32 accumulation should be
+   nearly bit-exact when the K reduction order is preserved.
+2. Pass an end-to-end logit gate on the existing fixtures:
+   - `tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json` (dense Qwen3.5),
+   - `tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json` (qwen35moe Qwen3.6),
+   with `max_kl <= 0.05`, top-1 agreement `>= 90 %`, and exact generated-ID
+   match for greedy decoding at temperature 0.
+3. Add `tests/test_gguf_q8_0_wmma_prefill.py` (and per-quant siblings):
+   construct synthetic GGUF block bytes via the existing `make_q8_0_weight` /
+   `make_q4_k_weight` / etc., compare F32 output against the CPU reference
+   for multiple `(rows, in_features, out_features)` shapes including
+   non-multiple-of-tile sizes.
+4. Provide a `rocprofv3 --kernel-trace` smoke proving the new WMMA prefill
+   kernel name appears in a 512/0 trace and the decode-shaped `gemv` family
+   does not appear on the prefill code path.
+
+### Performance gates
+
+No benchmark row is retained until P8.1+P8.2+P8.4 are all wired. The gating
+comparison is the task #61 prefill profile:
+
+| Path | qwen35moe 512/0 prefill kernel time | Notes |
+| --- | ---: | --- |
+| Current (decode-shaped row GEMVs) | 5114 ms total | dense Q8_0 1931 ms, selected MoE 2441 ms, GDN 664 ms |
+| Acceptance floor for P8.1+P8.2+P8.4 | ≤ 1500 ms | matches `~100 tok/s` → `~340 tok/s` at the bench's measured prefill rate. |
+| Stretch goal | ≤ 700 ms | matches `~700 tok/s` (still below PARO 2500+ but in the same algorithmic regime). |
+
+The acceptance floor is conservative because the GDN recurrent (664 ms) is
+out of scope for P8 and the first WMMA kernels will not match PARO's
+hand-tuned MoE compact path on the first try.
+
+Retained artifacts under `benchmarks/results/` follow the existing pattern:
+model + quant + workload shape + hardware + exact command + correctness gate
+output + rocprofv3 evidence. Update `benchmarks/README.md` and
+`benchmarks/CHANGELOG.md` only when a P8 step lands as a kept row.
+
+### What we are deliberately not doing in P8
+
+- **No new resident weight repack** (no "GGUF→Marlin-K" repack, no "pack8
+  sidecar v2"). The pack8 sidecar in task #59/#60 was rejected for the same
+  reason: GGUF Q4_K/Q5_K/Q6_K already pack the scales/mins compactly, and
+  duplicating the qweight payload pressures the 24 GiB budget without
+  earning a clear correctness or perf win.
+- **No changes to GDN recurrent prefill** (`qwen35_gdn_prefill_recurrent_k2_kernel`).
+  664 ms / 5114 ms is real but secondary; pick it up after the dense and MoE
+  buckets collapse.
+- **No changes to AOTriton attention prefill**. It is already fast.
+- **No new C++ engine layer**. The runner stays Python + ctypes calling JIT
+  HIP kernels. Same plugin registry. Same `_run_bulk_prefill_and_sample`
+  shape.
+- **No activation quantization** until P8.8, and only if the F16-accumulating
+  path leaves throughput on the table.
+
+### Open questions (track here, decide before P8.1 lands)
+
+1. Does Q8_0 batched WMMA prefer (a) a sub-block `(out_col, k_tile)` layout
+   where one wave dequantizes 16 cols of one block, or (b) a per-thread
+   layout where each thread owns one col across multiple K-tiles, mirroring
+   PARO exactly? PARO style is the safer first pass; (a) would need an LDS
+   stage.
+2. What is the right `__launch_bounds__` for Q4_K? Dequant register pressure
+   is roughly 2× Q8_0 (need `d`, `dmin`, 6-bit `sc`, 6-bit `m`, hi-bits for
+   Q5_K). Start with `(32, 4)` and tune from the rocprof occupancy line.
+3. Where does the per-quant `prefill_*` registry key live? Current proposal:
+   keep the existing `prefill_*` variant names in
+   `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py` but rebind them to
+   the new WMMA wrappers, so the runtime dispatch in `gguf_linear.py` does
+   not change. Alternative: add new `wmma_prefill_*` variants and route
+   through them from `_variant_for_rows`. Decision tracked in P8.1 commit.
+
+### Acceptance checklist for closing P8
+
+- [ ] P8.1 – P8.5 kernels written, registered, CPU-reference-gated.
+- [ ] Public `LLM.generate()` Q4_K_M fixture and qwen35moe smoke pass with
+  the new prefill path enabled by default.
+- [ ] `rocprofv3 --kernel-trace` of `--prompt-length 512 --decode-tokens 0`
+  shows new WMMA prefill kernel symbols and no `_prefill_out_kernel<...>` /
+  `_pack8_prefill_out_kernel<...>` symbols on the prefill path.
+- [ ] qwen35moe 512/128 prefill `\geq 1000 tok/s` median over three runs
+  (matches the acceptance floor).
+- [ ] Benchmark artifact + `benchmarks/README.md` + `benchmarks/CHANGELOG.md`
+  + `WORKLOG.md` updated atomically with the perf row.
+- [ ] No `import torch` on the `LLM.generate()` path; no `if backend == ...`
+  / `if quant == ...` branches added to runtime dispatch.
