@@ -161,11 +161,70 @@ def test_qwen35_resident_full_kv_allocation_uses_int8_payload_and_scales() -> No
     assert summary["kv_scale_dtype"] == "fp16"
     assert summary["kv_scale_granularity"] == "per_token_head"
     assert summary["full_attention_kv_payload_bytes"] == key_buf.nbytes + value_buf.nbytes
+    assert summary["full_attention_kv_payload_bytes_per_element"] == 1.0
     assert summary["full_attention_kv_scale_bytes"] == k_scale_buf.nbytes + v_scale_buf.nbytes
     assert layer["storage_dtype"] == "int8_per_token_head"
     assert layer["payload_dtype"] == "int8"
+    assert layer["payload_bytes_per_element"] == 1.0
     assert layer["scale_metadata"]["scale_dtype"] == "fp16"
     assert layer["scale_metadata"]["granularity"] == "per_token_head"
+
+    audit = session.kv_memory_audit()
+    assert audit["required"] is True
+    assert audit["passed"] is True
+    assert audit["retained_kv_payload_bytes_per_element"] == 1.0
+    assert audit["retained_kv_payload_bytes"] == key_buf.nbytes + value_buf.nbytes
+    assert audit["retained_kv_scale_bytes"] == k_scale_buf.nbytes + v_scale_buf.nbytes
+    assert audit["persistent_bf16_kv_layers"] == []
+    assert audit["bf16_shadow_candidates"] == []
+    assert audit["persistent_bf16_shadow_exists"] is False
+
+
+def test_qwen35_resident_kv_memory_audit_flags_persistent_bf16_kv_cache() -> None:
+    session, _captured = _resident_allocation_session(storage_dtype="int8_per_token_head")
+    session._allocate_full_attention_cache(3)
+    key_cache, value_cache, _key_buf, _value_buf = session.full_caches[3]
+    bf16_key = Tensor.from_handle(key_cache.ptr, key_cache.shape, DType.BF16, key_cache.device)
+    bf16_value = Tensor.from_handle(value_cache.ptr, value_cache.shape, DType.BF16, value_cache.device)
+    key_buf = DeviceBuffer(bf16_key.ptr, bf16_key.numel * DType.BF16.itemsize)
+    value_buf = DeviceBuffer(bf16_value.ptr, bf16_value.numel * DType.BF16.itemsize)
+    session.full_caches[3] = (bf16_key, bf16_value, key_buf, value_buf)
+
+    audit = session.kv_memory_audit()
+
+    assert audit["passed"] is False
+    assert audit["persistent_bf16_kv_layers"] == [3]
+    assert audit["payload_dtype_mismatch_layers"] == [3]
+    assert audit["payload_element_size_mismatch_layers"] == [3]
+    assert audit["persistent_bf16_shadow_exists"] is True
+
+
+def test_qwen35_resident_kv_memory_audit_flags_persistent_bf16_shadow() -> None:
+    session, _captured = _resident_allocation_session(storage_dtype="int8_per_token_head")
+    session._allocate_full_attention_cache(3)
+    shadow_tensor = _tensor(0x900000, session.batch_layout.slot0_full_kv_shape, DType.BF16)
+    shadow_buffer = DeviceBuffer(shadow_tensor.ptr, shadow_tensor.numel * shadow_tensor.dtype.itemsize)
+    shadow_allocation = SimpleNamespace(tensor=shadow_tensor, buffer=shadow_buffer)
+    session.prefill_workspace = SimpleNamespace(
+        names=("prefill.int8_oracle_key.3",),
+        allocation=lambda name: shadow_allocation,
+    )
+    session.states = []
+
+    audit = session.kv_memory_audit()
+
+    assert audit["passed"] is False
+    assert audit["persistent_bf16_shadow_exists"] is True
+    assert audit["bf16_shadow_candidates"] == [
+        {
+            "workspace": "prefill_workspace",
+            "name": "prefill.int8_oracle_key.3",
+            "dtype": "bf16",
+            "shape": list(session.batch_layout.slot0_full_kv_shape),
+            "bytes": shadow_buffer.nbytes,
+            "reasons": ["int8_prefill_oracle", "full_cache_shape"],
+        }
+    ]
 
 
 def test_qwen35_resident_slot_full_spans_follow_int8_policy_metadata() -> None:

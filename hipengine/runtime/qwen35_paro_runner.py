@@ -1796,36 +1796,58 @@ class Qwen35ParoResidentSession:
 
         full_layers: list[dict[str, Any]] = []
         payload_bytes = 0
+        payload_elements = 0
         scale_bytes = 0
+        scale_elements = 0
         for layer_id in sorted(self.full_caches):
             key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
+            key_elements = int(key_buf.nbytes) // key_cache.dtype.itemsize
+            value_elements = int(value_buf.nbytes) // value_cache.dtype.itemsize
+            layer_payload_elements = key_elements + value_elements
             layer_payload_bytes = int(key_buf.nbytes) + int(value_buf.nbytes)
             payload_bytes += layer_payload_bytes
+            payload_elements += layer_payload_elements
             entry: dict[str, Any] = {
                 "layer_id": int(layer_id),
                 "storage_dtype": self.kv_storage_dtype.value,
                 "payload_dtype": key_cache.dtype.value,
                 "key_shape": list(key_cache.shape),
                 "value_shape": list(value_cache.shape),
+                "key_full_shape": list(getattr(self.batch_layout, "full_kv_shape", key_cache.shape)),
+                "value_full_shape": list(getattr(self.batch_layout, "full_kv_shape", value_cache.shape)),
+                "key_elements": key_elements,
+                "value_elements": value_elements,
+                "payload_elements": layer_payload_elements,
                 "key_buffer_bytes": int(key_buf.nbytes),
                 "value_buffer_bytes": int(value_buf.nbytes),
                 "payload_bytes": layer_payload_bytes,
+                "payload_bytes_per_element": (layer_payload_bytes / layer_payload_elements) if layer_payload_elements else None,
                 "scale_metadata": None,
             }
             scales = self.full_cache_scales.get(layer_id)
             if scales is not None:
                 k_scale, v_scale, k_scale_buf, v_scale_buf = scales
+                k_scale_elements = int(k_scale_buf.nbytes) // k_scale.dtype.itemsize
+                v_scale_elements = int(v_scale_buf.nbytes) // v_scale.dtype.itemsize
+                layer_scale_elements = k_scale_elements + v_scale_elements
                 layer_scale_bytes = int(k_scale_buf.nbytes) + int(v_scale_buf.nbytes)
                 scale_bytes += layer_scale_bytes
+                scale_elements += layer_scale_elements
                 metadata = self.full_cache_scale_metadata[layer_id]
                 entry["scale_metadata"] = {
                     "granularity": metadata.granularity,
                     "scale_dtype": metadata.scale_dtype.value,
                     "k_scale_shape": list(k_scale.shape),
                     "v_scale_shape": list(v_scale.shape),
+                    "k_scale_full_shape": list(getattr(self.batch_layout, "flat_full_kv_scale_shape", k_scale.shape)),
+                    "v_scale_full_shape": list(getattr(self.batch_layout, "flat_full_kv_scale_shape", v_scale.shape)),
+                    "k_scale_elements": k_scale_elements,
+                    "v_scale_elements": v_scale_elements,
+                    "scale_elements": layer_scale_elements,
                     "k_scale_buffer_bytes": int(k_scale_buf.nbytes),
                     "v_scale_buffer_bytes": int(v_scale_buf.nbytes),
                     "scale_bytes": layer_scale_bytes,
+                    "scale_bytes_per_element": (layer_scale_bytes / layer_scale_elements) if layer_scale_elements else None,
                 }
             full_layers.append(entry)
         buffer_bytes = sum(int(buffer.nbytes) for buffer in getattr(self, "buffers", ()))
@@ -1837,12 +1859,120 @@ class Qwen35ParoResidentSession:
             "full_attention_layer_count": len(full_layers),
             "full_attention_layers": full_layers,
             "full_attention_kv_payload_bytes": payload_bytes,
+            "full_attention_kv_payload_elements": payload_elements,
+            "full_attention_kv_payload_bytes_per_element": (payload_bytes / payload_elements) if payload_elements else None,
             "full_attention_kv_scale_bytes": scale_bytes,
+            "full_attention_kv_scale_elements": scale_elements,
             "full_attention_kv_total_bytes": payload_bytes + scale_bytes,
             "buffer_bytes": buffer_bytes,
             "allocation_bytes": allocation_bytes,
             "owned_direct_bytes": buffer_bytes + allocation_bytes,
         }
+
+    def kv_memory_audit(self) -> dict[str, Any]:
+        """Audit retained KV storage and flag BF16 shadows for INT8 sessions."""
+
+        summary = self.owned_buffer_summary()
+        storage_dtype = DType.parse(summary["kv_storage_dtype"])
+        requires_int8 = storage_dtype == DType.INT8_PER_TOKEN_HEAD
+        retained_layers = list(summary.get("full_attention_layers", ()))
+        persistent_bf16_layers: list[int] = []
+        missing_scale_layers: list[int] = []
+        payload_dtype_mismatch_layers: list[int] = []
+        payload_element_size_mismatch_layers: list[int] = []
+        violations: list[str] = []
+        for layer in retained_layers:
+            layer_id = int(layer.get("layer_id", -1))
+            payload_dtype = str(layer.get("payload_dtype"))
+            storage_value = str(layer.get("storage_dtype"))
+            bytes_per_element = layer.get("payload_bytes_per_element")
+            if requires_int8:
+                if storage_value != DType.INT8_PER_TOKEN_HEAD.value or payload_dtype == DType.BF16.value:
+                    persistent_bf16_layers.append(layer_id)
+                if payload_dtype != DType.INT8.value:
+                    payload_dtype_mismatch_layers.append(layer_id)
+                if bytes_per_element is None or abs(float(bytes_per_element) - 1.0) > 1.0e-6:
+                    payload_element_size_mismatch_layers.append(layer_id)
+                metadata = layer.get("scale_metadata")
+                if not metadata or int(metadata.get("scale_bytes", 0)) <= 0:
+                    missing_scale_layers.append(layer_id)
+        bf16_shadow_candidates = self._bf16_full_cache_shadow_candidates() if requires_int8 else []
+        if persistent_bf16_layers:
+            violations.append(f"INT8 retained KV has BF16 payload/storage layers: {persistent_bf16_layers}")
+        if payload_dtype_mismatch_layers:
+            violations.append(f"INT8 retained KV payload dtype mismatch layers: {payload_dtype_mismatch_layers}")
+        if payload_element_size_mismatch_layers:
+            violations.append(f"INT8 retained KV payload is not 1 byte/element for layers: {payload_element_size_mismatch_layers}")
+        if missing_scale_layers:
+            violations.append(f"INT8 retained KV missing scale metadata layers: {missing_scale_layers}")
+        if bf16_shadow_candidates:
+            names = [f"{item['workspace']}:{item['name']}" for item in bf16_shadow_candidates]
+            violations.append(f"persistent BF16 full-cache shadow tensors after prefill: {names}")
+        return {
+            "required": bool(requires_int8),
+            "passed": not violations,
+            "kv_storage_dtype": storage_dtype.value,
+            "retained_kv_buffers": retained_layers,
+            "retained_kv_payload_bytes": int(summary.get("full_attention_kv_payload_bytes", 0)),
+            "retained_kv_payload_elements": int(summary.get("full_attention_kv_payload_elements", 0)),
+            "retained_kv_payload_bytes_per_element": summary.get("full_attention_kv_payload_bytes_per_element"),
+            "retained_kv_scale_bytes": int(summary.get("full_attention_kv_scale_bytes", 0)),
+            "retained_kv_scale_elements": int(summary.get("full_attention_kv_scale_elements", 0)),
+            "retained_kv_total_bytes": int(summary.get("full_attention_kv_total_bytes", 0)),
+            "persistent_bf16_kv_layers": persistent_bf16_layers,
+            "missing_int8_scale_layers": missing_scale_layers,
+            "payload_dtype_mismatch_layers": payload_dtype_mismatch_layers,
+            "payload_element_size_mismatch_layers": payload_element_size_mismatch_layers,
+            "bf16_shadow_candidates": bf16_shadow_candidates,
+            "persistent_bf16_shadow_exists": bool(persistent_bf16_layers or bf16_shadow_candidates),
+            "violations": violations,
+        }
+
+    def _bf16_full_cache_shadow_candidates(self) -> list[dict[str, Any]]:
+        full_cache_shapes = {
+            tuple(getattr(self.batch_layout, "slot0_full_kv_shape", ())),
+            tuple(getattr(self.batch_layout, "full_kv_shape", ())),
+        }
+        full_cache_shapes.discard(())
+        candidates: list[dict[str, Any]] = []
+        seen_workspaces: set[int] = set()
+
+        def visit_workspace(label: str, workspace: Any) -> None:
+            if workspace is None or id(workspace) in seen_workspaces:
+                return
+            seen_workspaces.add(id(workspace))
+            for name in getattr(workspace, "names", ()):  # RuntimeWorkspace.names is a tuple; fakes may expose any iterable.
+                try:
+                    allocation = workspace.allocation(name)
+                except Exception:
+                    continue
+                tensor = getattr(allocation, "tensor", None)
+                buffer = getattr(allocation, "buffer", None)
+                if tensor is None or DType.parse(tensor.dtype) != DType.BF16:
+                    continue
+                reasons: list[str] = []
+                if "int8_oracle" in str(name):
+                    reasons.append("int8_prefill_oracle")
+                if tuple(tensor.shape) in full_cache_shapes:
+                    reasons.append("full_cache_shape")
+                if reasons:
+                    candidates.append(
+                        {
+                            "workspace": label,
+                            "name": str(name),
+                            "dtype": tensor.dtype.value,
+                            "shape": list(tensor.shape),
+                            "bytes": int(getattr(buffer, "nbytes", tensor.numel * tensor.dtype.itemsize)),
+                            "reasons": reasons,
+                        }
+                    )
+
+        visit_workspace("prefill_workspace", getattr(self, "prefill_workspace", None))
+        scratch_state = getattr(self, "_prefill_scratch_state", None)
+        visit_workspace("prefill_scratch_state.workspace", getattr(scratch_state, "workspace", None))
+        for layer_id, state in enumerate(getattr(self, "states", ())):
+            visit_workspace(f"state[{layer_id}].workspace", getattr(state, "workspace", None))
+        return candidates
 
     def _prefill_single_cu_seqlens(self, tokens: int) -> Tensor:
         arr = np.asarray([0, int(tokens)], dtype=np.int32)

@@ -504,6 +504,8 @@ def _memory_snapshot(
         payload["owned_session_gib"] = _bytes_to_gib(payload["owned_session_bytes"])
         if hasattr(session, "owned_buffer_summary"):
             payload["owned_buffer_summary"] = session.owned_buffer_summary()
+        if hasattr(session, "kv_memory_audit"):
+            payload["kv_memory_audit"] = session.kv_memory_audit()
     return payload
 
 
@@ -545,6 +547,15 @@ def _memory_summary(snapshots: dict[str, Any]) -> dict[str, Any]:
         if snapshot.get("hip", {}).get("available")
     ]
     hip_used_peak = max(hip_used_values) if hip_used_values else None
+    kv_audit_snapshots = {
+        label: snapshot["kv_memory_audit"]
+        for label, snapshot in snapshots.items()
+        if "kv_memory_audit" in snapshot
+    }
+    latest_kv_audit_label = next(
+        (label for label in ("before_close", "after_decode", "after_warmup_decode", "after_prefill", "after_load") if label in kv_audit_snapshots),
+        None,
+    )
     summary = {
         "tracked_peak_allocated_bytes": tracked_peak,
         "tracked_peak_allocated_gib": _bytes_to_gib(tracked_peak),
@@ -556,6 +567,16 @@ def _memory_summary(snapshots: dict[str, Any]) -> dict[str, Any]:
         "owned_session_peak_gib": _bytes_to_gib(owned_peak),
         "hip_used_peak_sampled_bytes": hip_used_peak,
         "hip_used_peak_sampled_gib": _bytes_to_gib(hip_used_peak) if hip_used_peak is not None else None,
+        "kv_memory_audit": {
+            "passed": all(bool(audit.get("passed", True)) for audit in kv_audit_snapshots.values()),
+            "latest_label": latest_kv_audit_label,
+            "latest": kv_audit_snapshots.get(latest_kv_audit_label) if latest_kv_audit_label is not None else None,
+            "snapshots": kv_audit_snapshots,
+            "tracked_peak_allocated_bytes": tracked_peak,
+            "tracked_peak_allocated_gib": _bytes_to_gib(tracked_peak),
+            "hip_used_peak_sampled_bytes": hip_used_peak,
+            "hip_used_peak_sampled_gib": _bytes_to_gib(hip_used_peak) if hip_used_peak is not None else None,
+        },
         "notes": [
             "tracked_* covers hipEngine allocations made through hipengine.core.memory.malloc and keeps a high-water mark across freed prefill workspaces.",
             "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",

@@ -17089,3 +17089,30 @@ python3 scripts/qwen35_kv_e2e_fixture_gate.py --help >/tmp/qwen35_kv_e2e_fixture
 # help output exposes --kv-storage, --kv-scale-dtype, --kv-scale-granularity,
 # --kl-threshold, and --top1-threshold.
 ```
+
+## 2026-05-18 - K1 INT8 KV no-BF16-shadow memory audit
+
+Completed task #5: retained KV memory introspection now audits INT8 sessions for payload byte size, scale metadata, and persistent BF16 shadows.
+
+Implementation notes:
+
+- `Qwen35ParoResidentSession.owned_buffer_summary()` now reports per-layer retained KV key/value shapes, full backing shapes, elements, payload bytes, payload bytes/element, and scale metadata elements/bytes.
+- Added `Qwen35ParoResidentSession.kv_memory_audit()` to return pass/fail metadata for INT8 retained KV: payload must be `int8`, payload bytes/element must be 1.0, scale metadata must exist, and no persistent BF16 retained KV or BF16 full-cache/int8-oracle workspace tensor may remain after prefill.
+- `scripts/qwen35_paro_bench.py` now includes `kv_memory_audit` in each session memory snapshot and rolls the latest audit plus tracked allocator peak and sampled HIP VRAM peak into `memory.kv_memory_audit`.
+- Added tests proving INT8 retained KV is accounted at 1 byte/element plus scale metadata, persistent BF16 retained caches/shadow tensors are flagged, and benchmark memory summaries retain allocator/HIP peak evidence.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py \
+  tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_bench_memory_audit.py && \
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_bench_memory_audit.py -q
+# targeted tests passed.
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# full pytest, CPU fixtures, and registry/cpu smokes passed.
+```
