@@ -19667,3 +19667,29 @@ Design notes for downstream (task #25 / P9.B6):
 - Both Q5_K and Q6_K kernels share the same wrapper ABI -- no per-quant if-branch in dispatch code, just a `KernelKey` lookup per `(quant, layer, variant)`. The runtime will dispatch raw Q5_K down to this kernel only when the row count is 1 (decode shape); for prefill shapes the P8.5 WMMA kernel remains the right pick.
 - The shared-memory layout uses a single `s_scale[128]` buffer sized for the larger Q6_K case (128 entries). Q5_K touches only the first 64 entries plus `s_min[64]`. Total static shared usage stays under 1 KiB which keeps occupancy at the `__launch_bounds__(128, 4)` hint level.
 - Formal compact-MoE correctness fixtures with uneven row counts, empty experts (middle/start/tail), non-multiple-of-16 out widths, and multi-K-block coverage land in task #24 (P9.B5). This worklog entry records the inline smoke as a hand-verified seed for that test.
+
+## 2026-05-18 P9 task #22: GGUF Q8_0 dense pack8 GEMV decode kernels (single + dual)
+
+Implemented the P9.B3 dense decode-shaped pack8 GEMVs for raw GGUF Q8_0 weights: single output and fused gate+up dual. Mirrors `paro_awq_gemv.hip::gemv_awq_pack8_kernel` (single) and `gemv_awq_dual_pack8_kernel` (concatenated gate+up dual) with the inner k loop swapped for raw GGUF Q8_0 dequant. No new ABI and no resident weight sidecar/repack.
+
+Files:
+
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_pack8_gemv.hip`: new HIP source. Two PARO-style kernels (`gguf_q8_0_pack8_gemv_kernel`, `gguf_q8_0_pack8_dual_gate_up_gemv_kernel`) sharing a `q8_0_pack8_accumulate` device helper. `__launch_bounds__(128, 4)` 4 wave32 waves per block; 8-K-per-thread vec_stride loop with per-iteration ``d`` hoist (one Q8_0 block is 32 K's, so the 8 inner `j` lanes always share a block). Wave-level reduction inlines `__shfl_down(16/8/4/2/1)` plus a cross-wave `xchg[4*8]` sum (`q8_0_pack8_reduce_and_store`).
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_pack8_gemv.py`: BF16 + FP16 wrappers for both single and dual paths. Registers 4 keys under `linear / gguf_q8_0`: `pack8_gemv_decode_{bf16,fp16}_{bf16,fp16}_out` and `pack8_dual_gate_up_gemv_decode_{bf16,fp16}_{bf16,fp16}_out`.
+- `docs/KERNELS.md`: appended P9.B3 catalog row with inline GPU smoke deltas.
+
+Validation on W7900/gfx1100 (RX 7900 XTX local):
+
+- `py_compile` wrapper: OK; registry smoke confirms all 4 variant keys resolve under `(hip_gfx1100, linear, gguf_q8_0, ...)`.
+- HIP build via `build_gguf_q8_0_pack8_gemv(load=True)` produces `gguf_q8_0_pack8_gemv.so` with all 4 extern "C" symbols.
+- Inline GPU smoke vs CPU `gguf_quant_gemv(..., GGMLQuantizationType.Q8_0)`:
+  - BF16 single (rows=4, in=512, out=24): max|delta|=0.029 max_rel(eps=1)=0.0036.
+  - BF16 dual gate+up (rows=4, in=512, out_a=16, out_b=32): max|delta|=0.058 max_rel=0.0035.
+  - FP16 dual same shape: max|delta|=0.006 max_rel=0.00048.
+- Adjacent regression bundle (P8.1 Q8_0 WMMA, P8.4/P8.5 selected WMMA, P9.B1 Q4_K GEMV, dispatch, compact MoE routing, GDN correctness) -> `144 passed`.
+
+Design notes for downstream (task #25 / P9.B6):
+
+- The single variant drops in for any dense GGUF Q8_0 projection at decode (rows=1), e.g. attention QKV/O and the qwen35moe shared expert down. The dual variant is the fused gate+up entry point for the qwen35moe shared expert decode bundle (`silu_mul_dual_out_*` consumes the concatenated layout directly).
+- Q8_0's small block size (32 K) means no shared-memory hoist is needed: the 8-K-per-thread pattern already lands all `j` lanes in one block, and the `d` load is amortised inside one iteration. This keeps the kernel small and gives the compiler room to schedule the 8 FMA chains.
+- Formal correctness fixture (multi-row, attention-shape, shared-expert-shape, edge cases) lands in task #24 (P9.B5). This worklog entry records the inline smoke as a hand-verified seed for that test.
