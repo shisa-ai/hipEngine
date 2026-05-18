@@ -152,6 +152,115 @@ __global__ void dflash_dense_bf16_to_f32_kernel(
   }
 }
 
+__device__ inline void dflash_head_rmsnorm_rotary_row_impl(
+    const float* __restrict__ src,
+    const uint16_t* __restrict__ weight,
+    const float* __restrict__ cos,
+    const float* __restrict__ sin,
+    float* __restrict__ dst,
+    float eps,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    float* __restrict__ partial) {
+  float sumsq = 0.0f;
+  for (int64_t dim = static_cast<int64_t>(threadIdx.x); dim < head_dim; dim += blockDim.x) {
+    const float value = src[dim];
+    sumsq += value * value;
+  }
+  partial[threadIdx.x] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf((partial[0] / static_cast<float>(head_dim)) + eps);
+  const int64_t half_rotary = rotary_dim / 2;
+  for (int64_t dim = static_cast<int64_t>(threadIdx.x); dim < head_dim; dim += blockDim.x) {
+    const float value = src[dim] * inv_rms * bf16_bits_to_float(weight[dim]);
+    float out_value = value;
+    if (dim < rotary_dim) {
+      const int64_t pair_dim = dim < half_rotary ? dim + half_rotary : dim - half_rotary;
+      const float paired = src[pair_dim] * inv_rms * bf16_bits_to_float(weight[pair_dim]);
+      const float rotated = dim < half_rotary ? -paired : paired;
+      out_value = value * cos[dim] + rotated * sin[dim];
+    }
+    dst[dim] = out_value;
+  }
+}
+
+__global__ void dflash_head_rmsnorm_rotary_f32_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key,
+    const uint16_t* __restrict__ q_weight,
+    const uint16_t* __restrict__ k_weight,
+    const float* __restrict__ cos_table,
+    const float* __restrict__ sin_table,
+    const int32_t* __restrict__ query_positions,
+    const int32_t* __restrict__ key_positions,
+    float* __restrict__ query_out,
+    float* __restrict__ key_out,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    float eps) {
+  const int64_t head = static_cast<int64_t>(blockIdx.x);
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t batch = static_cast<int64_t>(blockIdx.z);
+  const bool is_query = head < num_q_heads;
+  if (batch >= batch_size) {
+    return;
+  }
+  extern __shared__ float partial[];
+  if (is_query) {
+    if (row >= query_len) {
+      return;
+    }
+    const int64_t local_head = head;
+    const int64_t position = static_cast<int64_t>(query_positions[batch * query_len + row]);
+    if (position < 0 || position >= max_positions) {
+      return;
+    }
+    const int64_t offset = ((batch * query_len + row) * num_q_heads + local_head) * head_dim;
+    dflash_head_rmsnorm_rotary_row_impl(
+        query + offset,
+        q_weight,
+        cos_table + position * rotary_dim,
+        sin_table + position * rotary_dim,
+        query_out + offset,
+        eps,
+        head_dim,
+        rotary_dim,
+        partial);
+  } else {
+    if (row >= kv_len) {
+      return;
+    }
+    const int64_t local_head = head - num_q_heads;
+    const int64_t position = static_cast<int64_t>(key_positions[batch * kv_len + row]);
+    if (position < 0 || position >= max_positions) {
+      return;
+    }
+    const int64_t offset = ((batch * kv_len + row) * num_kv_heads + local_head) * head_dim;
+    dflash_head_rmsnorm_rotary_row_impl(
+        key + offset,
+        k_weight,
+        cos_table + position * rotary_dim,
+        sin_table + position * rotary_dim,
+        key_out + offset,
+        eps,
+        head_dim,
+        rotary_dim,
+        partial);
+  }
+}
+
 __global__ void dflash_gqa_attention_f32_bf16_kernel(
     const float* __restrict__ query,
     const float* __restrict__ key,
@@ -232,6 +341,21 @@ bool valid_dense_shape(int64_t rows, int64_t in_features, int64_t out_features, 
 
 bool valid_rmsnorm_shape(int64_t rows, int64_t hidden_size, int64_t threads) {
   return rows > 0 && hidden_size > 0 && valid_threads(threads);
+}
+
+bool valid_head_rotary_shape(
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    int64_t threads) {
+  return batch_size > 0 && query_len > 0 && kv_len > 0 && num_q_heads > 0 && num_kv_heads > 0 &&
+         head_dim > 0 && rotary_dim > 0 && rotary_dim <= head_dim && (rotary_dim % 2) == 0 &&
+         max_positions > 0 && valid_threads(threads);
 }
 
 bool valid_attention_shape(
@@ -336,6 +460,60 @@ extern "C" int hipengine_dflash_dense_bf16_to_f32(
       rows,
       in_features,
       out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_head_rmsnorm_rotary_f32(
+    const float* query,
+    const float* key,
+    const uint16_t* q_weight,
+    const uint16_t* k_weight,
+    const float* cos_table,
+    const float* sin_table,
+    const int32_t* query_positions,
+    const int32_t* key_positions,
+    float* query_out,
+    float* key_out,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_head_rotary_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, rotary_dim, max_positions, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t max_len = query_len > kv_len ? query_len : kv_len;
+  hipLaunchKernelGGL(
+      dflash_head_rmsnorm_rotary_f32_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads + num_kv_heads), static_cast<unsigned int>(max_len), static_cast<unsigned int>(batch_size)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      query,
+      key,
+      q_weight,
+      k_weight,
+      cos_table,
+      sin_table,
+      query_positions,
+      key_positions,
+      query_out,
+      key_out,
+      batch_size,
+      query_len,
+      kv_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      rotary_dim,
+      max_positions,
+      eps);
   return static_cast<int>(hipGetLastError());
 }
 

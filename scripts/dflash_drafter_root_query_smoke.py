@@ -26,6 +26,7 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     build_dflash_drafter,
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
+    dflash_head_rmsnorm_rotary_f32,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
     dflash_rmsnorm_bf16,
@@ -47,6 +48,7 @@ def main() -> int:
     _smoke_prepare_noise(runtime, library)
     _smoke_rmsnorm(runtime, library)
     _smoke_dense_projection(runtime, library)
+    _smoke_head_rotary(runtime, library)
     _smoke_gqa_attention(runtime, library)
     print("dflash_drafter_root_query_smoke passed")
     return 0
@@ -172,6 +174,74 @@ def _smoke_dense_projection(runtime, library) -> None:
     print(f"dense_bf16_to_f32: max_abs={max_abs:.3e} sample={out.reshape(-1)[:4].tolist()}")
 
 
+def _smoke_head_rotary(runtime, library) -> None:
+    rng = np.random.default_rng(4)
+    query = rng.normal(size=(1, 2, 4, 8)).astype(np.float32) * 0.25
+    key = rng.normal(size=(1, 3, 2, 8)).astype(np.float32) * 0.25
+    q_weight = _f32_to_bf16_bits(0.75 + rng.random(size=(8,)).astype(np.float32) * 0.5)
+    k_weight = _f32_to_bf16_bits(0.70 + rng.random(size=(8,)).astype(np.float32) * 0.5)
+    max_positions = 16
+    rotary_dim = 8
+    positions = np.arange(max_positions, dtype=np.float32)[:, None]
+    dims = np.arange(rotary_dim // 2, dtype=np.float32)[None, :]
+    inv_freq = np.power(np.float32(10000.0), -2.0 * dims / np.float32(rotary_dim))
+    angles = positions * inv_freq
+    cos_half = np.cos(angles).astype(np.float32)
+    sin_half = np.sin(angles).astype(np.float32)
+    cos_table = np.concatenate([cos_half, cos_half], axis=1).astype(np.float32)
+    sin_table = np.concatenate([sin_half, sin_half], axis=1).astype(np.float32)
+    query_positions = np.array([[5, 6]], dtype=np.int32)
+    key_positions = np.array([[3, 4, 5]], dtype=np.int32)
+    query_out = np.empty_like(query)
+    key_out = np.empty_like(key)
+    expected_q = _head_rotary_oracle(query, q_weight, cos_table, sin_table, query_positions)
+    expected_k = _head_rotary_oracle(key, k_weight, cos_table, sin_table, key_positions)
+    buffers = []
+    try:
+        q_dev = _dev(runtime, buffers, query)
+        k_dev = _dev(runtime, buffers, key)
+        qw_dev = _dev(runtime, buffers, q_weight)
+        kw_dev = _dev(runtime, buffers, k_weight)
+        cos_dev = _dev(runtime, buffers, cos_table)
+        sin_dev = _dev(runtime, buffers, sin_table)
+        qp_dev = _dev(runtime, buffers, query_positions)
+        kp_dev = _dev(runtime, buffers, key_positions)
+        qo_dev = _empty(runtime, buffers, query_out)
+        ko_dev = _empty(runtime, buffers, key_out)
+        dflash_head_rmsnorm_rotary_f32(
+            q_dev.ptr,
+            k_dev.ptr,
+            qw_dev.ptr,
+            kw_dev.ptr,
+            cos_dev.ptr,
+            sin_dev.ptr,
+            qp_dev.ptr,
+            kp_dev.ptr,
+            qo_dev.ptr,
+            ko_dev.ptr,
+            1,
+            2,
+            3,
+            4,
+            2,
+            8,
+            rotary_dim,
+            max_positions,
+            eps=1.0e-6,
+            threads=64,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(query_out), qo_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(key_out), ko_dev, runtime=runtime)
+    finally:
+        _free_all(runtime, buffers)
+    max_abs = max(float(np.max(np.abs(query_out - expected_q))), float(np.max(np.abs(key_out - expected_k))))
+    assert max_abs <= 1.0e-6, max_abs
+    print(f"head_rmsnorm_rotary: max_abs={max_abs:.3e} sample={query_out.reshape(-1)[:4].tolist()}")
+
+
 def _smoke_gqa_attention(runtime, library) -> None:
     rng = np.random.default_rng(1)
     query = (rng.normal(size=(1, 2, 4, 8)).astype(np.float32) * 0.25).astype(np.float32)
@@ -207,6 +277,28 @@ def _smoke_gqa_attention(runtime, library) -> None:
     np.testing.assert_array_equal(out, expected)
     diff = np.max(np.abs(_bf16_bits_to_f32(out) - _bf16_bits_to_f32(expected)))
     print(f"gqa_attention: max_abs={float(diff)} sample={out.reshape(-1)[:8].tolist()}")
+
+
+def _head_rotary_oracle(raw: np.ndarray, weight_bf16: np.ndarray, cos_table: np.ndarray, sin_table: np.ndarray, positions: np.ndarray) -> np.ndarray:
+    weight = _bf16_bits_to_f32(weight_bf16)
+    out = np.empty_like(raw, dtype=np.float32)
+    rotary_dim = cos_table.shape[1]
+    half = rotary_dim // 2
+    for b in range(raw.shape[0]):
+        for row in range(raw.shape[1]):
+            cos = cos_table[int(positions[b, row])]
+            sin = sin_table[int(positions[b, row])]
+            for head in range(raw.shape[2]):
+                src = raw[b, row, head]
+                inv = np.float32(1.0 / np.sqrt(np.mean(src * src) + 1.0e-6))
+                normed = src * inv * weight
+                dst = normed.copy()
+                for dim in range(rotary_dim):
+                    pair = dim + half if dim < half else dim - half
+                    rotated = -normed[pair] if dim < half else normed[pair]
+                    dst[dim] = normed[dim] * cos[dim] + rotated * sin[dim]
+                out[b, row, head] = dst
+    return out
 
 
 def _attention_oracle(query: np.ndarray, key: np.ndarray, value_bf16: np.ndarray, *, scale: float) -> np.ndarray:

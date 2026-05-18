@@ -439,8 +439,10 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   run native target-hidden projection (`fc + hidden_norm`) with
   `dense_gemv_out_bf16` + direct-weight `dflash_rmsnorm_bf16`, validate BF16 dense
   projection to FP32 (`dflash_dense_bf16_to_f32`) for Q/K-style drafter
-  projections, and validate the correctness-first non-causal GQA attention
-  primitive `dflash_gqa_attention_f32_bf16` against a NumPy BF16 oracle.
+  projections, validate direct-weight head RMSNorm+rotary
+  (`dflash_head_rmsnorm_rotary_f32`), and validate the correctness-first
+  non-causal GQA attention primitive `dflash_gqa_attention_f32_bf16` against a
+  NumPy BF16 oracle.
 - Materialize committed target hidden rows into draft KV cache incrementally.
 - Draft forward computes only root/query rows; context K/V are read from draft KV.
 - **Partial landed 2026-05-18:** add compact draft lm-head top-k primitive

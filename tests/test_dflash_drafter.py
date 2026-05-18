@@ -10,6 +10,7 @@ from hipengine.speculative import (
     DFlashRootQueryRequest,
     TargetVerifyBatch,
     dflash_gqa_attention_bf16,
+    dflash_head_rmsnorm_rotary_f32,
     dflash_rmsnorm_bf16,
     draft_batch_from_topk,
     prepare_dflash_noise_inputs_bf16,
@@ -128,6 +129,35 @@ def test_project_dflash_bf16_to_f32_validates_tensor_abi_before_loading_hip() ->
             _tensor(0x1000, (2, 4), dtype="bf16"),
             _tensor(0x1100, (3, 4), dtype="bf16"),
             _tensor(0x1200, (2, 3), dtype="bf16"),
+        )
+
+
+def test_dflash_head_rotary_validates_tensor_abi_before_loading_hip() -> None:
+    with pytest.raises(ValueError, match="rank-4"):
+        dflash_head_rmsnorm_rotary_f32(
+            _tensor(0x1000, (1, 2, 4), dtype="fp32"),
+            _tensor(0x1100, (1, 3, 2, 8), dtype="fp32"),
+            _tensor(0x1200, (8,), dtype="bf16"),
+            _tensor(0x1300, (8,), dtype="bf16"),
+            _tensor(0x1400, (16, 8), dtype="fp32"),
+            _tensor(0x1500, (16, 8), dtype="fp32"),
+            _tensor(0x1600, (1, 2), dtype="int32"),
+            _tensor(0x1700, (1, 3), dtype="int32"),
+            _tensor(0x1800, (1, 2, 4, 8), dtype="fp32"),
+            _tensor(0x1900, (1, 3, 2, 8), dtype="fp32"),
+        )
+    with pytest.raises(ValueError, match="rotary_dim"):
+        dflash_head_rmsnorm_rotary_f32(
+            _tensor(0x1000, (1, 2, 4, 8), dtype="fp32"),
+            _tensor(0x1100, (1, 3, 2, 8), dtype="fp32"),
+            _tensor(0x1200, (8,), dtype="bf16"),
+            _tensor(0x1300, (8,), dtype="bf16"),
+            _tensor(0x1400, (16, 9), dtype="fp32"),
+            _tensor(0x1500, (16, 9), dtype="fp32"),
+            _tensor(0x1600, (1, 2), dtype="int32"),
+            _tensor(0x1700, (1, 3), dtype="int32"),
+            _tensor(0x1800, (1, 2, 4, 8), dtype="fp32"),
+            _tensor(0x1900, (1, 3, 2, 8), dtype="fp32"),
         )
 
 

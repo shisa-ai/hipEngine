@@ -265,6 +265,59 @@ def project_dflash_bf16_to_f32(
     return out
 
 
+def dflash_head_rmsnorm_rotary_f32(
+    query: Tensor,
+    key: Tensor,
+    q_weight: Tensor,
+    k_weight: Tensor,
+    cos_table: Tensor,
+    sin_table: Tensor,
+    query_positions: Tensor,
+    key_positions: Tensor,
+    query_out: Tensor,
+    key_out: Tensor,
+    *,
+    eps: float = 1.0e-6,
+    stream: int = 0,
+    library: object | None = None,
+    threads: int = 128,
+) -> tuple[Tensor, Tensor]:
+    """Apply direct-weight Q/K head RMSNorm plus rotary for DFlash attention."""
+
+    shape = _validate_head_rotary_tensors(
+        query,
+        key,
+        q_weight,
+        k_weight,
+        cos_table,
+        sin_table,
+        query_positions,
+        key_positions,
+        query_out,
+        key_out,
+    )
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_head_rmsnorm_rotary_f32 as _launch
+
+    _launch(
+        query.ptr,
+        key.ptr,
+        q_weight.ptr,
+        k_weight.ptr,
+        cos_table.ptr,
+        sin_table.ptr,
+        query_positions.ptr,
+        key_positions.ptr,
+        query_out.ptr,
+        key_out.ptr,
+        *shape,
+        eps=eps,
+        threads=threads,
+        stream=stream,
+        library=library,  # type: ignore[arg-type]
+    )
+    return query_out, key_out
+
+
 def dflash_gqa_attention_bf16(
     query: Tensor,
     key: Tensor,
@@ -382,6 +435,59 @@ def _validate_dense_projection_tensors(hidden: Tensor, weight: Tensor, out: Tens
     return int(rows), int(in_features), int(out_features)
 
 
+def _validate_head_rotary_tensors(
+    query: Tensor,
+    key: Tensor,
+    q_weight: Tensor,
+    k_weight: Tensor,
+    cos_table: Tensor,
+    sin_table: Tensor,
+    query_positions: Tensor,
+    key_positions: Tensor,
+    query_out: Tensor,
+    key_out: Tensor,
+) -> tuple[int, int, int, int, int, int, int, int]:
+    if query.ndim != 4 or key.ndim != 4 or query_out.ndim != 4 or key_out.ndim != 4:
+        raise ValueError("DFlash head rotary Q/K tensors must be rank-4")
+    if query.dtype != DType.FP32 or key.dtype != DType.FP32 or query_out.dtype != DType.FP32 or key_out.dtype != DType.FP32:
+        raise ValueError("DFlash head rotary Q/K tensors must use FP32 storage")
+    batch, query_len, q_heads, head_dim = query.shape
+    key_batch, kv_len, kv_heads, key_dim = key.shape
+    if (key_batch, key_dim) != (batch, head_dim):
+        raise ValueError("key batch/head_dim must match query")
+    if query_out.shape != query.shape or key_out.shape != key.shape:
+        raise ValueError("head rotary outputs must match query/key input shapes")
+    if q_weight.shape != (head_dim,) or k_weight.shape != (head_dim,):
+        raise ValueError("q/k norm weights must have shape (head_dim,)")
+    if q_weight.dtype != DType.BF16 or k_weight.dtype != DType.BF16:
+        raise ValueError("q/k norm weights must use BF16 storage")
+    if cos_table.ndim != 2 or sin_table.shape != cos_table.shape:
+        raise ValueError("cos/sin tables must be matching rank-2 tensors")
+    max_positions, rotary_dim = cos_table.shape
+    if cos_table.dtype != DType.FP32 or sin_table.dtype != DType.FP32:
+        raise ValueError("cos/sin tables must use FP32 storage")
+    if rotary_dim <= 0 or rotary_dim > head_dim or rotary_dim % 2:
+        raise ValueError("rotary_dim must be even and no larger than head_dim")
+    if query_positions.shape != (batch, query_len) or key_positions.shape != (batch, kv_len):
+        raise ValueError("position tensors must match query/key row shapes")
+    if query_positions.dtype != DType.INT32 or key_positions.dtype != DType.INT32:
+        raise ValueError("position tensors must use int32 storage")
+    for name, tensor in (
+        ("key", key),
+        ("q_weight", q_weight),
+        ("k_weight", k_weight),
+        ("cos_table", cos_table),
+        ("sin_table", sin_table),
+        ("query_positions", query_positions),
+        ("key_positions", key_positions),
+        ("query_out", query_out),
+        ("key_out", key_out),
+    ):
+        if tensor.device != query.device:
+            raise ValueError(f"{name} must live on the query device")
+    return int(batch), int(query_len), int(kv_len), int(q_heads), int(kv_heads), int(head_dim), int(rotary_dim), int(max_positions)
+
+
 def _validate_attention_tensors(query: Tensor, key: Tensor, value: Tensor, out: Tensor) -> tuple[int, int, int, int, int, int]:
     if query.ndim != 4 or key.ndim != 4 or value.ndim != 4 or out.ndim != 4:
         raise ValueError("DFlash attention tensors must be rank-4")
@@ -474,6 +580,7 @@ __all__ = [
     "DFlashRootQueryPlan",
     "DFlashRootQueryRequest",
     "dflash_gqa_attention_bf16",
+    "dflash_head_rmsnorm_rotary_f32",
     "dflash_rmsnorm_bf16",
     "draft_batch_from_topk",
     "project_dflash_bf16_to_f32",

@@ -17,6 +17,7 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_commit_chain_i32,
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
+    dflash_head_rmsnorm_rotary_f32,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
     dflash_rmsnorm_bf16,
@@ -95,6 +96,10 @@ def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
         is dflash_dense_bf16_to_f32
     )
     assert (
+        resolve(backend="hip_gfx1151", layer="dflash_head_rmsnorm_rotary", quant="w4_paro", variant="f32_bf16")
+        is dflash_head_rmsnorm_rotary_f32
+    )
+    assert (
         resolve(backend="hip_gfx1151", layer="dflash_gqa_attention", quant="w4_paro", variant="f32_bf16")
         is dflash_gqa_attention_f32_bf16
     )
@@ -127,6 +132,27 @@ def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hi
             rows=1,
             in_features=0,
             out_features=4,
+        )
+    with pytest.raises(ValueError, match="rotary_dim"):
+        dflash_head_rmsnorm_rotary_f32(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            batch_size=1,
+            query_len=1,
+            kv_len=1,
+            num_q_heads=4,
+            num_kv_heads=2,
+            head_dim=8,
+            rotary_dim=9,
+            max_positions=16,
         )
     with pytest.raises(ValueError, match="num_q_heads"):
         dflash_gqa_attention_f32_bf16(

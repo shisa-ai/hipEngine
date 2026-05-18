@@ -17482,3 +17482,67 @@ git diff --check
 # rocprofv3 1.1.0 / gfx1151: BF16 prep DurationNs=3607 Scratch_Size=0; FP16→BF16 prep DurationNs=3005 Scratch_Size=0; dflash_rmsnorm_bf16_kernel DurationNs=2565 Scratch_Size=0; dflash_dense_bf16_to_f32_kernel DurationNs=2204 Scratch_Size=0; dflash_gqa_attention_f32_bf16_kernel DurationNs=15629 Scratch_Size=0.
 # lineage: expected pre-existing baseline drift; DFlash R1 tree entries clean.
 ```
+
+## 2026-05-18 — DFlash direct head RMSNorm+rotary primitive (partial D12)
+
+### Scope
+
+- Added `dflash_head_rmsnorm_rotary_f32` to `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.{hip,py}` and registered it for `hip_gfx1100` / `hip_gfx1151` alias coverage.
+- The kernel applies standard direct-weight DFlash/Qwen head RMSNorm plus table-indexed rotary to separate query and key row domains: `query[batch, query_len, q_heads, head_dim]` and `key[batch, kv_len, kv_heads, head_dim]`, each with independent int32 absolute-position slabs. This matches DFlash's context+query K/V versus query-only Q geometry and avoids the target PARO `1 + weight` convention.
+- Added high-level `dflash_head_rmsnorm_rotary_f32()` validation and extended `scripts/dflash_drafter_root_query_smoke.py` with NumPy-oracle parity.
+- Full decoder-block integration remains open: wire q/k/v projections + this rotary primitive + GQA + o-proj + residual/add + MLP + final norm + lm-head top1/topk into one layer loop and compare against parent/PyTorch fixture.
+
+### Validation
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_drafter.py \
+  hipengine/speculative/__init__.py \
+  scripts/dflash_drafter_root_query_smoke.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+python3 -m pytest -q \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_dflash_metadata.py \
+  tests/test_dflash_chain_compiler.py \
+  tests/test_speculative_interfaces.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_drafter_root_query_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+rm -rf /tmp/hipengine-dflash-drafter-prof && mkdir -p /tmp/hipengine-dflash-drafter-prof
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  /opt/rocm/bin/rocprofv3 --kernel-trace --output-format csv \
+    --output-file /tmp/hipengine-dflash-drafter-prof/drafter -- \
+    python3 scripts/dflash_drafter_root_query_smoke.py \
+      --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+      --require-cached-build
+python3 - <<'PY'
+import csv
+from pathlib import Path
+path=Path('/tmp/hipengine-dflash-drafter-prof/drafter_kernel_trace.csv')
+rows=list(csv.DictReader(path.open()))
+for name in sorted({r['Kernel_Name'] for r in rows if 'dflash' in r['Kernel_Name']}):
+    vals=[]; scratch=[]
+    for r in rows:
+        if r['Kernel_Name']==name:
+            vals.append(int(float(r['DurationNs'])) if r.get('DurationNs') else int(float(r['End_Timestamp']))-int(float(r['Start_Timestamp'])))
+            if r.get('Scratch_Size'):
+                scratch.append(int(float(r['Scratch_Size'])))
+    print(name, len(vals), min(vals), max(vals), sorted(set(scratch)))
+PY
+python3 scripts/check_lineage.py --kind kernel --diff stat
+! grep -RInE 'import torch|torch\.' \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_drafter.py \
+  scripts/dflash_drafter_root_query_smoke.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+git diff --check
+# pytest: 41 passed
+# smoke: head_rmsnorm_rotary max_abs=2.384e-07; all previous DFlash drafter root/query primitive checks still passed.
+# rocprofv3 1.1.0 / gfx1151: BF16 prep DurationNs=3006 Scratch_Size=0; FP16→BF16 prep DurationNs=3086 Scratch_Size=0; dflash_rmsnorm_bf16_kernel DurationNs=2204 Scratch_Size=0; dflash_dense_bf16_to_f32_kernel DurationNs=2405 Scratch_Size=0; dflash_head_rmsnorm_rotary_f32_kernel DurationNs=2885 Scratch_Size=0; dflash_gqa_attention_f32_bf16_kernel DurationNs=4007 Scratch_Size=0.
+# lineage: expected pre-existing baseline drift; DFlash R1 tree entries clean.
+```
