@@ -100,12 +100,17 @@ It records:
   canonical linear state, KV, hidden taps, output ids, or context metadata;
 - `scripts/dflash_chain_e2e_bench.py` now runs a same-session full-model AR
   control and native DFlash chain smoke on the shisa packed target plus z-lab
-  drafter. A follow-up diagnostic fixed the drafter rotary table from a
-  hard-coded `10000` to the z-lab config `rope_theta=10000000`; the retained
-  gfx1151 smoke is exact/finite with non-zero acceptance (`{0:1,1:1}` over two
-  cycles) but remains slower than AR (`0.241x`) and non-promotable because
-  verification uses serial branch state copies and the drafter rebuilds full
-  context each cycle;
+  drafter.  After fixing the drafter rotary table from a hard-coded `10000` to
+  the z-lab config `rope_theta=10000000`, three follow-up phases landed:
+  - Phase A: `serial_in_place_single_slot` verifier (no per-candidate state
+    copies because the verify loop never steps into a rejected candidate).
+  - Phase B: drafter caches `projected_context_norm` across cycles and only
+    re-projects newly committed rows on commit.
+  - Phase C: drafter caches per-layer rotated K (FP32) and V (BF16) for context
+    rows; per-cycle `propose()` only processes block-size query rows.
+  The retained gfx1151 16-token smoke is exact/finite with `6/30` acceptance
+  across 9 cycles and is still slower than AR (`0.294x`) and non-promotable
+  because
 - no speculative throughput claim is allowed until a native compact/c-aware
   target verifier with selectable per-row state and GPU accept summaries replaces
   the serial branch verifier and produces a retained chain win.
@@ -482,8 +487,10 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   verifies exactly via serial branch slot-state copies, and emits schema-2 rows
   with acceptance, split timings, D2H counts, graph status, backend/arch, memory,
   and promotion eligibility. The retained gfx1151 smoke artifact after the
-  `rope_theta` fix is exact/finite but slower than AR (`0.241x`) and
-  `performance_claim=false`.
+  Phase A+B+C is exact/finite but slower than AR (`0.294x`) and
+  `performance_claim=false`.  Drafter per-call sync time dropped from
+  `~95-100 ms` to `~68 ms` (-32%); decode tok/s rose from `~14.7` to `~18.3`
+  (median across 5 runs, +24%).
 - Remaining integration work: replace serial branch verification with the native
   compact/bulk target verifier and then promote only if full-model chain beats
   same-session AR.

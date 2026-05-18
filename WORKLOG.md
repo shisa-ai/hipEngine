@@ -17979,3 +17979,125 @@ Results:
 ### Gate impact
 
 - DDTree remains blocked: chain DFlash is now mathematically less wrong and accepts one draft token in the smoke, but it is still only `0.241x` same-session AR and `performance_claim=false`.
+
+## 2026-05-18 — DFlash chain E2E drafter+verifier optimization (Phase A+B+C)
+
+### Findings (analysis of the 0.241x rope-fix baseline)
+
+The rope-fix retained smoke had a clean correctness gate but only `0.241x` AR
+speedup.  Per-cycle profile (gfx1151, sync mode):
+
+- drafter: `~95-100 ms/call` (74% of total)
+- target verify: `~33 ms/cycle` (25%)
+- commit copy: `~1 ms/cycle`
+
+Drafter sync-mode phases per call:
+
+- `noise_prepare`: `~1 ms`
+- `context_projection` (`fc + hidden_norm` over all ctx rows): `~26 ms`
+- `decoder_layers` (8 drafter layers, full-context K/V each cycle): `~67 ms`
+- `lm_head`: `~10 ms`
+- `topk/readback`: `~1 ms`
+
+Two non-obvious findings:
+
+- The serial branch verifier's per-candidate `copy_slot_state` calls are
+  **redundant**: the verify loop never steps into a rejected candidate (compare
+  is BEFORE the step), so no roll-back path is taken and the branch slot fanout
+  is a defensive checkpoint that is never used.
+- The drafter's `projected_context_norm` and per-layer K/V context rows only
+  change for newly committed positions; everything else can be cached across
+  cycles.  The existing `materialize_dflash_draft_kv_append` infrastructure was
+  already in tree but not wired into `scripts/dflash_chain_e2e_bench.py`.
+
+### Changes
+
+- `scripts/dflash_chain_e2e_bench.py`:
+  - Phase A: `_run_dflash_chain_on_session` and the older `run_dflash_tokens`
+    path both rewritten to use a single in-place slot for the entire DFlash
+    chain.  No per-candidate `copy_slot_state` calls, no commit copy.  Verifier
+    label is now `serial_in_place_single_slot`.
+  - Phase B: `NativeDFlashChainDrafter` keeps a `_cached_projected_rows`
+    counter; `warmup_context(context_tokens)` is called once after prefill and
+    `commit_context_rows(start, count)` is called on each commit to extend the
+    `projected_context_norm` cache.  Per-cycle `propose()` skips
+    `fc + hidden_norm` whenever the cache already covers `context_tokens`.
+  - Phase C: drafter now also caches per-layer rotated K (FP32) and V (BF16)
+    for context rows.  `_project_kv_cache_rows` calls
+    `dflash_dense_bf16_to_f32 + dflash_key_rmsnorm_rotary_f32` for K and
+    `dflash_dense_bf16_to_bf16` for V on newly committed rows.  Per-cycle
+    `_run_layer` then only:
+    - projects Q, K_q, V_q for `block_size` query rows;
+    - runs `dflash_head_rmsnorm_rotary_f32` with `kv_len=block_size` for Q +
+      K_q rotary at query positions;
+    - concatenates cached K_ctx_rotated + K_q_rotated into `k_rot` and cached
+      V_ctx + V_q into `v_all`;
+    - runs the attention/MLP block.
+  - Removed the now-unused per-cycle `_write_key_positions` H2D (replaced by
+    `query_positions` already prepared by `dflash_prepare_noise_inputs`).
+  - Surface `drafter_context_mode=append_only_projected_context_and_kv` and
+    `verifier_mode=serial_in_place_single_slot` in artifacts.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_dflash_metadata.py tests/test_dflash_drafter.py \
+  tests/test_speculative_benchmark.py tests/test_dflash_prompts.py \
+  tests/test_qwen35_resident_batch_layout.py -q
+# 55 passed
+
+# Five back-to-back gfx1151 runs (decode_tokens=16, draft_budget=4):
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --max-prompts 1 --decode-tokens 16 --draft-budgets 4 \
+  --json /tmp/hipengine-dflash-chain-e2e-phaseABC.json
+```
+
+Phase A+B+C results (5 runs at decode_tokens=16, gfx1151):
+
+- AR decode: median `61-64 tok/s` (single outlier at `54 tok/s` from thermal)
+- DFlash decode: median `~18.3 tok/s` (range `17.98 - 18.56`)
+- Speedup vs AR: median `0.29x` (range `0.28x - 0.34x`)
+- Drafter per call (normal mode): median `~68 ms`
+- Cycles per 16-token run: 9 (acceptance `6/30` = 20%)
+
+Sync-mode phase breakdown (per call):
+
+- `context_projection`: `0.0 ms` (cached, skipped) ✓
+- `decoder_layers`: `54 ms` (was `67 ms` in rope-fix baseline; -19%)
+- `noise_prepare`: `4-15 ms` (includes warmup/commit stalls on first cycle)
+- `lm_head`: `10 ms`
+
+### Comparison
+
+| Phase | DFlash tok/s | drafter ms/call (sync) | drafter ms/call (normal) | notes |
+| --- | ---: | ---: | ---: | --- |
+| rope-fix baseline | 15.51 | 95-100 | 95 | full-context rebuild every cycle |
+| A: single-slot verifier | 14.72 | 95-100 | 100 | state copies were nearly free on short ctx (`memcpy_async`) |
+| A+B: cache `projected_context_norm` | 16.50 (med) | ~111 | 87 (med) | -12 ms/call vs A |
+| A+B+C: cache per-layer rotated K/V | 18.29 (med) | 68 | 68 (med) | -22 ms/call vs B; -32 ms/call vs A |
+
+### Retained artifact
+
+- `benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-phaseABC-diagnostic.json`
+  - 16 decode tokens, exact same-session AR equality, finite logits
+  - 9 cycles, accepted `6/30`
+  - AR `63.15 tok/s`, DFlash `18.56 tok/s` (`0.294x`)
+  - `verifier_mode=serial_in_place_single_slot`
+  - `drafter_context_mode=append_only_projected_context_and_kv`
+  - `performance_claim=false`
+
+### Gate impact and remaining gap
+
+DDTree (#19) remains blocked: chain DFlash now reaches `~0.29x` AR (up from
+`0.24x`) but is still slower than AR.  Drafter cost per cycle is now dominated
+by `~14` small-problem kernel launches per drafter layer × `8` layers; each
+launch has `~50 us` overhead floor.  Closing the remaining gap requires either
+HIP graph capture of the drafter step or kernel fusion (e.g., fused QKV-query
+projection, fused attention+O-proj).  Those are larger changes and are out of
+scope for this optimization pass.
+
+The verifier remains `B+1` sequential single-token forwards per cycle; the
+native bulk verifier (single `B+1`-row forward against the resident KV)
+remains the only path to a promotable row.

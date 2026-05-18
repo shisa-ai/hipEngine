@@ -3,11 +3,13 @@
 
 This is the first hipEngine runner that executes the real packed target model and
 native DFlash drafter with a same-session AR control.  The verifier is
-intentionally labelled ``serial_branch_state_copy``: it uses the resident target
-model with per-slot state copies to verify a top-1 chain exactly before the
-future bulk target verifier replaces it.  Rows from this mode are actual
-full-model measurements, but they are not promotable unless the artifact says
-the verifier is native bulk and the normal speed/correctness gates pass.
+intentionally labelled ``serial_in_place_single_slot``: it advances a single
+resident slot one step at a time using the resident target model, mirroring AR
+exactly.  Per-candidate state copies are not taken because the verify loop
+never steps into a rejected candidate (the comparison happens before the step),
+so there is nothing to roll back.  Rows from this mode are actual full-model
+measurements, but they are not promotable unless the artifact says the verifier
+is the native bulk verifier and the normal speed/correctness gates pass.
 """
 
 from __future__ import annotations
@@ -52,6 +54,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
     dflash_head_rmsnorm_rotary_f32,
+    dflash_key_rmsnorm_rotary_f32,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
     dflash_rmsnorm_bf16,
@@ -103,6 +106,19 @@ class NativeDFlashChainDrafter:
         self.device = Device("hip", 0)
         self.candidate_budget = int(candidate_budget)
         self.sync_draft_phases = bool(sync_draft_phases)
+        # Cache of how many context rows have already been projected through
+        # ``fc + hidden_norm`` and live in self.projected_context_norm.  The
+        # drafter only re-projects the newly committed tail rows per cycle.
+        self._cached_projected_rows = 0
+        # Track whether the projected_context_norm cache covers a contiguous
+        # prefix; used by ``commit_context_rows`` to detect stale state and to
+        # transparently rebuild the prefix on demand.
+        self._cache_invalidated = False
+        # Per-layer KV cache state: rotated K (FP32) and V (BF16) for every
+        # committed context row.  Mirrors ``_cached_projected_rows`` and is
+        # extended each cycle through ``commit_context_rows``.
+        self._cached_kv_rows = 0
+        self._kv_cache_invalidated = False
         self.drafter_index = load_weight_index(drafter_model)
         self.weights = load_dflash_drafter_bf16_weights(
             self.drafter_index,
@@ -184,32 +200,30 @@ class NativeDFlashChainDrafter:
             runtime=self.runtime,
         )
         self._record_phase(phases, "noise_prepare", phase_t)
+        # key_positions H2D is no longer required: with cached rotated K_ctx the
+        # per-cycle rotary only operates on the query block, so we only need
+        # query_positions (which is pre-filled by ``dflash_prepare_noise_inputs``
+        # for both Q and K_q rotary).
+        phases["key_positions_h2d"] = 0.0
         phase_t = time.perf_counter()
-        self._write_key_positions(context_tokens, root_position)
-        self._record_phase(phases, "key_positions_h2d", phase_t)
-        phase_t = time.perf_counter()
-        dflash_dense_bf16_to_bf16(
-            self.target_hidden_concat.ptr,
-            self.weights.tensor("fc.weight").ptr,
-            self.projected_context.ptr,
-            context_tokens,
-            self.config.target_hidden_concat_size,
-            self.hidden,
-            threads=128,
-            library=self.library,
-            runtime=self.runtime,
-        )
-        dflash_rmsnorm_bf16(
-            self.projected_context.ptr,
-            self.weights.tensor("hidden_norm.weight").ptr,
-            self.projected_context_norm.ptr,
-            context_tokens,
-            self.hidden,
-            threads=128,
-            library=self.library,
-            runtime=self.runtime,
-        )
+        context_projection_rebuild_rows = 0
+        if self._cache_invalidated or self._cached_projected_rows < context_tokens:
+            rebuild_start = 0 if self._cache_invalidated else self._cached_projected_rows
+            rebuild_count = context_tokens - rebuild_start
+            self._project_context_rows(start=rebuild_start, count=rebuild_count)
+            self._cached_projected_rows = context_tokens
+            self._cache_invalidated = False
+            context_projection_rebuild_rows = rebuild_count
+        if self._kv_cache_invalidated or self._cached_kv_rows < context_tokens:
+            kv_start = 0 if self._kv_cache_invalidated else self._cached_kv_rows
+            kv_count = context_tokens - kv_start
+            self._project_kv_cache_rows(start=kv_start, count=kv_count)
+            self._cached_kv_rows = context_tokens
+            self._kv_cache_invalidated = False
         self._record_phase(phases, "context_projection", phase_t)
+        phases["context_projection_rebuild_rows"] = float(context_projection_rebuild_rows)
+        phases["context_projection_cached_rows"] = float(self._cached_projected_rows)
+        phases["kv_cache_cached_rows"] = float(self._cached_kv_rows)
         query_in = self.query_hidden_a
         query_out = self.query_hidden_b
         layer_seconds: list[float] = []
@@ -286,6 +300,147 @@ class NativeDFlashChainDrafter:
             self.runtime.device_synchronize()
         phases[name] = time.perf_counter() - started_at
 
+    def warmup_context(self, context_tokens: int) -> None:
+        """Project the full prefill target-hidden context into the persistent caches.
+
+        Called once after prefill and once after each cycle commit so that the
+        per-call ``propose()`` path can skip both the per-cycle ``fc + hidden_norm``
+        AND the per-layer context-side K/V projection on rows that have not
+        changed.  The K cache stores rotated FP32 keys and the V cache stores
+        BF16 values.
+        """
+        if context_tokens < 0:
+            raise ValueError("context_tokens must be non-negative")
+        if context_tokens == 0:
+            self._cached_projected_rows = 0
+            self._cached_kv_rows = 0
+            self._cache_invalidated = False
+            self._kv_cache_invalidated = False
+            return
+        self._project_context_rows(start=0, count=int(context_tokens))
+        self._cached_projected_rows = int(context_tokens)
+        self._cache_invalidated = False
+        self._project_kv_cache_rows(start=0, count=int(context_tokens))
+        self._cached_kv_rows = int(context_tokens)
+        self._kv_cache_invalidated = False
+
+    def commit_context_rows(self, *, start: int, count: int) -> None:
+        """Append newly captured target-hidden rows into the projected + KV caches.
+
+        ``start`` is the absolute context position of the first new row (matches
+        the ``capture_row`` used by the verify forwards) and ``count`` is the
+        number of committed rows for this cycle.  The drafter assumes
+        ``self.target_hidden_concat[start:start+count]`` has already been written
+        by the verify forwards before this call.  Both the projected-context and
+        the per-layer K/V caches are extended in the same call so they stay in
+        lockstep.
+        """
+        if start < 0 or count < 0:
+            raise ValueError("start and count must be non-negative")
+        if count == 0:
+            return
+        if start > self._cached_projected_rows or start > self._cached_kv_rows:
+            # Hole in coverage; fall back to a full rebuild next propose().
+            self._cache_invalidated = True
+            self._kv_cache_invalidated = True
+            return
+        self._project_context_rows(start=start, count=count)
+        self._cached_projected_rows = max(self._cached_projected_rows, start + count)
+        self._project_kv_cache_rows(start=start, count=count)
+        self._cached_kv_rows = max(self._cached_kv_rows, start + count)
+
+    def _project_kv_cache_rows(self, *, start: int, count: int) -> None:
+        if count <= 0:
+            return
+        if start < 0 or start + count > self.max_context_tokens:
+            raise ValueError("KV context row range outside drafter capacity")
+        bf16_bytes = DType.BF16.itemsize
+        fp32_bytes = DType.FP32.itemsize
+        proj_src_ptr = self.projected_context_norm.ptr + start * self.hidden * bf16_bytes
+        pos_ptr = self.context_positions.ptr + start * DType.INT32.itemsize
+        max_positions = int(self.cos.shape[0])
+        for layer in range(int(self.config.num_hidden_layers)):
+            prefix = f"layers.{layer}"
+            k_dst_ptr = (
+                self.kv_cache_keys.ptr
+                + (layer * self.max_context_tokens + start) * self.kv_features * fp32_bytes
+            )
+            v_dst_ptr = (
+                self.kv_cache_values.ptr
+                + (layer * self.max_context_tokens + start) * self.kv_features * bf16_bytes
+            )
+            dflash_dense_bf16_to_f32(
+                proj_src_ptr,
+                self.weights.tensor(f"{prefix}.self_attn.k_proj.weight").ptr,
+                self.kv_commit_k_raw.ptr,
+                count,
+                self.hidden,
+                self.kv_features,
+                threads=128,
+                library=self.library,
+                runtime=self.runtime,
+            )
+            dflash_key_rmsnorm_rotary_f32(
+                self.kv_commit_k_raw.ptr,
+                self.weights.tensor(f"{prefix}.self_attn.k_norm.weight").ptr,
+                self.cos.ptr,
+                self.sin.ptr,
+                pos_ptr,
+                k_dst_ptr,
+                count,
+                self.kv_heads,
+                self.head_dim,
+                self.head_dim,
+                max_positions,
+                threads=128,
+                library=self.library,
+                runtime=self.runtime,
+            )
+            dflash_dense_bf16_to_bf16(
+                proj_src_ptr,
+                self.weights.tensor(f"{prefix}.self_attn.v_proj.weight").ptr,
+                v_dst_ptr,
+                count,
+                self.hidden,
+                self.kv_features,
+                threads=128,
+                library=self.library,
+                runtime=self.runtime,
+            )
+
+    def _project_context_rows(self, *, start: int, count: int) -> None:
+        if count <= 0:
+            return
+        if start < 0 or start + count > self.max_context_tokens:
+            raise ValueError("context row range outside drafter capacity")
+        bf16_bytes = DType.BF16.itemsize
+        concat_stride = self.config.target_hidden_concat_size * bf16_bytes
+        hidden_stride = self.hidden * bf16_bytes
+        src_ptr = self.target_hidden_concat.ptr + start * concat_stride
+        proj_ptr = self.projected_context.ptr + start * hidden_stride
+        norm_ptr = self.projected_context_norm.ptr + start * hidden_stride
+        dflash_dense_bf16_to_bf16(
+            src_ptr,
+            self.weights.tensor("fc.weight").ptr,
+            proj_ptr,
+            count,
+            self.config.target_hidden_concat_size,
+            self.hidden,
+            threads=128,
+            library=self.library,
+            runtime=self.runtime,
+        )
+        dflash_rmsnorm_bf16(
+            proj_ptr,
+            self.weights.tensor("hidden_norm.weight").ptr,
+            norm_ptr,
+            count,
+            self.hidden,
+            threads=128,
+            library=self.library,
+            runtime=self.runtime,
+        )
+
     def _allocate(self) -> None:
         self.root_tokens = self._empty((1,), DType.INT32)
         self.root_positions = self._empty((1,), DType.INT32)
@@ -322,19 +477,94 @@ class NativeDFlashChainDrafter:
         cos, sin = _rotary_tables(self.max_context_tokens + self.block_size + 8, self.head_dim, theta=float(self.config.rope_theta))
         self.cos = self._load_array(cos, DType.FP32)
         self.sin = self._load_array(sin, DType.FP32)
+        # Phase C caches: per-layer rotated K (FP32) and V (BF16) for context
+        # rows.  Per-cycle propose() only computes the block_size-sized query
+        # K/V/Q + rotary; context K_ctx and V_ctx come from these caches.
+        n_layers = int(self.config.num_hidden_layers)
+        self.kv_cache_keys = self._empty(
+            (n_layers, self.max_context_tokens, self.kv_features), DType.FP32
+        )
+        self.kv_cache_values = self._empty(
+            (n_layers, self.max_context_tokens, self.kv_features), DType.BF16
+        )
+        # 1D context positions tensor [0, 1, ..., max_context-1].
+        self.context_positions = self._empty((self.max_context_tokens,), DType.INT32)
+        positions_host = np.arange(self.max_context_tokens, dtype=np.int32)
+        copy_host_to_device(
+            self._buffer_for(self.context_positions),
+            host_array_ptr(positions_host),
+            runtime=self.runtime,
+        )
+        # Scratch tensor for raw K rows before RMSNorm+rotary (one cycle worth).
+        self.kv_commit_k_raw = self._empty(
+            (self.max_context_tokens, self.kv_features), DType.FP32
+        )
+        # Rotated query-side K output (block_size rows), separate from k_rot so
+        # we can concat cached K_ctx_rotated + k_q_rot directly into k_rot.
+        self.k_q_rot = self._empty(
+            (1, self.block_size, self.kv_features), DType.FP32
+        )
 
     def _run_layer(self, layer: int, *, context_tokens: int, query_in: Tensor, query_out: Tensor) -> Tensor:
         prefix = f"layers.{layer}"
         total_kv = context_tokens + self.block_size
+        fp32_bytes = DType.FP32.itemsize
+        bf16_bytes = DType.BF16.itemsize
+        k_layer_base = self.kv_cache_keys.ptr + layer * self.max_context_tokens * self.kv_features * fp32_bytes
+        v_layer_base = self.kv_cache_values.ptr + layer * self.max_context_tokens * self.kv_features * bf16_bytes
         dflash_rmsnorm_bf16(query_in.ptr, self.weights.tensor(f"{prefix}.input_layernorm.weight").ptr, self.norm.ptr, self.block_size, self.hidden, threads=128, library=self.library, runtime=self.runtime)
         dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.q_proj.weight").ptr, self.q_raw.ptr, self.block_size, self.hidden, self.attn_features, threads=128, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_f32(self.projected_context_norm.ptr, self.weights.tensor(f"{prefix}.self_attn.k_proj.weight").ptr, self.k_ctx.ptr, context_tokens, self.hidden, self.kv_features, threads=128, library=self.library, runtime=self.runtime)
         dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.k_proj.weight").ptr, self.k_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.projected_context_norm.ptr, self.weights.tensor(f"{prefix}.self_attn.v_proj.weight").ptr, self.v_ctx.ptr, context_tokens, self.hidden, self.kv_features, threads=128, library=self.library, runtime=self.runtime)
         dflash_dense_bf16_to_bf16(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.v_proj.weight").ptr, self.v_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, library=self.library, runtime=self.runtime)
-        dflash_concat_rows_f32(self.k_ctx.ptr, self.k_q.ptr, self.k_all.ptr, 1, context_tokens, self.block_size, self.kv_features, threads=128, library=self.library, runtime=self.runtime)
-        dflash_concat_rows_bf16(self.v_ctx.ptr, self.v_q.ptr, self.v_all.ptr, 1, context_tokens, self.block_size, self.kv_features, threads=128, library=self.library, runtime=self.runtime)
-        dflash_head_rmsnorm_rotary_f32(self.q_raw.ptr, self.k_all.ptr, self.weights.tensor(f"{prefix}.self_attn.q_norm.weight").ptr, self.weights.tensor(f"{prefix}.self_attn.k_norm.weight").ptr, self.cos.ptr, self.sin.ptr, self.query_positions.ptr, self.key_positions.ptr, self.q_rot.ptr, self.k_rot.ptr, 1, self.block_size, total_kv, self.q_heads, self.kv_heads, self.head_dim, self.head_dim, self.max_context_tokens + self.block_size + 8, threads=128, library=self.library, runtime=self.runtime)
+        # Q-rotary + K_q-rotary on the query rows only.  Cached K_ctx_rotated is
+        # concatenated below; no context-side rotary is recomputed.
+        dflash_head_rmsnorm_rotary_f32(
+            self.q_raw.ptr,
+            self.k_q.ptr,
+            self.weights.tensor(f"{prefix}.self_attn.q_norm.weight").ptr,
+            self.weights.tensor(f"{prefix}.self_attn.k_norm.weight").ptr,
+            self.cos.ptr,
+            self.sin.ptr,
+            self.query_positions.ptr,
+            self.query_positions.ptr,
+            self.q_rot.ptr,
+            self.k_q_rot.ptr,
+            1,
+            self.block_size,
+            self.block_size,
+            self.q_heads,
+            self.kv_heads,
+            self.head_dim,
+            self.head_dim,
+            self.cos.shape[0],
+            threads=128,
+            library=self.library,
+            runtime=self.runtime,
+        )
+        dflash_concat_rows_f32(
+            k_layer_base,
+            self.k_q_rot.ptr,
+            self.k_rot.ptr,
+            1,
+            context_tokens,
+            self.block_size,
+            self.kv_features,
+            threads=128,
+            library=self.library,
+            runtime=self.runtime,
+        )
+        dflash_concat_rows_bf16(
+            v_layer_base,
+            self.v_q.ptr,
+            self.v_all.ptr,
+            1,
+            context_tokens,
+            self.block_size,
+            self.kv_features,
+            threads=128,
+            library=self.library,
+            runtime=self.runtime,
+        )
         dflash_gqa_attention_f32_bf16(self.q_rot.ptr, self.k_rot.ptr, self.v_all.ptr, self.attn.ptr, 1, self.block_size, total_kv, self.q_heads, self.kv_heads, self.head_dim, threads=128, library=self.library, runtime=self.runtime)
         dflash_dense_bf16_to_bf16(self.attn.ptr, self.weights.tensor(f"{prefix}.self_attn.o_proj.weight").ptr, self.attn_proj.ptr, self.block_size, self.attn_features, self.hidden, threads=128, library=self.library, runtime=self.runtime)
         dflash_add_bf16(query_in.ptr, self.attn_proj.ptr, self.hidden_attn.ptr, self.block_size * self.hidden, threads=256, library=self.library, runtime=self.runtime)
@@ -346,14 +576,6 @@ class NativeDFlashChainDrafter:
         dflash_add_bf16(self.hidden_attn.ptr, self.mlp.ptr, query_out.ptr, self.block_size * self.hidden, threads=256, library=self.library, runtime=self.runtime)
         return query_out
 
-    def _write_key_positions(self, context_tokens: int, root_position: int) -> None:
-        values = np.concatenate(
-            [
-                np.arange(context_tokens, dtype=np.int32),
-                np.arange(root_position, root_position + self.block_size, dtype=np.int32),
-            ]
-        ).reshape(1, -1)
-        copy_host_to_device(self._buffer_for(self.key_positions), host_array_ptr(values), values.nbytes, runtime=self.runtime)
 
     def _empty(self, shape: tuple[int, ...], dtype: DType) -> Tensor:
         nbytes = int(math.prod(shape)) * dtype.itemsize
@@ -478,6 +700,9 @@ def run_dflash_tokens(
             prefill_seconds = time.perf_counter() - t0
             root_token = int(next_result.token_id)
             context_tokens = len(prompt_ids)
+            # Pre-project the entire prefill context once; the per-cycle
+            # propose() path will then only project the newly committed rows.
+            drafter.warmup_context(context_tokens)
             generated: list[int] = []
             accepted_lengths: list[int] = []
             draft_seconds_total = 0.0
@@ -494,22 +719,18 @@ def run_dflash_tokens(
                 remaining = decode_tokens - len(generated)
                 active_budget = min(candidate_budget, max(0, remaining - 1))
                 if active_budget <= 0:
+                    # No spec budget left for this cycle - one bare AR step on slot 0.
                     verify_rows_total += 1
-                    # Need only the current root output; advance target once to seed the next root.
                     t_verify = time.perf_counter()
-                    session.copy_slot_state(0, 1)
                     result = _slot_step(
                         session,
                         root_token,
                         position=context_tokens,
-                        slot=1,
+                        slot=0,
                         drafter=drafter,
                         capture_row=context_tokens,
                     )
                     verify_seconds_total += time.perf_counter() - t_verify
-                    t_commit = time.perf_counter()
-                    session.copy_slot_state(1, 0)
-                    commit_seconds_total += time.perf_counter() - t_commit
                     generated.append(root_token)
                     root_token = int(result.token_id)
                     context_tokens += 1
@@ -521,18 +742,19 @@ def run_dflash_tokens(
                 d2h_vector_reads += draft.d2h_vector_reads
                 d2h_vector_values += draft.d2h_vector_values
                 t_verify = time.perf_counter()
-                session.copy_slot_state(0, 1)
+                # In-place verify on slot 0; the loop never steps into a rejected
+                # candidate (the compare is BEFORE the step), so no roll-back path
+                # is needed and per-candidate state copies are not necessary.
                 parent_result = _slot_step(
                     session,
                     root_token,
                     position=context_tokens,
-                    slot=1,
+                    slot=0,
                     drafter=drafter,
                     capture_row=context_tokens,
                 )
                 target_top1 = [int(parent_result.token_id)]
                 accepted = 0
-                selected_slot = 1
                 bonus = int(parent_result.token_id)
                 finite = finite and math.isfinite(float(parent_result.logit))
                 for idx, cand in enumerate(candidates):
@@ -540,26 +762,22 @@ def run_dflash_tokens(
                         bonus = target_top1[-1]
                         break
                     accepted += 1
-                    parent_slot = idx + 1
-                    child_slot = idx + 2
-                    session.copy_slot_state(parent_slot, child_slot)
                     result = _slot_step(
                         session,
                         int(cand),
                         position=context_tokens + idx + 1,
-                        slot=child_slot,
+                        slot=0,
                         drafter=drafter,
                         capture_row=context_tokens + idx + 1,
                     )
                     finite = finite and math.isfinite(float(result.logit))
                     target_top1.append(int(result.token_id))
-                    selected_slot = child_slot
                     bonus = int(result.token_id)
                 verify_seconds_total += time.perf_counter() - t_verify
                 accepted_lengths.append(accepted)
-                t_commit = time.perf_counter()
-                session.copy_slot_state(selected_slot, 0)
                 committed = [root_token, *candidates[:accepted]]
+                t_commit = time.perf_counter()
+                drafter.commit_context_rows(start=context_tokens, count=len(committed))
                 commit_seconds_total += time.perf_counter() - t_commit
                 generated.extend(committed)
                 root_token = int(bonus)
@@ -582,9 +800,9 @@ def run_dflash_tokens(
                 "memory": memory,
                 "backend": session.backend,
                 "target_arch": session.target_arch,
-                "verifier_mode": "serial_branch_state_copy",
+                "verifier_mode": "serial_in_place_single_slot",
                 "native_bulk_verifier": False,
-                "drafter_context_mode": "full_context_rebuild_per_cycle",
+                "drafter_context_mode": "append_only_projected_context_and_kv",
             }
     return generated[:decode_tokens], metadata
 
@@ -705,6 +923,9 @@ def _run_dflash_chain_on_session(
     prefill_seconds = time.perf_counter() - t0
     root_token = int(next_result.token_id)
     context_tokens = len(prompt_ids)
+    # Pre-project the entire prefill context once; per-cycle propose() then
+    # only projects the newly committed tail.
+    drafter.warmup_context(context_tokens)
     generated: list[int] = []
     accepted_lengths: list[int] = []
     draft_seconds_total = 0.0
@@ -721,6 +942,7 @@ def _run_dflash_chain_on_session(
     finite_draft = True
     finite_verify = True
     t1 = time.perf_counter()
+    state_copies = 0
     while len(generated) < decode_tokens:
         cycles += 1
         remaining = decode_tokens - len(generated)
@@ -728,20 +950,16 @@ def _run_dflash_chain_on_session(
         if active_budget <= 0:
             verify_rows_total += 1
             t_verify = time.perf_counter()
-            session.copy_slot_state(base_slot, branch_slot_start)
             result = _slot_step(
                 session,
                 root_token,
                 position=context_tokens,
-                slot=branch_slot_start,
+                slot=base_slot,
                 drafter=drafter,
                 capture_row=context_tokens,
             )
             verify_seconds_total += time.perf_counter() - t_verify
             finite_verify = finite_verify and math.isfinite(float(result.logit))
-            t_commit = time.perf_counter()
-            session.copy_slot_state(branch_slot_start, base_slot)
-            commit_seconds_total += time.perf_counter() - t_commit
             generated.append(root_token)
             root_token = int(result.token_id)
             context_tokens += 1
@@ -762,18 +980,19 @@ def _run_dflash_chain_on_session(
         d2h_vector_reads += draft.d2h_vector_reads
         d2h_vector_values += draft.d2h_vector_values
         t_verify = time.perf_counter()
-        session.copy_slot_state(base_slot, branch_slot_start)
+        # In-place verify on base_slot: every forward advances state to the
+        # committed prefix.  No per-candidate state copies because the loop never
+        # steps into a rejected candidate (compare is BEFORE the step).
         parent_result = _slot_step(
             session,
             root_token,
             position=context_tokens,
-            slot=branch_slot_start,
+            slot=base_slot,
             drafter=drafter,
             capture_row=context_tokens,
         )
         target_top1 = [int(parent_result.token_id)]
         accepted = 0
-        selected_slot = branch_slot_start
         bonus = int(parent_result.token_id)
         finite_verify = finite_verify and math.isfinite(float(parent_result.logit))
         for idx, cand in enumerate(candidates):
@@ -781,26 +1000,23 @@ def _run_dflash_chain_on_session(
                 bonus = target_top1[-1]
                 break
             accepted += 1
-            parent_slot = branch_slot_start + idx
-            child_slot = branch_slot_start + idx + 1
-            session.copy_slot_state(parent_slot, child_slot)
             result = _slot_step(
                 session,
                 int(cand),
                 position=context_tokens + idx + 1,
-                slot=child_slot,
+                slot=base_slot,
                 drafter=drafter,
                 capture_row=context_tokens + idx + 1,
             )
             finite_verify = finite_verify and math.isfinite(float(result.logit))
             target_top1.append(int(result.token_id))
-            selected_slot = child_slot
             bonus = int(result.token_id)
         verify_seconds_total += time.perf_counter() - t_verify
         accepted_lengths.append(accepted)
-        t_commit = time.perf_counter()
-        session.copy_slot_state(selected_slot, base_slot)
         committed = [root_token, *candidates[:accepted]]
+        t_commit = time.perf_counter()
+        drafter.commit_context_rows(start=context_tokens, count=len(committed))
+        commit_seconds_total += time.perf_counter() - t_commit
         if len(proposal_trace) < 16:
             proposal_trace.append(
                 {
@@ -814,7 +1030,6 @@ def _run_dflash_chain_on_session(
                     "bonus_token": int(bonus),
                 }
             )
-        commit_seconds_total += time.perf_counter() - t_commit
         generated.extend(committed)
         root_token = int(bonus)
         context_tokens += len(committed)
@@ -847,12 +1062,14 @@ def _run_dflash_chain_on_session(
         "memory": memory_stats(),
         "backend": session.backend,
         "target_arch": session.target_arch,
-        "verifier_mode": "serial_branch_state_copy",
+        "verifier_mode": "serial_in_place_single_slot",
         "native_bulk_verifier": False,
-        "drafter_context_mode": "full_context_rebuild_per_cycle",
+        "drafter_context_mode": "append_only_projected_context_and_kv",
         "draft_phase_timing_mode": "synchronized" if drafter.sync_draft_phases else "enqueue_until_final_sync",
         "base_slot": base_slot,
         "branch_slot_start": branch_slot_start,
+        "verifier_state_copies_per_cycle": 0,
+        "verifier_state_copies_total": int(state_copies),
     }
     return generated[:decode_tokens], metadata
 
@@ -1043,16 +1260,17 @@ def main(argv: list[str] | None = None) -> int:
             "prompt_suite": str(args.prompt_fixture),
             "prompt_suite_sha256": file_sha256(args.prompt_fixture),
             "artifact_validation": validation,
-            "verifier_mode": "serial_branch_state_copy",
+            "verifier_mode": "serial_in_place_single_slot",
             "native_bulk_verifier": False,
-            "promotion_blocker": "serial branch verifier copies full per-slot state/KV; native bulk target verifier is required before promotion",
+            "promotion_blocker": "serial in-place single-slot verifier still issues B+1 sequential single-token forwards per cycle; native bulk target verifier is required before promotion",
         },
         commands=commands,
         notes=[
-            "Actual full-model target and native DFlash drafter execution with same-session AR control; diagnostic until native bulk verifier replaces serial branch state copies.",
+            "Actual full-model target and native DFlash drafter execution with same-session AR control; diagnostic until native bulk verifier issues a single B+1-row forward per cycle.",
             "Prompt fixture includes code/general/multilingual categories via fixtures/dflash/stable_prompts.jsonl.",
+            "Phase A optimization: single-slot in-place verify (no per-candidate state copies, no commit copy).",
         ],
-        decision_reason="full-model diagnostic only: serial_branch_state_copy verifier is not the promotable native bulk verifier",
+        decision_reason="full-model diagnostic only: serial_in_place_single_slot verifier is not the promotable native bulk verifier",
     )
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps(artifact, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
