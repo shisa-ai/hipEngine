@@ -824,9 +824,9 @@ def run_same_session_pair(
     """Run AR control and DFlash chain in one resident target session.
 
     Slot 0 is reserved for the AR control.  Slot 1 is the DFlash committed
-    state, and slots 2..N are serial branch-verifier scratch slots.  This keeps
-    the target weights/libraries/session identical while preserving independent
-    per-slot recurrent/KV state for exact token comparison.
+    state and is advanced in place by the serial verifier.  The target
+    weights/libraries/session are identical while the per-slot recurrent/KV
+    state remains independent for exact token comparison.
     """
 
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
@@ -1114,6 +1114,21 @@ def _rotary_tables(max_positions: int, head_dim: int, theta: float = 10000.0) ->
 def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], dict[str, Any]], spec: tuple[list[int], dict[str, Any]]) -> dict[str, Any]:
     ar_tokens, ar_meta = ar
     spec_tokens, spec_meta = spec
+    phase_seconds = spec_meta.get("draft_native_phase_seconds", {}) or {}
+    drafter_context_mode = str(spec_meta.get("drafter_context_mode") or "")
+    if drafter_context_mode == "append_only_projected_context_and_kv":
+        draft_context_full_rebuild_seconds = 0.0
+        draft_context_append_seconds = float(spec_meta.get("commit_seconds") or 0.0)
+        draft_query_seconds = float(spec_meta.get("draft_seconds") or 0.0)
+    elif drafter_context_mode.startswith("append_only"):
+        draft_context_full_rebuild_seconds = 0.0
+        draft_context_append_seconds = float(spec_meta.get("commit_seconds") or 0.0)
+        draft_query_seconds = float(spec_meta.get("draft_seconds") or 0.0)
+    else:
+        draft_context_full_rebuild_seconds = float(phase_seconds.get("context_projection", spec_meta.get("draft_seconds") or 0.0))
+        draft_context_append_seconds = 0.0
+        draft_query_seconds = max(0.0, float(spec_meta.get("draft_seconds") or 0.0) - draft_context_full_rebuild_seconds)
+
     return {
         "prompt": {
             "id": prompt.get("id"),
@@ -1136,10 +1151,10 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
         "spec": {
             "decode_seconds": spec_meta["decode_seconds"],
             "draft_seconds": spec_meta["draft_seconds"],
-            "draft_context_full_rebuild_seconds": spec_meta["draft_seconds"],
-            "draft_context_append_seconds": 0.0,
-            "draft_query_seconds": spec_meta["draft_seconds"],
-            "draft_native_phase_seconds": spec_meta.get("draft_native_phase_seconds", {}),
+            "draft_context_full_rebuild_seconds": draft_context_full_rebuild_seconds,
+            "draft_context_append_seconds": draft_context_append_seconds,
+            "draft_query_seconds": draft_query_seconds,
+            "draft_native_phase_seconds": phase_seconds,
             "drafter_context_mode": spec_meta.get("drafter_context_mode"),
             "draft_phase_timing_mode": spec_meta.get("draft_phase_timing_mode"),
             "proposal_trace_sample": spec_meta.get("proposal_trace_sample", []),
@@ -1204,6 +1219,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--sync-draft-phases", action="store_true", help="Diagnostic only: synchronize after major drafter phases before timing them")
+    parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -1237,7 +1253,7 @@ def main(argv: list[str] | None = None) -> int:
             rows.append(_row_for_artifact(prompt, budget, ar, spec))
     artifact = build_speculative_artifact(
         run_tag="dflash-chain-full-model-e2e",
-        summary="Full-model hipEngine DFlash chain E2E run with same-session AR control, native drafter, and serial branch target verifier",
+        summary="Full-model hipEngine DFlash chain E2E run with same-session AR control, native drafter, and serial in-place target verifier",
         rows=rows,
         models=SpeculativeBenchmarkModels(
             target_name=DEFAULT_TARGET_MODEL,
@@ -1249,7 +1265,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         status="diagnostic",
         timestamp=datetime.now(timezone.utc).isoformat(),
-        hardware={"backend": rows[0]["spec"].get("backend") if rows else args.backend, "arch": rows[0]["spec"].get("target_arch") if rows else None, "gpu": None},
+        hardware={"backend": rows[0]["spec"].get("backend") if rows else args.backend, "arch": rows[0]["spec"].get("target_arch") if rows else None, "gpu": args.hardware_gpu},
         software={**_git_context(), "python": platform.python_version(), "platform": platform.platform(), "hipcc_version": compiler_version},
         workload={
             "shape": "full_model_dflash_chain_e2e",
@@ -1269,6 +1285,8 @@ def main(argv: list[str] | None = None) -> int:
             "Actual full-model target and native DFlash drafter execution with same-session AR control; diagnostic until native bulk verifier issues a single B+1-row forward per cycle.",
             "Prompt fixture includes code/general/multilingual categories via fixtures/dflash/stable_prompts.jsonl.",
             "Phase A optimization: single-slot in-place verify (no per-candidate state copies, no commit copy).",
+            "Phase B optimization: append-only projected_context_norm cache; only newly committed rows are re-projected.",
+            "Phase C optimization: append-only per-layer rotated K and V context cache; per-cycle propose() processes query rows only.",
         ],
         decision_reason="full-model diagnostic only: serial_in_place_single_slot verifier is not the promotable native bulk verifier",
     )

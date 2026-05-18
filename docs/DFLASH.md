@@ -110,10 +110,14 @@ It records:
     rows; per-cycle `propose()` only processes block-size query rows.
   The retained gfx1151 16-token smoke is exact/finite with `6/30` acceptance
   across 9 cycles and is still slower than AR (`0.294x`) and non-promotable
-  because
+  because the verifier still issues `B+1` sequential single-token target
+  forwards per cycle and the drafter is dominated by small fixed-shape kernel
+  launches.  It is retained as a diagnostic row only (`performance_claim=false`;
+  artifact
+  [`2026-05-18-hipengine-dflash-chain-full-model-e2e-phaseABC-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-phaseABC-diagnostic.json)).
 - no speculative throughput claim is allowed until a native compact/c-aware
   target verifier with selectable per-row state and GPU accept summaries replaces
-  the serial branch verifier and produces a retained chain win.
+  the serial in-place verifier and produces a retained chain win.
 
 ## Prior W7900/gfx1100 evidence from `~/amd-gpu-tuning`
 

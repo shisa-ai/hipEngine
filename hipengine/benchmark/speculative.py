@@ -481,6 +481,10 @@ def build_speculative_artifact(
         else:
             decision_reason = "correctness and speed gate passed"
 
+    baseline_delta_percent = None
+    if aggregate["speedup_vs_ar"] is not None:
+        baseline_delta_percent = (float(aggregate["speedup_vs_ar"]) - 1.0) * 100.0
+
     return {
         "schema": 2,
         "speculative_schema": 1,
@@ -490,6 +494,22 @@ def build_speculative_artifact(
         "timestamp": timestamp,
         "run_tag": run_tag,
         "summary": summary,
+        "decision_reason": decision_reason,
+        "correctness_gate": {
+            "oracle": "same-session greedy AR equality plus finite AR/draft/verify logits",
+            "passed": aggregate["all_correctness_passed"],
+            "all_exact_match_ar": aggregate["all_exact_match_ar"],
+            "all_finite_logits": aggregate["all_finite_logits"],
+            "correctness_pass_rows": aggregate["correctness_pass_rows"],
+            "rows": aggregate["rows"],
+        },
+        "baseline": {
+            "type": "same_session_ar_control",
+            "ar_decode_tok_s": aggregate["ar_decode_tok_s"],
+            "spec_decode_tok_s": aggregate["spec_decode_tok_s"],
+            "speedup_vs_ar": aggregate["speedup_vs_ar"],
+            "delta_vs_ar_percent": baseline_delta_percent,
+        },
         "source_lineage": {
             "ported_metric_shape_from": list(PORTED_PARENT_BENCHMARKS),
             "notes": [

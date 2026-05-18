@@ -34,6 +34,10 @@ is **z-lab/Qwen3.6-35B-A3B-DFlash** drafting against the
 `gfx1151` (`--offload-arch=gfx1151`). MTP should be added later as another
 `DraftModel` on the DFlash-built verifier only after chain verification,
 device-side accept, and state/KV commit are exact and faster than serial c=1.
+As of the retained 2026-05-18 Phase A+B+C DFlash row, the full-model chain is
+exact/finite but still diagnostic (`performance_claim=false`, `0.294x` AR):
+the verifier remains `serial_in_place_single_slot` rather than native bulk, so
+MTP speed work stays blocked and should not fork a separate verifier path.
 
 ## Alignment with existing hipEngine design
 

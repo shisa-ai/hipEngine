@@ -104,5 +104,8 @@ def test_build_speculative_artifact_is_schema2_and_not_claim_for_fixture() -> No
     assert artifact["models"]["target"]["path"] == "/models/target"
     assert artifact["models"]["drafter"]["path"] == "/models/drafter"
     assert artifact["measurements"]["aggregate"]["all_correctness_passed"] is True
+    assert artifact["correctness_gate"]["passed"] is True
+    assert artifact["baseline"]["type"] == "same_session_ar_control"
+    assert artifact["decision_reason"] == artifact["decision"]["reason"]
     assert artifact["decision"]["accepted"] is False
     json.dumps(artifact)
