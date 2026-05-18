@@ -19268,3 +19268,59 @@ No qwen35moe 512/0 rerun for P8.2 because this dense Q4_K path is not exercised 
 - `benchmarks/CHANGELOG.md`: added a 2026-05-18 P8.2 diagnostic entry.
 
 Conclusion: P8.2 raw dense Q4_K WMMA is performance-positive and rocprof-visible (`13.9x` single, `28.9x` dual on actual Qwen3.5 raw tensors), but it is not a full-model win yet because current dense-Q4_K resident materialization uses pack8 fallback. Do not count this toward qwen35moe P8 acceptance. Next useful qwen35moe work remains P8.4/P8.5 selected-MoE WMMA.
+
+## 2026-05-18 P8.4 task #11: selected raw-Q4_K MoE dual WMMA prefill kernel landed
+
+Implemented the grouped/selected compact-MoE Q4_K gate+up WMMA kernel surface for P8.4.
+
+Files:
+
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip`
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py`
+- `docs/KERNELS.md` catalog row
+
+Kernel/API surface:
+
+- C symbols:
+  - `hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out`
+  - `hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out`
+- Python wrappers:
+  - `gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(...)`
+  - `gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out(...)`
+- Registered keys under the existing `moe_linear` layer, no dispatch/runtime wiring yet:
+  - `('hip_gfx1100','moe_linear','gguf_q4_k','selected_dual_wmma_prefill_compact_bf16_bf16_out')`
+  - `('hip_gfx1100','moe_linear','gguf_q4_k','selected_dual_wmma_prefill_compact_fp16_fp16_out')`
+  - shorthand aliases without `_compact_`: `selected_dual_wmma_prefill_{bf16,fp16}_{bf16,fp16}_out`
+
+ABI / layout preserved from the existing compact MoE stack:
+
+```text
+x                    [compact_rows, in_features]
+expert_start_compact [num_experts + 1]
+expert_start_wmma    [num_experts + 1]
+tile_expert          [wmma_total_rows / 16]
+qweight_a            raw block_q4_K [E, out_features_a, row_bytes]
+qweight_b            raw block_q4_K [E, out_features_b, row_bytes]
+out                  [compact_rows, out_features_a + out_features_b]
+```
+
+This is intentionally byte-compatible with the PARO compact dual WMMA output layout: gate occupies columns `[0:out_features_a)`, up occupies `[out_features_a:out_features_a+out_features_b)` for each compact row. There is no new compact-MoE scheduler ABI and no new resident sidecar/repack; the kernel reads the rank-3 raw GGUF expert tensors directly.
+
+Implementation details:
+
+- Mirrors `gemm_awq_selected_dual_pack8_wmma_compact_kernel<scalar_t>` from `paro_awq_wmma.hip`: one wave32 block per 16 compact rows x 16 output columns, `__launch_bounds__(32, 2)`, `float8_t acc`, `half16_t` operands, `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32`, same `expert_start_compact` / `wmma_expert_start` / `tile_expert` lookup and lane-to-output mapping.
+- Inner K loop swaps AWQ dequant for raw GGUF Q4_K dequant: one 144-byte `block_q4_K` per output row and 256 K values; 8 subblocks of 32; two 16-wide WMMA K-tiles per subblock; scale/min unpack is copied from the P8.2 dense Q4_K kernel and `gguf_q4_k_gemv.hip`.
+- Wrapper validation requires `in_features % 256 == 0`, `wmma_total_rows % 16 == 0`, and `out_features_a/out_features_b` multiples of 16. The 16-column alignment is inherited from the AWQ compact dual tile split; a smoke with `out_features=24` showed the A/B boundary-crossing tile would otherwise be ambiguous. qwen35moe expert widths are aligned, so this is acceptable for P8.4.
+
+Validation on W7900/gfx1100:
+
+- `uv run python -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py` -> OK.
+- Registry/build-plan smoke: primary and shorthand `moe_linear` keys resolve; dry plan names `gguf_q4_k_selected_prefill.so`; cached HIP build loads from `/home/lhl/.cache/hipengine/build/gguf_q4_k_selected_prefill-29c95fc7dc754577/gguf_q4_k_selected_prefill.so`.
+- Inline compact smoke: `compact_rows=17`, `in_features=256`, `out_features_a=out_features_b=32`, `num_experts=2` with expert 0 active and expert 1 empty. Kernel launches and compares against `gguf_quant_gemv(..., GGMLQuantizationType.Q4_K)` using BF16/half-operand expectations: gate/up `max|d|=0.1194`, `max_rel_max1=0.00946`.
+- Narrow regression: `uv run --with pytest pytest tests/test_gguf_q4_k_wmma_prefill.py tests/test_gguf_linear_dispatch.py -q` -> 84 passed.
+- Lineage check rerun: `python3 scripts/check_lineage.py --kind kernel --diff stat`; parent PARO compact/fused drift remains known from prior P8 audit and is not a blocker because this task mirrors the already-landed in-tree `paro_awq_wmma.hip` compact ABI and the in-tree Q4_K dequant helpers.
+
+Open for task #12:
+
+- Formal tests need to cover multiple experts, uneven compact row counts, padding/empty experts, and aligned output feature boundaries. Include a wrapper-contract check that `out_features_a/out_features_b` must be multiples of 16.
+- If future GGUF runtime wants the separate-buffer `silu_mul_separate_out_bf16` path instead of PARO-style concatenated gate/up rows, add an explicit post-GEMM split or a separate-output kernel variant deliberately. Do not silently reinterpret the compact output layout.
