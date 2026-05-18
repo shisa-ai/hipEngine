@@ -28,7 +28,12 @@ from hipengine.kernels.hip_gfx1100.fused import (
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
+    register_paro_combine_kernels,
+    register_paro_silu_kernels,
+    shared_gate_combine_residual_batch_out_bf16,
+    silu_mul_dual_out_bf16,
     silu_mul_separate_out_bf16,
+    weighted_lanes_sum_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
@@ -60,6 +65,12 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
     build_gguf_expert_pack8_gemv,
     register_gguf_expert_pack8_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
+    register_gguf_k_selected_prefill_kernels,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
+    register_gguf_q4_k_selected_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_selected_gemv_bf16_bf16_out,
     gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
@@ -71,6 +82,13 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_selected_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.registry import KernelKey, resolve
+from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+    qwen35_moe_group_count,
+    qwen35_moe_group_prefix,
+    qwen35_moe_group_scatter_gather_lowp,
+    qwen35_moe_wmma_tile_map,
+    register_qwen35_moe_group_scatter_kernels,
+)
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16,
     qwen35_router_select,
@@ -93,9 +111,11 @@ from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
+    gguf_wmma_prefill_enabled,
     launch_gguf_linear,
     launch_gguf_linear_pair,
     launch_gguf_linear_raw_ptr,
+    wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig
 
@@ -1598,6 +1618,21 @@ class Qwen35GGUFFullStackRunner:
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
         down_weight = layer.weight("ffn_down_exps")
+        if _try_run_post_attention_moe_rows_compact_wmma(
+            self,
+            layer,
+            gate_weight,
+            up_weight,
+            down_weight,
+            out_ptr,
+            scratch,
+            rows=rows,
+            selected_rows=selected_rows,
+            top_k=top_k,
+            stream=stream,
+            runtime=runtime,
+        ):
+            return
         gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
         if expert_sidecar is not None and _launch_selected_expert_pack8_moe_pair(
             expert_sidecar.tensor("ffn_gate_exps"),
@@ -1823,6 +1858,7 @@ class Qwen35GGUFResidentSession:
     expert_sidecar_cache_dir: str | Path | None = None
     require_expert_sidecar: bool = False
     preload_expert_sidecars: bool = True
+    use_wmma_prefill: bool | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _token_buf: object | None = field(default=None, init=False)
@@ -1960,11 +1996,12 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
                 )
-            return self._run_bulk_prefill_and_sample(
-                token_ids,
-                bulk_attention_mode=selected_bulk_attention_mode,
-                return_logits=return_logits,
-            )
+            with wmma_prefill_session(self.use_wmma_prefill):
+                return self._run_bulk_prefill_and_sample(
+                    token_ids,
+                    bulk_attention_mode=selected_bulk_attention_mode,
+                    return_logits=return_logits,
+                )
 
         self.reset()
         hidden_ptr = None
@@ -2015,9 +2052,15 @@ class Qwen35GGUFResidentSession:
         )
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
+        use_wmma_prefill = gguf_wmma_prefill_enabled(None)
         for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
             expert_sidecar = None
-            if self.use_expert_sidecar and bulk_attention_mode == "bulk" and self.runner.weights.config.is_moe:
+            if (
+                self.use_expert_sidecar
+                and bulk_attention_mode == "bulk"
+                and self.runner.weights.config.is_moe
+                and not use_wmma_prefill
+            ):
                 expert_sidecar = self._load_expert_sidecar_device_layer(layer_id, runtime=runtime)
             try:
                 if bulk_attention_mode == "native":
@@ -2582,6 +2625,18 @@ class _GGUFFullAttentionPrefillScratch:
     moe_selected_experts: object
     moe_routing_weights: object
     moe_down_out: object
+    moe_group_counts: object
+    moe_padded_counts: object
+    moe_scatter_offsets: object
+    moe_expert_start_compact: object
+    moe_expert_start_wmma: object
+    moe_total_compact: object
+    moe_wmma_total: object
+    moe_tile_expert: object
+    moe_sorted_lanes: object
+    moe_sorted_experts: object
+    moe_sorted_weights: object
+    moe_lane_to_row: object
     moe_shared_gate: object
     moe_shared_up: object
     moe_shared_intermediate: object
@@ -2607,6 +2662,11 @@ class _GGUFFullAttentionPrefillScratch:
     block_size: int
     blocks: int
     max_positions: int
+    moe_group_counts_zero: np.ndarray
+    moe_scatter_offsets_zero: np.ndarray
+    moe_wmma_total_host: np.ndarray
+    moe_selected_rows_capacity: int
+    moe_wmma_rows_capacity: int
     buffers: tuple[object, ...]
 
     @classmethod
@@ -2632,6 +2692,12 @@ class _GGUFFullAttentionPrefillScratch:
         moe_lane_count = max(1, int(cfg.expert_used_count)) if cfg.is_moe else 1
         moe_top_k = max(1, int(cfg.expert_used_count))
         moe_experts = max(1, int(cfg.expert_count))
+        moe_selected_rows_capacity = rows * moe_top_k
+        moe_wmma_rows_capacity = moe_selected_rows_capacity + 16 * moe_experts
+        moe_tile_capacity = max(1, (moe_wmma_rows_capacity + 15) // 16)
+        moe_group_counts_zero = np.zeros((moe_experts,), dtype=np.int32)
+        moe_scatter_offsets_zero = np.zeros((moe_experts,), dtype=np.int32)
+        moe_wmma_total_host = np.empty((1,), dtype=np.int64)
         moe_shared_ffn = max(1, int(cfg.expert_shared_feed_forward_length or runner.ffn_size or 1))
         linear_qkv_bf16_bytes = rows * runner.linear_qkv_width * 2
         linear_qkv_f32_bytes = rows * runner.linear_qkv_width * 4
@@ -2687,6 +2753,18 @@ class _GGUFFullAttentionPrefillScratch:
             "moe_selected_experts": buf(rows * moe_top_k * DType.INT64.itemsize),
             "moe_routing_weights": buf(rows * moe_top_k * DType.FP32.itemsize),
             "moe_down_out": buf(moe_top_k * hidden_bytes),
+            "moe_group_counts": buf(moe_group_counts_zero.nbytes),
+            "moe_padded_counts": buf(moe_group_counts_zero.nbytes),
+            "moe_scatter_offsets": buf(moe_scatter_offsets_zero.nbytes),
+            "moe_expert_start_compact": buf((moe_experts + 1) * DType.INT64.itemsize),
+            "moe_expert_start_wmma": buf((moe_experts + 1) * DType.INT64.itemsize),
+            "moe_total_compact": buf(DType.INT64.itemsize),
+            "moe_wmma_total": buf(DType.INT64.itemsize),
+            "moe_tile_expert": buf(moe_tile_capacity * DType.INT64.itemsize),
+            "moe_sorted_lanes": buf(moe_selected_rows_capacity * DType.INT64.itemsize),
+            "moe_sorted_experts": buf(moe_selected_rows_capacity * DType.INT64.itemsize),
+            "moe_sorted_weights": buf(moe_selected_rows_capacity * DType.FP32.itemsize),
+            "moe_lane_to_row": buf(moe_selected_rows_capacity * DType.INT64.itemsize),
             "moe_shared_gate": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
             "moe_shared_up": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
             "moe_shared_intermediate": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
@@ -2745,6 +2823,11 @@ class _GGUFFullAttentionPrefillScratch:
             block_size=block_size,
             blocks=blocks,
             max_positions=max_positions,
+            moe_group_counts_zero=moe_group_counts_zero,
+            moe_scatter_offsets_zero=moe_scatter_offsets_zero,
+            moe_wmma_total_host=moe_wmma_total_host,
+            moe_selected_rows_capacity=moe_selected_rows_capacity,
+            moe_wmma_rows_capacity=moe_wmma_rows_capacity,
             buffers=tuple(fields.values()),
         )
 
@@ -3062,6 +3145,55 @@ _EXPERT_PACK8_DUAL_KEYS = {
         "expert_pack8_dual_selected_bf16_bf16_out",
     ),
 }
+_COMPACT_MOE_SCHEDULER_KEYS = (
+    KernelKey("hip_gfx1100", "moe_group_count", "w4_paro", "qwen35"),
+    KernelKey("hip_gfx1100", "moe_group_prefix", "w4_paro", "qwen35"),
+    KernelKey("hip_gfx1100", "moe_group_scatter_gather", "w4_paro", "qwen35_lowp"),
+    KernelKey("hip_gfx1100", "moe_wmma_tile_map", "w4_paro", "qwen35"),
+)
+_COMPACT_MOE_FUSED_KEYS = (
+    KernelKey("hip_gfx1100", "weighted_lanes_sum", "w4_paro", "out"),
+    KernelKey("hip_gfx1100", "shared_gate_combine+residual", "w4_paro", "batch_out"),
+)
+_COMPACT_MOE_Q4_DUAL_KEYS = {
+    ("gguf_q4_k", "gguf_q4_k"): KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q4_k",
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out",
+    ),
+}
+_COMPACT_MOE_DOWN_KEYS = {
+    "gguf_q5_k": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q5_k",
+        "selected_wmma_prefill_compact_bf16_bf16_out",
+    ),
+    "gguf_q6_k": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q6_k",
+        "selected_wmma_prefill_compact_bf16_bf16_out",
+    ),
+}
+_COMPACT_MOE_REQUIRED_SCRATCH = (
+    "moe_group_counts",
+    "moe_padded_counts",
+    "moe_scatter_offsets",
+    "moe_expert_start_compact",
+    "moe_expert_start_wmma",
+    "moe_total_compact",
+    "moe_wmma_total",
+    "moe_tile_expert",
+    "moe_sorted_lanes",
+    "moe_sorted_experts",
+    "moe_sorted_weights",
+    "moe_lane_to_row",
+    "moe_group_counts_zero",
+    "moe_scatter_offsets_zero",
+    "moe_wmma_total_host",
+)
 
 
 def _copy_sidecar_array_to_device(array: np.ndarray, *, runtime: HipRuntime) -> DeviceBuffer:
@@ -3193,6 +3325,306 @@ def _required_ptr(buffer: DeviceBuffer | None, name: str, quant_key: str) -> int
     if buffer is None:
         raise ValueError(f"expert pack8 {quant_key} requires {name}")
     return buffer.ptr
+
+
+def _try_run_post_attention_moe_rows_compact_wmma(
+    runner: Qwen35GGUFFullStackRunner,
+    layer,
+    gate_weight: Qwen35GGUFDeviceWeight,
+    up_weight: Qwen35GGUFDeviceWeight,
+    down_weight: Qwen35GGUFDeviceWeight,
+    out_ptr: int,
+    scratch,
+    *,
+    rows: int,
+    selected_rows: int,
+    top_k: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Run the opt-in P8.6 compact grouped-MoE WMMA path when available."""
+
+    if not gguf_wmma_prefill_enabled(None):
+        return False
+    if not _scratch_has_compact_moe_fields(scratch):
+        return False
+    cfg = runner.weights.config if runner.weights is not None else None
+    if cfg is None:
+        return False
+    kernels = _resolve_compact_moe_wmma_kernels(gate_weight, up_weight, down_weight)
+    if kernels is None:
+        return False
+    gate_up_fn, down_fn = kernels
+    num_experts = int(cfg.expert_count)
+    hidden_size = int(runner.hidden_size)
+    expert_ffn = int(cfg.expert_feed_forward_length)
+    if selected_rows <= 0 or selected_rows > int(getattr(scratch, "moe_selected_rows_capacity", selected_rows)):
+        return False
+    if hidden_size % 256 != 0 or expert_ffn % 256 != 0 or expert_ffn % 16 != 0:
+        return False
+    _validate_raw_rank3_expert_weight(
+        gate_weight,
+        num_experts=num_experts,
+        in_features=hidden_size,
+        out_features=expert_ffn,
+    )
+    _validate_raw_rank3_expert_weight(
+        up_weight,
+        num_experts=num_experts,
+        in_features=hidden_size,
+        out_features=expert_ffn,
+    )
+    _validate_raw_rank3_expert_weight(
+        down_weight,
+        num_experts=num_experts,
+        in_features=expert_ffn,
+        out_features=hidden_size,
+    )
+
+    _zero(runtime, scratch.moe_group_counts, scratch.moe_group_counts_zero)
+    qwen35_moe_group_count(
+        scratch.moe_selected_experts.ptr,
+        scratch.moe_group_counts.ptr,
+        selected_rows,
+        num_experts,
+        stream=stream,
+        runtime=runtime,
+    )
+    qwen35_moe_group_prefix(
+        scratch.moe_group_counts.ptr,
+        scratch.moe_padded_counts.ptr,
+        scratch.moe_expert_start_compact.ptr,
+        scratch.moe_total_compact.ptr,
+        num_experts,
+        1,
+        stream=stream,
+        runtime=runtime,
+    )
+    _zero(runtime, scratch.moe_scatter_offsets, scratch.moe_scatter_offsets_zero)
+    qwen35_moe_group_scatter_gather_lowp(
+        scratch.post_norm.ptr,
+        scratch.moe_selected_experts.ptr,
+        scratch.moe_routing_weights.ptr,
+        scratch.moe_expert_start_compact.ptr,
+        scratch.moe_scatter_offsets.ptr,
+        scratch.moe_sorted_lanes.ptr,
+        scratch.moe_sorted_experts.ptr,
+        scratch.moe_sorted_weights.ptr,
+        scratch.moe_down_out.ptr,
+        selected_rows,
+        num_experts,
+        top_k,
+        hidden_size,
+        stream=stream,
+        runtime=runtime,
+    )
+    qwen35_moe_wmma_tile_map(
+        scratch.moe_expert_start_compact.ptr,
+        scratch.moe_expert_start_wmma.ptr,
+        scratch.moe_tile_expert.ptr,
+        scratch.moe_wmma_total.ptr,
+        num_experts,
+        stream=stream,
+        runtime=runtime,
+    )
+    wmma_total_rows = _read_i64_device_scalar(
+        scratch.moe_wmma_total,
+        scratch.moe_wmma_total_host,
+        stream=stream,
+        runtime=runtime,
+    )
+    if wmma_total_rows <= 0 or wmma_total_rows > int(getattr(scratch, "moe_wmma_rows_capacity", wmma_total_rows)):
+        return False
+
+    gate_up_fn(
+        scratch.moe_down_out.ptr,
+        scratch.moe_expert_start_compact.ptr,
+        scratch.moe_expert_start_wmma.ptr,
+        scratch.moe_tile_expert.ptr,
+        gate_weight.allocation("raw").tensor.ptr,
+        up_weight.allocation("raw").tensor.ptr,
+        scratch.ffn_gate_up.ptr,
+        selected_rows,
+        hidden_size,
+        expert_ffn,
+        expert_ffn,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        runtime=runtime,
+    )
+    silu_mul_dual_out_bf16(
+        scratch.ffn_gate_up.ptr,
+        scratch.ffn_intermediate.ptr,
+        rows=selected_rows,
+        features=expert_ffn,
+        stream=stream,
+        runtime=runtime,
+    )
+    down_fn(
+        scratch.ffn_intermediate.ptr,
+        scratch.moe_expert_start_compact.ptr,
+        scratch.moe_expert_start_wmma.ptr,
+        scratch.moe_tile_expert.ptr,
+        down_weight.allocation("raw").tensor.ptr,
+        scratch.moe_down_out.ptr,
+        selected_rows,
+        expert_ffn,
+        hidden_size,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        runtime=runtime,
+    )
+    weighted_lanes_sum_out_bf16_f32w(
+        scratch.moe_down_out.ptr,
+        scratch.moe_sorted_weights.ptr,
+        scratch.moe_sorted_lanes.ptr,
+        scratch.moe_lane_to_row.ptr,
+        scratch.ffn_down.ptr,
+        rows,
+        top_k,
+        hidden_size,
+        stream=stream,
+        runtime=runtime,
+    )
+
+    if not launch_gguf_linear_pair(
+        layer.weight("ffn_gate_shexp"),
+        layer.weight("ffn_up_shexp"),
+        scratch.post_norm.ptr,
+        scratch.moe_shared_gate.ptr,
+        scratch.moe_shared_up.ptr,
+        rows=rows,
+        in_features=hidden_size,
+        out_features=int(cfg.expert_shared_feed_forward_length),
+        stream=stream,
+        runtime=runtime,
+    ):
+        launch_gguf_linear(
+            layer.weight("ffn_gate_shexp"),
+            scratch.post_norm.ptr,
+            scratch.moe_shared_gate.ptr,
+            rows=rows,
+            in_features=hidden_size,
+            out_features=int(cfg.expert_shared_feed_forward_length),
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ffn_up_shexp"),
+            scratch.post_norm.ptr,
+            scratch.moe_shared_up.ptr,
+            rows=rows,
+            in_features=hidden_size,
+            out_features=int(cfg.expert_shared_feed_forward_length),
+            stream=stream,
+            runtime=runtime,
+        )
+    silu_mul_separate_out_bf16(
+        scratch.moe_shared_gate.ptr,
+        scratch.moe_shared_up.ptr,
+        scratch.moe_shared_intermediate.ptr,
+        rows=rows,
+        features=int(cfg.expert_shared_feed_forward_length),
+        stream=stream,
+        runtime=runtime,
+    )
+    launch_gguf_linear(
+        layer.weight("ffn_down_shexp"),
+        scratch.moe_shared_intermediate.ptr,
+        scratch.moe_shared_out.ptr,
+        rows=rows,
+        in_features=int(cfg.expert_shared_feed_forward_length),
+        out_features=hidden_size,
+        stream=stream,
+        runtime=runtime,
+    )
+    shared_gate_combine_residual_batch_out_bf16(
+        scratch.ffn_down.ptr,
+        scratch.moe_shared_out.ptr,
+        scratch.moe_shared_gate_logits.ptr,
+        scratch.residual.ptr,
+        out_ptr,
+        rows,
+        hidden_size,
+        1,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
+def _scratch_has_compact_moe_fields(scratch) -> bool:
+    return all(hasattr(scratch, name) for name in _COMPACT_MOE_REQUIRED_SCRATCH)
+
+
+def _resolve_compact_moe_wmma_kernels(
+    gate_weight: Qwen35GGUFDeviceWeight,
+    up_weight: Qwen35GGUFDeviceWeight,
+    down_weight: Qwen35GGUFDeviceWeight,
+):
+    gate_up_key = _COMPACT_MOE_Q4_DUAL_KEYS.get((gate_weight.spec.quant_key, up_weight.spec.quant_key))
+    down_key = _COMPACT_MOE_DOWN_KEYS.get(down_weight.spec.quant_key)
+    if gate_up_key is None or down_key is None:
+        return None
+    required = (*_COMPACT_MOE_SCHEDULER_KEYS, *_COMPACT_MOE_FUSED_KEYS, gate_up_key, down_key)
+    resolved = _resolve_compact_moe_required_keys(required)
+    if any(fn is None for fn in resolved):
+        _ensure_compact_moe_wmma_registered()
+        resolved = _resolve_compact_moe_required_keys(required)
+    if any(fn is None for fn in resolved):
+        return None
+    return resolved[-2], resolved[-1]
+
+
+def _resolve_compact_moe_required_keys(keys: tuple[KernelKey, ...]):
+    return [
+        resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+            missing="none",
+        )
+        for key in keys
+    ]
+
+
+def _ensure_compact_moe_wmma_registered() -> None:
+    register_qwen35_moe_group_scatter_kernels()
+    register_paro_silu_kernels()
+    register_paro_combine_kernels()
+    register_gguf_q4_k_selected_prefill_kernels()
+    register_gguf_k_selected_prefill_kernels()
+
+
+def _validate_raw_rank3_expert_weight(
+    weight: Qwen35GGUFDeviceWeight,
+    *,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+) -> None:
+    source = weight.spec.source
+    if len(source.shape) != 3 or len(source.byte_shape) != 3:
+        raise ValueError(f"GGUF expert tensor {source.name!r} must be rank-3, got {source.shape}")
+    experts, rows, row_bytes = (int(v) for v in source.byte_shape)
+    if experts != int(num_experts) or rows != int(out_features):
+        raise ValueError(
+            "GGUF compact expert tensor shape does not match launch: "
+            f"tensor=({experts}, {rows}, {row_bytes}), "
+            f"launch=({num_experts}, {out_features}, in_features={in_features})"
+        )
+    if row_bytes <= 0 or int(in_features) <= 0:
+        raise ValueError(f"invalid GGUF expert tensor shape for {source.name!r}")
+
+
+def _read_i64_device_scalar(buffer, host: np.ndarray, *, stream: int = 0, runtime: HipRuntime) -> int:
+    if stream:
+        runtime.stream_synchronize(stream)
+    copy_device_to_host(host_array_ptr(host), buffer, host.nbytes, runtime=runtime)
+    return int(host[0])
 
 
 def _launch_selected_raw_gguf_moe_pair(

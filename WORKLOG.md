@@ -19448,3 +19448,42 @@ Updated `docs/KERNELS.md` P8.5 row to point to the formal test file and rocprof 
 Open for task #15:
 
 - P8.4 Q4_K selected gate+up and P8.5 Q5_K/Q6_K selected down kernels now all have formal compact correctness tests. Runtime wiring can focus on plumbing the existing grouped scheduler output into the compact WMMA calls and reconciling concatenated gate+up output before the existing silu/weighted-combine path.
+
+## 2026-05-18 P8.6 task #15: GGUF compact-MoE WMMA runner wiring
+
+Implemented opt-in qwen35moe GGUF fast-bulk MoE scheduler wiring for the P8 compact selected WMMA kernels.
+
+Runtime changes:
+
+- `Qwen35GGUFResidentSession` now accepts `use_wmma_prefill: bool | None`; bulk prefill enters the existing `wmma_prefill_session(...)` context so the same explicit/session/env opt-in used by `launch_gguf_linear` also controls composite MoE routing.
+- `scripts/qwen35_gguf_bench.py` now exposes `--use-wmma-prefill/--no-use-wmma-prefill` and records the setting in JSON output.
+- `_GGUFFullAttentionPrefillScratch` now owns reusable compact-MoE metadata buffers: counts, scatter offsets, compact starts, WMMA starts, tile experts, sorted lanes/experts/weights, lane inverse map, and one host scalar for `wmma_total_rows`.
+- `_run_post_attention_moe_rows(...)` now tries the compact WMMA route only when the resolved opt-in is true, compact scratch is present, the raw expert shapes are aligned, and all scheduler/fused/selected `moe_linear` registry keys resolve. Otherwise it falls back to the existing selected row-GEMV/sidecar path.
+
+Opt-in compact route:
+
+```text
+router_select -> group_count -> group_prefix(pad=1)
+  -> group_scatter_gather_lowp into compact hidden slab
+  -> wmma_tile_map
+  -> gguf_q4_k selected dual compact WMMA gate+up
+  -> silu_mul_dual_out_bf16 over concatenated [row, gate|up]
+  -> gguf_q5_k/q6_k selected compact WMMA down
+  -> weighted_lanes_sum_out_bf16_f32w scatter/weight compact rows to tokens
+  -> shared_gate_combine_residual_batch_out_bf16
+```
+
+No new compact-MoE ABI or sidecar repack was introduced. The compact path consumes the raw rank-3 GGUF expert tensors already resident on device; selected kernels are found through the registry keys landed in tasks #11/#13. The existing row-GEMV selected path remains default-off fallback.
+
+Validation:
+
+- `uv run python -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/runtime/gguf_linear.py scripts/qwen35_gguf_bench.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py` -> OK.
+- `uv run --with pytest pytest tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q` -> `3 passed`.
+- `uv run --with pytest pytest tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_runner.py::test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback -q` -> `37 passed`.
+- `uv run --with pytest pytest tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py -q` -> `32 passed`.
+- `PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --help` confirms the new `--use-wmma-prefill` flag is exposed.
+
+Notes for task #16:
+
+- Benchmark the qwen35moe path with `--use-wmma-prefill --force-bulk-prefill --bulk-prefill-attention-mode=bulk` (or `HIPENGINE_GGUF_WMMA_PREFILL=1`) and use rocprof to confirm `gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>` plus `gguf_k_selected_wmma_prefill_compact_kernel<unsigned short,5/6>` appear in the prefill trace.
+- The compact path currently copies the device `wmma_total_rows` scalar to host for Python launch sizing; this is a scheduler overhead to measure before considering a fused/dynamic launcher.

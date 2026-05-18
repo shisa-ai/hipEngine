@@ -131,6 +131,17 @@ def _env_wmma_prefill_enabled() -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def gguf_wmma_prefill_enabled(use_wmma_prefill: bool | None = None) -> bool:
+    """Return the resolved GGUF WMMA prefill opt-in state.
+
+    This exposes the same precedence used by :func:`launch_gguf_linear` so
+    higher-level runners can route composite GGUF prefill paths without
+    duplicating env-var or session-toggle checks.
+    """
+
+    return _resolve_use_wmma_prefill(use_wmma_prefill)
+
+
 def _resolve_use_wmma_prefill(kwarg: bool | None) -> bool:
     """Combine per-call kwarg + session toggle + env var.
 
@@ -583,6 +594,7 @@ __all__ = [
     "GGUF_OUTPUT_FP16",
     "GGUF_OUTPUT_F32",
     "GGUFLinearDispatch",
+    "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
     "launch_gguf_linear_pair",
     "launch_gguf_linear_raw_ptr",

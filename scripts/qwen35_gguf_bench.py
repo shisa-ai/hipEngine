@@ -100,6 +100,12 @@ def main() -> int:
         default=True,
         help="Load all expert sidecar host arrays during session load so measured prefill only copies host->device per layer.",
     )
+    parser.add_argument(
+        "--use-wmma-prefill",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override the GGUF WMMA prefill opt-in for the resident session; omit to use HIPENGINE_GGUF_WMMA_PREFILL.",
+    )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
 
@@ -144,6 +150,7 @@ def main() -> int:
             expert_sidecar_cache_dir=args.expert_sidecar_cache_dir,
             require_expert_sidecar=args.require_expert_sidecar,
             preload_expert_sidecars=args.preload_expert_sidecars,
+            use_wmma_prefill=args.use_wmma_prefill,
             measured=measured,
             run_index=(run_index - args.warmup_runs + 1 if measured else run_index + 1),
         )
@@ -185,6 +192,7 @@ def main() -> int:
         "expert_sidecar_cache_dir": None if args.expert_sidecar_cache_dir is None else str(args.expert_sidecar_cache_dir),
         "require_expert_sidecar": bool(args.require_expert_sidecar),
         "preload_expert_sidecars": bool(args.preload_expert_sidecars),
+        "use_wmma_prefill": args.use_wmma_prefill,
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
         "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
         "runs": runs,
@@ -194,6 +202,7 @@ def main() -> int:
             "--bulk-prefill-attention-mode=bulk selects the fast fully bulk scheduler and is the qwen35moe delegated default.",
             "--bulk-prefill-attention-mode=native preserves row-serial attention while using row-bulk FFN/MoE as a qwen35moe diagnostic fallback.",
             "--use-expert-sidecar enables explicit qwen35moe GGUF expert pack8 sidecar kernels for bulk prefill; generated sidecars live in the requested cache dir.",
+            "--use-wmma-prefill opts GGUF bulk prefill into P8 WMMA dispatch, including qwen35moe compact grouped selected-MoE when the raw kernels are available.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
         ],
     }
@@ -234,6 +243,7 @@ def _run_once(
     expert_sidecar_cache_dir: Path | None,
     require_expert_sidecar: bool,
     preload_expert_sidecars: bool,
+    use_wmma_prefill: bool | None,
     measured: bool,
     run_index: int,
 ) -> dict[str, Any]:
@@ -251,6 +261,7 @@ def _run_once(
         expert_sidecar_cache_dir=expert_sidecar_cache_dir,
         require_expert_sidecar=require_expert_sidecar,
         preload_expert_sidecars=preload_expert_sidecars,
+        use_wmma_prefill=use_wmma_prefill,
     )
     load_seconds = time.perf_counter() - load_start
     memory_snapshots["after_load"] = _memory_snapshot("after_load", runtime, session)
@@ -322,6 +333,7 @@ def _run_once(
         "warmup_decode_tokens": int(warmup_decode_tokens),
         "use_bulk_prefill": use_bulk_prefill,
         "bulk_prefill_attention_mode": bulk_attention_mode,
+        "use_wmma_prefill": use_wmma_prefill,
         "timings": {
             "load_seconds": load_seconds,
             "prefill_seconds": prefill_seconds,

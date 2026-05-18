@@ -1304,20 +1304,27 @@ with Q5_K / Q6_K dequant. Affected: `ffn_down_exps`. Note: Qwen3.6-35B-A3B
 uses Q5_K for `ffn_down_exps` in `Q4_K_M`, but K-quant tier may vary across
 GGUF builds; the dispatch path must check each tensor's actual quant.
 
-P8.6 — **Scheduler wiring**: the GGUF runner switches the fast-bulk MoE path
-from "selected row GEMVs over `rows * top_k` lanes" to:
+P8.6 — **Scheduler wiring**: when GGUF WMMA prefill is explicitly enabled
+(`Qwen35GGUFResidentSession(use_wmma_prefill=True)`, `--use-wmma-prefill`,
+or `HIPENGINE_GGUF_WMMA_PREFILL=1`) and all selected-MoE registry keys resolve,
+the fast-bulk MoE path switches from "selected row GEMVs over `rows * top_k`
+lanes" to:
 
 ```text
 router_top_k          — already on-device
   -> qwen35_moe_group_count
-  -> qwen35_moe_group_prefix         (expert_start_compact)
+  -> qwen35_moe_group_prefix         (expert_start_compact, pad_multiple=1)
   -> qwen35_moe_group_scatter_gather (sort + gather hidden into compact slab)
   -> qwen35_moe_wmma_tile_map        (wmma_expert_start, tile_expert)
-  -> gguf_q4_k_selected_dual_wmma_prefill   (compact gate+up GEMM)
-  -> silu_mul_separate_out_bf16             (over compact rows)
-  -> gguf_q5_k_selected_wmma_prefill        (compact down GEMM)
-  -> weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w (scatter combine)
+  -> gguf_q4_k_selected_dual_wmma_prefill   (compact concatenated gate+up GEMM)
+  -> silu_mul_dual_out_bf16                 (over compact [row, gate|up] rows)
+  -> gguf_q5_k/q6_k_selected_wmma_prefill   (compact down GEMM)
+  -> weighted_lanes_sum_out_bf16_f32w       (scatter weighted compact rows to tokens)
+  -> shared_gate_combine_residual_batch_out_bf16
 ```
+
+The selected row-GEMV path remains the default and also the fallback when the
+raw GGUF expert quant/shape or selected WMMA registry coverage is unavailable.
 
 P8.7 — **lm_head** Q6_K batched WMMA prefill (one-shot final-row case, plus
 the "sample all rows" debug case used in stage probes).
