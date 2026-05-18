@@ -238,6 +238,33 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
     assert (
         resolve(
             backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="int8_per_token_head",
+            variant="per_token_head_gqa_splitk_spans",
+        )
+        is qwen35_paged_attn_decode_int8_gqa_splitk_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="int8_per_token_head",
+            variant="per_token_head_gqa_splitk_gate_bf16_spans",
+        )
+        is qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="int8_per_token_head",
+            variant="per_token_head_gqa_splitk_gate_fp16_spans",
+        )
+        is qwen35_paged_attn_decode_int8_gqa_splitk_gate_fp16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
             layer="full_attn_prefill",
             quant="w4_paro",
             variant="qwen35_causal_gqa_gate_fp16",

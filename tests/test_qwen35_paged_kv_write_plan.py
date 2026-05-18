@@ -127,6 +127,24 @@ def test_qwen35_paged_kv_write_registers_span_variants() -> None:
         )
         is qwen35_write_paged_kv_int8_per_token_head_spans
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_kv_write",
+            quant="int8_per_token_head",
+            variant="per_token_head_prompt_spans",
+        )
+        is qwen35_write_paged_kv_int8_per_token_head_prompt_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_kv_write",
+            quant="int8_per_token_head",
+            variant="per_token_head_batch_spans",
+        )
+        is qwen35_write_paged_kv_int8_per_token_head_batch_spans
+    )
 
 
 def test_qwen35_paged_kv_write_build_plan_is_dry_run_safe(tmp_path) -> None:

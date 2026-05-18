@@ -418,6 +418,16 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
         qwen35_write_paged_kv_int8_per_token_head_spans,
         replace=replace,
     )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_prompt_spans"),
+        qwen35_write_paged_kv_int8_per_token_head_prompt_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_batch_spans"),
+        qwen35_write_paged_kv_int8_per_token_head_batch_spans,
+        replace=replace,
+    )
 
 
 def _launch_write(

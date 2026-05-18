@@ -16891,3 +16891,33 @@ rocprofv3 --kernel-trace --output-format csv --output-file /tmp/hipengine-int8-g
 # with FP32-scale durations 65200 ns and 47363 ns, FP16-scale durations 88723 ns,
 # 78883 ns, and 85603 ns, plus reduce/gated-reduce launches on W7900/gfx1100.
 ```
+
+## 2026-05-18 - K1 INT8 KV registry dispatch keys
+
+Completed task #7: made INT8 KV write/decode dispatch selectable through storage-aware registry metadata instead of hardcoded quant/variant lookups.
+
+Implementation notes:
+
+- Added `hipengine.dispatch.kv` selection helpers for paged-KV writes and paged-attention decode. They derive `KernelKey(layer, quant, variant)` from `KVLiveSpans.storage_dtype` / `FixedPagedKVPolicy` metadata via table-driven routes, with no backend or quant branches in dispatch.
+- Registered INT8 writer keys for decode, prompt, and row-major batch append: `per_token_head_spans`, `per_token_head_prompt_spans`, and `per_token_head_batch_spans`.
+- Kept existing INT8 decode keys and added storage-explicit aliases: `per_token_head_gqa_splitk_spans`, `per_token_head_gqa_splitk_gate_bf16_spans`, and `per_token_head_gqa_splitk_gate_fp16_spans`.
+- Updated INT8 accuracy tooling to resolve the HIP writer/decode through the new dispatch helpers once `KVLiveSpans` metadata is available.
+- Added tests that resolve INT8 and BF16 paged-attention paths from policy-created spans, verify missing/duplicate registry errors, and assert BF16 `w4_paro` variants remain unchanged.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/dispatch/kv.py hipengine/dispatch/__init__.py scripts/qwen35_kv_int8_accuracy.py && \
+python3 -m pytest tests/test_kv_dispatch.py tests/test_qwen35_paged_kv_write_plan.py tests/test_qwen35_paged_attn_decode_plan.py -q
+# 9 passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures && \
+python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 4,9 \
+  --block-size 4 --num-q-heads 4 --num-kv-heads 2 --head-dim 8 \
+  --pseudo-vocab-size 16 --json /tmp/hipengine-kv-int8-dispatch-smoke.json
+# pytest passed; CPU fixtures/smokes passed; CPU INT8 layer accuracy status=accepted.
+```

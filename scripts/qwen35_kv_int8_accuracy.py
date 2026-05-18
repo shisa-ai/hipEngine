@@ -463,8 +463,8 @@ def _run_int8_hip(
     from hipengine.core.device import Device
     from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
     from hipengine.core.tensor import Tensor
+    from hipengine.dispatch import resolve_paged_attn_decode, resolve_paged_kv_write
     from hipengine.kernels.hip_gfx1100.attention import build_qwen35_paged_attn_decode, build_qwen35_paged_kv_write
-    from hipengine.kernels.registry import resolve
     from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
     from hipengine.core.hip import get_hip_runtime
 
@@ -483,18 +483,6 @@ def _run_int8_hip(
         buffers.append(buf)
         return buf
 
-    write_fn = resolve(
-        backend="hip_gfx1100",
-        layer="paged_kv_write",
-        quant="int8_per_token_head",
-        variant="per_token_head_spans",
-    )
-    decode_fn = resolve(
-        backend="hip_gfx1100",
-        layer="paged_attn_decode",
-        quant="int8_per_token_head",
-        variant="gqa_splitk_spans",
-    )
     device = Device("hip", 0)
     block_table = np.ascontiguousarray(case.block_table.astype(np.int32))
     positions = np.ascontiguousarray(case.positions.astype(np.int64))
@@ -534,6 +522,24 @@ def _run_int8_hip(
             k_scale=Tensor.from_handle(k_scale_b.ptr, k_scale.shape, scale_dtype, device),
             v_scale=Tensor.from_handle(v_scale_b.ptr, v_scale.shape, scale_dtype, device),
             scale_dtype=scale_dtype,
+        )
+        dispatch_spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(block_table_b.ptr, block_table.shape, "int32", device),
+            live_counts=Tensor.from_handle(live_counts_b.ptr, live_counts.shape, "int64", device),
+            max_live_count=case.context_len,
+            storage_dtype="int8_per_token_head",
+            scale_metadata=scale_metadata,
+        )
+        write_fn = resolve_paged_kv_write(
+            backend="hip_gfx1100",
+            spans=dispatch_spans,
+            kind="decode",
+            source_dtype="fp32",
+        )
+        decode_fn = resolve_paged_attn_decode(
+            backend="hip_gfx1100",
+            spans=dispatch_spans,
+            kind="gqa_splitk",
         )
         row_bytes = case.num_kv_heads * case.head_dim * np.dtype(np.float32).itemsize
         pos_bytes = np.dtype(np.int64).itemsize
@@ -614,7 +620,14 @@ def _run_int8_hip_or_blocked(
         return PathCheck("int8_per_token_head", "hip_gfx1100", False, blocked_reason=f"cannot inspect registry: {exc}")
     expected_keys = {
         KernelKey("hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_spans"),
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_prompt_spans"),
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_batch_spans"),
         KernelKey("hip_gfx1100", "paged_attn_decode", "int8_per_token_head", "gqa_splitk_spans"),
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_per_token_head", "gqa_splitk_gate_bf16_spans"),
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_per_token_head", "gqa_splitk_gate_fp16_spans"),
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_per_token_head", "per_token_head_gqa_splitk_spans"),
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_per_token_head", "per_token_head_gqa_splitk_gate_bf16_spans"),
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_per_token_head", "per_token_head_gqa_splitk_gate_fp16_spans"),
     }
     missing = sorted(key.display() for key in expected_keys.difference(set(registered_keys())))
     if missing:
