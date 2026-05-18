@@ -18148,3 +18148,121 @@ Result:
 Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/DFLASH.md`, and
 `docs/MTP.md` to point at the clean artifact and keep the row clearly
 non-promoted/diagnostic.
+
+## 2026-05-18 — DFlash native B+1 bulk verifier bring-up (task #27 partial)
+
+Implemented the first native target verifier path for the full-model DFlash chain
+benchmark, but it does **not** satisfy the speed gate yet.
+
+### Implementation
+
+- Added `Qwen35ParoDecodeState.run_linear_attention_moe_tree_tloop_layer_fp16`:
+  - uses existing raw-pointer tree Conv/GDN t-loop kernels
+    (`qwen35_linear_attn_tree_conv_decode_fp16_tloop` and
+    `qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16`);
+  - fills per-row `tree_conv_state` and `tree_recurrent_state` scratch so the
+    selected verifier row can be committed without replaying rejected candidates.
+- Added `Qwen35ParoResidentSession.verify_chain_bulk_and_commit`:
+  - accepts `TargetVerifyBatch` root+B chain metadata;
+  - runs one native verifier forward per draft cycle;
+  - captures target hidden taps for all verifier rows;
+  - samples row-wise target top-1 on device with row argmax;
+  - runs `dflash_accept_chain_i32` and checks GPU accept output against the CPU
+    `TargetVerifyBatch.accept_from_top1` oracle;
+  - commits selected linear Conv/GDN state row and selected decode position;
+  - leaves full-attention K/V suffix rows in cache, masked by the committed
+    context length and overwritten on later cycles as needed.
+- Added `--verifier-mode {native_bulk_bplus1,serial_in_place_single_slot}` to
+  `scripts/dflash_chain_e2e_bench.py`; native bulk is now the default while the
+  serial path remains as fallback.
+- Artifact rows now emit `target_forward_calls`, `target_bulk_forward_calls`,
+  `target_serial_forward_calls`, `target_forwards_per_draft_call`, and
+  `gpu_accept_match_cpu`.
+
+### Validation
+
+```bash
+python3 -m pytest tests/test_speculative_benchmark.py \
+  tests/test_qwen35_resident_batch_layout.py tests/test_dflash_drafter.py \
+  tests/test_dflash_metadata.py -q
+# 52 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --max-prompts 1 --decode-tokens 4 \
+  --draft-budgets 4 --json /tmp/hipengine-dflash-chain-e2e-nativebulk-final3-smoke.json
+# exact/finite same-session AR equality passed; gpu_accept_match_cpu=true
+```
+
+Short smoke result (`decode_tokens=4`, B=4, active B+1 rows):
+
+- AR `~65.9 tok/s`, native-bulk DFlash `~10.3 tok/s`, speedup `0.157x`;
+- `target_bulk_forward_calls=2`, `target_serial_forward_calls=1` tail AR step;
+- `target_forwards_per_draft_call=1.0` for the two draft cycles;
+- `target_verify_seconds=0.229 s` vs serial fallback `~0.065 s` on the same
+  4-token shape.
+
+Pre-fixed 16-token diagnostic (active-row native path before the fixed-B tail
+correction below):
+
+- exact/finite same-session AR equality passed;
+- AR `60.16 tok/s`, native-bulk DFlash `8.31 tok/s`, speedup `0.138x`;
+- `target_verify_seconds=1.252 s` vs serial fallback `~0.249 s` from the earlier
+  serial comparison;
+- `target_bulk_forward_calls=10`, `target_serial_forward_calls=1`,
+  `target_forwards_per_draft_call=1.0`, `gpu_accept_match_cpu=true`;
+- acceptance `5/34` proposed draft tokens.
+
+### Performance blocker (not a task #27 correctness blocker)
+
+Exactness and GPU/CPU accept agreement are now working, but speed fails badly.
+The B+1 target path still runs too much tiny-row work: linear tree t-loop +
+grouped/prefill-style MLP for B<=4 and row-wise full attention c=1 kernels inside
+the layer.  It removes host sampling syncs, but the extra target rows and
+small-kernel overhead dominate at the observed DFlash acceptance rate.
+
+Next required optimization before promotion/MTP speed claims: specialize the
+tiny-row verifier kernels (especially MoE/MLP and full-attention row loop), or
+graph-capture/fuse the B+1 verifier forward.  Until then, keep
+`performance_claim=false` and use `serial_in_place_single_slot` as the faster
+diagnostic fallback when comparing raw verifier latency.
+
+### Follow-up correction / task #27 acceptance update
+
+The native verifier path was adjusted back to fixed-budget B+1 rows for draft
+cycles (`candidate_budget=B`, inactive tail rows masked with `active_mask=false`) so the E2E
+path matches the task contract.  Tail-only decode with no draft candidates still
+uses the serial single-token step and is reported separately as
+`target_serial_forward_calls`.
+
+Validation after the fixed-budget update:
+
+```bash
+python3 -m pytest tests/test_speculative_benchmark.py \
+  tests/test_qwen35_resident_batch_layout.py tests/test_dflash_drafter.py \
+  tests/test_dflash_metadata.py -q
+# 52 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 4 --draft-budgets 4 \
+  --json /tmp/hipengine-dflash-chain-e2e-nativebulk-fixed-d4.json
+```
+
+Fixed-budget smoke result:
+
+- exact same-session AR equality passed; finite draft/verify logits passed;
+- GPU accept summary matched the CPU `TargetVerifyBatch.accept_from_top1` oracle;
+- `target_bulk_forward_calls=2`, `target_serial_forward_calls=1` tail-only step,
+  `target_forwards_per_draft_call=1.0`;
+- `target_verify_rows=11`, `target_bulk_rows=10`, confirming fixed B+1 rows for
+  the two draft cycles plus one final serial tail step;
+- AR speed `~65 tok/s`, native-bulk DFlash `~9-10 tok/s`, speedup `~0.14x`, so
+  the retained artifact must remain `performance_claim=false`.
+
+This satisfies task #27's native-verifier correctness/diagnostic contract.  The
+remaining slowdown is a follow-up optimization issue for graph capture/fusion,
+not a blocker for landing the native verifier fallback path.

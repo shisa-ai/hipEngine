@@ -63,6 +63,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_prefill_f32,
     qwen35_linear_attn_conv_prefill_fp16,
     qwen35_linear_attn_conv_prefill_segments_f32,
+    qwen35_linear_attn_tree_conv_decode_fp16_tloop,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_k2_f32,
@@ -72,6 +73,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
+    qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     qwen35_linear_attn_prefill_prepare_f32_fp16,
 )
@@ -197,6 +199,9 @@ class Qwen35ParoLinearAttentionScratch:
     recurrent_bf16: Tensor
     out_rot: Tensor
     out_proj: Tensor
+    tree_conv_state: Tensor
+    tree_recurrent_state: Tensor
+    tree_gdn_acc: Tensor
 
 
 @dataclass(frozen=True)
@@ -934,6 +939,17 @@ class Qwen35ParoDecodeState:
             recurrent_bf16=self.workspace.reserve_tensor("linear_attn.recurrent_bf16", (tokens, z_width), lowp),
             out_rot=self.workspace.reserve_tensor("linear_attn.out_rot", (tokens, z_width), lowp),
             out_proj=self.workspace.reserve_tensor("linear_attn.out_proj", (tokens, cfg.hidden_size), lowp),
+            tree_conv_state=self.workspace.reserve_tensor(
+                "linear_attn.tree_conv_state",
+                (tokens, qkv_width, cfg.linear_conv_kernel_dim),
+                DType.FP32,
+            ),
+            tree_recurrent_state=self.workspace.reserve_tensor(
+                "linear_attn.tree_recurrent_state",
+                (tokens, cfg.linear_num_value_heads, cfg.linear_key_head_dim, cfg.linear_value_head_dim),
+                DType.FP32,
+            ),
+            tree_gdn_acc=self.workspace.reserve_tensor("linear_attn.tree_gdn_acc", (tokens, z_width), DType.FP32),
         )
 
     def rotate_linear_attention_inputs_bf16(
@@ -4121,6 +4137,155 @@ class Qwen35ParoDecodeState:
                 stream=stream,
             )
         return self.run_moe_grouped_compact_fp16(
+            mlp_input,
+            residual,
+            scratch=moe_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+
+    def run_linear_attention_moe_tree_tloop_layer_fp16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        parent_rows: Tensor,
+        linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run one linear-attention layer for a parent-indexed verifier tree.
+
+        ``parent_rows`` is a row-major/topological int64 vector where roots use
+        ``-1`` and every non-root row references an earlier row.  The t-loop
+        Conv/GDN kernels fill ``linear_scratch.tree_conv_state`` and
+        ``linear_scratch.tree_recurrent_state`` for every row so the caller can
+        later commit the selected row without replaying rejected candidates.
+        """
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if parent_rows.dtype is not DType.INT64 or parent_rows.shape != (tokens,):
+            raise ValueError("parent_rows must be int64 with shape (tokens,)")
+        linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
+        use_grouped_moe = False if dense_mlp else _use_moe_grouped_compact_prefill(tokens)
+        if dense_mlp:
+            if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
+                moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif use_grouped_moe:
+            if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+                moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+            moe_scratch = self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+
+        self.input_rmsnorm_fp16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
+        self.rotate_linear_attention_inputs_fp16(
+            linear_scratch.attn_input,
+            linear_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        self.project_linear_attention_qkv_z_fp16(
+            linear_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        self.project_linear_attention_ab_fp16(
+            linear_scratch.attn_input,
+            linear_scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        qkv_width = _linear_qkv_width(self.config)
+        z_width = _linear_value_width(self.config)
+        qwen35_linear_attn_tree_conv_decode_fp16_tloop(
+            linear_scratch.qkv.ptr,
+            conv_state.ptr,
+            linear_scratch.tree_conv_state.ptr,
+            self.tensor(f"{prefix}.conv1d.weight").ptr,
+            parent_rows.ptr,
+            linear_scratch.conv_out.ptr,
+            tokens,
+            qkv_width,
+            self.config.linear_conv_kernel_dim,
+            stream=stream,
+            library=_library_for(library, "linear_conv"),
+            runtime=self.runtime,
+        )
+        qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16(
+            linear_scratch.conv_out.ptr,
+            linear_scratch.z.ptr,
+            linear_scratch.a.ptr,
+            linear_scratch.b.ptr,
+            self.tensor(f"{prefix}.dt_bias").ptr,
+            self.tensor(f"{prefix}.A_log").ptr,
+            self.tensor(f"{prefix}.norm.weight").ptr,
+            recurrent_state.ptr,
+            linear_scratch.tree_recurrent_state.ptr,
+            parent_rows.ptr,
+            linear_scratch.tree_gdn_acc.ptr,
+            linear_scratch.recurrent_out.ptr,
+            self.config.rms_norm_eps,
+            tokens,
+            self.config.linear_num_key_heads,
+            self.config.linear_num_value_heads,
+            self.config.linear_key_head_dim,
+            self.config.linear_value_head_dim,
+            stream=stream,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        if linear_scratch.recurrent_out.shape[-1] != z_width:
+            raise ValueError("linear-attention recurrent scratch width mismatch")
+        attn_out = self.project_linear_attention_out_fp16(
+            linear_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        if dense_mlp:
+            return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if use_grouped_moe:
+            return self.run_moe_grouped_compact_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return self.run_moe_c1_fp16(
             mlp_input,
             residual,
             scratch=moe_scratch,

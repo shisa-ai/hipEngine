@@ -103,6 +103,13 @@ def test_build_speculative_artifact_is_schema2_and_not_claim_for_fixture() -> No
     assert artifact["synthetic_schema_fixture"] is True
     assert artifact["models"]["target"]["path"] == "/models/target"
     assert artifact["models"]["drafter"]["path"] == "/models/drafter"
+    spec = artifact["measurements"]["rows"][0]["spec"]
+    assert spec["target_forward_calls"] == 4
+    assert spec["target_bulk_forward_calls"] == 4
+    assert spec["target_serial_forward_calls"] == 0
+    assert spec["target_bulk_rows"] == 20
+    assert spec["target_forwards_per_draft_call"] == 1.0
+    assert spec["gpu_accept_match_cpu"] is True
     assert artifact["measurements"]["aggregate"]["all_correctness_passed"] is True
     assert artifact["correctness_gate"]["passed"] is True
     assert artifact["baseline"]["type"] == "same_session_ar_control"

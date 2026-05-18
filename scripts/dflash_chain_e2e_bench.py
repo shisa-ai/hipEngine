@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Full-model DFlash chain E2E benchmark driver.
 
-This is the first hipEngine runner that executes the real packed target model and
-native DFlash drafter with a same-session AR control.  The verifier is
-intentionally labelled ``serial_in_place_single_slot``: it advances a single
-resident slot one step at a time using the resident target model, mirroring AR
-exactly.  Per-candidate state copies are not taken because the verify loop
-never steps into a rejected candidate (the comparison happens before the step),
-so there is nothing to roll back.  Rows from this mode are actual full-model
-measurements, but they are not promotable unless the artifact says the verifier
-is the native bulk verifier and the normal speed/correctness gates pass.
+This is the hipEngine runner that executes the real packed target model and
+native DFlash drafter with a same-session AR control.  The default verifier is
+``native_bulk_bplus1``: it runs the root plus fixed-budget candidate chain in
+one B+1-row target forward against the resident KV/state, uses GPU accept
+metadata, and commits the selected row state.  ``serial_in_place_single_slot``
+remains available as a diagnostic fallback.  Rows are not promotable unless the
+artifact says the native bulk verifier ran and the normal speed/correctness
+speed gates pass.
 """
 
 from __future__ import annotations
@@ -64,6 +63,7 @@ from hipengine.loading import load_weight_index
 from hipengine.loading.dflash import load_dflash_drafter_bf16_weights, validate_dflash_artifact_pair
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from hipengine.speculative import DraftBatch, TargetVerifyBatch
 
 DEFAULT_TARGET_PATH = "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
 DEFAULT_DRAFTER_PATH = "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719"
@@ -81,13 +81,40 @@ class DraftResult:
     phase_seconds: dict[str, float]
 
 
+def _build_chain_target_batch(
+    *,
+    root_token: int,
+    root_position: int,
+    candidates: Sequence[int],
+    candidate_budget: int,
+    active_count: int,
+) -> TargetVerifyBatch:
+    """Build fixed-budget root+B target metadata for native chain verification."""
+
+    if candidate_budget <= 0:
+        raise ValueError("candidate_budget must be positive")
+    if active_count < 0 or active_count > candidate_budget:
+        raise ValueError("active_count must be in [0, candidate_budget]")
+    padded = [0] * candidate_budget
+    for index, token in enumerate(candidates[:active_count]):
+        padded[index] = int(token)
+    draft = DraftBatch(
+        request_ids=(0,),
+        candidate_tokens=tuple(padded),
+        parent_positions=tuple(int(root_position) + index for index in range(candidate_budget)),
+        draft_depths=tuple(index + 1 for index in range(candidate_budget)),
+        row_to_request=tuple(0 for _ in range(candidate_budget)),
+        active_mask=tuple(index < active_count for index in range(candidate_budget)),
+        mode="verify_chain",
+    )
+    return TargetVerifyBatch.from_draft(draft, root_tokens=(int(root_token),), root_positions=(int(root_position),))
+
+
 class NativeDFlashChainDrafter:
     """Correctness-first native DFlash top-1 chain proposer.
 
-    The implementation rebuilds projected context and per-layer K/V from the
-    current target-hidden context each draft call.  That keeps the first
-    full-model E2E benchmark small and explicit; the append-only draft-KV owner
-    remains the optimization target for promotable rows.
+    The implementation uses append-only projected-context and per-layer K/V caches
+    so per-cycle proposals only process query rows.
     """
 
     def __init__(
@@ -820,11 +847,13 @@ def run_same_session_pair(
     require_cached_build: bool,
     prefill_config: PrefillConfig,
     sync_draft_phases: bool = False,
+    verifier_mode: str = "native_bulk_bplus1",
 ) -> tuple[tuple[list[int], dict[str, Any]], tuple[list[int], dict[str, Any]]]:
     """Run AR control and DFlash chain in one resident target session.
 
     Slot 0 is reserved for the AR control.  Slot 1 is the DFlash committed
-    state and is advanced in place by the serial verifier.  The target
+    state.  ``native_bulk_bplus1`` advances it through one root+B target forward
+    per cycle; ``serial_in_place_single_slot`` remains a fallback.  The target
     weights/libraries/session are identical while the per-slot recurrent/KV
     state remains independent for exact token comparison.
     """
@@ -890,6 +919,7 @@ def run_same_session_pair(
                 candidate_budget=candidate_budget,
                 base_slot=1,
                 branch_slot_start=2,
+                verifier_mode=verifier_mode,
             )
         spec_meta["same_session_control"] = True
         spec_meta["same_process_control"] = True
@@ -905,6 +935,7 @@ def _run_dflash_chain_on_session(
     candidate_budget: int,
     base_slot: int,
     branch_slot_start: int,
+    verifier_mode: str = "native_bulk_bplus1",
 ) -> tuple[list[int], dict[str, Any]]:
     t0 = time.perf_counter()
     next_result = None
@@ -941,6 +972,12 @@ def _run_dflash_chain_on_session(
     proposal_trace: list[dict[str, Any]] = []
     finite_draft = True
     finite_verify = True
+    gpu_accept_match_cpu = True
+    target_bulk_forward_calls = 0
+    target_serial_forward_calls = 0
+    target_bulk_rows_total = 0
+    target_accept_scalar_reads = 0
+    target_accept_scalar_values = 0
     t1 = time.perf_counter()
     state_copies = 0
     while len(generated) < decode_tokens:
@@ -959,12 +996,13 @@ def _run_dflash_chain_on_session(
                 capture_row=context_tokens,
             )
             verify_seconds_total += time.perf_counter() - t_verify
+            target_serial_forward_calls += 1
             finite_verify = finite_verify and math.isfinite(float(result.logit))
             generated.append(root_token)
             root_token = int(result.token_id)
             context_tokens += 1
             continue
-        verify_rows_total += 1 + active_budget
+        verify_rows_total += (1 + candidate_budget) if verifier_mode == "native_bulk_bplus1" else (1 + active_budget)
         draft = drafter.propose(root_token=root_token, root_position=context_tokens, context_tokens=context_tokens)
         candidates = list(draft.candidate_tokens[:active_budget])
         draft_calls += 1
@@ -980,37 +1018,66 @@ def _run_dflash_chain_on_session(
         d2h_vector_reads += draft.d2h_vector_reads
         d2h_vector_values += draft.d2h_vector_values
         t_verify = time.perf_counter()
-        # In-place verify on base_slot: every forward advances state to the
-        # committed prefix.  No per-candidate state copies because the loop never
-        # steps into a rejected candidate (compare is BEFORE the step).
-        parent_result = _slot_step(
-            session,
-            root_token,
-            position=context_tokens,
-            slot=base_slot,
-            drafter=drafter,
-            capture_row=context_tokens,
-        )
-        target_top1 = [int(parent_result.token_id)]
-        accepted = 0
-        bonus = int(parent_result.token_id)
-        finite_verify = finite_verify and math.isfinite(float(parent_result.logit))
-        for idx, cand in enumerate(candidates):
-            if target_top1[-1] != int(cand):
-                bonus = target_top1[-1]
-                break
-            accepted += 1
-            result = _slot_step(
+        if verifier_mode == "native_bulk_bplus1":
+            target_batch = _build_chain_target_batch(
+                root_token=root_token,
+                root_position=context_tokens,
+                candidates=candidates,
+                candidate_budget=candidate_budget,
+                active_count=active_budget,
+            )
+            verify_result = session.verify_chain_bulk_and_commit(
+                target_batch,
+                base_slot=base_slot,
+                capture_layer_ids=drafter.config.target_layer_ids,
+                capture_hidden_concat=drafter.target_hidden_concat,
+                capture_row_start=context_tokens,
+            )
+            target_top1 = list(verify_result.target_top1[: 1 + active_budget])
+            accepted = int(verify_result.accepted_count)
+            bonus = int(verify_result.next_token) if verify_result.next_token is not None else int(target_top1[-1])
+            finite_verify = finite_verify and bool(verify_result.finite_logits)
+            gpu_accept_match_cpu = gpu_accept_match_cpu and bool(verify_result.gpu_accept_match_cpu)
+            target_bulk_forward_calls += int(verify_result.target_forward_calls)
+            target_bulk_rows_total += int(verify_result.rows)
+            target_accept_scalar_reads += 7
+            target_accept_scalar_values += 7
+        elif verifier_mode == "serial_in_place_single_slot":
+            # In-place verify on base_slot: every forward advances state to the
+            # committed prefix.  No per-candidate state copies because the loop never
+            # steps into a rejected candidate (compare is BEFORE the step).
+            parent_result = _slot_step(
                 session,
-                int(cand),
-                position=context_tokens + idx + 1,
+                root_token,
+                position=context_tokens,
                 slot=base_slot,
                 drafter=drafter,
-                capture_row=context_tokens + idx + 1,
+                capture_row=context_tokens,
             )
-            finite_verify = finite_verify and math.isfinite(float(result.logit))
-            target_top1.append(int(result.token_id))
-            bonus = int(result.token_id)
+            target_serial_forward_calls += 1
+            target_top1 = [int(parent_result.token_id)]
+            accepted = 0
+            bonus = int(parent_result.token_id)
+            finite_verify = finite_verify and math.isfinite(float(parent_result.logit))
+            for idx, cand in enumerate(candidates):
+                if target_top1[-1] != int(cand):
+                    bonus = target_top1[-1]
+                    break
+                accepted += 1
+                result = _slot_step(
+                    session,
+                    int(cand),
+                    position=context_tokens + idx + 1,
+                    slot=base_slot,
+                    drafter=drafter,
+                    capture_row=context_tokens + idx + 1,
+                )
+                target_serial_forward_calls += 1
+                finite_verify = finite_verify and math.isfinite(float(result.logit))
+                target_top1.append(int(result.token_id))
+                bonus = int(result.token_id)
+        else:
+            raise ValueError(f"unknown verifier_mode {verifier_mode!r}")
         verify_seconds_total += time.perf_counter() - t_verify
         accepted_lengths.append(accepted)
         committed = [root_token, *candidates[:accepted]]
@@ -1028,6 +1095,7 @@ def _run_dflash_chain_on_session(
                     "accepted": int(accepted),
                     "committed_tokens": [int(token) for token in committed],
                     "bonus_token": int(bonus),
+                    "verifier_mode": verifier_mode,
                 }
             )
         generated.extend(committed)
@@ -1042,6 +1110,16 @@ def _run_dflash_chain_on_session(
         "commit_seconds": commit_seconds_total,
         "accepted_lengths": accepted_lengths,
         "target_verify_rows": verify_rows_total,
+        "target_forward_calls": target_bulk_forward_calls + target_serial_forward_calls,
+        "target_bulk_forward_calls": target_bulk_forward_calls,
+        "target_serial_forward_calls": target_serial_forward_calls,
+        "target_bulk_rows": target_bulk_rows_total,
+        "target_forwards_per_draft_call": (
+            target_bulk_forward_calls / draft_calls
+            if verifier_mode == "native_bulk_bplus1" and draft_calls
+            else (target_serial_forward_calls / draft_calls if draft_calls else None)
+        ),
+        "gpu_accept_match_cpu": gpu_accept_match_cpu,
         "draft_calls": draft_calls,
         "decode_cycles": cycles,
         "draft_tokens_proposed": draft_tokens_proposed,
@@ -1052,18 +1130,18 @@ def _run_dflash_chain_on_session(
         "finite_verify_logits": finite_verify,
         "decode_tok_s": decode_tokens / decode_seconds if decode_seconds > 0 else None,
         "d2h": {
-            "scalar_reads": verify_rows_total,
-            "vector_reads": d2h_vector_reads,
-            "scalar_values": verify_rows_total,
-            "vector_values": d2h_vector_values,
+            "scalar_reads": (verify_rows_total if verifier_mode == "serial_in_place_single_slot" else target_serial_forward_calls + target_accept_scalar_reads),
+            "vector_reads": d2h_vector_reads + (2 * target_bulk_forward_calls if verifier_mode == "native_bulk_bplus1" else 0),
+            "scalar_values": (verify_rows_total if verifier_mode == "serial_in_place_single_slot" else target_serial_forward_calls + target_accept_scalar_values),
+            "vector_values": d2h_vector_values + (2 * target_bulk_rows_total if verifier_mode == "native_bulk_bplus1" else 0),
             "full_logits_readbacks": 0,
-            "notes": ["draft finite check reads top-1 values only; full logits are not copied"],
+            "notes": ["draft and verifier finite checks read top-1 ids/values only; full logits are not copied"],
         },
         "memory": memory_stats(),
         "backend": session.backend,
         "target_arch": session.target_arch,
-        "verifier_mode": "serial_in_place_single_slot",
-        "native_bulk_verifier": False,
+        "verifier_mode": verifier_mode,
+        "native_bulk_verifier": verifier_mode == "native_bulk_bplus1",
         "drafter_context_mode": "append_only_projected_context_and_kv",
         "draft_phase_timing_mode": "synchronized" if drafter.sync_draft_phases else "enqueue_until_final_sync",
         "base_slot": base_slot,
@@ -1162,6 +1240,12 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "target_verify_seconds": spec_meta["target_verify_seconds"],
             "commit_seconds": spec_meta["commit_seconds"],
             "target_verify_rows": spec_meta["target_verify_rows"],
+            "target_forward_calls": spec_meta.get("target_forward_calls"),
+            "target_bulk_forward_calls": spec_meta.get("target_bulk_forward_calls"),
+            "target_serial_forward_calls": spec_meta.get("target_serial_forward_calls"),
+            "target_bulk_rows": spec_meta.get("target_bulk_rows"),
+            "target_forwards_per_draft_call": spec_meta.get("target_forwards_per_draft_call"),
+            "gpu_accept_match_cpu": spec_meta.get("gpu_accept_match_cpu"),
             "draft_tokens_proposed": spec_meta.get("draft_tokens_proposed", spec_meta["draft_calls"] * budget),
             "draft_tokens": spec_meta.get("draft_tokens_proposed", spec_meta["draft_calls"] * budget),
             "accepted_draft_tokens": sum(int(x) for x in spec_meta["accepted_lengths"]),
@@ -1219,6 +1303,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--sync-draft-phases", action="store_true", help="Diagnostic only: synchronize after major drafter phases before timing them")
+    parser.add_argument("--verifier-mode", choices=("native_bulk_bplus1", "serial_in_place_single_slot"), default="native_bulk_bplus1")
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -1249,6 +1334,7 @@ def main(argv: list[str] | None = None) -> int:
                 require_cached_build=args.require_cached_build,
                 prefill_config=prefill_config,
                 sync_draft_phases=args.sync_draft_phases,
+                verifier_mode=args.verifier_mode,
             )
             rows.append(_row_for_artifact(prompt, budget, ar, spec))
     artifact = build_speculative_artifact(
@@ -1276,19 +1362,27 @@ def main(argv: list[str] | None = None) -> int:
             "prompt_suite": str(args.prompt_fixture),
             "prompt_suite_sha256": file_sha256(args.prompt_fixture),
             "artifact_validation": validation,
-            "verifier_mode": "serial_in_place_single_slot",
-            "native_bulk_verifier": False,
-            "promotion_blocker": "serial in-place single-slot verifier still issues B+1 sequential single-token forwards per cycle; native bulk target verifier is required before promotion",
+            "verifier_mode": args.verifier_mode,
+            "native_bulk_verifier": args.verifier_mode == "native_bulk_bplus1",
+            "promotion_blocker": (
+                "native B+1 verifier ran, but full chain must still beat same-session AR before promotion"
+                if args.verifier_mode == "native_bulk_bplus1"
+                else "serial in-place single-slot verifier still issues B+1 sequential single-token forwards per cycle; native bulk target verifier is required before promotion"
+            ),
         },
         commands=commands,
         notes=[
-            "Actual full-model target and native DFlash drafter execution with same-session AR control; diagnostic until native bulk verifier issues a single B+1-row forward per cycle.",
+            "Actual full-model target and native DFlash drafter execution with same-session AR control; diagnostic unless native bulk verification and speed gates pass.",
             "Prompt fixture includes code/general/multilingual categories via fixtures/dflash/stable_prompts.jsonl.",
             "Phase A optimization: single-slot in-place verify (no per-candidate state copies, no commit copy).",
             "Phase B optimization: append-only projected_context_norm cache; only newly committed rows are re-projected.",
             "Phase C optimization: append-only per-layer rotated K and V context cache; per-cycle propose() processes query rows only.",
         ],
-        decision_reason="full-model diagnostic only: serial_in_place_single_slot verifier is not the promotable native bulk verifier",
+        decision_reason=(
+            "full-model diagnostic only: native bulk verifier did not produce a same-session AR speed win"
+            if args.verifier_mode == "native_bulk_bplus1"
+            else "full-model diagnostic only: serial_in_place_single_slot verifier is not the promotable native bulk verifier"
+        ),
     )
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps(artifact, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")

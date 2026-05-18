@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import math
 import os
 
 import numpy as np
@@ -30,10 +31,11 @@ from hipengine.kernels.backends import (
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
+    argmax_f32_rows_i32,
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16,
 )
-from hipengine.kernels.hip_gfx1100.speculative import dflash_commit_chain_i32
+from hipengine.kernels.hip_gfx1100.speculative import build_dflash_accept, dflash_accept_chain_i32, dflash_commit_chain_i32
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
 from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16
 from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16, paro_rmsnorm_out_fp16
@@ -81,7 +83,7 @@ from hipengine.runtime.qwen35_paro import (
     _use_moe_grouped_compact_prefill,
 )
 from hipengine.runtime.workspace import RuntimeWorkspace
-from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
+from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
 
 def _env_int(name: str, default: int, *aliases: str) -> int:
@@ -738,6 +740,42 @@ class Qwen35ParoResidentSpeculativeExecution:
             "native_target_verify_ready": self.native_target_verify_ready,
             "throughput_claim_eligible": self.throughput_claim_eligible,
             "blockers": list(self.blockers),
+        }
+
+
+@dataclass(frozen=True)
+class Qwen35ParoBulkVerifyResult:
+    """Result from one native root+candidate target-verification forward."""
+
+    target_top1: tuple[int, ...]
+    target_top1_values: tuple[float, ...]
+    accepted_count: int
+    accepted_tokens: tuple[int, ...]
+    commit_row: int
+    commit_token: int
+    commit_position: int
+    next_token: int | None
+    full_accept: bool
+    finite_logits: bool
+    gpu_accept_match_cpu: bool
+    rows: int
+    target_forward_calls: int = 1
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "target_top1": list(self.target_top1),
+            "target_top1_values": list(self.target_top1_values),
+            "accepted_count": self.accepted_count,
+            "accepted_tokens": list(self.accepted_tokens),
+            "commit_row": self.commit_row,
+            "commit_token": self.commit_token,
+            "commit_position": self.commit_position,
+            "next_token": self.next_token,
+            "full_accept": self.full_accept,
+            "finite_logits": self.finite_logits,
+            "gpu_accept_match_cpu": self.gpu_accept_match_cpu,
+            "rows": self.rows,
+            "target_forward_calls": self.target_forward_calls,
         }
 
 
@@ -2234,6 +2272,372 @@ class Qwen35ParoResidentSession:
             hidden, next_hidden = next_hidden, hidden
         return hidden
 
+    def verify_chain_bulk_and_commit(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        base_slot: int,
+        capture_layer_ids: Sequence[int],
+        capture_hidden_concat: Tensor,
+        capture_row_start: int,
+        stream: int = 0,
+    ) -> Qwen35ParoBulkVerifyResult:
+        """Run one native root+candidate verifier forward and commit the selected row.
+
+        This is the DFlash chain verifier hot path: it executes one B+1-row
+        target forward over ``batch`` against ``base_slot`` state, writes target
+        hidden taps for every verifier row, computes row-wise target top-1 on the
+        GPU, validates GPU accept-summary output against the CPU oracle, and
+        commits the selected linear-attention row state plus decode metadata.
+        Full-attention K/V rows are appended for every verifier row; unaccepted
+        suffix rows are ignored because the committed context length is reset to
+        the selected row position.
+        """
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        if batch.mode != "verify_chain":
+            raise ValueError("bulk verifier currently supports verify_chain only")
+        if len(batch.request_ids) != 1:
+            raise ValueError("bulk verifier E2E path currently supports one request")
+        rows = int(batch.rows)
+        if rows <= 1:
+            raise ValueError("bulk verifier requires root plus at least one candidate row")
+        if rows > self.max_batch_size:
+            raise ValueError("target verify rows exceed resident max_batch_size")
+        self._check_slot(base_slot)
+        for position in batch.positions:
+            self._check_position(int(position))
+        if capture_hidden_concat.dtype != DType.BF16 or capture_hidden_concat.ndim != 2:
+            raise ValueError("capture_hidden_concat must be a rank-2 BF16 tensor")
+        capture_ids = tuple(int(layer_id) for layer_id in capture_layer_ids)
+        if capture_hidden_concat.shape[1] != len(capture_ids) * self.config.hidden_size:
+            raise ValueError("capture_hidden_concat width must match captured layers * hidden_size")
+        if capture_row_start < 0 or capture_row_start + rows > capture_hidden_concat.shape[0]:
+            raise ValueError("capture rows outside capture_hidden_concat")
+
+        self._write_verify_chain_metadata(batch, base_slot=base_slot, stream=stream)
+        embedding_lookup_batch_fp16_i64(
+            self.embedding.tensor.ptr,
+            self.verify_token_ids_i64.ptr,
+            self.prefill_hidden.ptr,
+            rows,
+            self.config.hidden_size,
+            self.vocab_size,
+            stream=stream,
+            library=self.libraries["runtime_state"],
+            runtime=self.runtime,
+        )
+        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        parent_rows = Tensor.from_handle(self.verify_parent_rows_i64.ptr, (rows,), DType.INT64, self.device)
+        capture_offsets = {layer_id: idx for idx, layer_id in enumerate(capture_ids)}
+        try:
+            for layer_id, state in enumerate(self.states):
+                layer_type = self.config.layer_types[layer_id]
+                if layer_type == "linear_attention":
+                    conv_state, recurrent_state = self._slot_linear_state(layer_id, base_slot)
+                    linear_scratch = state.reserve_linear_attention_scratch(tokens=rows, activation_dtype=DType.FP16)
+                    self.linear_scratch[layer_id] = linear_scratch
+                    moe_scratch = self._reserve_mlp_scratch(state, tokens=rows)
+                    self.moe_scratch[layer_id] = moe_scratch
+                    out = state.run_linear_attention_moe_tree_tloop_layer_fp16(
+                        hidden,
+                        conv_state=conv_state,
+                        recurrent_state=recurrent_state,
+                        parent_rows=parent_rows,
+                        linear_scratch=linear_scratch,
+                        moe_scratch=moe_scratch,
+                        tokens=rows,
+                        library=self.libraries,
+                        stream=stream,
+                    )
+                elif layer_type == "full_attention":
+                    self._run_full_attention_chain_c1_loop(
+                        state,
+                        layer_id=layer_id,
+                        hidden=hidden,
+                        next_hidden=next_hidden,
+                        rows=rows,
+                        positions=batch.positions,
+                        base_slot=base_slot,
+                        stream=stream,
+                    )
+                    out = next_hidden
+                else:
+                    raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
+                if out.ptr != next_hidden.ptr:
+                    self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+                hidden, next_hidden = next_hidden, hidden
+                capture_offset = capture_offsets.get(layer_id)
+                if capture_offset is not None:
+                    dst = capture_hidden_concat.ptr + (
+                        int(capture_row_start) * int(capture_hidden_concat.shape[1])
+                        + capture_offset * self.config.hidden_size
+                    ) * DType.BF16.itemsize
+                    fp16_to_bf16(
+                        hidden.ptr,
+                        dst,
+                        rows * self.config.hidden_size,
+                        stream=stream,
+                        library=self.libraries["cast"],
+                        runtime=self.runtime,
+                    )
+            self._sample_verify_rows_from_hidden(hidden, rows, stream=stream)
+            self.runtime.device_synchronize()
+            target_top1, target_values = self._read_verify_top1(rows)
+            cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
+            cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
+            gpu_payload = self._run_verify_accept_summary(batch, rows=rows, stream=stream)
+            gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
+            selected_row = int(cpu_summary.commit_rows[0])
+            self._commit_bulk_linear_states(selected_row, base_slot=base_slot, stream=stream)
+            self._set_slot_position(int(cpu_summary.commit_positions[0]), slot=base_slot, stream=stream)
+            self.runtime.stream_synchronize(stream)
+            next_token = None if cpu_summary.next_tokens is None else cpu_summary.next_tokens[0]
+            return Qwen35ParoBulkVerifyResult(
+                target_top1=tuple(int(token) for token in target_top1),
+                target_top1_values=tuple(float(value) for value in target_values),
+                accepted_count=int(cpu_summary.accepted_counts[0]),
+                accepted_tokens=tuple(int(token) for token in cpu_summary.accepted_tokens[0]),
+                commit_row=selected_row,
+                commit_token=int(cpu_summary.commit_tokens[0]),
+                commit_position=int(cpu_summary.commit_positions[0]),
+                next_token=None if next_token is None else int(next_token),
+                full_accept=bool(cpu_summary.full_accept[0]),
+                finite_logits=all(math.isfinite(float(value)) for value in target_values),
+                gpu_accept_match_cpu=bool(gpu_accept_match),
+                rows=rows,
+            )
+        finally:
+            # Restore decode-sized scratch after the B+1-row verifier has copied
+            # selected row state.  The workspace allocations used by the bulk
+            # pass are not valid for later split-K c=1 decode otherwise.
+            self._restore_decode_scratch_after_prefill()
+
+    def _run_full_attention_chain_c1_loop(
+        self,
+        state: Qwen35ParoDecodeState,
+        *,
+        layer_id: int,
+        hidden: Tensor,
+        next_hidden: Tensor,
+        rows: int,
+        positions: Sequence[int],
+        base_slot: int,
+        stream: int = 0,
+    ) -> None:
+        """Run a full-attention layer over verifier rows with c=1 kernels.
+
+        The prefill-style full-attention kernels are optimized for larger prompt
+        chunks and were much slower for B<=4 verifier chains.  This keeps the
+        target verifier as one host-side B+1 forward (one top-1/accept sync) but
+        uses the resident decode kernels row-by-row inside the layer.
+        """
+
+        if len(positions) != rows:
+            raise ValueError("positions must match verifier rows")
+        key_cache, value_cache = self._slot_full_cache(layer_id, base_slot)
+        attention_scratch = self.full_scratch[layer_id]
+        moe_scratch = self.moe_scratch[layer_id]
+        for row, position in enumerate(positions):
+            self._set_slot_position(int(position), slot=base_slot, stream=stream)
+            position_tensor, append_spans, decode_spans = self._slot_spans(base_slot)
+            row_hidden = Tensor.from_handle(hidden.ptr + row * self.hidden_nbytes, (1, self.config.hidden_size), DType.FP16, self.device)
+            row_out = Tensor.from_handle(next_hidden.ptr + row * self.hidden_nbytes, (1, self.config.hidden_size), DType.FP16, self.device)
+            num_splits = max(1, (int(position) + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
+            out = state.run_full_attention_moe_c1_layer_fp16(
+                row_hidden,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                append_spans=append_spans,
+                decode_spans=decode_spans,
+                cos_table=self.cos,
+                sin_table=self.sin,
+                position=position_tensor,
+                max_positions=self.max_sequence_length,
+                attention_scratch=attention_scratch,
+                moe_scratch=moe_scratch,
+                chunk_size=self.decode_chunk_size,
+                num_splits=num_splits,
+                library=self.libraries,
+                stream=stream,
+            )
+            self.runtime.memcpy_async(row_out.ptr, out.ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+
+    def _write_verify_chain_metadata(self, batch: TargetVerifyBatch, *, base_slot: int, stream: int = 0) -> None:
+        rows = int(batch.rows)
+        token_i64 = np.asarray(batch.tokens, dtype=np.int64)
+        token_i32 = np.asarray(batch.tokens, dtype=np.int32)
+        position_i64 = np.asarray(batch.positions, dtype=np.int64)
+        position_i32 = np.asarray(batch.positions, dtype=np.int32)
+        context_i64 = np.asarray([int(position) + 1 for position in batch.positions], dtype=np.int64)
+        parent_i32 = np.asarray(batch.parent_rows, dtype=np.int32)
+        parent_i64 = np.asarray(batch.parent_rows, dtype=np.int64)
+        depth_i32 = np.asarray(batch.draft_depths, dtype=np.int32)
+        row_req_i32 = np.asarray(batch.row_to_request, dtype=np.int32)
+        active_u8 = np.asarray(batch.active_mask, dtype=np.uint8)
+        physical_blocks = np.arange(base_slot * self.blocks, (base_slot + 1) * self.blocks, dtype=np.int32)
+        block_table = np.tile(physical_blocks, (rows, 1))
+        copies = (
+            (self.verify_token_ids_i64, token_i64),
+            (self.verify_token_ids_i32, token_i32),
+            (self.prefill_position_buf, position_i64),
+            (self.verify_positions_i32, position_i32),
+            (self.prefill_context_count_buf, context_i64),
+            (self.verify_parent_rows_i32, parent_i32),
+            (self.verify_parent_rows_i64, parent_i64),
+            (self.verify_draft_depths_i32, depth_i32),
+            (self.verify_row_to_request_i32, row_req_i32),
+            (self.verify_active_mask_u8, active_u8),
+            (self.prefill_block_table_buf, block_table),
+        )
+        for buffer, array in copies:
+            contiguous = np.ascontiguousarray(array)
+            copy_host_to_device(buffer, host_array_ptr(contiguous), contiguous.nbytes, runtime=self.runtime)
+        _ = stream
+
+    def _sample_verify_rows_from_hidden(self, hidden: Tensor, rows: int, *, stream: int = 0) -> None:
+        norm_out = Tensor.from_handle(self.batch_norm_out.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        norm_out_bf16 = Tensor.from_handle(self.batch_norm_out_bf16.ptr, (rows, self.config.hidden_size), DType.BF16, self.device)
+        paro_rmsnorm_out_fp16(
+            hidden.ptr,
+            self.norm_weight.tensor.ptr,
+            norm_out.ptr,
+            rows,
+            self.config.hidden_size,
+            self.config.rms_norm_eps,
+            stream=stream,
+            library=self.libraries["norm"],
+            runtime=self.runtime,
+        )
+        fp16_to_bf16(
+            norm_out.ptr,
+            norm_out_bf16.ptr,
+            rows * self.config.hidden_size,
+            stream=stream,
+            library=self.libraries["cast"],
+            runtime=self.runtime,
+        )
+        w8a16_linear_bf16_f32_out(
+            norm_out_bf16.ptr,
+            self.lm_head_weight.tensor.ptr,
+            self.lm_head_scale.tensor.ptr,
+            self.verify_lm_logits.ptr,
+            rows,
+            self.config.hidden_size,
+            self.vocab_size,
+            threads=self.lm_head_threads,
+            stream=stream,
+            library=self.libraries["w8a16"],
+            runtime=self.runtime,
+        )
+        argmax_f32_rows_i32(
+            self.verify_lm_logits.ptr,
+            self.verify_lm_block_values.ptr,
+            self.verify_lm_block_indices.ptr,
+            self.verify_top1_i32.ptr,
+            self.verify_top1_values.ptr,
+            rows,
+            self.vocab_size,
+            threads=self.lm_head_threads,
+            stream=stream,
+            library=self.libraries["lm_head"],
+            runtime=self.runtime,
+        )
+
+    def _read_verify_top1(self, rows: int) -> tuple[tuple[int, ...], tuple[float, ...]]:
+        ids = np.empty((rows,), dtype=np.int32)
+        values = np.empty((rows,), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(ids), DeviceBuffer(self.verify_top1_i32.ptr, ids.nbytes), runtime=self.runtime)
+        copy_device_to_host(host_array_ptr(values), DeviceBuffer(self.verify_top1_values.ptr, values.nbytes), runtime=self.runtime)
+        return tuple(int(item) for item in ids.tolist()), tuple(float(item) for item in values.tolist())
+
+    def _run_verify_accept_summary(self, batch: TargetVerifyBatch, *, rows: int, stream: int = 0) -> dict[str, tuple[int, ...] | tuple[bool, ...]]:
+        request_count = len(batch.request_ids)
+        dflash_accept_chain_i32(
+            self.verify_token_ids_i32.ptr,
+            self.verify_positions_i32.ptr,
+            self.verify_parent_rows_i32.ptr,
+            self.verify_draft_depths_i32.ptr,
+            self.verify_active_mask_u8.ptr,
+            self.verify_top1_i32.ptr,
+            None,
+            self.verify_accepted_counts.ptr,
+            self.verify_commit_rows.ptr,
+            self.verify_commit_tokens.ptr,
+            self.verify_commit_positions.ptr,
+            self.verify_next_tokens.ptr,
+            self.verify_full_accept.ptr,
+            self.verify_committed_output_ids.ptr,
+            self.verify_committed_output_lengths.ptr,
+            rows,
+            request_count,
+            rows,
+            stream=stream,
+            library=self.libraries["dflash_accept"],
+            runtime=self.runtime,
+        )
+        self.runtime.stream_synchronize(stream)
+        accepted = np.empty((request_count,), dtype=np.int32)
+        commit_rows = np.empty((request_count,), dtype=np.int32)
+        commit_tokens = np.empty((request_count,), dtype=np.int32)
+        commit_positions = np.empty((request_count,), dtype=np.int32)
+        next_tokens = np.empty((request_count,), dtype=np.int32)
+        full_accept = np.empty((request_count,), dtype=np.uint8)
+        out_lengths = np.empty((request_count,), dtype=np.int32)
+        for host, buffer in (
+            (accepted, self.verify_accepted_counts),
+            (commit_rows, self.verify_commit_rows),
+            (commit_tokens, self.verify_commit_tokens),
+            (commit_positions, self.verify_commit_positions),
+            (next_tokens, self.verify_next_tokens),
+            (full_accept, self.verify_full_accept),
+            (out_lengths, self.verify_committed_output_lengths),
+        ):
+            copy_device_to_host(host_array_ptr(host), DeviceBuffer(buffer.ptr, host.nbytes), runtime=self.runtime)
+        return {
+            "accepted_counts": tuple(int(x) for x in accepted.tolist()),
+            "commit_rows": tuple(int(x) for x in commit_rows.tolist()),
+            "commit_tokens": tuple(int(x) for x in commit_tokens.tolist()),
+            "commit_positions": tuple(int(x) for x in commit_positions.tolist()),
+            "next_tokens": tuple(int(x) for x in next_tokens.tolist()),
+            "full_accept": tuple(bool(x) for x in full_accept.tolist()),
+            "committed_output_lengths": tuple(int(x) for x in out_lengths.tolist()),
+        }
+
+    @staticmethod
+    def _gpu_accept_payload_matches(payload: dict[str, tuple[int, ...] | tuple[bool, ...]], summary: TargetAcceptSummary) -> bool:
+        expected_next = tuple(-1 if token is None else int(token) for token in (summary.next_tokens or ()))
+        return (
+            payload["accepted_counts"] == tuple(int(x) for x in summary.accepted_counts)
+            and payload["commit_rows"] == tuple(int(x) for x in summary.commit_rows)
+            and payload["commit_tokens"] == tuple(int(x) for x in summary.commit_tokens)
+            and payload["commit_positions"] == tuple(int(x) for x in summary.commit_positions)
+            and payload["next_tokens"] == expected_next
+            and payload["full_accept"] == tuple(bool(x) for x in summary.full_accept)
+        )
+
+    def _commit_bulk_linear_states(self, selected_row: int, *, base_slot: int, stream: int = 0) -> None:
+        for layer_id, scratch in self.linear_scratch.items():
+            conv_state, recurrent_state = self._slot_linear_state(layer_id, base_slot)
+            conv_row_nbytes = int(np.prod(conv_state.shape)) * conv_state.dtype.itemsize
+            recurrent_row_nbytes = int(np.prod(recurrent_state.shape)) * recurrent_state.dtype.itemsize
+            self.runtime.memcpy_async(
+                conv_state.ptr,
+                scratch.tree_conv_state.ptr + int(selected_row) * conv_row_nbytes,
+                conv_row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            self.runtime.memcpy_async(
+                recurrent_state.ptr,
+                scratch.tree_recurrent_state.ptr + int(selected_row) * recurrent_row_nbytes,
+                recurrent_row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+
     def _run_linear_prefill_layers(self, *, tokens: int, layer_limit: int | None = None, stream: int = 0) -> Tensor:
         hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
@@ -2483,6 +2887,7 @@ class Qwen35ParoResidentSession:
                 "cast": build_cast(**build_kwargs),
                 "combine": build_paro_combine(**build_kwargs),
                 "dense": build_dense_gemv(**build_kwargs),
+                "dflash_accept": build_dflash_accept(**build_kwargs),
                 "group_scatter": build_qwen35_moe_group_scatter(**build_kwargs),
                 "kv": build_qwen35_paged_kv_write(**build_kwargs),
                 "linear_conv": build_qwen35_linear_attn_conv(**build_kwargs),
@@ -2680,6 +3085,57 @@ class Qwen35ParoResidentSession:
         self.lm_out_index = malloc(DType.INT64.itemsize, runtime=self.runtime)
         self.lm_out_value = malloc(DType.FP32.itemsize, runtime=self.runtime)
         self.buffers.extend((self.lm_logits, self.lm_block_values, self.lm_block_indices, self.lm_out_index, self.lm_out_value))
+
+        # Fixed-capacity buffers for the native root+candidate verifier path.
+        # They are sized by max_batch_size because one DFlash chain bucket is
+        # root + candidate rows for a single request.
+        verify_rows = self.max_batch_size
+        self.verify_token_ids_i64 = malloc(verify_rows * DType.INT64.itemsize, runtime=self.runtime)
+        self.verify_token_ids_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_positions_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_parent_rows_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_parent_rows_i64 = malloc(verify_rows * DType.INT64.itemsize, runtime=self.runtime)
+        self.verify_draft_depths_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_row_to_request_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_active_mask_u8 = malloc(verify_rows * DType.BOOL.itemsize, runtime=self.runtime)
+        self.verify_lm_logits = malloc(verify_rows * self.vocab_size * DType.FP32.itemsize, runtime=self.runtime)
+        self.verify_lm_block_values = malloc(verify_rows * self.lm_head_stage1_blocks * DType.FP32.itemsize, runtime=self.runtime)
+        self.verify_lm_block_indices = malloc(verify_rows * self.lm_head_stage1_blocks * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_top1_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_top1_values = malloc(verify_rows * DType.FP32.itemsize, runtime=self.runtime)
+        self.verify_accepted_counts = malloc(self.max_batch_size * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_commit_rows = malloc(self.max_batch_size * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_commit_tokens = malloc(self.max_batch_size * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_commit_positions = malloc(self.max_batch_size * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_next_tokens = malloc(self.max_batch_size * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_full_accept = malloc(self.max_batch_size * DType.BOOL.itemsize, runtime=self.runtime)
+        self.verify_committed_output_ids = malloc(self.max_batch_size * verify_rows * DType.INT32.itemsize, runtime=self.runtime)
+        self.verify_committed_output_lengths = malloc(self.max_batch_size * DType.INT32.itemsize, runtime=self.runtime)
+        self.buffers.extend(
+            (
+                self.verify_token_ids_i64,
+                self.verify_token_ids_i32,
+                self.verify_positions_i32,
+                self.verify_parent_rows_i32,
+                self.verify_parent_rows_i64,
+                self.verify_draft_depths_i32,
+                self.verify_row_to_request_i32,
+                self.verify_active_mask_u8,
+                self.verify_lm_logits,
+                self.verify_lm_block_values,
+                self.verify_lm_block_indices,
+                self.verify_top1_i32,
+                self.verify_top1_values,
+                self.verify_accepted_counts,
+                self.verify_commit_rows,
+                self.verify_commit_tokens,
+                self.verify_commit_positions,
+                self.verify_next_tokens,
+                self.verify_full_accept,
+                self.verify_committed_output_ids,
+                self.verify_committed_output_lengths,
+            )
+        )
 
     def _materialize_layers(self) -> None:
         self.states = self.runner._materialize_resident_states(self.layer_limit, emit=self._emit)
