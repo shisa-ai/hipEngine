@@ -125,6 +125,7 @@ from hipengine.runtime.gguf_linear import (
     gguf_wmma_prefill_enabled,
     launch_gguf_linear,
     launch_gguf_linear_pair,
+    launch_gguf_linear_pair_concat,
     launch_gguf_linear_raw_ptr,
     wmma_prefill_session,
 )
@@ -3757,47 +3758,68 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         runtime=runtime,
     )
 
-    if not launch_gguf_linear_pair(
+    shared_ffn = int(cfg.expert_shared_feed_forward_length)
+    if launch_gguf_linear_pair_concat(
         layer.weight("ffn_gate_shexp"),
         layer.weight("ffn_up_shexp"),
         scratch.post_norm.ptr,
-        scratch.moe_shared_gate.ptr,
-        scratch.moe_shared_up.ptr,
+        scratch.ffn_gate_up.ptr,
         rows=rows,
         in_features=hidden_size,
-        out_features=int(cfg.expert_shared_feed_forward_length),
+        out_features=shared_ffn,
         stream=stream,
         runtime=runtime,
     ):
-        launch_gguf_linear(
-            layer.weight("ffn_gate_shexp"),
-            scratch.post_norm.ptr,
-            scratch.moe_shared_gate.ptr,
+        silu_mul_dual_out_bf16(
+            scratch.ffn_gate_up.ptr,
+            scratch.moe_shared_intermediate.ptr,
             rows=rows,
-            in_features=hidden_size,
-            out_features=int(cfg.expert_shared_feed_forward_length),
+            features=shared_ffn,
             stream=stream,
             runtime=runtime,
         )
-        launch_gguf_linear(
+    else:
+        if not launch_gguf_linear_pair(
+            layer.weight("ffn_gate_shexp"),
             layer.weight("ffn_up_shexp"),
             scratch.post_norm.ptr,
+            scratch.moe_shared_gate.ptr,
             scratch.moe_shared_up.ptr,
             rows=rows,
             in_features=hidden_size,
-            out_features=int(cfg.expert_shared_feed_forward_length),
+            out_features=shared_ffn,
+            stream=stream,
+            runtime=runtime,
+        ):
+            launch_gguf_linear(
+                layer.weight("ffn_gate_shexp"),
+                scratch.post_norm.ptr,
+                scratch.moe_shared_gate.ptr,
+                rows=rows,
+                in_features=hidden_size,
+                out_features=shared_ffn,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ffn_up_shexp"),
+                scratch.post_norm.ptr,
+                scratch.moe_shared_up.ptr,
+                rows=rows,
+                in_features=hidden_size,
+                out_features=shared_ffn,
+                stream=stream,
+                runtime=runtime,
+            )
+        silu_mul_separate_out_bf16(
+            scratch.moe_shared_gate.ptr,
+            scratch.moe_shared_up.ptr,
+            scratch.moe_shared_intermediate.ptr,
+            rows=rows,
+            features=shared_ffn,
             stream=stream,
             runtime=runtime,
         )
-    silu_mul_separate_out_bf16(
-        scratch.moe_shared_gate.ptr,
-        scratch.moe_shared_up.ptr,
-        scratch.moe_shared_intermediate.ptr,
-        rows=rows,
-        features=int(cfg.expert_shared_feed_forward_length),
-        stream=stream,
-        runtime=runtime,
-    )
     launch_gguf_linear(
         layer.weight("ffn_down_shexp"),
         scratch.moe_shared_intermediate.ptr,

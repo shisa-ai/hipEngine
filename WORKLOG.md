@@ -19920,3 +19920,30 @@ Validation:
 - `scripts/qwen35_gguf_bench.py [...] --use-wmma-prefill --measured-runs 3` + `rocprofv3 --kernel-trace` + `scripts/qwen35_gguf_rocprof_summary.py` produce the per-shape bucket evidence above. CSV path: `/tmp/p9_c1/rocprof-512-0/rocm/2834784_kernel_trace.csv`.
 
 Decision: leave task #27 in_progress with a clear handoff. The partial deliverables (Q8_0 dual kernel + heuristic update + tests) are landed and validated. The remaining work to hit the `110 ms` gate is queued as a P9.C1-followup subtask: multi-tile parametrization of the three P8 selected WMMA kernels + an end-to-end re-bench. The Q4_K dense pack8 + Q6_K dense pack8 dispatch wiring (P9.D follow-up from task #25) and the small-op fusion bundle (task #28 P9.D1) are orthogonal -- they reduce non-WMMA buckets and do not affect this one.
+
+## 2026-05-18 P9 task #27 continuation: selected-MoE TM/TN sweep + Q8_0 dual shared wiring
+
+Continued task #27 after partial commit `48c7ae6`. Acceptance still **NOT met**; task #27 remains in_progress, but retained a further performance-positive partial.
+
+Code changes in this continuation:
+
+- `gguf_q4_k_selected_prefill.hip` / `.py`: added generic TM/TN selected dual compact WMMA variants over the requested sweep space `(TM in {16,32,64}, TN in {16,32})`, while preserving the original one-wave legacy `16x16` kernel as a separate fast path. Python wrapper now accepts optional `tile_m/tile_n` and env sweep overrides `HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M/N`; default is now `32x16` based on qwen35moe 512/0 rocprof.
+- `gguf_k_selected_prefill.hip` / `.py`: added the same generic TM/TN selected down variants for Q5_K/Q6_K, preserving legacy `16x16` as the default because all multi-tile variants were slower in E2E sweeps. Env overrides: `HIPENGINE_GGUF_Q5_K_SELECTED_WMMA_TILE_M/N` and `HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_M/N`.
+- `gguf_linear.py`: added `launch_gguf_linear_pair_concat(...)`, a registry-gated concatenated pair helper. It routes rows>1 raw Q8_0 gate+up pairs to `gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out` with tile `16x32` and one `[rows, 2*out]` output buffer.
+- `qwen35_gguf_runner.py`: compact MoE bulk path now uses `launch_gguf_linear_pair_concat(...)` for shared-expert gate+up, reusing `scratch.ffn_gate_up` and `silu_mul_dual_out_bf16`; fallback remains the old separate gate/up pair + `silu_mul_separate_out_bf16`.
+- Tests pin dispatch decisions: Q4 default `32x16`, Q5/Q6 default `16x16`, Q8_0 pair-concat dispatch uses dual WMMA with `tile_m=16,tile_n=32`.
+
+Sweep / measurement summary (Qwen3.6-35B-A3B-UD-Q4_K_M, RX 7900 XTX/gfx1100, cached builds, 512/0, `--use-wmma-prefill`):
+
+- Naive all-selected same-tile single-run sweep (Q4/Q5/Q6 all set together): `16x16=1414.9 tok/s`, `32x16=1390.4`, `16x32=1306.8`, `32x32=1264.9`, `64x16=770.3`, `64x32=1273.7`; generic multi-tile variants are mostly slower due register pressure.
+- Isolated Q5/Q6 `32x16` with Q4 legacy: 3-run median `1542.67 tok/s` (worse than default).
+- Isolated Q4 `32x16` with Q5/Q6 legacy: 3-run median `1584.66 tok/s` and rocprof Q4 bucket `58.3-58.7 ms` vs legacy `~65.7 ms`; retained.
+- Final retained default (Q4 `32x16`, Q5/Q6 `16x16`, Q8 shared dual concat `16x32`, Q8 single out>=4096 `64x32`): 3-run median `1601.05 tok/s` (`0.31979 s` prefill), versus P9.A3 baseline `1508.696 tok/s` (`+6.12%`).
+- Final rocprof summary: dense Q8_0 WMMA `60.488 ms / 170 disp`, Q4_K selected dual `58.564 ms / 40`, Q5_K selected `27.289 ms / 37`, Q6_K selected `2.687 ms / 3`; combined P9.C1 target bucket `149.029 ms`.
+
+Acceptance: **blocked**. P9.C1 target was `<=110 ms`; actual is `149.029 ms`. The generic raw selected multi-tile rewrite closes ~21 ms from the 170.410 ms baseline, but the remaining ~39 ms likely requires a different selected-MoE design (expert-shape split, sidecar/repack, or a lower-register-pressure raw kernel), not the current TM/TN sweep.
+
+Validation:
+
+- `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt uv run --with pytest pytest tests/test_gguf_q8_0_wmma_prefill_dual.py tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q --no-header` -> pass (136-test adjacent bundle). P8.4/P8.5 CPU-reference fixtures still pass.
+- Artifact retained as blocked: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c1-wmma-tile-sweep-blocked.json`.

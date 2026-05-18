@@ -22,6 +22,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     register_gguf_q4_k_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
+    gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out,
     register_gguf_q8_0_prefill_kernels,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -474,6 +475,68 @@ def launch_gguf_linear_pair(
             rows,
             in_features,
             out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+    return False
+
+
+def launch_gguf_linear_pair_concat(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    runtime=None,
+    use_wmma_prefill: bool | None = None,
+) -> bool:
+    """Launch a supported projection pair into one concatenated output buffer.
+
+    This is the prefill-side companion to :func:`launch_gguf_linear_pair` for
+    kernels whose natural ABI is ``[rows, out_a + out_b]``. P9.C1 uses it for
+    the Q8_0 shared-expert gate+up WMMA prefill path so the downstream
+    ``silu_mul_dual_out_*`` kernel can consume the same layout as the selected
+    MoE gate+up path.
+    """
+
+    use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
+    if not use_wmma or rows <= 1:
+        return False
+    dispatch_a = resolve_gguf_linear_dispatch(weight_a, rows=rows)
+    dispatch_b = resolve_gguf_linear_dispatch(weight_b, rows=rows)
+    q8_prefill_raw = KernelKey(
+        "hip_gfx1100", "linear", "gguf_q8_0", "prefill_bf16_bf16_out"
+    )
+    q8_dual = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q8_0",
+        "wmma_prefill_dual_gate_up_bf16_bf16_out",
+    )
+    if (
+        dispatch_a.abi == "raw"
+        and dispatch_b.abi == "raw"
+        and dispatch_a.key == q8_prefill_raw
+        and dispatch_b.key == q8_prefill_raw
+        and _wmma_prefill_shape_supported("gguf_q8_0", in_features)
+        and is_registered(q8_dual)
+    ):
+        gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features,
+            tile_m=16,
+            tile_n=32,
             stream=stream,
             runtime=runtime,
         )

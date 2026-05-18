@@ -38,6 +38,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
     plan_gguf_q4_k_selected_prefill_build,
+    selected_dual_wmma_prefill_compact_default_tiles,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
@@ -95,6 +96,20 @@ def test_gguf_q4_k_selected_wmma_registry_and_build_plan() -> None:
         dry_run=True, compiler_version="test-compiler"
     )
     assert dry_run.output_path == artifact.output_path
+
+
+def test_p9_c1_q4_k_selected_default_tile_decision(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P9.C1 dispatch pin: Q4_K dual selected prefill defaults to 32x16."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N", raising=False)
+    assert selected_dual_wmma_prefill_compact_default_tiles() == (32, 16)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M", "16")
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N", "16")
+    assert selected_dual_wmma_prefill_compact_default_tiles() == (16, 16)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M", "64")
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N", "32")
+    assert selected_dual_wmma_prefill_compact_default_tiles() == (64, 32)
 
 
 def test_gguf_q4_k_selected_wmma_wrapper_validates_common_contract() -> None:

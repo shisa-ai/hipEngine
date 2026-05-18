@@ -39,6 +39,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
     gguf_q6_k_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q6_k_selected_wmma_prefill_compact_fp16_fp16_out,
     plan_gguf_k_selected_prefill_build,
+    selected_wmma_prefill_compact_default_tiles,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
@@ -108,6 +109,19 @@ def test_gguf_k_selected_wmma_registry_and_build_plan(quant: str) -> None:
 
     dry_run = build_gguf_k_selected_prefill(dry_run=True, compiler_version="test-compiler")
     assert dry_run.output_path == artifact.output_path
+
+
+@pytest.mark.parametrize("quant", ["gguf_q5_k", "gguf_q6_k"])
+def test_p9_c1_k_selected_default_tile_decision(quant: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """P9.C1 dispatch pin: Q5_K/Q6_K selected down defaults to legacy 16x16."""
+
+    stem = quant.upper()
+    monkeypatch.delenv(f"HIPENGINE_{stem}_SELECTED_WMMA_TILE_M", raising=False)
+    monkeypatch.delenv(f"HIPENGINE_{stem}_SELECTED_WMMA_TILE_N", raising=False)
+    assert selected_wmma_prefill_compact_default_tiles(quant) == (16, 16)
+    monkeypatch.setenv(f"HIPENGINE_{stem}_SELECTED_WMMA_TILE_M", "32")
+    monkeypatch.setenv(f"HIPENGINE_{stem}_SELECTED_WMMA_TILE_N", "16")
+    assert selected_wmma_prefill_compact_default_tiles(quant) == (32, 16)
 
 
 @pytest.mark.parametrize("wrapper", list(_WRAPPERS.values()))

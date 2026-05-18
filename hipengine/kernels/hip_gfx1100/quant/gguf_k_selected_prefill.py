@@ -15,6 +15,7 @@ and are dequantized in-register inside the WMMA K-loop.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -25,6 +26,15 @@ _SOURCE = Path(__file__).with_name("gguf_k_selected_prefill.hip")
 _OUTPUT_NAME = "gguf_k_selected_prefill.so"
 _QUANTS = ("gguf_q5_k", "gguf_q6_k")
 _QTYPE_BLOCK_SIZE = {"gguf_q5_k": 256, "gguf_q6_k": 256}
+_ALLOWED_TILES = {(16, 16), (32, 16), (16, 32), (32, 32), (64, 16), (64, 32)}
+_ENV_TILE_M = {
+    "gguf_q5_k": "HIPENGINE_GGUF_Q5_K_SELECTED_WMMA_TILE_M",
+    "gguf_q6_k": "HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_M",
+}
+_ENV_TILE_N = {
+    "gguf_q5_k": "HIPENGINE_GGUF_Q5_K_SELECTED_WMMA_TILE_N",
+    "gguf_q6_k": "HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_N",
+}
 _SYMBOLS = {
     ("gguf_q5_k", "bf16"): "hipengine_gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out",
     ("gguf_q5_k", "fp16"): "hipengine_gguf_q5_k_selected_wmma_prefill_compact_fp16_fp16_out",
@@ -89,6 +99,8 @@ def _make_wrapper(quant: str, dtype: str):
         num_experts: int,
         wmma_total_rows: int,
         *,
+        tile_m: int | None = None,
+        tile_n: int | None = None,
         stream: int = 0,
         library: ctypes.CDLL | None = None,
         runtime: HipRuntime | None = None,
@@ -107,6 +119,8 @@ def _make_wrapper(quant: str, dtype: str):
             out_features,
             num_experts,
             wmma_total_rows,
+            tile_m=tile_m,
+            tile_n=tile_n,
             stream=stream,
             library=library,
             runtime=runtime,
@@ -140,10 +154,13 @@ def _launch_selected(
     num_experts: int,
     wmma_total_rows: int,
     *,
+    tile_m: int | None,
+    tile_n: int | None,
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
 ) -> None:
+    tile_m, tile_n = _resolve_tiles(quant, tile_m, tile_n)
     _check_common(quant, compact_rows, in_features, out_features, num_experts, wmma_total_rows)
     library = library or build_gguf_k_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
@@ -155,6 +172,8 @@ def _launch_selected(
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
@@ -175,10 +194,41 @@ def _launch_selected(
         ctypes.c_int64(out_features),
         ctypes.c_int64(num_experts),
         ctypes.c_int64(wmma_total_rows),
+        ctypes.c_int64(tile_m),
+        ctypes.c_int64(tile_n),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def _resolve_tiles(quant: str, tile_m: int | None, tile_n: int | None) -> tuple[int, int]:
+    if quant not in _QTYPE_BLOCK_SIZE:
+        raise ValueError(f"unsupported quant: {quant}")
+    if tile_m is None:
+        value = os.environ.get(_ENV_TILE_M[quant])
+        tile_m = int(value) if value else 16
+    if tile_n is None:
+        value = os.environ.get(_ENV_TILE_N[quant])
+        tile_n = int(value) if value else 16
+    if (tile_m, tile_n) not in _ALLOWED_TILES:
+        allowed = ", ".join(f"({m}, {n})" for m, n in sorted(_ALLOWED_TILES))
+        raise ValueError(
+            f"tile (tile_m={tile_m}, tile_n={tile_n}) is not supported; "
+            f"supported tiles: {allowed}"
+        )
+    return tile_m, tile_n
+
+
+def selected_wmma_prefill_compact_default_tiles(quant: str) -> tuple[int, int]:
+    """Return the P9.C1 default tile for Q5_K/Q6_K selected WMMA prefill.
+
+    The generic multi-tile variants remain available for sweeps via env
+    overrides, but measured qwen35moe 512/0 evidence keeps the legacy 16x16
+    kernel as the default.
+    """
+
+    return _resolve_tiles(quant, None, None)
 
 
 def _check_common(
@@ -243,4 +293,5 @@ __all__ = [
     "gguf_q6_k_selected_wmma_prefill_compact_fp16_fp16_out",
     "plan_gguf_k_selected_prefill_build",
     "register_gguf_k_selected_prefill_kernels",
+    "selected_wmma_prefill_compact_default_tiles",
 ]

@@ -27,6 +27,7 @@ from hipengine.runtime.gguf_linear import (
     gemv_decode_session,
     gguf_gemv_decode_enabled,
     launch_gguf_linear,
+    launch_gguf_linear_pair_concat,
     set_gemv_decode_enabled,
 )
 
@@ -55,6 +56,9 @@ _Q8_GEMV_DECODE = KernelKey(
     "hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_decode_bf16_bf16_out"
 )
 _Q8_PREFILL = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "prefill_bf16_bf16_out")
+_Q8_WMMA_DUAL_PREFILL = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_dual_gate_up_bf16_bf16_out"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -140,6 +144,57 @@ def _capture_launch(
 # ---------------------------------------------------------------------------
 # Default off + opt-in precedence.
 # ---------------------------------------------------------------------------
+
+
+def test_p9_c1_pair_concat_routes_q8_dual_wmma_prefill(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P9.C1 dispatch pin: Q8_0 shared gate+up prefill uses dual concat WMMA."""
+
+    weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
+    weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
+    captured: dict[str, object] = {}
+
+    def fake_dual(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+
+    original = resolve(
+        backend=_Q8_WMMA_DUAL_PREFILL.backend,
+        layer=_Q8_WMMA_DUAL_PREFILL.layer,
+        quant=_Q8_WMMA_DUAL_PREFILL.quant,
+        variant=_Q8_WMMA_DUAL_PREFILL.variant,
+        missing="none",
+    )
+    try:
+        register(_Q8_WMMA_DUAL_PREFILL, fake_dual, replace=True)
+        monkeypatch.setattr(
+            "hipengine.runtime.gguf_linear.gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out",
+            fake_dual,
+        )
+        assert launch_gguf_linear_pair_concat(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_ptr=300,
+            rows=512,
+            in_features=2048,
+            out_features=4096,
+            stream=7,
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+        ) is True
+    finally:
+        if original is None:
+            _KERNELS.pop(_Q8_WMMA_DUAL_PREFILL, None)
+        else:
+            register(_Q8_WMMA_DUAL_PREFILL, original, replace=True)
+
+    assert captured["args"] == (100, 10, 10, 300, 512, 2048, 4096, 4096)
+    assert captured["kwargs"] == {
+        "tile_m": 16,
+        "tile_n": 32,
+        "stream": 7,
+        "runtime": "runtime-sentinel",
+    }
 
 
 def test_gemv_decode_off_by_default_routes_legacy_pack8_gemv() -> None:

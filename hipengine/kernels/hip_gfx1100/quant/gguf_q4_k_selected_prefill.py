@@ -17,6 +17,7 @@ the HIP kernel only swaps the AWQ compact WMMA inner dequant loop for raw GGUF
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -28,6 +29,9 @@ _OUTPUT_NAME = "gguf_q4_k_selected_prefill.so"
 _SYMBOL_DUAL_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out"
 _SYMBOL_DUAL_FP16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out"
 _Q4_K_BLOCK = 256
+_ALLOWED_TILES = {(16, 16), (32, 16), (16, 32), (32, 32), (64, 16), (64, 32)}
+_ENV_TILE_M = "HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M"
+_ENV_TILE_N = "HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N"
 
 
 def plan_gguf_q4_k_selected_prefill_build(
@@ -85,6 +89,8 @@ def gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
     num_experts: int,
     wmma_total_rows: int,
     *,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -106,6 +112,8 @@ def gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
         out_features_b,
         num_experts,
         wmma_total_rows,
+        tile_m=tile_m,
+        tile_n=tile_n,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -127,6 +135,8 @@ def gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out(
     num_experts: int,
     wmma_total_rows: int,
     *,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -148,6 +158,8 @@ def gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out(
         out_features_b,
         num_experts,
         wmma_total_rows,
+        tile_m=tile_m,
+        tile_n=tile_n,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -170,10 +182,13 @@ def _launch_dual(
     num_experts: int,
     wmma_total_rows: int,
     *,
+    tile_m: int | None,
+    tile_n: int | None,
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
 ) -> None:
+    tile_m, tile_n = _resolve_tiles(tile_m, tile_n)
     _check_common(
         compact_rows,
         in_features,
@@ -199,6 +214,8 @@ def _launch_dual(
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
         ctypes.c_void_p,
     ]
     fn.restype = ctypes.c_int
@@ -216,10 +233,39 @@ def _launch_dual(
         ctypes.c_int64(out_features_b),
         ctypes.c_int64(num_experts),
         ctypes.c_int64(wmma_total_rows),
+        ctypes.c_int64(tile_m),
+        ctypes.c_int64(tile_n),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def _resolve_tiles(tile_m: int | None, tile_n: int | None) -> tuple[int, int]:
+    if tile_m is None:
+        value = os.environ.get(_ENV_TILE_M)
+        tile_m = int(value) if value else 32
+    if tile_n is None:
+        value = os.environ.get(_ENV_TILE_N)
+        tile_n = int(value) if value else 16
+    if (tile_m, tile_n) not in _ALLOWED_TILES:
+        allowed = ", ".join(f"({m}, {n})" for m, n in sorted(_ALLOWED_TILES))
+        raise ValueError(
+            f"tile (tile_m={tile_m}, tile_n={tile_n}) is not supported; "
+            f"supported tiles: {allowed}"
+        )
+    return tile_m, tile_n
+
+
+def selected_dual_wmma_prefill_compact_default_tiles() -> tuple[int, int]:
+    """Return the P9.C1 default tile for Q4_K selected dual WMMA prefill.
+
+    The generic multi-tile variants remain available for sweeps via env
+    overrides; measured qwen35moe 512/0 rocprof evidence picks 32x16 as the
+    default for the Q4_K dual gate+up shape.
+    """
+
+    return _resolve_tiles(None, None)
 
 
 def _check_common(
@@ -309,4 +355,5 @@ __all__ = [
     "gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out",
     "plan_gguf_q4_k_selected_prefill_build",
     "register_gguf_q4_k_selected_prefill_kernels",
+    "selected_dual_wmma_prefill_compact_default_tiles",
 ]
