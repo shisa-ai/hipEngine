@@ -45,12 +45,13 @@ infrastructure after DFlash lands.
 The API scaffolding exists (`DraftBatch`, `TargetVerifyBatch`,
 `TargetVerifyBuffers`, `TargetStateCommitBuffers`, `AcceptResult`,
 `TargetAcceptSummary`, `TargetCommitPlan`, `DraftModel`, `Verifier`,
-`KVTransaction`, and verify-shaped graph keys), but
-Qwen3.5/PARO DFlash/DDTree is currently **blocked**, not implemented as a
-throughput path.
-The exact blocker artifact is
+`KVTransaction`, and verify-shaped graph keys), and the first full-model native
+B+1 chain verifier now runs in `scripts/dflash_chain_e2e_bench.py`.  DFlash/DDTree
+is still **not** an accepted throughput path because the native verifier is
+correct but slower than same-session AR and slower than the previous serial
+fallback diagnostic.  Older blocker context is retained in
 [`2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json`](../benchmarks/results/2026-05-15-hipengine-qwen35-dflash-ddtree-blocked.json).
-It records:
+Current status:
 
 - the latest c=8 resident batch artifact still reports
   `scheduler_serial_slot_bridge`, `serial_c1_layer_path`, and
@@ -62,8 +63,11 @@ It records:
   transaction id and device, and state/KV commit buffers are checked against
   commit-row/accepted-row coverage before `dflash_commit_chain_i32` copies
   selected linear state, accepted K/V path rows, hidden taps, output-ring tokens,
-  and position/context metadata. Native root+candidate verifier execution is
-  still not wired;
+  and position/context metadata. The full-model chain E2E path now also has a
+  resident `native_bulk_bplus1` verifier that materializes fixed-budget
+  `TargetVerifyBatch` rows, captures target hidden taps, samples row-wise top-1,
+  validates `dflash_accept_chain_i32` against the CPU oracle, commits the
+  selected linear state row, and keeps the serial in-place verifier as fallback;
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
 - speculative metadata and KV transactions reject duplicate request ids,
@@ -108,16 +112,18 @@ It records:
     re-projects newly committed rows on commit.
   - Phase C: drafter caches per-layer rotated K (FP32) and V (BF16) for context
     rows; per-cycle `propose()` only processes block-size query rows.
-  The retained gfx1151 16-token smoke is exact/finite with `6/30` acceptance
-  across 9 cycles and is still slower than AR (`0.289x`) and non-promotable
-  because the verifier still issues `B+1` sequential single-token target
-  forwards per cycle and the drafter is dominated by small fixed-shape kernel
-  launches.  It is retained as a diagnostic row only (`performance_claim=false`;
-  artifact
-  [`2026-05-18-hipengine-dflash-chain-full-model-e2e-phaseABC-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-phaseABC-diagnostic.json)).
-- no speculative throughput claim is allowed until a native compact/c-aware
-  target verifier with selectable per-row state and GPU accept summaries replaces
-  the serial in-place verifier and produces a retained chain win.
+  The retained Phase A+B+C gfx1151 16-token smoke is exact/finite with `6/30`
+  acceptance across 9 cycles and is still slower than AR (`0.289x`), but it used
+  the serial fallback verifier
+  ([artifact](../benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-phaseABC-diagnostic.json)).
+  The retained native-B+1 smoke is also exact/finite, has GPU accept summary =
+  CPU oracle, and performs one fixed B+1 verifier call per draft cycle
+  (`target_bulk_forward_calls=10`, `target_forwards_per_draft_call=1.0`), but is
+  slower (`0.124x` AR, `performance_claim=false`; artifact
+  [`2026-05-18-hipengine-dflash-chain-full-model-e2e-nativebulk-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-nativebulk-diagnostic.json)).
+- no speculative throughput claim is allowed until the native compact/c-aware
+  target verifier plus drafter path produces a retained chain win over
+  same-session AR.
 
 ## Prior W7900/gfx1100 evidence from `~/amd-gpu-tuning`
 
@@ -488,16 +494,18 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   diagnostic driver that executes the packed target and native DFlash drafter in
   one resident target session with same-session AR control. It captures target
   hidden taps on device, proposes a top-1 chain through z-lab drafter weights,
-  verifies exactly via the `serial_in_place_single_slot` verifier, and emits
-  schema-2 rows with acceptance, split timings, D2H counts, graph status,
-  backend/arch, memory, and promotion eligibility. The retained gfx1151 smoke
-  artifact after Phase A+B+C is exact/finite but slower than AR (`0.289x`) and
-  `performance_claim=false`.  Drafter per-call sync time dropped from
-  `~95-100 ms` to `~68 ms` (-32%); decode tok/s rose from `~14.7` to `~18.3`
-  (median across 5 runs, +24%).
-- Remaining integration work: replace serial in-place verification with the
-  native compact/bulk target verifier and then promote only if full-model chain
-  beats same-session AR.
+  verifies through either the fallback `serial_in_place_single_slot` verifier or
+  the default `native_bulk_bplus1` verifier, and emits schema-2 rows with
+  acceptance, split timings, D2H counts, graph status, backend/arch, memory, and
+  promotion eligibility. The retained gfx1151 smoke artifact after Phase A+B+C
+  is exact/finite but slower than AR (`0.289x`) and `performance_claim=false`.
+  Drafter per-call sync time dropped from `~95-100 ms` to `~68 ms` (-32%);
+  decode tok/s rose from `~14.7` to `~18.3` (median across 5 runs, +24%).  The
+  follow-up retained native-B+1 artifact is exact and proves one target verifier
+  call per draft cycle, but regresses to `0.124x` AR because the tiny-row verifier
+  path is still launch/kernel dominated.
+- Remaining integration work: optimize/capture/fuse the native bulk verifier and
+  then promote only if the full-model chain beats same-session AR.
 
 ### Phase D4 — DDTree compiler and tree verify
 

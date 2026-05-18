@@ -18266,3 +18266,32 @@ Fixed-budget smoke result:
 This satisfies task #27's native-verifier correctness/diagnostic contract.  The
 remaining slowdown is a follow-up optimization issue for graph capture/fusion,
 not a blocker for landing the native verifier fallback path.
+
+## 2026-05-18 — DFlash native B+1 verifier retained diagnostic artifact
+
+After committing the native verifier implementation (`6892049`), regenerated the
+clean-tree retained diagnostic artifact:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 16 --draft-budgets 4 \
+  --json benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-nativebulk-diagnostic.json
+```
+
+Result: exact same-session AR equality passed; finite AR/draft/verify logits
+passed; GPU accept summary matched the CPU `TargetVerifyBatch.accept_from_top1`
+oracle.  Clean software context: `hipEngine@6892049`, dirty `false`.
+
+Metrics: AR `64.60 tok/s`; native-B+1 DFlash `8.00 tok/s` (`0.124x`, `-87.6%`
+vs AR); `performance_claim=false`.  Verifier diagnostics: `target_bulk_forward_calls=10`,
+`target_serial_forward_calls=1` tail-only step, `target_forwards_per_draft_call=1.0`,
+`target_verify_rows=51`, `target_bulk_rows=50`, `gpu_accept_match_cpu=true`.
+Acceptance: `5/34` proposed draft tokens over 10 draft calls.  D2H: scalar
+reads/values `71/71`, vector reads/values `40/180`, full-logit readbacks `0`.
+
+Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/DFLASH.md`, and
+`docs/MTP.md` to mark native verifier correctness landed but speed/promotion
+still blocked on graph/fusion/tiny-row verifier optimization.

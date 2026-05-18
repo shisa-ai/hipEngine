@@ -34,10 +34,12 @@ is **z-lab/Qwen3.6-35B-A3B-DFlash** drafting against the
 `gfx1151` (`--offload-arch=gfx1151`). MTP should be added later as another
 `DraftModel` on the DFlash-built verifier only after chain verification,
 device-side accept, and state/KV commit are exact and faster than serial c=1.
-As of the retained 2026-05-18 Phase A+B+C DFlash row, the full-model chain is
-exact/finite but still diagnostic (`performance_claim=false`, `0.289x` AR):
-the verifier remains `serial_in_place_single_slot` rather than native bulk, so
-MTP speed work stays blocked and should not fork a separate verifier path.
+As of the retained 2026-05-18 native-B+1 DFlash row, the shared verifier is
+exact/finite and GPU accept matches the CPU oracle, but the full chain remains
+purely diagnostic (`performance_claim=false`, `0.124x` AR) because the native
+verifier is slower than the serial fallback. MTP speed work stays blocked on
+verifier graph/fusion/tiny-row optimization and should not fork a separate
+verifier path.
 
 ## Alignment with existing hipEngine design
 
@@ -204,6 +206,9 @@ least these pieces:
 - no accepted-prefix target re-forward in the measured fast path;
 - GPU target top1 + chain accept summary;
 - benchmark rows proving the verifier is faster than serial c=1 verification.
+
+Current DFlash status: the exact native-B+1 row exists and should be reused for
+API/commit correctness, but it has not cleared this speed gate.
 
 MTP can use CPU/reference tests before M0, but retained speed work should wait.
 
