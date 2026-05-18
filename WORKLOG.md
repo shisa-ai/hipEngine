@@ -16845,3 +16845,49 @@ rocprofv3 --kernel-trace --output-format csv --output-file /tmp/hipengine-kv-int
 # with Workgroup_Size_X=256; durations from End_Timestamp-Start_Timestamp: 12881 ns,
 # 11081 ns, 7161 ns, 5801 ns.
 ```
+
+## 2026-05-18 - K1 INT8 grouped-GQA split-K decode
+
+Completed task #9: added direct INT8 per-token/head grouped-GQA split-K decode wrappers and kernels.
+
+Implementation notes:
+
+- Added `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<scale_t,8,16,2>` in `paged_attn_decode.hip`.
+- The producer grid is `(kv_head, split)` rather than `(q_head, split)`, so each KV stream is scanned once per split and its K/V loads are shared across the 8 Q heads in that KV group.
+- The kernel reads signed INT8 K/V plus K/V scale tensors directly, accumulates QK in FP32, dequantizes V inside the producer path, and writes the existing FP32 split partials. It does not allocate or cast a BF16 full-cache workspace.
+- Added raw-pointer wrappers for ungated output plus BF16/FP16 gated reduce outputs: `gqa_splitk_spans`, `gqa_splitk_gate_bf16_spans`, and `gqa_splitk_gate_fp16_spans` under `quant="int8_per_token_head"`.
+- Wrapper validation rejects non-INT8 spans, non-int64 live counts, non-Qwen3.5 GQA shapes, invalid scale pointers, and invalid scale tensor shapes before loading HIP.
+- Added `scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip` and enabled the existing layer accuracy tool to run the registered INT8 HIP path as a hard gate.
+
+Validation:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# Parent qwen35/PARO drift remains documented; this INT8 grouped-GQA decode path is hipEngine-native.
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures && \
+python3 scripts/smoke.py --mode smoke-add-plan && \
+python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip && \
+python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip && \
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 \
+  --pseudo-vocab-size 32 --require-int8-hip --max-abs-threshold 2e-3 \
+  --json /tmp/hipengine-int8-hip-ctx64-520.json
+# pytest: 307 passed; fixtures/smokes passed.
+# INT8 GQA smoke: ctx64 FP32-scale max_abs=2.98e-08; ctx384 chunk_size=128 max_abs=1.68e-08;
+# ctx520 FP16-scale max_abs=2.05e-08, gate_fp16_max_abs=1.53e-05,
+# gate_bf16_max_abs=1.49e-08.
+# Layer accuracy tool accepted BF16 + INT8 HIP paths; INT8 HIP vs CPU oracle max_abs=5.22e-08
+# at ctx64 and 1.86e-08 at ctx520, top-1 agreement 1.0.
+
+rocprofv3 --kernel-trace --output-format csv --output-file /tmp/hipengine-int8-gqa-decode -- \
+  python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# rocprofv3 captured `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel`
+# with FP32-scale durations 65200 ns and 47363 ns, FP16-scale durations 88723 ns,
+# 78883 ns, and 85603 ns, plus reduce/gated-reduce launches on W7900/gfx1100.
+```

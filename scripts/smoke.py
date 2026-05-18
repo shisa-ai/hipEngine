@@ -46,6 +46,7 @@ def main() -> int:
             "qwen35-linear-attn-segments-hip",
             "qwen35-paged-kv-write-hip",
             "qwen35-paged-kv-write-int8-hip",
+            "qwen35-paged-attn-int8-gqa-hip",
             "qwen35-full-attn-decode-hip",
             "qwen35-paged-attn-decode-hip",
             "qwen35-paged-attn-split-k-hip",
@@ -185,6 +186,11 @@ def main() -> int:
         )
     if args.mode == "qwen35-paged-kv-write-int8-hip":
         return qwen35_paged_kv_write_int8_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-paged-attn-int8-gqa-hip":
+        return qwen35_paged_attn_int8_gqa_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -2798,6 +2804,250 @@ def qwen35_paged_kv_write_int8_hip_smoke(
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
+    print(json.dumps({"cases": results}, sort_keys=True))
+    return 0 if all(result["passed"] for result in results) else 1
+
+
+def qwen35_paged_attn_int8_gqa_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.core.tensor import Tensor
+    from hipengine.kernels.cpu_reference import (
+        paged_attn_decode_int8_per_token_head,
+        write_paged_kv_int8_per_token_head,
+    )
+    from hipengine.kernels.hip_gfx1100.attention import (
+        build_qwen35_paged_attn_decode,
+        qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
+        qwen35_paged_attn_decode_int8_gqa_splitk_gate_fp16_spans,
+        qwen35_paged_attn_decode_int8_gqa_splitk_spans,
+    )
+    from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
+
+    block_size = 256
+    num_q_heads = 16
+    num_kv_heads = 2
+    head_dim = 256
+    scale = head_dim ** -0.5
+    runtime = get_hip_runtime()
+    library = build_qwen35_paged_attn_decode(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    device = Device("hip", 0)
+
+    def sigmoid(x: np.ndarray) -> np.ndarray:
+        return 1.0 / (1.0 + np.exp(-x.astype(np.float32)))
+
+    def make_rows(context_len: int, seed: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        rng = np.random.default_rng(seed)
+        query = rng.normal(0.0, 0.2, size=(num_q_heads, head_dim)).astype(np.float32)
+        key = rng.normal(0.0, 0.25, size=(context_len, num_kv_heads, head_dim)).astype(np.float32)
+        value = rng.normal(0.0, 0.25, size=(context_len, num_kv_heads, head_dim)).astype(np.float32)
+        # Exercise safe zero-scale rows independently for K and V.
+        key[0, 0, :] = 0.0
+        value[min(context_len - 1, 3), 1, :] = 0.0
+        blocks = (context_len + block_size - 1) // block_size
+        block_table = np.arange(blocks, dtype=np.int32)
+        if blocks > 1:
+            block_table = np.roll(block_table[::-1], 1).astype(np.int32)
+        return query, key, value, block_table
+
+    def run_case(context_len: int, scale_dtype: str, *, gated: bool, chunk_size: int | None = None) -> dict[str, object]:
+        query, key_rows, value_rows, block_table = make_rows(context_len, 9000 + context_len)
+        chunk_size = block_size if chunk_size is None else int(chunk_size)
+        scale_np_dtype = np.float16 if scale_dtype == "fp16" else np.float32
+        positions = np.arange(context_len, dtype=np.int64)
+        int8_cache = write_paged_kv_int8_per_token_head(
+            key_rows,
+            value_rows,
+            positions,
+            block_table,
+            block_size=block_size,
+            scale_dtype=scale_np_dtype,
+        )
+        expected = paged_attn_decode_int8_per_token_head(
+            query,
+            int8_cache[0],
+            int8_cache[1],
+            int8_cache[2],
+            int8_cache[3],
+            np.asarray([context_len], dtype=np.int64),
+            block_table=block_table,
+            block_size=block_size,
+            scale=scale,
+            output_dtype=np.float32,
+        )
+        num_splits = (context_len + chunk_size - 1) // chunk_size
+        partial_out = np.zeros((num_q_heads, num_splits, head_dim), dtype=np.float32)
+        partial_m = np.zeros((num_q_heads, num_splits), dtype=np.float32)
+        partial_l = np.zeros((num_q_heads, num_splits), dtype=np.float32)
+        out = np.zeros_like(expected)
+        buffers = []
+
+        def dev(array: np.ndarray):
+            host = np.ascontiguousarray(array)
+            buf = malloc(host.nbytes, runtime=runtime)
+            buffers.append(buf)
+            copy_host_to_device(buf, host_array_ptr(host), runtime=runtime)
+            return buf
+
+        def out_dev(array: np.ndarray):
+            buf = malloc(array.nbytes, runtime=runtime)
+            buffers.append(buf)
+            copy_host_to_device(buf, host_array_ptr(array), runtime=runtime)
+            return buf
+
+        try:
+            block_table_b = dev(block_table)
+            live_counts_b = dev(np.asarray([context_len], dtype=np.int64))
+            query_b = dev(query)
+            key_cache_b = dev(int8_cache[0])
+            value_cache_b = dev(int8_cache[1])
+            k_scale_b = dev(int8_cache[2])
+            v_scale_b = dev(int8_cache[3])
+            out_b = out_dev(out)
+            partial_out_b = out_dev(partial_out)
+            partial_m_b = out_dev(partial_m)
+            partial_l_b = out_dev(partial_l)
+            metadata = KVScaleMetadata(
+                k_scale=Tensor.from_handle(k_scale_b.ptr, int8_cache[2].shape, scale_dtype, device),
+                v_scale=Tensor.from_handle(v_scale_b.ptr, int8_cache[3].shape, scale_dtype, device),
+                scale_dtype=scale_dtype,
+            )
+            spans = KVLiveSpans.paged_uniform(
+                block_table=Tensor.from_handle(block_table_b.ptr, block_table.shape, "int32", device),
+                live_counts=Tensor.from_handle(live_counts_b.ptr, (1,), "int64", device),
+                max_live_count=context_len,
+                storage_dtype="int8_per_token_head",
+                scale_metadata=metadata,
+            )
+            qwen35_paged_attn_decode_int8_gqa_splitk_spans(
+                query_b.ptr,
+                key_cache_b.ptr,
+                value_cache_b.ptr,
+                k_scale_b.ptr,
+                v_scale_b.ptr,
+                out_b.ptr,
+                partial_out_b.ptr,
+                partial_m_b.ptr,
+                partial_l_b.ptr,
+                spans,
+                chunk_size,
+                num_splits,
+                block_size,
+                num_q_heads,
+                num_kv_heads,
+                head_dim,
+                scale,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(host_array_ptr(out), out_b, runtime=runtime)
+            max_abs = float(np.max(np.abs(out - expected)))
+            result: dict[str, object] = {
+                "context_len": context_len,
+                "scale_dtype": scale_dtype,
+                "splits": num_splits,
+                "chunk_size": chunk_size,
+                "max_abs": max_abs,
+            }
+            if gated:
+                rng = np.random.default_rng(12000 + context_len)
+                gate = rng.normal(0.0, 0.2, size=(num_q_heads, head_dim)).astype(np.float32)
+                gate_fp16 = gate.astype(np.float16)
+                out_fp16 = np.zeros_like(gate_fp16)
+                gate_fp16_b = dev(gate_fp16)
+                out_fp16_b = out_dev(out_fp16)
+                qwen35_paged_attn_decode_int8_gqa_splitk_gate_fp16_spans(
+                    query_b.ptr,
+                    key_cache_b.ptr,
+                    value_cache_b.ptr,
+                    k_scale_b.ptr,
+                    v_scale_b.ptr,
+                    gate_fp16_b.ptr,
+                    out_fp16_b.ptr,
+                    partial_out_b.ptr,
+                    partial_m_b.ptr,
+                    partial_l_b.ptr,
+                    spans,
+                    chunk_size,
+                    num_splits,
+                    block_size,
+                    num_q_heads,
+                    num_kv_heads,
+                    head_dim,
+                    head_dim,
+                    1,
+                    scale,
+                    library=library,
+                    runtime=runtime,
+                )
+                runtime.device_synchronize()
+                copy_device_to_host(host_array_ptr(out_fp16), out_fp16_b, runtime=runtime)
+                expected_fp16 = (expected * sigmoid(gate_fp16.astype(np.float32))).astype(np.float16)
+                result["gate_fp16_max_abs"] = float(
+                    np.max(np.abs(out_fp16.astype(np.float32) - expected_fp16.astype(np.float32)))
+                )
+
+                gate_bf16 = _float32_to_bf16_bits(gate)
+                out_bf16 = np.zeros_like(gate_bf16)
+                gate_bf16_b = dev(gate_bf16)
+                out_bf16_b = out_dev(out_bf16)
+                qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans(
+                    query_b.ptr,
+                    key_cache_b.ptr,
+                    value_cache_b.ptr,
+                    k_scale_b.ptr,
+                    v_scale_b.ptr,
+                    gate_bf16_b.ptr,
+                    out_bf16_b.ptr,
+                    partial_out_b.ptr,
+                    partial_m_b.ptr,
+                    partial_l_b.ptr,
+                    spans,
+                    chunk_size,
+                    num_splits,
+                    block_size,
+                    num_q_heads,
+                    num_kv_heads,
+                    head_dim,
+                    head_dim,
+                    1,
+                    scale,
+                    library=library,
+                    runtime=runtime,
+                )
+                runtime.device_synchronize()
+                copy_device_to_host(host_array_ptr(out_bf16), out_bf16_b, runtime=runtime)
+                expected_bf16 = _float32_to_bf16_bits(expected * sigmoid(_bf16_bits_to_float32(gate_bf16)))
+                result["gate_bf16_max_abs"] = float(
+                    np.max(np.abs(_bf16_bits_to_float32(out_bf16) - _bf16_bits_to_float32(expected_bf16)))
+                )
+            result["passed"] = (
+                result["max_abs"] <= 2.0e-6
+                and float(result.get("gate_fp16_max_abs", 0.0)) <= 2.0e-3
+                and float(result.get("gate_bf16_max_abs", 0.0)) <= 4.0e-3
+            )
+            return result
+        finally:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
+
+    results = [
+        run_case(64, "fp32", gated=False),
+        run_case(384, "fp32", gated=False, chunk_size=128),
+        run_case(520, "fp16", gated=True),
+    ]
     print(json.dumps({"cases": results}, sort_keys=True))
     return 0 if all(result["passed"] for result in results) else 1
 

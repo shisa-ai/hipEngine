@@ -162,7 +162,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "notes": [
             "BF16 and int8_per_token_head are compared against separate CPU-reference oracles.",
             "pseudo_logit_gate projects layer outputs through a deterministic synthetic matrix so KL/top-1 are available without model weights.",
-            "device=hip currently runs the BF16 HIP path and checks for future INT8 HIP wrappers; use --require-int8-hip for K1 promotion gates.",
+            "device=hip runs the BF16 HIP path and registered INT8 HIP writer/decode wrappers; use --require-int8-hip for K1 promotion gates.",
         ],
     }
 
