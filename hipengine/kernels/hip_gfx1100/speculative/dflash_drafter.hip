@@ -86,6 +86,42 @@ bool valid_threads(int64_t threads) {
   return threads == 64 || threads == 128 || threads == 256;
 }
 
+__global__ void dflash_add_bf16_kernel(
+    const uint16_t* __restrict__ a,
+    const uint16_t* __restrict__ b,
+    uint16_t* __restrict__ out,
+    int64_t elements) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < elements;
+       i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    out[i] = float_to_bf16_bits(bf16_bits_to_float(a[i]) + bf16_bits_to_float(b[i]));
+  }
+}
+
+template <typename scalar_t>
+__global__ void dflash_concat_context_query_rows_kernel(
+    const scalar_t* __restrict__ context_rows,
+    const scalar_t* __restrict__ query_rows,
+    scalar_t* __restrict__ out_rows,
+    int64_t batch_size,
+    int64_t context_len,
+    int64_t query_len,
+    int64_t features) {
+  const int64_t total = batch_size * (context_len + query_len) * features;
+  const int64_t rows_per_batch = context_len + query_len;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < total;
+       idx += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    const int64_t feature = idx % features;
+    const int64_t row_linear = idx / features;
+    const int64_t row = row_linear % rows_per_batch;
+    const int64_t batch = row_linear / rows_per_batch;
+    if (row < context_len) {
+      out_rows[idx] = context_rows[(batch * context_len + row) * features + feature];
+    } else {
+      out_rows[idx] = query_rows[(batch * query_len + (row - context_len)) * features + feature];
+    }
+  }
+}
+
 __global__ void dflash_rmsnorm_bf16_kernel(
     const uint16_t* __restrict__ x,
     const uint16_t* __restrict__ weight,
@@ -117,6 +153,52 @@ __global__ void dflash_rmsnorm_bf16_kernel(
     const float value = bf16_bits_to_float(x[base + dim]);
     const float scale = bf16_bits_to_float(weight[dim]);
     out[base + dim] = float_to_bf16_bits(value * inv_rms * scale);
+  }
+}
+
+__global__ void dflash_silu_mul_bf16_kernel(
+    const uint16_t* __restrict__ gate,
+    const uint16_t* __restrict__ up,
+    uint16_t* __restrict__ out,
+    int64_t elements) {
+  for (int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; i < elements;
+       i += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    const float g = bf16_bits_to_float(gate[i]);
+    const float u = bf16_bits_to_float(up[i]);
+    const float silu = g / (1.0f + expf(-g));
+    out[i] = float_to_bf16_bits(silu * u);
+  }
+}
+
+__global__ void dflash_dense_bf16_to_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ weight,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = static_cast<int64_t>(blockIdx.x);
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  if (row >= rows || out_col >= out_features) {
+    return;
+  }
+  extern __shared__ float partial[];
+  const int64_t x_base = row * in_features;
+  const int64_t w_base = out_col * in_features;
+  float acc = 0.0f;
+  for (int64_t dim = static_cast<int64_t>(threadIdx.x); dim < in_features; dim += blockDim.x) {
+    acc = fmaf(bf16_bits_to_float(x[x_base + dim]), bf16_bits_to_float(weight[w_base + dim]), acc);
+  }
+  partial[threadIdx.x] = acc;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    out[row * out_features + out_col] = float_to_bf16_bits(partial[0]);
   }
 }
 
@@ -335,6 +417,15 @@ __global__ void dflash_gqa_attention_f32_bf16_kernel(
   }
 }
 
+bool valid_elements(int64_t elements, int64_t threads) {
+  return elements > 0 && valid_threads(threads);
+}
+
+bool valid_concat_shape(int64_t batch_size, int64_t context_len, int64_t query_len, int64_t features, int64_t threads) {
+  return batch_size > 0 && context_len >= 0 && query_len > 0 && features > 0 && (context_len + query_len) > 0 &&
+         valid_threads(threads);
+}
+
 bool valid_dense_shape(int64_t rows, int64_t in_features, int64_t out_features, int64_t threads) {
   return rows > 0 && in_features > 0 && out_features > 0 && valid_threads(threads);
 }
@@ -409,6 +500,95 @@ extern "C" int hipengine_dflash_prepare_noise_inputs_bf16_i32(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_dflash_add_bf16(
+    const uint16_t* a,
+    const uint16_t* b,
+    uint16_t* out,
+    int64_t elements,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_elements(elements, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks = (elements + threads - 1) / threads;
+  const int64_t capped_blocks = blocks > 65535 ? 65535 : blocks;
+  hipLaunchKernelGGL(
+      dflash_add_bf16_kernel,
+      dim3(static_cast<unsigned int>(capped_blocks)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      a,
+      b,
+      out,
+      elements);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_concat_rows_f32(
+    const float* context_rows,
+    const float* query_rows,
+    float* out_rows,
+    int64_t batch_size,
+    int64_t context_len,
+    int64_t query_len,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_concat_shape(batch_size, context_len, query_len, features, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t elements = batch_size * (context_len + query_len) * features;
+  const int64_t blocks = (elements + threads - 1) / threads;
+  const int64_t capped_blocks = blocks > 65535 ? 65535 : blocks;
+  hipLaunchKernelGGL(
+      (dflash_concat_context_query_rows_kernel<float>),
+      dim3(static_cast<unsigned int>(capped_blocks)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      context_rows,
+      query_rows,
+      out_rows,
+      batch_size,
+      context_len,
+      query_len,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_concat_rows_bf16(
+    const uint16_t* context_rows,
+    const uint16_t* query_rows,
+    uint16_t* out_rows,
+    int64_t batch_size,
+    int64_t context_len,
+    int64_t query_len,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_concat_shape(batch_size, context_len, query_len, features, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t elements = batch_size * (context_len + query_len) * features;
+  const int64_t blocks = (elements + threads - 1) / threads;
+  const int64_t capped_blocks = blocks > 65535 ? 65535 : blocks;
+  hipLaunchKernelGGL(
+      (dflash_concat_context_query_rows_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(capped_blocks)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      context_rows,
+      query_rows,
+      out_rows,
+      batch_size,
+      context_len,
+      query_len,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_dflash_rmsnorm_bf16(
     const uint16_t* x,
     const uint16_t* weight,
@@ -433,6 +613,58 @@ extern "C" int hipengine_dflash_rmsnorm_bf16(
       rows,
       hidden_size,
       eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_silu_mul_bf16(
+    const uint16_t* gate,
+    const uint16_t* up,
+    uint16_t* out,
+    int64_t elements,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_elements(elements, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks = (elements + threads - 1) / threads;
+  const int64_t capped_blocks = blocks > 65535 ? 65535 : blocks;
+  hipLaunchKernelGGL(
+      dflash_silu_mul_bf16_kernel,
+      dim3(static_cast<unsigned int>(capped_blocks)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      gate,
+      up,
+      out,
+      elements);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_dense_bf16_to_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_dense_shape(rows, in_features, out_features, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      dflash_dense_bf16_to_bf16_kernel,
+      dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
   return static_cast<int>(hipGetLastError());
 }
 

@@ -13,7 +13,12 @@ _SOURCE = Path(__file__).with_name("dflash_drafter.hip")
 _OUTPUT_NAME = "dflash_drafter.so"
 _SYMBOL_PREPARE_NOISE_BF16 = "hipengine_dflash_prepare_noise_inputs_bf16_i32"
 _SYMBOL_PREPARE_NOISE_F16_TO_BF16 = "hipengine_dflash_prepare_noise_inputs_f16_to_bf16_i32"
+_SYMBOL_ADD_BF16 = "hipengine_dflash_add_bf16"
+_SYMBOL_CONCAT_F32 = "hipengine_dflash_concat_rows_f32"
+_SYMBOL_CONCAT_BF16 = "hipengine_dflash_concat_rows_bf16"
 _SYMBOL_RMSNORM_BF16 = "hipengine_dflash_rmsnorm_bf16"
+_SYMBOL_SILU_MUL_BF16 = "hipengine_dflash_silu_mul_bf16"
+_SYMBOL_DENSE_BF16_TO_BF16 = "hipengine_dflash_dense_bf16_to_bf16"
 _SYMBOL_DENSE_BF16_TO_F32 = "hipengine_dflash_dense_bf16_to_f32"
 _SYMBOL_HEAD_RMS_ROTARY = "hipengine_dflash_head_rmsnorm_rotary_f32"
 _SYMBOL_GQA_ATTENTION = "hipengine_dflash_gqa_attention_f32_bf16"
@@ -138,6 +143,61 @@ def dflash_prepare_noise_inputs_f16_to_bf16_i32(
     )
 
 
+def dflash_add_bf16(
+    a_bf16_ptr: int,
+    b_bf16_ptr: int,
+    out_bf16_ptr: int,
+    elements: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Elementwise BF16 residual add for DFlash block wiring."""
+
+    _check_elements(elements, threads)
+    _launch_simple(_SYMBOL_ADD_BF16, (a_bf16_ptr, b_bf16_ptr, out_bf16_ptr, elements), threads, stream, library, runtime)
+
+
+def dflash_concat_rows_f32(
+    context_rows_f32_ptr: int,
+    query_rows_f32_ptr: int,
+    out_rows_f32_ptr: int,
+    batch_size: int,
+    context_len: int,
+    query_len: int,
+    features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Concatenate context+query rows for FP32 K tensors on device."""
+
+    _launch_concat(_SYMBOL_CONCAT_F32, context_rows_f32_ptr, query_rows_f32_ptr, out_rows_f32_ptr, batch_size, context_len, query_len, features, threads, stream, library, runtime)
+
+
+def dflash_concat_rows_bf16(
+    context_rows_bf16_ptr: int,
+    query_rows_bf16_ptr: int,
+    out_rows_bf16_ptr: int,
+    batch_size: int,
+    context_len: int,
+    query_len: int,
+    features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Concatenate context+query rows for BF16 V tensors on device."""
+
+    _launch_concat(_SYMBOL_CONCAT_BF16, context_rows_bf16_ptr, query_rows_bf16_ptr, out_rows_bf16_ptr, batch_size, context_len, query_len, features, threads, stream, library, runtime)
+
+
 def dflash_rmsnorm_bf16(
     x_bf16_ptr: int,
     weight_bf16_ptr: int,
@@ -182,6 +242,41 @@ def dflash_rmsnorm_bf16(
         runtime.check(int(err))
 
 
+def dflash_silu_mul_bf16(
+    gate_bf16_ptr: int,
+    up_bf16_ptr: int,
+    out_bf16_ptr: int,
+    elements: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Elementwise BF16 SiLU(gate) * up for DFlash MLP wiring."""
+
+    _check_elements(elements, threads)
+    _launch_simple(_SYMBOL_SILU_MUL_BF16, (gate_bf16_ptr, up_bf16_ptr, out_bf16_ptr, elements), threads, stream, library, runtime)
+
+
+def dflash_dense_bf16_to_bf16(
+    x_bf16_ptr: int,
+    weight_bf16_ptr: int,
+    out_bf16_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Project BF16 rows with BF16 weights and write BF16 output rows."""
+
+    _launch_dense(_SYMBOL_DENSE_BF16_TO_BF16, x_bf16_ptr, weight_bf16_ptr, out_bf16_ptr, rows, in_features, out_features, threads, stream, library, runtime)
+
+
 def dflash_dense_bf16_to_f32(
     x_bf16_ptr: int,
     weight_bf16_ptr: int,
@@ -197,33 +292,7 @@ def dflash_dense_bf16_to_f32(
 ) -> None:
     """Project BF16 rows with BF16 weights and write FP32 output rows."""
 
-    _check_dense_shape(rows, in_features, out_features, threads)
-    library = library or build_dflash_drafter(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_DENSE_BF16_TO_F32)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_bf16_ptr),
-        ctypes.c_void_p(weight_bf16_ptr),
-        ctypes.c_void_p(out_f32_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_features),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
-    if int(err) != HIP_SUCCESS:
-        runtime.check(int(err))
+    _launch_dense(_SYMBOL_DENSE_BF16_TO_F32, x_bf16_ptr, weight_bf16_ptr, out_f32_ptr, rows, in_features, out_features, threads, stream, library, runtime)
 
 
 def dflash_head_rmsnorm_rotary_f32(
@@ -387,8 +456,33 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "dflash_add", "w4_paro", "bf16"),
+        dflash_add_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_concat_rows", "w4_paro", "f32"),
+        dflash_concat_rows_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_concat_rows", "w4_paro", "bf16"),
+        dflash_concat_rows_bf16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "dflash_rmsnorm", "w4_paro", "bf16"),
         dflash_rmsnorm_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_silu_mul", "w4_paro", "bf16"),
+        dflash_silu_mul_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_bf16"),
+        dflash_dense_bf16_to_bf16,
         replace=replace,
     )
     register(
@@ -466,6 +560,138 @@ def _launch_prepare_noise_inputs(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def _launch_dense(
+    symbol: str,
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_dense_shape(rows, in_features, out_features, threads)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _launch_simple(
+    symbol: str,
+    args: tuple[int, ...],
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(args[0]),
+        ctypes.c_void_p(args[1]),
+        ctypes.c_void_p(args[2]),
+        ctypes.c_int64(args[3]),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _launch_concat(
+    symbol: str,
+    context_ptr: int,
+    query_ptr: int,
+    out_ptr: int,
+    batch_size: int,
+    context_len: int,
+    query_len: int,
+    features: int,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_concat_shape(batch_size, context_len, query_len, features, threads)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(context_ptr),
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(batch_size),
+        ctypes.c_int64(context_len),
+        ctypes.c_int64(query_len),
+        ctypes.c_int64(features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _check_elements(elements: int, threads: int) -> None:
+    if elements <= 0:
+        raise ValueError("elements must be positive")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64, 128, or 256")
+
+
+def _check_concat_shape(batch_size: int, context_len: int, query_len: int, features: int, threads: int) -> None:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if context_len < 0:
+        raise ValueError("context_len must be non-negative")
+    if query_len <= 0:
+        raise ValueError("query_len must be positive")
+    if features <= 0:
+        raise ValueError("features must be positive")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64, 128, or 256")
 
 
 def _check_rmsnorm_shape(rows: int, hidden_size: int, threads: int) -> None:

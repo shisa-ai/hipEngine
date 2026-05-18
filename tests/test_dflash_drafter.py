@@ -9,11 +9,15 @@ from hipengine.speculative import (
     DFlashRootQueryPlan,
     DFlashRootQueryRequest,
     TargetVerifyBatch,
+    dflash_add_bf16,
+    dflash_concat_rows,
     dflash_gqa_attention_bf16,
     dflash_head_rmsnorm_rotary_f32,
     dflash_rmsnorm_bf16,
+    dflash_silu_mul_bf16,
     draft_batch_from_topk,
     prepare_dflash_noise_inputs_bf16,
+    project_dflash_bf16_to_bf16,
     project_dflash_bf16_to_f32,
 )
 
@@ -96,6 +100,21 @@ def test_dflash_draft_batch_from_topk_can_select_nonzero_rank() -> None:
         draft_batch_from_topk(plan, topk_token_ids=(((101,),),), candidate_budget=2, topk_rank=1)
 
 
+def test_dflash_add_and_concat_validate_tensor_abi_before_loading_hip() -> None:
+    with pytest.raises(ValueError, match="share shape"):
+        dflash_add_bf16(
+            _tensor(0x1000, (2, 4), dtype="bf16"),
+            _tensor(0x1100, (2, 5), dtype="bf16"),
+            _tensor(0x1200, (2, 4), dtype="bf16"),
+        )
+    with pytest.raises(ValueError, match="rank-3"):
+        dflash_concat_rows(
+            _tensor(0x1000, (1, 2, 4), dtype="bf16"),
+            _tensor(0x1100, (1, 2, 4), dtype="bf16"),
+            _tensor(0x1200, (1, 4, 4, 1), dtype="bf16"),
+        )
+
+
 def test_dflash_rmsnorm_validates_tensor_abi_before_loading_hip() -> None:
     with pytest.raises(ValueError, match="rank-2"):
         dflash_rmsnorm_bf16(
@@ -129,6 +148,18 @@ def test_project_dflash_bf16_to_f32_validates_tensor_abi_before_loading_hip() ->
             _tensor(0x1000, (2, 4), dtype="bf16"),
             _tensor(0x1100, (3, 4), dtype="bf16"),
             _tensor(0x1200, (2, 3), dtype="bf16"),
+        )
+    with pytest.raises(ValueError, match="BF16"):
+        project_dflash_bf16_to_bf16(
+            _tensor(0x1000, (2, 4), dtype="bf16"),
+            _tensor(0x1100, (3, 4), dtype="bf16"),
+            _tensor(0x1200, (2, 3), dtype="fp32"),
+        )
+    with pytest.raises(ValueError, match="share shape"):
+        dflash_silu_mul_bf16(
+            _tensor(0x1000, (2, 4), dtype="bf16"),
+            _tensor(0x1100, (2, 5), dtype="bf16"),
+            _tensor(0x1200, (2, 4), dtype="bf16"),
         )
 
 

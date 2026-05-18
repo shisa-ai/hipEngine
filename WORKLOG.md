@@ -17546,3 +17546,82 @@ git diff --check
 # rocprofv3 1.1.0 / gfx1151: BF16 prep DurationNs=3006 Scratch_Size=0; FP16→BF16 prep DurationNs=3086 Scratch_Size=0; dflash_rmsnorm_bf16_kernel DurationNs=2204 Scratch_Size=0; dflash_dense_bf16_to_f32_kernel DurationNs=2405 Scratch_Size=0; dflash_head_rmsnorm_rotary_f32_kernel DurationNs=2885 Scratch_Size=0; dflash_gqa_attention_f32_bf16_kernel DurationNs=4007 Scratch_Size=0.
 # lineage: expected pre-existing baseline drift; DFlash R1 tree entries clean.
 ```
+
+## 2026-05-18 — DFlash tiny decoder-block top-k parity (D12 closure candidate)
+
+### Scope
+
+- Extended `dflash_drafter.{hip,py}` with the remaining correctness-first building blocks needed to run a native root/query DFlash decoder layer over a small fixture:
+  - `dflash_add_bf16` for residual adds;
+  - `dflash_concat_rows_{f32,bf16}` for context+query K/V assembly;
+  - `dflash_dense_bf16_to_bf16` for V/O/MLP BF16 projections;
+  - `dflash_silu_mul_bf16` for `Qwen3MLP` activation.
+- Extended high-level `hipengine/speculative/dflash_drafter.py` validation/export wrappers for add, concat, BF16 dense output, and SiLU.
+- Added `fixtures/dflash/drafter_root_query_parent_fixture.json`, a deterministic tiny one-layer DFlash parent/PyTorch fixture generated from the z-lab `dflash.py` semantics (`hidden=8`, `q_heads=2`, `kv_heads=1`, `head_dim=4`, `intermediate=10`, `vocab=11`, seed=6).
+- Extended `scripts/dflash_drafter_root_query_smoke.py` to execute a full tiny native DFlash decoder layer sequence on gfx1151:
+  - root/mask prep;
+  - input RMSNorm;
+  - q/k/v projections;
+  - context+query K/V concat;
+  - direct-weight head RMSNorm+rotary;
+  - non-causal GQA;
+  - o-proj + residual add;
+  - post-attention RMSNorm;
+  - gate/up/down MLP with SiLU;
+  - final RMSNorm;
+  - BF16 lm-head projection to FP32 logits and row top-k.
+- Native tiny-block top-k matches the parent fixture exactly (`[[5, 9, 6], [8, 2, 5]]`); native-vs-parent logits max_abs is `4.802e-03`, within the fixture tolerance `0.01`.
+
+### Validation
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/kernels/hip_gfx1100/speculative/__init__.py \
+  hipengine/speculative/dflash_drafter.py \
+  hipengine/speculative/__init__.py \
+  scripts/dflash_drafter_root_query_smoke.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+python3 -m pytest -q \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_dflash_metadata.py \
+  tests/test_dflash_chain_compiler.py \
+  tests/test_speculative_interfaces.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_drafter_root_query_smoke.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build
+rm -rf /tmp/hipengine-dflash-drafter-prof && mkdir -p /tmp/hipengine-dflash-drafter-prof
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  /opt/rocm/bin/rocprofv3 --kernel-trace --output-format csv \
+    --output-file /tmp/hipengine-dflash-drafter-prof/drafter -- \
+    python3 scripts/dflash_drafter_root_query_smoke.py \
+      --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+      --require-cached-build
+python3 - <<'PY'
+import csv
+from pathlib import Path
+path=Path('/tmp/hipengine-dflash-drafter-prof/drafter_kernel_trace.csv')
+rows=list(csv.DictReader(path.open()))
+for name in sorted({r['Kernel_Name'] for r in rows if 'dflash' in r['Kernel_Name'] or 'topk_rows' in r['Kernel_Name']}):
+    vals=[]; scratch=[]
+    for r in rows:
+        if r['Kernel_Name']==name:
+            vals.append(int(float(r['DurationNs'])) if r.get('DurationNs') else int(float(r['End_Timestamp']))-int(float(r['Start_Timestamp'])))
+            if r.get('Scratch_Size'):
+                scratch.append(int(float(r['Scratch_Size'])))
+    print(name, len(vals), min(vals), max(vals), sorted(set(scratch)))
+PY
+! grep -RInE 'import torch|torch\.' \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_drafter.py \
+  scripts/dflash_drafter_root_query_smoke.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py
+git diff --check
+# pytest: 42 passed
+# smoke: tiny_decoder_topk final_abs=0.000e+00 logits_abs=1.490e-08 parent_abs=4.802e-03 topk=[[5, 9, 6], [8, 2, 5]].
+# rocprofv3 1.1.0 / gfx1151: all DFlash drafter kernels and topk_rows_i32_kernel ran with Scratch_Size=0; representative durations are recorded in docs/KERNELS.md.
+```

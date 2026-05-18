@@ -14,13 +14,18 @@ from hipengine.kernels.hip_gfx1100.linear import (
 )
 from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_accept_chain_i32,
+    dflash_add_bf16,
     dflash_commit_chain_i32,
+    dflash_concat_rows_bf16,
+    dflash_concat_rows_f32,
+    dflash_dense_bf16_to_bf16,
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
     dflash_head_rmsnorm_rotary_f32,
     dflash_prepare_noise_inputs_bf16_i32,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
     dflash_rmsnorm_bf16,
+    dflash_silu_mul_bf16,
     plan_dflash_accept_build,
     plan_dflash_commit_build,
     plan_dflash_drafter_build,
@@ -87,9 +92,26 @@ def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
         resolve(backend="hip_gfx1151", layer="dflash_prepare_noise_inputs", quant="w4_paro", variant="f16_to_bf16_i32")
         is dflash_prepare_noise_inputs_f16_to_bf16_i32
     )
+    assert resolve(backend="hip_gfx1151", layer="dflash_add", quant="w4_paro", variant="bf16") is dflash_add_bf16
+    assert (
+        resolve(backend="hip_gfx1151", layer="dflash_concat_rows", quant="w4_paro", variant="f32")
+        is dflash_concat_rows_f32
+    )
+    assert (
+        resolve(backend="hip_gfx1151", layer="dflash_concat_rows", quant="w4_paro", variant="bf16")
+        is dflash_concat_rows_bf16
+    )
     assert (
         resolve(backend="hip_gfx1151", layer="dflash_rmsnorm", quant="w4_paro", variant="bf16")
         is dflash_rmsnorm_bf16
+    )
+    assert (
+        resolve(backend="hip_gfx1151", layer="dflash_silu_mul", quant="w4_paro", variant="bf16")
+        is dflash_silu_mul_bf16
+    )
+    assert (
+        resolve(backend="hip_gfx1151", layer="dflash_dense", quant="w4_paro", variant="bf16_to_bf16")
+        is dflash_dense_bf16_to_bf16
     )
     assert (
         resolve(backend="hip_gfx1151", layer="dflash_dense", quant="w4_paro", variant="bf16_to_f32")
@@ -116,6 +138,10 @@ def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hi
         lm_head_fp16_argmax_bf16_rows_i32(0, 0, 0, 0, 0, 0, None, rows=1, hidden_size=8, vocab_size=0)
     with pytest.raises(ValueError, match="top_k"):
         topk_f32_rows_i32(0, None, 0, rows=1, vocab_size=16, top_k=9)
+    with pytest.raises(ValueError, match="elements"):
+        dflash_add_bf16(0, 0, 0, elements=0)
+    with pytest.raises(ValueError, match="features"):
+        dflash_concat_rows_bf16(0, 0, 0, batch_size=1, context_len=1, query_len=1, features=0)
     with pytest.raises(ValueError, match="hidden_size"):
         dflash_rmsnorm_bf16(
             0,
@@ -124,6 +150,10 @@ def test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hi
             rows=1,
             hidden_size=0,
         )
+    with pytest.raises(ValueError, match="elements"):
+        dflash_silu_mul_bf16(0, 0, 0, elements=0)
+    with pytest.raises(ValueError, match="out_features"):
+        dflash_dense_bf16_to_bf16(0, 0, 0, rows=1, in_features=4, out_features=0)
     with pytest.raises(ValueError, match="in_features"):
         dflash_dense_bf16_to_f32(
             0,

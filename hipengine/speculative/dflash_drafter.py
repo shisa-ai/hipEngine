@@ -208,6 +208,38 @@ def project_dflash_target_hidden_bf16(
     return out_projected
 
 
+def dflash_add_bf16(a: Tensor, b: Tensor, out: Tensor, *, stream: int = 0, library: object | None = None, threads: int = 256) -> Tensor:
+    """Elementwise BF16 residual add for DFlash block wiring."""
+
+    elements = _validate_same_shape_bf16("dflash_add", a, b, out)
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_add_bf16 as _launch_add
+
+    _launch_add(a.ptr, b.ptr, out.ptr, elements, threads=threads, stream=stream, library=library)  # type: ignore[arg-type]
+    return out
+
+
+def dflash_concat_rows(context: Tensor, query: Tensor, out: Tensor, *, stream: int = 0, library: object | None = None, threads: int = 256) -> Tensor:
+    """Concatenate context+query rows on device for DFlash K/V assembly."""
+
+    batch, context_len, query_len, features, dtype = _validate_concat_tensors(context, query, out)
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_concat_rows_bf16, dflash_concat_rows_f32
+
+    launcher = dflash_concat_rows_bf16 if dtype == DType.BF16 else dflash_concat_rows_f32
+    launcher(
+        context.ptr,
+        query.ptr,
+        out.ptr,
+        batch,
+        context_len,
+        query_len,
+        features,
+        threads=threads,
+        stream=stream,
+        library=library,  # type: ignore[arg-type]
+    )
+    return out
+
+
 def dflash_rmsnorm_bf16(
     hidden: Tensor,
     weight: Tensor,
@@ -237,6 +269,34 @@ def dflash_rmsnorm_bf16(
     return out
 
 
+def project_dflash_bf16_to_bf16(
+    hidden: Tensor,
+    weight: Tensor,
+    out: Tensor,
+    *,
+    stream: int = 0,
+    library: object | None = None,
+    threads: int = 128,
+) -> Tensor:
+    """Run a BF16 drafter projection and keep BF16 output storage."""
+
+    rows, in_features, out_features = _validate_dense_projection_tensors(hidden, weight, out, out_dtype=DType.BF16)
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_dense_bf16_to_bf16
+
+    dflash_dense_bf16_to_bf16(
+        hidden.ptr,
+        weight.ptr,
+        out.ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,  # type: ignore[arg-type]
+    )
+    return out
+
+
 def project_dflash_bf16_to_f32(
     hidden: Tensor,
     weight: Tensor,
@@ -248,7 +308,7 @@ def project_dflash_bf16_to_f32(
 ) -> Tensor:
     """Run a BF16 drafter projection and keep FP32 logits/heads for downstream math."""
 
-    rows, in_features, out_features = _validate_dense_projection_tensors(hidden, weight, out)
+    rows, in_features, out_features = _validate_dense_projection_tensors(hidden, weight, out, out_dtype=DType.FP32)
     from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_dense_bf16_to_f32
 
     dflash_dense_bf16_to_f32(
@@ -401,6 +461,37 @@ def draft_batch_from_topk(
     return compile_dflash_chain(requests, candidate_budget=candidate_budget, pad_token_id=pad_token_id)
 
 
+def _validate_same_shape_bf16(name: str, a: Tensor, b: Tensor, out: Tensor) -> int:
+    if a.shape != b.shape or a.shape != out.shape:
+        raise ValueError(f"{name} tensors must share shape")
+    if a.dtype != DType.BF16 or b.dtype != DType.BF16 or out.dtype != DType.BF16:
+        raise ValueError(f"{name} tensors must use BF16 storage")
+    if b.device != a.device or out.device != a.device:
+        raise ValueError(f"{name} tensors must live on the same device")
+    elements = 1
+    for dim in a.shape:
+        elements *= int(dim)
+    return elements
+
+
+def _validate_concat_tensors(context: Tensor, query: Tensor, out: Tensor) -> tuple[int, int, int, int, DType]:
+    if context.ndim != 3 or query.ndim != 3 or out.ndim != 3:
+        raise ValueError("DFlash concat tensors must be rank-3 [batch, rows, features]")
+    batch, context_len, features = context.shape
+    q_batch, query_len, q_features = query.shape
+    if (q_batch, q_features) != (batch, features):
+        raise ValueError("query rows must match context batch/features")
+    if out.shape != (batch, context_len + query_len, features):
+        raise ValueError("concat output shape must be [batch, context_len + query_len, features]")
+    if context.dtype != query.dtype or out.dtype != context.dtype:
+        raise ValueError("concat tensors must share dtype")
+    if context.dtype not in {DType.BF16, DType.FP32}:
+        raise ValueError("concat dtype must be BF16 or FP32")
+    if query.device != context.device or out.device != context.device:
+        raise ValueError("concat tensors must live on the same device")
+    return int(batch), int(context_len), int(query_len), int(features), context.dtype
+
+
 def _validate_rmsnorm_tensors(hidden: Tensor, weight: Tensor, out: Tensor) -> tuple[int, int]:
     if hidden.ndim != 2 or out.ndim != 2 or weight.ndim != 1:
         raise ValueError("DFlash RMSNorm tensors must be rank-2 hidden/out plus rank-1 weight")
@@ -417,7 +508,17 @@ def _validate_rmsnorm_tensors(hidden: Tensor, weight: Tensor, out: Tensor) -> tu
     return int(rows), int(hidden_size)
 
 
-def _validate_dense_projection_tensors(hidden: Tensor, weight: Tensor, out: Tensor) -> tuple[int, int, int]:
+def dflash_silu_mul_bf16(gate: Tensor, up: Tensor, out: Tensor, *, stream: int = 0, library: object | None = None, threads: int = 256) -> Tensor:
+    """Elementwise BF16 SiLU(gate) * up for DFlash MLP wiring."""
+
+    elements = _validate_same_shape_bf16("dflash_silu_mul", gate, up, out)
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_silu_mul_bf16 as _launch_silu
+
+    _launch_silu(gate.ptr, up.ptr, out.ptr, elements, threads=threads, stream=stream, library=library)  # type: ignore[arg-type]
+    return out
+
+
+def _validate_dense_projection_tensors(hidden: Tensor, weight: Tensor, out: Tensor, *, out_dtype: DType) -> tuple[int, int, int]:
     if hidden.ndim != 2 or weight.ndim != 2 or out.ndim != 2:
         raise ValueError("DFlash dense projection tensors must be rank-2")
     rows, in_features = hidden.shape
@@ -428,8 +529,8 @@ def _validate_dense_projection_tensors(hidden: Tensor, weight: Tensor, out: Tens
         raise ValueError(f"projection output must have shape {(rows, out_features)}")
     if hidden.dtype != DType.BF16 or weight.dtype != DType.BF16:
         raise ValueError("projection hidden and weight tensors must use BF16 storage")
-    if out.dtype != DType.FP32:
-        raise ValueError("projection output must use FP32 storage")
+    if out.dtype != out_dtype:
+        raise ValueError(f"projection output must use {out_dtype.name} storage")
     if weight.device != hidden.device or out.device != hidden.device:
         raise ValueError("projection tensors must live on the same device")
     return int(rows), int(in_features), int(out_features)
@@ -579,11 +680,15 @@ def _validate_projection_tensors(
 __all__ = [
     "DFlashRootQueryPlan",
     "DFlashRootQueryRequest",
+    "dflash_add_bf16",
+    "dflash_concat_rows",
     "dflash_gqa_attention_bf16",
     "dflash_head_rmsnorm_rotary_f32",
     "dflash_rmsnorm_bf16",
     "draft_batch_from_topk",
+    "project_dflash_bf16_to_bf16",
     "project_dflash_bf16_to_f32",
     "prepare_dflash_noise_inputs_bf16",
     "project_dflash_target_hidden_bf16",
+    "dflash_silu_mul_bf16",
 ]

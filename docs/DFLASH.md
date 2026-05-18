@@ -439,17 +439,22 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   run native target-hidden projection (`fc + hidden_norm`) with
   `dense_gemv_out_bf16` + direct-weight `dflash_rmsnorm_bf16`, validate BF16 dense
   projection to FP32 (`dflash_dense_bf16_to_f32`) for Q/K-style drafter
-  projections, validate direct-weight head RMSNorm+rotary
+  projections, validate BF16 add/concat/SiLU/dense BF16 outputs for residual and
+  MLP wiring, validate direct-weight head RMSNorm+rotary
   (`dflash_head_rmsnorm_rotary_f32`), and validate the correctness-first
   non-causal GQA attention primitive `dflash_gqa_attention_f32_bf16` against a
   NumPy BF16 oracle.
 - Materialize committed target hidden rows into draft KV cache incrementally.
 - Draft forward computes only root/query rows; context K/V are read from draft KV.
-- **Partial landed 2026-05-18:** add compact draft lm-head top-k primitive
-  `topk_f32_rows_i32` and candidate-only `DraftBatch` emission from top-k rows;
-  full DFlash decoder block execution is still pending.
-- Correctness gate: native drafter top1/topk matches the current Python harness
-  within established tolerance on fixed prompts.
+- **Landed 2026-05-18:** add compact draft lm-head top-k primitive
+  `topk_f32_rows_i32`, candidate-only `DraftBatch` emission from top-k rows, and
+  a deterministic one-layer tiny DFlash decoder-block smoke. Native top-k
+  matches `fixtures/dflash/drafter_root_query_parent_fixture.json`, generated
+  from the parent/PyTorch `dflash.py` harness, exactly (`[[5,9,6],[8,2,5]]`)
+  with native-vs-parent logits `max_abs=4.802e-03`.
+- Remaining integration work: generalize the tiny block sequence into reusable
+  runtime workspaces over z-lab layer weights and connect real target lm-head
+  output rows to `DraftBatch` for throughput benchmarks.
 
 ### Phase D4 — DDTree compiler and tree verify
 
