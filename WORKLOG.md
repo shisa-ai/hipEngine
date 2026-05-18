@@ -17367,3 +17367,80 @@ python3 scripts/smoke.py --mode registry && \
 python3 scripts/smoke.py --mode cpu-fixtures
 # pytest: 324 passed; CPU fixtures passed; registry smoke printed expected missing embed kernel; cpu-fixtures smoke passed.
 ```
+
+## 2026-05-18 — task #16 256K INT8 KV capacity attempt
+
+Ran the 256K/128 dense `int8_per_token_head` KV capacity row on W7900/gfx1100. Before the capacity run I changed the INT8 prefill BF16 oracle workspace from per-full-attention-layer names to layer-reused names (`prefill.int8_oracle_key/value`). The oracle K/V is only needed while processing the current full-attention layer, so reusing it avoids retaining ten full BF16 oracle caches during long-context prefill; the workspace is still released before decode and no persistent BF16 shadow remains.
+
+Environment / setup:
+
+```bash
+RUN=/tmp/hipengine-task16-256k-int8-capacity
+hipcc --version > "$RUN/hipcc-version.txt"
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -24
+rocm-smi --showpids --showmeminfo vram --showuse --showtemp
+# hip OK; rocminfo reported gfx1100 / AMD Radeon Pro W7900.
+# Before run: no KFD PIDs; VRAM used 27,942,912 B / 48,301,604,864 B.
+```
+
+Correctness / no-shadow gates:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_bench_memory_audit.py -q
+# 34 passed.
+
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build --require-int8-hip \
+  --json "$RUN/qwen35-kv-int8-accuracy-hip.json"
+# status=accepted, passed=true.
+# ctx64 INT8 HIP max_abs=5.2154e-08; quantized-vs-BF16 KL=2.3353e-07, top1=1.0.
+# ctx520 INT8 HIP max_abs=1.8626e-08; quantized-vs-BF16 KL=4.4598e-08, top1=1.0.
+
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head --compiler-version-file "$RUN/hipcc-version.txt" \
+  --require-cached-build --json "$RUN/qwen35-kv-e2e-fixture-gate-int8.json"
+# status=accepted, passed=true; max_kl=0.015328251530778358;
+# top1_agreement=1.0; generated_match=true; expected_match=true.
+```
+
+Capacity command:
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 262144 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage int8_per_token_head \
+  --json "$RUN/qwen35-paro-256k128-int8.json"
+```
+
+Result: completed but **blocked for 24 GiB-class promotion**.
+
+- Timing (diagnostic only): prefill `624.2235817135025 tok/s`, decode `40.81907685897756 tok/s`.
+- Correctness/no-shadow: audit passed, no persistent BF16 KV shadow; generated preview `[9707, 9707]`.
+- Memory: tracked peak `25.69975107256323 GiB`; sampled HIP VRAM peak `24.329833984375 GiB`.
+- 24 GiB target deltas: sampled `+0.329833984375 GiB`, tracked `+1.699751072563231 GiB`.
+- Retained KV/scales: payload `2,686,976,000 B` (`1.0 B/element`), scale metadata `20,992,000 B`, total `2,707,968,000 B`.
+- Exact promotion blockers recorded in artifact:
+  - persistent full-prompt prefill double buffer from `_allocate_common_buffers`: `2 x [262277,4096] fp16` = `4,297,146,368 B` total, live through decode;
+  - dense INT8 KV/scales plus decode scratch;
+  - temporary BF16 oracle K/V is now one reused K/V pair (`537,395,200 B`) and is released before decode, so it affects tracked high-water only and is not a persistent shadow.
+
+Artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json`. Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the blocked capacity attempt. Next implementation target for 256K under 24 GiB is reducing persistent full-prompt prefill I/O buffering (for example, chunk-sized output staging or freeing/reallocating prefill buffers around decode); not a KV shadow issue.
+
+Post-change validation:
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest: 324 passed; CPU fixtures passed; registry smoke printed expected missing embed kernel; cpu-fixtures smoke passed.
+```

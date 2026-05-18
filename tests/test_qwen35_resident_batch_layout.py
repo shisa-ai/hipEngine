@@ -322,7 +322,7 @@ def test_qwen35_resident_native_prefill_layers_use_int8_retained_cache_and_bf16_
     assert [call[1]["aotriton_kv_rows"] for call in state.run_calls] == [2, 4]
     assert all(call[1]["cu_seqlens_q"] is not None for call in state.run_calls)
     assert all(call[1]["cu_seqlens_k"] is not None for call in state.run_calls)
-    assert [item[0] for item in workspace.calls] == ["prefill.int8_oracle_key.0", "prefill.int8_oracle_value.0"]
+    assert [item[0] for item in workspace.calls] == ["prefill.int8_oracle_key", "prefill.int8_oracle_value"]
     for _hidden, kwargs in state.run_calls:
         assert kwargs["key_cache"].dtype is DType.BF16
         assert kwargs["value_cache"].dtype is DType.BF16

@@ -1779,8 +1779,14 @@ class Qwen35ParoResidentSession:
 
         blocks = max(1, (int(total_tokens) + self.block_size - 1) // self.block_size)
         shape = (blocks, self.block_size, self.config.num_key_value_heads, self.config.head_dim)
-        key = self.prefill_workspace.reserve_tensor(f"prefill.int8_oracle_key.{int(layer_id)}", shape, DType.BF16)
-        value = self.prefill_workspace.reserve_tensor(f"prefill.int8_oracle_value.{int(layer_id)}", shape, DType.BF16)
+        # The BF16 oracle cache is needed only while processing the current
+        # full-attention layer. Reuse the same workspace slots across layers so
+        # long-context INT8 prefill does not retain one full BF16 shadow per
+        # layer before _restore_decode_scratch_after_prefill() releases the
+        # prefill workspace.
+        _ = layer_id
+        key = self.prefill_workspace.reserve_tensor("prefill.int8_oracle_key", shape, DType.BF16)
+        value = self.prefill_workspace.reserve_tensor("prefill.int8_oracle_value", shape, DType.BF16)
         return key, value
 
     def _full_cache_all_slots(self, layer_id: int) -> tuple[Tensor, Tensor]:

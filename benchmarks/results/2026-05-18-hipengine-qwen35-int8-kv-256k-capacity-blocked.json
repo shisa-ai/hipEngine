@@ -1,0 +1,334 @@
+{
+  "schema": 1,
+  "date": "2026-05-18",
+  "status": "blocked",
+  "performance_claim": false,
+  "task": "Run 256K INT8 capacity row",
+  "decision": "blocked_capacity_promotion_exceeds_24gib_target",
+  "blocked_reason": "completed_but_exceeded_24gib_class_memory_target",
+  "model": "Qwen3.5-35B-A3B-PARO",
+  "model_path": "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd",
+  "quant": "w4_paro",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "source_commit_before_artifact": "0409f12",
+  "hipcc_version_file": "/tmp/hipengine-task16-256k-int8-capacity/hipcc-version.txt",
+  "hipcc_version_first_line": "HIP version: 7.2.53211-d40244d",
+  "capacity_target": {
+    "target_peak_gib": 24.0,
+    "sampled_hip_peak_gib": 24.329833984375,
+    "sampled_hip_peak_over_target_gib": 0.329833984375,
+    "tracked_peak_allocated_gib": 25.69975107256323,
+    "tracked_peak_over_target_gib": 1.699751072563231,
+    "passed": false,
+    "note": "Run completed and no-shadow audit passed, but it is not promoted as a 24GiB-class capacity row because memory exceeded the target."
+  },
+  "workload": {
+    "label": "256K/128",
+    "prompt_length": 262144,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 4,
+    "max_sequence_length": 262277,
+    "token_id": 9707,
+    "max_layers": 40,
+    "attn_aotriton_min_tokens": 512,
+    "prefill_chunk_sizes": {
+      "linear": 1024,
+      "moe": 1024,
+      "full_attn_query": 4096,
+      "full_attn_post": 1024,
+      "full_attn_rope": 1024
+    },
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "kv_policy": {
+      "policy_class": "FixedPagedKVPolicy",
+      "spans_mode": "uniform",
+      "block_size": 256,
+      "requested_storage": "int8_per_token_head",
+      "resolved_storage_dtype": "int8_per_token_head",
+      "storage_dtype": "int8_per_token_head",
+      "requested_scale_dtype": "fp16",
+      "requested_scale_granularity": "per_token_head",
+      "scale_metadata_format": {
+        "present": true,
+        "scale_dtype": "fp16",
+        "granularity": "per_token_head",
+        "k_scale": "per_token_head",
+        "v_scale": "per_token_head"
+      },
+      "int8_explicit": true,
+      "int8_admission_gated": false,
+      "selection_reason": "explicit_int8"
+    }
+  },
+  "command": "python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 262144 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-task16-256k-int8-capacity/hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --kv-storage int8_per_token_head --json /tmp/hipengine-task16-256k-int8-capacity/qwen35-paro-256k128-int8.json",
+  "raw_files": {
+    "run_root": "/tmp/hipengine-task16-256k-int8-capacity",
+    "benchmark_json": "/tmp/hipengine-task16-256k-int8-capacity/qwen35-paro-256k128-int8.json",
+    "benchmark_stdout": "/tmp/hipengine-task16-256k-int8-capacity/qwen35-paro-256k128-int8.log",
+    "benchmark_stderr": "/tmp/hipengine-task16-256k-int8-capacity/qwen35-paro-256k128-int8.err",
+    "accuracy_json": "/tmp/hipengine-task16-256k-int8-capacity/qwen35-kv-int8-accuracy-hip.json",
+    "fixture_gate_json": "/tmp/hipengine-task16-256k-int8-capacity/qwen35-kv-e2e-fixture-gate-int8.json"
+  },
+  "correctness": {
+    "targeted_pytest": {
+      "passed": true,
+      "tests": 34,
+      "command": "python3 -m pytest tests/test_qwen35_resident_batch_layout.py tests/test_qwen35_bench_memory_audit.py -q",
+      "log": "/tmp/hipengine-task16-256k-int8-capacity/pytest-targeted.log"
+    },
+    "layer_accuracy_hip": {
+      "status": "accepted",
+      "passed": true,
+      "thresholds": {
+        "max_abs_attn": 0.005,
+        "kl_mean_max": 0.05,
+        "top1_agreement_min": 0.9
+      },
+      "cases": [
+        {
+          "context_len": 64,
+          "int8_hip_max_abs_attn": 5.21540641784668e-08,
+          "int8_hip_pseudo_logit_kl_max": 1.2258514734364821e-15,
+          "int8_hip_pseudo_logit_top1": 1.0,
+          "quantized_vs_bf16_kl_max": 2.3352905641751685e-07,
+          "quantized_vs_bf16_top1": 1.0
+        },
+        {
+          "context_len": 520,
+          "int8_hip_max_abs_attn": 1.862645149230957e-08,
+          "int8_hip_pseudo_logit_kl_max": 1.1048968944809161e-16,
+          "int8_hip_pseudo_logit_top1": 1.0,
+          "quantized_vs_bf16_kl_max": 4.459814455747262e-08,
+          "quantized_vs_bf16_top1": 1.0
+        }
+      ]
+    },
+    "e2e_fixture_gate": {
+      "status": "accepted",
+      "passed": true,
+      "fixture": "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+      "thresholds": {
+        "kl_max": 0.05,
+        "top1_agreement_min": 0.9
+      },
+      "max_kl": 0.015328251530778358,
+      "mean_kl": 0.001639289025262575,
+      "top1_agreement": 1.0,
+      "generated_match": true,
+      "expected_match": true,
+      "candidate_generated_ids": [
+        1739,
+        220,
+        16,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        15
+      ]
+    },
+    "benchmark_preview": {
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.422466278076172
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 28.630525588989258
+        }
+      ],
+      "generated_preview_token_ids": [
+        9707,
+        9707
+      ]
+    }
+  },
+  "timing": {
+    "load_seconds": 25.76103585702367,
+    "prefill_seconds": 419.95209357584827,
+    "warmup_decode_seconds": 0.1033035151194781,
+    "decode_seconds": 3.1357887010090053,
+    "prefill_tok_s": 624.2235817135025,
+    "warmed_decode_tok_s": 40.81907685897756,
+    "warmed_decode_step_median_s": 0.024498349226632854
+  },
+  "memory": {
+    "tracked_peak_allocated_bytes": 27594897593,
+    "tracked_peak_allocated_gib": 25.69975107256323,
+    "sampled_hip_vram_peak_bytes": 26123960320,
+    "sampled_hip_vram_peak_gib": 24.329833984375,
+    "after_load_hip_used_gib": 23.970703125,
+    "after_prefill_hip_used_gib": 24.323974609375,
+    "after_decode_hip_used_gib": 24.329833984375,
+    "after_close_hip_used_gib": 0.224365234375,
+    "owned_direct_bytes_after_decode": 7666999169,
+    "retained_kv": {
+      "layer_count": 10,
+      "layer_ids": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "storage_dtype": "int8_per_token_head",
+      "payload_dtype": "int8",
+      "key_shape_per_layer": [
+        1025,
+        256,
+        2,
+        256
+      ],
+      "value_shape_per_layer": [
+        1025,
+        256,
+        2,
+        256
+      ],
+      "payload_bytes_per_layer": 268697600,
+      "payload_bytes_total": 2686976000,
+      "payload_elements_total": 2686976000,
+      "payload_bytes_per_element": 1.0,
+      "scale_dtype": "fp16",
+      "scale_granularity": "per_token_head",
+      "k_scale_shape_per_layer": [
+        1025,
+        256,
+        2
+      ],
+      "v_scale_shape_per_layer": [
+        1025,
+        256,
+        2
+      ],
+      "scale_bytes_per_layer": 2099200,
+      "scale_bytes_total": 20992000,
+      "total_kv_and_scale_bytes": 2707968000
+    },
+    "no_shadow_audit": {
+      "passed": true,
+      "persistent_bf16_shadow_exists": false,
+      "persistent_bf16_kv_layers": [],
+      "bf16_shadow_candidates": [],
+      "violations": []
+    }
+  },
+  "memory_blocker_analysis": {
+    "promotion_blocker": "sampled HIP peak and tracked allocator peak exceed the 24GiB capacity target",
+    "exact_paths": [
+      {
+        "path": "Qwen35ParoResidentSession._allocate_common_buffers: prefill_hidden and prefill_next_hidden",
+        "shape_each": [
+          262277,
+          4096
+        ],
+        "dtype": "fp16",
+        "bytes_each": 2148573184,
+        "bytes_total": 4297146368,
+        "note": "Persistent full-prompt double buffer remains live through decode in the current resident session."
+      },
+      {
+        "path": "retained dense full-attention KV cache",
+        "summary": {
+          "layer_count": 10,
+          "layer_ids": [
+            3,
+            7,
+            11,
+            15,
+            19,
+            23,
+            27,
+            31,
+            35,
+            39
+          ],
+          "storage_dtype": "int8_per_token_head",
+          "payload_dtype": "int8",
+          "key_shape_per_layer": [
+            1025,
+            256,
+            2,
+            256
+          ],
+          "value_shape_per_layer": [
+            1025,
+            256,
+            2,
+            256
+          ],
+          "payload_bytes_per_layer": 268697600,
+          "payload_bytes_total": 2686976000,
+          "payload_elements_total": 2686976000,
+          "payload_bytes_per_element": 1.0,
+          "scale_dtype": "fp16",
+          "scale_granularity": "per_token_head",
+          "k_scale_shape_per_layer": [
+            1025,
+            256,
+            2
+          ],
+          "v_scale_shape_per_layer": [
+            1025,
+            256,
+            2
+          ],
+          "scale_bytes_per_layer": 2099200,
+          "scale_bytes_total": 20992000,
+          "total_kv_and_scale_bytes": 2707968000
+        },
+        "note": "Expected INT8 capacity cost; audit shows 1.0 byte/element payload and no BF16 shadow."
+      },
+      {
+        "path": "Qwen35ParoResidentSession._prefill_int8_oracle_cache: reused temporary BF16 oracle K/V for AOTriton prefill",
+        "shape_per_key_or_value": [
+          1025,
+          256,
+          2,
+          256
+        ],
+        "temporary_kv_bytes": 537395200,
+        "persistent_after_prefill": false,
+        "note": "Affects tracked allocator high-water but is released before decode; no persistent BF16 shadow."
+      }
+    ]
+  },
+  "notes": [
+    "This is a blocked capacity-promotion artifact, not a throughput claim: the 256K/128 INT8 run completed and correctness/no-shadow checks passed, but memory exceeded the 24GiB-class target.",
+    "The previous per-layer BF16 oracle allocation was replaced with a layer-reused oracle workspace before this run; remaining blocker is persistent full-prompt prefill I/O buffers plus expected dense KV/scales and decode scratch."
+  ]
+}
