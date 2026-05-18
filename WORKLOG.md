@@ -17059,3 +17059,33 @@ python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 4 \
 # scale_metadata_format={present:true, scale_dtype:fp16, granularity:per_token_head},
 # int8_explicit=true, int8_admission_gated=false.
 ```
+
+## 2026-05-18 - K1 INT8 KV E2E fixture gate
+
+Completed task #4: added a dedicated BF16-vs-candidate KV end-to-end fixture gate for Qwen3.5/PARO.
+
+Implementation notes:
+
+- New `scripts/qwen35_kv_e2e_fixture_gate.py` runs the fixed parent prompt/decode fixture twice: BF16 KV native prefill/decode as the reference and `--kv-storage {auto,bf16,int8_per_token_head}` as the candidate; the gate defaults to the INT8 candidate and still allows forcing BF16.
+- The gate collects full lm-head logits at the prefill seed and each decode step, computes KL and top-1 agreement, and records generated-token equality vs both the BF16 reference and fixture expected IDs.
+- JSON artifacts include fixture path, storage dtype, reference/candidate KV policy metadata, thresholds, generated IDs, logit position labels, KL/top-1 gate results, memory audit for INT8 payload/scales, and pass/fail.
+- Added unit coverage with fake resident sessions for accepted INT8 metadata/logit gates and generated-token mismatch rejection.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/qwen35_kv_e2e_fixture_gate.py tests/test_qwen35_kv_e2e_fixture_gate.py && \
+python3 -m pytest tests/test_qwen35_kv_e2e_fixture_gate.py -q
+# targeted tests passed.
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# full pytest, CPU fixtures, and registry/cpu smokes passed.
+
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --help >/tmp/qwen35_kv_e2e_fixture_gate_help.txt
+# help output exposes --kv-storage, --kv-scale-dtype, --kv-scale-granularity,
+# --kl-threshold, and --top1-threshold.
+```
