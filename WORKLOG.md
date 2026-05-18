@@ -17725,3 +17725,49 @@ git diff --check
 # rocprofv3 1.1.0 / gfx1151: dense BF16→F32 count=4 DurationNs 1322–3768 Scratch_Size=0; key RMSNorm+RoPE count=4 DurationNs 1683–3447 Scratch_Size=0; dense BF16→BF16 count=4 DurationNs 1282–2084 Scratch_Size=0; metadata update count=2 DurationNs 1162–1684 Scratch_Size=0.
 # lineage: expected pre-existing baseline drift; DFlash R1 tree entries clean.
 ```
+
+## 2026-05-18 — DFlash chain correctness harness (D14)
+
+### Scope
+
+- Added `scripts/dflash_chain_correctness_harness.py`, a correctness-first stable-prompt harness for budgets `N={2,4,8}` and cases `reject_at_root`, `partial_accept`, and `full_accept`.
+- The harness connects the landed native scaffold boundaries end-to-end:
+  stable prompt fixture → deterministic drafter candidates → candidate-only `DraftBatch` → `TargetVerifyBatch.from_draft()` root materialization → GPU `dflash_accept_chain_i32` summary → GPU `dflash_commit_chain_i32` synthetic state/KV commit-copy check.
+- Each row records same-session AR baseline ids, generated ids, accepted count, selected commit row/token/position, GPU commit rows, finite draft/verify flags, and `throughput_claim_eligible=false`.
+- This remains a correctness harness rather than a performance claim: target/drafter logits are deterministic finite fixtures, not a throughput runner over the full resident Qwen runtime.
+
+### Validation
+
+```bash
+python3 -m py_compile scripts/dflash_chain_correctness_harness.py
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_correctness_harness.py \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build \
+    --output /tmp/dflash-chain-correctness.json
+python3 - <<'PY'
+import json
+a=json.load(open('/tmp/dflash-chain-correctness.json'))
+print(a['summary'])
+assert a['summary']['all_exact_match_ar']
+assert a['summary']['all_gpu_accept_match_cpu']
+assert a['summary']['all_gpu_commit_copy_match_cpu']
+assert not a['summary']['throughput_claim_eligible']
+PY
+python3 -m pytest -q \
+  tests/test_speculative_benchmark.py \
+  tests/test_dflash_context_kv.py \
+  tests/test_dflash_drafter.py \
+  tests/test_dflash_accept_kernels.py \
+  tests/test_dflash_metadata.py \
+  tests/test_dflash_chain_compiler.py \
+  tests/test_speculative_interfaces.py
+! grep -RInE 'import torch|torch\.' \
+  scripts/dflash_chain_correctness_harness.py \
+  hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_context.py \
+  hipengine/speculative/dflash_drafter.py
+git diff --check
+# harness summary: {'all_exact_match_ar': True, 'all_finite_logits': True, 'all_gpu_accept_match_cpu': True, 'all_gpu_commit_copy_match_cpu': True, 'rows': 9, 'throughput_claim_eligible': False}
+# pytest: 53 passed
+```

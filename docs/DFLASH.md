@@ -460,6 +460,13 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   matches `fixtures/dflash/drafter_root_query_parent_fixture.json`, generated
   from the parent/PyTorch `dflash.py` harness, exactly (`[[5,9,6],[8,2,5]]`)
   with native-vs-parent logits `max_abs=4.802e-03`.
+- **Landed 2026-05-18:** add `scripts/dflash_chain_correctness_harness.py`, a
+  stable-prompt correctness loop for budgets `N={2,4,8}` and reject/partial/full
+  cases. It connects deterministic drafter candidates → candidate-only
+  `DraftBatch` → `TargetVerifyBatch` root insertion → GPU accept summary → GPU
+  commit-copy check, records generated ids and commit rows, matches same-session
+  AR token streams exactly, keeps finite draft/verify flags true, and marks
+  `throughput_claim_eligible=false`.
 - Remaining integration work: generalize the tiny block sequence into reusable
   runtime workspaces over z-lab layer weights and connect real target lm-head
   output rows to `DraftBatch` for throughput benchmarks.
