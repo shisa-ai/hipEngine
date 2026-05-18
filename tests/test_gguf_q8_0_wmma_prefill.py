@@ -117,14 +117,26 @@ def test_gguf_q8_0_wmma_prefill_registry_and_build_plan() -> None:
 
 
 def test_gguf_q8_0_wmma_prefill_default_tiles_match_paro_heuristic() -> None:
-    """The (rows, out_features) -> (tile_m, tile_n) heuristic matches the plan."""
+    """P9.C1 tuned heuristic: shape-aware (tile_m, tile_n) defaults.
 
-    # rows >= 32 -> tile_n = 32; otherwise tile_n = 16.
+    Pinning test for the per-shape dispatch decision. Each assertion below
+    is anchored to a microbench-best tile measured on RX 7900 XTX / gfx1100
+    at rows=512, BF16/BF16. Changing the heuristic must also change these
+    assertions deliberately (with new microbench evidence).
+    """
+
+    # P9.C1 sweep: at rows=512 the optimal TN is 32 across all out_features.
+    # rows < 32 falls back to TN=16 because the bigger TN under-utilises the
+    # WMMA tile.
     assert _default_tiles(rows=512, out_features=2048) == (32, 32)
+    assert _default_tiles(rows=512, out_features=4096) == (64, 32)  # shexp gate/up; 2x vs (32,32)
+    assert _default_tiles(rows=512, out_features=8192) == (64, 32)  # shexp gate+up concat (dual)
     assert _default_tiles(rows=32, out_features=2048) == (32, 32)
+    assert _default_tiles(rows=32, out_features=4096) == (64, 32)
     assert _default_tiles(rows=31, out_features=2048) == (32, 16)
+    assert _default_tiles(rows=31, out_features=4096) == (64, 16)
     assert _default_tiles(rows=8, out_features=2048) == (32, 16)
-    # tile_m falls back to 16 only when out_features < 32 (rare; lm_head etc.)
+    # tile_m falls back to 16 only when out_features < 32 (rare; lm_head etc.).
     assert _default_tiles(rows=512, out_features=16) == (16, 32)
 
     for tm, tn in _ALLOWED_TILES:

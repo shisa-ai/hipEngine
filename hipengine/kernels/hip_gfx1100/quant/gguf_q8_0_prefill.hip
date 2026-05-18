@@ -289,6 +289,187 @@ int launch_gguf_q8_0_prefill_wmma(
 #undef HIPENGINE_LAUNCH_Q8_0_WMMA
 }
 
+// -------------------------------------------------------------------------
+// P9.C1 dual gate+up variant for the shared-expert prefill path.
+//
+// Same per-block compute as ``gguf_q8_0_prefill_wmma_kernel`` but with two
+// weight tensors. The output is the row-major concatenated layout
+// ``[rows, out_features_a + out_features_b]`` that ``silu_mul_dual_out_*``
+// consumes directly (matching the P9.B3 decode-side dual). Each col_tile
+// targets either the gate (``qweight_a``) or the up (``qweight_b``)
+// weights based on ``out_tile * AWQ_TILE_M >= out_features_a``; callers
+// must align ``out_features_a`` and ``out_features_b`` to ``AWQ_TILE_M``.
+// -------------------------------------------------------------------------
+template <typename scalar_t, typename out_t, int AWQ_TILE_M, int AWQ_TILE_N>
+__launch_bounds__(32, 8)
+__global__ void gguf_q8_0_prefill_dual_wmma_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features_a,
+    int out_features_b) {
+  constexpr int TM = AWQ_TILE_M / 16;
+  constexpr int TN = AWQ_TILE_N / 16;
+  const int out_tile = blockIdx.x;
+  const int row_tile = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int row_start = row_tile * AWQ_TILE_N;
+  const int out_start = out_tile * AWQ_TILE_M;
+  const int out_features_total = out_features_a + out_features_b;
+  if (row_start >= rows || out_start >= out_features_total) return;
+
+  const bool use_b = out_start >= out_features_a;
+  const int local_out_start = use_b ? (out_start - out_features_a) : out_start;
+  const int local_out_features = use_b ? out_features_b : out_features_a;
+  const uint8_t* __restrict__ qweight = use_b ? qweight_b : qweight_a;
+
+  const int blocks_per_row = in_features / Q8_0_BLOCK;
+  const int64_t row_bytes = static_cast<int64_t>(blocks_per_row) * Q8_0_BLOCK_BYTES;
+
+  int my_out[TM];
+  int safe_out[TM];
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+    my_out[tm] = local_out_start + tm * 16 + (tid & 15);
+    safe_out[tm] = (my_out[tm] < local_out_features) ? my_out[tm] : (local_out_features - 1);
+  }
+
+  int my_token[TN];
+  int safe_token[TN];
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    my_token[tn] = row_start + tn * 16 + (tid & 15);
+    safe_token[tn] = (my_token[tn] < rows) ? my_token[tn] : (rows - 1);
+  }
+
+  float8_t acc[TM][TN];
+#pragma unroll
+  for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+    for (int tn = 0; tn < TN; ++tn) {
+      acc[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+    }
+  }
+
+  for (int blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* block_ptr[TM];
+    half_t d_h[TM];
+#pragma unroll
+    for (int tm = 0; tm < TM; ++tm) {
+      block_ptr[tm] = qweight + static_cast<int64_t>(safe_out[tm]) * row_bytes +
+                      static_cast<int64_t>(blk) * Q8_0_BLOCK_BYTES;
+      d_h[tm] = static_cast<half_t>(fp16_bytes_to_float(block_ptr[tm]));
+    }
+
+    const int g_k_base = blk * Q8_0_BLOCK;
+
+#pragma unroll
+    for (int kt = 0; kt < K_TILES_PER_BLOCK; ++kt) {
+      const int k_off = kt * K_TILE;
+
+      half16_t b_reg[TN];
+#pragma unroll
+      for (int tn = 0; tn < TN; ++tn) {
+        const scalar_t* x_row =
+            x + static_cast<int64_t>(safe_token[tn]) * in_features;
+        b_reg[tn] = load_act_half16<scalar_t>(x_row + g_k_base + k_off);
+      }
+
+      half16_t a_reg;
+#pragma unroll
+      for (int tm = 0; tm < TM; ++tm) {
+        const int8_t* qs =
+            reinterpret_cast<const int8_t*>(block_ptr[tm] + 2);
+#pragma unroll
+        for (int kk = 0; kk < 16; ++kk) {
+          a_reg[kk] =
+              d_h[tm] * static_cast<half_t>(static_cast<float>(qs[k_off + kk]));
+        }
+#pragma unroll
+        for (int tn = 0; tn < TN; ++tn) {
+          acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+              a_reg, b_reg[tn], acc[tm][tn]);
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    const int out_row = row_start + tn * 16 + (tid & 15);
+    if (out_row >= rows) continue;
+#pragma unroll
+    for (int tm = 0; tm < TM; ++tm) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int local_col = local_out_start + tm * 16 + 2 * j + (tid >> 4);
+        if (local_col < local_out_features) {
+          const int concat_col = use_b ? (out_features_a + local_col) : local_col;
+          const int64_t idx =
+              static_cast<int64_t>(out_row) * out_features_total + concat_col;
+          store_output<out_t>(out, idx, static_cast<float>(acc[tm][tn][j]));
+        }
+      }
+    }
+  }
+}
+
+template <typename scalar_t, typename out_t>
+int launch_gguf_q8_0_prefill_dual_wmma(
+    const scalar_t* x,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  if (x == nullptr || qweight_a == nullptr || qweight_b == nullptr || out == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features_a <= 0 || out_features_b <= 0 ||
+      (in_features % Q8_0_BLOCK) != 0 ||
+      (tile_m != 16 && tile_m != 32 && tile_m != 64) ||
+      (tile_n != 16 && tile_n != 32) ||
+      (out_features_a % tile_m) != 0 || (out_features_b % tile_m) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_features_total = out_features_a + out_features_b;
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features_total + tile_m - 1) / tile_m),
+      static_cast<unsigned int>((rows + tile_n - 1) / tile_n));
+
+#define HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(TM, TN) \
+  hipLaunchKernelGGL( \
+      (gguf_q8_0_prefill_dual_wmma_kernel<scalar_t, out_t, TM, TN>), \
+      grid, \
+      block, \
+      0, \
+      stream, \
+      x, \
+      qweight_a, \
+      qweight_b, \
+      out, \
+      static_cast<int>(rows), \
+      static_cast<int>(in_features), \
+      static_cast<int>(out_features_a), \
+      static_cast<int>(out_features_b)); \
+  return static_cast<int>(hipGetLastError())
+
+  if (tile_m == 16 && tile_n == 16) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(16, 16); }
+  if (tile_m == 32 && tile_n == 16) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(32, 16); }
+  if (tile_m == 16 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(16, 32); }
+  if (tile_m == 32 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(32, 32); }
+  if (tile_m == 64 && tile_n == 16) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(64, 16); }
+  HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(64, 32);
+#undef HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA
+}
+
 }  // namespace
 
 // -------------------------------------------------------------------------
@@ -368,6 +549,40 @@ extern "C" int hipengine_gguf_q8_0_wmma_prefill_fp16_fp16_out(
     hipStream_t stream) {
   return launch_gguf_q8_0_prefill_wmma<half_t, half_t>(
       x, qweight, out, rows, in_features, out_features, tile_m, tile_n, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  return launch_gguf_q8_0_prefill_dual_wmma<uint16_t, uint16_t>(
+      x, qweight_a, qweight_b, out, rows, in_features,
+      out_features_a, out_features_b, tile_m, tile_n, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_wmma_prefill_dual_gate_up_fp16_fp16_out(
+    const half_t* x,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t tile_m,
+    int64_t tile_n,
+    hipStream_t stream) {
+  return launch_gguf_q8_0_prefill_dual_wmma<half_t, half_t>(
+      x, qweight_a, qweight_b, out, rows, in_features,
+      out_features_a, out_features_b, tile_m, tile_n, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_wmma_prefill_fp16_f32_out(

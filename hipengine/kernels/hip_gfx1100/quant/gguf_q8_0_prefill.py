@@ -78,13 +78,32 @@ def _symbol(variant: str) -> str:
 
 
 def _default_tiles(rows: int, out_features: int) -> tuple[int, int]:
-    """Heuristic default for (tile_m, tile_n) when caller does not override.
+    """Heuristic default for (tile_m, tile_n) when the caller does not override.
 
-    Matches the PARO fusedw4 prefill heuristic: prefer 32x32 once the tile
-    fits cleanly, otherwise fall back to 32x16 / 16x16 for tiny shapes.
+    P9.C1 tuning (microbench on RX 7900 XTX / gfx1100, rows=512, BF16/BF16):
+
+    * ``out_features >= 4096`` (shared-expert gate/up, FFN-class shapes):
+      ``(64, 32)`` is ~2x faster than the legacy ``(32, 32)`` default. The
+      large TM tile keeps grid sizes modest for big output dims, which keeps
+      the wave scheduler from oversubscribing the L2 with redundant
+      activation loads.
+    * ``out_features >= 2048`` (attention QKV/O at hidden_size=2048):
+      ``(32, 32)`` and ``(64, 32)`` are within ~1% of each other; we keep
+      ``(32, 32)`` for backwards compatibility with the P8.1 default
+      microbench evidence.
+    * Smaller ``out_features``: fall through to ``(32, 32)`` / ``(16, 32)``
+      as before.
+    * ``rows < 32``: drop ``tile_n`` to 16 (the kernel still launches but
+      the bigger TN under-utilises the WMMA tile).
+
+    See ``tests/test_gguf_q8_0_wmma_prefill.py::test_default_tiles_*`` for
+    the pinning tests that exercise each branch.
     """
+
     tile_n = 32 if rows >= 32 else 16
-    if out_features >= 32:
+    if out_features >= 4096:
+        tile_m = 64
+    elif out_features >= 32:
         tile_m = 32
     else:
         tile_m = 16
@@ -185,6 +204,108 @@ gguf_q8_0_wmma_prefill_f32_fp16_out = _make_wrapper("wmma_prefill_f32_fp16_out")
 gguf_q8_0_wmma_prefill_f32_f32_out = _make_wrapper("wmma_prefill_f32_f32_out")
 
 
+def _launch_dual(
+    symbol: str,
+    x_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if in_features <= 0:
+        raise ValueError("in_features must be positive")
+    if out_features_a <= 0 or out_features_b <= 0:
+        raise ValueError("out_features_a and out_features_b must be positive")
+    if in_features % 32 != 0:
+        raise ValueError("in_features must be divisible by Q8_0 block size 32")
+    if tile_m is None or tile_n is None:
+        tm_def, tn_def = _default_tiles(rows, max(out_features_a, out_features_b))
+        tile_m = tm_def if tile_m is None else tile_m
+        tile_n = tn_def if tile_n is None else tile_n
+    if (tile_m, tile_n) not in _ALLOWED_TILES:
+        allowed = ", ".join(f"({m}, {n})" for m, n in sorted(_ALLOWED_TILES))
+        raise ValueError(
+            f"tile (tile_m={tile_m}, tile_n={tile_n}) is not supported. "
+            f"Supported tiles: {allowed}"
+        )
+    if out_features_a % tile_m != 0:
+        raise ValueError(
+            f"out_features_a={out_features_a} must be a multiple of tile_m={tile_m} "
+            "so a col_tile never straddles the gate/up boundary"
+        )
+    if out_features_b % tile_m != 0:
+        raise ValueError(
+            f"out_features_b={out_features_b} must be a multiple of tile_m={tile_m}"
+        )
+    library = library or build_gguf_q8_0_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(tile_m),
+        ctypes.c_int64(tile_n),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _make_dual_wrapper(variant: str):
+    sym = _symbol(variant)
+
+    def wrapper(*args, **kwargs) -> None:
+        _launch_dual(sym, *args, **kwargs)
+
+    wrapper.__name__ = f"gguf_q8_0_{variant}"
+    wrapper.__qualname__ = wrapper.__name__
+    wrapper.__doc__ = (
+        f"Launch GGUF Q8_0 fused dual gate+up WMMA prefill (C symbol: {sym}). "
+        "Signature: (x_ptr, qweight_a_ptr, qweight_b_ptr, out_ptr, rows, "
+        "in_features, out_features_a, out_features_b, tile_m=None, tile_n=None, stream=0)."
+    )
+    return wrapper
+
+
+gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out = _make_dual_wrapper(
+    "wmma_prefill_dual_gate_up_bf16_bf16_out"
+)
+gguf_q8_0_wmma_prefill_dual_gate_up_fp16_fp16_out = _make_dual_wrapper(
+    "wmma_prefill_dual_gate_up_fp16_fp16_out"
+)
+
+
 _WRAPPERS = {
     "wmma_prefill_bf16_bf16_out": gguf_q8_0_wmma_prefill_bf16_bf16_out,
     "wmma_prefill_bf16_fp16_out": gguf_q8_0_wmma_prefill_bf16_fp16_out,
@@ -195,6 +316,8 @@ _WRAPPERS = {
     "wmma_prefill_f32_bf16_out": gguf_q8_0_wmma_prefill_f32_bf16_out,
     "wmma_prefill_f32_fp16_out": gguf_q8_0_wmma_prefill_f32_fp16_out,
     "wmma_prefill_f32_f32_out": gguf_q8_0_wmma_prefill_f32_f32_out,
+    "wmma_prefill_dual_gate_up_bf16_bf16_out": gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out,
+    "wmma_prefill_dual_gate_up_fp16_fp16_out": gguf_q8_0_wmma_prefill_dual_gate_up_fp16_fp16_out,
 }
 
 
@@ -233,4 +356,6 @@ __all__ = [
     "gguf_q8_0_wmma_prefill_f32_bf16_out",
     "gguf_q8_0_wmma_prefill_f32_fp16_out",
     "gguf_q8_0_wmma_prefill_f32_f32_out",
+    "gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out",
+    "gguf_q8_0_wmma_prefill_dual_gate_up_fp16_fp16_out",
 ]

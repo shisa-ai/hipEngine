@@ -19878,3 +19878,45 @@ Notes:
 - The remaining `gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>` (`~1.06 ms`, 1 dispatch) at 512/0 is the Q6_K lm-head logits projection -- a documented allowed fallback, not a regression.
 
 Next: task #26 (P9.B7) flips `--use-gemv-decode` to measure the decode-side row.
+
+## 2026-05-18 P9 task #27: WMMA prefill kernel tuning (P9.C1, PARTIAL)
+
+Delivered partial scope of P9.C1; the `<= 110 ms` acceptance target on the combined WMMA bucket is NOT met. Task #27 remains in_progress with a documented blocker.
+
+What landed:
+
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill.{hip,py}`: new `gguf_q8_0_prefill_dual_wmma_kernel<scalar_t, out_t, TM, TN>` (fused gate+up WMMA prefill for the shared-expert path). Same per-tile compute as the existing single, but with two qweight tensors and the row-major concatenated output layout that `silu_mul_dual_out_*` consumes. Constraints: `out_features_a % tile_m == 0` and `out_features_b % tile_m == 0`. Registered as `gguf_q8_0 wmma_prefill_dual_gate_up_{bf16,fp16}_{bf16,fp16}_out`.
+- `_default_tiles(rows, out_features)` heuristic updated based on P9.C1 microbench evidence (rows=512, BF16/BF16, RX 7900 XTX):
+  - `out_features >= 4096`: switch to `(64, 32)`. For shared-expert gate/up (`out=4096`) this is `~2x` faster than the legacy `(32, 32)` default (`0.643 -> 0.327 ms` per dispatch in microbench).
+  - `out_features in [32, 4096)`: keep `(32, 32)`. For attention QKV/O (`out=2048`) the optimal `(16, 32)` is within 1% of `(32, 32)`; not worth changing.
+  - `out_features < 32`: fall through to `(16, 32)` as before.
+- Tests:
+  - `tests/test_gguf_q8_0_wmma_prefill_dual.py` (new, 11 tests): registry surface, wrapper-contract validation (rows>0, in_features%32==0, out_features_a/b % tile_m == 0), bit-exact agreement vs two single-kernel launches across all 6 allowed (tile_m, tile_n) combos, CPU-oracle match across 5 shapes including the qwen35moe shared-expert `(512, 2048, 4096, 4096)` shape, FP16 path.
+  - `tests/test_gguf_q8_0_wmma_prefill.py::test_gguf_q8_0_wmma_prefill_default_tiles_match_paro_heuristic`: pinned to the new heuristic with P9.C1 microbench rationale in the docstring.
+
+End-to-end on Qwen3.6-35B-A3B-UD-Q4_K_M 512/0 (RX 7900 XTX, the dual variant exists but is not yet wired into `launch_gguf_linear_pair` -- so only the single-kernel heuristic update is exercised):
+
+| Bucket | Pre-P9.C1 | Post-P9.C1 | Delta |
+| --- | ---: | ---: | ---: |
+| dense_q8_0_wmma_prefill | 75.245 ms / 250 disp | 65.592 ms / 250 disp | -12.8% |
+| moe_q4_k_selected_dual_wmma_prefill | 65.308 ms / 40 disp | 65.362 ms / 40 disp | ~0% (no kernel change) |
+| moe_q5_k_selected_wmma_prefill | 27.071 ms / 37 disp | 26.714 ms / 37 disp | ~0% |
+| moe_q6_k_selected_wmma_prefill | 2.786 ms / 3 disp | 2.694 ms / 3 disp | ~0% |
+| **Combined WMMA bucket** | **170.410 ms** | **160.363 ms** | **-5.9%** |
+| Total prefill kernel | 296.756 ms | 284.920 ms | -4.0% |
+| 512/0 wall prefill | 1508.696 tok/s | 1556.192 tok/s | +3.15% |
+
+Acceptance gate: **NOT met**. Target was `<= 110 ms`; actual is `160 ms`.
+
+Blocker analysis:
+
+- The Q8_0 single-kernel heuristic update is the only runtime-visible change. It saved `~10 ms`. The dual variant is in tree and CPU-reference correct, but not yet wired into `launch_gguf_linear_pair` -- wiring it would need the runtime caller (`_run_post_attention_moe_rows_compact_wmma` shared-expert path) to allocate a single contiguous `moe_shared_gate_up` scratch buffer instead of separate `moe_shared_gate` + `moe_shared_up`. Estimated additional saving: `~5 ms` from launch + cache reuse. Doesn't close the gap.
+- The big residual is `moe_q4_k_selected_dual_wmma_prefill` (`65 ms`), `moe_q5_k_selected_wmma_prefill` (`27 ms`), and `moe_q6_k_selected_wmma_prefill` (`3 ms`). These kernels are hard-coded at one 16x16 WMMA tile per `__launch_bounds__(32, 2)` block (one wave, one `float8_t acc` per output tile). Closing the `~50 ms` gap to the target requires adding `TM`, `TN` template params + multi-tile `acc[TM][TN]` accumulators + grid resharding so a single block computes 2-4x more output, halving dispatch count and amortising activation loads. That is a multi-day kernel rewrite per quant (Q4_K dual, Q5_K, Q6_K), plus correctness re-validation against the P8.4/P8.5 CPU oracle.
+- The P9.C1 microbench tool to drive that follow-up tuning is in tree (the bench I just ran for Q8_0 is trivially extensible to the selected WMMA family once tile parametrization exists). The `is_registered` exact-key registry primitive from task #25 keeps the dispatch wiring clean when new variants land.
+
+Validation:
+
+- `uv run --with pytest pytest tests/test_gguf_q8_0_wmma_prefill_dual.py tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py -q` -> `113 passed`. Correctness fixtures from P8.4/P8.5 still pass (acceptance line "correctness fixtures from P8.4/P8.5 still pass" met).
+- `scripts/qwen35_gguf_bench.py [...] --use-wmma-prefill --measured-runs 3` + `rocprofv3 --kernel-trace` + `scripts/qwen35_gguf_rocprof_summary.py` produce the per-shape bucket evidence above. CSV path: `/tmp/p9_c1/rocprof-512-0/rocm/2834784_kernel_trace.csv`.
+
+Decision: leave task #27 in_progress with a clear handoff. The partial deliverables (Q8_0 dual kernel + heuristic update + tests) are landed and validated. The remaining work to hit the `110 ms` gate is queued as a P9.C1-followup subtask: multi-tile parametrization of the three P8 selected WMMA kernels + an end-to-end re-bench. The Q4_K dense pack8 + Q6_K dense pack8 dispatch wiring (P9.D follow-up from task #25) and the small-op fusion bundle (task #28 P9.D1) are orthogonal -- they reduce non-WMMA buckets and do not affect this one.
