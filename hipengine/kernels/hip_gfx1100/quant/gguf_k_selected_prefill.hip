@@ -17,6 +17,10 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
+#ifndef HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS
+#define HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS 2
+#endif
+
 namespace {
 
 using half_t = _Float16;
@@ -201,7 +205,7 @@ __device__ inline half16_t load_compact_row_half16<half_t>(
 // One wave32 block computes a 16x16 tile of a compact selected-MoE down
 // projection output [compact_rows, out_features].
 template <typename scalar_t, int qtype>
-__launch_bounds__(32, 2)
+__launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_k_selected_wmma_prefill_compact_legacy_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ expert_start_compact,
@@ -291,7 +295,7 @@ __global__ void gguf_k_selected_wmma_prefill_compact_legacy_kernel(
 // P9.C1 exposes the same TM/TN search space as the dense Q8_0 WMMA prefill
 // kernel while preserving the compact scheduler ABI.
 template <typename scalar_t, int qtype, int AWQ_TILE_M, int AWQ_TILE_N>
-__launch_bounds__(32, 2)
+__launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_k_selected_wmma_prefill_compact_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ expert_start_compact,

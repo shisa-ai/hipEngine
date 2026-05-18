@@ -19947,3 +19947,21 @@ Validation:
 
 - `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt uv run --with pytest pytest tests/test_gguf_q8_0_wmma_prefill_dual.py tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q --no-header` -> pass (136-test adjacent bundle). P8.4/P8.5 CPU-reference fixtures still pass.
 - Artifact retained as blocked: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c1-wmma-tile-sweep-blocked.json`.
+
+## 2026-05-18 P9 task #27 continuation: selected WMMA launch-bounds sweep
+
+Focused only on task #27. Added a compile-time launch-bounds sweep knob for the selected raw GGUF WMMA kernels:
+
+- `HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS={1,2,4,8}` injects `-DHIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS=N` into both selected build plans (`gguf_q4_k_selected_prefill` and `gguf_k_selected_prefill`). The HIP files now use `__launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)` for legacy and generic TM/TN selected kernels. Default remains `2`, preserving the P8 hint.
+- Added dry-run plan tests that pin the define injection/cache-key split.
+
+Sweep evidence (Qwen3.6-35B-A3B-UD-Q4_K_M, 512/0, retained tile defaults Q4 `32x16`, Q5/Q6 `16x16`, Q8 dual shared `16x32`, cached builds, single measured run each):
+
+| selected launch-bound min blocks | 512/0 prefill tok/s | prefill seconds |
+| ---: | ---: | ---: |
+| 1 | 1434.676 | 0.356875 |
+| 2 | 1435.336 | 0.356711 |
+| 4 | 1418.387 | 0.360973 |
+| 8 | 1427.166 | 0.358753 |
+
+Decision: retain `__launch_bounds__(32,2)`. Lowering to 1 does not help, and forcing 4/8 hurts. This does not close the P9.C1 gap; artifact updated with the launch-bounds negative evidence. Task #27 remains in_progress/blocked at the previously measured best retained combined target bucket `149.029 ms` vs `<=110 ms` target.

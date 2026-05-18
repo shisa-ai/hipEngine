@@ -5,7 +5,7 @@
   "timestamp": "2026-05-18T16:00:45.242243+00:00",
   "run_tag": "hipengine-qwen36-q4km-p9_c1-wmma-tile-sweep-blocked",
   "task": "#27 P9.C1 compact MoE + Q8_0 WMMA prefill tile sweep",
-  "summary": "P9.C1 selected-MoE/Q8_0 WMMA tuning retained partial improvements but missed the <=110 ms combined WMMA bucket gate. Best retained default: Q4_K selected dual 32x16, Q5_K/Q6_K selected down legacy 16x16, Q8_0 shared gate+up dual concat WMMA at 16x32 plus single Q8_0 out>=4096 heuristic. Combined Q4 dual + Q5/Q6 down + Q8_0 WMMA bucket is 149.03 ms (target <=110 ms), down from 170.41 ms after P9.A3/P9.C1 partial (~12.5%).",
+  "summary": "P9.C1 selected-MoE/Q8_0 WMMA tuning retained partial improvements but missed the <=110 ms combined WMMA bucket gate. Best retained default: Q4_K selected dual 32x16, Q5_K/Q6_K selected down legacy 16x16, Q8_0 shared gate+up dual concat WMMA at 16x32 plus single Q8_0 out>=4096 heuristic. Combined Q4 dual + Q5/Q6 down + Q8_0 WMMA bucket is 149.03 ms (target <=110 ms), down from 170.41 ms after P9.A3/P9.C1 partial (~12.5%). Launch-bounds min-block sweep (1/2/4/8) was also run after adding a compile-time sweep knob; min-blocks=2 remains retained because 1/4/8 did not improve 512/0 wall time.",
   "hardware": {
     "gpu": "AMD Radeon RX 7900 XTX / gfx1100 (local; W7900 not re-run)"
   },
@@ -957,6 +957,11 @@
         "tile_m": 64,
         "tile_n": 32,
         "reason": "P9.C1 microbench: shared-expert single out=4096 ~2x faster than 32x32"
+      },
+      "selected_launch_bounds_min_blocks": {
+        "value": 2,
+        "env_override": "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS",
+        "reason": "P9.C1 launch-bounds sweep retained the P8 __launch_bounds__(32,2) hint."
       }
     },
     "selected_sweeps": {
@@ -971,10 +976,33 @@
       "q5q6_only_32x16_3run_tok_s_median": 1542.6734,
       "q4_only_32x16_3run_tok_s_median": 1584.6635,
       "final_default_3run_tok_s_median": 1601.0465141529357
+    },
+    "launch_bounds_sweep": {
+      "env": "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS",
+      "values": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "single_run_512_0_tok_s": {
+        "1": 1434.6756653731222,
+        "2": 1435.3360222613771,
+        "4": 1418.3870298509364,
+        "8": 1427.1657101409232
+      },
+      "single_run_512_0_prefill_seconds": {
+        "1": 0.3568750849808566,
+        "2": 0.3567108970019035,
+        "4": 0.3609734079800546,
+        "8": 0.35875301400665194
+      },
+      "retained_min_blocks": 2,
+      "reason": "min-blocks=2 is the fastest single-run setting and matches the legacy P8 launch-bound hint; min-blocks=1 gives no benefit, while 4/8 are slower."
     }
   },
   "acceptance": {
     "passed": false,
-    "reason": "Combined WMMA bucket 149.03 ms > 110 ms target. Remaining gap is ~39 ms; multi-tile selected kernels reduce dispatch/block count but increase register pressure and are slower except Q4_K 32x16. Further gains likely require a different selected-MoE kernel design/repack/sidecar or splitting by expert occupancy, not the current raw generic TM/TN path."
+    "reason": "Combined WMMA bucket 149.03 ms > 110 ms target. Remaining gap is ~39 ms; multi-tile selected kernels reduce dispatch/block count but increase register pressure and are slower except Q4_K 32x16. Further gains likely require a different selected-MoE kernel design/repack/sidecar or splitting by expert occupancy, not the current raw generic TM/TN path. A follow-up launch-bounds sweep retained min-blocks=2; it does not close the remaining gap."
   }
 }

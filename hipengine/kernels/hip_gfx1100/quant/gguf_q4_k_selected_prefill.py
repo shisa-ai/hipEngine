@@ -32,6 +32,7 @@ _Q4_K_BLOCK = 256
 _ALLOWED_TILES = {(16, 16), (32, 16), (16, 32), (32, 32), (64, 16), (64, 32)}
 _ENV_TILE_M = "HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M"
 _ENV_TILE_N = "HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N"
+_ENV_LAUNCH_BOUNDS = "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS"
 
 
 def plan_gguf_q4_k_selected_prefill_build(
@@ -46,7 +47,7 @@ def plan_gguf_q4_k_selected_prefill_build(
         profile=profile,
         cache_root=cache_root,
         compiler_version=compiler_version,
-        extra_flags=("-mcumode",),
+        extra_flags=_extra_flags(),
         output_name=_OUTPUT_NAME,
     )
 
@@ -66,12 +67,22 @@ def build_gguf_q4_k_selected_prefill(
         profile=profile,
         cache_root=cache_root,
         compiler_version=compiler_version,
-        extra_flags=("-mcumode",),
+        extra_flags=_extra_flags(),
         output_name=_OUTPUT_NAME,
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
     )
+
+
+def _extra_flags() -> tuple[str, ...]:
+    value = os.environ.get(_ENV_LAUNCH_BOUNDS)
+    if not value:
+        return ("-mcumode",)
+    min_blocks = int(value)
+    if min_blocks not in {1, 2, 4, 8}:
+        raise ValueError(f"{_ENV_LAUNCH_BOUNDS} must be one of 1, 2, 4, 8")
+    return ("-mcumode", f"-DHIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS={min_blocks}")
 
 
 def gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(

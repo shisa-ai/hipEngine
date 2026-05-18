@@ -19,6 +19,10 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
+#ifndef HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS
+#define HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS 2
+#endif
+
 namespace {
 
 using half_t = _Float16;
@@ -152,7 +156,7 @@ __device__ inline half16_t load_compact_row_half16<half_t>(
 // matching the PARO compact dual WMMA kernel. Gate columns occupy the first
 // out_features_a columns; up columns occupy the second out_features_b columns.
 template <typename scalar_t>
-__launch_bounds__(32, 2)
+__launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ expert_start_compact,
@@ -270,7 +274,7 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel(
 // case where those row tiles belong to different experts by resolving expert
 // metadata per TN tile.
 template <typename scalar_t, int AWQ_TILE_M, int AWQ_TILE_N>
-__launch_bounds__(32, 2)
+__launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ expert_start_compact,

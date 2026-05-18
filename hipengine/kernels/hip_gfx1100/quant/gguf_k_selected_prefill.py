@@ -35,6 +35,7 @@ _ENV_TILE_N = {
     "gguf_q5_k": "HIPENGINE_GGUF_Q5_K_SELECTED_WMMA_TILE_N",
     "gguf_q6_k": "HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_N",
 }
+_ENV_LAUNCH_BOUNDS = "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS"
 _SYMBOLS = {
     ("gguf_q5_k", "bf16"): "hipengine_gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out",
     ("gguf_q5_k", "fp16"): "hipengine_gguf_q5_k_selected_wmma_prefill_compact_fp16_fp16_out",
@@ -55,7 +56,7 @@ def plan_gguf_k_selected_prefill_build(
         profile=profile,
         cache_root=cache_root,
         compiler_version=compiler_version,
-        extra_flags=("-mcumode",),
+        extra_flags=_extra_flags(),
         output_name=_OUTPUT_NAME,
     )
 
@@ -75,12 +76,22 @@ def build_gguf_k_selected_prefill(
         profile=profile,
         cache_root=cache_root,
         compiler_version=compiler_version,
-        extra_flags=("-mcumode",),
+        extra_flags=_extra_flags(),
         output_name=_OUTPUT_NAME,
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
     )
+
+
+def _extra_flags() -> tuple[str, ...]:
+    value = os.environ.get(_ENV_LAUNCH_BOUNDS)
+    if not value:
+        return ("-mcumode",)
+    min_blocks = int(value)
+    if min_blocks not in {1, 2, 4, 8}:
+        raise ValueError(f"{_ENV_LAUNCH_BOUNDS} must be one of 1, 2, 4, 8")
+    return ("-mcumode", f"-DHIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS={min_blocks}")
 
 
 def _make_wrapper(quant: str, dtype: str):

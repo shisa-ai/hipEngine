@@ -58,7 +58,8 @@ def _hip_available() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def test_gguf_q4_k_selected_wmma_registry_and_build_plan() -> None:
+def test_gguf_q4_k_selected_wmma_registry_and_build_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS", raising=False)
     assert (
         resolve(
             backend="hip_gfx1100",
@@ -91,11 +92,17 @@ def test_gguf_q4_k_selected_wmma_registry_and_build_plan() -> None:
     assert artifact.output_path.name == "gguf_q4_k_selected_prefill.so"
     assert "gguf_q4_k_selected_prefill" in str(artifact.output_path)
     assert any(path.name == "gguf_q4_k_selected_prefill.hip" for path in artifact.sources)
+    assert "-DHIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS=4" not in artifact.flags
 
     dry_run = build_gguf_q4_k_selected_prefill(
         dry_run=True, compiler_version="test-compiler"
     )
     assert dry_run.output_path == artifact.output_path
+
+    monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS", "4")
+    lb4 = plan_gguf_q4_k_selected_prefill_build(compiler_version="test-compiler")
+    assert "-DHIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS=4" in lb4.flags
+    assert lb4.cache_key != artifact.cache_key
 
 
 def test_p9_c1_q4_k_selected_default_tile_decision(monkeypatch: pytest.MonkeyPatch) -> None:
