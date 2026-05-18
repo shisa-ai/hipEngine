@@ -19559,3 +19559,35 @@ Artifact / rollups:
 - Added `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p8-compact-moe-wmma-accepted.json`.
 - Updated `benchmarks/README.md` current-fastest table and diagnostic table.
 - Updated `benchmarks/CHANGELOG.md` with old->new deltas and target outcome.
+
+## 2026-05-18 P9 task #17: GDN prefill chain (k2/segments_k2) for qwen35 GGUF
+
+Wired the qwen35 GGUF runner GDN prefill onto the PARO chain (`prefill_prepare_f32_bf16` -> `gdn_prefill_recurrent_k2_f32` -> `gdn_prefill_rmsnorm_gate_bf16`) via the kernel registry. Replaced the `if cfg.is_moe: fused_decode_order else: chain` branch with a single registry-resolved plan that:
+
+1. Looks up `gguf_qwen35` aliases for the four chain primitives plus the legacy `decode_order_bf16` fallback.
+2. Dispatches the chain when complete, otherwise falls back to the fused decode-order kernel.
+3. Opts into `qwen35_gdn_prefill_recurrent_segments_k2_f32` when `rows >= HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD` (default `256`), passing `segments=1`, `cu_seqlens=[0, rows]`, `state_indices=[0]` from the new `gdn_cu_seqlens` / `gdn_state_indices` scratch fields.
+
+Files:
+
+- `hipengine/kernels/hip_gfx1100/linear_attn/gdn.py`: added `gguf_qwen35` registry aliases sharing the existing `w4_paro` kernel implementations.
+- `hipengine/runtime/qwen35_gguf_runner.py`: added `_GGUFGDNPrefillPlan`, `_resolve_gguf_gdn_prefill_plan`, `_gguf_gdn_prefill_segment_threshold`, `_run_gdn_prefill`, plus `gdn_cu_seqlens` / `gdn_state_indices` scratch buffers (initialized in `allocate` and refreshed in `for_rows`).
+- `tests/test_qwen35_linear_attn_gdn_plan.py`: added `gguf_qwen35` aliases test.
+- `tests/test_qwen35_gguf_gdn_prefill_routing.py`: new no-GPU routing tests for the chain, segments threshold, fused fallback, missing kernels error, and env-var override.
+- `docs/KERNELS.md`: appended P9.A1 catalog note with measured bucket deltas.
+
+Validation on W7900/gfx1100 (RX 7900 XTX local):
+
+- `uv run --with pytest pytest tests/test_qwen35_linear_attn_gdn_plan.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py -q` -> 89 passed.
+- `rocprofv3 --kernel-trace` qwen35moe 512/0 with `--use-wmma-prefill`:
+  - GDN bucket: `666.9 ms / 30` (fused decode_order) -> `prepare 2.806 ms / 30` + `segments_k2 52.057 ms / 30` + `rmsnorm_gate 1.394 ms / 30` = `56.257 ms` (~11.9x reduction).
+  - Total prefill kernel: `907.8 ms -> 297.3 ms` (~3.05x reduction).
+  - `gguf_q8_0_prefill_wmma_kernel` and selected Q4_K/Q5_K/Q6_K compact WMMA dispatches still present and unaffected.
+- Wall-clock qwen35moe Qwen3.6-35B-A3B-UD-Q4_K_M 512/128 graph: `530 -> 1510 prefill tok/s` (~2.85x); `decode 62.6 -> 62.6 tok/s` (unchanged, expected). Final token deterministic `220, 220, 220` across 3 runs; finite logits all true.
+- Dense Qwen3.5-0.8B-Q4_K_M 512/64 wall: `3025 prefill tok/s` (vs `3066` pre-change baseline, within noise); `193.9 decode tok/s`; finite + deterministic.
+
+Notes:
+
+- Segment threshold default 256 picks `segments_k2` at 512/0; in our rocprof the segments variant ran fast (`1.73 ms/layer`) so I did not switch back to plain `k2`. If a single-segment-shaped run shows `k2` is faster, the threshold env var (`HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`) lets us A/B without code changes; task #19 (`P9.A3`) will measure and pick the final default.
+- Token IDs at 512/128 changed from the previous P8 acceptance run (`796 -> 220`); this is reduction-order/half-operand drift between the fused decode_order_bf16 path and the prepare+k2+rmsnorm_gate chain (PARO native uses the chain at BF16 already). Task #18 (`P9.A2`) is the formal CPU-reference correctness gate; this WORKLOG note records the drift so it doesn't surprise reviewers.
+- No new compact-MoE ABI, no resident weight repack, no `if quant ==` / `if backend ==` branches added.

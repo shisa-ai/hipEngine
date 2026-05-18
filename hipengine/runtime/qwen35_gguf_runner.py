@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -57,9 +58,11 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
+    qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
+    register_qwen35_linear_attn_gdn_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
     build_gguf_expert_pack8_gemv,
@@ -381,6 +384,142 @@ class Qwen35GGUFFullStackRunner:
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
         self.weights = materialize_qwen35_gguf_weights(self.model_path, runtime=self.runtime)
+
+    def _gdn_prefill_plan(self) -> _GGUFGDNPrefillPlan:
+        """Return the cached qwen35 GGUF GDN prefill plan.
+
+        Resolved once per runner via the kernel registry. Falls back to the
+        legacy fused decode-order kernel when the chained path is incomplete.
+        """
+
+        plan = getattr(self, "_gguf_gdn_prefill_plan_cache", None)
+        if plan is None:
+            plan = _resolve_gguf_gdn_prefill_plan()
+            self._gguf_gdn_prefill_plan_cache = plan
+        return plan
+
+    def _run_gdn_prefill(
+        self,
+        *,
+        layer,
+        scratch,
+        cfg,
+        rows: int,
+        recurrent_state,
+        stream: int,
+        runtime: HipRuntime,
+    ) -> None:
+        """Dispatch the qwen35 GGUF GDN prefill chain (or fused fallback).
+
+        Plugin-style: the kernel chain is resolved via the kernel registry
+        keyed by ``(hip_gfx1100, ..., gguf_qwen35, ...)``. Whether the
+        single-segment k2 or multi-segment k2_segments recurrent kernel runs
+        is a perf-tuning decision controlled by
+        ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 256), not a
+        per-quant/per-backend branch.
+        """
+
+        plan = self._gdn_prefill_plan()
+        if plan.has_chain:
+            plan.prepare(
+                scratch.conv_out.ptr,
+                scratch.linear_alpha.ptr,
+                scratch.linear_beta.ptr,
+                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                layer.weight("ssm_a").allocation().tensor.ptr,
+                scratch.prefill_query.ptr,
+                scratch.prefill_key.ptr,
+                scratch.prefill_value.ptr,
+                scratch.prefill_beta.ptr,
+                scratch.prefill_decay.ptr,
+                rows,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+            segment_threshold = _gguf_gdn_prefill_segment_threshold()
+            use_segments = (
+                plan.recurrent_segments is not None
+                and rows >= segment_threshold
+                and getattr(scratch, "gdn_cu_seqlens", None) is not None
+                and getattr(scratch, "gdn_state_indices", None) is not None
+            )
+            if use_segments:
+                plan.recurrent_segments(
+                    scratch.prefill_query.ptr,
+                    scratch.prefill_key.ptr,
+                    scratch.prefill_value.ptr,
+                    scratch.prefill_beta.ptr,
+                    scratch.prefill_decay.ptr,
+                    recurrent_state.ptr,
+                    scratch.recurrent_out.ptr,
+                    scratch.gdn_cu_seqlens.ptr,
+                    scratch.gdn_state_indices.ptr,
+                    rows,
+                    1,
+                    cfg.ssm_time_step_rank,
+                    cfg.ssm_state_size,
+                    self.ssm_value_dim,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            else:
+                plan.recurrent(
+                    scratch.prefill_query.ptr,
+                    scratch.prefill_key.ptr,
+                    scratch.prefill_value.ptr,
+                    scratch.prefill_beta.ptr,
+                    scratch.prefill_decay.ptr,
+                    recurrent_state.ptr,
+                    scratch.recurrent_out.ptr,
+                    rows,
+                    cfg.ssm_time_step_rank,
+                    cfg.ssm_state_size,
+                    self.ssm_value_dim,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            plan.rmsnorm_gate(
+                scratch.recurrent_out.ptr,
+                scratch.linear_z.ptr,
+                layer.weight("ssm_norm").allocation().tensor.ptr,
+                scratch.recurrent_bf16.ptr,
+                cfg.rms_norm_eps,
+                rows,
+                cfg.ssm_time_step_rank,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+            return
+        if plan.has_fused:
+            plan.fused_decode_order(
+                scratch.conv_out.ptr,
+                scratch.linear_z.ptr,
+                scratch.linear_alpha.ptr,
+                scratch.linear_beta.ptr,
+                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                layer.weight("ssm_a").allocation().tensor.ptr,
+                layer.weight("ssm_norm").allocation().tensor.ptr,
+                recurrent_state.ptr,
+                scratch.recurrent_bf16.ptr,
+                cfg.rms_norm_eps,
+                rows,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+            return
+        raise RuntimeError(
+            "no qwen35 GGUF GDN prefill kernels are registered; "
+            "call register_qwen35_linear_attn_gdn_kernels() before prefill"
+        )
 
     @property
     def hidden_size(self) -> int:
@@ -1036,73 +1175,15 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        if cfg.is_moe:
-            qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order(
-                scratch.conv_out.ptr,
-                scratch.linear_z.ptr,
-                scratch.linear_alpha.ptr,
-                scratch.linear_beta.ptr,
-                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-                layer.weight("ssm_a").allocation().tensor.ptr,
-                layer.weight("ssm_norm").allocation().tensor.ptr,
-                recurrent_state.ptr,
-                scratch.recurrent_bf16.ptr,
-                cfg.rms_norm_eps,
-                rows,
-                cfg.ssm_group_count,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            qwen35_linear_attn_prefill_prepare_f32_bf16(
-                scratch.conv_out.ptr,
-                scratch.linear_alpha.ptr,
-                scratch.linear_beta.ptr,
-                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-                layer.weight("ssm_a").allocation().tensor.ptr,
-                scratch.prefill_query.ptr,
-                scratch.prefill_key.ptr,
-                scratch.prefill_value.ptr,
-                scratch.prefill_beta.ptr,
-                scratch.prefill_decay.ptr,
-                rows,
-                cfg.ssm_group_count,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
-            qwen35_gdn_prefill_recurrent_k2_f32(
-                scratch.prefill_query.ptr,
-                scratch.prefill_key.ptr,
-                scratch.prefill_value.ptr,
-                scratch.prefill_beta.ptr,
-                scratch.prefill_decay.ptr,
-                recurrent_state.ptr,
-                scratch.recurrent_out.ptr,
-                rows,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
-            qwen35_gdn_prefill_rmsnorm_gate_bf16(
-                scratch.recurrent_out.ptr,
-                scratch.linear_z.ptr,
-                layer.weight("ssm_norm").allocation().tensor.ptr,
-                scratch.recurrent_bf16.ptr,
-                cfg.rms_norm_eps,
-                rows,
-                cfg.ssm_time_step_rank,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
+        self._run_gdn_prefill(
+            layer=layer,
+            scratch=scratch,
+            cfg=cfg,
+            rows=rows,
+            recurrent_state=recurrent_state,
+            stream=stream,
+            runtime=runtime,
+        )
         launch_gguf_linear(
             layer.weight("ssm_out"),
             scratch.recurrent_bf16.ptr,
@@ -2606,6 +2687,8 @@ class _GGUFFullAttentionPrefillScratch:
     prefill_decay: object
     recurrent_out: object
     recurrent_bf16: object
+    gdn_cu_seqlens: object
+    gdn_state_indices: object
     full_query_raw: object
     full_key_raw: object
     full_query: object
@@ -2734,6 +2817,8 @@ class _GGUFFullAttentionPrefillScratch:
             "prefill_decay": buf(prefill_scalar_bytes),
             "recurrent_out": buf(recurrent_f32_bytes),
             "recurrent_bf16": buf(linear_z_bytes),
+            "gdn_cu_seqlens": buf(2 * DType.INT32.itemsize),
+            "gdn_state_indices": buf(DType.INT64.itemsize),
             "full_query_raw": buf(q_f32_bytes),
             "full_key_raw": buf(kv_f32_bytes),
             "full_query": buf(q_f32_bytes),
@@ -2789,6 +2874,16 @@ class _GGUFFullAttentionPrefillScratch:
         copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
         copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
         copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
+        gdn_state_indices_arr = np.zeros((1,), dtype=np.int64)
+        copy_host_to_device(
+            fields["gdn_cu_seqlens"], host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
+        )
+        copy_host_to_device(
+            fields["gdn_state_indices"],
+            host_array_ptr(gdn_state_indices_arr),
+            gdn_state_indices_arr.nbytes,
+            runtime=runtime,
+        )
         block_table_tensor = Tensor.from_handle(fields["block_table"].ptr, block_table_arr.shape, DType.INT32, device)
         positions_tensor = Tensor.from_handle(fields["positions"].ptr, positions_arr.shape, DType.INT64, device)
         context_tensor = Tensor.from_handle(fields["context_counts"].ptr, context_arr.shape, DType.INT64, device)
@@ -2840,6 +2935,9 @@ class _GGUFFullAttentionPrefillScratch:
         copy_host_to_device(self.cu_q, host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime)
         copy_host_to_device(self.cu_k, host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime)
         copy_host_to_device(self.atomic, host_array_ptr(atomic_arr), atomic_arr.nbytes, runtime=runtime)
+        copy_host_to_device(
+            self.gdn_cu_seqlens, host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
+        )
         _ = stream
         block_table = Tensor.from_handle(self.block_table.ptr, (rows, self.blocks), DType.INT32, self.block_table_tensor.device)
         positions = Tensor.from_handle(self.positions.ptr, (rows,), DType.INT64, self.positions_tensor.device)
@@ -3194,6 +3292,86 @@ _COMPACT_MOE_REQUIRED_SCRATCH = (
     "moe_scatter_offsets_zero",
     "moe_wmma_total_host",
 )
+
+_GDN_PREFILL_PREPARE_KEY = KernelKey(
+    "hip_gfx1100", "linear_attn_prefill_prepare", "gguf_qwen35", "f32_bf16"
+)
+_GDN_PREFILL_RECURRENT_K2_KEY = KernelKey(
+    "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2"
+)
+_GDN_PREFILL_RECURRENT_SEGMENTS_K2_KEY = KernelKey(
+    "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2_segments"
+)
+_GDN_PREFILL_RMSNORM_GATE_BF16_KEY = KernelKey(
+    "hip_gfx1100", "gdn_prefill_rmsnorm_gate", "gguf_qwen35", "bf16"
+)
+_GDN_PREFILL_DECODE_ORDER_BF16_KEY = KernelKey(
+    "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "decode_order_bf16"
+)
+_GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT = 256
+
+
+@dataclass(frozen=True)
+class _GGUFGDNPrefillPlan:
+    """Resolved kernel set for the qwen35 GGUF GDN prefill path.
+
+    ``recurrent_segments`` is optional and only consulted when the runtime
+    decides the prefill row count meets the multi-segment threshold; for the
+    current single-sequence prefill it is always called with ``segments=1``,
+    so the parent ``segments_k2`` kernel is only useful for batched prefill.
+    The chain falls back to ``fused_decode_order`` when any of the chain
+    members is not registered.
+    """
+
+    prepare: object | None
+    recurrent: object | None
+    recurrent_segments: object | None
+    rmsnorm_gate: object | None
+    fused_decode_order: object | None
+
+    @property
+    def has_chain(self) -> bool:
+        return (
+            self.prepare is not None
+            and self.recurrent is not None
+            and self.rmsnorm_gate is not None
+        )
+
+    @property
+    def has_fused(self) -> bool:
+        return self.fused_decode_order is not None
+
+
+def _gguf_gdn_prefill_segment_threshold() -> int:
+    raw = os.environ.get("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD")
+    if not raw:
+        return _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError:
+        return _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT
+    return max(1, value)
+
+
+def _resolve_gguf_gdn_prefill_plan() -> _GGUFGDNPrefillPlan:
+    register_qwen35_linear_attn_gdn_kernels()
+
+    def _resolve(key: KernelKey):
+        return resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+            missing="none",
+        )
+
+    return _GGUFGDNPrefillPlan(
+        prepare=_resolve(_GDN_PREFILL_PREPARE_KEY),
+        recurrent=_resolve(_GDN_PREFILL_RECURRENT_K2_KEY),
+        recurrent_segments=_resolve(_GDN_PREFILL_RECURRENT_SEGMENTS_K2_KEY),
+        rmsnorm_gate=_resolve(_GDN_PREFILL_RMSNORM_GATE_BF16_KEY),
+        fused_decode_order=_resolve(_GDN_PREFILL_DECODE_ORDER_BF16_KEY),
+    )
 
 
 def _copy_sidecar_array_to_device(array: np.ndarray, *, runtime: HipRuntime) -> DeviceBuffer:

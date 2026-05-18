@@ -804,6 +804,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2"),
+        qwen35_gdn_prefill_recurrent_k2_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2_segments"),
+        qwen35_gdn_prefill_recurrent_segments_k2_f32,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear_attn_prefill_prepare", "w4_paro", "f32_bf16"),
         qwen35_linear_attn_prefill_prepare_f32_bf16,
         replace=replace,
@@ -814,6 +824,11 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "linear_attn_prefill_prepare", "gguf_qwen35", "f32_bf16"),
+        qwen35_linear_attn_prefill_prepare_f32_bf16,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "gdn_prefill_rmsnorm_gate", "w4_paro", "bf16"),
         qwen35_gdn_prefill_rmsnorm_gate_bf16,
         replace=replace,
@@ -821,6 +836,11 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "gdn_prefill_rmsnorm_gate", "w4_paro", "fp16"),
         qwen35_gdn_prefill_rmsnorm_gate_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_prefill_rmsnorm_gate", "gguf_qwen35", "bf16"),
+        qwen35_gdn_prefill_rmsnorm_gate_bf16,
         replace=replace,
     )
     register(

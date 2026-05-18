@@ -16,6 +16,9 @@ from hipengine.kernels.hip_gfx1100.linear_attn import (
     qwen35_linear_attn_prefill_prepare_f32_fp16,
     register_qwen35_linear_attn_gdn_kernels,
 )
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
+)
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
 
 
@@ -115,6 +118,56 @@ def test_qwen35_linear_attn_gdn_registers_decode_and_prefill_variants() -> None:
             variant="fp16",
         )
         is qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16
+    )
+
+
+def test_qwen35_linear_attn_gdn_registers_gguf_qwen35_aliases() -> None:
+    register_qwen35_linear_attn_gdn_kernels()
+
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="decode_order_bf16",
+        )
+        is qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_k2",
+        )
+        is qwen35_gdn_prefill_recurrent_k2_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="f32_k2_segments",
+        )
+        is qwen35_gdn_prefill_recurrent_segments_k2_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_attn_prefill_prepare",
+            quant="gguf_qwen35",
+            variant="f32_bf16",
+        )
+        is qwen35_linear_attn_prefill_prepare_f32_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_rmsnorm_gate",
+            quant="gguf_qwen35",
+            variant="bf16",
+        )
+        is qwen35_gdn_prefill_rmsnorm_gate_bf16
     )
 
 
