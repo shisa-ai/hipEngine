@@ -19029,3 +19029,60 @@ Same dispatch count (1175) before and after — the WMMA path is a 1:1 replaceme
 - P8.4: Q4_K dual selected MoE WMMA prefill (reuses `qwen35_moe_group_count/prefix/scatter_gather/wmma_tile_map` from `moe/group_scatter.hip`).
 - P8.5: Q5_K + Q6_K selected MoE WMMA prefill.
 - After P8.2 + P8.4 + P8.5: re-run this 512/0 bench, expect total prefill kernel time under the 1500 ms acceptance floor.
+
+## 2026-05-18 P8.2 audit: Q4_K dense WMMA prefill dequant/addressing plan
+
+Task #6 audit completed before coding P8.2. Read `docs/GGUF.md` P8, `docs/KERNELS.md`, CPU oracle `hipengine/kernels/cpu_reference/ops.py::gguf_q4_k_gemv` / `gguf_quant_gemv`, NumPy GGUF dequant in `hipengine/quant/gguf.py`, dense WMMA templates `awq_fusedw4_prefill_fp16_kernel` + `awq_fusedw4_prefill_dual_fp16_kernel` in `paro_awq_gemv.hip`, existing raw/pack8 Q4_K kernels in `gguf_q4_k_gemv.hip`, and llama.cpp `ggml-common.h::block_q4_K`. Also ran `python3 scripts/check_lineage.py --kind kernel --diff stat`; drift is present in nano-vllm-amd parent files but not a blocker for this audit (P8.2 copies the already-landed in-tree PARO WMMA shape and GGUF Q4_K dequant, not new parent code).
+
+Confirmed raw `block_q4_K` layout/source of truth:
+
+```text
+QK_K = 256, Q4_K_BLOCK_BYTES = 144
+block bytes:
+  [0:2]   fp16 d       # super-block scale for quantized scales
+  [2:4]   fp16 dmin    # super-block scale for quantized mins
+  [4:16]  uint8 scales[12]  # eight 6-bit scales + eight 6-bit mins
+  [16:144] uint8 qs[128]    # four pairs of 32 q4 bytes, subblocks 0/1, 2/3, 4/5, 6/7
+row_bytes = (in_features / 256) * 144
+```
+
+For logical K index `k`: `block_idx = k / 256`, `within = k & 255`, `subblock = within >> 5` (8 subblocks of 32), `lane32 = within & 31`, `pair = subblock >> 1`, `packed = qs[pair * 32 + lane32]`, `q = (subblock & 1) ? (packed >> 4) : (packed & 0x0f)`. Scale/min unpack must exactly match existing helpers:
+
+```c
+scale(s) = s < 4 ? scales[s] & 0x3f
+                 : (scales[8 + s - 4] & 0x0f) | ((scales[s - 4] >> 2) & 0x30);
+min(s)   = s < 4 ? scales[4 + s] & 0x3f
+                 : (scales[8 + s - 4] >> 4) | ((scales[4 + s - 4] >> 2) & 0x30);
+weight   = fp16(d) * scale(subblock) * q - fp16(dmin) * min(subblock);
+```
+
+Chosen P8.2 dense WMMA inner-loop plan:
+
+- Mirror `gguf_q8_0_prefill_wmma_kernel` / PARO `awq_fusedw4_prefill_fp16_kernel`: one wave32 block, `TM x TN` output tile, `float8_t acc[TM][TN]`, `half16_t b_reg[TN]`, `half16_t a_reg`, `__builtin_amdgcn_wmma_f32_16x16x16_f16_w32`, same lane-to-output store pattern, tile set `(16,16),(16,32),(32,16),(32,32),(64,16),(64,32)`.
+- Q4_K K traversal is one 256-value GGUF superblock -> 8 subblocks of 32 -> two 16-wide WMMA K-tiles per subblock, i.e. 16 WMMA K-tiles per raw block. Pseudocode shape:
+  ```c
+  for blk in blocks_per_row:
+    for tm in TM: block_ptr[tm] = qweight + safe_out[tm] * row_bytes + blk * 144; load d,dmin,scales,qs
+    for sb in 0..7:
+      for tm in TM: sc_f[tm] = d_f * scale(sb); min_f[tm] = dmin_f * min(sb)
+      for kt2 in 0..1:
+        k_off = blk*256 + sb*32 + kt2*16
+        load/convert activation half16_t b_reg[TN] from x[row, k_off:k_off+16]
+        for tm in TM:
+          for kk in 0..15:
+            lane32 = kt2*16 + kk;
+            packed = qs[(sb >> 1) * 32 + lane32];
+            q = (sb & 1) ? (packed >> 4) : (packed & 0x0f);
+            a_reg[kk] = (half_t)(sc_f[tm] * (float)q - min_f[tm]);
+          wmma(acc[tm][tn], a_reg, b_reg[tn]) for each tn
+  ```
+- Use float `sc_f/min_f` for first correctness pass, then cast final dequantized weight to `half_t` for WMMA. If VGPR pressure is too high, try half `sc_h/min_h` after correctness is green and measure the difference.
+- Start dense Q4_K with `__launch_bounds__(32, 4)` rather than Q8_0's `(32, 8)` because the Q4_K dequant path carries `d`, `dmin`, 12-byte packed scale/min decode, and per-subblock intermediates. Tune only after a correct kernel exists.
+- Dual dense variant should mirror `awq_fusedw4_prefill_dual_fp16_kernel` grid splitting (`blockIdx.x < out_tiles_a` -> A/gate, else B/up), but hipENGINE's GGUF dense pair ABI currently has one shared `x_ptr` and one shared `out_features`; gate/up dims match, so P8.2 can implement the C/Python wrapper with one activation pointer and same out_features for both sides.
+
+Gotchas for task #7/#9:
+
+1. Current 2D Q4_K materialization uses `LAYOUT_Q4_K_PACK8` and drops the raw allocation (`qweight/scales/mins` only). Raw-rank>2 expert tensors keep `LAYOUT_RAW_GGUF`. A raw-block dense WMMA kernel cannot be wired into existing dense Q4_K pack8 weights unless the opt-in materialization/dispatch path also keeps or switches to a `raw` allocation. This is the main P8.2 wiring decision; avoid silently adding a duplicate resident copy without measuring memory because P8's rule is no new resident sidecar/repack.
+2. Do not just add `gguf_q4_k` to `_WMMA_PREFILL_SUPPORTED_QUANTS`: `_wmma_prefill_dispatch` currently checks `in_features % 32 == 0` for Q8_0. Q4_K must require `in_features % 256 == 0` and raw ABI availability.
+3. Existing `gguf_q4_k_pack8_dual_prefill_bf16_bf16_out` remains the rows>1 fallback for current pack8 dense gate+up until raw Q4_K WMMA dispatch/materialization is explicitly routed.
+4. Tests should reuse `tests/test_gguf_q4_k_gemv.py::make_q4_k_weight` and compare against `hipengine.kernels.cpu_reference.gguf_q4_k_gemv` / `gguf_quant_gemv` with Q4_K tolerances from `docs/GGUF.md`.
