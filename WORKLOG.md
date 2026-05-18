@@ -18933,3 +18933,27 @@ Build & correctness validation on W7900 (gfx1100):
 Updated `docs/KERNELS.md` with a row for `gguf_q8_0_prefill.hip`. No `docs/source_lineage.json` changes needed: the algorithmic template is in-tree (`paro_awq_gemv.hip`), not external. No performance row retained yet — perf claim waits on P8.6 (runtime wiring) + the qwen35moe 512/0 bench in task P8 #5.
 
 Next: tasks #3 (wire WMMA prefill into `gguf_linear.py` rows>1 dispatch, behind an opt-in) and #4 (formal `tests/test_gguf_q8_0_wmma_prefill.py` covering the matrix above plus a build-plan test).
+
+## 2026-05-18 qwen35moe GGUF P8.3: wire Q8_0 WMMA prefill into gguf_linear dispatch (opt-in)
+
+Wired the P8.1 WMMA prefill kernel family into the `gguf_linear.py` runtime dispatch behind an opt-in. Default behavior is unchanged: rows>1 Q8_0 still goes through `gguf_q8_0/prefill_*` (the decode-shaped GEMV alias). Three orthogonal opt-in paths now exist so we can correctness-bisect cleanly:
+
+1. `PrefillConfig.use_wmma_prefill: bool = False` (new field in `hipengine/runtime/prefill.py`). Future runner sessions can flip this when wiring task #5 (qwen35moe 512/0 bench) or task #6 (runner integration).
+2. Env var `HIPENGINE_GGUF_WMMA_PREFILL=1` (process-wide override; truthy values `1/true/yes/on`, case-insensitive). Lets benchmarks and rocprof smokes A/B without code changes.
+3. Per-call kwarg `use_wmma_prefill: bool | None = None` on `launch_gguf_linear`, `launch_gguf_linear_raw_ptr`, `launch_gguf_linear_pair`. Highest precedence; lets a single call site opt in or out without touching the global state.
+
+Plus a session-scoped programmatic toggle for runners: `set_wmma_prefill_enabled(bool | None)` and `wmma_prefill_session(bool | None)` context manager. Precedence (highest first): kwarg → session → env → off.
+
+Implementation in `hipengine/runtime/gguf_linear.py`:
+- New `_wmma_prefill_dispatch(dispatch, *, rows, in_features, use_wmma)` rewriter inserted into `launch_gguf_linear` + `launch_gguf_linear_raw_ptr` after `_pack8_decode_dispatch`. Rewrites `gguf_q8_0/prefill_<in>_<out>_out` → `gguf_q8_0/wmma_prefill_<in>_<out>_out` and switches the ABI tag to `"wmma_raw"` when (use_wmma AND rows>1 AND raw layout AND quant in supported set AND in_features%32==0). Q4_K/Q5_K/Q6_K are not yet in the supported set (P8.2/P8.3 lands those).
+- New `_launch_wmma_raw` ABI handler (mirrors `_launch_raw` but strips the `threads` kwarg, which the WMMA wrapper does not accept — it takes optional `tile_m`/`tile_n` instead).
+- `_ensure_linear_kernel_registered` now also registers the WMMA prefill family (`register_gguf_q8_0_prefill_kernels()`).
+- `launch_gguf_linear_pair` declines to fuse Q8_0+Q8_0 rows>1 when the WMMA opt-in is active so the two sides fall back to singletons and each picks up the WMMA family. The Q4_K pack8 dual prefill fast path is untouched.
+
+Validation:
+- `tests/test_gguf_linear_dispatch.py`: 15 new tests covering (a) PrefillConfig field default + coercion, (b) default-off behavior, (c) kwarg/env/session/context-manager opt-in, (d) precedence rules (kwarg > session > env), (e) decode (rows==1) unaffected, (f) Q5_K not rewritten, (g) `in_features % 32 != 0` falls back, (h) `threads` silently dropped on WMMA path but kept on decode path, (i) `launch_gguf_linear_pair` declines Q8_0 fusion under WMMA opt-in but keeps Q4_K pack8 dual prefill fusion. All 21 tests in the file pass (6 existing + 15 new), and `tests/test_gguf_linear_dispatch.py tests/test_gguf_k_gemv.py tests/test_gguf_q4_k_gemv.py` runs 31 tests green in isolation.
+- On-GPU end-to-end smoke (`launch_gguf_linear` → bf16→bf16, rows=64, in=256, out=128): decode-shaped path `max|d|=3.13e-2` vs CPU reference; WMMA path `max|d|=3.13e-2`; WMMA vs decode `max|d|=3.13e-2` (one bf16 ULP, as expected — WMMA reorders the K reduction).
+
+Noticed (pre-existing, NOT introduced by this task): the dense_bf16 parametrize case in `test_launch_gguf_linear_calls_registry_kernel_with_expected_abi` fails when collected alongside the broader `-k "prefill"` set on `HEAD`. Confirmed via `git stash` — exists before my changes. Some test in the prefill family clears the `dense_gemv/bf16/prefill_out` registration. Out of scope for task #3.
+
+Next: task #4 (formal `tests/test_gguf_q8_0_wmma_prefill.py` mirroring the existing `test_gguf_k_gemv.py` pattern, covering the dispatch + kernel surface) and task #5 (qwen35moe 512/0 prefill bench with `HIPENGINE_GGUF_WMMA_PREFILL=1`).
