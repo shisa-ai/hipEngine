@@ -234,6 +234,59 @@ __global__ void dflash_dense_bf16_to_f32_kernel(
   }
 }
 
+__global__ void dflash_qkv_proj_bf16_mixed_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ q_weight,
+    const uint16_t* __restrict__ k_weight,
+    const uint16_t* __restrict__ v_weight,
+    float* __restrict__ q_out,
+    float* __restrict__ k_out,
+    uint16_t* __restrict__ v_out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t q_features,
+    int64_t kv_features) {
+  const int64_t fused_col = static_cast<int64_t>(blockIdx.x);
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t total_features = q_features + 2 * kv_features;
+  if (row >= rows || fused_col >= total_features) {
+    return;
+  }
+  const uint16_t* weight = q_weight;
+  int64_t out_col = fused_col;
+  if (fused_col >= q_features + kv_features) {
+    weight = v_weight;
+    out_col = fused_col - q_features - kv_features;
+  } else if (fused_col >= q_features) {
+    weight = k_weight;
+    out_col = fused_col - q_features;
+  }
+  extern __shared__ float partial[];
+  const int64_t x_base = row * in_features;
+  const int64_t w_base = out_col * in_features;
+  float acc = 0.0f;
+  for (int64_t dim = static_cast<int64_t>(threadIdx.x); dim < in_features; dim += blockDim.x) {
+    acc = fmaf(bf16_bits_to_float(x[x_base + dim]), bf16_bits_to_float(weight[w_base + dim]), acc);
+  }
+  partial[threadIdx.x] = acc;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    if (fused_col < q_features) {
+      q_out[row * q_features + out_col] = partial[0];
+    } else if (fused_col < q_features + kv_features) {
+      k_out[row * kv_features + out_col] = partial[0];
+    } else {
+      v_out[row * kv_features + out_col] = float_to_bf16_bits(partial[0]);
+    }
+  }
+}
+
 __device__ inline void dflash_head_rmsnorm_rotary_row_impl(
     const float* __restrict__ src,
     const uint16_t* __restrict__ weight,
@@ -480,6 +533,10 @@ bool valid_concat_shape(int64_t batch_size, int64_t context_len, int64_t query_l
 
 bool valid_dense_shape(int64_t rows, int64_t in_features, int64_t out_features, int64_t threads) {
   return rows > 0 && in_features > 0 && out_features > 0 && valid_threads(threads);
+}
+
+bool valid_qkv_proj_shape(int64_t rows, int64_t in_features, int64_t q_features, int64_t kv_features, int64_t threads) {
+  return rows > 0 && in_features > 0 && q_features > 0 && kv_features > 0 && valid_threads(threads);
 }
 
 bool valid_rmsnorm_shape(int64_t rows, int64_t hidden_size, int64_t threads) {
@@ -755,6 +812,44 @@ extern "C" int hipengine_dflash_dense_bf16_to_f32(
       rows,
       in_features,
       out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_qkv_proj_bf16_mixed(
+    const uint16_t* x,
+    const uint16_t* q_weight,
+    const uint16_t* k_weight,
+    const uint16_t* v_weight,
+    float* q_out,
+    float* k_out,
+    uint16_t* v_out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t q_features,
+    int64_t kv_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_qkv_proj_shape(rows, in_features, q_features, kv_features, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total_features = q_features + 2 * kv_features;
+  hipLaunchKernelGGL(
+      dflash_qkv_proj_bf16_mixed_kernel,
+      dim3(static_cast<unsigned int>(total_features), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      x,
+      q_weight,
+      k_weight,
+      v_weight,
+      q_out,
+      k_out,
+      v_out,
+      rows,
+      in_features,
+      q_features,
+      kv_features);
   return static_cast<int>(hipGetLastError());
 }
 

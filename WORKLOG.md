@@ -18378,3 +18378,65 @@ or fusion avoids the per-context graph key.
 
 Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/DFLASH.md`, and
 `docs/MTP.md` with the retained diagnostic and blocker.
+
+## 2026-05-18 — DFlash drafter QKV fusion bring-up (task #29)
+
+Implemented the first concrete drafter kernel fusion after exact-context graph
+capture failed to produce cache-hit replay.  Scope is intentionally narrow and
+keeps the unfused path as fallback:
+
+- added raw HIP kernel `dflash_qkv_proj_bf16_mixed_kernel` in
+  `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.hip`;
+- Python wrapper/registry key: `dflash_qkv_proj_bf16_mixed` under
+  `KernelKey("hip_gfx1100", "dflash_qkv_proj", "w4_paro", "bf16_mixed")`;
+- high-level torch-free ABI wrapper `project_dflash_qkv_bf16_mixed`;
+- `scripts/dflash_chain_e2e_bench.py --drafter-fusion {off,qkv}` wires the fused
+  path into the native DFlash drafter while preserving the old 3-launch Q/K/V
+  sequence as fallback;
+- artifacts now include `spec.draft_fusion`.
+
+Correctness validation:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py \
+  hipengine/speculative/dflash_drafter.py hipengine/speculative/__init__.py \
+  scripts/dflash_chain_e2e_bench.py scripts/dflash_qkv_fusion_correctness.py \
+  tests/test_dflash_drafter.py
+python3 -m pytest tests/test_dflash_drafter.py tests/test_speculative_benchmark.py -q
+# 16 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_qkv_fusion_correctness.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-dflash-qkv-fusion-correctness-cached.json
+# passed=true; fused Q/K FP32 bit-equal to unfused GPU; fused V BF16 bit-equal
+# to unfused GPU and NumPy BF16 oracle; Q/K max_abs vs NumPy oracle ~1.19e-7.
+```
+
+rocprofv3 evidence:
+
+```bash
+rocprofv3 --kernel-trace --output-directory /tmp/hipengine-dflash-qkv-fusion-trace \
+  --output-format csv -- python3 scripts/dflash_qkv_fusion_correctness.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-dflash-qkv-fusion-correctness-profiled.json
+```
+
+Trace CSV `/tmp/hipengine-dflash-qkv-fusion-trace/strixhalo/3047038_kernel_trace.csv`
+contains the expected fused kernel:
+`(anonymous namespace)::dflash_qkv_proj_bf16_mixed_kernel(...)`,
+`Workgroup_Size_X=128`, `VGPR_Count=16`, `Scratch_Size=0`, plus the unfused Q/K/V
+reference kernels from the correctness script.
+
+Dirty-tree E2E comparison before final retained artifact regeneration:
+
+- `--drafter-fusion off`, 16-token native verifier row: exact; DFlash `5.84 tok/s`,
+  drafter `69.74 ms/call`, verify `2.038 s`.
+- `--drafter-fusion qkv`, same command shape: exact; DFlash `6.33 tok/s`, drafter
+  `69.87 ms/call`, verify `1.825 s`, `draft_fusion.counts={'qkv': 80}`.
+
+Conclusion: QKV fusion is correct and launches the expected kernel, but it is
+neutral for drafter wall time (`+0.2%` ms/call in the back-to-back smoke).  It
+saves two launches per drafter layer, but the fused branchy grid over mixed
+Q/K/V outputs does not materially reduce the dominant path.  Keep the fusion
+behind `--drafter-fusion qkv`; do not enable by default or claim performance.

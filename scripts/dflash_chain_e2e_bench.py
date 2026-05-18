@@ -55,6 +55,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     dflash_head_rmsnorm_rotary_f32,
     dflash_key_rmsnorm_rotary_f32,
     dflash_prepare_noise_inputs_bf16_i32,
+    dflash_qkv_proj_bf16_mixed,
     dflash_prepare_noise_inputs_f16_to_bf16_i32,
     dflash_rmsnorm_bf16,
     dflash_silu_mul_bf16,
@@ -178,6 +179,7 @@ class NativeDFlashChainDrafter:
         require_cached_build: bool,
         sync_draft_phases: bool = False,
         graph_mode: str = "off",
+        fusion_mode: str = "off",
     ) -> None:
         self.session = session
         self.runtime = session.runtime
@@ -187,6 +189,10 @@ class NativeDFlashChainDrafter:
         if graph_mode not in {"off", "auto", "validate"}:
             raise ValueError("graph_mode must be off, auto, or validate")
         self.graph_mode = graph_mode
+        if fusion_mode not in {"off", "qkv"}:
+            raise ValueError("fusion_mode must be off or qkv")
+        self.fusion_mode = fusion_mode
+        self._fusion_counts: Counter[str] = Counter()
         self._graph_cache: dict[tuple[int, int, int, int, int, int, str], DFlashDrafterGraphEntry] = {}
         self._graph_status_counts: Counter[str] = Counter()
         self._graph_validation_failures = 0
@@ -253,6 +259,15 @@ class NativeDFlashChainDrafter:
             "validation_passed": validation_passed,
             "fallback_reasons": dict(sorted(self._graph_fallback_reasons.items())),
             "last": self._graph_last,
+        }
+
+    @property
+    def fusion_summary(self) -> dict[str, Any]:
+        return {
+            "mode": self.fusion_mode,
+            "counts": dict(sorted(self._fusion_counts.items())),
+            "fallback": self.fusion_mode == "off",
+            "active": self.fusion_mode == "qkv",
         }
 
     def close(self) -> None:
@@ -863,9 +878,30 @@ class NativeDFlashChainDrafter:
         k_layer_base = self.kv_cache_keys.ptr + layer * self.max_context_tokens * self.kv_features * fp32_bytes
         v_layer_base = self.kv_cache_values.ptr + layer * self.max_context_tokens * self.kv_features * bf16_bytes
         dflash_rmsnorm_bf16(query_in.ptr, self.weights.tensor(f"{prefix}.input_layernorm.weight").ptr, self.norm.ptr, self.block_size, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.q_proj.weight").ptr, self.q_raw.ptr, self.block_size, self.hidden, self.attn_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.k_proj.weight").ptr, self.k_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.v_proj.weight").ptr, self.v_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        if self.fusion_mode == "qkv":
+            self._fusion_counts["qkv"] += 1
+            dflash_qkv_proj_bf16_mixed(
+                self.norm.ptr,
+                self.weights.tensor(f"{prefix}.self_attn.q_proj.weight").ptr,
+                self.weights.tensor(f"{prefix}.self_attn.k_proj.weight").ptr,
+                self.weights.tensor(f"{prefix}.self_attn.v_proj.weight").ptr,
+                self.q_raw.ptr,
+                self.k_q.ptr,
+                self.v_q.ptr,
+                self.block_size,
+                self.hidden,
+                self.attn_features,
+                self.kv_features,
+                threads=128,
+                stream=stream,
+                library=self.library,
+                runtime=self.runtime,
+            )
+        else:
+            self._fusion_counts["qkv_unfused"] += 1
+            dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.q_proj.weight").ptr, self.q_raw.ptr, self.block_size, self.hidden, self.attn_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+            dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.k_proj.weight").ptr, self.k_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+            dflash_dense_bf16_to_bf16(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.v_proj.weight").ptr, self.v_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
         # Q-rotary + K_q-rotary on the query rows only.  Cached K_ctx_rotated is
         # concatenated below; no context-side rotary is recomputed.
         dflash_head_rmsnorm_rotary_f32(
@@ -1016,6 +1052,7 @@ def run_dflash_tokens(
     require_cached_build: bool,
     prefill_config: PrefillConfig,
     drafter_graph_mode: str = "off",
+    drafter_fusion_mode: str = "off",
 ) -> tuple[list[int], dict[str, Any]]:
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_ids) + decode_tokens + candidate_budget + 2
@@ -1038,6 +1075,7 @@ def run_dflash_tokens(
             compiler_version=compiler_version,
             require_cached_build=require_cached_build,
             graph_mode=drafter_graph_mode,
+            fusion_mode=drafter_fusion_mode,
         ) as drafter:
             t0 = time.perf_counter()
             next_result = None
@@ -1177,6 +1215,7 @@ def run_same_session_pair(
     sync_draft_phases: bool = False,
     verifier_mode: str = "native_bulk_bplus1",
     drafter_graph_mode: str = "off",
+    drafter_fusion_mode: str = "off",
 ) -> tuple[tuple[list[int], dict[str, Any]], tuple[list[int], dict[str, Any]]]:
     """Run AR control and DFlash chain in one resident target session.
 
@@ -1240,6 +1279,7 @@ def run_same_session_pair(
             require_cached_build=require_cached_build,
             sync_draft_phases=sync_draft_phases,
             graph_mode=drafter_graph_mode,
+            fusion_mode=drafter_fusion_mode,
         ) as drafter:
             spec_tokens, spec_meta = _run_dflash_chain_on_session(
                 session=session,
@@ -1471,6 +1511,7 @@ def _run_dflash_chain_on_session(
             "status_counts": dict(sorted(draft_graph_status_counts.items())),
             "validation_passed": draft_graph_validation_passed if draft_graph_validation_seen else None,
         },
+        "draft_fusion": drafter.fusion_summary,
         "proposal_trace_sample": proposal_trace,
         "proposal_trace_count": draft_calls,
         "finite_draft_logits": finite_draft,
@@ -1605,6 +1646,7 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "draft_query_seconds": draft_query_seconds,
             "draft_native_phase_seconds": phase_seconds,
             "draft_graph": draft_graph,
+            "draft_fusion": spec_meta.get("draft_fusion"),
             "drafter_context_mode": spec_meta.get("drafter_context_mode"),
             "draft_phase_timing_mode": spec_meta.get("draft_phase_timing_mode"),
             "proposal_trace_sample": spec_meta.get("proposal_trace_sample", []),
@@ -1683,6 +1725,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sync-draft-phases", action="store_true", help="Diagnostic only: synchronize after major drafter phases before timing them")
     parser.add_argument("--verifier-mode", choices=("native_bulk_bplus1", "serial_in_place_single_slot"), default="native_bulk_bplus1")
     parser.add_argument("--drafter-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native DFlash propose(); auto replays cache hits, validate records capture parity without requiring reuse")
+    parser.add_argument("--drafter-fusion", choices=("off", "qkv"), default="off", help="Enable prototype DFlash drafter kernel fusions; qkv fuses query-side Q/K/V projections with unfused fallback available")
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -1715,6 +1758,7 @@ def main(argv: list[str] | None = None) -> int:
                 sync_draft_phases=args.sync_draft_phases,
                 verifier_mode=args.verifier_mode,
                 drafter_graph_mode=args.drafter_graph,
+                drafter_fusion_mode=args.drafter_fusion,
             )
             rows.append(_row_for_artifact(prompt, budget, ar, spec))
     artifact = build_speculative_artifact(
@@ -1745,6 +1789,7 @@ def main(argv: list[str] | None = None) -> int:
             "verifier_mode": args.verifier_mode,
             "native_bulk_verifier": args.verifier_mode == "native_bulk_bplus1",
             "drafter_graph_mode": args.drafter_graph,
+            "drafter_fusion_mode": args.drafter_fusion,
             "promotion_blocker": (
                 "native B+1 verifier ran, but full chain must still beat same-session AR before promotion"
                 if args.verifier_mode == "native_bulk_bplus1"

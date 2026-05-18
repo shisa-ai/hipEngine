@@ -20,6 +20,7 @@ _SYMBOL_RMSNORM_BF16 = "hipengine_dflash_rmsnorm_bf16"
 _SYMBOL_SILU_MUL_BF16 = "hipengine_dflash_silu_mul_bf16"
 _SYMBOL_DENSE_BF16_TO_BF16 = "hipengine_dflash_dense_bf16_to_bf16"
 _SYMBOL_DENSE_BF16_TO_F32 = "hipengine_dflash_dense_bf16_to_f32"
+_SYMBOL_QKV_PROJ_BF16_MIXED = "hipengine_dflash_qkv_proj_bf16_mixed"
 _SYMBOL_HEAD_RMS_ROTARY = "hipengine_dflash_head_rmsnorm_rotary_f32"
 _SYMBOL_KEY_RMS_ROTARY = "hipengine_dflash_key_rmsnorm_rotary_f32"
 _SYMBOL_UPDATE_KV_METADATA = "hipengine_dflash_update_kv_metadata_i32"
@@ -295,6 +296,52 @@ def dflash_dense_bf16_to_f32(
     """Project BF16 rows with BF16 weights and write FP32 output rows."""
 
     _launch_dense(_SYMBOL_DENSE_BF16_TO_F32, x_bf16_ptr, weight_bf16_ptr, out_f32_ptr, rows, in_features, out_features, threads, stream, library, runtime)
+
+
+def dflash_qkv_proj_bf16_mixed(
+    x_bf16_ptr: int,
+    q_weight_bf16_ptr: int,
+    k_weight_bf16_ptr: int,
+    v_weight_bf16_ptr: int,
+    q_out_f32_ptr: int,
+    k_out_f32_ptr: int,
+    v_out_bf16_ptr: int,
+    rows: int,
+    in_features: int,
+    q_features: int,
+    kv_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fused DFlash query-side Q/K/V projections.
+
+    This is numerically equivalent to the unfused sequence
+    ``dense_bf16_to_f32(Q)``, ``dense_bf16_to_f32(K)``, and
+    ``dense_bf16_to_bf16(V)``.  It reduces three tiny drafter launches to one
+    while preserving the same per-output-column reduction order.
+    """
+
+    _launch_qkv_proj(
+        _SYMBOL_QKV_PROJ_BF16_MIXED,
+        x_bf16_ptr,
+        q_weight_bf16_ptr,
+        k_weight_bf16_ptr,
+        v_weight_bf16_ptr,
+        q_out_f32_ptr,
+        k_out_f32_ptr,
+        v_out_bf16_ptr,
+        rows,
+        in_features,
+        q_features,
+        kv_features,
+        threads,
+        stream,
+        library,
+        runtime,
+    )
 
 
 def dflash_head_rmsnorm_rotary_f32(
@@ -606,6 +653,11 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "dflash_qkv_proj", "w4_paro", "bf16_mixed"),
+        dflash_qkv_proj_bf16_mixed,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "dflash_head_rmsnorm_rotary", "w4_paro", "f32_bf16"),
         dflash_head_rmsnorm_rotary_f32,
         replace=replace,
@@ -729,6 +781,63 @@ def _launch_dense(
         runtime.check(int(err))
 
 
+def _launch_qkv_proj(
+    symbol: str,
+    x_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    v_weight_ptr: int,
+    q_out_ptr: int,
+    k_out_ptr: int,
+    v_out_ptr: int,
+    rows: int,
+    in_features: int,
+    q_features: int,
+    kv_features: int,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_qkv_projection_shape(rows, in_features, q_features, kv_features, threads)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(q_weight_ptr),
+        ctypes.c_void_p(k_weight_ptr),
+        ctypes.c_void_p(v_weight_ptr),
+        ctypes.c_void_p(q_out_ptr),
+        ctypes.c_void_p(k_out_ptr),
+        ctypes.c_void_p(v_out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(q_features),
+        ctypes.c_int64(kv_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch_simple(
     symbol: str,
     args: tuple[int, ...],
@@ -830,6 +939,14 @@ def _check_rmsnorm_shape(rows: int, hidden_size: int, threads: int) -> None:
 
 def _check_dense_shape(rows: int, in_features: int, out_features: int, threads: int) -> None:
     for name, value in (("rows", rows), ("in_features", in_features), ("out_features", out_features)):
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64, 128, or 256")
+
+
+def _check_qkv_projection_shape(rows: int, in_features: int, q_features: int, kv_features: int, threads: int) -> None:
+    for name, value in (("rows", rows), ("in_features", in_features), ("q_features", q_features), ("kv_features", kv_features)):
         if value <= 0:
             raise ValueError(f"{name} must be positive")
     if threads not in _ALLOWED_THREADS:

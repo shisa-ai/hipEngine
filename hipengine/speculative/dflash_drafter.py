@@ -325,6 +325,57 @@ def project_dflash_bf16_to_f32(
     return out
 
 
+def project_dflash_qkv_bf16_mixed(
+    hidden: Tensor,
+    q_weight: Tensor,
+    k_weight: Tensor,
+    v_weight: Tensor,
+    q_out: Tensor,
+    k_out: Tensor,
+    v_out: Tensor,
+    *,
+    stream: int = 0,
+    library: object | None = None,
+    threads: int = 128,
+) -> tuple[Tensor, Tensor, Tensor]:
+    """Run fused query-side DFlash Q/K/V projections.
+
+    Equivalent to the unfused GPU sequence
+    :func:`project_dflash_bf16_to_f32` for Q and K plus
+    :func:`project_dflash_bf16_to_bf16` for V.  The fused wrapper exists only
+    for the native drafter and preserves the unfused fallback contract.
+    """
+
+    rows, in_features, q_features, kv_features = _validate_qkv_projection_tensors(
+        hidden,
+        q_weight,
+        k_weight,
+        v_weight,
+        q_out,
+        k_out,
+        v_out,
+    )
+    from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import dflash_qkv_proj_bf16_mixed
+
+    dflash_qkv_proj_bf16_mixed(
+        hidden.ptr,
+        q_weight.ptr,
+        k_weight.ptr,
+        v_weight.ptr,
+        q_out.ptr,
+        k_out.ptr,
+        v_out.ptr,
+        rows,
+        in_features,
+        q_features,
+        kv_features,
+        threads=threads,
+        stream=stream,
+        library=library,  # type: ignore[arg-type]
+    )
+    return q_out, k_out, v_out
+
+
 def dflash_head_rmsnorm_rotary_f32(
     query: Tensor,
     key: Tensor,
@@ -536,6 +587,53 @@ def _validate_dense_projection_tensors(hidden: Tensor, weight: Tensor, out: Tens
     return int(rows), int(in_features), int(out_features)
 
 
+def _validate_qkv_projection_tensors(
+    hidden: Tensor,
+    q_weight: Tensor,
+    k_weight: Tensor,
+    v_weight: Tensor,
+    q_out: Tensor,
+    k_out: Tensor,
+    v_out: Tensor,
+) -> tuple[int, int, int, int]:
+    if hidden.ndim != 2 or q_weight.ndim != 2 or k_weight.ndim != 2 or v_weight.ndim != 2:
+        raise ValueError("DFlash fused QKV projection tensors must be rank-2")
+    if q_out.ndim != 2 or k_out.ndim != 2 or v_out.ndim != 2:
+        raise ValueError("DFlash fused QKV projection outputs must be rank-2")
+    rows, in_features = hidden.shape
+    q_features, q_in = q_weight.shape
+    k_features, k_in = k_weight.shape
+    v_features, v_in = v_weight.shape
+    if q_in != in_features or k_in != in_features or v_in != in_features:
+        raise ValueError("Q/K/V projection weight input dimension must match hidden rows")
+    if k_features != v_features:
+        raise ValueError("K and V projection output dimensions must match")
+    if q_out.shape != (rows, q_features):
+        raise ValueError(f"Q projection output must have shape {(rows, q_features)}")
+    if k_out.shape != (rows, k_features):
+        raise ValueError(f"K projection output must have shape {(rows, k_features)}")
+    if v_out.shape != (rows, v_features):
+        raise ValueError(f"V projection output must have shape {(rows, v_features)}")
+    for name, tensor in (("hidden", hidden), ("q_weight", q_weight), ("k_weight", k_weight), ("v_weight", v_weight)):
+        if tensor.dtype != DType.BF16:
+            raise ValueError(f"{name} must use BF16 storage")
+    if q_out.dtype != DType.FP32 or k_out.dtype != DType.FP32:
+        raise ValueError("Q/K projection outputs must use FP32 storage")
+    if v_out.dtype != DType.BF16:
+        raise ValueError("V projection output must use BF16 storage")
+    for name, tensor in (
+        ("q_weight", q_weight),
+        ("k_weight", k_weight),
+        ("v_weight", v_weight),
+        ("q_out", q_out),
+        ("k_out", k_out),
+        ("v_out", v_out),
+    ):
+        if tensor.device != hidden.device:
+            raise ValueError(f"{name} must live on the hidden tensor device")
+    return int(rows), int(in_features), int(q_features), int(k_features)
+
+
 def _validate_head_rotary_tensors(
     query: Tensor,
     key: Tensor,
@@ -688,6 +786,7 @@ __all__ = [
     "draft_batch_from_topk",
     "project_dflash_bf16_to_bf16",
     "project_dflash_bf16_to_f32",
+    "project_dflash_qkv_bf16_mixed",
     "prepare_dflash_noise_inputs_bf16",
     "project_dflash_target_hidden_bf16",
     "dflash_silu_mul_bf16",

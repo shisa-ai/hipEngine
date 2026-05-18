@@ -39,6 +39,7 @@ from hipengine.speculative.dflash_drafter import (
     prepare_dflash_noise_inputs_bf16,
     project_dflash_bf16_to_bf16,
     project_dflash_bf16_to_f32,
+    project_dflash_qkv_bf16_mixed,
     project_dflash_target_hidden_bf16,
     dflash_silu_mul_bf16,
 )
@@ -109,6 +110,7 @@ __all__ = [
     "prepare_dflash_noise_inputs_bf16",
     "project_dflash_bf16_to_bf16",
     "project_dflash_bf16_to_f32",
+    "project_dflash_qkv_bf16_mixed",
     "project_dflash_target_hidden_bf16",
     "plan_dflash_draft_kv_append",
     "dflash_silu_mul_bf16",

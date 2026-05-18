@@ -19,6 +19,7 @@ from hipengine.speculative import (
     prepare_dflash_noise_inputs_bf16,
     project_dflash_bf16_to_bf16,
     project_dflash_bf16_to_f32,
+    project_dflash_qkv_bf16_mixed,
 )
 
 
@@ -161,6 +162,49 @@ def test_project_dflash_bf16_to_f32_validates_tensor_abi_before_loading_hip() ->
             _tensor(0x1100, (2, 5), dtype="bf16"),
             _tensor(0x1200, (2, 4), dtype="bf16"),
         )
+
+
+def test_project_dflash_qkv_fusion_validates_tensor_abi_before_loading_hip(monkeypatch: pytest.MonkeyPatch) -> None:
+    import hipengine.kernels.hip_gfx1100.speculative.dflash_drafter as kernel_mod
+
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    monkeypatch.setattr(kernel_mod, "dflash_qkv_proj_bf16_mixed", lambda *args, **kwargs: calls.append((args, kwargs)))
+    hidden = _tensor(0x1000, (2, 4), dtype="bf16")
+    q_weight = _tensor(0x1100, (8, 4), dtype="bf16")
+    k_weight = _tensor(0x1200, (3, 4), dtype="bf16")
+    v_weight = _tensor(0x1300, (3, 4), dtype="bf16")
+    q_out = _tensor(0x1400, (2, 8), dtype="fp32")
+    k_out = _tensor(0x1500, (2, 3), dtype="fp32")
+    v_out = _tensor(0x1600, (2, 3), dtype="bf16")
+
+    project_dflash_qkv_bf16_mixed(hidden, q_weight, k_weight, v_weight, q_out, k_out, v_out, library=_NoopLibrary())
+    assert calls and calls[0][0][:7] == (hidden.ptr, q_weight.ptr, k_weight.ptr, v_weight.ptr, q_out.ptr, k_out.ptr, v_out.ptr)
+    with pytest.raises(ValueError, match="K and V"):
+        project_dflash_qkv_bf16_mixed(
+            hidden,
+            q_weight,
+            _tensor(0x1200, (4, 4), dtype="bf16"),
+            v_weight,
+            q_out,
+            _tensor(0x1500, (2, 4), dtype="fp32"),
+            v_out,
+        )
+    with pytest.raises(ValueError, match="Q projection output"):
+        project_dflash_qkv_bf16_mixed(
+            hidden,
+            q_weight,
+            k_weight,
+            v_weight,
+            _tensor(0x1400, (2, 7), dtype="fp32"),
+            k_out,
+            v_out,
+        )
+    with pytest.raises(ValueError, match="Q/K projection outputs"):
+        project_dflash_qkv_bf16_mixed(hidden, q_weight, k_weight, v_weight, _tensor(0x1400, (2, 8), dtype="bf16"), k_out, v_out)
+
+
+class _NoopLibrary:
+    pass
 
 
 def test_dflash_head_rotary_validates_tensor_abi_before_loading_hip() -> None:
