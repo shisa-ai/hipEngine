@@ -1446,3 +1446,379 @@ output + rocprofv3 evidence. Update `benchmarks/README.md` and
   + `WORKLOG.md` updated atomically with the perf row.
 - [ ] No `import torch` on the `LLM.generate()` path; no `if backend == ...`
   / `if quant == ...` branches added to runtime dispatch.
+
+## P9: Closing the qwen35moe gap to PARO ~2700/116 (planned)
+
+P8 (tasks #7–#16) collapsed the qwen35moe GGUF MoE-projection disaster, but
+the engine is not yet at the parent PARO Qwen3.5-35B-A3B native ceiling. P9
+is the next compounding push: it converts what P8 unlocked (compact selected
+MoE + dense WMMA prefill) into both **prefill compute saturation** and a
+**PARO-style decode pipeline**, then closes the remaining smaller gaps.
+
+This section is the master plan. Per-kernel detail belongs in `docs/KERNELS.md`;
+per-run evidence belongs in `benchmarks/results/`, `benchmarks/README.md`,
+`benchmarks/CHANGELOG.md`, and `WORKLOG.md`.
+
+### P9.0 — Status snapshot (post-P8)
+
+| Workload | hipENGINE GGUF (now) | PARO native parent | Gap |
+| --- | ---: | ---: | ---: |
+| Qwen3.5-35B-A3B-class **512/0** prefill | 534 tok/s | ~2700 tok/s | ~5.0× |
+| Same model **512/128** prefill | 530 tok/s | ~2697 tok/s | ~5.1× |
+| Same model **512/128** decode | 62.6 tok/s | ~115–116 tok/s | ~1.85× |
+
+Parent reference: `~/amd-gpu-tuning/docs/OPTIMAL.md` 2026-05-13
+(weighted-lane accumulation row, graph replay decode). hipENGINE row:
+`benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p8-compact-moe-wmma-accepted.json`.
+The hipENGINE 512/0 trace runs on the local **RX 7900 XTX / gfx1100**; W7900
+results are unverified for this artifact and the PARO comparison row is on
+the matched W7900.
+
+Clean 512/0 rocprof bucket breakdown (post-P8):
+
+| Bucket | Kernel | Total ms | Dispatches | Share of 907.8 ms |
+| --- | --- | ---: | ---: | ---: |
+| GDN prefill recurrent (MoE path) | `qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short>` | 666.9 | 30 | **73.5%** |
+| Dense Q8_0 WMMA prefill | `gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>` | 73.9 | 250 | 8.1% |
+| Selected Q4_K dual WMMA prefill | `gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>` | 64.6 | 40 | 7.1% |
+| Full attention prefill GQA gate | `qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>` | 39.5 | 10 | 4.4% |
+| Selected Q5_K down WMMA prefill | `gguf_k_selected_wmma_prefill_compact_kernel<unsigned short, 5>` | 27.3 | 37 | 3.0% |
+| Router logits | `qwen35_router_logits_token_tile_kernel<unsigned short, 4>` | 13.2 | 80 | 1.5% |
+| Linear-attn conv prefill | `qwen35_linear_attn_conv_prefill_kernel` | 3.5 | 30 | 0.4% |
+| Decode-shaped BF16 GEMV (still reached at prefill) | `dense_gemv_out_kernel<unsigned short>` | 3.1 | 60 | 0.3% |
+| Selected Q6_K down WMMA prefill | `gguf_k_selected_wmma_prefill_compact_kernel<unsigned short, 6>` | 3.6 | 3 | 0.4% |
+| Q6_K pack8 lm-head logits (allowed fallback) | `gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>` | 1.0 | 1 | 0.1% |
+| Everything else (bf16<->f32, silu, rmsnorm, gate combine, scheduler, kv writes) | many small | ~11 | many | ~1.2% |
+
+Decode profile (512/128 eager rocprof, illustrative — the graph trace timed
+out, but the kernel families are the same as the graph wall-clock run):
+
+| Bucket | Kernel | Total ms / 128 tokens | Dispatches |
+| --- | --- | ---: | ---: |
+| Selected Q4_K dual decode-shaped GEMV | `gguf_q4_k_selected_dual_prefill_out_kernel<unsigned short, unsigned short>` | 749.5 | 5160 |
+| Q8_0 pack8 decode-shaped GEMV | `gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>` | 474.7 | 21930 |
+| Selected Q5_K pack8 decode-shaped GEMV | `gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 5>` | 366.3 | 4773 |
+| Q6_K pack8 lm-head logits (allowed fallback) | `gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>` | 200.5 | 130 |
+| Paged full-attention decode context tensor | `qwen35_paged_full_attn_decode_context_tensor_kernel` | 321.3 | 1290 |
+| GDN decode rmsnorm gate lowp | `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>` | 84.7 | 3870 |
+
+The decode pipeline still uses the historical `*_prefill_out_kernel` family
+**at decode shapes (rows=1)** for every GGUF projection. These are decode
+row-GEMVs in disguise. They are correct but do not match the PARO
+`gemv_awq_*` decode kernels in throughput.
+
+### P9.0a — Roofline anchors (what is actually possible)
+
+From `docs/ROOFLINE.md` for W7900 / gfx1100:
+
+- **Prefill is compute-bound.** BF16 WMMA peak is ~123 TFLOP/s. PARO
+  Qwen3.5-35B-A3B at 2700 tok/s consumes ~80% of WMMA throughput in the
+  prefill path. We are at ~16% (538 / 2700 ≈0.20 × 80% ≈ 16%). The headroom
+  is real and almost entirely in **GDN prefill** plus better tile/launch
+  occupancy on the new WMMA kernels.
+- **Decode is bandwidth-bound.** Active weight traffic for Qwen3.5-35B-A3B
+  Q4_K_M at decode is ~1.7 GB/token → hard ceiling **508 tok/s** at 864 GB/s
+  peak. Realistic ceiling is closer to ROOFLINE's **412 tok/s** at ~80% peak.
+  PARO at 116 tok/s reaches ~28% peak. hipENGINE GGUF at 62.6 tok/s reaches
+  ~15%. The decode gap is **not** about the quant; it is about
+  per-projection-kernel inefficiency and per-token launch composition.
+
+P9 will not try to beat PARO. It will close the gap to within ~10–20% of
+PARO and document the remaining residue as roofline-anchored, not
+implementation-anchored.
+
+### P9.1 — GDN prefill (Track A): the single biggest lever
+
+**Why first.** GDN recurrent prefill is **73.5% of post-P8 prefill** for the
+MoE path. Killing this bucket alone unblocks the next stage of WMMA tile
+tuning and makes the 512/0 prefill total small enough that smaller buckets
+start to matter.
+
+**Why it is fixable.** Dense qwen35 GGUF already uses
+`qwen35_gdn_prefill_recurrent_k2_f32` plus a separate
+`qwen35_gdn_prefill_rmsnorm_gate_bf16`. The MoE GGUF path still uses
+`qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order` — a fused but
+**single-token-sequential** variant that does not unroll. Worse, parent
+PARO has `qwen35_gdn_prefill_recurrent_k2_segments_kernel`, an unrolled and
+segmented variant for long prefill that is already linked in our
+`linear_attn/gdn.hip`. We are simply not calling it.
+
+**P9.1 plan.**
+
+- **P9.A1** Move qwen35moe GGUF prefill GDN from `decode_order_bf16` onto the
+  unrolled-by-2 path: `qwen35_gdn_prefill_recurrent_k2_f32` for the
+  recurrence, then `qwen35_gdn_prefill_rmsnorm_gate_bf16` for the fused
+  RMSNorm+gate output stage. Then opt into the `segments_k2` variant when
+  prefill length ≥ a tunable segment size (e.g., 256), mirroring the parent
+  threshold. No new ABI; all three kernels are already in
+  `hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip`.
+- **P9.A2** CPU-reference correctness fixture. Compare GDN recurrent state
+  and final RMSNorm-gate output of `decode_order` vs `k2` vs `segments_k2`
+  paths on synthetic and Qwen3.6-35B-A3B-shaped inputs. Gate: KL ≤ 0.05 and
+  top-1 ≥ 90% on the qwen35moe 512/128 fixture.
+- **P9.A3** Retain a benchmark row: target GDN prefill bucket ≤ 200 ms at
+  512/0 (≥ 3.3× over the current 666.9 ms), plus the matching rocprof CSV
+  showing only `*_recurrent_k2*_kernel` and
+  `*_prefill_rmsnorm_gate_bf16_kernel` symbols.
+
+**Expected impact.** GDN 667 ms → ~150–200 ms moves the 512/0 total prefill
+kernel time from 908 ms to roughly 390–440 ms. Wall-clock prefill would go
+from 534 to roughly **1200–1400 tok/s** before any other tuning.
+
+### P9.2 — PARO-style decode GEMVs (Track B): the entire decode pipeline
+
+**Why.** Every GGUF projection at decode currently runs through a
+row-shaped `*_prefill_out_kernel`. These kernels are correct but were not
+written for c=1 throughput; PARO has dedicated decode GEMVs that fuse pack8
+layout, register-resident weight reuse, and (optionally) rotation/scatter at
+the boundary.
+
+**Where to copy structure.** All in tree, ready to mirror:
+
+- `gemv_awq_selected_dual_pack8_strided_kernel` (W4 PARO decode dual gate+up)
+- `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel` (fused PARO rotate
+  on the output to feed the next layer)
+- `gemv_awq_pack8_kernel` (single PARO decode)
+- `w8a16_shared_gate_up_bulk_kernel` and `w8a16_shared_down_bulk_combine_kernel`
+  (shared-expert decode bundle; bulk over rows + combine + residual)
+
+The only thing to swap is the **inner dequant** (AWQ pack8 → GGUF Q4_K /
+Q5_K / Q6_K / Q8_0 raw block math, all already implemented in
+`hipengine/kernels/cpu_reference/ops.py::gguf_quant_gemv` and in the existing
+`_prefill_out` HIP kernels).
+
+**P9.2 plan.**
+
+- **P9.B1** GGUF Q4_K **selected dual pack8 GEMV (decode)**:
+  `gguf_q4_k_selected_dual_pack8_gemv_kernel`. Compact-MoE ABI consistent
+  with P8.4 (`expert_start_compact`, `wmma_expert_start`, `tile_expert`, raw
+  rank-3 Q4_K bytes), but tuned for c=1 (rows=1) per active expert and
+  written PARO-style with `__launch_bounds__(128, 4)` and pack8 row layout.
+- **P9.B2** GGUF Q5_K and Q6_K **selected pack8 GEMV (decode)**:
+  `gguf_k_selected_pack8_gemv_kernel<unsigned short, 5/6>`. Same compact ABI.
+  Replaces today's `gguf_k_selected_pack8_prefill_out_kernel<...,5>` and
+  `<...,6>` at decode shapes.
+- **P9.B3** GGUF Q8_0 **dense pack8 GEMV (decode)** + a Q8_0 **dual gate+up
+  decode GEMV** for the shared-expert path. Replaces
+  `gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>` at
+  decode shapes.
+- **P9.B4** GGUF Q4_K **dense pack8 GEMV (decode)** for the attention/qkv/o
+  surfaces that materialize Q4_K as pack8. Avoids a second "decode but
+  through prefill_out" detour on dense Qwen layers in qwen35moe.
+- **P9.B5** Correctness fixtures for B1–B4 against `kernels/cpu_reference/`
+  oracle. Same shape coverage as P8.4/P8.5 selected WMMA tests, but with
+  rows=1 and decode-typical shapes (256–2048 in, 256–4K out, multi-expert
+  uneven counts including the all-empty case).
+- **P9.B6** Registry wiring. Add new keys under `moe_linear` and `linear`
+  (per-quant) with `*_pack8_gemv_decode_*` variants and route to them via
+  the existing `_variant_for_rows(...)` mapping in
+  `hipengine/runtime/gguf_linear.py`. No backend or quant if-branches; the
+  selection is plugin-style. Default off until the bench row lands; explicit
+  opt-in via the existing `wmma_prefill_session(...)` toggle which now
+  becomes "P9 GGUF fast decode opt-in" as well.
+- **P9.B7** Retained benchmark + rocprof. Target qwen35moe 512/128 decode
+  ≥ 95 tok/s median over three runs, with the new `*_pack8_gemv_decode_*`
+  kernels visible in the trace and the `*_prefill_out_kernel<...>` family
+  absent at decode shapes (the Q6_K lm-head logits dispatch is still a known
+  fallback).
+
+**Expected impact.** PARO at 116 tok/s decode reaches ~28% of the 864 GB/s
+ceiling; we're at ~15%. Halving per-projection-kernel overhead should put
+us in the **90–105 tok/s** range. Closing the remaining gap to 116 likely
+requires per-token kernel-launch reduction (P9.E) and possibly graph-bucket
+expansion (P9.F2).
+
+### P9.3 — WMMA prefill tuning (Track C)
+
+**Why.** The new P8 selected WMMA kernels work but were tuned conservatively
+(default tile, no rocprof-driven occupancy sweep). PARO `gemm_awq_*` got
+their win from VGPR/launch_bounds tuning and per-shape tile selection.
+
+**P9.3 plan.**
+
+- **P9.C1** Tile / `__launch_bounds__` sweep for
+  `gguf_q4_k_selected_dual_wmma_prefill_compact_kernel`. Compare TM/TN ∈
+  {16, 32, 64} × {16, 32}, then pick per-shape using
+  `_variant_for_rows(...)` with the same dispatch rule used for AWQ.
+- **P9.C2** Same for `gguf_k_selected_wmma_prefill_compact_kernel<...,5/6>`
+  (down projection).
+- **P9.C3** Same for `gguf_q8_0_prefill_wmma_kernel<...,32,32>` (dense). The
+  current single tile is the gating dispatch when `_variant_for_rows`
+  selects WMMA; add 32×16, 64×32, and the "dual gate+up" Q8_0 fused variant.
+- **P9.C4** rocprof occupancy + bandwidth audit. Back-calculate effective
+  GB/s per kernel from the kernel trace, retain the per-shape tile decision
+  in `docs/KERNELS.md`, and write the matching test that pins each chosen
+  variant.
+
+**Expected impact.** Compact MoE + Q8_0 WMMA combined: 165 ms → ~110 ms at
+512/0. Modest standalone, meaningful after P9.1 has reduced GDN.
+
+### P9.4 — Dispatch reduction and small-op fusion (Track D)
+
+**Why.** With GDN and the decode-GEMV families addressed, the residual
+buckets are dominated by router + small-op kernels: router logits + select,
+weighted lanes sum, scheduler counts/prefix/tile-map, redundant bf16↔f32
+casts, separate silu+mul, and gate-combine-residual. None of these are big
+individually; together they currently sit around ~30 ms at prefill and
+~150 ms at decode (per 128 tokens).
+
+**P9.4 plan.**
+
+- **P9.D1** Fuse `qwen35_router_logits_token_tile + qwen35_router_select`
+  into a single launch (in tree these are already small, but the launch
+  overhead is wasted at decode).
+- **P9.D2** Audit redundant `bf16_to_f32` / `f32_to_bf16` boundary kernels.
+  In the post-P8 prefill trace they appear in pairs; in decode they fire
+  thousands of times. Most can be folded into the consumer kernel as an
+  in-register cast.
+- **P9.D3** Consolidate the compact scheduler. `group_count + group_prefix +
+  wmma_tile_map` are three separate launches sharing the same `num_experts`
+  workgroup; on small expert counts the three-launch sequence dominates the
+  scheduler bucket. A single fused launch keeps the existing compact-MoE
+  ABI.
+- **P9.D4** Decide where SiLU+Mul lives. Today qwen35moe uses
+  `silu_mul_dual_out_bf16` after the dual gate+up WMMA. PARO fuses the SiLU
+  into the gate-side accumulator and emits only `mul` over half operands.
+  Try the fused PARO style; gate on KL + top-1.
+- **P9.D5** Decide where the gate-combine-residual lives. Today qwen35moe
+  emits two small kernels (`weighted_lanes_sum_out` then
+  `shared_gate_combine_residual_batch_out`). PARO fuses these into one. Try
+  the fused PARO style; gate on KL + top-1.
+
+**Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
+→ ~50 ms. Modest in absolute terms; visible at decode because each savings
+multiplies by 128 tokens.
+
+### P9.5 — Cross-cutting infra (Track E)
+
+The perf tracks above will be hard to evaluate without these:
+
+- **P9.E1** Add a `scripts/qwen35_gguf_rocprof_summary.py` (or extend the
+  existing rocprof helper) that ingests a rocprofv3 CSV and reports per-kernel
+  total ms, dispatches, average dispatch ms, and **back-calculated effective
+  GB/s** using known weight + activation footprints. This formalizes the
+  audit in `docs/ROOFLINE.md` §12.4 for our pipeline.
+- **P9.E2** Add a public E2E KL/top-1 correctness fixture that runs the full
+  qwen35moe 512/128 with `HIPENGINE_GGUF_WMMA_PREFILL=1` and the new decode
+  GEMV opt-in, gates on KL ≤ 0.05 and top-1 ≥ 90% vs the row-GEMV reference,
+  and fails the gate if the reduction-order drift the P8 acceptance flagged
+  becomes worse than this threshold.
+- **P9.E3** Expand the qwen35moe decode hipGraph bucket policy so the
+  captured graph covers the new GEMV decode families (and the existing
+  GDN/full-attention decode kernels) under one replay budget. Required
+  before the P9.G acceptance run can be a real graph-replay number rather
+  than an eager rocprof workaround.
+
+### P9.6 — Acceptance benchmark and rollups (Track G)
+
+- **P9.G1** After P9.1 (GDN) and P9.2 (decode GEMV) land, rerun
+  qwen35moe Qwen3.6-35B-A3B-UD-Q4_K_M 512/0 and 512/128 with cached builds.
+  Acceptance: prefill total kernel time ≤ **350 ms** at 512/0 (~2x of stretch
+  baseline, ~5x of current); decode ≥ **95 tok/s** median. Stretch: prefill
+  ≤ 250 ms (~3.6x current), decode ≥ 110 tok/s. Update
+  `benchmarks/results/`, `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
+  and `WORKLOG.md` atomically with the perf row, rocprof CSV, and KL gate
+  output.
+
+### Sequencing
+
+P9 splits cleanly into two waves and a closeout:
+
+- **Wave 1 (the big prefill win):** P9.A1 → P9.A2 → P9.A3. This is the most
+  cost-effective first step. Single biggest measurable single-task delta.
+- **Wave 1.5 (cross-cutting):** P9.E1 (rocprof bandwidth summary) and P9.E2
+  (E2E KL gate) should land in parallel with Wave 1 so Wave 2 has the
+  evidence machinery in place.
+- **Wave 2 (decode pipeline parity):** P9.B1 → P9.B2 → P9.B3 → P9.B4 →
+  P9.B5 → P9.B6 → P9.B7. New GEMV kernels are mechanical ports of well-
+  understood PARO templates; the work is mostly correctness fixtures and
+  registry wiring.
+- **Wave 3 (tuning and small-op fusion):** P9.C1–C4, P9.D1–D5, P9.E3.
+- **Closeout:** P9.G1.
+
+### Performance gates
+
+No P9 row is retained until the matching gate fires:
+
+| Gate | Target | Where it lives |
+| --- | --- | --- |
+| P9.A1 GDN prefill bucket | ≤ 200 ms at 512/0 | rocprof CSV + bench artifact + WORKLOG |
+| P9.B7 decode GEMV bucket | `_pack8_gemv_decode_*` symbols visible at rows=1 and `_prefill_out_kernel<...>` family absent at decode shapes | rocprof CSV + bench artifact + WORKLOG |
+| P9.G1 acceptance | qwen35moe 512/0 ≤ 350 ms total kernel and 512/128 decode ≥ 95 tok/s | benchmark artifact + rollup + CHANGELOG |
+| Stretch closeout | qwen35moe 512/0 ≤ 250 ms total kernel and 512/128 decode ≥ 110 tok/s | benchmark artifact + rollup + CHANGELOG |
+
+### Correctness gates
+
+Every P9 kernel honours the project policy:
+
+1. Match `kernels/cpu_reference/` math to within F32 tolerance
+   (`atol=1e-3, rtol=1e-2` for Q4_K/Q5_K/Q6_K; `atol=5e-4, rtol=5e-3` for
+   Q8_0). WMMA F32 accumulation should be nearly bit-exact when K reduction
+   order is preserved.
+2. Pass the P9.E2 KL/top-1 E2E fixture on qwen35moe 512/128 with the new
+   decode opt-in active. KL ≤ 0.05 and top-1 ≥ 90% vs the row-GEMV reference.
+3. Provide a `rocprofv3 --kernel-trace` smoke proving the new kernel symbols
+   are present and the relevant decode-shaped `_prefill_out_kernel` symbols
+   are absent on the decode code path.
+4. CPU-reference fixture tests live in `tests/test_gguf_*_decode_gemv.py`
+   and use the same `make_q4_k_weight` / `make_q5_k_weight` / `make_q6_k_weight`
+   / `make_q8_0_weight` synthetic block generators already used by P8.
+
+### What we are deliberately not doing in P9
+
+- **No new resident weight repack and no sidecar.** The pack8 layout we
+  already have at runtime is the dispatch layout the PARO templates expect.
+  Materialization stays exactly as it is.
+- **No activation quantization (W8A8-style I8 WMMA).** That is P8.8 / a
+  separate phase. P9 stays F16/BF16-operand WMMA on the prefill side and
+  pack8-row-resident dequant on the decode side.
+- **No changes to AOTriton attention prefill** (`qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel`
+  at 39.5 ms is already small).
+- **No new C++ engine layer.** The runner stays Python + ctypes + JIT HIP
+  kernels. The compact-MoE scheduler ABI does not change.
+- **No "if quant == ..." branches in dispatch or model code.** All P9 wiring
+  goes through registry keys and the existing `_variant_for_rows(...)`
+  mapping. New variants are new `KernelKey` rows, not new code paths.
+- **No GDN ABI change.** P9.A1 is a kernel-selection change, not a new
+  recurrent scheduler.
+- **No attempt to beat PARO.** Realistic close is ~10–20% of PARO on prefill
+  and ~5–10% on decode; the rest is roofline residue and tooling overhead.
+
+### Open questions (decide before each Wave lands)
+
+1. Which GDN prefill variant wins at 512: `k2` or `segments_k2`? Parent
+   defaults to `segments_k2` at segment threshold 256, but qwen35moe v6
+   has narrower head dims than the original W4 PARO model; measure both.
+2. Should the new `*_pack8_gemv_decode_*` kernels register under a separate
+  `layer="linear_decode"` family or share `layer="linear"` and dispatch via
+  `_variant_for_rows(rows=1)`? The latter avoids a new layer key; the former
+  isolates the c=1 contract from the prefill rows>1 path. Decision tracked
+  in P9.B6.
+3. Where does the fused PARO SiLU live for GGUF (P9.D4)? Inside the new
+  decode GEMV (cheap), or in a separate compact `silu_mul_dual_out` kernel
+  (current state). Decide once P9.B1 has a working baseline.
+4. Should P9 expand to dense Qwen3.5 (qwen35) as well, or stay scoped to
+  qwen35moe? Dense Qwen3.5 currently uses the GDN k2 path already, and the
+  P8 dense Q4_K WMMA path is blocked by materialization. P9 stays scoped to
+  qwen35moe; dense Qwen3.5 work is tracked separately.
+
+### Acceptance checklist for closing P9
+
+- [ ] P9.A1–A3 GDN prefill on `k2`/`segments_k2` with fused RMSNorm gate;
+  GDN bucket ≤ 200 ms at 512/0; correctness gate passed.
+- [ ] P9.B1–B5 decode GEMV kernels written, registered, CPU-reference-gated.
+- [ ] P9.B6 decode dispatch routes rows=1 GGUF projections through the new
+  GEMV kernels via registry only; no quant/backend branches added.
+- [ ] P9.B7 qwen35moe 512/128 decode ≥ 95 tok/s with rocprof showing the
+  new GEMV symbols and the old `_prefill_out_kernel<...>` family absent at
+  decode shapes (Q6_K lm-head fallback excluded).
+- [ ] P9.C1–C4 WMMA prefill kernels tuned per-shape; `docs/KERNELS.md` row
+  updated with the chosen variants.
+- [ ] P9.D1–D5 small-op fusions either landed (with bench evidence) or
+  explicitly rejected (with diagnostic evidence) in this doc and `WORKLOG.md`.
+- [ ] P9.E1–E3 tooling landed (rocprof summary, KL gate, decode graph
+  bucket).
+- [ ] P9.G1 acceptance benchmark passes target gate; rollups updated
+  atomically.
+- [ ] No `import torch` on the `LLM.generate()` path; no `if backend == ...`
+  / `if quant == ...` branches added to runtime dispatch.
