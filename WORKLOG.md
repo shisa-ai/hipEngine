@@ -19615,3 +19615,28 @@ Notes for downstream:
 
 - `_cpu_rmsnorm_gate` matches the kernel only when SiLU(gate) is used, not sigmoid; this is documented inline in the test file and again here so the next person who ports the kernel to a different output dtype doesn't get the wrong oracle.
 - Bulk parity artifact stored at `/tmp/p9_a2/bulk_parity_post_task17.json`; not committed (transient diagnostic).
+
+## 2026-05-18 P9 task #20: GGUF Q4_K selected dual pack8 GEMV decode kernel
+
+Implemented the P9.B1 decode-shaped pack8 GEMV for raw GGUF Q4_K compact selected MoE gate+up, mirroring the structure of `paro_awq_gemv.hip::gemv_awq_selected_dual_pack8_strided_kernel` but consuming the P8.4 compact-MoE ABI instead of the PARO `selected[row]` mapping.
+
+Files:
+
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_pack8_gemv.hip`: new HIP source. PARO-style `__launch_bounds__(128, 4)` with 4 wave32 waves per block; per-block hoist of `d * scales[sb]` and `dmin * mins[sb]` into shared memory (`s_scale[64]`, `s_min[64]`) once per 256-element Q4_K block so the inner k loop stays in registers. Inner loop reuses the in-tree `gguf_q4_k_scale/min/quant` helpers and decodes one nibble per (subblock, lane32) into an `acc[0..7]` FMA pair (one row pointer per output channel). Grid `((out_features_a + out_features_b) / 8, compact_rows)`; one block per (output pack of 8, compact row). Block recovers expert id via a linear scan over `expert_start_compact[E+1]` (`num_experts` is small in practice for qwen35moe). Pack8 reduction via the standard `xchg[8*8]` cross-wave sum used by PARO and existing GGUF pack8 kernels.
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_pack8_gemv.py`: BF16 and FP16 wrappers. Registers `moe_linear / gguf_q4_k / selected_dual_pack8_gemv_decode_compact_{bf16,fp16}_{bf16,fp16}_out` plus shorthand aliases (`selected_dual_pack8_gemv_decode_{bf16,fp16}_{bf16,fp16}_out`).
+- `docs/KERNELS.md`: appended P9.B1 catalog row with the inline GPU smoke results.
+
+Validation on W7900/gfx1100 (RX 7900 XTX local):
+
+- `py_compile` wrapper: OK; registry/build-plan smoke confirms all 4 variants resolve.
+- HIP build via `build_gguf_q4_k_selected_pack8_gemv(load=True)` produces `gguf_q4_k_selected_pack8_gemv.so` with both extern "C" symbols.
+- Inline GPU smoke vs CPU `gguf_quant_gemv(..., GGMLQuantizationType.Q4_K)`:
+  - BF16 path: compact_rows=16, in=256, out_a=16, out_b=32, E=3, expert layout `[8, 0, 8]`. Max |delta|=0.801 max_rel(eps=1)=0.0038 (~0.4% absolute on outputs up to 191; BF16 output rounding boundary).
+  - FP16 path: compact_rows=8, in=256, out_a=16, out_b=32, E=2, expert layout `[4, 4]`. Max |delta|=0.058 max_rel(eps=1)=0.00047.
+- Adjacent regression bundle (`test_gguf_q4_k_selected_wmma_prefill.py`, `test_gguf_linear_dispatch.py`, `test_qwen35_gguf_compact_moe_wmma_routing.py`, `test_qwen35_gguf_gdn_prefill_correctness.py`) -> `53 passed`.
+
+Design notes for downstream:
+
+- The kernel deliberately drops the P8.4 WMMA-only fields (`expert_start_wmma`, `tile_expert`) at the kernel boundary; the compact-MoE scheduler still emits them for the WMMA prefill path, and the runtime dispatch (task #25 / P9.B6) routes `rows == 1` projections through this decode GEMV while keeping the existing prefill WMMA path intact. The shared `expert_start_compact` field is what makes both paths plug-compatible with the P8.6 scheduler.
+- Per-block scale/min hoist is the main improvement over the current `gguf_q4_k_selected_pack8_prefill_out_kernel` family (which calls `gguf_q4_k_weight()` per K, reloading the block header every iteration). The new kernel reads each Q4_K block header once across all 8 output channels of the pack via 64 cooperative threads, then iterates the 256-K block with a register-resident inner loop.
+- Formal compact-MoE correctness fixture (uneven counts, empty experts, padding, all-empty, tile-boundary out widths) is task #24 (P9.B5). This worklog entry records the inline smoke as a hand-verified seed for that test.
