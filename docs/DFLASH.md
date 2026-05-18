@@ -109,7 +109,7 @@ It records:
   - Phase C: drafter caches per-layer rotated K (FP32) and V (BF16) for context
     rows; per-cycle `propose()` only processes block-size query rows.
   The retained gfx1151 16-token smoke is exact/finite with `6/30` acceptance
-  across 9 cycles and is still slower than AR (`0.294x`) and non-promotable
+  across 9 cycles and is still slower than AR (`0.289x`) and non-promotable
   because the verifier still issues `B+1` sequential single-token target
   forwards per cycle and the drafter is dominated by small fixed-shape kernel
   launches.  It is retained as a diagnostic row only (`performance_claim=false`;
@@ -488,16 +488,16 @@ Goal: stop calling the HF/PyTorch drafter with full context hidden every cycle.
   diagnostic driver that executes the packed target and native DFlash drafter in
   one resident target session with same-session AR control. It captures target
   hidden taps on device, proposes a top-1 chain through z-lab drafter weights,
-  verifies exactly via serial branch slot-state copies, and emits schema-2 rows
-  with acceptance, split timings, D2H counts, graph status, backend/arch, memory,
-  and promotion eligibility. The retained gfx1151 smoke artifact after the
-  Phase A+B+C is exact/finite but slower than AR (`0.294x`) and
+  verifies exactly via the `serial_in_place_single_slot` verifier, and emits
+  schema-2 rows with acceptance, split timings, D2H counts, graph status,
+  backend/arch, memory, and promotion eligibility. The retained gfx1151 smoke
+  artifact after Phase A+B+C is exact/finite but slower than AR (`0.289x`) and
   `performance_claim=false`.  Drafter per-call sync time dropped from
   `~95-100 ms` to `~68 ms` (-32%); decode tok/s rose from `~14.7` to `~18.3`
   (median across 5 runs, +24%).
-- Remaining integration work: replace serial branch verification with the native
-  compact/bulk target verifier and then promote only if full-model chain beats
-  same-session AR.
+- Remaining integration work: replace serial in-place verification with the
+  native compact/bulk target verifier and then promote only if full-model chain
+  beats same-session AR.
 
 ### Phase D4 — DDTree compiler and tree verify
 

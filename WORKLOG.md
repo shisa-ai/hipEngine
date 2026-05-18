@@ -18101,3 +18101,50 @@ scope for this optimization pass.
 The verifier remains `B+1` sequential single-token forwards per cycle; the
 native bulk verifier (single `B+1`-row forward against the resident KV)
 remains the only path to a promotable row.
+
+## 2026-05-18 — DFlash retained-row rollup hygiene (DFlash 19)
+
+Task #21 audit: regenerated the Phase A+B+C full-model DFlash diagnostic artifact
+from a clean tree after normalizing the speculative artifact metadata contract.
+
+Changes:
+
+- `hipengine/benchmark/speculative.py` now emits top-level `correctness_gate`,
+  `baseline` (same-session AR speed/delta), and `decision_reason` fields for
+  speculative artifacts so retained rows answer the `docs/BENCHMARK.md` evidence
+  checklist without re-reading row internals.
+- `scripts/dflash_chain_e2e_bench.py` now records the verifier as
+  `serial_in_place_single_slot` in its summary, accepts `--hardware-gpu`, and
+  no longer labels cached-context Phase A+B+C drafter time as
+  `draft_context_full_rebuild_seconds`; cached rows report full rebuild `0` and
+  append materialization under `draft_context_append_seconds`.
+- Regenerated retained artifact:
+  `benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-phaseABC-diagnostic.json`.
+
+Clean-tree artifact command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 16 --draft-budgets 4 \
+  --json /tmp/hipengine-dflash-chain-e2e-phaseABC-regenerated.json
+```
+
+Result:
+
+- software context: `hipEngine@97204d1`, branch `dflash`, dirty `false`;
+- model snapshots: target shisa packed PARO `501ef8635e5cfb5a7497d232358ca8d1afc0c66e`, drafter z-lab DFlash `42d3b34d588423cdae7ba8f53a8cf7789346a719`;
+- workload: full-model DFlash chain E2E, stable code prompt, `decode_tokens=16`,
+  draft budget `B=4`, backend `hip_gfx1151`, arch `gfx1151`;
+- correctness gate: same-session AR exact equality and finite AR/draft/verify logits passed;
+- measurement: AR `64.18 tok/s`, DFlash `18.53 tok/s`, speedup `0.289x`
+  (`-71.1%` vs same-session AR), 9 cycles, accepted `6/30`, verify rows/output `2.5`;
+- decision: `status=diagnostic`, `performance_claim=false`, not promoted because
+  the verifier remains `serial_in_place_single_slot` and native bulk verification
+  is still required.
+
+Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/DFLASH.md`, and
+`docs/MTP.md` to point at the clean artifact and keep the row clearly
+non-promoted/diagnostic.

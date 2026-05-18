@@ -1,12 +1,28 @@
 {
+  "baseline": {
+    "ar_decode_tok_s": 64.17947224879873,
+    "delta_vs_ar_percent": -71.12231064486313,
+    "spec_decode_tok_s": 18.533548625774362,
+    "speedup_vs_ar": 0.28877689355136854,
+    "type": "same_session_ar_control"
+  },
   "commands": {
-    "benchmark": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 16 --draft-budgets 4 --json /tmp/hipengine-dflash-chain-e2e-phaseABC.json"
+    "benchmark": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 16 --draft-budgets 4 --json /tmp/hipengine-dflash-chain-e2e-phaseABC-regenerated.json"
+  },
+  "correctness_gate": {
+    "all_exact_match_ar": true,
+    "all_finite_logits": true,
+    "correctness_pass_rows": 1,
+    "oracle": "same-session greedy AR equality plus finite AR/draft/verify logits",
+    "passed": true,
+    "rows": 1
   },
   "decision": {
     "accepted": false,
     "promotion_rule": "accepted only when every row is exact/finite and aggregate speedup_vs_ar > 1.10",
     "reason": "full-model diagnostic only: serial_in_place_single_slot verifier is not the promotable native bulk verifier"
   },
+  "decision_reason": "full-model diagnostic only: serial_in_place_single_slot verifier is not the promotable native bulk verifier",
   "hardware": {
     "arch": "gfx1151",
     "backend": "hip_gfx1151",
@@ -53,7 +69,7 @@
       "all_correctness_passed": true,
       "all_exact_match_ar": true,
       "all_finite_logits": true,
-      "ar_decode_tok_s": 63.15360403178058,
+      "ar_decode_tok_s": 64.17947224879873,
       "correctness_pass_rows": 1,
       "d2h": {
         "full_logits_readbacks": 0,
@@ -65,11 +81,11 @@
       "decode_tokens": 16,
       "exact_match_rows": 1,
       "finite_all_logits_rows": 1,
-      "median_row_speedup_vs_ar": 0.29393491328997634,
+      "median_row_speedup_vs_ar": 0.28877689355136854,
       "rows": 1,
-      "spec_decode_tok_s": 18.563049125030926,
+      "spec_decode_tok_s": 18.533548625774362,
       "speed_gate_gt_1p10": false,
-      "speedup_vs_ar": 0.29393491328997634,
+      "speedup_vs_ar": 0.28877689355136854,
       "target_verify_rows": 40,
       "target_verify_rows_per_output_token": 2.5
     },
@@ -112,8 +128,8 @@
           "steps": 9
         },
         "ar": {
-          "decode_seconds": 0.2533505449973745,
-          "decode_tok_s": 63.15360403178058,
+          "decode_seconds": 0.2493008969904622,
+          "decode_tok_s": 64.17947224879873,
           "finite_logits": true,
           "generated_sample": [
             3841,
@@ -200,16 +216,16 @@
           "accepted_draft_tokens": 6,
           "backend": "hip_gfx1151",
           "commit_rows": null,
-          "commit_seconds": 0.0019530249992385507,
-          "decode_seconds": 0.8619273639924359,
-          "decode_tok_s": 18.563049125030926,
+          "commit_seconds": 0.0020345980010461062,
+          "decode_seconds": 0.8632993240025826,
+          "decode_tok_s": 18.533548625774362,
           "draft_calls": 9,
-          "draft_context_append_seconds": 0.0,
-          "draft_context_full_rebuild_seconds": 0.6098233780357987,
+          "draft_context_append_seconds": 0.0020345980010461062,
+          "draft_context_full_rebuild_seconds": 0.0,
           "draft_context_phase_seconds": {
-            "append_materialize": 0.0,
-            "full_context_rebuild": 0.6098233780357987,
-            "query_only_drafter": 0.6098233780357987
+            "append_materialize": 0.0020345980010461062,
+            "full_context_rebuild": 0.0,
+            "query_only_drafter": 0.6078395199874649
           },
           "draft_kv_bytes": null,
           "draft_kv_capacity_tokens": null,
@@ -217,19 +233,19 @@
             "context_projection": 7.975992048159242e-06,
             "context_projection_cached_rows": 877.0,
             "context_projection_rebuild_rows": 0.0,
-            "decoder_layers": 0.005180367021239363,
-            "final_norm": 3.256100171711296e-05,
+            "decoder_layers": 0.004872856006841175,
+            "final_norm": 3.623899829108268e-05,
             "key_positions_h2d": 0.0,
             "kv_cache_cached_rows": 877.0,
-            "lm_head": 8.980999700725079e-05,
-            "noise_prepare": 0.03812024599756114,
-            "slowest_decoder_layer": 0.0003592290013330057,
-            "topk_and_readback": 0.566323529012152,
-            "total": 0.6098233780357987
+            "lm_head": 9.65209910646081e-05,
+            "noise_prepare": 0.03836565796518698,
+            "slowest_decoder_layer": 0.000406047998694703,
+            "topk_and_readback": 0.5643900939903688,
+            "total": 0.6078395199874649
           },
           "draft_phase_timing_mode": "enqueue_until_final_sync",
-          "draft_query_seconds": 0.6098233780357987,
-          "draft_seconds": 0.6098233780357987,
+          "draft_query_seconds": 0.6078395199874649,
+          "draft_seconds": 0.6078395199874649,
           "draft_tokens_proposed": 30,
           "drafter_context_mode": "append_only_projected_context_and_kv",
           "generated_sample": [
@@ -252,15 +268,15 @@
           ],
           "native_bulk_verifier": false,
           "phase_split": {
-            "commit_fraction": 0.0022658811877049193,
-            "commit_seconds": 0.0019530249992385507,
-            "draft_fraction": 0.7075113327544273,
-            "draft_seconds": 0.6098233780357987,
-            "other_fraction": 0.001071395375155576,
-            "other_seconds": 0.0009234649915015325,
-            "target_verify_fraction": 0.28915139068271223,
-            "target_verify_seconds": 0.2492274959658971,
-            "total_seconds": 0.8619273639924359
+            "commit_fraction": 0.0023567700616432077,
+            "commit_seconds": 0.0020345980010461062,
+            "draft_fraction": 0.7040889562721893,
+            "draft_seconds": 0.6078395199874649,
+            "other_fraction": 0.0010519689061379354,
+            "other_seconds": 0.0009081640455406159,
+            "target_verify_fraction": 0.29250230476002964,
+            "target_verify_seconds": 0.252517041968531,
+            "total_seconds": 0.8632993240025826
           },
           "proposal_trace_count": 9,
           "proposal_trace_sample": [
@@ -444,13 +460,13 @@
           ],
           "same_process_control": true,
           "same_session_control": true,
-          "speedup_vs_ar": 0.29393491328997634,
+          "speedup_vs_ar": 0.28877689355136854,
           "target_arch": "gfx1151",
           "target_verify_rows": 40,
           "target_verify_rows_per_output_token": 2.5,
-          "target_verify_seconds": 0.2492274959658971,
+          "target_verify_seconds": 0.252517041968531,
           "verifier_mode": "serial_in_place_single_slot",
-          "verify_eta_vs_ar_per_row": 0.3934903648515614
+          "verify_eta_vs_ar_per_row": 0.4051602621842019
         }
       }
     ]
@@ -473,10 +489,8 @@
     "Actual full-model target and native DFlash drafter execution with same-session AR control; diagnostic until native bulk verifier issues a single B+1-row forward per cycle.",
     "Prompt fixture includes code/general/multilingual categories via fixtures/dflash/stable_prompts.jsonl.",
     "Phase A optimization: single-slot in-place verify (no per-candidate state copies, no commit copy).",
-    "Phase A: single-slot in-place verifier (zero per-candidate state copies).",
-    "Phase B: drafter caches projected_context_norm; only newly committed rows re-projected through fc+hidden_norm.",
-    "Phase C: drafter caches per-layer rotated K (FP32) and V (BF16) for context rows; per-cycle propose only processes block_size query rows.",
-    "Across 5 d=16 runs, median DFlash decode rose from ~14.7 tok/s (rope-fix baseline) to ~18.3 tok/s (+24%) and drafter per call from ~100 ms to ~68 ms (-32%)."
+    "Phase B optimization: append-only projected_context_norm cache; only newly committed rows are re-projected.",
+    "Phase C optimization: append-only per-layer rotated K and V context cache; per-cycle propose() processes query rows only."
   ],
   "performance_claim": false,
   "run_tag": "dflash-chain-full-model-e2e",
@@ -484,9 +498,9 @@
   "software": {
     "hipcc_version": "HIP version: 7.2.53211-e1a6bc5663\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 43215c73116c407735c85a180d174f718798c328+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
     "hipengine_branch": "dflash",
-    "hipengine_commit": "ab769bb2f4d3ac9442060f82872606ab9991e301",
-    "hipengine_dirty": true,
-    "hipengine_status_porcelain": "M scripts/dflash_chain_e2e_bench.py",
+    "hipengine_commit": "97204d1eaf31f26ae8189b0572605d836219e044",
+    "hipengine_dirty": false,
+    "hipengine_status_porcelain": "",
     "platform": "Linux-7.1.0-rc1-1-mainline-x86_64-with-glibc2.43",
     "python": "3.12.12"
   },
@@ -532,9 +546,9 @@
   },
   "speculative_schema": 1,
   "status": "diagnostic",
-  "summary": "Full-model hipEngine DFlash chain E2E run with same-session AR control, native drafter, and serial branch target verifier",
+  "summary": "Full-model hipEngine DFlash chain E2E run with same-session AR control, native drafter, and serial in-place target verifier",
   "synthetic_schema_fixture": false,
-  "timestamp": "2026-05-18T12:50:57.451905+00:00",
+  "timestamp": "2026-05-18T13:09:56.069327+00:00",
   "workload": {
     "artifact_validation": {
       "drafter": {
