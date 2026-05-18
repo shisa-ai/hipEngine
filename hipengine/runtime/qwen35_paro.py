@@ -3184,8 +3184,6 @@ class Qwen35ParoDecodeState:
                 raise ValueError("INT8 retained prefill append requires retained key/value cache tensors")
             if retained_append_spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD:
                 raise ValueError("INT8 retained prefill append requires int8_per_token_head spans")
-            if aotriton_attention:
-                raise ValueError("AOTriton prefill is disabled when retained KV storage is int8_per_token_head")
         attention_scratch = attention_scratch or self.reserve_full_attention_scratch(
             tokens=tokens,
             num_splits=1,

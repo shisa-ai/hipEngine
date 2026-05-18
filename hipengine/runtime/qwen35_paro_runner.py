@@ -1347,7 +1347,7 @@ class Qwen35ParoResidentSession:
                 "full_native": True,
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
-                "aotriton_attention": self._prefill_use_aotriton_attention(len(tokens)) and self.kv_storage_dtype == DType.BF16,
+                "aotriton_attention": self._prefill_use_aotriton_attention_resolved(len(tokens)),
                 "attn_aotriton_min_tokens": self.prefill_config.attn_aotriton_min_tokens,
                 "kv_storage_dtype": self.kv_storage_dtype.value,
                 "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
@@ -2028,6 +2028,15 @@ class Qwen35ParoResidentSession:
         threshold = int(self.prefill_config.attn_aotriton_min_tokens)
         return threshold > 0 and int(tokens) >= threshold
 
+    def _prefill_use_aotriton_attention_resolved(self, tokens: int) -> bool:
+        if not self._prefill_use_aotriton_attention(tokens):
+            return False
+        # INT8-retained sessions still build a temporary BF16 oracle K/V cache
+        # during native prefill, so the BF16 AOTriton attention path is valid
+        # and avoids the shared-memory-limited native causal prefill kernel at
+        # long contexts. The BF16 oracle workspace is released before decode.
+        return self.kv_storage_dtype in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}
+
     def _materialize_packed_prefill_metadata(self, slab) -> Qwen35ParoPackedPrefillMetadata:
         if slab.rows > self.prefill_capacity_rows:
             raise ValueError("compact prompt slab rows exceed prefill buffer capacity")
@@ -2257,7 +2266,7 @@ class Qwen35ParoResidentSession:
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = Tensor.from_handle(self.prefill_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (tokens, self.config.hidden_size), DType.FP16, self.device)
-        use_aotriton_attention = self._prefill_use_aotriton_attention(tokens) and self.kv_storage_dtype == DType.BF16
+        use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(tokens)
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":

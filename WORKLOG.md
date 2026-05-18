@@ -17238,3 +17238,132 @@ Trace outputs and summaries:
 rocm-smi --showpids --showmeminfo vram --showuse
 # After gates: no KFD PIDs; GPU use 0%; VRAM used 27,942,912 B / 48,301,604,864 B.
 ```
+
+## 2026-05-18 — task #15 128K BF16-vs-INT8 KV quality/perf comparison
+
+Ran the 128K/128 Qwen3.5/PARO BF16 dense-KV baseline vs `int8_per_token_head` dense-KV row on W7900/gfx1100. During the first INT8 128K run, native causal prefill without AOTriton hit `HIP error 1: invalid argument` in `qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans`: INT8 retained prefill was forcing the shared-memory native prefill path even though it already builds a temporary BF16 oracle K/V cache. Fixed the runtime to allow the same AOTriton BF16-attention prefill path for `int8_per_token_head`; retained INT8 K/V is still written in parallel and the BF16 oracle prefill workspace is released before decode.
+
+Environment / setup:
+
+```bash
+RUN=/tmp/hipengine-task15-128k-int8-kv
+hipcc --version > "$RUN/hipcc-version.txt"
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -24
+rocm-smi --showpids --showmeminfo vram --showuse --showtemp
+# hip OK; rocminfo reported gfx1100 / AMD Radeon Pro W7900.
+# Before run: no KFD PIDs; VRAM used 27,942,912 B / 48,301,604,864 B.
+```
+
+Validation / correctness gates after the INT8-AOTriton prefill fix:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_kv_e2e_fixture_gate.py tests/test_qwen35_bench_memory_audit.py -q
+# 37 passed.
+
+python3 scripts/check_fixtures.py
+# PASS for all CPU-reference fixtures.
+
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build --require-int8-hip \
+  --json "$RUN/qwen35-kv-int8-accuracy-hip-after-aotriton.json"
+# status=accepted, passed=true.
+# ctx64 INT8 HIP max_abs=5.2154e-08; quantized-vs-BF16 KL=2.3353e-07, top1=1.0.
+# ctx520 INT8 HIP max_abs=1.8626e-08; quantized-vs-BF16 KL=4.4598e-08, top1=1.0.
+
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
+  --kv-storage int8_per_token_head --compiler-version-file "$RUN/hipcc-version.txt" \
+  --require-cached-build --json "$RUN/qwen35-kv-e2e-fixture-gate-int8-after-aotriton.json"
+# status=accepted, passed=true on fixtures/qwen35_paro/parent_512_32_seed1234.json.
+# max_kl=0.015328251530778358 <= 0.05; mean_kl=0.001639289025262575;
+# top1_agreement=1.0; generated_match=true; expected_match=true.
+```
+
+Standard 128K/128 benchmark protocol (single run each, graph replay decode, warmup 4, max_layers 40, token id 9707, AOTriton threshold 512, chunks `1024/1024/4096/1024/1024`):
+
+```bash
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage bf16 --json "$RUN/qwen35-paro-128k128-bf16-rerun.json"
+# BF16: prefill 1021.180385981866 tok/s; decode 63.29851597273583 tok/s;
+# tracked_peak=23.287733250297606 GiB; sampled_hip_peak=22.409912109375 GiB;
+# retained KV payload=2,689,597,440 B (2.0 B/element); generated preview [9707, 9707].
+
+python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 \
+  --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+  --attn-aotriton-min-tokens 512 \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 \
+  --kv-storage int8_per_token_head --json "$RUN/qwen35-paro-128k128-int8-rerun.json"
+# INT8: prefill 1011.0640439636841 tok/s; decode 61.2745382533185 tok/s;
+# tracked_peak=24.545076542533934 GiB; sampled_hip_peak=21.169677734375 GiB;
+# retained KV payload=1,344,798,720 B (1.0 B/element), scale metadata=10,506,240 B;
+# audit passed: no persistent BF16 KV shadow; generated preview [9707, 9707].
+```
+
+Comparison: INT8 vs BF16 128K/128 is `-0.99%` prefill and `-3.20%` decode. Sampled HIP VRAM peak drops by `1.240 GiB`; retained KV total bytes drop from `2,689,597,440` to `1,355,304,960` bytes (`-49.6%`). The tracked allocator peak rises by `+1.257 GiB` because prefill temporarily holds the BF16 oracle K/V plus retained INT8 K/V before releasing the prefill workspace.
+
+Profiler evidence (selected-region rocprofv3; raw CSVs under `$RUN/rocprof-int8-*`):
+
+```bash
+LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override:${LD_LIBRARY_PATH:-} \
+  timeout 2400s rocprofv3 --kernel-trace --selected-regions true --output-format csv \
+  -d "$RUN/rocprof-int8-prefill" -o int8-prefill -- \
+  python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 \
+    --decode-tokens 0 --warmup-decode-tokens 0 --max-layers 40 \
+    --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+    --attn-aotriton-min-tokens 512 \
+    --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+    --prefill-full-attn-query-chunk-size 4096 \
+    --prefill-full-attn-post-chunk-size 1024 \
+    --prefill-full-attn-rope-chunk-size 1024 \
+    --kv-storage int8_per_token_head --rocprof-selected-region prefill \
+    --json "$RUN/rocprof-int8-prefill/bench.json"
+# Trace: $RUN/rocprof-int8-prefill/int8-prefill_kernel_trace.csv
+# qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16>: 320 calls,
+# avg 54,847.7 ns, median 54,620.5 ns, max 69,761 ns.
+
+LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override:${LD_LIBRARY_PATH:-} \
+  timeout 2400s rocprofv3 --kernel-trace --selected-regions true --output-format csv \
+  -d "$RUN/rocprof-int8-decode16" -o int8-decode16 -- \
+  python3 scripts/qwen35_paro_bench.py --token-id 9707 --prompt-length 131072 \
+    --decode-tokens 16 --warmup-decode-tokens 4 --max-layers 40 \
+    --compiler-version-file "$RUN/hipcc-version.txt" --require-cached-build \
+    --attn-aotriton-min-tokens 512 \
+    --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+    --prefill-full-attn-query-chunk-size 4096 \
+    --prefill-full-attn-post-chunk-size 1024 \
+    --prefill-full-attn-rope-chunk-size 1024 \
+    --kv-storage int8_per_token_head --rocprof-selected-region measured_decode_graph \
+    --json "$RUN/rocprof-int8-decode16/bench.json"
+# Trace: $RUN/rocprof-int8-decode16/int8-decode16_kernel_trace.csv
+# qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<_Float16,8,16,2>:
+# 160 calls, avg 621,500.2 ns, median 621,429 ns, max 641,850 ns.
+# qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<_Float16>:
+# 160 calls, avg 159,271.4 ns, max 167,482 ns.
+# qwen35_write_paged_kv_int8_per_token_head_kernel<_Float16> during decode append:
+# 160 calls, avg 4,362.5 ns, max 4,760 ns.
+```
+
+Committed compact artifact: `benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-128k-quality-perf-diagnostic.json`; updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` rollups. Diagnostic retained only (`performance_claim=false`) because resident-runner throughput is not yet a promoted public `LLM.generate()` row.
+
+Post-change validation:
+
+```bash
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest: 324 passed; CPU fixtures passed; registry smoke printed expected missing embed kernel; cpu-fixtures smoke passed.
+```

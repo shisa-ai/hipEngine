@@ -270,6 +270,13 @@ def test_qwen35_resident_native_prefill_layers_use_int8_retained_cache_and_bf16_
     session.libraries = {}
     session._allocate_full_attention_cache(0)
     session._full_attention_prefill_layer_chunk_size = MethodType(lambda self, tokens: 2, session)
+    session._prefill_single_cu_seqlens_pair = MethodType(
+        lambda self, query_tokens, key_tokens: (
+            _tensor(0x5100 + int(query_tokens), (2,), DType.INT32),
+            _tensor(0x5200 + int(key_tokens), (2,), DType.INT32),
+        ),
+        session,
+    )
     session._ensure_full_prefill_scratch = MethodType(lambda self, *, tokens: object(), session)
     session._ensure_moe_prefill_scratch = MethodType(lambda self, layer_id=None, *, tokens: object(), session)
 
@@ -311,7 +318,10 @@ def test_qwen35_resident_native_prefill_layers_use_int8_retained_cache_and_bf16_
     assert out.shape == (4, 8)
     assert len(state.run_calls) == 2
     assert [call[1]["tokens"] for call in state.run_calls] == [2, 2]
-    assert all(call[1]["aotriton_attention"] is False for call in state.run_calls)
+    assert all(call[1]["aotriton_attention"] is True for call in state.run_calls)
+    assert [call[1]["aotriton_kv_rows"] for call in state.run_calls] == [2, 4]
+    assert all(call[1]["cu_seqlens_q"] is not None for call in state.run_calls)
+    assert all(call[1]["cu_seqlens_k"] is not None for call in state.run_calls)
     assert [item[0] for item in workspace.calls] == ["prefill.int8_oracle_key.0", "prefill.int8_oracle_value.0"]
     for _hidden, kwargs in state.run_calls:
         assert kwargs["key_cache"].dtype is DType.BF16
