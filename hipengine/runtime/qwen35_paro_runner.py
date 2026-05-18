@@ -1662,6 +1662,26 @@ class Qwen35ParoResidentSession:
         )
         return position_tensor, append_spans, decode_spans
 
+    def _slot_full_spans(self, layer_id: int, slot: int) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
+        position_tensor = self._slot_scalar_tensor(self.position_buf, slot, DType.INT64)
+        context_tensor = self._slot_scalar_tensor(self.context_buf, slot, DType.INT64)
+        scale_metadata = self._slot_full_scale_metadata(layer_id, slot)
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=self.block_table,
+            live_counts=position_tensor,
+            max_live_count=self.max_sequence_length - 1,
+            storage_dtype=self.kv_storage_dtype,
+            scale_metadata=scale_metadata,
+        )
+        decode_spans = KVLiveSpans.paged_uniform(
+            block_table=self.block_table,
+            live_counts=context_tensor,
+            max_live_count=self.max_sequence_length,
+            storage_dtype=self.kv_storage_dtype,
+            scale_metadata=scale_metadata,
+        )
+        return position_tensor, append_spans, decode_spans
+
     def _check_slot(self, slot: int) -> None:
         if slot < 0 or slot >= self.max_batch_size:
             raise ValueError(f"slot {slot} outside batch capacity {self.max_batch_size}")
@@ -2320,7 +2340,6 @@ class Qwen35ParoResidentSession:
             self._set_position(position, stream=stream)
             hidden = self._prefill_row_hidden_view(hidden_rows, position)
             next_hidden = self.next_hidden
-            position_tensor, append_spans, decode_spans = self._slot_spans(0)
             for layer_id in range(start_layer, len(self.states)):
                 state = self.states[layer_id]
                 layer_type = self.config.layer_types[layer_id]
@@ -2337,6 +2356,7 @@ class Qwen35ParoResidentSession:
                     )
                 elif layer_type == "full_attention":
                     key_cache, value_cache = self._slot_full_cache(layer_id, 0)
+                    position_tensor, append_spans, decode_spans = self._slot_full_spans(layer_id, 0)
                     num_splits = max(1, (position + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
                     out = state.run_full_attention_moe_c1_layer_fp16(
                         hidden,
@@ -2393,7 +2413,6 @@ class Qwen35ParoResidentSession:
         else:
             hidden = self._slot_hidden_view(self.batch_hidden, slot)
             next_hidden = self._slot_hidden_view(self.batch_next_hidden, slot)
-        position_tensor, append_spans, decode_spans = self._slot_spans(slot)
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
@@ -2409,6 +2428,7 @@ class Qwen35ParoResidentSession:
                 )
             elif layer_type == "full_attention":
                 key_cache, value_cache = self._slot_full_cache(layer_id, slot)
+                position_tensor, append_spans, decode_spans = self._slot_full_spans(layer_id, slot)
                 num_splits = num_splits_override or max(1, (position + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
                 out = state.run_full_attention_moe_c1_layer_fp16(
                     hidden,

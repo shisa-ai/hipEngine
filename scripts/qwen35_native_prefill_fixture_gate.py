@@ -247,8 +247,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     prompt_tokens = [int(item) for item in fixture["prompt_ids"]]
     decode_tokens = int(fixture["decode_len"] if args.max_new_tokens is None else args.max_new_tokens)
     expected = [int(item) for item in fixture["expected_generated_token_ids"][:decode_tokens]]
-    if args.native_kv_storage_dtype == "int8_per_token_head" and decode_tokens > 0:
-        raise ValueError("INT8 native KV fixture mode currently gates prefill only; use --max-new-tokens 0 until INT8 decode session wiring lands")
     runner = Qwen35ParoNextTokenRunner(args.model)
     serial = _run_once(runner, prompt_tokens, decode_tokens=decode_tokens, max_layers=args.max_layers, prefill_mode="serial")
     native = _run_once(

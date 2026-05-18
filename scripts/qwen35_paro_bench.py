@@ -25,6 +25,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 
@@ -111,6 +112,12 @@ def main() -> int:
         help="Optional resident high-water budget for long-context chunk tuning; 0 derives a budget from device VRAM.",
     )
     parser.add_argument(
+        "--kv-storage-dtype",
+        choices=("bf16", "int8_per_token_head"),
+        default="bf16",
+        help="Resident full-attention KV storage policy for prefill and decode.",
+    )
+    parser.add_argument(
         "--native-prefill",
         action="store_true",
         help="Deprecated compatibility no-op: native single-request prefill is the default.",
@@ -189,6 +196,7 @@ def main() -> int:
                 auto_tune_chunk_sizes=args.prefill_chunk_autotune,
                 chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
             ),
+            kv_policy=FixedPagedKVPolicy(block_size=256, storage_dtype=args.kv_storage_dtype),
         )
     load_seconds = time.perf_counter() - load_start
     memory_snapshots["after_load"] = _memory_snapshot("after_load", session.runtime, session)
@@ -296,6 +304,7 @@ def main() -> int:
         "serial_prefill_diagnostic": bool(args.serial_prefill_diagnostic),
         "allow_rejected_native_prefill": bool(args.allow_rejected_native_prefill),
         "attn_aotriton_min_tokens": args.attn_aotriton_min_tokens,
+        "kv_storage_dtype": args.kv_storage_dtype,
         "requested_prefill_chunk_sizes": {
             "linear": args.prefill_linear_chunk_size,
             "moe": args.prefill_moe_chunk_size,

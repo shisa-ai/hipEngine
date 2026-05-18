@@ -166,6 +166,26 @@ def test_qwen35_resident_full_kv_allocation_uses_int8_payload_and_scales() -> No
     assert layer["scale_metadata"]["granularity"] == "per_token_head"
 
 
+def test_qwen35_resident_slot_full_spans_follow_int8_policy_metadata() -> None:
+    session, _captured = _resident_allocation_session(storage_dtype="int8_per_token_head")
+    session.max_sequence_length = 512
+    session.block_table = _tensor(0x300000, (session.blocks,), DType.INT32)
+    session.position_buf = DeviceBuffer(0x310000, session.max_batch_size * DType.INT64.itemsize)
+    session.context_buf = DeviceBuffer(0x320000, session.max_batch_size * DType.INT64.itemsize)
+    session._allocate_full_attention_cache(4)
+
+    position, append_spans, decode_spans = session._slot_full_spans(4, 1)
+
+    assert position.ptr == session.position_buf.ptr + DType.INT64.itemsize
+    assert append_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
+    assert decode_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
+    assert append_spans.scale_metadata is not None
+    assert decode_spans.scale_metadata is append_spans.scale_metadata
+    assert append_spans.scale_metadata.k_scale.shape == session.batch_layout.slot0_full_kv_scale_shape
+    slot_scale_elems = int(np.prod(session.batch_layout.slot0_full_kv_scale_shape))
+    assert append_spans.scale_metadata.k_scale.ptr == session.full_cache_scales[4][2].ptr + slot_scale_elems * DType.FP16.itemsize
+
+
 def test_qwen35_resident_native_prefill_layers_use_int8_retained_cache_and_bf16_oracle() -> None:
     device = Device("hip", 0)
     session, _captured = _resident_allocation_session(storage_dtype="int8_per_token_head")

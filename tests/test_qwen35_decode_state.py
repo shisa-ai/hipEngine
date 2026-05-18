@@ -574,8 +574,8 @@ def test_qwen35_decode_state_append_full_attention_kv_fp16_batch_calls_prompt_wr
 
     monkeypatch.setattr(
         qwen_runtime,
-        "qwen35_write_paged_kv_mixed_value_fp16_prompt_spans",
-        lambda *args, **kwargs: calls.append((args, kwargs)),
+        "resolve_paged_kv_write",
+        lambda **_kwargs: lambda *args, **kwargs: calls.append((args, kwargs)),
     )
 
     state.append_full_attention_kv_fp16_batch(
@@ -732,6 +732,20 @@ def _spans() -> KVLiveSpans:
         live_counts=_tensor(0xD100, (1,), "int64"),
         max_live_count=1,
         storage_dtype="bf16",
+    )
+
+
+def _int8_spans() -> KVLiveSpans:
+    scales = KVScaleMetadata(
+        k_scale=_tensor(0xD200, (2, 256, 2), "fp16"),
+        v_scale=_tensor(0xD400, (2, 256, 2), "fp16"),
+    )
+    return KVLiveSpans.paged_uniform(
+        block_table=_tensor(0xD000, (2,), "int32"),
+        live_counts=_tensor(0xD100, (1,), "int64"),
+        max_live_count=1,
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        scale_metadata=scales,
     )
 
 
@@ -1335,7 +1349,7 @@ def test_qwen35_decode_state_runs_full_attention_moe_layer_chain(monkeypatch) ->
     monkeypatch.setattr(qwen_runtime, "qwen35_split_qgate_bf16", record("split_qgate"))
     monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("bf16_to_f32"))
     monkeypatch.setattr(qwen_runtime, "qwen35_head_rmsnorm_partial_rotary_position_f32_bf16", record("head_rotary"))
-    monkeypatch.setattr(qwen_runtime, "qwen35_write_paged_kv_mixed_value_bf16_spans", record("kv"))
+    monkeypatch.setattr(qwen_runtime, "resolve_paged_kv_write", lambda **_kwargs: record("kv"))
     monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_decode_context_bf16", record("dense_attention_context"))
     monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_context_bf16_spans", record("attention_context"))
     monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_bf16", record("attention_gate"))
@@ -1426,7 +1440,7 @@ def test_qwen35_decode_state_appends_kv_with_scratch_pointers(monkeypatch) -> No
     def fake_append(*args, **kwargs):
         calls.append((args, kwargs))
 
-    monkeypatch.setattr(qwen_runtime, "qwen35_write_paged_kv_mixed_value_bf16_spans", fake_append)
+    monkeypatch.setattr(qwen_runtime, "resolve_paged_kv_write", lambda **_kwargs: fake_append)
 
     state.append_full_attention_kv(scratch, key_cache=key_cache, value_cache=value_cache, spans=_spans())
 
@@ -1509,6 +1523,59 @@ def test_qwen35_decode_state_adaptive_split_gate_uses_warp_then_gqa(monkeypatch)
     assert [item[0] for item in calls] == ["warp", "gqa"]
     assert calls[0][1][9:18] == (256, 16, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
     assert calls[1][1][9:18] == (256, 64, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+
+
+def test_qwen35_decode_state_int8_split_decode_uses_registry_metadata(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime)
+    scratch = state.reserve_full_attention_scratch(tokens=1, num_splits=2, activation_dtype="fp16", gated_dtype="fp16")
+    key_cache = _tensor(0xE000, (2, 256, 2, 256), "int8")
+    value_cache = _tensor(0xF000, (2, 256, 2, 256), "int8")
+    spans = _int8_spans()
+    calls = []
+
+    def fake_decode(*args, **kwargs):
+        calls.append(("decode", args, kwargs))
+
+    def fake_resolve(**kwargs):
+        calls.append(("resolve", kwargs))
+        return fake_decode
+
+    monkeypatch.setattr(qwen_runtime, "resolve_paged_attn_decode", fake_resolve)
+
+    out = state.decode_full_attention_split_gate_fp16(
+        scratch,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        spans=spans,
+        chunk_size=256,
+        num_splits=2,
+    )
+
+    assert out is scratch.gated_attn
+    assert calls[0] == (
+        "resolve",
+        {
+            "backend": "hip_gfx1100",
+            "spans": spans,
+            "kind": qwen_runtime.PagedAttnDecodeKind.GQA_SPLITK_GATE_FP16,
+        },
+    )
+    args, kwargs = calls[1][1], calls[1][2]
+    assert args[:10] == (
+        scratch.query.ptr,
+        key_cache.ptr,
+        value_cache.ptr,
+        spans.scale_metadata.k_scale.ptr,
+        spans.scale_metadata.v_scale.ptr,
+        scratch.gate.ptr,
+        scratch.gated_attn.ptr,
+        scratch.partial_out.ptr,
+        scratch.partial_m.ptr,
+        scratch.partial_l.ptr,
+    )
+    assert args[11:20] == (256, 2, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+    assert kwargs == {"stream": 0, "library": None, "runtime": runtime}
 
 
 def test_qwen35_decode_state_split_decode_threshold_defaults_to_1024(monkeypatch) -> None:
@@ -2348,6 +2415,7 @@ def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch)
     attn = state.reserve_full_attention_scratch(tokens=1, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
     moe = state.reserve_moe_c1_scratch(tokens=1, activation_dtype="fp16")
     order = []
+    monkeypatch.setattr(qwen_runtime, "resolve_paged_kv_write", lambda **_kwargs: lambda *a, **k: order.append("kv"))
 
     for name, label in [
         ("paro_rmsnorm_out_fp16", "input_norm"),
@@ -2358,7 +2426,6 @@ def test_qwen35_decode_state_runs_full_attention_fp16_pre_moe_chain(monkeypatch)
         ("qwen35_split_qgate_fp16", "split_qgate"),
         ("fp16_to_f32", "fp16_to_f32"),
         ("qwen35_head_rmsnorm_partial_rotary_position_f32_bf16", "head_rotary"),
-        ("qwen35_write_paged_kv_mixed_value_fp16_spans", "kv"),
         ("qwen35_full_attn_decode_context_bf16", "dense_attention_context"),
         ("qwen35_full_attn_gate_mul_fp16", "attention_gate"),
         ("paro_rotate1_fp16", "rotate1"),
@@ -2465,7 +2532,7 @@ def test_qwen35_decode_state_int8_prefill_append_converts_fp16_value_and_passes_
         )
 
     monkeypatch.setattr(qwen_runtime, "fp16_to_f32", fake_fp16_to_f32)
-    monkeypatch.setattr(qwen_runtime, "qwen35_write_paged_kv_int8_per_token_head_prompt_spans", fake_writer)
+    monkeypatch.setattr(qwen_runtime, "resolve_paged_kv_write", lambda **_kwargs: fake_writer)
 
     state.append_full_attention_kv_int8_per_token_head_fp16_batch(
         scratch,

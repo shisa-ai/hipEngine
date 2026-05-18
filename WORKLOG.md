@@ -16982,3 +16982,46 @@ python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 4 --max-new-t
 # summary: payload_dtype=int8, payload_bytes=786432, scale_bytes=6144,
 # persistent_bf16_kv_layers=[], aotriton_attention=false.
 ```
+
+## 2026-05-18 - K1 INT8 runtime decode policy routing
+
+Completed task #12: resident decode now routes paged-KV append and split-K decode through storage-aware KV policy/span metadata.
+
+Implementation notes:
+
+- `Qwen35ParoDecodeState` resolves paged-KV writers with `resolve_paged_kv_write(...)`; BF16 storage keeps the existing BF16/FP16 writer routes, while `int8_per_token_head` spans resolve the INT8 writer keys and pass per-token/head scale tensors from `KVScaleMetadata`.
+- INT8 decode spans force split-K decode and resolve `PagedAttnDecodeKind.GQA_SPLITK_GATE_*` through `resolve_paged_attn_decode(...)`, then launch the direct INT8 K/V+scale grouped-GQA wrappers. BF16 short-context defaults continue to use the existing dense BF16 path unless the split threshold is reached.
+- `Qwen35ParoResidentSession` now creates layer-specific decode/append spans with the active resident KV storage dtype and scale metadata, so eager decode and graph replay use the same policy-selected path.
+- `scripts/qwen35_paro_bench.py` exposes `--kv-storage-dtype {bf16,int8_per_token_head}` so BF16 and INT8 decode run through the same public resident benchmark interface.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py scripts/qwen35_native_prefill_fixture_gate.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py && \
+python3 -m pytest tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py tests/test_kv_dispatch.py -q
+# targeted tests passed
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode registry && \
+python3 scripts/smoke.py --mode cpu-fixtures
+# pytest passed; CPU fixtures and registry/cpu smokes passed.
+
+python3 scripts/qwen35_paro_bench.py --max-layers 4 --prompt-length 8 --decode-tokens 1 \
+  --warmup-decode-tokens 0 --kv-storage-dtype int8_per_token_head \
+  --json /tmp/hipengine-qwen35-bench-int8-decode-smoke.json
+# W7900/gfx1100 graph_replay=true; after_decode owned buffer summary reports
+# kv_storage_dtype=int8_per_token_head, full-attn payload_dtype=int8, scale_bytes=2048.
+
+python3 scripts/qwen35_paro_bench.py --max-layers 4 --prompt-length 8 --decode-tokens 1 \
+  --warmup-decode-tokens 0 --kv-storage-dtype bf16 \
+  --json /tmp/hipengine-qwen35-bench-bf16-decode-smoke.json
+# W7900/gfx1100 graph_replay=true; after_decode owned buffer summary reports
+# kv_storage_dtype=bf16 and payload_dtype=bf16.
+
+python3 scripts/qwen35_native_prefill_fixture_gate.py --max-layers 4 --max-new-tokens 0 \
+  --native-kv-storage-dtype int8_per_token_head \
+  --json /tmp/hipengine-int8-prefill-fixture-maxlayers4-task12.json
+# status=accepted; max KL=1.34e-05; memory audit passed.
+```
