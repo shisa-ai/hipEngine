@@ -18727,3 +18727,42 @@ capture/validation overhead outweigh any launch savings for these tiny-row targe
 kernels.  #30 remains blocked; next useful work needs to reduce model compute
 (e.g. c-aware suffix skipping or fused target-layer kernels), not only graph the
 existing fixed B+1 work.
+
+## 2026-05-18 — Native verifier target-compute probe: full-attention prefill replay not retained
+
+Continued task #30 along the "reduce target compute" direction after verifier graph
+replay proved exact but slower.  Re-tested a full-attention prefill-style verifier
+layer replay (all B+1 rows through the full-attention prefill path instead of the
+current row-wise c=1 loop).  The branch was kept local and reverted because it did
+not clear the speed gate and was not a reliable improvement.
+
+Validation while testing the local branch:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py
+HIPENGINE_DFLASH_VERIFY_FULL_ATTN_PREFILL=1 HIPENGINE_HIP_ARCH=gfx1151 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 \
+  --json /tmp/hipengine-verifier-fullprefill-b1248-d8.json
+# exact same-session AR equality passed; gpu_accept_match_cpu=true
+```
+
+Dirty-tree probe vs current warm-scratch baseline:
+
+| B | full-attn prefill verify s | warm-scratch row-loop verify s | serial verify s |
+|---|---:|---:|---:|
+| 1 | 0.259 | 0.231 | 0.127 |
+| 2 | 0.288 | 0.264 | 0.124 |
+| 4 | 0.384 | 0.387 | 0.125 |
+| 8 | 0.652 | 0.619 | 0.126 |
+
+Result: prefill replay is exact, roughly neutral only at B=4, and worse at B=1/2/8.
+It also complicates scratch ownership because the prefill path wants grouped MoE
+scratch while tail c=1 decode expects decode scratch.  Reverted the local branch;
+no code change retained from this probe.  #30 remains open.  The remaining speed
+gap is still dominated by extra candidate-row model compute, not a simple choice
+between c=1 and prefill full-attention kernels.
