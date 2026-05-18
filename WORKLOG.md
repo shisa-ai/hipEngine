@@ -19119,3 +19119,37 @@ Open for task #8/#9:
 
 - Task #8 should turn the inline smoke into formal tests. Compare f32/fp32-output paths either to a helper fp16-rounded CPU reference or use tolerances that explicitly cover the intentional half WMMA operand cast; compare BF16/FP16 outputs to exact CPU with output-ULP tolerances.
 - Task #9 must not just add `gguf_q4_k` to the Q8_0 WMMA dispatch set. Dense 2D Q4_K materialization currently uses `LAYOUT_Q4_K_PACK8` and drops raw bytes, so the runtime needs an explicit raw-availability/materialization decision before selecting the raw WMMA path. The existing pack8 dual prefill remains the fallback.
+
+## 2026-05-18 P8.2 task #8: dense Q4_K WMMA correctness tests landed
+
+Added `tests/test_gguf_q4_k_wmma_prefill.py` for the P8.2 dense raw-Q4_K WMMA prefill kernels from task #7.
+
+Coverage:
+
+- No-GPU surface tests:
+  - All 9 single-output registry keys resolve: `wmma_prefill_{bf16,fp16,f32}_{bf16,fp16,f32}_out` under `('hip_gfx1100','linear','gguf_q4_k', ...)`.
+  - Dual key resolves: `wmma_prefill_dual_bf16_bf16_out`.
+  - `plan_gguf_q4_k_prefill_build(compiler_version='test-compiler')` and dry-run build name `gguf_q4_k_prefill.so`.
+  - `_default_tiles` mirrors the PARO/Q8_0 heuristic; wrapper contract rejects non-256-divisible `in_features`, bad rows/out_features, and unsupported tiles for both single and dual wrappers.
+- GPU correctness tests (HIP-skipped when `libamdhip64.so` is unavailable):
+  - Primary BF16->F32 sweep: rows `{4,16,17,32,64}` x shapes `{(256,16),(256,24),(512,48),(512,80),(768,128)}` to cover single/multi Q4_K superblocks and boundary output tiles.
+  - Full single-output dtype matrix on `(rows=32, in=512, out=80)` for all `{bf16,fp16,f32} x {bf16,fp16,f32}`.
+  - Explicit tile sweep over `(16,16),(16,32),(32,16),(32,32),(64,16),(64,32)`.
+  - Boundary test with `rows=17,out=24`.
+  - Dense BF16 dual gate+up sweep on 5 shapes plus explicit `(64,32)` tile.
+
+Oracle/tolerance details:
+
+- Tests call `hipengine.kernels.cpu_reference.gguf_quant_gemv(x, qweight, GGMLQuantizationType.Q4_K)` directly, as requested.
+- The input passed to the CPU oracle is decoded to match the kernel's activation representation and then rounded through fp16 because the WMMA instruction consumes half operands even for f32 wrapper inputs.
+- The raw Q4_K weight oracle remains exact fp32 dequant, so tolerances cover the intentional half weight operand cast in the kernel plus output dtype rounding: F32 output `rtol=5e-3, atol=1.5e-1`, FP16 output `rtol=6e-3, atol=2e-1`, BF16 output `rtol=8e-3, atol=7.5e-1`. Fixture activations are scaled to `[-6/32, 6/32]` to keep this a tight correctness check on Q4_K addressing/dequant rather than a stress test of fp16 operand roundoff.
+
+Validation on W7900/gfx1100:
+
+- `uv run --with pytest pytest tests/test_gguf_q4_k_wmma_prefill.py -q` -> `51 passed`.
+- `uv run --with pytest pytest tests/test_gguf_q4_k_wmma_prefill.py tests/test_gguf_q4_k_gemv.py tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_linear_dispatch.py -q` -> `146 passed`.
+
+Open for task #9:
+
+- Correctness is now locked for the raw dense Q4_K WMMA kernels, including dual gate+up.
+- Runtime dispatch still needs the raw-vs-pack8 materialization decision from task #6/#7: current dense 2D Q4_K allocations are `LAYOUT_Q4_K_PACK8`, so task #9 must only route to WMMA when raw bytes are actually available (or explicitly changes materialization under the opt-in without silently adding a resident sidecar copy).
