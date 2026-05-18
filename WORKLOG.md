@@ -16808,3 +16808,40 @@ python3 scripts/smoke.py --mode smoke-add-plan && \
 rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
 # pytest: 307 passed; fixtures/smokes passed; torch audit only found allowed docs/comments/diagnostic subprocess text.
 ```
+
+## 2026-05-18 - K1 INT8 paged KV write kernel
+
+Completed task #8: added the gfx1100 INT8 per-token/head paged-KV writer and raw-pointer wrappers.
+
+Implementation notes:
+
+- `paged_kv_write.hip` now has a hipEngine-native `qwen35_write_paged_kv_int8_per_token_head_kernel` that takes FP32 post-RoPE K/V rows, computes independent max-abs scales for every `(row, kv_head, K/V)`, writes signed INT8 payloads, and writes separate K/V scale tensors.
+- All-zero K/V rows store zero scale and all-zero INT8 payloads; quantization never divides by zero.
+- Python wrappers are torch-free raw-pointer wrappers for c=1 decode append, prompt append, and row-major batch append. They require `storage_dtype="int8_per_token_head"`, int64 positions, matching `KVScaleMetadata` scale pointers, and scale tensor shape `[blocks, block_size, num_kv_heads]` before loading the HIP library.
+- Registered the write-side exact key `hip_gfx1100/paged_kv_write/int8_per_token_head/per_token_head_spans`; decode registration remains blocked on task #9.
+- Updated `scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip` and `docs/KERNELS.md` with the accepted writer smoke.
+
+Validation:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+# Parent drift remains documented for qwen35/paro sources; INT8 writer here is hipEngine-native rather than copied from the collapsed-scale parent path.
+
+python3 -m compileall -q hipengine tests scripts && \
+python3 -m pytest -q && \
+python3 scripts/check_fixtures.py && \
+python3 scripts/smoke.py --mode qwen35-paged-kv-write-hip && \
+python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip
+# pytest: 307 passed; CPU fixtures passed; BF16 writer smoke bit-exact; INT8 writer smoke accepted.
+# INT8 cases: c=1 decode append with FP32 scales, c=1 decode append with FP16 scales,
+# prompt page-boundary append, and row-major batch append all had key_mismatch=0,
+# value_mismatch=0, scale_max_abs=0, dequant_max_abs=0 on W7900/gfx1100.
+
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+rocprofv3 --kernel-trace --output-format csv --output-file /tmp/hipengine-kv-int8-write -- \
+  python3 scripts/smoke.py --mode qwen35-paged-kv-write-int8-hip \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+# rocprofv3 captured 4 launches of qwen35_write_paged_kv_int8_per_token_head_kernel
+# with Workgroup_Size_X=256; durations from End_Timestamp-Start_Timestamp: 12881 ns,
+# 11081 ns, 7161 ns, 5801 ns.
+```

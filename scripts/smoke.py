@@ -45,6 +45,7 @@ def main() -> int:
             "qwen35-linear-attn-prefill-hip",
             "qwen35-linear-attn-segments-hip",
             "qwen35-paged-kv-write-hip",
+            "qwen35-paged-kv-write-int8-hip",
             "qwen35-full-attn-decode-hip",
             "qwen35-paged-attn-decode-hip",
             "qwen35-paged-attn-split-k-hip",
@@ -179,6 +180,11 @@ def main() -> int:
         )
     if args.mode == "qwen35-paged-kv-write-hip":
         return qwen35_paged_kv_write_hip_smoke(
+            compiler_version=compiler_version,
+            require_cached_build=args.require_cached_build,
+        )
+    if args.mode == "qwen35-paged-kv-write-int8-hip":
+        return qwen35_paged_kv_write_int8_hip_smoke(
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
@@ -2510,6 +2516,291 @@ def qwen35_paged_kv_write_hip_smoke(
         and f32_key_mismatch == 0
         and f32_value_mismatch == 0
     ) else 1
+
+def qwen35_paged_kv_write_int8_hip_smoke(
+    *,
+    compiler_version: str | None = None,
+    require_cached_build: bool = False,
+) -> int:
+    import numpy as np
+
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.core.tensor import Tensor
+    from hipengine.kernels.cpu_reference import quantize_kv_int8_per_token_head
+    from hipengine.kernels.hip_gfx1100.attention import (
+        build_qwen35_paged_kv_write,
+        qwen35_write_paged_kv_int8_per_token_head_batch_spans,
+        qwen35_write_paged_kv_int8_per_token_head_prompt_spans,
+        qwen35_write_paged_kv_int8_per_token_head_spans,
+    )
+    from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
+
+    block_size = 4
+    num_kv_heads = 2
+    head_dim = 8
+    device = Device("hip", 0)
+    runtime = get_hip_runtime()
+    library = build_qwen35_paged_kv_write(
+        load=True,
+        compiler_version=compiler_version,
+        require_cached=require_cached_build,
+    )
+    buffers = []
+
+    def dev(array: np.ndarray):
+        host = np.ascontiguousarray(array)
+        buffer = malloc(host.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(host), runtime=runtime)
+        return buffer
+
+    def rows(count: int, offset: int) -> np.ndarray:
+        return np.asarray(
+            [
+                [
+                    [((row * 17 + head * 7 + dim * 5 + offset) % 29 - 14) * 0.03125 for dim in range(head_dim)]
+                    for head in range(num_kv_heads)
+                ]
+                for row in range(count)
+            ],
+            dtype=np.float32,
+        )
+
+    def expected_write(
+        key_rows: np.ndarray,
+        value_rows: np.ndarray,
+        positions: np.ndarray,
+        block_table: np.ndarray,
+        *,
+        cache_blocks: int,
+        row_major_cache: bool,
+        scale_dtype: str,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        table = np.asarray(block_table, dtype=np.int64)
+        table_rows = table[None, :] if table.ndim == 1 else table
+        block_table_len = int(table_rows.shape[1])
+        scale_np_dtype = np.float16 if scale_dtype == "fp16" else np.float32
+        qk, qv, ks, vs = quantize_kv_int8_per_token_head(key_rows, value_rows, scale_dtype=scale_np_dtype)
+        key_cache = np.zeros((cache_blocks, block_size, num_kv_heads, head_dim), dtype=np.int8)
+        value_cache = np.zeros_like(key_cache)
+        k_scale = np.zeros((cache_blocks, block_size, num_kv_heads), dtype=scale_np_dtype)
+        v_scale = np.zeros_like(k_scale)
+        for row_idx, position in enumerate(positions.astype(np.int64)):
+            logical_block = int(position) // block_size
+            block_offset = int(position) % block_size
+            physical_block = int(table_rows[row_idx, logical_block])
+            cache_block = row_idx * block_table_len + physical_block if row_major_cache else physical_block
+            key_cache[cache_block, block_offset] = qk[row_idx]
+            value_cache[cache_block, block_offset] = qv[row_idx]
+            k_scale[cache_block, block_offset] = ks[row_idx]
+            v_scale[cache_block, block_offset] = vs[row_idx]
+        return key_cache, value_cache, k_scale, v_scale
+
+    def run_case(
+        name: str,
+        mode: str,
+        key_rows: np.ndarray,
+        value_rows: np.ndarray,
+        positions: np.ndarray,
+        block_table: np.ndarray,
+        *,
+        cache_blocks: int,
+        row_major_cache: bool,
+        scale_dtype: str = "fp32",
+    ) -> dict[str, object]:
+        key_rows = np.ascontiguousarray(key_rows.astype(np.float32))
+        value_rows = np.ascontiguousarray(value_rows.astype(np.float32))
+        positions = np.ascontiguousarray(positions.astype(np.int64))
+        block_table = np.ascontiguousarray(block_table.astype(np.int32))
+        expected = expected_write(
+            key_rows,
+            value_rows,
+            positions,
+            block_table,
+            cache_blocks=cache_blocks,
+            row_major_cache=row_major_cache,
+            scale_dtype=scale_dtype,
+        )
+        key_cache = np.zeros_like(expected[0])
+        value_cache = np.zeros_like(expected[1])
+        k_scale = np.zeros_like(expected[2])
+        v_scale = np.zeros_like(expected[3])
+        key_b = dev(key_rows)
+        value_b = dev(value_rows)
+        positions_b = dev(positions)
+        block_table_b = dev(block_table)
+        key_cache_b = dev(key_cache)
+        value_cache_b = dev(value_cache)
+        k_scale_b = dev(k_scale)
+        v_scale_b = dev(v_scale)
+        scale_metadata = KVScaleMetadata(
+            k_scale=Tensor.from_handle(k_scale_b.ptr, k_scale.shape, scale_dtype, device),
+            v_scale=Tensor.from_handle(v_scale_b.ptr, v_scale.shape, scale_dtype, device),
+            scale_dtype=scale_dtype,
+        )
+        spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(block_table_b.ptr, block_table.shape, "int32", device),
+            live_counts=Tensor.from_handle(positions_b.ptr, positions.shape, "int64", device),
+            max_live_count=int(np.max(positions)),
+            storage_dtype="int8_per_token_head",
+            scale_metadata=scale_metadata,
+        )
+        if mode == "single":
+            qwen35_write_paged_kv_int8_per_token_head_spans(
+                key_b.ptr,
+                value_b.ptr,
+                key_cache_b.ptr,
+                value_cache_b.ptr,
+                k_scale_b.ptr,
+                v_scale_b.ptr,
+                spans,
+                block_size,
+                num_kv_heads,
+                head_dim,
+                library=library,
+                runtime=runtime,
+            )
+        elif mode == "prompt":
+            qwen35_write_paged_kv_int8_per_token_head_prompt_spans(
+                key_b.ptr,
+                value_b.ptr,
+                key_cache_b.ptr,
+                value_cache_b.ptr,
+                k_scale_b.ptr,
+                v_scale_b.ptr,
+                spans,
+                int(key_rows.shape[0]),
+                block_size,
+                num_kv_heads,
+                head_dim,
+                library=library,
+                runtime=runtime,
+            )
+        elif mode == "batch":
+            qwen35_write_paged_kv_int8_per_token_head_batch_spans(
+                key_b.ptr,
+                value_b.ptr,
+                key_cache_b.ptr,
+                value_cache_b.ptr,
+                k_scale_b.ptr,
+                v_scale_b.ptr,
+                spans,
+                int(key_rows.shape[0]),
+                block_size,
+                num_kv_heads,
+                head_dim,
+                library=library,
+                runtime=runtime,
+            )
+        else:  # pragma: no cover - defensive branch for smoke maintenance.
+            raise ValueError(f"unknown INT8 KV write smoke mode: {mode}")
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(key_cache), key_cache_b, runtime=runtime)
+        copy_device_to_host(host_array_ptr(value_cache), value_cache_b, runtime=runtime)
+        copy_device_to_host(host_array_ptr(k_scale), k_scale_b, runtime=runtime)
+        copy_device_to_host(host_array_ptr(v_scale), v_scale_b, runtime=runtime)
+        key_mismatch = int(np.count_nonzero(key_cache != expected[0]))
+        value_mismatch = int(np.count_nonzero(value_cache != expected[1]))
+        scale_max_abs = float(
+            max(
+                np.max(np.abs(k_scale.astype(np.float32) - expected[2].astype(np.float32))),
+                np.max(np.abs(v_scale.astype(np.float32) - expected[3].astype(np.float32))),
+            )
+        )
+        key_deq = key_cache.astype(np.float32) * k_scale.astype(np.float32)[..., None]
+        value_deq = value_cache.astype(np.float32) * v_scale.astype(np.float32)[..., None]
+        expected_key_deq = expected[0].astype(np.float32) * expected[2].astype(np.float32)[..., None]
+        expected_value_deq = expected[1].astype(np.float32) * expected[3].astype(np.float32)[..., None]
+        dequant_max_abs = float(max(np.max(np.abs(key_deq - expected_key_deq)), np.max(np.abs(value_deq - expected_value_deq))))
+        passed = key_mismatch == 0 and value_mismatch == 0 and scale_max_abs <= 1.0e-7 and dequant_max_abs <= 1.0e-7
+        return {
+            "name": name,
+            "mode": mode,
+            "rows": int(key_rows.shape[0]),
+            "positions": positions.astype(int).tolist(),
+            "scale_dtype": scale_dtype,
+            "key_mismatch": key_mismatch,
+            "value_mismatch": value_mismatch,
+            "scale_max_abs": scale_max_abs,
+            "dequant_max_abs": dequant_max_abs,
+            "passed": passed,
+        }
+
+    single_key = rows(1, 0)
+    single_value = rows(1, 3)
+    single_key[0, 0, :] = 0.0
+    single_value[0, 1, :] = 0.0
+    single_fp16_key = rows(1, 2)
+    single_fp16_value = rows(1, 7)
+    single_fp16_key[0, 1, :] = 0.0
+    prompt_key = rows(3, 5)
+    prompt_value = rows(3, 11)
+    prompt_key[1, 0, :] = 0.0
+    prompt_value[2, 1, :] = 0.0
+    batch_key = rows(2, 17)
+    batch_value = rows(2, 23)
+    batch_key[0, 1, :] = 0.0
+    batch_value[1, 0, :] = 0.0
+
+    try:
+        results = [
+            run_case(
+                "decode_append_page_boundary_zero_rows",
+                "single",
+                single_key,
+                single_value,
+                np.asarray([5], dtype=np.int64),
+                np.asarray([1, 0], dtype=np.int32),
+                cache_blocks=2,
+                row_major_cache=False,
+            ),
+            run_case(
+                "decode_append_fp16_scales",
+                "single",
+                single_fp16_key,
+                single_fp16_value,
+                np.asarray([4], dtype=np.int64),
+                np.asarray([1, 0], dtype=np.int32),
+                cache_blocks=2,
+                row_major_cache=False,
+                scale_dtype="fp16",
+            ),
+            run_case(
+                "prompt_append_crosses_page_boundary",
+                "prompt",
+                prompt_key,
+                prompt_value,
+                np.asarray([3, 4, 5], dtype=np.int64),
+                np.tile(np.asarray([1, 0], dtype=np.int32), (3, 1)),
+                cache_blocks=2,
+                row_major_cache=False,
+            ),
+            run_case(
+                "batch_append_row_major_page_boundary",
+                "batch",
+                batch_key,
+                batch_value,
+                np.asarray([1, 6], dtype=np.int64),
+                np.asarray([[0, 1], [1, 0]], dtype=np.int32),
+                cache_blocks=4,
+                row_major_cache=True,
+            ),
+        ]
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    print(json.dumps({"cases": results}, sort_keys=True))
+    return 0 if all(result["passed"] for result in results) else 1
+
 
 def qwen35_linear_attn_segments_hip_smoke(
     *,
