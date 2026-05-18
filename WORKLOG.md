@@ -18631,3 +18631,46 @@ Retained artifact:
 
 Updated benchmark rollup/changelog and DFlash/MTP docs.  #30 remains open: the
 native verifier is improved but not faster than serial c=1 for any tested budget.
+
+## 2026-05-18 — Native verifier hidden-tap layout audit (task #30)
+
+While preparing verifier graph capture, audited the native B+1 hidden-tap writes.
+The bulk path was using a contiguous FP16->BF16 cast for `rows * hidden` values
+per captured layer even though `target_hidden_concat` rows have stride
+`len(capture_layers) * hidden`.  That made the B+1 path's drafter-context layout
+rely on contiguous layer segments rather than true row-major concatenated taps.
+Added a raw strided-row cast kernel (`hipengine_fp16_to_bf16_strided_rows`) and
+switched bulk verifier hidden-tap capture to write each captured layer into the
+correct row-major slot with one kernel launch per captured layer.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_cast_plan.py tests/test_qwen35_resident_batch_layout.py \
+  tests/test_speculative_benchmark.py -q
+# 37 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 4 --draft-budgets 4 \
+  --json /tmp/hipengine-verifier-strided-capture-d4-cached.json
+# exact same-session AR equality passed; gpu_accept_match_cpu=true
+```
+
+Speed-gate check after the strided-layout fix (dirty tree, 8 decode tokens,
+B={1,2,4,8}) remained blocked and was slower than the warm-scratch baseline:
+
+| B | verify s after strided fix | warm-scratch verify s | accept |
+|---|---:|---:|---:|
+| 1 | 0.244 | 0.231 | 3/4 |
+| 2 | 0.373 | 0.264 | 4/8 |
+| 4 | 0.417 | 0.387 | 4/14 |
+| 8 | 0.646 | 0.619 | 4/19 |
+
+Conclusion: this is a layout-correctness cleanup needed before reusable verifier
+graph/staging work, but it does not clear the speed gate.  #30 remains open;
+next speed work should avoid dynamic hidden-tap destination pointers by staging
+captures (to enable graph reuse) and/or reduce candidate-row model compute.

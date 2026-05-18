@@ -37,7 +37,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
 )
 from hipengine.kernels.hip_gfx1100.speculative import build_dflash_accept, dflash_accept_chain_i32, dflash_commit_chain_i32
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
-from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16
+from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16, fp16_to_bf16_strided_rows
 from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16, paro_rmsnorm_out_fp16
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
 from hipengine.kernels.hip_gfx1100.runtime import (
@@ -2317,79 +2317,17 @@ class Qwen35ParoResidentSession:
             raise ValueError("capture rows outside capture_hidden_concat")
 
         self._write_verify_chain_metadata(batch, base_slot=base_slot, stream=stream)
-        embedding_lookup_batch_fp16_i64(
-            self.embedding.tensor.ptr,
-            self.verify_token_ids_i64.ptr,
-            self.prefill_hidden.ptr,
-            rows,
-            self.config.hidden_size,
-            self.vocab_size,
-            stream=stream,
-            library=self.libraries["runtime_state"],
-            runtime=self.runtime,
-        )
-        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
-        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
-        parent_rows = Tensor.from_handle(self.verify_parent_rows_i64.ptr, (rows,), DType.INT64, self.device)
-        capture_offsets = {layer_id: idx for idx, layer_id in enumerate(capture_ids)}
         try:
-            for layer_id, state in enumerate(self.states):
-                layer_type = self.config.layer_types[layer_id]
-                if layer_type == "linear_attention":
-                    conv_state, recurrent_state = self._slot_linear_state(layer_id, base_slot)
-                    linear_scratch = state.reserve_linear_attention_scratch(tokens=rows, activation_dtype=DType.FP16)
-                    self.linear_scratch[layer_id] = linear_scratch
-                    moe_scratch = self._reserve_mlp_scratch(state, tokens=rows)
-                    self.moe_scratch[layer_id] = moe_scratch
-                    out = state.run_linear_attention_moe_tree_tloop_layer_fp16(
-                        hidden,
-                        conv_state=conv_state,
-                        recurrent_state=recurrent_state,
-                        parent_rows=parent_rows,
-                        linear_scratch=linear_scratch,
-                        moe_scratch=moe_scratch,
-                        tokens=rows,
-                        library=self.libraries,
-                        stream=stream,
-                    )
-                elif layer_type == "full_attention":
-                    self._run_full_attention_chain_c1_loop(
-                        state,
-                        layer_id=layer_id,
-                        hidden=hidden,
-                        next_hidden=next_hidden,
-                        rows=rows,
-                        positions=batch.positions,
-                        base_slot=base_slot,
-                        stream=stream,
-                    )
-                    out = next_hidden
-                else:
-                    raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
-                if out.ptr != next_hidden.ptr:
-                    self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
-                hidden, next_hidden = next_hidden, hidden
-                capture_offset = capture_offsets.get(layer_id)
-                if capture_offset is not None:
-                    dst = capture_hidden_concat.ptr + (
-                        int(capture_row_start) * int(capture_hidden_concat.shape[1])
-                        + capture_offset * self.config.hidden_size
-                    ) * DType.BF16.itemsize
-                    fp16_to_bf16(
-                        hidden.ptr,
-                        dst,
-                        rows * self.config.hidden_size,
-                        stream=stream,
-                        library=self.libraries["cast"],
-                        runtime=self.runtime,
-                    )
-            self._sample_verify_rows_from_hidden(hidden, rows, stream=stream)
-            # Launch the device accept summary immediately after row-wise top-1
-            # on the same stream, then do one synchronization/readback for both
-            # top-1 diagnostics and GPU accept payload.  The CPU oracle still
-            # checks the same top-1 path, but no longer inserts a pre-accept
-            # device-wide barrier.
-            gpu_payload = self._run_verify_accept_summary(batch, rows=rows, stream=stream)
+            self._launch_verify_chain_forward_accept(
+                batch,
+                base_slot=base_slot,
+                capture_ids=capture_ids,
+                capture_hidden_concat=capture_hidden_concat,
+                capture_row_start=capture_row_start,
+                rows=rows,
+                stream=stream,
+            )
+            gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
             target_top1, target_values = self._read_verify_top1(rows)
             cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
             cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
@@ -2419,6 +2357,85 @@ class Qwen35ParoResidentSession:
             # avoiding bulk<->decode scratch churn keeps allocations stable for
             # future verifier graph capture experiments.
             pass
+
+    def _launch_verify_chain_forward_accept(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        base_slot: int,
+        capture_ids: Sequence[int],
+        capture_hidden_concat: Tensor,
+        capture_row_start: int,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        embedding_lookup_batch_fp16_i64(
+            self.embedding.tensor.ptr,
+            self.verify_token_ids_i64.ptr,
+            self.prefill_hidden.ptr,
+            rows,
+            self.config.hidden_size,
+            self.vocab_size,
+            stream=stream,
+            library=self.libraries["runtime_state"],
+            runtime=self.runtime,
+        )
+        hidden = Tensor.from_handle(self.prefill_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        next_hidden = Tensor.from_handle(self.prefill_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        parent_rows = Tensor.from_handle(self.verify_parent_rows_i64.ptr, (rows,), DType.INT64, self.device)
+        capture_offsets = {layer_id: idx for idx, layer_id in enumerate(capture_ids)}
+        for layer_id, state in enumerate(self.states):
+            layer_type = self.config.layer_types[layer_id]
+            if layer_type == "linear_attention":
+                conv_state, recurrent_state = self._slot_linear_state(layer_id, base_slot)
+                linear_scratch = state.reserve_linear_attention_scratch(tokens=rows, activation_dtype=DType.FP16)
+                self.linear_scratch[layer_id] = linear_scratch
+                moe_scratch = self._reserve_mlp_scratch(state, tokens=rows)
+                self.moe_scratch[layer_id] = moe_scratch
+                out = state.run_linear_attention_moe_tree_tloop_layer_fp16(
+                    hidden,
+                    conv_state=conv_state,
+                    recurrent_state=recurrent_state,
+                    parent_rows=parent_rows,
+                    linear_scratch=linear_scratch,
+                    moe_scratch=moe_scratch,
+                    tokens=rows,
+                    library=self.libraries,
+                    stream=stream,
+                )
+            elif layer_type == "full_attention":
+                self._run_full_attention_chain_c1_loop(
+                    state,
+                    layer_id=layer_id,
+                    hidden=hidden,
+                    next_hidden=next_hidden,
+                    rows=rows,
+                    positions=batch.positions,
+                    base_slot=base_slot,
+                    stream=stream,
+                )
+                out = next_hidden
+            else:
+                raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
+            if out.ptr != next_hidden.ptr:
+                self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+            hidden, next_hidden = next_hidden, hidden
+            capture_offset = capture_offsets.get(layer_id)
+            if capture_offset is not None:
+                dst = capture_hidden_concat.ptr + int(capture_row_start) * int(capture_hidden_concat.shape[1]) * DType.BF16.itemsize
+                fp16_to_bf16_strided_rows(
+                    hidden.ptr,
+                    dst,
+                    rows,
+                    self.config.hidden_size,
+                    int(capture_hidden_concat.shape[1]),
+                    capture_offset * self.config.hidden_size,
+                    stream=stream,
+                    library=self.libraries["cast"],
+                    runtime=self.runtime,
+                )
+        self._sample_verify_rows_from_hidden(hidden, rows, stream=stream)
+        self._launch_verify_accept_summary(batch, rows=rows, stream=stream)
 
     def _run_full_attention_chain_c1_loop(
         self,
@@ -2583,7 +2600,7 @@ class Qwen35ParoResidentSession:
         copy_device_to_host(host_array_ptr(values), DeviceBuffer(self.verify_top1_values.ptr, values.nbytes), runtime=self.runtime)
         return tuple(int(item) for item in ids.tolist()), tuple(float(item) for item in values.tolist())
 
-    def _run_verify_accept_summary(self, batch: TargetVerifyBatch, *, rows: int, stream: int = 0) -> dict[str, tuple[int, ...] | tuple[bool, ...]]:
+    def _launch_verify_accept_summary(self, batch: TargetVerifyBatch, *, rows: int, stream: int = 0) -> None:
         request_count = len(batch.request_ids)
         dflash_accept_chain_i32(
             self.verify_token_ids_i32.ptr,
@@ -2608,6 +2625,8 @@ class Qwen35ParoResidentSession:
             library=self.libraries["dflash_accept"],
             runtime=self.runtime,
         )
+
+    def _read_verify_accept_payload(self, request_count: int, *, stream: int = 0) -> dict[str, tuple[int, ...] | tuple[bool, ...]]:
         self.runtime.stream_synchronize(stream)
         accepted = np.empty((request_count,), dtype=np.int32)
         commit_rows = np.empty((request_count,), dtype=np.int32)
@@ -2635,6 +2654,10 @@ class Qwen35ParoResidentSession:
             "full_accept": tuple(bool(x) for x in full_accept.tolist()),
             "committed_output_lengths": tuple(int(x) for x in out_lengths.tolist()),
         }
+
+    def _run_verify_accept_summary(self, batch: TargetVerifyBatch, *, rows: int, stream: int = 0) -> dict[str, tuple[int, ...] | tuple[bool, ...]]:
+        self._launch_verify_accept_summary(batch, rows=rows, stream=stream)
+        return self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
 
     @staticmethod
     def _gpu_accept_payload_matches(payload: dict[str, tuple[int, ...] | tuple[bool, ...]], summary: TargetAcceptSummary) -> bool:

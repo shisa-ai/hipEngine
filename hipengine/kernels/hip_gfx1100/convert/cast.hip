@@ -62,8 +62,28 @@ __global__ void fp16_to_bf16_kernel(const half_t* __restrict__ x, uint16_t* __re
   }
 }
 
+__global__ void fp16_to_bf16_strided_rows_kernel(
+    const half_t* __restrict__ x,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t cols,
+    int64_t dst_row_stride,
+    int64_t dst_col_offset) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t count = rows * cols;
+  if (idx < count) {
+    const int64_t row = idx / cols;
+    const int64_t col = idx - row * cols;
+    out[row * dst_row_stride + dst_col_offset + col] = float_to_bf16_bits(static_cast<float>(x[idx]));
+  }
+}
+
 bool valid_count(int64_t count) {
   return count > 0;
+}
+
+bool valid_strided_rows(int64_t rows, int64_t cols, int64_t dst_row_stride, int64_t dst_col_offset) {
+  return rows > 0 && cols > 0 && dst_row_stride >= cols && dst_col_offset >= 0 && dst_col_offset + cols <= dst_row_stride;
 }
 
 }  // namespace
@@ -115,5 +135,23 @@ extern "C" int hipengine_fp16_to_bf16(const half_t* x, uint16_t* out, int64_t co
   const int threads = 256;
   const int blocks = static_cast<int>((count + threads - 1) / threads);
   hipLaunchKernelGGL(fp16_to_bf16_kernel, dim3(blocks), dim3(threads), 0, stream, x, out, count);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_fp16_to_bf16_strided_rows(
+    const half_t* x,
+    uint16_t* out,
+    int64_t rows,
+    int64_t cols,
+    int64_t dst_row_stride,
+    int64_t dst_col_offset,
+    hipStream_t stream) {
+  if (!valid_strided_rows(rows, cols, dst_row_stride, dst_col_offset)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t count = rows * cols;
+  const int threads = 256;
+  const int blocks = static_cast<int>((count + threads - 1) / threads);
+  hipLaunchKernelGGL(fp16_to_bf16_strided_rows_kernel, dim3(blocks), dim3(threads), 0, stream, x, out, rows, cols, dst_row_stride, dst_col_offset);
   return static_cast<int>(hipGetLastError());
 }

@@ -7,6 +7,7 @@ from hipengine.kernels.hip_gfx1100.convert import (
     f32_to_bf16,
     f32_to_fp16,
     fp16_to_bf16,
+    fp16_to_bf16_strided_rows,
     fp16_to_f32,
     plan_cast_build,
     register_cast_kernels,
@@ -26,6 +27,7 @@ def test_cast_registers_bf16_and_fp16_variants() -> None:
     assert resolve(backend="hip_gfx1100", layer="cast_f32_to_fp16", quant="fp16") is f32_to_fp16
     assert resolve(backend="hip_gfx1100", layer="cast_fp16_to_f32", quant="fp32") is fp16_to_f32
     assert resolve(backend="hip_gfx1100", layer="cast_fp16_to_bf16", quant="bf16") is fp16_to_bf16
+    assert resolve(backend="hip_gfx1100", layer="cast_fp16_to_bf16_strided_rows", quant="bf16") is fp16_to_bf16_strided_rows
 
 
 def test_cast_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -48,3 +50,7 @@ def test_cast_wrappers_validate_before_gpu_load() -> None:
         fp16_to_f32(0, 0, 0)
     with pytest.raises(ValueError, match="count"):
         fp16_to_bf16(0, 0, 0)
+    with pytest.raises(ValueError, match="rows"):
+        fp16_to_bf16_strided_rows(0, 0, 0, 4, 8, 0)
+    with pytest.raises(ValueError, match="dst_col_offset"):
+        fp16_to_bf16_strided_rows(0, 0, 2, 4, 8, 6)
