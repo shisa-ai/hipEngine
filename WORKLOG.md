@@ -20022,3 +20022,32 @@ Ranked next paths:
 3. New GGUF-K sidecar/repack WMMA: existing pack8/AWQ options are not good proxies; if pursued, sidecar must specifically reduce GGUF-K decode/register pressure rather than use current AWQ pack8 layout.
 
 Updated blocked artifact with `measurements.moe_design_study`. Task #27 remains in_progress/blocked.
+
+## 2026-05-18 P9.C2 task #33: hot-expert selected-MoE replay harness
+
+Built `scripts/qwen35_gguf_moe_replay.py`, a live qwen35moe compact-MoE replay/microbench harness for task #33. The script monkeypatches `_try_run_post_attention_moe_rows_compact_wmma` during one real bulk prefill, then records the exact compact scheduler state and replays/times the selected WMMA kernels with resident raw GGUF-K weight pointers:
+
+- Captures per MoE layer: quant keys, layer/source names, compact row count, WMMA padded row count, padding %, expert count distribution, compact/wmma starts, tile-expert histogram, selected tile decisions, gate+up/down timing samples.
+- Replays: Q4_K dual gate+up selected WMMA and Q5_K/Q6_K selected down selected WMMA.
+- Timing uses batched replay groups (`--replay-iters` launches per group, one synchronize per group) because per-launch synchronization overestimated rocprof by ~20%. Batched timing correlates with rocprof buckets within `2.83%`.
+
+Validation run:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_moe_replay.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --token-id 9707 \
+  --warmup-iters 1 --replay-iters 5 --sample-groups 3 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_c2/moe-replay-512-0-batched.json
+```
+
+Output summary:
+
+- 40 MoE layers captured.
+- Replay selected-MoE total: `89.724 ms` vs current P9.C1 rocprof reference `87.255 ms` (`+2.83%`).
+- Components: Q4 dual `59.896 ms` vs `57.728 ms` (`+3.76%`), Q5 down `26.999 ms` vs `26.833 ms` (`+0.62%`), Q6 down `2.828 ms` vs `2.694 ms` (`+4.98%`).
+- Routing: total compact rows `163,840`, WMMA rows `185,872`, padding rows `22,032` (`+13.45%`). Nonzero expert fraction `19.20%`; nonzero p50 `3`, p90 `404`, p99 `510`, max `512`. Hot thresholds: `>=64` experts `501` instances / `153,241` rows; `>=128` experts `390` / `143,218` rows.
+
+Added CPU-only tests for the report helpers in `tests/test_qwen35_gguf_moe_replay.py`. This completes the harness needed for P9.C3/P9.C4; next step is profiling current raw selected WMMA internals using the replay output.
