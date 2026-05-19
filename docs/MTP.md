@@ -67,9 +67,12 @@ FP8 block-128 projection/expert tensors are dequantized to BF16, and per-expert
 Validation now sees all `19/19` required tensors.  Native MTP proposal bring-up
 has started: `hipengine_mtp_fuse_inputs_f16_bf16` covers token-embedding +
 target-hidden pre-fc RMSNorm/concat, and `scripts/mtp_input_fc_smoke.py` applies
-`mtp.fc` with the existing BF16 dense GEMV.  The remaining blocker is the
-one-layer MTP decoder itself (attention, MoE/shared expert, final `mtp.norm`, and
-shared lm-head/top1), not model artifact availability.
+`mtp.fc` with the existing BF16 dense GEMV.  A full one-layer torch-reference
+proposal smoke also exists in `scripts/mtp_torch_proposal_smoke.py`; it runs
+MTP attention, MoE/shared expert, final `mtp.norm`, shared lm-head/top1, and
+emits candidate-only `DraftBatch` rows for `verify_chain_bulk_and_commit`.  The
+remaining production blocker is native decoder kernels/wiring and captured
+real target-hidden integration, not model artifact availability.
 
 ## Alignment with existing hipEngine design
 

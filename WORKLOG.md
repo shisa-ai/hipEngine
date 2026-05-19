@@ -19333,3 +19333,71 @@ not an MTP throughput benchmark: it validates the first proposal stage only.
 Next MTP blocker is the one-layer decoder path: Q/K/V/O full-attention,
 MoE/shared expert, final `mtp.norm`, shared lm-head/top1, and candidate-only
 `DraftBatch` emission.
+
+## 2026-05-19 (continued) — MTP torch-reference one-layer proposal emits DraftBatch rows
+
+To avoid stalling on the native decoder port, I added an optional torch-reference
+one-layer MTP proposal smoke that uses the assembled PARO+MTP-BF16 artifact and
+emits the same candidate-only metadata the native provider must produce.
+
+New script: `scripts/mtp_torch_proposal_smoke.py`.
+
+It runs the full MTP proposal head:
+
+```text
+root token + target hidden
+  -> pre-fc RMSNorm/concat/fc
+  -> MTP input norm
+  -> Q/K/V projection, q/k RMSNorm, RoPE, cached GQA attention, gate, O proj
+  -> add RMSNorm
+  -> routed MoE top-2 + shared expert
+  -> final mtp.norm
+  -> shared lm-head/top1
+  -> recursive draft advance using previous MTP hidden
+  -> compile_mtp_chain(...)
+```
+
+Validation command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/mtp_torch_proposal_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --root-token 151646 --root-position 0 --draft-budget 2 \
+  --json /tmp/hipengine-mtp-torch-proposal-smoke-b2.json
+# {"budget": 2, "candidates": [158931, 13], "finite_logits": true, "proposal_seconds": 0.7578519720118493, "status": "passed"}
+```
+
+The emitted verifier-facing metadata is correct:
+
+```json
+{
+  "draft_batch": {
+    "candidate_tokens": [158931, 13],
+    "parent_positions": [0, 1],
+    "draft_depths": [1, 2],
+    "active_mask": [true, true],
+    "mode": "verify_chain"
+  },
+  "target_verify_batch": {
+    "tokens": [151646, 158931, 13],
+    "positions": [0, 1, 2],
+    "parent_rows": [-1, 0, 1],
+    "active_mask": [true, true, true],
+    "mode": "verify_chain"
+  }
+}
+```
+
+Retained artifact:
+
+- `benchmarks/results/2026-05-19-hipengine-mtp-torch-proposal-smoke-diagnostic.json`
+
+Status:
+
+- Task #38's functional proposal requirement is satisfied in an optional torch
+  reference path: loaded MTP tensors -> one-layer decoder -> lm-head/top1 ->
+  candidate rows.
+- This is **not** a throughput claim and not the production native path.  Next
+  implementation target is to replace the torch decoder internals with native
+  kernels and wire captured real target hidden from `Qwen35ParoResidentSession`
+  into the MTP provider for an exact shared-verifier benchmark.

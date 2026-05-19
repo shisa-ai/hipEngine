@@ -1,0 +1,83 @@
+{
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/mtp_torch_proposal_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --root-token 151646 --root-position 0 --draft-budget 2 --json /tmp/hipengine-mtp-torch-proposal-smoke-b2.json",
+  "date": "2026-05-19",
+  "decision_reason": "Full one-layer MTP proposal path now runs as an optional torch reference over the assembled PARO+MTP-BF16 artifact and emits candidate-only DraftBatch rows for verify_chain_bulk_and_commit. This is not a throughput claim; native decoder kernels remain the production implementation target.",
+  "draft_batch": {
+    "active_mask": [
+      true,
+      true
+    ],
+    "candidate_tokens": [
+      158931,
+      13
+    ],
+    "draft_depths": [
+      1,
+      2
+    ],
+    "mode": "verify_chain",
+    "parent_positions": [
+      0,
+      1
+    ],
+    "request_ids": [
+      0
+    ],
+    "row_to_request": [
+      0,
+      0
+    ]
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "proposal": {
+    "candidate_tokens": [
+      158931,
+      13
+    ],
+    "finite_logits": true,
+    "load_seconds": 2.754596647020662,
+    "proposal_seconds": 0.7578519720118493
+  },
+  "schema_version": 1,
+  "software": {
+    "hipengine_branch": "dflash",
+    "hipengine_commit": "4005f607f1a0b877be6976e8393dfeac4f75ba44",
+    "hipengine_dirty": true
+  },
+  "status": "diagnostic_torch_reference_proposal_path",
+  "target_verify_batch": {
+    "active_mask": [
+      true,
+      true,
+      true
+    ],
+    "draft_depths": [
+      0,
+      1,
+      2
+    ],
+    "mode": "verify_chain",
+    "parent_rows": [
+      -1,
+      0,
+      1
+    ],
+    "positions": [
+      0,
+      1,
+      2
+    ],
+    "tokens": [
+      151646,
+      158931,
+      13
+    ]
+  },
+  "title": "MTP torch-reference one-layer proposal smoke",
+  "workload": {
+    "draft_budget": 2,
+    "root_position": 0,
+    "root_token": 151646
+  }
+}
