@@ -20258,3 +20258,38 @@ Measured tail-path evidence already exists from P9.C4:
 Decision: do not retain a tail/no-padding hybrid for P9.C9. Existing tail fallback costs more than the padding it removes, bulk no-padding GEMV was already rejected as much slower, and a genuinely useful version would require a new compact tail-list ABI and three quant-specific tail kernels. Without a winning hot path, this is not justified and does not meet the `3-5 ms` selected-MoE improvement bar.
 
 Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c9-tail-no-padding-not-retained.json`.
+
+## 2026-05-18 P9.C10 task #41: combined threshold/variant gap analysis
+
+Ran current-default full benches after P9.C4-P9.C9 decisions. Defaults retained:
+
+- Q4 selected dual: raw `32x16`.
+- Q5/Q6 selected down: legacy `16x16`.
+- Q8_0: P9.C1 shape-aware single WMMA + shared-expert dual concat `16x32`.
+- Not retained: Q4 hot/full-tile, Q4 scale/min sidecar, Q5 decode-hoist, Q6 larger tile, tail/no-padding hybrid.
+
+Commands:
+
+- 512/0 wall-clock: `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c10/bench-512-0.json`.
+- 512/128 wall-clock: same but `--decode-tokens 128 --warmup-decode-tokens 1 --graph-replay-decode --json /tmp/p9_c10/bench-512-128.json`.
+- 512/0 rocprof: `rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/p9_c10/rocprof-512-0-current -- python3 scripts/qwen35_gguf_bench.py [...] --prompt-length 512 --decode-tokens 0 --measured-runs 1 --use-wmma-prefill`.
+- Summary: `uv run python scripts/qwen35_gguf_rocprof_summary.py --csv <kernel_trace.csv> --tokens-prefill 512 --top 20 --json /tmp/p9_c10/rocprof-512-0-summary.json --quiet`.
+
+Wall-clock results (RX 7900 XTX/gfx1100 local; W7900 not re-run):
+
+- 512/0 median prefill: `1661.79 tok/s` (`0.30810 s`), samples `1478.58`, `1674.20`, `1661.79` tok/s.
+- 512/128 median prefill: `1677.56 tok/s`; median decode: `62.56 tok/s`; final token ids all `220`.
+
+P9.E1 512/0 rocprof buckets:
+
+| Bucket | ms | dispatches |
+| --- | ---: | ---: |
+| Q4 selected dual WMMA | 58.126 | 40 |
+| Q5 selected WMMA | 27.043 | 37 |
+| Q6 selected WMMA | 2.656 | 3 |
+| dense Q8_0 WMMA | 52.285 | 210 |
+| combined target bucket | 140.110 | 290 |
+
+Target remains missed: `140.110 ms` vs `<=110 ms` (gap `30.110 ms`, `+27.4%`). Next single bottleneck is Q4 selected dual at `58.1 ms`, followed by dense Q8_0 at `52.3 ms`. If Q8 remains fixed, Q4 would need to drop to about `28.0 ms`; shallow hot/full-tile, scale/min sidecar, and tail variants did not move in the right direction, so the next viable design is deeper expert-weight repack/layout or a different selected-MoE kernel that avoids raw GGUF-K repeated decode without adding a large side stream.
+
+Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c10-combined-gap-analysis.json`.
