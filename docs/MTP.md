@@ -43,9 +43,16 @@ buckets do not repeat and drafter time regresses to `133.8 ms/call`. The first
 QKV projection fusion is bit-exact and profiled, but neutral (`69.6 ms/call` vs
 `68.9 ms/call` no-fusion), so it remains opt-in. Warm verifier scratch improves
 native B+1 verifier latency by ~26-35%, but B={1,2,4,8} is still `1.8x-4.9x`
-slower than serial c=1. MTP speed work stays blocked on verifier
-graph/fusion/tiny-row optimization and higher-leverage reusable proposal fusion
-work; it should not fork a separate verifier path.
+slower than serial c=1. The follow-on true-batched chain verifier
+(`--full-attn-chain-mode batched`) lands the proper bulk full-attention path
+(batched RMSNorm + rotate + QKV projection + multi-token RoPE + prompt-style
+K/V append + gated GQA prefill attention + batched O proj + post-norm + forced
+c=1 MoE per full-attention layer): exact vs c1_loop, 6-8% faster than c1_loop
+at B=2/4 but still `2.0-5.0x` slower than serial c=1 across all B.  MTP speed
+work stays blocked on the same B+1 cost wall.  The batched path is retained
+as DDTree infrastructure (tree branches make serial early-exit structurally
+impossible) and is the same ABI MTP should reuse once a tree-shaped MTP
+proposer lands; chain MTP should not fork a separate verifier path.
 
 ## Alignment with existing hipEngine design
 

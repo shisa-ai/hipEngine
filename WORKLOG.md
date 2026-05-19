@@ -18766,3 +18766,117 @@ scratch while tail c=1 decode expects decode scratch.  Reverted the local branch
 no code change retained from this probe.  #30 remains open.  The remaining speed
 gap is still dominated by extra candidate-row model compute, not a simple choice
 between c=1 and prefill full-attention kernels.
+
+## 2026-05-19 — DFlash chain batched verifier (#30 / batching infrastructure)
+
+After the prior native-bulk warm-scratch matrix and the failed prefill-style
+probe ([2026-05-18 prefill probe](#)), the next direction (per agent analysis
+of llama.cpp / hipfire / Lucebox) was to actually batch the B+1 chain verifier
+full-attention layers instead of looping c=1 forwards per row.  This commit
+lands that path as an opt-in mode and runs the speed gate against both
+``c1_loop`` (current default) and ``serial_in_place_single_slot``.
+
+Implementation:
+
+- Added ``--full-attn-chain-mode {c1_loop, batched}`` to
+  ``scripts/dflash_chain_e2e_bench.py`` and a matching ``chain_attn_mode``
+  parameter on ``Qwen35ParoResidentSession.verify_chain_bulk_and_commit`` and
+  ``_launch_verify_chain_forward_accept``.
+- Added ``_run_full_attention_chain_batched`` that runs the full-attention
+  layer over the B+1 verifier rows in ONE batched pass: batched RMSNorm +
+  rotate + QKV projection + multi-token RoPE prepare, prompt-style batched K/V
+  append, gated GQA prefill attention (``prefill_full_attention_gqa_gate_fp16``)
+  with per-row causal limit via ``row_positions``, batched O projection +
+  post-attention norm, then ``run_moe_c1_fp16(tokens=rows)`` (forced c=1 MoE
+  scratch via the new ``_ensure_moe_c1_prefill_scratch`` helper to avoid
+  grouped MoE setup cost at small B+1).
+- Verifier scratch (full-attention + MoE) is taken from the dedicated
+  ``prefill_workspace`` so the batched path does not realloc the resident c=1
+  decode scratch.
+
+Validation:
+
+```bash
+python3 -m pytest tests/test_qwen35_resident_batch_layout.py \
+  tests/test_cast_plan.py tests/test_speculative_benchmark.py -q
+# 37 passed
+
+# Correctness on a fixed stable prompt, 8 decode tokens, B={1,2,4,8}
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 \
+  --json /tmp/hipengine-batched-speedgate.json
+# all_correctness_passed=true, gpu_accept_match_cpu=true, finite_verify_logits=true
+
+# Longer 16-token sanity on same prompt
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 16 --draft-budgets 4 \
+  --json /tmp/hipengine-batched-d16-b4.json
+# exact_match_ar=true; 9 draft cycles, accepted_draft_tokens=6
+```
+
+Speed-gate matrix (8 decode tokens, B={1,2,4,8}, stable prompt, gfx1151,
+all three modes exact/finite/GPU-accept-matches-CPU):
+
+| B | serial s | c1_loop s | batched s | batched/c1_loop | batched/serial | serial tok/s | c1_loop tok/s | batched tok/s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 0.128 | 0.247 | 0.268 | 1.085x | 2.085x | 19.71 | 15.35 | 15.07 |
+| 2 | 0.133 | 0.289 | 0.268 | 0.927x | 2.021x | 19.24 | 12.08 | 14.76 |
+| 4 | 0.131 | 0.398 | 0.373 | 0.938x | 2.860x | 18.75 | 11.11 | 11.76 |
+| 8 | 0.130 | 0.621 | 0.645 | 1.039x | 4.969x | 17.26 |  8.30 |  8.02 |
+
+Findings:
+
+- The batched chain verifier is **exact** vs same-session AR and vs the c1_loop
+  baseline across all four budgets, with GPU accept summary matching the CPU
+  oracle.  This confirms the batched primitives (prompt-style K/V append +
+  prefill GQA gate attention with per-row causal limit + multi-token RoPE +
+  forced c=1 MoE) produce numerically equivalent output to the per-row c=1
+  loop.
+- The batched path is **6-8% faster than c1_loop at B=2 and B=4**, neutral at
+  B=1 (+8% slower), and slightly slower at B=8 (+4% slower).  The win at
+  middle budgets reflects launch-overhead savings from batched RMSNorm /
+  rotate / projection / attention / KV append.  At B=1 the launch-overhead
+  saving is too small to overcome the multi-token kernel slowdown (mostly
+  the non-coop router path used for ``tokens > 1``); at B=8 the multi-token
+  MoE pack8 GEMV cost grows linearly with rows and offsets the launch saving.
+- The batched path is **2.0-5.0x slower than serial_in_place_single_slot**
+  across all B.  Serial does only ``(accept_count + 1)`` c=1 target forwards
+  per cycle (e.g. ~1.1 forwards at B=8 with our acceptance) using
+  cooperative-router c=1 MoE kernels, while the batched path always runs
+  B+1 rows through the multi-token kernels.
+
+Retained artifact:
+`benchmarks/results/2026-05-19-hipengine-dflash-chain-batched-vs-c1-loop-speedgate-diagnostic.json`.
+
+Interpretation:
+
+- For chain DFlash, the previously-fallback ``serial_in_place_single_slot``
+  remains the production-shaped path.  No B+1 batched chain verifier (this
+  one or the prior probes) has beaten serial on the W7900-class W8A16 MoE
+  target on gfx1151 with the current acceptance rates.
+- This chain batched path is retained as the infrastructure foundation for
+  DDTree, where multiple branches MUST be verified in parallel (serial early
+  exit is structurally impossible across tree branches).  The same batched
+  primitives (prompt-style K/V append, prefill GQA gate attention with
+  per-row causal limit) are the right ABI for DDTree's tree verify kernel.
+  See ``docs/DFLASH.md`` Phase D4 for the tree topology compiler and tree
+  accept/commit plan.
+- Beating serial for chain DFlash would require either (a) coop variants of
+  multi-token router / pack8 GEMV / down pack8 kernels so the multi-token
+  MoE matches c=1 throughput, or (b) a c-aware verifier that gates batched
+  verification on a per-cycle prediction of accept depth (likely worse than
+  just keeping serial since the prediction has nonzero cost and serial
+  already wins at low accept depths).
+
+#30 remains open: native batched B+1 verifier is implemented and exact, but
+not yet faster than ``serial_in_place_single_slot``.  Next directions tracked
+in `docs/DFLASH.md` Phase D4 (DDTree compiler + tree verifier, which needs
+this batched infrastructure) and the c-aware verifier sketch above.

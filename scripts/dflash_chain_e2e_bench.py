@@ -1217,6 +1217,7 @@ def run_same_session_pair(
     verifier_graph_mode: str = "off",
     drafter_graph_mode: str = "off",
     drafter_fusion_mode: str = "off",
+    chain_attn_mode: str = "c1_loop",
 ) -> tuple[tuple[list[int], dict[str, Any]], tuple[list[int], dict[str, Any]]]:
     """Run AR control and DFlash chain in one resident target session.
 
@@ -1292,6 +1293,7 @@ def run_same_session_pair(
                 branch_slot_start=2,
                 verifier_mode=verifier_mode,
                 verifier_graph_mode=verifier_graph_mode,
+                chain_attn_mode=chain_attn_mode,
             )
         spec_meta["same_session_control"] = True
         spec_meta["same_process_control"] = True
@@ -1309,6 +1311,7 @@ def _run_dflash_chain_on_session(
     branch_slot_start: int,
     verifier_mode: str = "native_bulk_bplus1",
     verifier_graph_mode: str = "off",
+    chain_attn_mode: str = "c1_loop",
 ) -> tuple[list[int], dict[str, Any]]:
     t0 = time.perf_counter()
     next_result = None
@@ -1420,6 +1423,7 @@ def _run_dflash_chain_on_session(
                 capture_hidden_concat=drafter.target_hidden_concat,
                 capture_row_start=context_tokens,
                 graph_mode=verifier_graph_mode,
+                chain_attn_mode=chain_attn_mode,
             )
             target_top1 = list(verify_result.target_top1[: 1 + active_budget])
             accepted = int(verify_result.accepted_count)
@@ -1553,6 +1557,7 @@ def _run_dflash_chain_on_session(
         "target_arch": session.target_arch,
         "verifier_mode": verifier_mode,
         "verifier_graph_mode": verifier_graph_mode,
+        "verifier_chain_attn_mode": chain_attn_mode,
         "native_bulk_verifier": verifier_mode == "native_bulk_bplus1",
         "drafter_context_mode": "append_only_projected_context_and_kv",
         "draft_phase_timing_mode": "synchronized" if drafter.sync_draft_phases else "enqueue_until_final_sync",
@@ -1750,6 +1755,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sync-draft-phases", action="store_true", help="Diagnostic only: synchronize after major drafter phases before timing them")
     parser.add_argument("--verifier-mode", choices=("native_bulk_bplus1", "serial_in_place_single_slot"), default="native_bulk_bplus1")
     parser.add_argument("--verifier-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native B+1 verifier forward+accept; auto replays fixed rows/capture-width buckets")
+    parser.add_argument("--full-attn-chain-mode", choices=("c1_loop", "batched"), default="c1_loop", help="Native B+1 verifier full-attention scheduling: c1_loop (per-row resident decode kernels, current default) or batched (one batched pass per layer using prefill primitives + c=1 MoE)")
     parser.add_argument("--drafter-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native DFlash propose(); auto replays cache hits, validate records capture parity without requiring reuse")
     parser.add_argument("--drafter-fusion", choices=("off", "qkv"), default="off", help="Enable prototype DFlash drafter kernel fusions; qkv fuses query-side Q/K/V projections with unfused fallback available")
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
@@ -1786,6 +1792,7 @@ def main(argv: list[str] | None = None) -> int:
                 verifier_graph_mode=args.verifier_graph,
                 drafter_graph_mode=args.drafter_graph,
                 drafter_fusion_mode=args.drafter_fusion,
+                chain_attn_mode=args.full_attn_chain_mode,
             )
             rows.append(_row_for_artifact(prompt, budget, ar, spec))
     artifact = build_speculative_artifact(
@@ -1815,6 +1822,7 @@ def main(argv: list[str] | None = None) -> int:
             "artifact_validation": validation,
             "verifier_mode": args.verifier_mode,
             "verifier_graph_mode": args.verifier_graph,
+            "verifier_chain_attn_mode": args.full_attn_chain_mode,
             "native_bulk_verifier": args.verifier_mode == "native_bulk_bplus1",
             "drafter_graph_mode": args.drafter_graph,
             "drafter_fusion_mode": args.drafter_fusion,

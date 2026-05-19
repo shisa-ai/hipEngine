@@ -135,6 +135,19 @@ Current status:
   seconds by ~26-35% by avoiding verifier scratch churn and a pre-accept barrier,
   but remains `1.8x-4.9x` slower than serial c=1
   ([artifact](../benchmarks/results/2026-05-18-hipengine-dflash-verifier-warmscratch-speedgate-diagnostic.json)).
+  A follow-on true-batched chain verifier (`--full-attn-chain-mode batched`)
+  lands the proper bulk path: one batched RMSNorm + rotate + QKV projection +
+  multi-token RoPE + prompt-style K/V append + gated GQA prefill attention +
+  batched O proj + post-norm + forced c=1 MoE per full-attention layer.  It is
+  exact vs c1_loop and same-session AR, 6-8% faster than the c1_loop bulk path
+  at B=2/4, neutral or slightly slower at B=1/8, and still `2.0-5.0x` slower
+  than serial c=1 across all B because each batched cycle still pays B+1 rows
+  of multi-token MoE (non-coop router, multi-row pack8 GEMV) regardless of how
+  early the chain is rejected
+  ([artifact](../benchmarks/results/2026-05-19-hipengine-dflash-chain-batched-vs-c1-loop-speedgate-diagnostic.json)).
+  This batched path is retained as the **infrastructure foundation for DDTree**
+  (where tree branches make serial early-exit structurally impossible), not as
+  a chain DFlash speed win.
 - no speculative throughput claim is allowed until the native compact/c-aware
   target verifier plus drafter path produces a retained chain win over
   same-session AR.

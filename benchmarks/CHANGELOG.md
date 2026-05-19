@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-19
+
+- [diagnostic retained] hipEngine / shisa-ai Qwen3.6-35B-A3B-PARO packed + z-lab DFlash chain batched (true bulk) verifier / gfx1151 speed-gate matrix: c1_loop chain verifier -> batched chain verifier (one batched pass per full-attention layer using prompt-style K/V append + prefill GQA gate attention + forced c=1 MoE), all three modes exact/finite for B={1,2,4,8} with GPU accept matching CPU oracle; batched verify seconds `0.268/0.268/0.373/0.645` vs c1_loop `0.247/0.289/0.398/0.621` (-7% to +8% per B; -6% / -6% at B=2 / B=4 due to launch-overhead amortization, neutral or +4-8% slower at B=1 / B=8 due to multi-token non-coop router and pack8 GEMV cost), still 2.0-5.0x slower than serial fallback `0.128/0.133/0.131/0.130`; `performance_claim=false`, batched path retained as DDTree infrastructure not as a chain win; task #30 remains open; `benchmarks/results/2026-05-19-hipengine-dflash-chain-batched-vs-c1-loop-speedgate-diagnostic.json`.
+
 ## 2026-05-18
 
 - [diagnostic retained] hipEngine / shisa-ai Qwen3.6-35B-A3B-PARO packed + z-lab DFlash native B+1 verifier / gfx1151 speed-gate matrix: row-span native verifier -> warm-scratch native verifier, exact/finite for B={1,2,4,8} with GPU accept matching CPU oracle; native verify seconds `0.332/0.404/0.524/0.881 -> 0.231/0.264/0.387/0.619` (-30.4% aggregate), but serial fallback is still `0.127/0.124/0.125/0.126`, so native remains `1.8x-4.9x` slower; `performance_claim=false`, task #30 remains blocked on graph/c-aware/fused target kernels; `benchmarks/results/2026-05-18-hipengine-dflash-verifier-warmscratch-speedgate-diagnostic.json`.

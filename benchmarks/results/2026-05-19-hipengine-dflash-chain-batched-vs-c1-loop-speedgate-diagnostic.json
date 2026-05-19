@@ -1,0 +1,148 @@
+{
+  "commands": {
+    "batched": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-batched-speedgate.json",
+    "c1_loop": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --full-attn-chain-mode c1_loop --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-c1loop-speedgate.json",
+    "serial": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode serial_in_place_single_slot --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-serial-speedgate.json"
+  },
+  "correctness_gate": {
+    "finite_logits": true,
+    "gpu_accept_match_cpu": true,
+    "passed": true,
+    "same_session_ar_equality": true
+  },
+  "date": "2026-05-19",
+  "decision_reason": "true batched chain verifier is correct and amortizes launch overhead, but remains slower than serial_in_place_single_slot for all B and is only ~6-8% faster than c1_loop at B=2/4 (neutral or slower at B=1/8). The batched path is retained as a correctness-equal alternative and as the infrastructure foundation for DDTree, not as a chain DFlash speed win.",
+  "hardware": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S"
+  },
+  "measurements": {
+    "aggregate": {
+      "all_modes_exact_ar": true,
+      "all_modes_gpu_accept_match_cpu": true,
+      "batched_faster_than_c1_loop_all_budgets": false,
+      "batched_faster_than_c1_loop_any_budget": true,
+      "batched_faster_than_serial_any_budget": false,
+      "max_batched_vs_c1_loop_ratio": 1.0854108654256582,
+      "max_batched_vs_serial_ratio": 4.969162836045618,
+      "min_batched_vs_c1_loop_ratio": 0.9268994567030697,
+      "min_batched_vs_serial_ratio": 2.021246847039781
+    },
+    "rows": [
+      {
+        "accepted_draft_tokens": 3,
+        "batched_decode_tok_s": 15.07424025636538,
+        "batched_exact_match_ar": true,
+        "batched_verify_seconds": 0.2676829020201694,
+        "batched_vs_c1_loop_ratio": 1.0854108654256582,
+        "batched_vs_serial_ratio": 2.084951993626915,
+        "c1_loop_decode_tok_s": 15.348036203660994,
+        "c1_loop_exact_match_ar": true,
+        "c1_loop_verify_seconds": 0.2466189629631117,
+        "c1_loop_vs_serial_ratio": 1.9208873432543663,
+        "draft_budget": 1,
+        "draft_tokens_proposed": 4,
+        "gpu_accept_match_cpu": true,
+        "serial_decode_tok_s": 19.709129610349517,
+        "serial_exact_match_ar": true,
+        "serial_verify_seconds": 0.12838804099010304,
+        "target_bulk_forward_calls": 4
+      },
+      {
+        "accepted_draft_tokens": 4,
+        "batched_decode_tok_s": 14.763419551400244,
+        "batched_exact_match_ar": true,
+        "batched_verify_seconds": 0.26798433301155455,
+        "batched_vs_c1_loop_ratio": 0.9268994567030697,
+        "batched_vs_serial_ratio": 2.021246847039781,
+        "c1_loop_decode_tok_s": 12.08325470033994,
+        "c1_loop_exact_match_ar": true,
+        "c1_loop_verify_seconds": 0.2891190960071981,
+        "c1_loop_vs_serial_ratio": 2.1806538264994186,
+        "draft_budget": 2,
+        "draft_tokens_proposed": 8,
+        "gpu_accept_match_cpu": true,
+        "serial_decode_tok_s": 19.23801331375841,
+        "serial_exact_match_ar": true,
+        "serial_verify_seconds": 0.13258367398520932,
+        "target_bulk_forward_calls": 4
+      },
+      {
+        "accepted_draft_tokens": 4,
+        "batched_decode_tok_s": 11.761731427143552,
+        "batched_exact_match_ar": true,
+        "batched_verify_seconds": 0.3734206460067071,
+        "batched_vs_c1_loop_ratio": 0.9377908846056501,
+        "batched_vs_serial_ratio": 2.859613908100181,
+        "c1_loop_decode_tok_s": 11.110143016107079,
+        "c1_loop_exact_match_ar": true,
+        "c1_loop_verify_seconds": 0.39819180601625703,
+        "c1_loop_vs_serial_ratio": 3.0493087052159558,
+        "draft_budget": 4,
+        "draft_tokens_proposed": 14,
+        "gpu_accept_match_cpu": true,
+        "serial_decode_tok_s": 18.749121692248018,
+        "serial_exact_match_ar": true,
+        "serial_verify_seconds": 0.13058428795193322,
+        "target_bulk_forward_calls": 4
+      },
+      {
+        "accepted_draft_tokens": 4,
+        "batched_decode_tok_s": 8.019242364551094,
+        "batched_exact_match_ar": true,
+        "batched_verify_seconds": 0.6450418299646117,
+        "batched_vs_c1_loop_ratio": 1.0392634767263422,
+        "batched_vs_serial_ratio": 4.969162836045618,
+        "c1_loop_decode_tok_s": 8.300669851437698,
+        "c1_loop_exact_match_ar": true,
+        "c1_loop_verify_seconds": 0.6206720859627239,
+        "c1_loop_vs_serial_ratio": 4.781427373641932,
+        "draft_budget": 8,
+        "draft_tokens_proposed": 19,
+        "gpu_accept_match_cpu": true,
+        "serial_decode_tok_s": 17.260090773054486,
+        "serial_exact_match_ar": true,
+        "serial_verify_seconds": 0.12980895399232395,
+        "target_bulk_forward_calls": 4
+      }
+    ]
+  },
+  "models": {
+    "drafter": {
+      "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719"
+    },
+    "target": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
+    }
+  },
+  "performance_claim": false,
+  "schema_version": 2,
+  "software": {
+    "hipengine_branch": "dflash",
+    "hipengine_commit": "613d6af4c3fcf10e671ffef0f4f9a5cf69c3e837",
+    "hipengine_dirty": true
+  },
+  "source_artifacts": [
+    "(transient) /tmp/hipengine-c1loop-speedgate.json",
+    "(transient) /tmp/hipengine-batched-speedgate.json",
+    "(transient) /tmp/hipengine-serial-speedgate.json"
+  ],
+  "status": "diagnostic",
+  "task": "DFlash chain verifier: c1_loop vs batched (prefill GQA gate + batched K/V append) vs serial_in_place_single_slot.",
+  "title": "DFlash chain batched verifier vs c1_loop / serial speed-gate",
+  "workload": {
+    "decode_tokens": 8,
+    "draft_budgets": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "prompt_id": "code:quicksort_prefix",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "shape": "full_model_dflash_chain_e2e"
+  }
+}
