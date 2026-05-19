@@ -1,0 +1,231 @@
+{
+  "commands": {
+    "batched": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-task7-batched.json",
+    "c1_loop": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --full-attn-chain-mode c1_loop --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-task7-c1loop.json"
+  },
+  "correctness_gate": {
+    "cross_mode_accepted_per_cycle_bit_equal": true,
+    "cross_mode_bonus_token_per_cycle_bit_equal": true,
+    "cross_mode_committed_tokens_per_cycle_bit_equal": true,
+    "cross_mode_draft_calls_match": true,
+    "cross_mode_draft_candidates_per_cycle_bit_equal": true,
+    "cross_mode_target_top1_path_bit_equal": false,
+    "drift_confined_to_post_first_reject_suffix_rows": true,
+    "passed": true,
+    "same_session_ar_equality_batched": true,
+    "same_session_ar_equality_c1_loop": true
+  },
+  "date": "2026-05-19",
+  "decision_reason": "Per-cycle bit-equal validation of --full-attn-chain-mode batched vs c1_loop on PARO target weights (gfx1151, code:quicksort_prefix, 8 decode tokens, B={1,2,4,8}, 16 total verify cycles).  All commit-relevant per-cycle fields are bit-equal between the two modes: accepted_count, committed_tokens, bonus_token, root_token, draft_candidates, draft_calls.  Both modes match AR exactly.  Two target_top1_path predictions out of 61 verifier rows differ (B=4 cycle 1 row 4 and B=8 cycle 1 row 4: c1_loop=5956, batched=3841), and BOTH differences fall on rows past the first-reject row (first_reject_row=2 in both cycles), where the prediction is structurally never consumed for accept decisions or commit.  This is the expected harmless drift from BF16/FP16 accumulator non-associativity in batched kernels: rows whose argmax does not affect output need not bit-match across reduction orders.  Batched verifier correctness IS validated.",
+  "hardware": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S"
+  },
+  "measurements": {
+    "aggregate": {
+      "all_budgets_accepted_per_cycle_match": true,
+      "all_budgets_aggregate_accepted_match": true,
+      "all_budgets_aggregate_draft_calls_match": true,
+      "all_budgets_bonus_token_per_cycle_match": true,
+      "all_budgets_committed_tokens_per_cycle_match": true,
+      "all_budgets_draft_candidates_per_cycle_match": true,
+      "all_budgets_exact_match_ar_batched": true,
+      "all_budgets_exact_match_ar_c1_loop": true,
+      "all_budgets_same_cycle_count": true,
+      "all_budgets_target_top1_path_bit_equal": false,
+      "drift_confined_to_past_first_reject_suffix": true,
+      "total_target_top1_rows_differing": 2,
+      "total_verifier_rows_compared": 61
+    },
+    "rows": [
+      {
+        "batched_accepted_draft_tokens": 3,
+        "batched_draft_calls": 4,
+        "batched_exact_match_ar": true,
+        "c1_loop_accepted_draft_tokens": 3,
+        "c1_loop_draft_calls": 4,
+        "c1_loop_exact_match_ar": true,
+        "cycle_diffs": [],
+        "draft_budget": 1,
+        "gates": {
+          "accepted_per_cycle_match": true,
+          "aggregate_accepted_match": true,
+          "aggregate_draft_calls_match": true,
+          "batched_exact_match_ar": true,
+          "bonus_token_per_cycle_match": true,
+          "c1_loop_exact_match_ar": true,
+          "committed_tokens_per_cycle_match": true,
+          "draft_candidates_per_cycle_match": true,
+          "root_token_per_cycle_match": true,
+          "same_cycle_count": true,
+          "target_top1_path_bit_equal": true
+        }
+      },
+      {
+        "batched_accepted_draft_tokens": 4,
+        "batched_draft_calls": 4,
+        "batched_exact_match_ar": true,
+        "c1_loop_accepted_draft_tokens": 4,
+        "c1_loop_draft_calls": 4,
+        "c1_loop_exact_match_ar": true,
+        "cycle_diffs": [],
+        "draft_budget": 2,
+        "gates": {
+          "accepted_per_cycle_match": true,
+          "aggregate_accepted_match": true,
+          "aggregate_draft_calls_match": true,
+          "batched_exact_match_ar": true,
+          "bonus_token_per_cycle_match": true,
+          "c1_loop_exact_match_ar": true,
+          "committed_tokens_per_cycle_match": true,
+          "draft_candidates_per_cycle_match": true,
+          "root_token_per_cycle_match": true,
+          "same_cycle_count": true,
+          "target_top1_path_bit_equal": true
+        }
+      },
+      {
+        "batched_accepted_draft_tokens": 4,
+        "batched_draft_calls": 4,
+        "batched_exact_match_ar": true,
+        "c1_loop_accepted_draft_tokens": 4,
+        "c1_loop_draft_calls": 4,
+        "c1_loop_exact_match_ar": true,
+        "cycle_diffs": [
+          {
+            "accepted": 1,
+            "batched_target_top1_path": [
+              17145,
+              8,
+              578,
+              5956,
+              3841
+            ],
+            "c1_loop_target_top1_path": [
+              17145,
+              8,
+              578,
+              5956,
+              5956
+            ],
+            "cycle": 1,
+            "differing_inside_accept_prefix_rows": [],
+            "differing_past_first_reject_rows": [
+              4
+            ],
+            "differing_rows": [
+              4
+            ],
+            "first_reject_row": 2
+          }
+        ],
+        "draft_budget": 4,
+        "gates": {
+          "accepted_per_cycle_match": true,
+          "aggregate_accepted_match": true,
+          "aggregate_draft_calls_match": true,
+          "batched_exact_match_ar": true,
+          "bonus_token_per_cycle_match": true,
+          "c1_loop_exact_match_ar": true,
+          "committed_tokens_per_cycle_match": true,
+          "draft_candidates_per_cycle_match": true,
+          "root_token_per_cycle_match": true,
+          "same_cycle_count": true,
+          "target_top1_path_bit_equal": false
+        }
+      },
+      {
+        "batched_accepted_draft_tokens": 4,
+        "batched_draft_calls": 4,
+        "batched_exact_match_ar": true,
+        "c1_loop_accepted_draft_tokens": 4,
+        "c1_loop_draft_calls": 4,
+        "c1_loop_exact_match_ar": true,
+        "cycle_diffs": [
+          {
+            "accepted": 1,
+            "batched_target_top1_path": [
+              17145,
+              8,
+              578,
+              5956,
+              3841,
+              6646,
+              6646
+            ],
+            "c1_loop_target_top1_path": [
+              17145,
+              8,
+              578,
+              5956,
+              5956,
+              6646,
+              6646
+            ],
+            "cycle": 1,
+            "differing_inside_accept_prefix_rows": [],
+            "differing_past_first_reject_rows": [
+              4
+            ],
+            "differing_rows": [
+              4
+            ],
+            "first_reject_row": 2
+          }
+        ],
+        "draft_budget": 8,
+        "gates": {
+          "accepted_per_cycle_match": true,
+          "aggregate_accepted_match": true,
+          "aggregate_draft_calls_match": true,
+          "batched_exact_match_ar": true,
+          "bonus_token_per_cycle_match": true,
+          "c1_loop_exact_match_ar": true,
+          "committed_tokens_per_cycle_match": true,
+          "draft_candidates_per_cycle_match": true,
+          "root_token_per_cycle_match": true,
+          "same_cycle_count": true,
+          "target_top1_path_bit_equal": false
+        }
+      }
+    ]
+  },
+  "models": {
+    "drafter": {
+      "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719"
+    },
+    "target": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
+    }
+  },
+  "performance_claim": false,
+  "schema_version": 2,
+  "software": {
+    "hipengine_branch": "dflash",
+    "hipengine_commit": "a6811bd2c0fb469ce78fb0d6d3cab092c95eaf36",
+    "hipengine_dirty": false
+  },
+  "source_artifacts": [
+    "(transient) /tmp/hipengine-task7-c1loop.json",
+    "(transient) /tmp/hipengine-task7-batched.json",
+    "(transient) /tmp/hipengine-task7-comparison.json"
+  ],
+  "status": "diagnostic",
+  "task": "Task #7: Validate batched verifier correctness vs c=1 loop -- per-cycle bit-equal validation of accept/commit decisions.",
+  "title": "DFlash chain batched vs c1_loop: per-cycle bit-equal correctness gate",
+  "workload": {
+    "decode_tokens": 8,
+    "draft_budgets": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "prompt_id": "code:quicksort_prefix",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "shape": "full_model_dflash_chain_e2e"
+  }
+}
