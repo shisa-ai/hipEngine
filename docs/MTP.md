@@ -64,8 +64,12 @@ FP8 block-128 projection/expert tensors are dequantized to BF16, and per-expert
 `gate_proj`/`up_proj` are fused into the hipEngine runtime layout
 `mtp.layers.0.mlp.experts.gate_up_proj`.  The retained assembly diagnostic is
 `benchmarks/results/2026-05-19-hipengine-qwen36-paro-mtp-bf16-assembly-diagnostic.json`.
-Validation now sees all `19/19` required tensors.  The remaining blocker is
-native MTP proposal execution kernels, not model artifact availability.
+Validation now sees all `19/19` required tensors.  Native MTP proposal bring-up
+has started: `hipengine_mtp_fuse_inputs_f16_bf16` covers token-embedding +
+target-hidden pre-fc RMSNorm/concat, and `scripts/mtp_input_fc_smoke.py` applies
+`mtp.fc` with the existing BF16 dense GEMV.  The remaining blocker is the
+one-layer MTP decoder itself (attention, MoE/shared expert, final `mtp.norm`, and
+shared lm-head/top1), not model artifact availability.
 
 ## Alignment with existing hipEngine design
 

@@ -19291,3 +19291,45 @@ Status:
   the one-layer MTP full-attention + MoE + final norm + shared lm-head/top1 into
   a provider that emits candidate-only ``DraftBatch`` rows for
   ``verify_chain_bulk_and_commit``.
+
+## 2026-05-19 (continued) — MTP input-fusion + `mtp.fc` smoke
+
+Continued MTP proposal bring-up after the input-fusion kernel.  Added
+`scripts/mtp_input_fc_smoke.py`, a narrow real-weight smoke for the first MTP
+proposal stage:
+
+```text
+FP16 token embedding + BF16 target hidden
+  -> hipengine_mtp_fuse_inputs_f16_bf16
+  -> BF16 [embed_norm, hidden_norm]
+  -> existing dflash_dense_bf16_to_bf16 with mtp.fc.weight
+  -> BF16 MTP decoder input rows
+```
+
+Command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/mtp_input_fc_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --tokens 151646,8948 --cpu-check \
+  --json /tmp/hipengine-mtp-input-fc-smoke.json
+# {"fc_finite": true, "fc_seconds": 0.0007071980217006058, "fused_finite": true, "rows": 2, "status": "passed"}
+```
+
+CPU-check summary from the smoke:
+
+```json
+{
+  "fused_exact_bf16": false,
+  "fused_max_abs_diff_after_bf16_round": 0.0078125,
+  "fc_max_abs_diff_after_bf16_round": 0.03125,
+  "fc_close_atol_0p25": true
+}
+```
+
+The small fused mismatch is BF16/FP32 reduction-order rounding in RMSNorm; the
+FC output is close against the CPU reference after BF16 rounding.  This still is
+not an MTP throughput benchmark: it validates the first proposal stage only.
+Next MTP blocker is the one-layer decoder path: Q/K/V/O full-attention,
+MoE/shared expert, final `mtp.norm`, shared lm-head/top1, and candidate-only
+`DraftBatch` emission.
