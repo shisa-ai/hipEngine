@@ -1,0 +1,206 @@
+{
+  "commands": {
+    "chain_reduction": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_tree_e2e_smoke.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --tree-shape chain_reduction",
+    "depth1_branch4": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_tree_e2e_smoke.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --tree-shape depth1_branch4",
+    "depth2_binary": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_tree_e2e_smoke.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --tree-shape depth2_binary"
+  },
+  "correctness_gate": {
+    "cpu_oracle_matches_verify_result": true,
+    "finite_logits": true,
+    "gpu_accept_match_cpu": true,
+    "passed": true,
+    "root_top1_invariant_across_tree_shapes": true
+  },
+  "date": "2026-05-19",
+  "decision_reason": "DDTree full target forward (B+1 batched verifier rows through every layer type, including the new tree-aware GQA gate kernel) produces correct finite logits for all three smoke topologies on real PARO target weights.  The GPU accept-summary kernel agrees with the CPU oracle.  Most importantly, the root row's target_top1 is invariant across tree shapes (depth-2 binary, depth-1 4-way branch, and chain-reduction) because the root attends only to committed context, validating that the ancestor mask correctly isolates root-level attention from verifier rows.  This locks the DDTree foundation; multi-cycle decode is still blocked on the K/V compaction step (task #15).",
+  "hardware": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S"
+  },
+  "measurements": {
+    "aggregate": {
+      "all_correctness_passed": true,
+      "all_finite_logits": true,
+      "all_gpu_accept_match_cpu": true,
+      "root_target_top1_matches_across_shapes": true,
+      "root_target_top1_per_shape": {
+        "chain_reduction": 314,
+        "depth1_branch4": 314,
+        "depth2_binary": 314
+      },
+      "tree_shapes_tested": [
+        "depth2_binary",
+        "chain_reduction",
+        "depth1_branch4"
+      ]
+    },
+    "rows": [
+      {
+        "cpu_oracle": {
+          "accepted_count": 0,
+          "commit_position": 90,
+          "commit_row": 0,
+          "commit_token": 3841,
+          "full_accept": false,
+          "next_token": 314
+        },
+        "gates": {
+          "cpu_accepted_count_matches_verify_result": true,
+          "cpu_commit_row_matches_verify_result": true,
+          "finite_logits": true,
+          "gpu_accept_match_cpu": true
+        },
+        "root_token": 3841,
+        "rows": 7,
+        "tree_parents": [
+          -1,
+          -1,
+          0,
+          0,
+          1,
+          1
+        ],
+        "tree_shape": "depth2_binary",
+        "verify_result": {
+          "accepted_count": 0,
+          "commit_position": 90,
+          "commit_row": 0,
+          "commit_token": 3841,
+          "finite_logits": true,
+          "full_accept": false,
+          "gpu_accept_match_cpu": true,
+          "next_token": 314,
+          "target_top1": [
+            314,
+            381,
+            9419,
+            914,
+            2051,
+            18414,
+            908
+          ]
+        },
+        "verify_seconds": 0.15206451300764456
+      },
+      {
+        "cpu_oracle": {
+          "accepted_count": 0,
+          "commit_position": 90,
+          "commit_row": 0,
+          "commit_token": 3841,
+          "full_accept": false,
+          "next_token": 314
+        },
+        "gates": {
+          "cpu_accepted_count_matches_verify_result": true,
+          "cpu_commit_row_matches_verify_result": true,
+          "finite_logits": true,
+          "gpu_accept_match_cpu": true
+        },
+        "root_token": 3841,
+        "rows": 5,
+        "tree_parents": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "tree_shape": "chain_reduction",
+        "verify_result": {
+          "accepted_count": 0,
+          "commit_position": 90,
+          "commit_row": 0,
+          "commit_token": 3841,
+          "finite_logits": true,
+          "full_accept": false,
+          "gpu_accept_match_cpu": true,
+          "next_token": 314,
+          "target_top1": [
+            314,
+            381,
+            1719,
+            315,
+            828
+          ]
+        },
+        "verify_seconds": 0.134457188018132
+      },
+      {
+        "cpu_oracle": {
+          "accepted_count": 0,
+          "commit_position": 90,
+          "commit_row": 0,
+          "commit_token": 3841,
+          "full_accept": false,
+          "next_token": 314
+        },
+        "gates": {
+          "cpu_accepted_count_matches_verify_result": true,
+          "cpu_commit_row_matches_verify_result": true,
+          "finite_logits": true,
+          "gpu_accept_match_cpu": true
+        },
+        "root_token": 3841,
+        "rows": 5,
+        "tree_parents": [
+          -1,
+          -1,
+          -1,
+          -1
+        ],
+        "tree_shape": "depth1_branch4",
+        "verify_result": {
+          "accepted_count": 0,
+          "commit_position": 90,
+          "commit_row": 0,
+          "commit_token": 3841,
+          "finite_logits": true,
+          "full_accept": false,
+          "gpu_accept_match_cpu": true,
+          "next_token": 314,
+          "target_top1": [
+            314,
+            381,
+            9419,
+            85,
+            271
+          ]
+        },
+        "verify_seconds": 0.1618520400079433
+      }
+    ]
+  },
+  "models": {
+    "drafter": null,
+    "target": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
+    }
+  },
+  "performance_claim": false,
+  "schema_version": 2,
+  "software": {
+    "hipengine_branch": "dflash",
+    "hipengine_commit": "b4d89b1543f7f04d87eeb926b84f7943e5fd0657",
+    "hipengine_dirty": true
+  },
+  "source_artifacts": [
+    "(transient) /tmp/hipengine-tree-smoke-d2bin.json",
+    "(transient) /tmp/hipengine-tree-smoke-chain.json",
+    "(transient) /tmp/hipengine-tree-smoke-d1b4.json"
+  ],
+  "status": "diagnostic",
+  "task": "DDTree verifier E2E correctness smoke (task #12): tree-aware GQA gate + ancestor mask + cache-slot disambiguation + verify_tree_bulk_and_commit on real PARO target weights.",
+  "title": "DDTree verifier E2E correctness smoke (gfx1151, PARO)",
+  "workload": {
+    "prompt_id": "code:quicksort_prefix",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "shape": "single_cycle_tree_verify",
+    "tree_shapes": [
+      "depth2_binary",
+      "chain_reduction",
+      "depth1_branch4"
+    ]
+  }
+}
