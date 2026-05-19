@@ -20365,3 +20365,42 @@ Go/no-go for follow-ups:
 
 Artifact: `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_c12-q4t16-repack-design.json`.
 Docs: `docs/KERNELS.md` now records the Q4T16 design and go/no-go gates.
+
+## 2026-05-19 P9.C13 task #44: Q4T16 materializer prototype
+
+Implemented CPU Q4T16 materializer prototype:
+
+- `hipengine.quant.gguf_q4_k.GGUFQ4KTile16` dataclass.
+- `repack_gguf_q4_k_tile16(raw_qweight)` for rank-3 raw GGUF Q4_K expert tensors `[experts, out_features, bytes_per_row]`.
+- `unpack_gguf_q4_k_tile16(packed)` exact inverse for raw byte reconstruction.
+- Layout constants exported through `hipengine.quant`.
+
+Layout details:
+
+- `tiles` shape: `[experts, out_tiles16, blocks_per_row, 2368]`.
+- Per 16-column/k-block tile:
+  - `32 B` fp16 `d` bits.
+  - `32 B` fp16 `dmin` bits.
+  - `128 B` uint8 scales (`8 subblocks * 16 cols`).
+  - `128 B` uint8 mins.
+  - `2048 B` q4 nibbles arranged by `[subblock, k_lane32, col_pair]`.
+- Raw 16-col/k-block bytes: `2304`; Q4T16 bytes: `2368` (`+2.78%`).
+
+Tests:
+
+`uv run --with pytest pytest tests/test_gguf_q4_k_tile16_repack.py tests/test_qwen35_gguf_moe_replay.py -q --tb=short` -> `7 passed`.
+
+Added replay materialization smoke flag:
+
+- `scripts/qwen35_gguf_moe_replay.py --q4-tile16-materialize-layers N`.
+- The flag builds/copies Q4T16 buffers for the first N MoE layers and frees them, without using them for compute yet.
+
+Real qwen35moe smoke:
+
+`HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --token-id 9707 --warmup-iters 0 --replay-iters 1 --sample-groups 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --q4-tile16-materialize-layers 1 --json /tmp/p9_c13/moe-replay-tile16-materialize1.json`
+
+Result: first layer record reports `tile16_materialized=true` and `tile16_materialized_bytes=310,378,496` for gate+up (`2 * 155,189,248 B`). This is not a performance claim because no kernel consumes Q4T16 yet.
+
+Artifact: `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_c13-q4t16-materializer.json`.
+
+Next: P9.C14/#45 should implement a HIP WMMA kernel consuming Q4T16, then measure first-layer `<=1.35 ms` and replay `<=45 ms` go/no-go gates.

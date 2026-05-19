@@ -45,6 +45,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
 )
 import hipengine.runtime.qwen35_gguf_runner as qgr
 from hipengine.loading.gguf import GGUFReader
+from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
@@ -339,6 +340,9 @@ def _install_replay_helper(recorder: ReplayRecorder):
         use_q5_opt = bool(getattr(recorder, "q5_opt", False)) and down_weight.spec.quant_key == "gguf_q5_k"
         use_sidemeta_q4 = int(getattr(recorder, "q4_sidemeta_layers", 0)) > layer_order
         sidemeta_bufs = []
+        tile16_bufs = []
+        tile16_materialized_bytes = 0
+        use_tile16_materialize = int(getattr(recorder, "q4_tile16_materialize_layers", 0)) > layer_order
         if use_sidemeta_q4:
             reader = getattr(recorder, "q4_sidemeta_reader")
             for weight in (gate_weight, up_weight):
@@ -347,6 +351,15 @@ def _install_replay_helper(recorder: ReplayRecorder):
                 buf = malloc(side.nbytes, runtime=runtime)
                 copy_host_to_device(buf, host_array_ptr(side), side.nbytes, runtime=runtime)
                 sidemeta_bufs.append(buf)
+        if use_tile16_materialize:
+            reader = getattr(recorder, "q4_tile16_reader")
+            for weight in (gate_weight, up_weight):
+                raw = reader.tensor_data(weight.spec.source.name)
+                packed = repack_gguf_q4_k_tile16(raw)
+                tile16_materialized_bytes += int(packed.tiles.nbytes)
+                buf = malloc(packed.tiles.nbytes, runtime=runtime)
+                copy_host_to_device(buf, host_array_ptr(packed.tiles), packed.tiles.nbytes, runtime=runtime)
+                tile16_bufs.append(buf)
 
         def launch_gate_up() -> None:
             if use_sidemeta_q4:
@@ -409,10 +422,12 @@ def _install_replay_helper(recorder: ReplayRecorder):
             )
 
         gate_stats = recorder.time_kernel(runtime, stream, launch_gate_up)
-        if sidemeta_bufs:
+        if sidemeta_bufs or tile16_bufs:
             if stream:
                 runtime.stream_synchronize(stream)
             for buf in reversed(sidemeta_bufs):
+                free(buf, runtime=runtime)
+            for buf in reversed(tile16_bufs):
                 free(buf, runtime=runtime)
         qgr.silu_mul_dual_out_bf16(
             scratch.ffn_gate_up.ptr,
@@ -566,6 +581,8 @@ def _install_replay_helper(recorder: ReplayRecorder):
                     "tile_n": int(gate_tile_n),
                     "hot_fulltile_threshold": hot_threshold if use_hot_q4 else None,
                     "sidemeta": bool(use_sidemeta_q4),
+                    "tile16_materialized": bool(use_tile16_materialize),
+                    "tile16_materialized_bytes": tile16_materialized_bytes,
                 },
                 "down": {"tile_m": int(down_tile_m), "tile_n": int(down_tile_n), "q5_opt": use_q5_opt},
             },
@@ -606,6 +623,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     recorder.q4_hot_fulltile_threshold = int(args.q4_hot_fulltile_threshold)
     recorder.q4_sidemeta_layers = int(args.q4_sidemeta_layers)
     recorder.q4_sidemeta_reader = GGUFReader(args.model) if args.q4_sidemeta_layers else None
+    recorder.q4_tile16_materialize_layers = int(args.q4_tile16_materialize_layers)
+    recorder.q4_tile16_reader = GGUFReader(args.model) if args.q4_tile16_materialize_layers else None
     recorder.q5_opt = bool(args.q5_opt)
     original = _install_replay_helper(recorder)
     start = time.perf_counter()
@@ -656,6 +675,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "sample_groups": int(args.sample_groups),
         "q4_hot_fulltile_threshold": int(args.q4_hot_fulltile_threshold),
         "q4_sidemeta_layers": int(args.q4_sidemeta_layers),
+        "q4_tile16_materialize_layers": int(args.q4_tile16_materialize_layers),
         "q5_opt": bool(args.q5_opt),
         "git_commit": _git_commit(),
         "git_status": _git_status(),
@@ -705,6 +725,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use the P9.C7 optimized Q5_K selected-down prototype.",
     )
+    parser.add_argument(
+        "--q4-tile16-materialize-layers",
+        type=int,
+        default=0,
+        help="Build/copy the P9.C13 Q4T16 repack prototype for the first N MoE layers without using it for compute.",
+    )
     parser.add_argument("--json", type=Path, required=True)
     return parser.parse_args()
 
@@ -719,6 +745,8 @@ def main() -> None:
         raise ValueError("--q4-hot-fulltile-threshold must be >=0")
     if args.q4_sidemeta_layers < 0:
         raise ValueError("--q4-sidemeta-layers must be >=0")
+    if args.q4_tile16_materialize_layers < 0:
+        raise ValueError("--q4-tile16-materialize-layers must be >=0")
     report = run(args)
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps(report, indent=2) + "\n")

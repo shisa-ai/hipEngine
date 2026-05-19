@@ -39,10 +39,15 @@ from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_PACK,
     GGUF_Q4_K_SUBBLOCK,
     GGUF_Q4_K_SUBBLOCKS,
+    GGUF_Q4_K_TILE16_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_COLS,
     GGUFQ4KPack8,
     GGUFQ4KQuant,
+    GGUFQ4KTile16,
     awq_pack8_shift_for_lane,
     repack_gguf_q4_k_pack8,
+    repack_gguf_q4_k_tile16,
+    unpack_gguf_q4_k_tile16,
 )
 from hipengine.quant.w4_paro import W4_PARO, W4ParoQuant
 from hipengine.quant.registry import (
@@ -62,6 +67,7 @@ __all__ = [
     "GGMLQuantizationType",
     "GGUFQ4KPack8",
     "GGUFQ4KQuant",
+    "GGUFQ4KTile16",
     "GGUFQ41Quant",
     "GGUFQ5KQuant",
     "GGUFQ6KQuant",
@@ -74,6 +80,8 @@ __all__ = [
     "GGUF_Q4_K_BLOCK_BYTES",
     "GGUF_Q4_K_PACK",
     "GGUF_Q4_K_SUBBLOCK",
+    "GGUF_Q4_K_TILE16_BLOCK_BYTES",
+    "GGUF_Q4_K_TILE16_COLS",
     "GGUF_IQ4_XS",
     "GGUF_Q4_1",
     "GGUF_Q4_K_SUBBLOCKS",
@@ -98,7 +106,9 @@ __all__ = [
     "quant_shape_to_byte_shape",
     "register_quant",
     "repack_gguf_q4_k_pack8",
+    "repack_gguf_q4_k_tile16",
     "registered_quants",
     "resolve_quant",
+    "unpack_gguf_q4_k_tile16",
     "unpack_q4_k_scale_min",
 ]
