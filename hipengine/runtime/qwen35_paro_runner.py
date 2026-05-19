@@ -2535,6 +2535,13 @@ class Qwen35ParoResidentSession:
             base_slot=base_slot,
             stream=stream,
         )
+        self._commit_tree_capture_hidden_concat(
+            batch,
+            selected_row,
+            capture_hidden_concat,
+            capture_row_start=capture_row_start,
+            stream=stream,
+        )
         # Linear-attention recurrent state commit follows the chain path:
         # the tree t-loop already produced the exact leaf state and
         # ``_commit_bulk_linear_states`` picks it via selected_row.
@@ -3592,6 +3599,70 @@ class Qwen35ParoResidentSession:
             and payload["full_accept"] == tuple(bool(x) for x in summary.full_accept)
         )
 
+    def _tree_path_rows(self, batch: TargetVerifyBatch, selected_row: int) -> tuple[int, ...]:
+        """Return accepted tree path rows root→leaf for ``selected_row``."""
+
+        if batch.mode != "verify_tree":
+            return (int(selected_row),)
+        if selected_row < 0 or selected_row >= batch.rows:
+            raise RuntimeError(f"selected tree row {selected_row} outside batch rows")
+        path: list[int] = []
+        seen: set[int] = set()
+        cursor = int(selected_row)
+        while cursor >= 0:
+            if cursor in seen:
+                raise RuntimeError("cycle detected while walking tree parent rows")
+            seen.add(cursor)
+            path.append(cursor)
+            parent = int(batch.parent_rows[cursor])
+            if parent < 0:
+                break
+            cursor = parent
+        path.reverse()
+        if not path or path[0] not in batch.root_rows:
+            raise RuntimeError("accepted tree path did not reach a root row")
+        return tuple(path)
+
+    def _commit_tree_capture_hidden_concat(
+        self,
+        batch: TargetVerifyBatch,
+        selected_row: int,
+        capture_hidden_concat: Tensor,
+        *,
+        capture_row_start: int,
+        stream: int = 0,
+    ) -> None:
+        """Compact accepted-path hidden taps into dense context rows.
+
+        ``verify_tree_bulk_and_commit`` writes target-hidden taps in verifier-row
+        order: ``capture_row_start + tree_row``.  A real branching tree may
+        accept a non-contiguous path such as rows ``[0, 2]`` (root then the
+        second root child).  The native DFlash drafter's append-only context
+        cache expects committed context rows to be dense at
+        ``capture_row_start + depth`` before ``commit_context_rows(start,
+        count)`` projects them.  Copy the accepted path root→leaf into that
+        dense layout.  Degenerate chains are already dense and become no-ops.
+        """
+
+        if batch.mode != "verify_tree":
+            return
+        path = self._tree_path_rows(batch, int(selected_row))
+        if len(path) <= 1:
+            return
+        row_nbytes = int(capture_hidden_concat.shape[1]) * capture_hidden_concat.dtype.itemsize
+        for depth, source_row in enumerate(path):
+            src_row = capture_row_start + int(source_row)
+            dst_row = capture_row_start + int(depth)
+            if src_row == dst_row:
+                continue
+            self.runtime.memcpy_async(
+                capture_hidden_concat.ptr + dst_row * row_nbytes,
+                capture_hidden_concat.ptr + src_row * row_nbytes,
+                row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+
     def _commit_tree_full_attention_kv(
         self,
         batch: TargetVerifyBatch,
@@ -3627,16 +3698,7 @@ class Qwen35ParoResidentSession:
 
         if batch.mode != "verify_tree":
             return
-        # Build the accepted path: root first, leaf last.
-        path: list[int] = []
-        cursor = int(selected_row)
-        while cursor >= 0:
-            path.append(cursor)
-            parent = int(batch.parent_rows[cursor])
-            if parent < 0:
-                break
-            cursor = parent
-        path.reverse()
+        path = self._tree_path_rows(batch, int(selected_row))
         if not path:
             return
         if int(self.verify_tree_committed_count) < 0:

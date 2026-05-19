@@ -1,0 +1,261 @@
+{
+  "commands": {
+    "branching_topk_k2": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode branching_topk --tree-top-k 2 --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-branching-topk-b1-2-4-8.json",
+    "chain_as_tree": "... --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode chain_as_tree --draft-budgets 1,2,4,8 --json /tmp/hipengine-branching-compare-chain-as-tree.json",
+    "chain_batched": "... --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode chain --draft-budgets 1,2,4,8 --json /tmp/hipengine-branching-compare-chain-batched.json",
+    "serial": "... --verifier-mode serial_in_place_single_slot --draft-budgets 1,2,4,8 --json /tmp/hipengine-branching-compare-serial.json"
+  },
+  "date": "2026-05-19",
+  "decision_reason": "Retained diagnostic: real branching top-K DDTree is correct and beats chain_batched / chain_as_tree at B=2/4/8 by emitting the 8-token sample in fewer draft cycles at B>=4, but it still does not beat serial_in_place_single_slot on gfx1151. The remaining blocker is verifier cost per tree row vs serial c=1 early exit / cooperative MoE path.",
+  "hardware": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S"
+  },
+  "models": {
+    "drafter": {
+      "dtype": "bf16",
+      "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
+      "snapshot_revision": "42d3b34d588423cdae7ba8f53a8cf7789346a719"
+    },
+    "target": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+      "quant": "w4_paro_packed",
+      "snapshot_revision": "501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
+    }
+  },
+  "performance_claim": false,
+  "rows": [
+    {
+      "accepted_draft_tokens": {
+        "branching_topk_k2": 3,
+        "chain_as_tree": 3,
+        "chain_batched": 3,
+        "serial_in_place_single_slot": 3
+      },
+      "branching_accept_histogram": {
+        "0": 1,
+        "1": 3
+      },
+      "branching_tree_active_nodes_total": 4,
+      "decode_seconds": {
+        "branching_topk_k2": 0.518522,
+        "chain_as_tree": 0.512525,
+        "chain_batched": 0.510773,
+        "serial_in_place_single_slot": 0.407917
+      },
+      "decode_tok_s": {
+        "branching_topk_k2": 15.428459,
+        "chain_as_tree": 15.609009,
+        "chain_batched": 15.66252,
+        "serial_in_place_single_slot": 19.611843
+      },
+      "draft_budget": 1,
+      "draft_calls": {
+        "branching_topk_k2": 4,
+        "chain_as_tree": 4,
+        "chain_batched": 4,
+        "serial_in_place_single_slot": 4
+      },
+      "ratios": {
+        "branching_toks_vs_chain_as_tree": 0.988433,
+        "branching_toks_vs_chain_batched": 0.985056,
+        "branching_toks_vs_serial": 0.786691,
+        "branching_verify_vs_chain_as_tree": 1.021543,
+        "branching_verify_vs_chain_batched": 1.055216,
+        "branching_verify_vs_serial": 1.890539
+      },
+      "verify_seconds": {
+        "branching_topk_k2": 0.248498,
+        "chain_as_tree": 0.243257,
+        "chain_batched": 0.235494,
+        "serial_in_place_single_slot": 0.131443
+      }
+    },
+    {
+      "accepted_draft_tokens": {
+        "branching_topk_k2": 4,
+        "chain_as_tree": 4,
+        "chain_batched": 4,
+        "serial_in_place_single_slot": 4
+      },
+      "branching_accept_histogram": {
+        "1": 4
+      },
+      "branching_tree_active_nodes_total": 8,
+      "decode_seconds": {
+        "branching_topk_k2": 0.546105,
+        "chain_as_tree": 0.574488,
+        "chain_batched": 0.563731,
+        "serial_in_place_single_slot": 0.40612
+      },
+      "decode_tok_s": {
+        "branching_topk_k2": 14.649204,
+        "chain_as_tree": 13.925444,
+        "chain_batched": 14.19117,
+        "serial_in_place_single_slot": 19.698633
+      },
+      "draft_budget": 2,
+      "draft_calls": {
+        "branching_topk_k2": 4,
+        "chain_as_tree": 4,
+        "chain_batched": 4,
+        "serial_in_place_single_slot": 4
+      },
+      "ratios": {
+        "branching_toks_vs_chain_as_tree": 1.051974,
+        "branching_toks_vs_chain_batched": 1.032276,
+        "branching_toks_vs_serial": 0.743666,
+        "branching_verify_vs_chain_as_tree": 0.940686,
+        "branching_verify_vs_chain_batched": 0.940707,
+        "branching_verify_vs_serial": 2.105289
+      },
+      "verify_seconds": {
+        "branching_topk_k2": 0.268708,
+        "chain_as_tree": 0.285651,
+        "chain_batched": 0.285645,
+        "serial_in_place_single_slot": 0.127635
+      }
+    },
+    {
+      "accepted_draft_tokens": {
+        "branching_topk_k2": 5,
+        "chain_as_tree": 4,
+        "chain_batched": 4,
+        "serial_in_place_single_slot": 4
+      },
+      "branching_accept_histogram": {
+        "1": 1,
+        "2": 2
+      },
+      "branching_tree_active_nodes_total": 12,
+      "decode_seconds": {
+        "branching_topk_k2": 0.628398,
+        "chain_as_tree": 0.662918,
+        "chain_batched": 0.747995,
+        "serial_in_place_single_slot": 0.444872
+      },
+      "decode_tok_s": {
+        "branching_topk_k2": 12.730777,
+        "chain_as_tree": 12.067852,
+        "chain_batched": 10.695255,
+        "serial_in_place_single_slot": 17.982685
+      },
+      "draft_budget": 4,
+      "draft_calls": {
+        "branching_topk_k2": 3,
+        "chain_as_tree": 4,
+        "chain_batched": 4,
+        "serial_in_place_single_slot": 4
+      },
+      "ratios": {
+        "branching_toks_vs_chain_as_tree": 1.054933,
+        "branching_toks_vs_chain_batched": 1.19032,
+        "branching_toks_vs_serial": 0.707946,
+        "branching_verify_vs_chain_as_tree": 1.030065,
+        "branching_verify_vs_chain_batched": 0.825288,
+        "branching_verify_vs_serial": 2.872945
+      },
+      "verify_seconds": {
+        "branching_topk_k2": 0.372933,
+        "chain_as_tree": 0.362048,
+        "chain_batched": 0.451882,
+        "serial_in_place_single_slot": 0.129809
+      }
+    },
+    {
+      "accepted_draft_tokens": {
+        "branching_topk_k2": 5,
+        "chain_as_tree": 4,
+        "chain_batched": 4,
+        "serial_in_place_single_slot": 4
+      },
+      "branching_accept_histogram": {
+        "1": 1,
+        "2": 2
+      },
+      "branching_tree_active_nodes_total": 22,
+      "decode_seconds": {
+        "branching_topk_k2": 0.860979,
+        "chain_as_tree": 0.94464,
+        "chain_batched": 0.950338,
+        "serial_in_place_single_slot": 0.464704
+      },
+      "decode_tok_s": {
+        "branching_topk_k2": 9.291747,
+        "chain_as_tree": 8.468834,
+        "chain_batched": 8.418053,
+        "serial_in_place_single_slot": 17.215264
+      },
+      "draft_budget": 8,
+      "draft_calls": {
+        "branching_topk_k2": 3,
+        "chain_as_tree": 4,
+        "chain_batched": 4,
+        "serial_in_place_single_slot": 4
+      },
+      "ratios": {
+        "branching_toks_vs_chain_as_tree": 1.09717,
+        "branching_toks_vs_chain_batched": 1.103788,
+        "branching_toks_vs_serial": 0.539739,
+        "branching_verify_vs_chain_as_tree": 0.943633,
+        "branching_verify_vs_chain_batched": 0.951959,
+        "branching_verify_vs_serial": 4.515329
+      },
+      "verify_seconds": {
+        "branching_topk_k2": 0.571163,
+        "chain_as_tree": 0.605281,
+        "chain_batched": 0.599987,
+        "serial_in_place_single_slot": 0.126494
+      }
+    }
+  ],
+  "schema_version": 1,
+  "software": {
+    "hipengine_branch": "dflash",
+    "hipengine_commit": "e11ede4a5a37b9cbd292ab05e003434079247e91",
+    "hipengine_dirty": true
+  },
+  "source_artifacts": {
+    "branching_topk": "benchmarks/results/2026-05-19-hipengine-ddtree-branching-topk-k2-speedgate-diagnostic.json",
+    "chain_as_tree": "/tmp/hipengine-branching-compare-chain-as-tree.json",
+    "chain_batched": "/tmp/hipengine-branching-compare-chain-batched.json",
+    "serial": "/tmp/hipengine-branching-compare-serial.json"
+  },
+  "status": "diagnostic",
+  "summary": {
+    "branching_beats_chain_as_tree_tok_s_budgets": [
+      2,
+      4,
+      8
+    ],
+    "branching_beats_chain_batched_tok_s_budgets": [
+      2,
+      4,
+      8
+    ],
+    "branching_beats_serial_tok_s_budgets": [],
+    "branching_correctness_all": true,
+    "branching_exact_all": true,
+    "branching_gpu_accept_cpu_all": true,
+    "max_branching_tok_s_vs_chain_batched": 1.19032,
+    "max_branching_tok_s_vs_serial": 0.786691
+  },
+  "title": "MVP branching top-K DDTree K=2 speed gate vs serial and chain baselines",
+  "workload": {
+    "decode_tokens": 8,
+    "draft_budgets": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "prompt_id": "code:quicksort_prefix",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "shape": "full_model_dflash_ddtree_branching_topk_e2e",
+    "tree_compiler": "balanced_breadth_first_depth_topk",
+    "tree_top_k": 2
+  }
+}

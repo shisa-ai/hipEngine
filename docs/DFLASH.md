@@ -176,11 +176,30 @@ Current status:
     meaningful overhead.
 
   DDTree is still `2.0-4.9x` slower than serial c=1 on this degenerate chain
-  topology because B+1 per-cycle target compute remains the bottleneck.  A
-  real speed win over serial requires a branching tree drafter (top-K
-  expansion at each depth) so each cycle accepts MORE than 1 token across
-  parallel branches.  The current chain DFlash drafter only produces top-1
-  chains; a real top-K drafter is the open work item.
+  topology because B+1 per-cycle target compute remains the bottleneck.
+
+  **Branching top-K DDTree MVP (2026-05-19)** adds the first real non-linear
+  tree proposal path to the same benchmark: `--tree-mode branching_topk
+  --tree-top-k 2`.  The drafter now asks `topk_f32_rows_i32` for row-wise top-K
+  logits (K<=8) and the host compiles a balanced breadth-first flat tree from
+  the per-depth top-K tables.  For B=4,K=2 the active candidate parents are
+  `[-1, -1, 0, 1]`: two root siblings, then one continuation under each.  The
+  verifier remains `verify_tree_bulk_and_commit`; accepted tokens come from the
+  tree accept path, not chain prefix slicing.  Because a real branch can accept
+  a non-contiguous verifier path (e.g. rows `[0, 2, 4]`),
+  `verify_tree_bulk_and_commit` also compacts captured hidden taps into dense
+  context rows before the drafter appends them, matching the existing K/V
+  compaction semantics.
+
+  Fresh gfx1151 speed gate, 8 decode tokens, B={1,2,4,8}, K=2:
+  branching top-K passes exact same-session AR equality and GPU accept matches
+  CPU for every B.  It improves over chain_batched / chain_as_tree at B=2/4/8
+  (`14.65/12.73/9.29 tok/s` vs chain_batched `14.19/10.70/8.42` and
+  chain_as_tree `13.93/12.07/8.47`) by accepting `5` draft tokens in `3`
+  cycles at B=4/8.  It still loses to serial c=1 (`19.61/19.70/17.98/17.22
+  tok/s`), so the retained row is diagnostic, not a throughput claim.  The next
+  blocker is target verifier row cost (multi-row MoE/router/projection) rather
+  than tree proposal correctness.
 - no speculative throughput claim is allowed until the native compact/c-aware
   target verifier plus drafter path produces a retained chain win over
   same-session AR.

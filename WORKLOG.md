@@ -18980,3 +18980,96 @@ DDTree task graph:
 - #15 DDTree commit-step K/V compaction                         [done]
 - #13 synthetic tree drafter for E2E benchmarking               [in_progress; minimal ``chain_as_tree`` wrap landed; real top-K drafter still needed for branching tree benchmark]
 - #14 E2E DDTree benchmark vs chain DFlash                      [in_progress; ``chain_as_tree`` matrix landed as a kernel-overhead measurement; real branching benchmark blocked on #13's full form]
+
+## 2026-05-19 (continued) — MVP branching top-K DDTree drafter lands
+
+The previous DDTree verifier work proved that tree verification itself has
+negligible overhead vs chain batched, but ``chain_as_tree`` was a degenerate
+linear topology.  This session adds the first real non-linear tree proposal path
+and measures it against fresh serial/chain controls on gfx1151.
+
+Implementation:
+
+- ``scripts/dflash_chain_e2e_bench.py`` now supports
+  ``--tree-mode branching_topk --tree-top-k K`` (K in ``[1,8]``).  In this mode
+  ``NativeDFlashChainDrafter`` calls ``topk_f32_rows_i32(..., K)`` and returns
+  row-wise top-K ids/values instead of only top-1.
+- New CPU DDTree compiler helper builds a balanced breadth-first flat tree from
+  the per-depth top-K table.  For B=4,K=2 the active candidate parent list is
+  ``[-1, -1, 0, 1]``: two root siblings, then one continuation under each.  The
+  target verifier batch is still the same ``TargetVerifyBatch`` ABI with
+  ``mode='verify_tree'``; inactive padding rows keep fixed B+1 shape.
+- The decode loop now uses ``verify_result.accepted_tokens`` for tree modes
+  instead of ``candidates[:accepted]`` so non-contiguous accepted paths (e.g.
+  root -> second sibling -> its child) commit the correct tokens.
+- ``Qwen35ParoResidentSession.verify_tree_bulk_and_commit`` now also compacts
+  captured target-hidden taps for the accepted tree path into dense context rows
+  before the drafter appends them.  This mirrors the existing K/V compaction and
+  is required for true branching paths like rows ``[0, 2, 4]``; otherwise the
+  drafter would project row 1 instead of accepted row 2 on the next cycle.
+- Unit tests added in ``tests/test_dflash_topk_tree_compiler.py`` cover the
+  B=4,K=2 shape, non-first-sibling CPU accept oracle path, and remaining-depth
+  inactive padding.
+
+Validation commands:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py \
+  hipengine/runtime/qwen35_paro_runner.py hipengine/benchmark/speculative.py
+python3 -m pytest tests/test_dflash_topk_tree_compiler.py \
+  tests/test_speculative_benchmark.py tests/test_qwen35_resident_tree_metadata.py \
+  tests/test_qwen35_paged_attn_decode_plan.py -q
+# 15 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --tree-mode branching_topk --tree-top-k 2 \
+  --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 \
+  --json /tmp/hipengine-branching-topk-b1-2-4-8.json
+# all_correctness_passed=true, rows=4, performance_claim=false
+```
+
+Retained artifacts:
+
+- ``benchmarks/results/2026-05-19-hipengine-ddtree-branching-topk-k2-speedgate-diagnostic.json``
+- ``benchmarks/results/2026-05-19-hipengine-ddtree-branching-topk-k2-vs-baselines-diagnostic.json``
+
+Fresh speed-gate matrix (gfx1151, PARO target + z-lab DFlash drafter,
+``code:quicksort_prefix``, decode=8, B={1,2,4,8}; all modes exact vs
+same-session AR, finite, and GPU accept matches CPU for native/tree modes):
+
+| B | serial tok/s | chain_batched tok/s | chain_as_tree tok/s | branching_topk K=2 tok/s | branching accepted/cycles | branching hist |
+|---|---:|---:|---:|---:|---:|---|
+| 1 | **19.61** | 15.66 | 15.61 | 15.43 | 3/4 | {0:1,1:3} |
+| 2 | **19.70** | 14.19 | 13.93 | 14.65 | 4/4 | {1:4} |
+| 4 | **17.98** | 10.70 | 12.07 | 12.73 | 5/3 | {1:1,2:2} |
+| 8 | **17.22** |  8.42 |  8.47 |  9.29 | 5/3 | {1:1,2:2} |
+
+Verifier seconds in the same run:
+
+| B | serial s | chain_batched s | chain_as_tree s | branching_topk K=2 s |
+|---|---:|---:|---:|---:|
+| 1 | 0.131 | 0.235 | 0.243 | 0.248 |
+| 2 | 0.128 | 0.286 | 0.286 | 0.269 |
+| 4 | 0.130 | 0.452 | 0.362 | 0.373 |
+| 8 | 0.126 | 0.600 | 0.605 | 0.571 |
+
+Findings:
+
+- Branching top-K DDTree is **correct** end-to-end on real PARO target weights.
+  The traces include non-first-sibling accepts: at B=4 cycle 1, the root target
+  top-1 picked the second root child, then accepted that sibling's depth-2 child.
+- Branching top-K beats both chain_batched and chain_as_tree at B=2/4/8.  The
+  benefit is not per-row verifier speed; it is fewer decode cycles at B=4/8
+  (5 accepted draft tokens in 3 cycles vs chain's 4 in 4 cycles).
+- Branching top-K still loses to serial c=1 at every B (best is B=4: 12.73 vs
+  17.98 tok/s, ~0.71x serial).  The remaining blocker is target verifier row
+  cost: multi-row MoE/router/projection remains much slower than serial's c=1
+  cooperative path plus early exit.
+- Therefore this is retained as a diagnostic milestone, not a promoted
+  throughput path.  Next useful work is reducing verifier row cost for tree
+  rows (coop/tiny-row MoE variants, row-count gating, or graph/fusion), not more
+  host-side tree compiler work.
