@@ -1193,6 +1193,195 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   }
 }
 
+// Tree-aware variant of qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel.
+// Identical to the chain kernel except for the per-row ancestor mask applied
+// to verifier rows whose K/V live at global positions [tree_committed_count,
+// tree_committed_count + rows).  Positions strictly below tree_committed_count
+// are committed context shared by all verifier rows; the mask only filters
+// the verifier K/V block.  The mask layout is [rows, rows] uint8 with
+// ancestor_mask[row * rows + j] == 1 iff verifier row `j` is an ancestor of
+// verifier row `row` in the tree (a row is its own ancestor).
+template <bool SHORT_BLOCK256>
+__global__ void qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_kernel(
+    const float* __restrict__ query,
+    const uint16_t* __restrict__ key_cache,
+    const uint16_t* __restrict__ value_cache,
+    const half_t* __restrict__ gate,
+    half_t* __restrict__ out,
+    const int32_t* __restrict__ block_tables,
+    const int64_t* __restrict__ context_counts,
+    const int64_t* __restrict__ row_positions,
+    const uint8_t* __restrict__ ancestor_mask,
+    int64_t tree_committed_count,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale) {
+  const int64_t q_head = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (q_head >= num_q_heads || row >= rows) {
+    return;
+  }
+  int64_t context_len = context_counts[row];
+  if (context_len <= 0) {
+    return;
+  }
+  context_len = context_len > max_context_len ? max_context_len : context_len;
+  const int64_t causal_position = row_positions ? row_positions[row] : (context_counts[row] - 1);
+  if (causal_position < 0) {
+    return;
+  }
+  const int64_t causal_len = causal_position + 1;
+  const int64_t visible_len = context_len < causal_len ? context_len : causal_len;
+  if (visible_len <= 0) {
+    return;
+  }
+
+  extern __shared__ float shared[];
+  float* scores = shared;
+  float* partial = scores + max_context_len;
+  float* q_shared = partial + blockDim.x;
+  const int64_t kv_group = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / kv_group;
+  const float* q = query + (row * num_q_heads + q_head) * head_dim;
+  const int32_t* row_table = block_tables + row * block_table_len;
+  const uint8_t* row_mask = ancestor_mask + row * rows;
+  const bool block_size_256 = block_size == 256;
+  int64_t short_physical_block0 = -1;
+  int64_t short_physical_block1 = -1;
+  if constexpr (SHORT_BLOCK256) {
+    short_physical_block0 = block_table_len > 0 ? static_cast<int64_t>(row_table[0]) : -1;
+    short_physical_block1 = block_table_len > 1 ? static_cast<int64_t>(row_table[1]) : -1;
+  }
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    q_shared[dim] = bf16_bits_to_float(float_to_bf16_bits(q[dim]));
+  }
+  __syncthreads();
+
+  float local_max = -3.4028234663852886e38f;
+  for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
+    // Tree mask: only the verifier-row segment [tree_committed_count,
+    // tree_committed_count + rows) is filtered.  Committed context positions
+    // [0, tree_committed_count) are visible to every row.
+    if (token >= tree_committed_count) {
+      const int64_t row_offset = token - tree_committed_count;
+      if (row_offset >= rows || row_mask[row_offset] == 0) {
+        scores[token] = -3.4028234663852886e38f;
+        continue;
+      }
+    }
+    int64_t block_offset;
+    int64_t physical_block;
+    if constexpr (SHORT_BLOCK256) {
+      const int64_t logical_block = token >> 8;
+      block_offset = token & 255;
+      physical_block = (logical_block == 0) ? short_physical_block0 : short_physical_block1;
+    } else {
+      const int64_t logical_block = block_size_256 ? (token >> 8) : (token / block_size);
+      if (logical_block >= block_table_len) {
+        scores[token] = -3.4028234663852886e38f;
+        continue;
+      }
+      block_offset = block_size_256 ? (token & 255) : (token - logical_block * block_size);
+      physical_block = static_cast<int64_t>(row_table[logical_block]);
+    }
+    if (physical_block < 0) {
+      scores[token] = -3.4028234663852886e38f;
+      continue;
+    }
+    const int64_t k_offset = ((physical_block * block_size + block_offset) * num_kv_heads + kv_head) * head_dim;
+    float acc = 0.0f;
+    if ((head_dim & 7) == 0) {
+      acc = paged_key_dot_vec8(q_shared, key_cache, k_offset, head_dim);
+    } else {
+      for (int64_t dim = 0; dim < head_dim; ++dim) {
+        acc += q_shared[dim] * bf16_bits_to_float(key_cache[k_offset + dim]);
+      }
+    }
+    const float score = acc * scale;
+    scores[token] = score;
+    local_max = fmaxf(local_max, score);
+  }
+  partial[threadIdx.x] = local_max;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] = fmaxf(partial[threadIdx.x], partial[threadIdx.x + stride]);
+    }
+    __syncthreads();
+  }
+  const float max_score = partial[0];
+
+  float local_sum = 0.0f;
+  for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
+    const float value = expf(scores[token] - max_score);
+    scores[token] = value;
+    local_sum += value;
+  }
+  partial[threadIdx.x] = local_sum;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_denom = 1.0f / fmaxf(partial[0], 1.0e-20f);
+
+  for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
+    scores[token] *= inv_denom;
+  }
+  __syncthreads();
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    float acc = 0.0f;
+    for (int64_t token = 0; token < visible_len; ++token) {
+      // Masked positions already have scores[token] == 0 after the softmax
+      // (exp(-INF) == 0), so they contribute nothing to the V sum.  Skip the
+      // V load when the mask is zero to avoid touching cache lines that may
+      // belong to sibling-tree rows.
+      if (token >= tree_committed_count) {
+        const int64_t row_offset = token - tree_committed_count;
+        if (row_offset >= rows || row_mask[row_offset] == 0) {
+          continue;
+        }
+      }
+      int64_t block_offset;
+      int64_t physical_block;
+      if constexpr (SHORT_BLOCK256) {
+        const int64_t logical_block = token >> 8;
+        block_offset = token & 255;
+        physical_block = (logical_block == 0) ? short_physical_block0 : short_physical_block1;
+      } else {
+        const int64_t logical_block = block_size_256 ? (token >> 8) : (token / block_size);
+        if (logical_block >= block_table_len) {
+          continue;
+        }
+        block_offset = block_size_256 ? (token & 255) : (token - logical_block * block_size);
+        physical_block = static_cast<int64_t>(row_table[logical_block]);
+      }
+      if (physical_block < 0) {
+        continue;
+      }
+      const int64_t v_offset = ((physical_block * block_size + block_offset) * num_kv_heads + kv_head) * head_dim + dim;
+      acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+    }
+    const int64_t gate_idx = (row * num_q_heads + q_head) * gate_stride1 + dim * gate_stride2;
+    const float gate_v = static_cast<float>(gate[gate_idx]);
+    const float attn_bf16 = bf16_bits_to_float(float_to_bf16_bits(acc));
+    out[(row * num_q_heads + q_head) * head_dim + dim] = static_cast<half_t>(attn_bf16 * sigmoid_f32(gate_v));
+  }
+}
+
 __global__ void qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel(
     const float* __restrict__ query,
     const uint16_t* __restrict__ key_cache,
@@ -1755,6 +1944,73 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
     HIPENGINE_LAUNCH_PREFILL_GQA(false);
   }
 #undef HIPENGINE_LAUNCH_PREFILL_GQA
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    const half_t* gate,
+    half_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    const uint8_t* ancestor_mask,
+    int64_t tree_committed_count,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || max_context_len <= 0 || block_size <= 0 || block_table_len <= 0 ||
+      num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 || gate_stride1 <= 0 || gate_stride2 <= 0 ||
+      (num_q_heads % num_kv_heads) != 0 || tree_committed_count < 0 || ancestor_mask == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  // Same thread/shared sizing as the chain GQA gate kernel.
+  const int threads = max_context_len <= 1024 ? 32 : 64;
+  const size_t shared = static_cast<size_t>(max_context_len + threads + head_dim) * sizeof(float);
+  const bool use_short_block256 = block_size == 256 && max_context_len <= 512;
+#define HIPENGINE_LAUNCH_PREFILL_GQA_TREE(SHORT) \
+  hipLaunchKernelGGL( \
+      (qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_kernel<SHORT>), \
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)), \
+      dim3(threads), \
+      shared, \
+      stream, \
+      query, \
+      key_cache, \
+      value_cache, \
+      gate, \
+      out, \
+      block_tables, \
+      context_counts, \
+      row_positions, \
+      ancestor_mask, \
+      tree_committed_count, \
+      rows, \
+      max_context_len, \
+      block_size, \
+      block_table_len, \
+      num_q_heads, \
+      num_kv_heads, \
+      head_dim, \
+      gate_stride1, \
+      gate_stride2, \
+      scale)
+  if (use_short_block256) {
+    HIPENGINE_LAUNCH_PREFILL_GQA_TREE(true);
+  } else {
+    HIPENGINE_LAUNCH_PREFILL_GQA_TREE(false);
+  }
+#undef HIPENGINE_LAUNCH_PREFILL_GQA_TREE
   return static_cast<int>(hipGetLastError());
 }
 

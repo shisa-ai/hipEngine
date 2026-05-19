@@ -23,6 +23,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
+    qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans,
     qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
     qwen35_write_paged_kv_mixed_value_fp16_batch_spans,
@@ -2268,6 +2269,61 @@ class Qwen35ParoDecodeState:
             gate_tensor.ptr,
             scratch.gated_attn.ptr,
             spans,
+            rows,
+            spans.max_live_count,
+            block_size,
+            self.config.num_attention_heads,
+            self.config.num_key_value_heads,
+            self.config.head_dim,
+            gate_tensor.shape[-1],
+            1,
+            (self.config.head_dim ** -0.5) if scale is None else scale,
+            stream=stream,
+            library=_library_for(library, "attention"),
+            runtime=self.runtime,
+        )
+        return scratch.gated_attn
+
+    def prefill_full_attention_gqa_gate_tree_fp16(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+        *,
+        key_cache: Tensor,
+        value_cache: Tensor,
+        spans: KVLiveSpans,
+        rows: int,
+        ancestor_mask: Tensor,
+        tree_committed_count: int,
+        gate: Tensor | None = None,
+        block_size: int = 256,
+        scale: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Tree-aware variant of ``prefill_full_attention_gqa_gate_fp16``.
+
+        ``ancestor_mask`` is a ``[rows, rows]`` ``DType.UINT8`` tensor where
+        ``ancestor_mask[i, j] == 1`` iff verifier row ``j`` is an ancestor of
+        verifier row ``i`` (a row is its own ancestor).  Committed-context
+        positions in ``[0, tree_committed_count)`` are visible to every row;
+        the mask only constrains the verifier-row K/V block at
+        ``[tree_committed_count, tree_committed_count + rows)``.
+        """
+
+        if ancestor_mask.dtype is not DType.UINT8 or ancestor_mask.shape != (rows, rows):
+            raise ValueError("ancestor_mask must be UINT8 with shape (rows, rows)")
+        if tree_committed_count < 0:
+            raise ValueError("tree_committed_count must be non-negative")
+        gate_tensor = scratch.gate if gate is None else gate
+        qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
+            scratch.query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            gate_tensor.ptr,
+            scratch.gated_attn.ptr,
+            spans,
+            ancestor_mask.ptr,
+            tree_committed_count,
             rows,
             spans.max_live_count,
             block_size,

@@ -22,6 +22,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
+    qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans,
     qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans,
     register_qwen35_paged_attn_decode_kernels,
 )
@@ -198,6 +199,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
             backend="hip_gfx1100",
             layer="full_attn_prefill",
             quant="w4_paro",
+            variant="qwen35_tree_gqa_gate_fp16",
+        )
+        is qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="full_attn_prefill",
+            quant="w4_paro",
             variant="qwen35_varlen_causal_gqa_gate_fp16",
         )
         is qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans
@@ -277,6 +287,18 @@ def test_qwen35_paged_attn_decode_wrapper_validates_before_gpu_load() -> None:
     with pytest.raises(ValueError, match="gate_stride1"):
         qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
             0, 0, 0, 0, 0, _spans(), 1, 2, 256, 2, 1, 8, 0, 1, 1.0
+        )
+    with pytest.raises(ValueError, match="rows"):
+        qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
+            0, 0, 0, 0, 0, _spans(), 0x4000, 0, 0, 2, 256, 2, 1, 8, 8, 1, 1.0
+        )
+    with pytest.raises(ValueError, match="tree_committed_count"):
+        qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
+            0, 0, 0, 0, 0, _spans(), 0x4000, -1, 1, 2, 256, 2, 1, 8, 8, 1, 1.0
+        )
+    with pytest.raises(ValueError, match="ancestor_mask_ptr"):
+        qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans(
+            0, 0, 0, 0, 0, _spans(), 0, 0, 1, 2, 256, 2, 1, 8, 8, 1, 1.0
         )
     with pytest.raises(ValueError, match="segments"):
         qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans(
