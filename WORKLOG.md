@@ -19073,3 +19073,46 @@ Findings:
   throughput path.  Next useful work is reducing verifier row cost for tree
   rows (coop/tiny-row MoE variants, row-count gating, or graph/fusion), not more
   host-side tree compiler work.
+
+## 2026-05-19 (continued) — Task #20 c1_loop baseline addendum
+
+Task #20 asked for the branching DDTree speed gate against **serial c=1,
+chain c1_loop, chain_batched, and chain_as_tree**.  The retained comparison in
+``c8a4513`` had fresh serial / chain_batched / chain_as_tree / branching_topk
+rows; this addendum adds the missing fresh c1_loop control and updates
+``benchmarks/results/2026-05-19-hipengine-ddtree-branching-topk-k2-vs-baselines-diagnostic.json``
+(schema_version 2).
+
+Command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode c1_loop \
+  --tree-mode chain --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' \
+  --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 \
+  --json /tmp/hipengine-branching-compare-chain-c1-loop.json
+# all_correctness_passed=true, rows=4, performance_claim=false
+```
+
+Updated speed matrix (gfx1151, PARO target, decode=8, B={1,2,4,8}; all rows
+exact vs same-session AR, finite, and GPU accept matches CPU where applicable):
+
+| B | serial verify s | c1_loop verify s | chain_batched verify s | chain_as_tree verify s | branching_topk verify s | serial tok/s | c1_loop tok/s | chain_batched tok/s | chain_as_tree tok/s | branching_topk tok/s | branching accepted/cycles | branch util accepted/active-node |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 0.131 | 0.292 | 0.235 | 0.243 | 0.248 | **19.61** | 13.38 | 15.66 | 15.61 | 15.43 | 3/4 | 0.750 |
+| 2 | 0.128 | 0.306 | 0.286 | 0.286 | 0.269 | **19.70** | 13.64 | 14.19 | 13.93 | 14.65 | 4/4 | 0.500 |
+| 4 | 0.130 | 0.375 | 0.452 | 0.362 | 0.373 | **17.98** | 11.97 | 10.70 | 12.07 | 12.73 | 5/3 | 0.417 |
+| 8 | 0.126 | 0.664 | 0.600 | 0.605 | 0.571 | **17.22** |  7.93 |  8.42 |  8.47 |  9.29 | 5/3 | 0.227 |
+
+Decision:
+
+- Branching top-K wins vs c1_loop at all B and wins vs chain_batched /
+  chain_as_tree at B=2/4/8.
+- It still loses vs serial c=1 at every B (best ratio is B=4: 12.73 / 17.98 =
+  0.71x serial).  This remains a retained diagnostic, not a promoted speed win.
+- Branch utilization drops as B grows because the balanced tree allocates many
+  active nodes to alternate branches that do not land on the accepted path; but
+  B=4/8 still improve decode cycles (5 accepted draft tokens in 3 cycles) enough
+  to beat chain/tree verifier variants.
