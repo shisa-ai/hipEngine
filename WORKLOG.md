@@ -20172,3 +20172,14 @@ Real replay result (first qwen35moe MoE layer only, P9.C2 harness):
 Decision: reject v1. The extra side-metadata memory stream costs more than raw Q4_K scale/min bitfield decode. Do not cache or wire this sidecar. This means P9.C5's initially proposed scale/min sidecar is not fruitful; remaining likely paths are either a different in-kernel raw layout algorithm with no large side stream, Q5-specific work, or accepting that Q4 raw selected is near the local optimum until a deeper repack design exists.
 
 Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c5-q4-sidemeta-v1-rejected.json`.
+
+## 2026-05-18 P9.C6 task #37: Q4 hot/cold dispatcher decision
+
+Reviewed Q4 hot/cold dispatcher after P9.C4/P9.C5 prototypes:
+
+- P9.C4 hot/full-tile hybrid is correct but slower than retained Q4 32x16 (`65-66 ms` Q4 replay vs `59.896 ms`).
+- P9.C5 side metadata is correct but slower on the first real qwen layer (`2.339 ms` vs `1.678 ms`) and has unacceptable memory cost (`~536 MiB` gate+up per layer, `~15 GiB` all MoE layers).
+
+Decision for task #37: do **not** wire a Q4 hot/cold dispatcher into the default compact-MoE path. There is no Q4 hot kernel that meets the acceptance (`<=40 ms` Q4 bucket) or even improves the replay baseline. The runtime remains on retained raw Q4 selected dual 32x16. Optional experimental wrappers remain registered for replay/R&D only and are not used by `qwen35_gguf_runner.py`.
+
+This closes P9.C6 as a no-op/rejected integration decision and unblocks Q5 work (P9.C7/#38). Parent #27 remains open because the combined bucket target is still not met.
