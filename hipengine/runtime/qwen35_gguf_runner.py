@@ -2492,15 +2492,16 @@ class Qwen35GGUFResidentSession:
             runtime.stream_synchronize(stream)
             runtime.stream_begin_capture(stream)
             try:
-                for offset in range(steps_per_replay):
-                    self._step_from_device_token(
-                        position=position + offset,
-                        advance_position=True,
-                        stream=stream,
-                        record_output_ptr=None if generated_buf is None else generated_buf.ptr,
-                        record_index_ptr=None if generated_index_buf is None else generated_index_buf.ptr,
-                        record_capacity=record_steps,
-                    )
+                with gemv_decode_session(self.use_gemv_decode):
+                    for offset in range(steps_per_replay):
+                        self._step_from_device_token(
+                            position=position + offset,
+                            advance_position=True,
+                            stream=stream,
+                            record_output_ptr=None if generated_buf is None else generated_buf.ptr,
+                            record_index_ptr=None if generated_index_buf is None else generated_index_buf.ptr,
+                            record_capacity=record_steps,
+                        )
                 graph = runtime.stream_end_capture(stream)
             except Exception:
                 try:
@@ -3650,7 +3651,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         out_features=hidden_size,
     )
 
-    _zero(runtime, scratch.moe_group_counts, scratch.moe_group_counts_zero)
+    _zero(runtime, scratch.moe_group_counts, scratch.moe_group_counts_zero, stream=stream)
     qwen35_moe_group_count(
         scratch.moe_selected_experts.ptr,
         scratch.moe_group_counts.ptr,
@@ -3669,7 +3670,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         stream=stream,
         runtime=runtime,
     )
-    _zero(runtime, scratch.moe_scatter_offsets, scratch.moe_scatter_offsets_zero)
+    _zero(runtime, scratch.moe_scatter_offsets, scratch.moe_scatter_offsets_zero, stream=stream)
     qwen35_moe_group_scatter_gather_lowp(
         scratch.post_norm.ptr,
         scratch.moe_selected_experts.ptr,
@@ -3915,7 +3916,7 @@ def _try_run_post_attention_moe_c1_compact_gemv(
         out_features=hidden_size,
     )
 
-    _zero(runtime, scratch.moe_group_counts, scratch.moe_group_counts_zero)
+    _zero(runtime, scratch.moe_group_counts, scratch.moe_group_counts_zero, stream=stream)
     qwen35_moe_group_count(
         scratch.moe_selected_experts.ptr,
         scratch.moe_group_counts.ptr,
@@ -3934,7 +3935,7 @@ def _try_run_post_attention_moe_c1_compact_gemv(
         stream=stream,
         runtime=runtime,
     )
-    _zero(runtime, scratch.moe_scatter_offsets, scratch.moe_scatter_offsets_zero)
+    _zero(runtime, scratch.moe_scatter_offsets, scratch.moe_scatter_offsets_zero, stream=stream)
     qwen35_moe_group_scatter_gather_lowp(
         scratch.post_norm.ptr,
         scratch.moe_selected_experts.ptr,
@@ -4263,7 +4264,13 @@ def _launch_selected_raw_gguf_moe_linear(
     )
 
 
-def _zero(runtime: HipRuntime, buffer, zeros: np.ndarray) -> None:
+def _zero(runtime: HipRuntime, buffer, zeros: np.ndarray, *, stream: int = 0) -> None:
+    if zeros.nbytes == buffer.nbytes and bool(np.all(zeros == 0)):
+        if stream:
+            runtime.memset_async(buffer.ptr, 0, buffer.nbytes, stream)
+        else:
+            runtime.memset(buffer.ptr, 0, buffer.nbytes)
+        return
     copy_host_to_device(buffer, host_array_ptr(zeros), runtime=runtime)
 
 

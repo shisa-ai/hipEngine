@@ -20460,3 +20460,63 @@ Docs updated:
 - `benchmarks/CHANGELOG.md` records the rejected correctness contract.
 
 Conclusion: task #30 delivered the public fixture/script/tests and retained a real full-shape gate artifact. Dependent throughput rows must stay `rejected_correctness`/blocked until the WMMA prefill and decode GEMV drift are fixed against this contract.
+
+## 2026-05-19 P9.B7 task #26: decode GEMV rejected, reprioritize correctness + repack
+
+User asked why GGUF decode remains slow vs PARO/llama.cpp and to reprioritize high-priority slowdown/correctness blockers. Continued task #26 rather than promoting a bad row.
+
+Implementation fixes made while running B7:
+
+- `scripts/qwen35_gguf_bench.py` now exposes `--use-gemv-decode` / `--no-use-gemv-decode` so benchmark JSON records the P9 rows=1 GEMV opt-in instead of relying only on `HIPENGINE_GGUF_GEMV_DECODE`.
+- `Qwen35GGUFResidentSession.capture_decode_graph()` now wraps graph construction in `gemv_decode_session(self.use_gemv_decode)`, so captured decode honors the session override.
+- Compact-MoE scratch zeroing in graph-captured paths now uses stream-capturable HIP memset for all-zero buffers, avoiding the host-to-device copy that broke graph capture with GEMV decode enabled.
+
+Validation for the code fix:
+
+```bash
+uv run python -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_gguf_bench.py
+uv run --with pytest pytest tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q --tb=short
+# 18 passed
+```
+
+Wall-clock B7 command:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m \
+  --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_b7/bench-512-128-gemvdecode.json
+```
+
+Result: **rejected_correctness_and_perf**.
+
+- 512/128 graph median prefill: `1668.908 tok/s`.
+- 512/128 graph median decode: `63.033 tok/s` vs task #16/current `62.557 tok/s` (`+0.8%`) and P9.B7 target `>=95 tok/s`.
+- Final logits finite; final token IDs deterministic `[220, 220, 220]`.
+- P9.E2 correctness artifact still rejects the opt-in combo: KL `5.993`, top-1 `5.43%`, first mismatch row `0`, reference argmax `128449`, candidate argmax `59639`.
+
+rocprof evidence:
+
+- Full graph 512/128 `rocprofv3 --kernel-trace` was attempted first but did not produce a CSV under `/tmp/p9_b7/rocprof-512-128-graph` (same graph-trace pathology as earlier decode profiles). Retained compact 512/16 graph/eager traces plus a 512/0 prefill-only trace; the artifact reports 512/16-minus-512/0 decode deltas by kernel name without committing raw CSVs.
+- 512/16 graph decode delta: pack8 GEMV active (`85.235 ms`), but legacy `prefill_out_kernel` remains large (`72.960 ms`). Top full-trace fallback buckets include `gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>` and `gguf_q8_0_prefill_out_kernel<unsigned short>`.
+- 512/16 eager decode delta: pack8 GEMV active (`123.490 ms`), but legacy `prefill_out_kernel` still large (`94.725 ms`). Eager wall-clock is much slower due launch overhead; graph replay is still needed after the device kernels are fixed.
+
+Interpretation / reprioritization:
+
+- The P9 rows=1 GEMV opt-in is wired and visible in rocprof, but it does not materially improve end-to-end decode and it does not clear correctness.
+- Current GGUF decode is still largely raw-GGUF dequant-on-the-fly work with fragmented selected-MoE scheduling. It is not a PARO/llama.cpp-style decode-friendly packed layout.
+- Task #26 is blocked, not completed. Created high-priority follow-ups:
+  - #49 P9.H1: fix qwen35moe WMMA/GEMV correctness drift.
+  - #50 P9.H2: design resident GGUF decode repack layout.
+  - #51 P9.H3: implement repacked GGUF decode kernels/dispatch.
+  - #52 P9.H4: rerun and retain final P9.B7 after #49/#51 land.
+- Added #49/#50/#51 as blockers for #26 and #52 as the final retention gate for dependent work.
+
+Artifact retained: `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_b7-decode-gemv-rejected.json`.

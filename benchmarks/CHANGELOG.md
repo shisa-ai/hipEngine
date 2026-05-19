@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-05-19
 
+- [decode row rejected] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #26 P9.B7 decode GEMV retention: graph 512/128 decode `62.557 -> 63.033 tok/s` (`+0.8%`, target `>=95`) after fixing graph-capture GEMV toggling/stream zeroing; P9.E2 still rejects correctness (`KL 5.993`, top-1 `5.43%`), and 512/16-minus-512/0 rocprof decode deltas show pack8 GEMV active but legacy `prefill_out` remains large (`72.960 ms` graph / `94.725 ms` eager), so the row is `rejected_correctness_and_perf` and the next priority is GGUF decode repack/layout; `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_b7-decode-gemv-rejected.json`.
+
 - [correctness rejected] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #30 P9.E2 WMMA+GEMV E2E fixture: new formal 512/128×3 gate reports candidate tails deterministic and final logits finite but rejects the P8 WMMA prefill + P9 GEMV decode opt-in combination vs legacy row-GEMV (`KL 5.993 > 0.05`, top-1 `5.43% < 90%`, first mismatch prefill row `128449 -> 59639`); dependent P9.A3/P9.B7 throughput rows must be `rejected_correctness`/blocked until this gate passes; `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_e2-e2e-correctness-rejected.json`.
 
 ## 2026-05-18

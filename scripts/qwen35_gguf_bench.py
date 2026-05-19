@@ -106,6 +106,12 @@ def main() -> int:
         default=None,
         help="Override the GGUF WMMA prefill opt-in for the resident session; omit to use HIPENGINE_GGUF_WMMA_PREFILL.",
     )
+    parser.add_argument(
+        "--use-gemv-decode",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override the GGUF rows=1 GEMV decode opt-in for the resident session; omit to use HIPENGINE_GGUF_GEMV_DECODE.",
+    )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
 
@@ -151,6 +157,7 @@ def main() -> int:
             require_expert_sidecar=args.require_expert_sidecar,
             preload_expert_sidecars=args.preload_expert_sidecars,
             use_wmma_prefill=args.use_wmma_prefill,
+            use_gemv_decode=args.use_gemv_decode,
             measured=measured,
             run_index=(run_index - args.warmup_runs + 1 if measured else run_index + 1),
         )
@@ -193,6 +200,7 @@ def main() -> int:
         "require_expert_sidecar": bool(args.require_expert_sidecar),
         "preload_expert_sidecars": bool(args.preload_expert_sidecars),
         "use_wmma_prefill": args.use_wmma_prefill,
+        "use_gemv_decode": args.use_gemv_decode,
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
         "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
         "runs": runs,
@@ -203,6 +211,7 @@ def main() -> int:
             "--bulk-prefill-attention-mode=native preserves row-serial attention while using row-bulk FFN/MoE as a qwen35moe diagnostic fallback.",
             "--use-expert-sidecar enables explicit qwen35moe GGUF expert pack8 sidecar kernels for bulk prefill; generated sidecars live in the requested cache dir.",
             "--use-wmma-prefill opts GGUF bulk prefill into P8 WMMA dispatch, including qwen35moe compact grouped selected-MoE when the raw kernels are available.",
+            "--use-gemv-decode opts rows=1 GGUF decode into the P9 pack8 GEMV decode path, including graph-capture decode.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
         ],
     }
@@ -244,6 +253,7 @@ def _run_once(
     require_expert_sidecar: bool,
     preload_expert_sidecars: bool,
     use_wmma_prefill: bool | None,
+    use_gemv_decode: bool | None,
     measured: bool,
     run_index: int,
 ) -> dict[str, Any]:
@@ -262,6 +272,7 @@ def _run_once(
         require_expert_sidecar=require_expert_sidecar,
         preload_expert_sidecars=preload_expert_sidecars,
         use_wmma_prefill=use_wmma_prefill,
+        use_gemv_decode=use_gemv_decode,
     )
     load_seconds = time.perf_counter() - load_start
     memory_snapshots["after_load"] = _memory_snapshot("after_load", runtime, session)
@@ -334,6 +345,7 @@ def _run_once(
         "use_bulk_prefill": use_bulk_prefill,
         "bulk_prefill_attention_mode": bulk_attention_mode,
         "use_wmma_prefill": use_wmma_prefill,
+        "use_gemv_decode": use_gemv_decode,
         "timings": {
             "load_seconds": load_seconds,
             "prefill_seconds": prefill_seconds,
