@@ -2440,6 +2440,115 @@ class Qwen35ParoResidentSession:
             # future verifier graph capture experiments.
             pass
 
+    def verify_tree_bulk_and_commit(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        base_slot: int,
+        capture_layer_ids: Sequence[int],
+        capture_hidden_concat: Tensor,
+        capture_row_start: int,
+        stream: int = 0,
+    ) -> Qwen35ParoBulkVerifyResult:
+        """DDTree variant of ``verify_chain_bulk_and_commit``.
+
+        Runs one batched target-verifier forward over a tree-shaped
+        ``TargetVerifyBatch`` (``batch.mode == 'verify_tree'``), with
+        sibling/cousin attention isolation enforced by the tree-aware GQA
+        gate kernel + ancestor mask.  Linear-attention layers reuse the
+        existing parent-indexed tree t-loop kernel.  The accept summary is
+        computed by ``dflash_accept_chain_i32`` which already walks
+        ``parent_rows`` to find the longest matching path through the tree.
+
+        Currently a SINGLE-CYCLE path: the accepted leaf may live at a
+        sparse cache slot (its verifier-row index, not its depth), which is
+        fine for one verify call but breaks subsequent decode cycles
+        because the cache between ``current_pos`` and the accepted slot
+        still holds unaccepted sibling K/V.  Multi-cycle decode requires
+        the K/V compaction step tracked in task #15.  Until that lands the
+        caller must treat this as a one-shot verifier (no follow-on decode).
+
+        Graph capture is not supported for tree mode (yet) because graph
+        capture must observe a fixed kernel/address layout per bucket and
+        the tree orchestrator allocates the uniform context/position
+        device buffers lazily on first cycle.
+        """
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        if batch.mode != "verify_tree":
+            raise ValueError("verify_tree_bulk_and_commit requires batch.mode == 'verify_tree'")
+        if len(batch.request_ids) != 1:
+            raise ValueError("verify_tree_bulk_and_commit currently supports one request")
+        rows = int(batch.rows)
+        if rows <= 1:
+            raise ValueError("tree verifier requires root plus at least one candidate row")
+        if rows > self.max_batch_size:
+            raise ValueError("target verify rows exceed resident max_batch_size")
+        self._check_slot(base_slot)
+        for position in batch.positions:
+            self._check_position(int(position))
+        if capture_hidden_concat.dtype != DType.BF16 or capture_hidden_concat.ndim != 2:
+            raise ValueError("capture_hidden_concat must be a rank-2 BF16 tensor")
+        capture_ids = tuple(int(layer_id) for layer_id in capture_layer_ids)
+        if capture_hidden_concat.shape[1] != len(capture_ids) * self.config.hidden_size:
+            raise ValueError("capture_hidden_concat width must match captured layers * hidden_size")
+        if capture_row_start < 0 or capture_row_start + rows > capture_hidden_concat.shape[0]:
+            raise ValueError("capture rows outside capture_hidden_concat")
+
+        self._write_verify_chain_metadata(batch, base_slot=base_slot, stream=stream)
+        graph_info: dict[str, Any] = {
+            "mode": "off",
+            "status": "disabled",
+            "replayed": False,
+            "validation_passed": None,
+            "chain_attn_mode": "tree_batched",
+            "verifier_mode": "verify_tree",
+        }
+        self._launch_verify_chain_forward_accept(
+            batch,
+            base_slot=base_slot,
+            capture_ids=capture_ids,
+            capture_hidden_concat=capture_hidden_concat,
+            capture_row_start=capture_row_start,
+            rows=rows,
+            stream=stream,
+            # chain_attn_mode is ignored for tree mode; the dispatcher
+            # checks batch.mode first and routes to the tree orchestrator.
+            chain_attn_mode="batched",
+        )
+        gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
+        target_top1, target_values = self._read_verify_top1(rows)
+        cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
+        cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
+        gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
+        selected_row = int(cpu_summary.commit_rows[0])
+        # NOTE: K/V cache compaction across the accepted path is NOT done
+        # here.  Single-cycle callers can ignore the sparse cache; multi-
+        # cycle decode must wait for task #15 before consuming this
+        # entry point.  The linear-attention recurrent state IS committed
+        # via ``_commit_bulk_linear_states`` (which already follows
+        # parent_rows to assemble the accepted-leaf state).
+        self._commit_bulk_linear_states(selected_row, base_slot=base_slot, stream=stream)
+        self._set_slot_position(int(cpu_summary.commit_positions[0]), slot=base_slot, stream=stream)
+        self.runtime.stream_synchronize(stream)
+        next_token = None if cpu_summary.next_tokens is None else cpu_summary.next_tokens[0]
+        return Qwen35ParoBulkVerifyResult(
+            target_top1=tuple(int(token) for token in target_top1),
+            target_top1_values=tuple(float(value) for value in target_values),
+            accepted_count=int(cpu_summary.accepted_counts[0]),
+            accepted_tokens=tuple(int(token) for token in cpu_summary.accepted_tokens[0]),
+            commit_row=selected_row,
+            commit_token=int(cpu_summary.commit_tokens[0]),
+            commit_position=int(cpu_summary.commit_positions[0]),
+            next_token=None if next_token is None else int(next_token),
+            full_accept=bool(cpu_summary.full_accept[0]),
+            finite_logits=all(math.isfinite(float(value)) for value in target_values),
+            gpu_accept_match_cpu=bool(gpu_accept_match),
+            rows=rows,
+            graph=graph_info,
+        )
+
     def _verify_capture_staging_tensor(self, *, rows: int, width: int) -> Tensor:
         if rows <= 0 or rows > self.max_batch_size:
             raise ValueError("rows outside verifier staging capacity")
@@ -2658,7 +2767,20 @@ class Qwen35ParoResidentSession:
                     stream=stream,
                 )
             elif layer_type == "full_attention":
-                if chain_attn_mode == "batched":
+                if batch.mode == "verify_tree":
+                    # Tree topology: sibling rows must not see each other; use
+                    # the tree-aware orchestrator regardless of
+                    # chain_attn_mode (which only applies to chain mode).
+                    self._run_full_attention_tree_batched(
+                        state,
+                        layer_id=layer_id,
+                        hidden=hidden,
+                        next_hidden=next_hidden,
+                        rows=rows,
+                        base_slot=base_slot,
+                        stream=stream,
+                    )
+                elif chain_attn_mode == "batched":
                     self._run_full_attention_chain_batched(
                         state,
                         layer_id=layer_id,
