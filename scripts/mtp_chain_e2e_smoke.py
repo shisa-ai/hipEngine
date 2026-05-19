@@ -259,6 +259,7 @@ def _run_spec_persistent_device(
         capture_layer_id = int(session.layer_limit) - 1
         capture_buf = malloc(capture_rows * hidden * DType.BF16.itemsize, runtime=session.runtime)
         capture = _capture_tensor(capture_buf, capture_rows, hidden)
+        verifier_no_capture = Tensor.from_handle(0, (int(candidate_budget) + 1, 0), DType.BF16, Device("hip", 0))
         try:
             next_result = None
             for pos, token in enumerate(prompt_tokens):
@@ -317,9 +318,9 @@ def _run_spec_persistent_device(
                     verify = session.verify_chain_bulk_and_commit(
                         target_batch,
                         base_slot=0,
-                        capture_layer_ids=(capture_layer_id,),
-                        capture_hidden_concat=capture,
-                        capture_row_start=context,
+                        capture_layer_ids=(),
+                        capture_hidden_concat=verifier_no_capture,
+                        capture_row_start=0,
                         chain_attn_mode=chain_attn_mode,
                     )
                     verify_seconds += time.perf_counter() - t_verify
