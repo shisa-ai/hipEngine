@@ -20141,3 +20141,34 @@ Diagnosis: the full-tile kernel itself is promising (near the P9.C4 target if it
 Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c4-q4-hot-fulltile-v1-rejected.json`.
 
 Conclusion for task #35: prototype v1 is correct but fails the performance acceptance. Proceeding to P9.C5 sidecar/reduced-decode work is necessary; a future hot/full-tile path would need compact tail lists and/or sidecar to become useful.
+
+## 2026-05-18 P9.C5 task #36: Q4 scale/min side metadata v1 (rejected)
+
+Implemented an optional Q4_K side metadata prototype:
+
+- `q4_k_predecode_scale_min_sidemeta(raw)` builds fp16 side metadata with layout `[num_experts, out_features, blocks_per_row, 8, 2]`, last dim `(scale_f, min_f)`.
+- New side metadata kernels/wrappers:
+  - `gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out`
+  - `gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_fp16_fp16_out`
+- Replay harness option: `--q4-sidemeta-layers N`, used to route the first N MoE layers through the side metadata prototype while leaving later layers unchanged.
+
+Memory/cost:
+
+- qwen35moe side metadata per gate/up tensor: `256 experts * 4096 out * 8 blocks * 8 subblocks * 2 values * 2 bytes = 268 MiB`.
+- gate+up per layer: `536 MiB`.
+- all 30 MoE layers: about `15 GiB`, before allocator overhead. This is already a major concern.
+
+Validation:
+
+- Side metadata shape/value test passes.
+- GPU side metadata kernel matches CPU selected reference on the synthetic Q4 selected fixture.
+
+Real replay result (first qwen35moe MoE layer only, P9.C2 harness):
+
+- Baseline first-layer Q4 gate+up: `1.678 ms` (samples `[1.796, 1.758, 1.480]`).
+- fp16 side metadata first-layer Q4 gate+up: `2.339 ms` (samples `[2.406, 2.337, 2.273]`).
+- Total Q4 replay with one side layer: `60.944 ms` vs retained baseline `59.896 ms`.
+
+Decision: reject v1. The extra side-metadata memory stream costs more than raw Q4_K scale/min bitfield decode. Do not cache or wire this sidecar. This means P9.C5's initially proposed scale/min sidecar is not fruitful; remaining likely paths are either a different in-kernel raw layout algorithm with no large side stream, Q5-specific work, or accepting that Q4 raw selected is near the local optimum until a deeper repack design exists.
+
+Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c5-q4-sidemeta-v1-rejected.json`.

@@ -32,15 +32,18 @@ from typing import Any, Callable
 import numpy as np
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
-from hipengine.core.memory import copy_device_to_host, host_array_ptr
+from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
     selected_wmma_prefill_compact_default_tiles,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out,
+    gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out,
+    q4_k_predecode_scale_min_sidemeta,
     selected_dual_wmma_prefill_compact_default_tiles,
 )
 import hipengine.runtime.qwen35_gguf_runner as qgr
+from hipengine.loading.gguf import GGUFReader
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
@@ -331,8 +334,40 @@ def _install_replay_helper(recorder: ReplayRecorder):
         down_tile_m, down_tile_n = selected_wmma_prefill_compact_default_tiles(down_weight.spec.quant_key)
         use_hot_q4 = int(getattr(recorder, "q4_hot_fulltile_threshold", 0)) > 0
         hot_threshold = int(getattr(recorder, "q4_hot_fulltile_threshold", 0))
+        layer_order = len(recorder.records)
+        use_sidemeta_q4 = int(getattr(recorder, "q4_sidemeta_layers", 0)) > layer_order
+        sidemeta_bufs = []
+        if use_sidemeta_q4:
+            reader = getattr(recorder, "q4_sidemeta_reader")
+            for weight in (gate_weight, up_weight):
+                raw = reader.tensor_data(weight.spec.source.name)
+                side = q4_k_predecode_scale_min_sidemeta(raw)
+                buf = malloc(side.nbytes, runtime=runtime)
+                copy_host_to_device(buf, host_array_ptr(side), side.nbytes, runtime=runtime)
+                sidemeta_bufs.append(buf)
 
         def launch_gate_up() -> None:
+            if use_sidemeta_q4:
+                gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out(
+                    scratch.moe_down_out.ptr,
+                    scratch.moe_expert_start_compact.ptr,
+                    scratch.moe_expert_start_wmma.ptr,
+                    scratch.moe_tile_expert.ptr,
+                    gate_weight.allocation("raw").tensor.ptr,
+                    up_weight.allocation("raw").tensor.ptr,
+                    sidemeta_bufs[0].ptr,
+                    sidemeta_bufs[1].ptr,
+                    scratch.ffn_gate_up.ptr,
+                    selected_rows,
+                    hidden_size,
+                    expert_ffn,
+                    expert_ffn,
+                    num_experts,
+                    wmma_total_rows,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                return
             if use_hot_q4:
                 gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out(
                     scratch.moe_down_out.ptr,
@@ -372,6 +407,11 @@ def _install_replay_helper(recorder: ReplayRecorder):
             )
 
         gate_stats = recorder.time_kernel(runtime, stream, launch_gate_up)
+        if sidemeta_bufs:
+            if stream:
+                runtime.stream_synchronize(stream)
+            for buf in reversed(sidemeta_bufs):
+                free(buf, runtime=runtime)
         qgr.silu_mul_dual_out_bf16(
             scratch.ffn_gate_up.ptr,
             scratch.ffn_intermediate.ptr,
@@ -522,6 +562,7 @@ def _install_replay_helper(recorder: ReplayRecorder):
                     "tile_m": int(gate_tile_m),
                     "tile_n": int(gate_tile_n),
                     "hot_fulltile_threshold": hot_threshold if use_hot_q4 else None,
+                    "sidemeta": bool(use_sidemeta_q4),
                 },
                 "down": {"tile_m": int(down_tile_m), "tile_n": int(down_tile_n)},
             },
@@ -560,6 +601,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         sample_groups=int(args.sample_groups),
     )
     recorder.q4_hot_fulltile_threshold = int(args.q4_hot_fulltile_threshold)
+    recorder.q4_sidemeta_layers = int(args.q4_sidemeta_layers)
+    recorder.q4_sidemeta_reader = GGUFReader(args.model) if args.q4_sidemeta_layers else None
     original = _install_replay_helper(recorder)
     start = time.perf_counter()
     try:
@@ -608,6 +651,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "replay_iters": int(args.replay_iters),
         "sample_groups": int(args.sample_groups),
         "q4_hot_fulltile_threshold": int(args.q4_hot_fulltile_threshold),
+        "q4_sidemeta_layers": int(args.q4_sidemeta_layers),
         "git_commit": _git_commit(),
         "git_status": _git_status(),
         "elapsed_seconds_including_model_load": elapsed,
@@ -645,6 +689,12 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Use the P9.C4 Q4 hot/full-tile prototype for gate+up when >0.",
     )
+    parser.add_argument(
+        "--q4-sidemeta-layers",
+        type=int,
+        default=0,
+        help="Use the P9.C5 float32 scale/min side-metadata prototype for the first N MoE layers.",
+    )
     parser.add_argument("--json", type=Path, required=True)
     return parser.parse_args()
 
@@ -657,6 +707,8 @@ def main() -> None:
         raise ValueError("--warmup-iters must be >=0 and --replay-iters/--sample-groups must be >0")
     if args.q4_hot_fulltile_threshold < 0:
         raise ValueError("--q4-hot-fulltile-threshold must be >=0")
+    if args.q4_sidemeta_layers < 0:
+        raise ValueError("--q4-sidemeta-layers must be >=0")
     report = run(args)
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps(report, indent=2) + "\n")

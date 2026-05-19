@@ -1,0 +1,32 @@
+{
+  "schema": "p9_c5_q4_sidemeta_v1_rejected",
+  "status": "rejected_prototype",
+  "performance_claim": false,
+  "timestamp": "2026-05-19T07:20:32.178565+00:00",
+  "task": "#36 P9.C5 Q4_K predecoded scale/min sidecar",
+  "git_commit": "c0602fc921740ea1bd48b88d0057f13311a8f6e5",
+  "git_status": "## gguf-bulk-prefill\n M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip\n M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py\n M scripts/qwen35_gguf_moe_replay.py\n M tests/test_gguf_q4_k_selected_wmma_prefill.py\n?? uv.lock",
+  "summary": "P9.C5 fp16 predecoded scale/min sidecar is correct but slower than raw decode on the first real qwen35moe layer. The sidecar removes d/dmin/scale bitfield decode but adds a large side metadata memory stream; first-layer gate+up rises from 1.68 ms to 2.34 ms. Not retained.",
+  "sidecar_design": {
+    "layout": "fp16 [num_experts, out_features, blocks_per_row, 8, 2] storing (scale_f,min_f)",
+    "qwen35_layer_gate_or_up_bytes": 268435456,
+    "gate_plus_up_bytes": 536870912,
+    "cache_all_moe_layers_estimate_bytes": 16106127360
+  },
+  "baseline_replay_json": "/tmp/p9_c2/moe-replay-512-0-batched.json",
+  "sidemeta_replay_json": "/tmp/p9_c5/moe-replay-sidemeta1-fp16.json",
+  "measurements": {
+    "baseline_first_layer_q4_ms": 1.6778446656341355,
+    "sidemeta_first_layer_q4_ms": 2.3389100679196417,
+    "baseline_q4_total_ms": 59.89599107997493,
+    "sidemeta_one_layer_q4_total_ms": 60.94411512992034
+  },
+  "correctness": {
+    "passed": true,
+    "evidence": "P9.C5 side metadata shape/value test and CPU-selected-reference GPU test pass."
+  },
+  "decision": {
+    "retain_default": false,
+    "reason": "Side metadata memory traffic is worse than raw scale/min bit decode. Do not cache or wire this sidecar."
+  }
+}

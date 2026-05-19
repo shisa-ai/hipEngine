@@ -39,6 +39,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out,
+    gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out,
+    gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_fp16_fp16_out,
+    q4_k_predecode_scale_min_sidemeta,
     plan_gguf_q4_k_selected_prefill_build,
     selected_dual_wmma_prefill_compact_default_tiles,
 )
@@ -97,6 +100,15 @@ def test_gguf_q4_k_selected_wmma_registry_and_build_plan(monkeypatch: pytest.Mon
             variant="selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out",
         )
         is gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out
     )
 
     artifact = plan_gguf_q4_k_selected_prefill_build(compiler_version="test-compiler")
@@ -351,6 +363,7 @@ def _run_selected_dual_gpu(
     *,
     hot_fulltile: bool = False,
     hot_threshold: int = 64,
+    sidemeta: bool = False,
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
@@ -361,7 +374,13 @@ def _run_selected_dual_gpu(
         (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
         dtype=out_dtype,
     )
-    if hot_fulltile:
+    if sidemeta:
+        wrapper = (
+            gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out
+            if dtype == "bf16"
+            else gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_fp16_fp16_out
+        )
+    elif hot_fulltile:
         wrapper = (
             gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out
             if dtype == "bf16"
@@ -382,6 +401,10 @@ def _run_selected_dual_gpu(
         tile_expert_dev = malloc(fixture.tile_expert.nbytes, runtime=runtime)
         qweight_a_dev = malloc(fixture.qweight_a.nbytes, runtime=runtime)
         qweight_b_dev = malloc(fixture.qweight_b.nbytes, runtime=runtime)
+        sidemeta_a = q4_k_predecode_scale_min_sidemeta(fixture.qweight_a) if sidemeta else None
+        sidemeta_b = q4_k_predecode_scale_min_sidemeta(fixture.qweight_b) if sidemeta else None
+        sidemeta_a_dev = malloc(sidemeta_a.nbytes, runtime=runtime) if sidemeta_a is not None else None
+        sidemeta_b_dev = malloc(sidemeta_b.nbytes, runtime=runtime) if sidemeta_b is not None else None
         out_dev = malloc(host_out.nbytes, runtime=runtime)
         bufs.extend(
             (
@@ -391,17 +414,21 @@ def _run_selected_dual_gpu(
                 tile_expert_dev,
                 qweight_a_dev,
                 qweight_b_dev,
+                *(buf for buf in (sidemeta_a_dev, sidemeta_b_dev) if buf is not None),
                 out_dev,
             )
         )
-        for dev, arr in (
+        copy_pairs = [
             (x_dev, fixture.x_host),
             (start_compact_dev, fixture.expert_start_compact),
             (start_wmma_dev, fixture.expert_start_wmma),
             (tile_expert_dev, fixture.tile_expert),
             (qweight_a_dev, fixture.qweight_a),
             (qweight_b_dev, fixture.qweight_b),
-        ):
+        ]
+        if sidemeta:
+            copy_pairs.extend(((sidemeta_a_dev, sidemeta_a), (sidemeta_b_dev, sidemeta_b)))
+        for dev, arr in copy_pairs:
             copy_host_to_device(
                 dev, host_array_ptr(np.ascontiguousarray(arr)), runtime=runtime
             )
@@ -409,22 +436,42 @@ def _run_selected_dual_gpu(
         kwargs = {"library": library, "runtime": runtime}
         if hot_fulltile:
             kwargs["hot_threshold"] = hot_threshold
-        wrapper(
-            x_dev.ptr,
-            start_compact_dev.ptr,
-            start_wmma_dev.ptr,
-            tile_expert_dev.ptr,
-            qweight_a_dev.ptr,
-            qweight_b_dev.ptr,
-            out_dev.ptr,
-            fixture.compact_rows,
-            fixture.in_features,
-            fixture.out_features_a,
-            fixture.out_features_b,
-            fixture.num_experts,
-            fixture.wmma_total_rows,
-            **kwargs,
-        )
+        if sidemeta:
+            wrapper(
+                x_dev.ptr,
+                start_compact_dev.ptr,
+                start_wmma_dev.ptr,
+                tile_expert_dev.ptr,
+                qweight_a_dev.ptr,
+                qweight_b_dev.ptr,
+                sidemeta_a_dev.ptr,
+                sidemeta_b_dev.ptr,
+                out_dev.ptr,
+                fixture.compact_rows,
+                fixture.in_features,
+                fixture.out_features_a,
+                fixture.out_features_b,
+                fixture.num_experts,
+                fixture.wmma_total_rows,
+                **kwargs,
+            )
+        else:
+            wrapper(
+                x_dev.ptr,
+                start_compact_dev.ptr,
+                start_wmma_dev.ptr,
+                tile_expert_dev.ptr,
+                qweight_a_dev.ptr,
+                qweight_b_dev.ptr,
+                out_dev.ptr,
+                fixture.compact_rows,
+                fixture.in_features,
+                fixture.out_features_a,
+                fixture.out_features_b,
+                fixture.num_experts,
+                fixture.wmma_total_rows,
+                **kwargs,
+            )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
     finally:
@@ -488,6 +535,36 @@ def test_gguf_q4_k_selected_wmma_fp16_matches_cpu_selected_reference(
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_p9_c5_q4_k_predecode_scale_min_sidemeta_shape_and_values() -> None:
+    raw = _make_expert_q4_k_weights(num_experts=2, out_features=4, in_features=256, offset=1)
+    sidemeta = q4_k_predecode_scale_min_sidemeta(raw)
+    assert sidemeta.shape == (2, 4, 1, 8, 2)
+    assert sidemeta.dtype == np.float16
+    # Spot check subblock 0 against the same decode formula used by the HIP kernel.
+    block = raw[0, 0]
+    d_bits = np.uint16(int(block[0]) | (int(block[1]) << 8))
+    dmin_bits = np.uint16(int(block[2]) | (int(block[3]) << 8))
+    d = np.array(d_bits, dtype=np.uint16).view(np.float16).astype(np.float32)
+    dmin = np.array(dmin_bits, dtype=np.uint16).view(np.float16).astype(np.float32)
+    scales = block[4:16]
+    assert sidemeta[0, 0, 0, 0, 0] == pytest.approx(float(d) * float(scales[0] & 0x3F))
+    assert sidemeta[0, 0, 0, 0, 1] == pytest.approx(float(dmin) * float(scales[4] & 0x3F))
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_p9_c5_q4_k_sidemeta_matches_cpu_selected_reference() -> None:
+    fixture = _build_compact_fixture(
+        counts=[0, 7, 16, 63, 64, 79, 128],
+        in_features=512,
+        out_features_a=64,
+        out_features_b=64,
+        dtype="bf16",
+        seed=15,
+    )
+    actual = _run_selected_dual_gpu(fixture, "bf16", sidemeta=True)
+    np.testing.assert_allclose(actual, fixture.reference, **_TOLERANCE_BF16)
+
+
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_p9_c4_q4_k_hot_fulltile_hybrid_matches_cpu_selected_reference() -> None:
     """P9.C4 hot/full-tile prototype preserves the compact selected ABI.

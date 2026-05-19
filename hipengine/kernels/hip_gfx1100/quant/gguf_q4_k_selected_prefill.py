@@ -30,6 +30,8 @@ _SYMBOL_DUAL_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_bf16
 _SYMBOL_DUAL_FP16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out"
 _SYMBOL_HOT_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out"
 _SYMBOL_HOT_FP16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out"
+_SYMBOL_SIDEMETA_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out"
+_SYMBOL_SIDEMETA_FP16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_fp16_fp16_out"
 _Q4_K_BLOCK = 256
 _ALLOWED_TILES = {(16, 16), (32, 16), (16, 32), (32, 32), (64, 16), (64, 32)}
 _ENV_TILE_M = "HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M"
@@ -75,6 +77,45 @@ def build_gguf_q4_k_selected_prefill(
         load=load,
         require_cached=require_cached,
     )
+
+
+def q4_k_predecode_scale_min_sidemeta(raw: object) -> object:
+    """Predecode GGUF Q4_K per-block scale/min metadata to float32.
+
+    ``raw`` must have shape ``[..., row_bytes]`` where ``row_bytes`` is a
+    multiple of the Q4_K block size (144 bytes). The returned array has shape
+    ``[..., blocks_per_row, 8, 2]`` with the last dimension ``(scale, min)``.
+    The quant nibbles remain in the raw weight tensor; this sidecar only removes
+    the d/dmin + packed-scale bitfield decode from the WMMA inner loop.
+    """
+
+    import numpy as np
+
+    arr = np.ascontiguousarray(raw, dtype=np.uint8)
+    if arr.ndim < 1 or arr.shape[-1] % 144 != 0:
+        raise ValueError("raw Q4_K side metadata input must end in row_bytes divisible by 144")
+    blocks_per_row = arr.shape[-1] // 144
+    blocks = arr.reshape(*arr.shape[:-1], blocks_per_row, 144)
+    d_bits = blocks[..., 0].astype(np.uint16) | (blocks[..., 1].astype(np.uint16) << 8)
+    dmin_bits = blocks[..., 2].astype(np.uint16) | (blocks[..., 3].astype(np.uint16) << 8)
+    d = d_bits.view(np.float16).astype(np.float32)
+    dmin = dmin_bits.view(np.float16).astype(np.float32)
+    packed = blocks[..., 4:16]
+    scale = np.empty((*arr.shape[:-1], blocks_per_row, 8), dtype=np.uint8)
+    mins = np.empty_like(scale)
+    scale[..., 0:4] = packed[..., 0:4] & np.uint8(0x3F)
+    mins[..., 0:4] = packed[..., 4:8] & np.uint8(0x3F)
+    for idx in range(4):
+        scale[..., 4 + idx] = (packed[..., 8 + idx] & np.uint8(0x0F)) | (
+            (packed[..., idx] >> np.uint8(2)) & np.uint8(0x30)
+        )
+        mins[..., 4 + idx] = (packed[..., 8 + idx] >> np.uint8(4)) | (
+            (packed[..., 4 + idx] >> np.uint8(2)) & np.uint8(0x30)
+        )
+    out = np.empty((*arr.shape[:-1], blocks_per_row, 8, 2), dtype=np.float16)
+    out[..., 0] = (d[..., None] * scale.astype(np.float32)).astype(np.float16)
+    out[..., 1] = (dmin[..., None] * mins.astype(np.float32)).astype(np.float16)
+    return np.ascontiguousarray(out)
 
 
 def _extra_flags() -> tuple[str, ...]:
@@ -127,6 +168,98 @@ def gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
         wmma_total_rows,
         tile_m=tile_m,
         tile_n=tile_n,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    sidemeta_a_ptr: int,
+    sidemeta_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch P9.C5 Q4_K side-metadata dual WMMA prototype (BF16)."""
+
+    _launch_sidemeta(
+        _SYMBOL_SIDEMETA_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        sidemeta_a_ptr,
+        sidemeta_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_fp16_fp16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    sidemeta_a_ptr: int,
+    sidemeta_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch P9.C5 Q4_K side-metadata dual WMMA prototype (FP16)."""
+
+    _launch_sidemeta(
+        _SYMBOL_SIDEMETA_FP16,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        sidemeta_a_ptr,
+        sidemeta_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -342,6 +475,80 @@ def _launch_dual(
         runtime.check(int(err))
 
 
+def _launch_sidemeta(
+    symbol: str,
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    sidemeta_a_ptr: int,
+    sidemeta_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_common(
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+    )
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_wmma_ptr),
+        ctypes.c_void_p(tile_expert_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(sidemeta_a_ptr),
+        ctypes.c_void_p(sidemeta_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(wmma_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch_hot_fulltile(
     symbol: str,
     x_ptr: int,
@@ -538,6 +745,26 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
         gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
+            "selected_dual_wmma_prefill_compact_sidemeta_fp16_fp16_out",
+        ),
+        gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_fp16_fp16_out,
+        replace=replace,
+    )
 
 
 register_gguf_q4_k_selected_prefill_kernels()
@@ -549,6 +776,9 @@ __all__ = [
     "gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out",
+    "gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_fp16_fp16_out",
+    "q4_k_predecode_scale_min_sidemeta",
     "plan_gguf_q4_k_selected_prefill_build",
     "register_gguf_q4_k_selected_prefill_kernels",
     "selected_dual_wmma_prefill_compact_default_tiles",
