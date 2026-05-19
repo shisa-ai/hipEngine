@@ -3009,7 +3009,7 @@ class Qwen35ParoResidentSession:
         active_u8 = np.asarray(batch.active_mask, dtype=np.uint8)
         physical_blocks = np.arange(base_slot * self.blocks, (base_slot + 1) * self.blocks, dtype=np.int32)
         block_table = np.tile(physical_blocks, (rows, 1))
-        copies = (
+        copies: list[tuple[Any, Any]] = [
             (self.verify_token_ids_i64, token_i64),
             (self.verify_token_ids_i32, token_i32),
             (self.prefill_position_buf, position_i64),
@@ -3021,7 +3021,48 @@ class Qwen35ParoResidentSession:
             (self.verify_row_to_request_i32, row_req_i32),
             (self.verify_active_mask_u8, active_u8),
             (self.prefill_block_table_buf, block_table),
-        )
+        ]
+        # Tree topology: build the dense ``[rows, rows]`` ancestor mask, the
+        # global ``tree_committed_count``, and the per-row unique cache-slot
+        # vector so the tree-aware K/V append + GQA gate kernels can filter
+        # sibling/cousin rows without write collisions.  Roots have
+        # ``parent == -1`` and are their own ancestors; every other row
+        # inherits its parent's ancestor set plus itself.
+        if batch.mode == "verify_tree":
+            ancestor_mask = np.zeros((rows, rows), dtype=np.uint8)
+            parents = list(batch.parent_rows)
+            for i in range(rows):
+                cursor = i
+                while cursor >= 0:
+                    ancestor_mask[i, cursor] = 1
+                    parent = parents[cursor]
+                    cursor = parent if parent >= 0 else -1
+            root_positions = [int(batch.positions[r]) for r in batch.root_rows]
+            if not root_positions:
+                raise ValueError("verify_tree batch must have at least one root row")
+            # All roots in a single-request verify share the same global
+            # position (the current decode position).  For multi-request
+            # batches we conservatively take the min so committed-context
+            # positions are visible to every row.
+            self.verify_tree_committed_count = min(root_positions)
+            # Per-row unique K/V cache slot: ``tree_committed_count + i``.
+            # The depth-based ``batch.positions`` already lives in
+            # ``prefill_position_buf`` for RoPE; this separate slot vector
+            # is what the prompt-style K/V write reads to place each row
+            # in its own cache cell.
+            cache_slot_i64 = np.arange(
+                self.verify_tree_committed_count,
+                self.verify_tree_committed_count + rows,
+                dtype=np.int64,
+            )
+            copies.append((self.verify_ancestor_mask_u8, ancestor_mask))
+            copies.append((self.verify_cache_slot_buf, cache_slot_i64))
+        else:
+            # Chain mode: leave the ancestor mask and cache-slot buffers
+            # alone.  Recorded ``tree_committed_count`` is meaningless for
+            # chain; readers must branch on ``batch.mode`` before
+            # consulting it.
+            self.verify_tree_committed_count = 0
         for buffer, array in copies:
             contiguous = np.ascontiguousarray(array)
             copy_host_to_device(buffer, host_array_ptr(contiguous), contiguous.nbytes, runtime=self.runtime)
@@ -3634,6 +3675,31 @@ class Qwen35ParoResidentSession:
         self.verify_draft_depths_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
         self.verify_row_to_request_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
         self.verify_active_mask_u8 = malloc(verify_rows * DType.BOOL.itemsize, runtime=self.runtime)
+        # Tree ancestor mask: dense [verify_rows, verify_rows] uint8 buffer
+        # consumed by qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans.
+        # ``ancestor_mask[i * verify_rows + j] == 1`` iff verifier row j is
+        # an ancestor of verifier row i (a row is its own ancestor).  Only
+        # the leading ``rows`` x ``rows`` submatrix is read each cycle; the
+        # full ``verify_rows`` capacity matches every other verify buffer.
+        self.verify_ancestor_mask_u8 = malloc(
+            verify_rows * verify_rows * DType.BOOL.itemsize,
+            runtime=self.runtime,
+        )
+        # Tree cache-slot buffer: per-row UNIQUE K/V write slot.  Tree mode
+        # decouples RoPE phase (depth-based, in ``prefill_position_buf``)
+        # from K/V storage slot (per-row, in this buffer) because siblings
+        # share a depth but must NOT share a cache cell.  Chain mode leaves
+        # this buffer untouched; the chain orchestrator continues to use
+        # ``prefill_position_buf`` for both RoPE and write slot (they
+        # coincide for chain topology).
+        self.verify_cache_slot_buf = malloc(
+            verify_rows * DType.INT64.itemsize,
+            runtime=self.runtime,
+        )
+        # Latest tree_committed_count (decoded position where verifier rows
+        # start).  Set per-cycle by ``_write_verify_chain_metadata`` when
+        # ``batch.mode == 'verify_tree'``; chain mode leaves it at 0.
+        self.verify_tree_committed_count: int = 0
         self.verify_lm_logits = malloc(verify_rows * self.vocab_size * DType.FP32.itemsize, runtime=self.runtime)
         self.verify_lm_block_values = malloc(verify_rows * self.lm_head_stage1_blocks * DType.FP32.itemsize, runtime=self.runtime)
         self.verify_lm_block_indices = malloc(verify_rows * self.lm_head_stage1_blocks * DType.INT32.itemsize, runtime=self.runtime)
@@ -3676,6 +3742,8 @@ class Qwen35ParoResidentSession:
                 self.verify_committed_output_ids,
                 self.verify_committed_output_lengths,
                 self.verify_capture_hidden_concat,
+                self.verify_ancestor_mask_u8,
+                self.verify_cache_slot_buf,
             )
         )
 

@@ -2310,8 +2310,8 @@ class Qwen35ParoDecodeState:
         ``[tree_committed_count, tree_committed_count + rows)``.
         """
 
-        if ancestor_mask.dtype is not DType.UINT8 or ancestor_mask.shape != (rows, rows):
-            raise ValueError("ancestor_mask must be UINT8 with shape (rows, rows)")
+        if ancestor_mask.dtype not in {DType.BOOL, DType.INT8} or ancestor_mask.shape != (rows, rows):
+            raise ValueError("ancestor_mask must be a 1-byte tensor (BOOL or INT8) with shape (rows, rows)")
         if tree_committed_count < 0:
             raise ValueError("tree_committed_count must be non-negative")
         gate_tensor = scratch.gate if gate is None else gate
