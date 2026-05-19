@@ -148,6 +148,39 @@ Current status:
   This batched path is retained as the **infrastructure foundation for DDTree**
   (where tree branches make serial early-exit structurally impossible), not as
   a chain DFlash speed win.
+
+  **DDTree foundation (2026-05-19)** lands on top of the chain batched path:
+  a new tree-aware GQA prefill gate kernel (`qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans`)
+  with a per-row `[rows, rows]` ancestor mask + `tree_committed_count` offset,
+  plus host-side ancestor-mask + per-row cache-slot metadata, a
+  `_run_full_attention_tree_batched` orchestrator, a `verify_tree_bulk_and_commit`
+  session entry, and `_commit_tree_full_attention_kv` for post-accept K/V
+  compaction (multi-cycle decode-safe).  The `dflash_accept_chain_i32` accept
+  summary kernel already walks `parent_rows` and so handles tree topology with
+  no kernel changes.  Three GPU correctness gates are retained:
+
+  * `scripts/dflash_tree_attn_kernel_smoke.py` — chain-shaped ancestor mask
+    reduces to the chain kernel byte-for-byte; branching mask filters
+    siblings/cousins correctly.
+  * `scripts/dflash_tree_e2e_smoke.py` — three canonical tree shapes (depth-2
+    binary, depth-1 4-way branch, chain reduction) all pass finite_logits +
+    gpu_accept_match_cpu + cpu_oracle_matches on PARO target weights; the
+    root's `target_top1` is invariant across tree shapes (proves the mask
+    correctly isolates root-level attention from verifier rows).
+  * `dflash_chain_e2e_bench.py --tree-mode chain_as_tree` -- end-to-end
+    decode loop wraps the chain drafter output as a degenerate (linear) tree
+    and routes through `verify_tree_bulk_and_commit`.  Exact AR-match,
+    GPU accept matches CPU, accept-count parity with chain at B={1,2,4,8}.
+    Verify seconds are within 6% of chain batched (FASTER at B=1 / B=4),
+    confirming the tree kernel's per-row ancestor-mask check adds NO
+    meaningful overhead.
+
+  DDTree is still `2.0-4.9x` slower than serial c=1 on this degenerate chain
+  topology because B+1 per-cycle target compute remains the bottleneck.  A
+  real speed win over serial requires a branching tree drafter (top-K
+  expansion at each depth) so each cycle accepts MORE than 1 token across
+  parallel branches.  The current chain DFlash drafter only produces top-1
+  chains; a real top-K drafter is the open work item.
 - no speculative throughput claim is allowed until the native compact/c-aware
   target verifier plus drafter path produces a retained chain win over
   same-session AR.

@@ -1,0 +1,140 @@
+{
+  "commands": {
+    "chain_as_tree": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode chain_as_tree --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-chainastree-speedgate.json",
+    "chain_batched": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-batched-speedgate.json",
+    "chain_c1_loop": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode native_bulk_bplus1 --full-attn-chain-mode c1_loop --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-c1loop-speedgate.json",
+    "serial": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/dflash_chain_e2e_bench.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --verifier-mode serial_in_place_single_slot --hardware-gpu 'AMD RYZEN AI MAX+ 395 w/ Radeon 8060S' --max-prompts 1 --decode-tokens 8 --draft-budgets 1,2,4,8 --json /tmp/hipengine-serial-speedgate.json"
+  },
+  "correctness_gate": {
+    "finite_logits": true,
+    "gpu_accept_match_cpu": true,
+    "passed": true,
+    "same_session_ar_equality": true,
+    "tree_matches_chain_accept_counts": true
+  },
+  "date": "2026-05-19",
+  "decision_reason": "DDTree verifier path lands as drop-in equivalent to chain batched on the degenerate (linear) tree topology used here (chain_as_tree = parent_rows -1,0,1,...,B-1).  At every B={1,2,4,8} the tree verifier produces bit-equal AR-matching tokens, GPU accept matches CPU oracle, and accepted-token counts match chain exactly.  Per-cycle verify time is within 6% of chain batched in either direction (FASTER at B=1 and B=4 by ~5%, equal at B=2, ~2% slower at B=8).  The tree-aware GQA gate kernel's per-row ancestor-mask check adds NO meaningful overhead vs the chain kernel.  Still 2.0-5.0x slower than serial c=1 across all B, same as chain batched.  The DDTree infrastructure is correct and competitive; an actual speed win over serial requires a real branching tree drafter (top-K expansion) which is task #13's full form.",
+  "hardware": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S"
+  },
+  "measurements": {
+    "aggregate": {
+      "all_tree_exact_match_ar": true,
+      "all_tree_gpu_accept_match_cpu": true,
+      "tree_kernel_overhead_max_pct_over_chain_batched": 0.027664677780436797,
+      "tree_kernel_speedup_max_pct_over_chain_batched": 5.804542577442573,
+      "tree_matches_chain_accept_counts": true
+    },
+    "rows": [
+      {
+        "accepted_draft_tokens_chain": 3,
+        "accepted_draft_tokens_tree": 3,
+        "c1_loop_chain_verify_seconds": 0.2466189629631117,
+        "chain_as_tree_verify_seconds": 0.2521451339998748,
+        "chain_batched_verify_seconds": 0.2676829020201694,
+        "chain_exact_match_ar": true,
+        "draft_budget": 1,
+        "draft_calls_chain": 4,
+        "draft_calls_tree": 4,
+        "serial_verify_seconds": 0.12838804099010304,
+        "tree_exact_match_ar": true,
+        "tree_gpu_accept_match_cpu": true,
+        "tree_vs_c1_loop_ratio": 1.0224077296018381,
+        "tree_vs_chain_batched_ratio": 0.9419545742255743,
+        "tree_vs_serial_ratio": 1.9639300674376032
+      },
+      {
+        "accepted_draft_tokens_chain": 4,
+        "accepted_draft_tokens_tree": 4,
+        "c1_loop_chain_verify_seconds": 0.2891190960071981,
+        "chain_as_tree_verify_seconds": 0.26805847001378424,
+        "chain_batched_verify_seconds": 0.26798433301155455,
+        "chain_exact_match_ar": true,
+        "draft_budget": 2,
+        "draft_calls_chain": 4,
+        "draft_calls_tree": 4,
+        "serial_verify_seconds": 0.13258367398520932,
+        "tree_exact_match_ar": true,
+        "tree_gpu_accept_match_cpu": true,
+        "tree_vs_c1_loop_ratio": 0.9271558804511152,
+        "tree_vs_chain_batched_ratio": 1.0002766467778044,
+        "tree_vs_serial_ratio": 2.021806018467162
+      },
+      {
+        "accepted_draft_tokens_chain": 4,
+        "accepted_draft_tokens_tree": 4,
+        "c1_loop_chain_verify_seconds": 0.39819180601625703,
+        "chain_as_tree_verify_seconds": 0.3535432689532172,
+        "chain_batched_verify_seconds": 0.3734206460067071,
+        "chain_exact_match_ar": true,
+        "draft_budget": 4,
+        "draft_calls_chain": 4,
+        "draft_calls_tree": 4,
+        "serial_verify_seconds": 0.13058428795193322,
+        "tree_exact_match_ar": true,
+        "tree_gpu_accept_match_cpu": true,
+        "tree_vs_c1_loop_ratio": 0.8878717834258574,
+        "tree_vs_chain_batched_ratio": 0.9467694749445298,
+        "tree_vs_serial_ratio": 2.707395158316083
+      },
+      {
+        "accepted_draft_tokens_chain": 4,
+        "accepted_draft_tokens_tree": 4,
+        "c1_loop_chain_verify_seconds": 0.6206720859627239,
+        "chain_as_tree_verify_seconds": 0.6324835160339717,
+        "chain_batched_verify_seconds": 0.6450418299646117,
+        "chain_exact_match_ar": true,
+        "draft_budget": 8,
+        "draft_calls_chain": 4,
+        "draft_calls_tree": 4,
+        "serial_verify_seconds": 0.12980895399232395,
+        "tree_exact_match_ar": true,
+        "tree_gpu_accept_match_cpu": true,
+        "tree_vs_c1_loop_ratio": 1.0190300648899444,
+        "tree_vs_chain_batched_ratio": 0.980531008459825,
+        "tree_vs_serial_ratio": 4.872418246828895
+      }
+    ]
+  },
+  "models": {
+    "drafter": {
+      "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "path": "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719"
+    },
+    "target": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
+    }
+  },
+  "performance_claim": false,
+  "schema_version": 2,
+  "software": {
+    "hipengine_branch": "dflash",
+    "hipengine_commit": "a6d74ef6c21c33657cbfc0d7f37f400ccd113324",
+    "hipengine_dirty": true
+  },
+  "source_artifacts": [
+    "(transient) /tmp/hipengine-c1loop-speedgate.json",
+    "(transient) /tmp/hipengine-batched-speedgate.json",
+    "(transient) /tmp/hipengine-serial-speedgate.json",
+    "(transient) /tmp/hipengine-chainastree-speedgate.json"
+  ],
+  "status": "diagnostic",
+  "task": "DDTree verifier integration vs chain DFlash: tree verifier on degenerate (linear) tree topology compared against chain batched, chain c1_loop, and serial baselines at B={1,2,4,8}.",
+  "title": "DDTree verifier (chain_as_tree topology) vs chain DFlash speed-gate",
+  "workload": {
+    "decode_tokens": 8,
+    "draft_budgets": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "prompt_id": "code:quicksort_prefix",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "shape": "full_model_dflash_chain_e2e",
+    "tree_mode": "chain_as_tree"
+  }
+}

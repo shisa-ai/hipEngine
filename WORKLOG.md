@@ -18880,3 +18880,103 @@ Interpretation:
 not yet faster than ``serial_in_place_single_slot``.  Next directions tracked
 in `docs/DFLASH.md` Phase D4 (DDTree compiler + tree verifier, which needs
 this batched infrastructure) and the c-aware verifier sketch above.
+
+## 2026-05-19 (continued) — DDTree verifier foundation lands
+
+After the chain batched verifier (#30) finished at 6-8% better than c1_loop
+at middle B but still 2-5x slower than serial, the next milestone is
+DDTree: tree-shaped verifier for multi-branch speculation where serial
+early-exit is structurally impossible.  This session lands the DDTree
+foundation end-to-end on real PARO target weights.
+
+What landed (six commits on the ``dflash`` branch):
+
+- ``kernel: tree-aware GQA prefill gate attention for DDTree verifier``
+  (cbceb15) — new ``qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans``
+  HIP kernel + ctypes wrapper + state method + registry entry.  Adds
+  ``tree_committed_count`` (int64) and ``ancestor_mask`` (const uint8_t* of
+  shape [rows, rows]) on top of the chain prefill GQA gate kernel.  K
+  positions in [tree_committed_count, tree_committed_count + rows) get
+  score = -INF when ancestor_mask[row, row_offset] == 0, so softmax masks
+  the contribution.  V loads are skipped for masked positions to avoid
+  touching sibling cache lines.  Bit-equal to the chain kernel when given
+  a lower-triangular ancestor mask
+  (``scripts/dflash_tree_attn_kernel_smoke.py`` validates this).
+- ``feat: build DDTree ancestor mask + per-row cache-slot metadata``
+  (b1e488e) — ``_write_verify_chain_metadata`` now emits the dense
+  ``[rows, rows]`` ancestor mask (from ``batch.parent_rows``) and the
+  per-row UNIQUE cache-slot vector when ``batch.mode == 'verify_tree'``.
+  Tree mode decouples RoPE phase (depth-based, from ``batch.positions``)
+  from K/V storage slot (per-row, in the new ``verify_cache_slot_buf``)
+  because siblings share a depth but must NOT share a cache cell.
+- ``feat: add DDTree full-attention orchestrator _run_full_attention_tree_batched``
+  (0ee0cb9) — sibling of ``_run_full_attention_chain_batched``.  Uses
+  ``verify_cache_slot_buf`` for K/V append so siblings don't collide; uses
+  the new tree kernel + ancestor mask for attention; reuses c=1 MoE/MLP
+  primitives.  Uniform per-row context_count = total_len makes the
+  kernel's causal-limit branch a no-op so the mask alone enforces tree
+  causality.
+- ``feat: add Qwen35ParoResidentSession.verify_tree_bulk_and_commit``
+  (b4d89b1) — public session entry.  Mirrors chain verify but routes the
+  full-attention dispatcher to the tree orchestrator when
+  ``batch.mode == 'verify_tree'``.  The existing chain accept kernel
+  (``dflash_accept_chain_i32``) already walks parent_rows and so handles
+  tree topology correctly with no kernel changes.
+- ``test: end-to-end DDTree verifier correctness smoke``
+  (861f3f2) — ``scripts/dflash_tree_e2e_smoke.py`` loads the real PARO
+  target, prefills a stable prompt, hand-builds three canonical tree
+  shapes, and calls ``verify_tree_bulk_and_commit`` ONCE for each.  All
+  three shapes (depth-2 binary, depth-1 4-way branch, chain reduction)
+  pass finite_logits + gpu_accept_match_cpu + cpu_oracle_matches.  Root
+  ``target_top1`` is invariant across all three shapes (== 314 for the
+  ``code:quicksort_prefix`` prompt), confirming the ancestor mask correctly
+  isolates root-level attention from verifier rows.
+- ``feat: DDTree K/V compaction unblocks multi-cycle decode`` (a6d74ef) —
+  ``_commit_tree_full_attention_kv`` walks parent_rows from the accepted
+  leaf to root, then copies each path row's K/V cell from its sparse
+  verifier-row slot ``tree_committed_count + path_row`` to the canonical
+  dense depth slot ``tree_committed_count + depth`` for every
+  full-attention layer.  Linear-attention recurrent state for the leaf is
+  committed by the existing ``_commit_bulk_linear_states`` (already
+  tree-aware).  ``verify_tree_bulk_and_commit`` now calls compaction
+  after accept, so multi-cycle decode reads the correct dense context.
+
+End-to-end speed gate (gfx1151, PARO target, B={1,2,4,8}, 8 decode tokens,
+``code:quicksort_prefix`` prompt, ``chain_as_tree`` topology that wraps the
+existing chain drafter outputs as a degenerate tree to isolate kernel
+overhead, retained artifact
+``benchmarks/results/2026-05-19-hipengine-ddtree-chain-as-tree-vs-chain-speedgate-diagnostic.json``):
+
+| B | serial s | c1_loop s | chain_batched s | **chain_as_tree s** | tree/batched | tree/c1_loop | tree/serial |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 0.128 | 0.247 | 0.268 | **0.252** | 0.942 | 1.022 | 1.964 |
+| 2 | 0.133 | 0.289 | 0.268 | **0.268** | 1.000 | 0.927 | 2.021 |
+| 4 | 0.131 | 0.398 | 0.373 | **0.354** | 0.947 | 0.888 | 2.708 |
+| 8 | 0.130 | 0.621 | 0.645 | **0.633** | 0.981 | 1.019 | 4.876 |
+
+All ``chain_as_tree`` rows pass ``exact_match_ar=True``,
+``gpu_accept_match_cpu=True``, and accept-count parity with the chain
+batched run.  Findings:
+
+- The tree-aware GQA gate kernel's per-row ancestor-mask check adds NO
+  meaningful overhead vs the chain GQA gate kernel.  ``chain_as_tree`` is
+  6% FASTER than chain batched at B=1 and B=4, equal at B=2, ~2% slower
+  at B=8.
+- DDTree is still ``2.0-4.9x slower than serial c=1`` for this degenerate
+  chain topology (same as chain batched).  The B+1 per-cycle target
+  compute dominates.
+- An actual speed win over serial requires a real branching tree drafter
+  (top-K expansion at each depth), which is task #13's full form.  The
+  current chain DFlash drafter produces a chain of top-1 candidates; the
+  ``chain_as_tree`` flag just wraps that chain in tree-mode metadata for
+  apples-to-apples kernel-overhead measurement.
+
+DDTree task graph:
+- #8  add tree-aware GQA prefill gate kernel + wrapper           [done]
+- #9  build tree ancestor-mask metadata for verifier            [done]
+- #10 add ``_run_full_attention_tree_batched`` orchestrator     [done]
+- #11 add ``verify_tree_bulk_and_commit`` session method        [done]
+- #12 unit-test tree verifier vs chain reduction                [done]
+- #15 DDTree commit-step K/V compaction                         [done]
+- #13 synthetic tree drafter for E2E benchmarking               [in_progress; minimal ``chain_as_tree`` wrap landed; real top-K drafter still needed for branching tree benchmark]
+- #14 E2E DDTree benchmark vs chain DFlash                      [in_progress; ``chain_as_tree`` matrix landed as a kernel-overhead measurement; real branching benchmark blocked on #13's full form]

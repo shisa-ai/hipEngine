@@ -161,6 +161,96 @@ def _build_chain_target_batch(
     return TargetVerifyBatch.from_draft(draft, root_tokens=(int(root_token),), root_positions=(int(root_position),))
 
 
+def _build_flat_fan_tree_target_batch(
+    *,
+    root_token: int,
+    root_position: int,
+    candidates: Sequence[int],
+    candidate_budget: int,
+    active_count: int,
+) -> TargetVerifyBatch:
+    """Build a depth-1 flat-fan tree from the chain drafter's candidates.
+
+    Each of the ``B`` chain candidates becomes a depth-1 sibling of the root
+    (``tree_parents = (-1,) * B``).  All siblings share RoPE phase
+    ``root_position + 1`` but get unique cache slots via the tree verifier's
+    cache-slot disambiguation.  This is the MINIMUM tree shape that exercises
+    the tree-aware GQA gate kernel + ancestor mask on real prompts.  The
+    expected acceptance is at most 1 token per cycle (chain DFlash with B
+    candidates can chain accepts up to B), so this shape is NOT intended to
+    beat chain on tok/s -- it measures the tree verifier kernel cost on a
+    realistic decode loop.
+    """
+
+    if candidate_budget <= 0:
+        raise ValueError("candidate_budget must be positive")
+    if active_count < 0 or active_count > candidate_budget:
+        raise ValueError("active_count must be in [0, candidate_budget]")
+    padded = [0] * candidate_budget
+    for index, token in enumerate(candidates[:active_count]):
+        padded[index] = int(token)
+    draft = DraftBatch(
+        request_ids=(0,),
+        candidate_tokens=tuple(padded),
+        # All candidates branch from the root at the same depth, so they
+        # share the same parent_position (root_position) and depth 1.
+        parent_positions=tuple(int(root_position) for _ in range(candidate_budget)),
+        draft_depths=tuple(1 for _ in range(candidate_budget)),
+        row_to_request=tuple(0 for _ in range(candidate_budget)),
+        # tree_parents = -1 for every candidate means "parent is the root".
+        tree_parents=tuple(-1 for _ in range(candidate_budget)),
+        active_mask=tuple(index < active_count for index in range(candidate_budget)),
+        mode="verify_tree",
+    )
+    return TargetVerifyBatch.from_draft(
+        draft,
+        root_tokens=(int(root_token),),
+        root_positions=(int(root_position),),
+    )
+
+
+def _build_chain_as_tree_target_batch(
+    *,
+    root_token: int,
+    root_position: int,
+    candidates: Sequence[int],
+    candidate_budget: int,
+    active_count: int,
+) -> TargetVerifyBatch:
+    """Wrap the chain drafter output as a degenerate (linear) tree.
+
+    parent_rows form a single chain (``tree_parents = (-1, 0, 1, ..., B-2)``),
+    which is the chain DFlash topology re-expressed in tree mode.  Used to
+    measure the tree verifier kernel overhead vs chain at the SAME logical
+    accept rate (both can accept up to B tokens in sequence).  Per-row K/V
+    layout is dense -- ancestor mask is lower-triangular -- so this is
+    bit-equal to the chain batched path on the full-attention layers.
+    """
+
+    if candidate_budget <= 0:
+        raise ValueError("candidate_budget must be positive")
+    if active_count < 0 or active_count > candidate_budget:
+        raise ValueError("active_count must be in [0, candidate_budget]")
+    padded = [0] * candidate_budget
+    for index, token in enumerate(candidates[:active_count]):
+        padded[index] = int(token)
+    draft = DraftBatch(
+        request_ids=(0,),
+        candidate_tokens=tuple(padded),
+        parent_positions=tuple(int(root_position) + index for index in range(candidate_budget)),
+        draft_depths=tuple(index + 1 for index in range(candidate_budget)),
+        row_to_request=tuple(0 for _ in range(candidate_budget)),
+        tree_parents=tuple(-1 if index == 0 else index - 1 for index in range(candidate_budget)),
+        active_mask=tuple(index < active_count for index in range(candidate_budget)),
+        mode="verify_tree",
+    )
+    return TargetVerifyBatch.from_draft(
+        draft,
+        root_tokens=(int(root_token),),
+        root_positions=(int(root_position),),
+    )
+
+
 class NativeDFlashChainDrafter:
     """Correctness-first native DFlash top-1 chain proposer.
 
@@ -1218,6 +1308,7 @@ def run_same_session_pair(
     drafter_graph_mode: str = "off",
     drafter_fusion_mode: str = "off",
     chain_attn_mode: str = "c1_loop",
+    tree_mode: str = "chain",
 ) -> tuple[tuple[list[int], dict[str, Any]], tuple[list[int], dict[str, Any]]]:
     """Run AR control and DFlash chain in one resident target session.
 
@@ -1294,6 +1385,7 @@ def run_same_session_pair(
                 verifier_mode=verifier_mode,
                 verifier_graph_mode=verifier_graph_mode,
                 chain_attn_mode=chain_attn_mode,
+                tree_mode=tree_mode,
             )
         spec_meta["same_session_control"] = True
         spec_meta["same_process_control"] = True
@@ -1312,6 +1404,7 @@ def _run_dflash_chain_on_session(
     verifier_mode: str = "native_bulk_bplus1",
     verifier_graph_mode: str = "off",
     chain_attn_mode: str = "c1_loop",
+    tree_mode: str = "chain",
 ) -> tuple[list[int], dict[str, Any]]:
     t0 = time.perf_counter()
     next_result = None
@@ -1409,22 +1502,38 @@ def _run_dflash_chain_on_session(
         d2h_vector_values += draft.d2h_vector_values
         t_verify = time.perf_counter()
         if verifier_mode == "native_bulk_bplus1":
-            target_batch = _build_chain_target_batch(
-                root_token=root_token,
-                root_position=context_tokens,
-                candidates=candidates,
-                candidate_budget=candidate_budget,
-                active_count=active_budget,
-            )
-            verify_result = session.verify_chain_bulk_and_commit(
-                target_batch,
-                base_slot=base_slot,
-                capture_layer_ids=drafter.config.target_layer_ids,
-                capture_hidden_concat=drafter.target_hidden_concat,
-                capture_row_start=context_tokens,
-                graph_mode=verifier_graph_mode,
-                chain_attn_mode=chain_attn_mode,
-            )
+            if tree_mode == "chain_as_tree":
+                target_batch = _build_chain_as_tree_target_batch(
+                    root_token=root_token,
+                    root_position=context_tokens,
+                    candidates=candidates,
+                    candidate_budget=candidate_budget,
+                    active_count=active_budget,
+                )
+                verify_result = session.verify_tree_bulk_and_commit(
+                    target_batch,
+                    base_slot=base_slot,
+                    capture_layer_ids=drafter.config.target_layer_ids,
+                    capture_hidden_concat=drafter.target_hidden_concat,
+                    capture_row_start=context_tokens,
+                )
+            else:
+                target_batch = _build_chain_target_batch(
+                    root_token=root_token,
+                    root_position=context_tokens,
+                    candidates=candidates,
+                    candidate_budget=candidate_budget,
+                    active_count=active_budget,
+                )
+                verify_result = session.verify_chain_bulk_and_commit(
+                    target_batch,
+                    base_slot=base_slot,
+                    capture_layer_ids=drafter.config.target_layer_ids,
+                    capture_hidden_concat=drafter.target_hidden_concat,
+                    capture_row_start=context_tokens,
+                    graph_mode=verifier_graph_mode,
+                    chain_attn_mode=chain_attn_mode,
+                )
             target_top1 = list(verify_result.target_top1[: 1 + active_budget])
             accepted = int(verify_result.accepted_count)
             bonus = int(verify_result.next_token) if verify_result.next_token is not None else int(target_top1[-1])
@@ -1558,6 +1667,7 @@ def _run_dflash_chain_on_session(
         "verifier_mode": verifier_mode,
         "verifier_graph_mode": verifier_graph_mode,
         "verifier_chain_attn_mode": chain_attn_mode,
+        "verifier_tree_mode": tree_mode,
         "native_bulk_verifier": verifier_mode == "native_bulk_bplus1",
         "drafter_context_mode": "append_only_projected_context_and_kv",
         "draft_phase_timing_mode": "synchronized" if drafter.sync_draft_phases else "enqueue_until_final_sync",
@@ -1756,6 +1866,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verifier-mode", choices=("native_bulk_bplus1", "serial_in_place_single_slot"), default="native_bulk_bplus1")
     parser.add_argument("--verifier-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native B+1 verifier forward+accept; auto replays fixed rows/capture-width buckets")
     parser.add_argument("--full-attn-chain-mode", choices=("c1_loop", "batched"), default="c1_loop", help="Native B+1 verifier full-attention scheduling: c1_loop (per-row resident decode kernels, current default) or batched (one batched pass per layer using prefill primitives + c=1 MoE)")
+    parser.add_argument(
+        "--tree-mode",
+        choices=("chain", "chain_as_tree"),
+        default="chain",
+        help=(
+            "Verifier topology: chain (default) uses verify_chain_bulk_and_commit;"
+            " chain_as_tree wraps the chain candidates as a degenerate (linear)"
+            " tree and routes through verify_tree_bulk_and_commit -- same accept"
+            " profile, isolates the tree kernel's overhead vs the chain batched"
+            " path."
+        ),
+    )
     parser.add_argument("--drafter-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native DFlash propose(); auto replays cache hits, validate records capture parity without requiring reuse")
     parser.add_argument("--drafter-fusion", choices=("off", "qkv"), default="off", help="Enable prototype DFlash drafter kernel fusions; qkv fuses query-side Q/K/V projections with unfused fallback available")
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
@@ -1793,6 +1915,7 @@ def main(argv: list[str] | None = None) -> int:
                 drafter_graph_mode=args.drafter_graph,
                 drafter_fusion_mode=args.drafter_fusion,
                 chain_attn_mode=args.full_attn_chain_mode,
+                tree_mode=args.tree_mode,
             )
             rows.append(_row_for_artifact(prompt, budget, ar, spec))
     artifact = build_speculative_artifact(
@@ -1823,6 +1946,7 @@ def main(argv: list[str] | None = None) -> int:
             "verifier_mode": args.verifier_mode,
             "verifier_graph_mode": args.verifier_graph,
             "verifier_chain_attn_mode": args.full_attn_chain_mode,
+            "verifier_tree_mode": args.tree_mode,
             "native_bulk_verifier": args.verifier_mode == "native_bulk_bplus1",
             "drafter_graph_mode": args.drafter_graph,
             "drafter_fusion_mode": args.drafter_fusion,
