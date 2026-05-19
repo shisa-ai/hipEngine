@@ -45,6 +45,19 @@ class GGUFQ4KQuant:
 
 
 @dataclass(frozen=True)
+class GGUFQ4KT16Quant:
+    """T16 replacement-layout plugin key for GGUF block_q4_K weights."""
+
+    name: str = "gguf_q4_k_t16_v1"
+    weight_storage: str = "gguf_block_q4_k_t16_v1"
+    activation_preprocess: str = "none"
+    compute_dtype: str = "fp32_accum"
+    scale_granularity: str = "block256_subblock32_scale_min"
+    calibration_artifact: str = "gguf"
+    kernel_family: str = "gguf_t16_gemv"
+
+
+@dataclass(frozen=True)
 class GGUFQ4KPack8:
     """Lossless pack8 layout for GGUF Q4_K GEMV.
 
@@ -99,6 +112,7 @@ class GGUFQ4KTile16:
 
 
 GGUF_Q4_K = register_quant(GGUFQ4KQuant())
+GGUF_Q4_K_T16_V1 = register_quant(GGUFQ4KT16Quant())
 
 
 def awq_pack8_shift_for_lane(lane: int) -> int:
@@ -317,9 +331,11 @@ __all__ = [
     "GGUF_Q4_K_TILE16_COLS",
     "GGUF_Q4_K_SUBBLOCK",
     "GGUF_Q4_K_SUBBLOCKS",
+    "GGUF_Q4_K_T16_V1",
     "GGUFQ4KPack8",
     "GGUFQ4KTile16",
     "GGUFQ4KQuant",
+    "GGUFQ4KT16Quant",
     "awq_pack8_shift_for_lane",
     "repack_gguf_q4_k_pack8",
     "repack_gguf_q4_k_tile16",

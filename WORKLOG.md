@@ -20633,3 +20633,45 @@ Acceptance for #51/#52:
 - Peak tracked memory remains under the 24 GiB-class budget without raw+packed duplication.
 
 Docs/rollups updated: docs index, `docs/GGUF.md`, `docs/KERNELS.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-05-19 P9.H3 task #51: T16 quant/materializer foundation
+
+Started #51 after completing the P9.H2 design. First scoped implementation unit is the layout/oracle foundation, before touching HIP kernels or runtime dispatch.
+
+Changes:
+
+- Registered replacement-layout quant keys:
+  - `gguf_q4_k_t16_v1` in `hipengine/quant/gguf_q4_k.py`.
+  - `gguf_q5_k_t16_v1`, `gguf_q6_k_t16_v1`, `gguf_q8_0_t16_v1` in new `hipengine/quant/gguf_t16.py`.
+- Added bit-lossless CPU materializers and inverse transforms for the missing T16 layouts:
+  - Q5T16: `[experts,out_tiles16,blocks_per_row,2880]`, `+2.27%` vs raw Q5_K selected-down storage.
+  - Q6T16: `[experts,out_tiles16,blocks_per_row,3360]`, byte-neutral vs raw Q6_K.
+  - Q8T16: `[out_tiles16,blocks_per_row,544]`, byte-neutral vs raw Q8_0.
+- Q4T16 keeps the existing P9.C13 materializer and now has the `gguf_q4_k_t16_v1` quant key for future dispatch.
+- Exported the new constants/helpers through `hipengine.quant`.
+- Updated `docs/KERNELS.md` with the P9.H3a implementation slice.
+
+Validation:
+
+```bash
+uv run python -m py_compile \
+  hipengine/quant/gguf_q4_k.py \
+  hipengine/quant/gguf_t16.py \
+  hipengine/quant/__init__.py \
+  tests/test_gguf_t16_repack.py
+uv run --with pytest pytest \
+  tests/test_gguf_q4_k_tile16_repack.py \
+  tests/test_gguf_t16_repack.py \
+  -q --tb=short
+# 22 passed
+```
+
+Coverage:
+
+- Registry resolution for all four T16 quant keys.
+- Exact raw-byte roundtrip for Q5_K/Q6_K/Q8_0 T16 layouts.
+- Dequant equivalence vs the existing GGUF CPU reference after inverse transform.
+- Storage overhead assertions matching `docs/GGUF_DECODE_REPACK.md`.
+- Shape validation and out-feature mismatch errors.
+
+This is not a performance claim and does not complete #51. Next slices are resident materialization/device allocation and HIP rows=1 decode kernels/dispatch, with P9.E2 and P9.B7 acceptance still pending.
