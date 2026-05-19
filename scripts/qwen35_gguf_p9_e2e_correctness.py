@@ -51,6 +51,7 @@ class SequenceRun:
     final_logit: float
     finite_logits: bool
     memory: dict[str, Any]
+    fastpath_safety: dict[str, Any] | None = None
 
     @property
     def tail_token_ids(self) -> list[int]:
@@ -162,6 +163,7 @@ def run_sequence(
             final_token_id = int(current.token_id)
             final_logit = float(current.logit)
             finite_logits = bool(np.all(np.isfinite(logits_rows[-1])))
+            fastpath_safety = session.fastpath_safety.as_dict() if session.fastpath_safety is not None else None
     logits = np.vstack(logits_rows).astype(np.float32, copy=False)
     return SequenceRun(
         generated_token_ids=generated,
@@ -170,6 +172,7 @@ def run_sequence(
         final_logit=final_logit,
         finite_logits=finite_logits,
         memory=memory_stats(),
+        fastpath_safety=fastpath_safety,
     )
 
 
@@ -377,6 +380,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "env": expected_env_from_mode(fixture["reference"]),
             "use_bulk_prefill": bool(fixture["reference"].get("use_bulk_prefill", True)),
             "bulk_prefill_attention_mode": str(fixture["reference"].get("bulk_prefill_attention_mode", "bulk")),
+            "fastpath_safety": reference.fastpath_safety,
             "generated_tail_token_ids": reference.tail_token_ids,
             "final_token_id": reference.final_token_id,
             "final_logit": reference.final_logit,
@@ -388,13 +392,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "env": expected_env_from_mode(fixture["candidate"]),
             "use_bulk_prefill": bool(fixture["candidate"].get("use_bulk_prefill", True)),
             "bulk_prefill_attention_mode": str(fixture["candidate"].get("bulk_prefill_attention_mode", "bulk")),
+            "fastpath_safety_repeats": [candidate.fastpath_safety for candidate in candidates],
         },
         "correctness": correctness,
         "passed": passed,
         "notes": [
             "This gate intentionally uses the resident runner rather than public LLM.generate so it can compare full logits for every generated step.",
             "Reference is the legacy row-GEMV path with WMMA prefill and P9 GEMV decode disabled by env.",
-            "Candidate is the opt-in P9 path with HIPENGINE_GGUF_WMMA_PREFILL=1 and HIPENGINE_GGUF_GEMV_DECODE=1.",
+            "Candidate is launched with HIPENGINE_GGUF_WMMA_PREFILL=1 and HIPENGINE_GGUF_GEMV_DECODE=1; inspect candidate.fastpath_safety_repeats for requested vs effective qwen35moe flags.",
             "Use this command as the correctness gate for P9.A3/P9.B7-style benchmark acceptance rows before reporting throughput.",
         ],
     }

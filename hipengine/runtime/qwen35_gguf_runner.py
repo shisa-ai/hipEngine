@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -1941,6 +1941,75 @@ class Qwen35GGUFFullStackRunner:
         self.close()
 
 
+_QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS"
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFFastPathSafety:
+    """Effective qwen35moe GGUF fast-path state after correctness gating."""
+
+    is_qwen35moe: bool
+    allow_unsafe_qwen35moe_fastpaths: bool
+    requested_wmma_prefill: bool
+    requested_gemv_decode: bool
+    effective_wmma_prefill: bool
+    effective_gemv_decode: bool
+    disabled_wmma_prefill: bool
+    disabled_gemv_decode: bool
+    reason: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+def _env_truthy(name: str) -> bool:
+    raw = os.environ.get(name, "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def resolve_qwen35moe_fastpath_safety(
+    *,
+    is_qwen35moe: bool,
+    use_wmma_prefill: bool | None,
+    use_gemv_decode: bool | None,
+) -> Qwen35GGUFFastPathSafety:
+    """Resolve correctness-safe qwen35moe WMMA/GEMV opt-in state.
+
+    P9.E2 showed that the current qwen35moe full-model path fails the formal
+    KL/top-1 contract when either the P8 WMMA prefill or P9 rows=1 GEMV decode
+    opt-in is enabled.  Until #50/#51 replace those raw-GGUF paths with a
+    correct repacked implementation, qwen35moe resident sessions force the
+    effective flags off unless the caller sets the explicit unsafe override.
+    The lower-level kernel/unit-test entry points remain opt-in so kernel R&D
+    can continue, but public/resident benchmark paths cannot be promoted by
+    accident.
+    """
+
+    requested_wmma = gguf_wmma_prefill_enabled(use_wmma_prefill)
+    requested_gemv = gguf_gemv_decode_enabled(use_gemv_decode)
+    allow_unsafe = _env_truthy(_QWEN35MOE_UNSAFE_FASTPATH_ENV)
+    disabled_wmma = bool(is_qwen35moe and requested_wmma and not allow_unsafe)
+    disabled_gemv = bool(is_qwen35moe and requested_gemv and not allow_unsafe)
+    reason = None
+    if disabled_wmma or disabled_gemv:
+        reason = (
+            "qwen35moe WMMA prefill / GEMV decode fast paths are disabled by default "
+            "because P9.E2 rejected the opt-in combination; set "
+            f"{_QWEN35MOE_UNSAFE_FASTPATH_ENV}=1 only for explicit unsafe kernel R&D."
+        )
+    return Qwen35GGUFFastPathSafety(
+        is_qwen35moe=bool(is_qwen35moe),
+        allow_unsafe_qwen35moe_fastpaths=allow_unsafe,
+        requested_wmma_prefill=requested_wmma,
+        requested_gemv_decode=requested_gemv,
+        effective_wmma_prefill=bool(requested_wmma and not disabled_wmma),
+        effective_gemv_decode=bool(requested_gemv and not disabled_gemv),
+        disabled_wmma_prefill=disabled_wmma,
+        disabled_gemv_decode=disabled_gemv,
+        reason=reason,
+    )
+
+
 @dataclass
 class Qwen35GGUFResidentSession:
     """Persistent GGUF Qwen3.5 session for public greedy generation.
@@ -1989,10 +2058,21 @@ class Qwen35GGUFResidentSession:
     _position: int = field(default=0, init=False)
     _lm_head_threads: int = field(default=128, init=False)
     _lm_head_stage1_blocks: int = field(default=0, init=False)
+    fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
         self.runner = Qwen35GGUFFullStackRunner(self.model_path, runtime=self.runtime)
+        if self.runner.weights is None:
+            raise RuntimeError("GGUF full-stack runner did not materialize weights")
+        self.fastpath_safety = resolve_qwen35moe_fastpath_safety(
+            is_qwen35moe=self.runner.weights.config.is_moe,
+            use_wmma_prefill=self.use_wmma_prefill,
+            use_gemv_decode=self.use_gemv_decode,
+        )
+        if self.runner.weights.config.is_moe:
+            self.use_wmma_prefill = self.fastpath_safety.effective_wmma_prefill
+            self.use_gemv_decode = self.fastpath_safety.effective_gemv_decode
         runtime = self.runtime or get_hip_runtime()
         build_kwargs = {
             "load": True,
@@ -4292,5 +4372,7 @@ __all__ = [
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFNextTokenProbeResult",
     "Qwen35GGUFOneLayerProbe",
+    "Qwen35GGUFFastPathSafety",
     "Qwen35GGUFResidentSession",
+    "resolve_qwen35moe_fastpath_safety",
 ]

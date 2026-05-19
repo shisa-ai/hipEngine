@@ -1326,6 +1326,15 @@ router_top_k          — already on-device
 The selected row-GEMV path remains the default and also the fallback when the
 raw GGUF expert quant/shape or selected WMMA registry coverage is unavailable.
 
+**P9.H1 safety note (2026-05-19):** the qwen35moe resident runtime now forces
+`use_wmma_prefill=False` and `use_gemv_decode=False` when either opt-in is
+requested, unless `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1` is set.
+This is a deliberate correctness guard: the formal P9.E2 512/128 gate rejected
+both real opt-ins (`KL 5.993`, top-1 `5.43%`). Kernel R&D can still use the
+unsafe override, but retained P9.A3/P9.B7 benchmark rows must either show
+`effective_* = true` and pass P9.E2 after the repack fixes, or be labeled as a
+legacy fallback rather than a WMMA/GEMV performance claim.
+
 P8.7 — **lm_head** Q6_K batched WMMA prefill (one-shot final-row case, plus
 the "sample all rows" debug case used in stage probes).
 

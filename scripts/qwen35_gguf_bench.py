@@ -201,6 +201,11 @@ def main() -> int:
         "preload_expert_sidecars": bool(args.preload_expert_sidecars),
         "use_wmma_prefill": args.use_wmma_prefill,
         "use_gemv_decode": args.use_gemv_decode,
+        "requested_use_wmma_prefill": args.use_wmma_prefill,
+        "requested_use_gemv_decode": args.use_gemv_decode,
+        "effective_use_wmma_prefill_all": [run.get("effective_use_wmma_prefill") for run in runs],
+        "effective_use_gemv_decode_all": [run.get("effective_use_gemv_decode") for run in runs],
+        "fastpath_safety": [run.get("fastpath_safety") for run in runs],
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
         "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
         "runs": runs,
@@ -275,6 +280,7 @@ def _run_once(
         use_gemv_decode=use_gemv_decode,
     )
     load_seconds = time.perf_counter() - load_start
+    fastpath_safety = session.fastpath_safety.as_dict() if session.fastpath_safety is not None else None
     memory_snapshots["after_load"] = _memory_snapshot("after_load", runtime, session)
 
     generated_token_ids: list[int] = []
@@ -346,6 +352,11 @@ def _run_once(
         "bulk_prefill_attention_mode": bulk_attention_mode,
         "use_wmma_prefill": use_wmma_prefill,
         "use_gemv_decode": use_gemv_decode,
+        "requested_use_wmma_prefill": use_wmma_prefill,
+        "requested_use_gemv_decode": use_gemv_decode,
+        "effective_use_wmma_prefill": None if fastpath_safety is None else fastpath_safety.get("effective_wmma_prefill"),
+        "effective_use_gemv_decode": None if fastpath_safety is None else fastpath_safety.get("effective_gemv_decode"),
+        "fastpath_safety": fastpath_safety,
         "timings": {
             "load_seconds": load_seconds,
             "prefill_seconds": prefill_seconds,

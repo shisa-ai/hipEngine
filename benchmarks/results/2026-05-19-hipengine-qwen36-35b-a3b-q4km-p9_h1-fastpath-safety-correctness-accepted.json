@@ -1,0 +1,333 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": false,
+  "mode": "qwen35moe_p9_wmma_prefill_plus_gemv_decode_e2e_correctness",
+  "fixture": "tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json",
+  "arguments": {
+    "model_override": "",
+    "quant_override": "",
+    "decode_tokens_override": null,
+    "repeats_override": null,
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "require_cached_build": true,
+    "json": "benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h1-fastpath-safety-correctness-accepted.json"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "prompt": {
+    "source": "repeated_token_id",
+    "token_id": 9707,
+    "prompt_length": 512
+  },
+  "generation": {
+    "decode_tokens": 128,
+    "candidate_repeats": 3,
+    "total_logits_rows_per_run": 129,
+    "total_generated_tokens_per_run": 129,
+    "note": "Rows include the prefill sample plus every eager decode step; this mirrors 512/128 resident generation while collecting per-step logits."
+  },
+  "reference": {
+    "name": "legacy_row_gemv_reference_path",
+    "env": {
+      "HIPENGINE_GGUF_WMMA_PREFILL": "0",
+      "HIPENGINE_GGUF_GEMV_DECODE": "0"
+    },
+    "use_bulk_prefill": true,
+    "bulk_prefill_attention_mode": "bulk",
+    "fastpath_safety": {
+      "is_qwen35moe": true,
+      "allow_unsafe_qwen35moe_fastpaths": false,
+      "requested_wmma_prefill": false,
+      "requested_gemv_decode": false,
+      "effective_wmma_prefill": false,
+      "effective_gemv_decode": false,
+      "disabled_wmma_prefill": false,
+      "disabled_gemv_decode": false,
+      "reason": null
+    },
+    "generated_tail_token_ids": [
+      220,
+      14405,
+      20,
+      220,
+      24,
+      96203,
+      17,
+      220,
+      318,
+      318,
+      1510,
+      318,
+      220,
+      220,
+      220,
+      220
+    ],
+    "final_token_id": 220,
+    "final_logit": 12.638504028320312,
+    "finite_final_logits": true,
+    "memory": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 22426218248,
+      "total_allocated_bytes": 22426218248,
+      "total_freed_bytes": 22426218248,
+      "active_allocations": 0,
+      "peak_allocations": 936
+    }
+  },
+  "candidate": {
+    "name": "p9_wmma_prefill_plus_gemv_decode_opt_in",
+    "env": {
+      "HIPENGINE_GGUF_WMMA_PREFILL": "1",
+      "HIPENGINE_GGUF_GEMV_DECODE": "1"
+    },
+    "use_bulk_prefill": true,
+    "bulk_prefill_attention_mode": "bulk",
+    "fastpath_safety_repeats": [
+      {
+        "is_qwen35moe": true,
+        "allow_unsafe_qwen35moe_fastpaths": false,
+        "requested_wmma_prefill": true,
+        "requested_gemv_decode": true,
+        "effective_wmma_prefill": false,
+        "effective_gemv_decode": false,
+        "disabled_wmma_prefill": true,
+        "disabled_gemv_decode": true,
+        "reason": "qwen35moe WMMA prefill / GEMV decode fast paths are disabled by default because P9.E2 rejected the opt-in combination; set HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 only for explicit unsafe kernel R&D."
+      },
+      {
+        "is_qwen35moe": true,
+        "allow_unsafe_qwen35moe_fastpaths": false,
+        "requested_wmma_prefill": true,
+        "requested_gemv_decode": true,
+        "effective_wmma_prefill": false,
+        "effective_gemv_decode": false,
+        "disabled_wmma_prefill": true,
+        "disabled_gemv_decode": true,
+        "reason": "qwen35moe WMMA prefill / GEMV decode fast paths are disabled by default because P9.E2 rejected the opt-in combination; set HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 only for explicit unsafe kernel R&D."
+      },
+      {
+        "is_qwen35moe": true,
+        "allow_unsafe_qwen35moe_fastpaths": false,
+        "requested_wmma_prefill": true,
+        "requested_gemv_decode": true,
+        "effective_wmma_prefill": false,
+        "effective_gemv_decode": false,
+        "disabled_wmma_prefill": true,
+        "disabled_gemv_decode": true,
+        "reason": "qwen35moe WMMA prefill / GEMV decode fast paths are disabled by default because P9.E2 rejected the opt-in combination; set HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 only for explicit unsafe kernel R&D."
+      }
+    ]
+  },
+  "correctness": {
+    "passed": true,
+    "errors": [],
+    "kl_threshold": 0.05,
+    "top1_threshold": 0.9,
+    "reference_generated_token_count": 129,
+    "reference_tail_token_ids": [
+      220,
+      14405,
+      20,
+      220,
+      24,
+      96203,
+      17,
+      220,
+      318,
+      318,
+      1510,
+      318,
+      220,
+      220,
+      220,
+      220
+    ],
+    "reference_final_token_id": 220,
+    "reference_final_logit": 12.638504028320312,
+    "reference_finite_final_logits": true,
+    "candidate_repeat_count": 3,
+    "candidate_tails": [
+      [
+        220,
+        14405,
+        20,
+        220,
+        24,
+        96203,
+        17,
+        220,
+        318,
+        318,
+        1510,
+        318,
+        220,
+        220,
+        220,
+        220
+      ],
+      [
+        220,
+        14405,
+        20,
+        220,
+        24,
+        96203,
+        17,
+        220,
+        318,
+        318,
+        1510,
+        318,
+        220,
+        220,
+        220,
+        220
+      ],
+      [
+        220,
+        14405,
+        20,
+        220,
+        24,
+        96203,
+        17,
+        220,
+        318,
+        318,
+        1510,
+        318,
+        220,
+        220,
+        220,
+        220
+      ]
+    ],
+    "candidate_deterministic_tail": true,
+    "candidate_deterministic_full_sequence": true,
+    "per_repeat": [
+      {
+        "repeat_index": 0,
+        "kl_mean": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "passed": true,
+        "tokens_match_reference": true,
+        "generated_token_count": 129,
+        "generated_tail_token_ids": [
+          220,
+          14405,
+          20,
+          220,
+          24,
+          96203,
+          17,
+          220,
+          318,
+          318,
+          1510,
+          318,
+          220,
+          220,
+          220,
+          220
+        ],
+        "final_token_id": 220,
+        "final_logit": 12.638504028320312,
+        "finite_final_logits": true,
+        "row_drift_summary": {
+          "rows": 129,
+          "top1_match_count": 129,
+          "top1_mismatch_count": 0,
+          "first_top1_mismatch": null,
+          "max_abs_logit_delta": 0.0
+        }
+      },
+      {
+        "repeat_index": 1,
+        "kl_mean": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "passed": true,
+        "tokens_match_reference": true,
+        "generated_token_count": 129,
+        "generated_tail_token_ids": [
+          220,
+          14405,
+          20,
+          220,
+          24,
+          96203,
+          17,
+          220,
+          318,
+          318,
+          1510,
+          318,
+          220,
+          220,
+          220,
+          220
+        ],
+        "final_token_id": 220,
+        "final_logit": 12.638504028320312,
+        "finite_final_logits": true,
+        "row_drift_summary": {
+          "rows": 129,
+          "top1_match_count": 129,
+          "top1_mismatch_count": 0,
+          "first_top1_mismatch": null,
+          "max_abs_logit_delta": 0.0
+        }
+      },
+      {
+        "repeat_index": 2,
+        "kl_mean": 0.0,
+        "kl_max": 0.0,
+        "top1_agreement": 1.0,
+        "passed": true,
+        "tokens_match_reference": true,
+        "generated_token_count": 129,
+        "generated_tail_token_ids": [
+          220,
+          14405,
+          20,
+          220,
+          24,
+          96203,
+          17,
+          220,
+          318,
+          318,
+          1510,
+          318,
+          220,
+          220,
+          220,
+          220
+        ],
+        "final_token_id": 220,
+        "final_logit": 12.638504028320312,
+        "finite_final_logits": true,
+        "row_drift_summary": {
+          "rows": 129,
+          "top1_match_count": 129,
+          "top1_mismatch_count": 0,
+          "first_top1_mismatch": null,
+          "max_abs_logit_delta": 0.0
+        }
+      }
+    ],
+    "worst_kl_mean": 0.0,
+    "worst_kl_max": 0.0,
+    "worst_top1_agreement": 1.0
+  },
+  "passed": true,
+  "notes": [
+    "This gate intentionally uses the resident runner rather than public LLM.generate so it can compare full logits for every generated step.",
+    "Reference is the legacy row-GEMV path with WMMA prefill and P9 GEMV decode disabled by env.",
+    "Candidate is launched with HIPENGINE_GGUF_WMMA_PREFILL=1 and HIPENGINE_GGUF_GEMV_DECODE=1; inspect candidate.fastpath_safety_repeats for requested vs effective qwen35moe flags.",
+    "Use this command as the correctness gate for P9.A3/P9.B7-style benchmark acceptance rows before reporting throughput."
+  ]
+}

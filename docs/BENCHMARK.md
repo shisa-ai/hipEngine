@@ -232,7 +232,7 @@ PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
   --json benchmarks/results/<date>-qwen36-35b-a3b-q4km-p9-e2-correctness.json
 ```
 
-The fixture compares `HIPENGINE_GGUF_WMMA_PREFILL=1` + `HIPENGINE_GGUF_GEMV_DECODE=1` against the legacy row-GEMV path (`0`/`0`) over the prefill sample plus 128 eager decode logits rows. Acceptance is mean KL ≤ 0.05, top-1 agreement ≥ 90%, finite final logits, and deterministic candidate tail token IDs across three runs. A failed gate makes any dependent throughput row `rejected_correctness`; do not promote it to the rollup.
+The fixture compares a candidate launched with `HIPENGINE_GGUF_WMMA_PREFILL=1` + `HIPENGINE_GGUF_GEMV_DECODE=1` against the legacy row-GEMV path (`0`/`0`) over the prefill sample plus 128 eager decode logits rows. The qwen35moe resident runtime currently safety-disables those two requested fast paths unless `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1` is set, because P9.E2 rejected their real opt-in output. The artifact records `fastpath_safety` with requested vs effective flags; a passing gate with `effective_* = false` is a correctness fallback only, not a performance acceptance for WMMA/GEMV. Acceptance is mean KL ≤ 0.05, top-1 agreement ≥ 90%, finite final logits, and deterministic candidate tail token IDs across three runs. A failed gate makes any dependent throughput row `rejected_correctness`; do not promote it to the rollup.
 
 Fixtures (prompts + reference logits) are tiny (< 10 MB) and *are* committed under `fixtures/`. They are not "benchmark outputs" and do not count against the never-commit rule.
 

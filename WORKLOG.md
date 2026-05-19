@@ -20520,3 +20520,64 @@ Interpretation / reprioritization:
 - Added #49/#50/#51 as blockers for #26 and #52 as the final retention gate for dependent work.
 
 Artifact retained: `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_b7-decode-gemv-rejected.json`.
+
+## 2026-05-19 P9.H1 task #49: qwen35moe fast-path safety gate
+
+Started #49 because P9.E2/P9.B7 proved both qwen35moe GGUF opt-ins are currently unsafe at full-model scale:
+
+- Prior 512/1 bisect: WMMA-only (`1/0`) failed at the prefill row (`128449 -> 59639`); GEMV-only (`0/1`) failed at the first decode row (`12656 -> 220`); combined (`1/1`) failed as well.
+- Prior full 512/128x3 P9.E2 artifact: KL `5.993`, top-1 `5.43%`, final logits finite, deterministic candidate tail.
+
+Implemented the safety alternative allowed by #49 while repacking work moves to #50/#51:
+
+- `Qwen35GGUFResidentSession` now resolves a `fastpath_safety` record at construction.
+- For qwen35moe models, requested `HIPENGINE_GGUF_WMMA_PREFILL=1`, `HIPENGINE_GGUF_GEMV_DECODE=1`, `--use-wmma-prefill`, or `--use-gemv-decode` are forced to `effective_wmma_prefill=false` / `effective_gemv_decode=false` unless `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1` is explicitly set.
+- The lower-level kernel dispatch helpers remain opt-in for R&D/unit tests. The safety gate is resident-session scoped so public/benchmark paths cannot be promoted accidentally.
+- `scripts/qwen35_gguf_p9_e2e_correctness.py` and `scripts/qwen35_gguf_bench.py` now emit requested vs effective fast-path state in JSON.
+
+Validation:
+
+```bash
+uv run python -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_gguf_p9_e2e_correctness.py scripts/qwen35_gguf_bench.py tests/test_qwen35_gguf_fastpath_safety.py tests/test_qwen35_gguf_p9_e2e_correctness.py
+uv run --with pytest pytest tests/test_qwen35_gguf_fastpath_safety.py tests/test_qwen35_gguf_p9_e2e_correctness.py -q --tb=short
+# 8 passed
+```
+
+Real qwen35moe smoke after the gate:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --decode-tokens 1 --repeats 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_h1/p9_e2_smoke_512_1_safety.json
+# rc=0, KL=0, top-1=1.0; requested WMMA+GEMV, effective false/false
+```
+
+Full P9.E2 512/128x3 command:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --json benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h1-fastpath-safety-correctness-accepted.json
+```
+
+Result: **accepted correctness fallback** (`rc=0`, elapsed `118s`).
+
+- KL mean/max: `0.0 / 0.0`.
+- Top-1 agreement: `100%`.
+- Candidate tails deterministic across 3 repeats.
+- Final logits finite; final token IDs `[220, 220, 220]`.
+- Candidate requested WMMA+GEMV but safety forced `effective_wmma_prefill=false`, `effective_gemv_decode=false` in every repeat.
+
+Docs/rollups updated:
+
+- `docs/BENCHMARK.md`: P9 gate now explicitly says a pass with `effective_* = false` is only a correctness fallback, not a WMMA/GEMV performance acceptance.
+- `docs/GGUF.md`: P9.H1 safety note added near P8/P9 WMMA/GEMV path docs.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md`: new accepted safety gate artifact plus historical unsafe rejected artifact retained.
+
+Conclusion: #49 can close as the safety fix. The real performance/correctness work remains #50/#51: repacked qwen35moe GGUF decode/prefill fast paths must pass P9.E2 with `effective_* = true` before any promoted P9.A3/P9.B7 row.
