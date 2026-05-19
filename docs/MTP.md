@@ -1,8 +1,10 @@
 # hipEngine MTP Native Implementation Plan
 
 > Status: shared ABI + metadata/loading scaffold landed; a local PARO+MTP-BF16
-> artifact is assembled for bring-up. Native MTP proposal kernels are the next
-> blocker. This is the sister document to [`DFLASH.md`](DFLASH.md). MTP must
+> artifact is assembled for bring-up. A single-step native proposal smoke now
+> matches the torch-reference top-1; production E2E remains blocked on recursive
+> native proposal state/captured target-hidden wiring. This is the sister
+> document to [`DFLASH.md`](DFLASH.md). MTP must
 > reuse the shared native verifier/commit infrastructure from DFlash, not fork a
 > separate c=1 native-loop tuning lane.
 
@@ -70,9 +72,17 @@ target-hidden pre-fc RMSNorm/concat, and `scripts/mtp_input_fc_smoke.py` applies
 `mtp.fc` with the existing BF16 dense GEMV.  A full one-layer torch-reference
 proposal smoke also exists in `scripts/mtp_torch_proposal_smoke.py`; it runs
 MTP attention, MoE/shared expert, final `mtp.norm`, shared lm-head/top1, and
-emits candidate-only `DraftBatch` rows for `verify_chain_bulk_and_commit`.  The
-remaining production blocker is native decoder kernels/wiring and captured
-real target-hidden integration, not model artifact availability.
+emits candidate-only `DraftBatch` rows for `verify_chain_bulk_and_commit`.
+
+The first native one-step decoder smoke is now `scripts/mtp_native_decode_step_smoke.py`.
+It reuses native BF16 dense/QKV/GQA/lm-head kernels plus MTP-specific helper
+kernels for zero-centered RMSNorm, q/gate split, BF16 gate multiply, router
+softmax, MoE accumulation, and FP32-to-BF16 finalization.  On gfx1151 with the
+assembled artifact, `--torch-compare` produced candidate `12` in both native and
+torch-reference paths and emitted verifier rows `[root, d1]` with parent rows
+`[-1, 0]`.  This remains a diagnostic smoke, not a speed row: selected expert ids
+are host-orchestrated, recursion beyond one proposal step is not wired, and real
+target-hidden capture from `Qwen35ParoResidentSession` is still required.
 
 ## Alignment with existing hipEngine design
 

@@ -19401,3 +19401,94 @@ Status:
   implementation target is to replace the torch decoder internals with native
   kernels and wire captured real target hidden from `Qwen35ParoResidentSession`
   into the MTP provider for an exact shared-verifier benchmark.
+
+## 2026-05-19 (continued) — Native one-step MTP proposal smoke matches torch top-1
+
+Task #41 continued by porting the single-step MTP proposal path from the torch
+semantic smoke into torch-free hipEngine HIP wrappers/kernels.
+
+New MTP helper kernels in `hipengine/kernels/hip_gfx1100/speculative/mtp.hip`:
+
+- `hipengine_mtp_rmsnorm_bf16_oneplus`
+- `hipengine_mtp_add_rmsnorm_bf16_oneplus`
+- `hipengine_mtp_split_q_gate_f32_bf16`
+- `hipengine_mtp_gate_mul_bf16`
+- `hipengine_mtp_softmax_topk_f32`
+- `hipengine_mtp_accumulate_route_bf16_to_f32`
+- `hipengine_mtp_accumulate_sigmoid_gate_bf16_to_f32`
+- `hipengine_mtp_finalize_f32_to_bf16`
+
+New diagnostic harness: `scripts/mtp_native_decode_step_smoke.py`.
+
+The native path now executes one MTP proposal step:
+
+```text
+token + target_hidden
+  -> hipengine_mtp_fuse_inputs_f16_bf16
+  -> dflash_dense_bf16_to_bf16(mtp.fc)
+  -> hipengine_mtp_rmsnorm_bf16_oneplus(input_layernorm)
+  -> dflash_qkv_proj_bf16_mixed(q/k/v)
+  -> hipengine_mtp_split_q_gate_f32_bf16
+  -> dflash_head_rmsnorm_rotary_f32 using host-transformed (1 + q/k norm) weights
+  -> dflash_gqa_attention_f32_bf16
+  -> hipengine_mtp_gate_mul_bf16
+  -> dflash_dense_bf16_to_bf16(o_proj)
+  -> hipengine_mtp_add_rmsnorm_bf16_oneplus(post_attention_layernorm)
+  -> dflash_dense_bf16_to_f32(router)
+  -> topk_f32_rows_i32 + hipengine_mtp_softmax_topk_f32
+  -> per-selected-expert BF16 gate_up, silu_mul, down, weighted FP32 accumulate
+  -> shared expert gate/up/down + sigmoid-gated FP32 accumulate
+  -> hipengine_mtp_finalize_f32_to_bf16
+  -> hipengine_mtp_add_rmsnorm_bf16_oneplus(mtp.norm)
+  -> lm_head_fp16_argmax_bf16
+  -> compile_mtp_chain(...)
+```
+
+Validation commands:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_mtp_input_fusion_kernel.py
+# 2 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_native_decode_step_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --root-token 151646 --root-position 0 --torch-compare \
+  --json /tmp/hipengine-mtp-native-step-compare.json
+# {"candidate": 12, "matches": true, "native_seconds": 0.008314558013807982, "status": "passed", "torch": 12}
+```
+
+Verifier-facing metadata from the native smoke:
+
+```json
+{
+  "draft_batch": {
+    "candidate_tokens": [12],
+    "parent_positions": [0],
+    "draft_depths": [1],
+    "active_mask": [true],
+    "mode": "verify_chain"
+  },
+  "target_verify_batch": {
+    "tokens": [151646, 12],
+    "positions": [0, 1],
+    "parent_rows": [-1, 0],
+    "active_mask": [true, true],
+    "mode": "verify_chain"
+  }
+}
+```
+
+Retained artifact:
+
+- `benchmarks/results/2026-05-19-hipengine-mtp-native-decode-step-smoke-diagnostic.json`
+
+Status / remaining blocker:
+
+- Native single-step MTP proposal semantics now match the torch-reference top-1
+  for the narrow gfx1151 smoke.
+- This is **not** a throughput claim. The harness still host-orchestrates
+  selected expert ids, covers only one proposal step, and uses synthetic target
+  hidden. The next Task #41 work is recursive native proposal state/cache,
+  device-side expert dispatch (or an acceptable production scheduler strategy),
+  and captured target hidden from `Qwen35ParoResidentSession` so Task #40 can run
+  a real shared-verifier MTP speed/acceptance diagnostic.
