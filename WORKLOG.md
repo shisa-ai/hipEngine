@@ -20051,3 +20051,58 @@ Output summary:
 - Routing: total compact rows `163,840`, WMMA rows `185,872`, padding rows `22,032` (`+13.45%`). Nonzero expert fraction `19.20%`; nonzero p50 `3`, p90 `404`, p99 `510`, max `512`. Hot thresholds: `>=64` experts `501` instances / `153,241` rows; `>=128` experts `390` / `143,218` rows.
 
 Added CPU-only tests for the report helpers in `tests/test_qwen35_gguf_moe_replay.py`. This completes the harness needed for P9.C3/P9.C4; next step is profiling current raw selected WMMA internals using the replay output.
+
+## 2026-05-18 P9.C3 task #34: current raw GGUF-K selected WMMA profile
+
+Completed diagnostic profiling for current selected-MoE WMMA kernels using the P9.C2 replay harness. Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c3-selected-moe-profile.json`.
+
+Commands/evidence:
+
+- Retained replay trace: `rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/p9_c3/rocprof-replay-trace -- python3 scripts/qwen35_gguf_moe_replay.py ... --warmup-iters 0 --replay-iters 1 --sample-groups 1 --require-cached-build --json /tmp/p9_c3/moe-replay-512-0-trace.json`.
+- Q4 legacy comparison: same but with `HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M=16 HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N=16`, output `/tmp/p9_c3/rocprof-replay-q4legacy/rocm/199161_kernel_trace.csv`.
+- PMC attempt: `rocprofv3 --pmc SQ_WAVES SQ_INSTS_VALU SQ_INSTS_SALU SQ_INSTS_SMEM SQ_INSTS_TEX_LOAD SQ_WAIT_INST_ANY SQ_INST_CYCLES_VMEM ...`; this ROCm build populated `SQ_WAVES` but instruction/busy counters returned zero for selected kernels. Derived counters (`VALUInsts`, `SALUInsts`, `MemUnitBusy`, `GPUBusy`, `ALUStalledByLDS`, `LDSBankConflict`) also returned zero, so use kernel-trace metadata + code-object stats.
+- Code-object stats: `llvm-objdump --offloading <selected .so>` then `llvm-objdump -t <extracted amdgcn code object>`.
+
+Retained trace summary (replay, one launch per layer):
+
+| Kernel | Dispatches | Total ms | Avg ms | Trace VGPR | SGPR | Scratch/LDS | Grid X |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Q4_K selected dual 32x16 | 40 | 61.477 | 1.537 | 72 | 128 | 0 / 0 | 1024 |
+| Q5_K selected down 16x16 | 37 | 28.801 | 0.778 | 64 | 128 | 0 / 0 | 4096 |
+| Q6_K selected down 16x16 | 3 | 2.818 | 0.939 | 72 | 128 | 0 / 0 | 4096 |
+
+Q4 legacy 16x16 comparison:
+
+- Q4 legacy total `67.510 ms`, avg `1.688 ms`, trace VGPR `56`, grid_x `2048`.
+- Retained Q4 32x16 total `61.477 ms`, avg `1.537 ms`, trace VGPR `72`, grid_x `1024`.
+- Diagnosis: halving column blocks wins despite +16 trace VGPR; larger variants lose because VGPR explodes.
+
+Code-object num_vgpr / private segment:
+
+- Q4 legacy 16x16: num_vgpr `51`, private segment `0`.
+- Q4 32x16: num_vgpr `65`, private `0`.
+- Q4 64x32: num_vgpr `128`, private `0`.
+- Q5 legacy 16x16: num_vgpr `64`, private `0`.
+- Q5 64x32: num_vgpr `139`, private `0`.
+- Q6 legacy 16x16: num_vgpr `65`, private `0`.
+
+Back-calculated work/footprint estimates (from real replay routing):
+
+- Q4 dual: `~5.50 TFLOP`, `~89 TFLOP/s` in retained trace. Unique active-expert weight footprint `~18.6 GB`, but executed raw-weight tile footprint estimate `~109.6 GB` and activation reload envelope `~194.9 GB`; output only `~2.68 GB`. This points at repeated per-WMMA-tile raw GGUF-K weight/decode + activation reload, not output stores.
+- Q5 down: `~2.54 TFLOP`, `~88 TFLOP/s`, executed raw-weight tile footprint `~61.7 GB`, activation reload envelope `~179.6 GB`. Similar issue; legacy keeps VGPR reasonable, generic multi-tile variants raise VGPR too much.
+- Q6 is small (`~2.8 ms`) and not first target.
+
+Bottleneck diagnosis:
+
+1. Q4 dual dominates. Retained 32x16 is the best current raw path, but it still dequantizes Q4 scale/min/qs inside every row-tile x col-tile block. Scheduler metadata/stores are not the limiting evidence: no scratch/LDS, stable SGPR, output footprint tiny relative to executed weight/activation envelope.
+2. Q5 down is second. Same broad pattern: WMMA math is useful, but raw K-block dequant/register pressure prevents larger TM/TN wins.
+3. Hardware PMC instruction counters are unavailable/zero on this setup, so P9.C4 should use trace VGPR/duration + code-object stats + replay correlation as the gate.
+
+Ranked optimization plan for P9.C4+:
+
+1. Prototype Q4 hot-expert selected dual kernel that keeps the Q4 32x16 dispatch reduction but reduces per-tile Q4 scale/min decode/register pressure. Best first design: optional predecoded Q4 scale/min sidecar for hot experts, leaving raw q nibbles resident and GGUF math unchanged. Target Q4 dual replay <=45 ms first, then full rocprof <=40 ms.
+2. Maintain register discipline: trace VGPR <=72, code-object num_vgpr near <=65, no scratch. Avoid 64x* style accumulator expansion (Q4 64x32 num_vgpr 128, Q5 64x32 139).
+3. Apply the same idea to Q5 down after Q4 proof, target Q5 <=18 ms. Q6 stays legacy unless shared implementation is cheap.
+4. Tail/no-padding hybrid remains secondary; padding bound is only ~13.45% / ~11 ms ideal and cannot close the gap without Q4/Q5 inner-loop redesign.
+
+Validation: artifact JSON validates; no code changes besides docs/artifact for this task. Task #34 can complete and unblocks P9.C4 (#35).
