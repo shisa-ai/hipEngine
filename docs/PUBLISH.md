@@ -56,7 +56,12 @@ Use semver-style bumps while the public API is still alpha:
 - [ ] Create an annotated tag:
       `git tag -a vX.Y.Z -m "vX.Y.Z"`.
 - [ ] Push the tag: `git push origin vX.Y.Z`.
-- [ ] Draft the GitHub release from the annotated tag and `CHANGELOG.md` entry.
+- [ ] Create or draft the GitHub release from the annotated tag and the matching
+      `CHANGELOG.md` entry. Do not leave the release notes empty: copy the
+      changelog section to a temp file and run
+      `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file /tmp/notes.md`.
+- [ ] Verify the GitHub release notes rendered correctly:
+      `gh release view vX.Y.Z --json url,name,body`.
 - [ ] Publish to PyPI with trusted publishing if configured. If publishing
       manually, prefer exact artifacts over a broad glob:
       `uv publish dist/hipengine-X.Y.Z.tar.gz dist/hipengine-X.Y.Z-py3-none-manylinux_2_39_x86_64.whl`.

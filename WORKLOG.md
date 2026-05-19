@@ -17926,3 +17926,15 @@ git diff --check
 ```
 
 Build produced `dist/hipengine-0.1.1.tar.gz` and `dist/hipengine-0.1.1-py3-none-manylinux_2_39_x86_64.whl`; wheel metadata has `Root-Is-Purelib: false` and tag `py3-none-manylinux_2_39_x86_64`.
+
+## 2026-05-19 — v0.1.1 GitHub release notes follow-up
+
+Created the missing GitHub release for `v0.1.1` from the `CHANGELOG.md` v0.1.1 section:
+
+```bash
+python3 - <<'PY' ... # extracted CHANGELOG.md v0.1.1 section to /tmp/hipengine-v0.1.1-release-notes.md
+gh release create v0.1.1 --title "v0.1.1" --notes-file /tmp/hipengine-v0.1.1-release-notes.md
+gh release view v0.1.1 --json tagName,name,isDraft,isPrerelease,url,publishedAt
+```
+
+Release URL: https://github.com/shisa-ai/hipEngine/releases/tag/v0.1.1. Updated `docs/PUBLISH.md` to explicitly require non-empty GitHub release notes from the matching changelog entry and to verify them with `gh release view`.
