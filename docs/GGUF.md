@@ -1333,7 +1333,8 @@ This is a deliberate correctness guard: the formal P9.E2 512/128 gate rejected
 both real opt-ins (`KL 5.993`, top-1 `5.43%`). Kernel R&D can still use the
 unsafe override, but retained P9.A3/P9.B7 benchmark rows must either show
 `effective_* = true` and pass P9.E2 after the repack fixes, or be labeled as a
-legacy fallback rather than a WMMA/GEMV performance claim.
+legacy fallback rather than a WMMA/GEMV performance claim. The replacement
+layout plan is [`GGUF_DECODE_REPACK.md`](GGUF_DECODE_REPACK.md).
 
 P8.7 — **lm_head** Q6_K batched WMMA prefill (one-shot final-row case, plus
 the "sample all rows" debug case used in stage probes).

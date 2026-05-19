@@ -20581,3 +20581,55 @@ Docs/rollups updated:
 - `benchmarks/README.md` and `benchmarks/CHANGELOG.md`: new accepted safety gate artifact plus historical unsafe rejected artifact retained.
 
 Conclusion: #49 can close as the safety fix. The real performance/correctness work remains #50/#51: repacked qwen35moe GGUF decode/prefill fast paths must pass P9.E2 with `effective_* = true` before any promoted P9.A3/P9.B7 row.
+
+## 2026-05-19 P9.H2 task #50: GGUF decode repack design
+
+Completed #50 design for the qwen35moe GGUF decode slowdown exposed by P9.B7.
+
+Evidence used:
+
+- P9.B7 512/128 graph decode: `62.557 -> 63.033 tok/s`, far below the `>=95 tok/s` acceptance target.
+- P9.B7 decode-delta rocprof: pack8 GEMV kernels are active, but legacy raw-GGUF `prefill_out` buckets remain large (`72.960 ms` graph / `94.725 ms` eager for 512/16-minus-512/0).
+- P9.E2 unsafe fast-path gate: KL `5.993`, top-1 `5.43%`, so task #49 safety-disables the current qwen35moe WMMA/GEMV opt-ins.
+
+Model inventory command:
+
+```bash
+PYTHONPATH=. python3 - <<'PY'
+from collections import defaultdict
+from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
+r=GGUFReader('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf')
+m=build_qwen35_gguf_tensor_map(r.info)
+# summarized by slot/quant for qwen35moe decode-repack design
+PY
+```
+
+Inventory summary:
+
+- Model tensors total: `20.604 GiB`.
+- Q4_K selected gate+up: `11.2500 GiB` raw.
+- Q5_K selected down: `6.3594 GiB` raw.
+- Q6_K selected down: `0.6152 GiB` raw.
+- Listed Q8_0 dense/shared projections: `1.2659 GiB` raw.
+- Current retained 512/128 peak from P9.B7: about `20.886 GiB` tracked / `21.35 GiB` HIP sampled.
+
+Design retained in `docs/GGUF_DECODE_REPACK.md` and artifact `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h2-decode-repack-design.json`:
+
+- Use replacement, not sidecar, tile-major decode slabs:
+  - `gguf_q4_k_t16_v1` for selected gate/up; reuse Q4T16 `[expert,out_tile16,k_block,2368]`, `+2.78%` vs raw.
+  - `gguf_q5_k_t16_v1` for selected down; proposed `[expert,out_tile16,k_block,2880]`, `+2.27%` vs raw.
+  - `gguf_q6_k_t16_v1` for selected down; proposed `[expert,out_tile16,k_block,3360]`, byte-neutral.
+  - `gguf_q8_0_t16_v1` for dense/shared projections; proposed `[out_tile16,k_block32,544]`, byte-neutral.
+- Persistent replacement delta estimate: `~+0.457 GiB`, yielding expected tracked 512/128 peak `~21.34 GiB` and headroom `~2.66 GiB` to a 24 GiB-class budget.
+- Explicitly reject raw+packed duplication for expert weights; duplicating Q4 gate+up alone would add `11.25 GiB`.
+- First implementation should fail loudly if a covered tensor lacks a T16 decode kernel rather than silently allocating raw duplicate storage.
+
+Acceptance for #51/#52:
+
+- P9.E2 512/128x3 passes with `effective_wmma_prefill=true` and/or `effective_gemv_decode=true` where claimed, not the #49 safety fallback.
+- 512/128 graph replay decode median `>=95 tok/s` over 3 runs.
+- rocprof decode trace shows T16 kernels dominate and legacy `prefill_out` absent except documented Q6_K lm-head fallback.
+- Peak tracked memory remains under the 24 GiB-class budget without raw+packed duplication.
+
+Docs/rollups updated: docs index, `docs/GGUF.md`, `docs/KERNELS.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
