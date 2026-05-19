@@ -20183,3 +20183,34 @@ Reviewed Q4 hot/cold dispatcher after P9.C4/P9.C5 prototypes:
 Decision for task #37: do **not** wire a Q4 hot/cold dispatcher into the default compact-MoE path. There is no Q4 hot kernel that meets the acceptance (`<=40 ms` Q4 bucket) or even improves the replay baseline. The runtime remains on retained raw Q4 selected dual 32x16. Optional experimental wrappers remain registered for replay/R&D only and are not used by `qwen35_gguf_runner.py`.
 
 This closes P9.C6 as a no-op/rejected integration decision and unblocks Q5 work (P9.C7/#38). Parent #27 remains open because the combined bucket target is still not met.
+
+## 2026-05-18 P9.C7 task #38: Q5 decode-hoist v1 (rejected)
+
+Implemented optional Q5_K selected-down optimized prototype:
+
+- `gguf_q5_k_selected_wmma_prefill_compact_opt_kernel` in `gguf_k_selected_prefill.hip`.
+- BF16/FP16 exports and Python wrappers:
+  - `gguf_q5_k_selected_wmma_prefill_compact_opt_bf16_bf16_out`
+  - `gguf_q5_k_selected_wmma_prefill_compact_opt_fp16_fp16_out`
+- Replay switch: `scripts/qwen35_gguf_moe_replay.py --q5-opt`.
+- Design: preserve compact selected ABI and legacy `16x16` tile shape, but hoist Q5_K `d/dmin` and packed scale/min decode once per 32-value subblock instead of calling the generic per-element helper for every `kk`.
+
+Correctness:
+
+- `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt uv run --with pytest pytest tests/test_gguf_k_selected_wmma_prefill.py -q --tb=short` -> `26 passed`.
+- New P9.C7 BF16/FP16 fixtures compare Q5 opt against CPU selected reference.
+
+Replay (512/0 qwen35moe, P9.C2 harness):
+
+| Mode | Q5 down replay ms | Selected-MoE replay ms | Decision |
+| --- | ---: | ---: | --- |
+| retained generic 16x16 | 26.999 | 89.724 | current default |
+| Q5 decode-hoist opt | 34.086 | 96.904 | reject |
+
+rocprof `--kernel-trace` for Q5 opt:
+
+- `36.652 ms / 37 dispatches`, avg `0.991 ms`, trace VGPR `64`, SGPR `128`, scratch `0`, grid_x `4096`.
+
+Diagnosis: decode hoisting looks attractive statically but regresses real replay by `+26%`. It likely increases instruction scheduling/register lifetime enough to lose even though trace VGPR remains `64`. The retained generic raw-Q5 legacy 16x16 kernel remains the fastest available Q5 path.
+
+Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c7-q5-opt-v1-rejected.json`.

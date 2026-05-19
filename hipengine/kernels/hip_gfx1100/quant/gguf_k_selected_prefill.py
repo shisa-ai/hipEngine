@@ -42,6 +42,10 @@ _SYMBOLS = {
     ("gguf_q6_k", "bf16"): "hipengine_gguf_q6_k_selected_wmma_prefill_compact_bf16_bf16_out",
     ("gguf_q6_k", "fp16"): "hipengine_gguf_q6_k_selected_wmma_prefill_compact_fp16_fp16_out",
 }
+_SYMBOLS_Q5_OPT = {
+    "bf16": "hipengine_gguf_q5_k_selected_wmma_prefill_compact_opt_bf16_bf16_out",
+    "fp16": "hipengine_gguf_q5_k_selected_wmma_prefill_compact_opt_fp16_fp16_out",
+}
 
 
 def plan_gguf_k_selected_prefill_build(
@@ -148,6 +152,109 @@ gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_q5_k
 gguf_q5_k_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper("gguf_q5_k", "fp16")
 gguf_q6_k_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_q6_k", "bf16")
 gguf_q6_k_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper("gguf_q6_k", "fp16")
+
+
+def _make_q5_opt_wrapper(dtype: str):
+    symbol = _SYMBOLS_Q5_OPT[dtype]
+
+    def wrapper(
+        x_ptr: int,
+        expert_start_compact_ptr: int,
+        expert_start_wmma_ptr: int,
+        tile_expert_ptr: int,
+        qweight_ptr: int,
+        out_ptr: int,
+        compact_rows: int,
+        in_features: int,
+        out_features: int,
+        num_experts: int,
+        wmma_total_rows: int,
+        *,
+        stream: int = 0,
+        library: ctypes.CDLL | None = None,
+        runtime: HipRuntime | None = None,
+    ) -> None:
+        _launch_q5_opt(
+            symbol,
+            x_ptr,
+            expert_start_compact_ptr,
+            expert_start_wmma_ptr,
+            tile_expert_ptr,
+            qweight_ptr,
+            out_ptr,
+            compact_rows,
+            in_features,
+            out_features,
+            num_experts,
+            wmma_total_rows,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    wrapper.__name__ = f"gguf_q5_k_selected_wmma_prefill_compact_opt_{dtype}_{dtype}_out"
+    wrapper.__qualname__ = wrapper.__name__
+    wrapper.__doc__ = f"Launch optimized {dtype} Q5_K selected compact WMMA prefill."
+    return wrapper
+
+
+gguf_q5_k_selected_wmma_prefill_compact_opt_bf16_bf16_out = _make_q5_opt_wrapper("bf16")
+gguf_q5_k_selected_wmma_prefill_compact_opt_fp16_fp16_out = _make_q5_opt_wrapper("fp16")
+
+
+def _launch_q5_opt(
+    symbol: str,
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_common("gguf_q5_k", compact_rows, in_features, out_features, num_experts, wmma_total_rows)
+    library = library or build_gguf_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_wmma_ptr),
+        ctypes.c_void_p(tile_expert_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(wmma_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def _launch_selected(
@@ -273,6 +380,8 @@ _WRAPPERS = {
     "gguf_q5_k": {
         "selected_wmma_prefill_compact_bf16_bf16_out": gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out,
         "selected_wmma_prefill_compact_fp16_fp16_out": gguf_q5_k_selected_wmma_prefill_compact_fp16_fp16_out,
+        "selected_wmma_prefill_compact_opt_bf16_bf16_out": gguf_q5_k_selected_wmma_prefill_compact_opt_bf16_bf16_out,
+        "selected_wmma_prefill_compact_opt_fp16_fp16_out": gguf_q5_k_selected_wmma_prefill_compact_opt_fp16_fp16_out,
         "selected_wmma_prefill_bf16_bf16_out": gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out,
         "selected_wmma_prefill_fp16_fp16_out": gguf_q5_k_selected_wmma_prefill_compact_fp16_fp16_out,
     },
@@ -300,6 +409,8 @@ __all__ = [
     "build_gguf_k_selected_prefill",
     "gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q5_k_selected_wmma_prefill_compact_fp16_fp16_out",
+    "gguf_q5_k_selected_wmma_prefill_compact_opt_bf16_bf16_out",
+    "gguf_q5_k_selected_wmma_prefill_compact_opt_fp16_fp16_out",
     "gguf_q6_k_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q6_k_selected_wmma_prefill_compact_fp16_fp16_out",
     "plan_gguf_k_selected_prefill_build",

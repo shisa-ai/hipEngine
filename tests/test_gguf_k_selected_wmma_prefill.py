@@ -36,6 +36,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
     build_gguf_k_selected_prefill,
     gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q5_k_selected_wmma_prefill_compact_fp16_fp16_out,
+    gguf_q5_k_selected_wmma_prefill_compact_opt_bf16_bf16_out,
+    gguf_q5_k_selected_wmma_prefill_compact_opt_fp16_fp16_out,
     gguf_q6_k_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q6_k_selected_wmma_prefill_compact_fp16_fp16_out,
     plan_gguf_k_selected_prefill_build,
@@ -64,6 +66,10 @@ _WRAPPERS: dict[tuple[str, str], Any] = {
     ("gguf_q5_k", "fp16"): gguf_q5_k_selected_wmma_prefill_compact_fp16_fp16_out,
     ("gguf_q6_k", "bf16"): gguf_q6_k_selected_wmma_prefill_compact_bf16_bf16_out,
     ("gguf_q6_k", "fp16"): gguf_q6_k_selected_wmma_prefill_compact_fp16_fp16_out,
+}
+_Q5_OPT_WRAPPERS: dict[str, Any] = {
+    "bf16": gguf_q5_k_selected_wmma_prefill_compact_opt_bf16_bf16_out,
+    "fp16": gguf_q5_k_selected_wmma_prefill_compact_opt_fp16_fp16_out,
 }
 
 
@@ -104,6 +110,16 @@ def test_gguf_k_selected_wmma_registry_and_build_plan(
         )
         is _WRAPPERS[(quant, "fp16")]
     )
+    if quant == "gguf_q5_k":
+        assert (
+            resolve(
+                backend="hip_gfx1100",
+                layer="moe_linear",
+                quant=quant,
+                variant="selected_wmma_prefill_compact_opt_bf16_bf16_out",
+            )
+            is gguf_q5_k_selected_wmma_prefill_compact_opt_bf16_bf16_out
+        )
 
     artifact = plan_gguf_k_selected_prefill_build(compiler_version="test-compiler")
     assert artifact.output_path.name == "gguf_k_selected_prefill.so"
@@ -301,14 +317,14 @@ def _build_compact_fixture(
     )
 
 
-def _run_selected_gpu(fixture: CompactFixture) -> np.ndarray:
+def _run_selected_gpu(fixture: CompactFixture, *, wrapper: Any | None = None) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
     library = build_gguf_k_selected_prefill(load=True)
     out_dtype = np.uint16 if fixture.dtype == "bf16" else np.float16
     host_out = np.zeros((fixture.compact_rows, fixture.out_features), dtype=out_dtype)
-    wrapper = _WRAPPERS[(fixture.quant, fixture.dtype)]
+    wrapper = wrapper or _WRAPPERS[(fixture.quant, fixture.dtype)]
 
     bufs = []
     try:
@@ -392,6 +408,23 @@ def test_gguf_k_selected_wmma_bf16_matches_cpu_selected_reference(
     )
     actual = _run_selected_gpu(fixture)
     np.testing.assert_allclose(actual, fixture.reference, **_TOLERANCES[(quant, "bf16")])
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("dtype", ["bf16", "fp16"])
+def test_p9_c7_q5_k_opt_matches_cpu_selected_reference(dtype: str) -> None:
+    """P9.C7 optimized Q5_K down kernel keeps selected-MoE ABI/math."""
+
+    fixture = _build_compact_fixture(
+        quant="gguf_q5_k",
+        counts=[0, 7, 16, 63, 64, 79, 128],
+        in_features=512,
+        out_features=80,
+        dtype=dtype,
+        seed=17,
+    )
+    actual = _run_selected_gpu(fixture, wrapper=_Q5_OPT_WRAPPERS[dtype])
+    np.testing.assert_allclose(actual, fixture.reference, **_TOLERANCES[("gguf_q5_k", dtype)])
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
