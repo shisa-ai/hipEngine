@@ -70,8 +70,8 @@ isolated experiment with its own gates (see
 
 ## Memory Usage
 
-With BF16 KV cache, hipEngine running the packed Qwen 3.6 PARO model fits
->128K context window in a 24GB-class memory budget. The INT8 KV cache option
+With BF16 KV cache, hipEngine running the packed Qwen 3.6 PARO model fits a
+128K context window in a 24GB-class memory budget. The INT8 KV cache option
 (with FP16 per-token/per-head scales) uses the
 `--kv-storage int8_per_token_head` flag and lets the **full 256K context** fit
 under 24 GiB tracked allocator peak.
@@ -87,7 +87,7 @@ full-attention prefill chunks:
 | Qwen3.6 35B-A3B PARO |    256K | INT8     |    21.96 GiB |      23.71 GiB |    2.71 GiB |  670.2 tok/s | 40.3 tok/s |
 
 Regardless of the difference in PARO weight storage (legacy or packed),
-loaded-weight memory is about the same - approximately 16.4GB in VRAM.
+loaded-weight memory is about the same — approximately 16.4 GiB in VRAM.
 
 The INT8 KV correctness gate is currently the deterministic Qwen3.5 PARO
 fixture `fixtures/qwen35_paro/parent_512_32_seed1234.json` (512-token prompt,

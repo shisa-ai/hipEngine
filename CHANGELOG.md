@@ -6,6 +6,32 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
+## v0.1.1 - 2026-05-19
+
+Patch release focused on long-context memory documentation and the INT8 KV cache
+bring-up that landed after v0.1.0.
+
+### Added
+
+- INT8 KV cache policy controls and dispatch coverage for Qwen/PARO resident
+  inference paths, including CPU/layer/E2E correctness gates and memory audits.
+- Documented Qwen3.6 packed PARO memory rows for 128K BF16 KV, 128K INT8 KV, and
+  256K INT8 KV on W7900/gfx1100, with retained-KV and loaded-weight VRAM notes.
+
+### Changed
+
+- Reduced the 256K INT8 KV tracked allocator high-water mark below the 24 GiB
+  class target by releasing/reusing prefill scratch and AOTriton query buffers.
+- Clarified that packed vs unstripped PARO checkpoint size does not translate to
+  meaningfully different resident model-weight VRAM for the current text runtime.
+
+### Known limitations
+
+- INT8 KV correctness is gated by deterministic fixtures and layer probes; it is
+  not yet a long-rollout perplexity or compounding-error study.
+- Qwen3.6 packed throughput rows remain diagnostic pending a promoted public
+  `LLM.generate()` correctness/repetition gate.
+
 ## v0.1.0 - 2026-05-18
 
 Initial public alpha release.

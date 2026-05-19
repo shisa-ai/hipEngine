@@ -17881,3 +17881,48 @@ python3 scripts/smoke.py --mode cpu-fixtures
 git diff --check
 # all passed
 ```
+
+## 2026-05-19 — README Qwen3.6 packed INT8 KV memory clarification
+
+Re-ran current load/memory checks for README review; user requested no commit. GPU was idle before the run (`rocm-smi --showpids --showmeminfo vram --showuse --showtemp`: no KFD PIDs, GPU use 0%). Current load-only check (`prompt_length=512`, `decode_tokens=0`, cached builds) shows loaded-weight VRAM is effectively the same for Qwen3.6 unstripped `auto` and stripped packed: both estimate `16.354973 GiB` loaded weights (`after_load` tracked minus non-weight resident buffers). Forcing unstripped `legacy_fp16`, and the original z-lab Qwen3.5 checkpoint, estimate `16.407273 GiB`, only `+0.052299 GiB`. Conclusion: the unstripped Qwen3.6 checkpoint's extra on-disk legacy tensors are not resident when `auto` loads packed sidecars; stripped vs unstripped-auto is a disk-size difference, not a loaded-weight memory difference.
+
+Qwen3.6 packed INT8 KV README capacity rerun (`--kv-storage int8_per_token_head`, q3072 full-attn query chunks, W7900/gfx1100):
+
+- 128K/128: sampled `19.8005 GiB`, tracked `20.8885 GiB`, retained KV `1.355 GB`, `1076.48` prefill tok/s, `60.02` decode tok/s.
+- 256K/128: sampled `21.9626 GiB`, tracked `23.7139 GiB`, retained KV `2.708 GB`, `670.20` prefill tok/s, `40.33` decode tok/s.
+
+Wrote review artifact `benchmarks/results/2026-05-19-hipengine-qwen36-packed-int8-kv-readme-memory-diagnostic.json` and updated root `README.md` Memory Usage with Qwen3.6 packed rows, loaded-weight explanation, and the existing Qwen3.5 INT8 KV correctness/perf caveats (`fixtures/qwen35_paro/parent_512_32_seed1234.json`: max KL `0.015328`, mean KL `0.001639`, top-1 `100%`, generated IDs match; 128K/128 INT8-vs-BF16 `-0.99%` prefill, `-3.20%` decode). Initially left uncommitted for review.
+
+## 2026-05-19 — packed checkpoint contents sanity
+
+Checked whether the Qwen3.6 packed-stripped checkpoint still carries legacy fallback tensors. `strip_paro_safetensors_report.json` reports `removed_tensors=250`, `removed_tensor_bytes=2810183680`, `kept_duplicate_shared_expert_fallbacks=[]`, with file size `21.686 -> 19.068 GiB`. Safetensors header scan of the packed snapshot found zero dense fallback projection weights for `self_attn.{q,k,v,o}_proj.weight`, `linear_attn.{in_proj_qkv,in_proj_z,out_proj}.weight`, MoE expert `{gate,up,down}_proj.weight`, or shared-expert `{gate,up,down}_proj.weight`. The packed file still includes `model.visual.*` tensors: 333 tensors, `0.8318 GiB` tensor payload. A text-only hipEngine packaging could strip that to roughly `18.24 GiB` on disk, but it should not change current loaded VRAM because the text runtime does not materialize the vision tower.
+
+Follow-up for README Memory Usage: reran Qwen3.6 packed 128K/128 with BF16 KV and the same q3072 full-attention query chunking used by the INT8 rows. Command output `/tmp/hipengine-readme-qwen36-packed-int8-memory/qwen36-packed-128k128-bf16-q3072.json`: sampled `21.0408 GiB`, tracked `21.8812 GiB`, retained KV `2.690 GB`, `1091.92` prefill tok/s, `62.16` decode tok/s. Added this as the first Memory Usage table row and included it in `benchmarks/results/2026-05-19-hipengine-qwen36-packed-int8-kv-readme-memory-diagnostic.json`; initially left for review.
+
+## 2026-05-19 — v0.1.1 release preparation
+
+Reviewed root `README.md` for v0.1.1 after the Memory Usage edits. Fixed a Markdown typo where `>128K` rendered as a blockquote and normalized loaded-weight wording to `16.4 GiB`. Read `docs/PUBLISH.md`, `docs/API.md`, `docs/BENCHMARK.md`, and `benchmarks/README.md`. `git fetch --tags origin` completed; `git pull --ff-only origin main` was attempted before the release commit but refused because the tree had intentional release edits, and `git status -sb` showed no remote-behind state.
+
+Release metadata edits: bumped `pyproject.toml` to `0.1.1`; added `CHANGELOG.md` v0.1.1 notes for INT8 KV cache bring-up, 256K memory high-water reduction, Qwen3.6 packed memory docs, and known limitations around fixture-only INT8 KV accuracy and diagnostic Qwen3.6 throughput rows.
+
+Validation/build commands passed:
+
+```bash
+python3 -m compileall -q hipengine scripts tests
+uv run --extra dev python -m pytest -q
+uv run --python 3.10 --extra dev python -m pytest -q
+uv run --extra dev hipengine-server --help
+python3 scripts/check_fixtures.py
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+python3 scripts/smoke.py --mode smoke-add-hip --n 1024
+python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-v011-release/qwen35-kv-int8-accuracy.json
+python3 scripts/qwen35_kv_e2e_fixture_gate.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --kv-storage int8_per_token_head --json /tmp/hipengine-v011-release/qwen35-kv-e2e-fixture-int8.json
+rm -rf dist/
+python3 -m build
+uvx --from twine twine check dist/*
+WHEEL=$(pwd)/dist/hipengine-0.1.1-py3-none-manylinux_2_39_x86_64.whl; (cd /tmp && uv run --isolated --with "${WHEEL}[server]" hipengine-server --help)
+git diff --check
+```
+
+Build produced `dist/hipengine-0.1.1.tar.gz` and `dist/hipengine-0.1.1-py3-none-manylinux_2_39_x86_64.whl`; wheel metadata has `Root-Is-Purelib: false` and tag `py3-none-manylinux_2_39_x86_64`.
