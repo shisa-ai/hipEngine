@@ -20675,3 +20675,56 @@ Coverage:
 - Shape validation and out-feature mismatch errors.
 
 This is not a performance claim and does not complete #51. Next slices are resident materialization/device allocation and HIP rows=1 decode kernels/dispatch, with P9.E2 and P9.B7 acceptance still pending.
+
+## 2026-05-19 P9.H3 task #51: resident T16 materialization opt-in
+
+Second scoped #51 implementation unit: resident planning/materialization plumbing for the T16 replacement layouts.
+
+Changes:
+
+- Added `HIPENGINE_GGUF_DECODE_REPACK=1` / `decode_repack=True` opt-in to `plan_qwen35_gguf_materialization()` and `materialize_qwen35_gguf_weights()`.
+- Defaults remain legacy raw/pack8, preserving existing runtime behavior.
+- In decode-repack mode:
+  - qwen35moe selected expert Q4_K gate/up tensors use `layout=gguf_q4_k_t16_v1`, `quant_key=gguf_q4_k_t16_v1`, allocation `tiles`, and no expert pack8 sidecar.
+  - selected expert Q5_K/Q6_K down tensors use `gguf_q5_k_t16_v1` / `gguf_q6_k_t16_v1` `tiles` allocations.
+  - layer-local rank-2 Q8_0 tensors use `gguf_q8_0_t16_v1` `tiles` allocations.
+  - root embedding/lm-head tensors remain raw, matching the P9.B7 lm-head fallback exception.
+- Materializer copies T16 `tiles` to device as INT8 buffers; it does not allocate raw covered tensors in the replacement spec.
+- Exported the new layout constants and env helper through `hipengine.loading`.
+
+Validation:
+
+```bash
+uv run python -m py_compile \
+  hipengine/loading/qwen35_gguf_materialize.py \
+  hipengine/loading/__init__.py \
+  tests/test_qwen35_gguf_materialize.py
+uv run --with pytest pytest \
+  tests/test_qwen35_gguf_materialize.py \
+  tests/test_gguf_t16_repack.py \
+  -q --tb=short
+# 26 passed
+```
+
+Real W7900 materialization smoke:
+
+```bash
+PYTHONPATH=. python3 - <<'PY'
+from hipengine.core.hip import get_hip_runtime
+from hipengine.loading.qwen35_gguf_materialize import materialize_qwen35_gguf_weights
+runtime=get_hip_runtime()
+resident=materialize_qwen35_gguf_weights(
+  '/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf',
+  selected_slots=('layers.0.ffn_gate_exps','layers.0.ffn_gate_shexp'),
+  decode_repack=True,
+  runtime=runtime,
+)
+# gate gguf_q4_k_t16_v1 / (256, 32, 8, 2368) INT8
+# shexp gguf_q8_0_t16_v1 / (32, 64, 544) INT8
+resident.free(runtime=runtime)
+PY
+```
+
+Result: selected T16 allocations materialized and freed successfully.
+
+This is still not a performance claim and does not complete #51. Next missing pieces are HIP rows=1 T16 decode kernels, registry entries, dispatch/routing, then P9.E2/P9.B7 acceptance.

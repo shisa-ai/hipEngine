@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from types import MappingProxyType
 from typing import Iterable, Mapping
@@ -23,13 +24,23 @@ from hipengine.loading.qwen35_gguf import (
     build_qwen35_gguf_tensor_map,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
-from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
+from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_tile16
+from hipengine.quant.gguf_t16 import (
+    repack_gguf_q5_k_tile16,
+    repack_gguf_q6_k_tile16,
+    repack_gguf_q8_0_tile16,
+)
 
 LAYOUT_DENSE_F32 = "dense_f32"
 LAYOUT_DENSE_BF16 = "dense_bf16"
 LAYOUT_RAW_GGUF = "raw_gguf"
 LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
 LAYOUT_GGUF_EXPERT_PACK8_SIDECAR = "gguf_expert_pack8_v1"
+LAYOUT_GGUF_Q4_K_T16 = "gguf_q4_k_t16_v1"
+LAYOUT_GGUF_Q5_K_T16 = "gguf_q5_k_t16_v1"
+LAYOUT_GGUF_Q6_K_T16 = "gguf_q6_k_t16_v1"
+LAYOUT_GGUF_Q8_0_T16 = "gguf_q8_0_t16_v1"
+HIPENGINE_GGUF_DECODE_REPACK_ENV = "HIPENGINE_GGUF_DECODE_REPACK"
 
 
 @dataclass(frozen=True)
@@ -139,12 +150,15 @@ class Qwen35GGUFResidentWeights:
 
 def plan_qwen35_gguf_materialization(
     model_map: Qwen35GGUFModelMap,
+    *,
+    decode_repack: bool | None = None,
 ) -> Qwen35GGUFMaterializationPlan:
+    use_decode_repack = gguf_decode_repack_enabled(decode_repack)
     root_specs = {
-        slot: _spec_for_tensor(f"root.{slot}", tensor)
+        slot: _spec_for_tensor(f"root.{slot}", tensor, decode_repack=use_decode_repack)
         for slot, tensor in model_map.root_tensors.items()
     }
-    layer_specs = tuple(_plan_layer(layer) for layer in model_map.layers)
+    layer_specs = tuple(_plan_layer(layer, decode_repack=use_decode_repack) for layer in model_map.layers)
     return Qwen35GGUFMaterializationPlan(
         config=model_map.config,
         root_specs=MappingProxyType(root_specs),
@@ -156,6 +170,7 @@ def materialize_qwen35_gguf_weights(
     reader_or_path: GGUFReader | str | Path,
     *,
     selected_slots: Iterable[str] | None = None,
+    decode_repack: bool | None = None,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
 ) -> Qwen35GGUFResidentWeights:
@@ -168,7 +183,7 @@ def materialize_qwen35_gguf_weights(
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
-    plan = plan_qwen35_gguf_materialization(model_map)
+    plan = plan_qwen35_gguf_materialization(model_map, decode_repack=decode_repack)
     selected = None if selected_slots is None else set(selected_slots)
     materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight] = {}
     try:
@@ -209,14 +224,21 @@ def materialize_qwen35_gguf_weights(
     )
 
 
-def _plan_layer(layer: Qwen35GGUFLayerMap) -> dict[str, Qwen35GGUFWeightSpec]:
+def _plan_layer(layer: Qwen35GGUFLayerMap, *, decode_repack: bool) -> dict[str, Qwen35GGUFWeightSpec]:
     return {
-        slot: _spec_for_tensor(f"layers.{layer.layer_id}.{slot}", tensor)
+        slot: _spec_for_tensor(f"layers.{layer.layer_id}.{slot}", tensor, decode_repack=decode_repack)
         for slot, tensor in layer.tensors.items()
     }
 
 
-def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeightSpec:
+def gguf_decode_repack_enabled(value: bool | None = None) -> bool:
+    if value is not None:
+        return bool(value)
+    raw = os.environ.get(HIPENGINE_GGUF_DECODE_REPACK_ENV, "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: bool) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
         bf16_linear_weight = slot_path.endswith(
@@ -231,6 +253,14 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
         )
     if qtype == GGMLQuantizationType.Q4_K:
         if len(tensor.shape) != 2:
+            if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
+                return Qwen35GGUFWeightSpec(
+                    slot_path=slot_path,
+                    source=tensor,
+                    quant_key="gguf_q4_k_t16_v1",
+                    layout=LAYOUT_GGUF_Q4_K_T16,
+                    allocation_names=("tiles",),
+                )
             return Qwen35GGUFWeightSpec(
                 slot_path=slot_path,
                 source=tensor,
@@ -247,6 +277,14 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
             allocation_names=("qweight", "scales", "mins"),
         )
     if qtype == GGMLQuantizationType.Q5_K:
+        if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
+            return Qwen35GGUFWeightSpec(
+                slot_path=slot_path,
+                source=tensor,
+                quant_key="gguf_q5_k_t16_v1",
+                layout=LAYOUT_GGUF_Q5_K_T16,
+                allocation_names=("tiles",),
+            )
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
@@ -256,6 +294,14 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
     if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
+        if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
+            return Qwen35GGUFWeightSpec(
+                slot_path=slot_path,
+                source=tensor,
+                quant_key="gguf_q6_k_t16_v1",
+                layout=LAYOUT_GGUF_Q6_K_T16,
+                allocation_names=("tiles",),
+            )
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
@@ -263,6 +309,14 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
             layout=LAYOUT_RAW_GGUF if len(tensor.shape) != 2 else LAYOUT_DENSE_BF16,
             allocation_names=("raw",),
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
+        )
+    if qtype == GGMLQuantizationType.Q8_0 and decode_repack and slot_path.startswith("layers.") and len(tensor.shape) == 2:
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key="gguf_q8_0_t16_v1",
+            layout=LAYOUT_GGUF_Q8_0_T16,
+            allocation_names=("tiles",),
         )
     if qtype in (GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0):
         return Qwen35GGUFWeightSpec(
@@ -293,10 +347,13 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> Qwen35GGUFWeight
     raise ValueError(f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r}: {tensor.name}")
 
 
+def _is_selected_expert_tensor(slot_path: str, tensor: GGUFTensorInfo) -> bool:
+    return len(tensor.shape) == 3 and slot_path.endswith((".ffn_gate_exps", ".ffn_up_exps", ".ffn_down_exps"))
+
+
 def _sidecar_layouts_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> tuple[str, ...]:
     if (
-        len(tensor.shape) == 3
-        and slot_path.endswith((".ffn_gate_exps", ".ffn_up_exps", ".ffn_down_exps"))
+        _is_selected_expert_tensor(slot_path, tensor)
         and GGMLQuantizationType(tensor.ggml_type)
         in (GGMLQuantizationType.Q4_K, GGMLQuantizationType.Q5_K, GGMLQuantizationType.Q6_K)
     ):
@@ -361,6 +418,30 @@ def _materialize_spec(
                 runtime=runtime,
             ),
         }
+    elif spec.layout in {
+        LAYOUT_GGUF_Q4_K_T16,
+        LAYOUT_GGUF_Q5_K_T16,
+        LAYOUT_GGUF_Q6_K_T16,
+        LAYOUT_GGUF_Q8_0_T16,
+    }:
+        if spec.layout == LAYOUT_GGUF_Q4_K_T16:
+            packed = repack_gguf_q4_k_tile16(raw)
+        elif spec.layout == LAYOUT_GGUF_Q5_K_T16:
+            packed = repack_gguf_q5_k_tile16(raw)
+        elif spec.layout == LAYOUT_GGUF_Q6_K_T16:
+            packed = repack_gguf_q6_k_tile16(raw)
+        else:
+            packed = repack_gguf_q8_0_tile16(raw)
+        allocations = {
+            "tiles": load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.t16.tiles",
+                packed.tiles,
+                DType.INT8,
+                source_dtype="I8",
+                device=device,
+                runtime=runtime,
+            )
+        }
     elif spec.layout == LAYOUT_RAW_GGUF:
         allocations = {
             "raw": load_host_array_to_device_as_dtype(
@@ -406,7 +487,12 @@ def _materialize_spec(
 __all__ = [
     "LAYOUT_DENSE_BF16",
     "LAYOUT_DENSE_F32",
+    "HIPENGINE_GGUF_DECODE_REPACK_ENV",
     "LAYOUT_GGUF_EXPERT_PACK8_SIDECAR",
+    "LAYOUT_GGUF_Q4_K_T16",
+    "LAYOUT_GGUF_Q5_K_T16",
+    "LAYOUT_GGUF_Q6_K_T16",
+    "LAYOUT_GGUF_Q8_0_T16",
     "LAYOUT_Q4_K_PACK8",
     "LAYOUT_RAW_GGUF",
     "Qwen35GGUFDeviceWeight",
@@ -414,6 +500,7 @@ __all__ = [
     "Qwen35GGUFResidentLayerWeights",
     "Qwen35GGUFResidentWeights",
     "Qwen35GGUFWeightSpec",
+    "gguf_decode_repack_enabled",
     "materialize_qwen35_gguf_weights",
     "plan_qwen35_gguf_materialization",
 ]

@@ -5,6 +5,15 @@ Scope: qwen35moe / Qwen3.6-35B-A3B-UD-Q4_K_M / gfx1100 resident decode
 
 ## Status
 
+Implementation progress:
+
+- P9.H3a registered the four T16 quant keys and added bit-lossless CPU
+  materializers/inverses for Q5T16, Q6T16, and Q8T16; Q4T16 reuses P9.C13.
+- P9.H3b added the resident materialization opt-in
+  `HIPENGINE_GGUF_DECODE_REPACK=1` / `decode_repack=True`, which plans and
+  copies T16 `tiles` allocations without raw expert sidecars for covered
+  qwen35moe slots. Runtime dispatch still lacks T16 HIP kernels.
+
 This is the high-priority design for tasks #50/#51. It responds to the P9.B7
 finding that the current rows=1 GGUF decode opt-in is wired but not useful:
 

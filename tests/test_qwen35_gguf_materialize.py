@@ -10,11 +10,16 @@ from hipengine.core.hip import get_hip_runtime
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_materialize import (
+    HIPENGINE_GGUF_DECODE_REPACK_ENV,
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
     LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,
+    LAYOUT_GGUF_Q4_K_T16,
+    LAYOUT_GGUF_Q5_K_T16,
+    LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
+    gguf_decode_repack_enabled,
     materialize_qwen35_gguf_weights,
     plan_qwen35_gguf_materialization,
 )
@@ -30,7 +35,7 @@ pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture 
 def test_qwen35_gguf_materialization_plan_covers_every_tensor() -> None:
     reader = GGUFReader(MODEL)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
-    plan = plan_qwen35_gguf_materialization(model_map)
+    plan = plan_qwen35_gguf_materialization(model_map, decode_repack=False)
 
     assert set(plan.tensor_names) == {tensor.name for tensor in reader.info.tensors}
     assert len(plan.tensor_names) == len(reader.info.tensors)
@@ -59,7 +64,7 @@ def test_qwen35moe_gguf_materialization_plan_keeps_experts_raw() -> None:
         pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
     reader = GGUFReader(MOE_MODEL)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
-    plan = plan_qwen35_gguf_materialization(model_map)
+    plan = plan_qwen35_gguf_materialization(model_map, decode_repack=False)
 
     assert set(plan.tensor_names) == {tensor.name for tensor in reader.info.tensors}
     assert plan.root_specs["lm_head"].source.name == "output.weight"
@@ -80,6 +85,33 @@ def test_qwen35moe_gguf_materialization_plan_keeps_experts_raw() -> None:
     assert layer0["ffn_down_exps"].sidecar_layouts == (LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,)
     assert layer0["ffn_gate_shexp"].layout == LAYOUT_RAW_GGUF
     assert layer0["ffn_down_shexp"].layout == LAYOUT_RAW_GGUF
+
+
+def test_qwen35moe_decode_repack_plan_replaces_covered_weights(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    assert gguf_decode_repack_enabled() is True
+    plan = plan_qwen35_gguf_materialization(model_map)
+
+    assert set(plan.tensor_names) == {tensor.name for tensor in reader.info.tensors}
+    assert plan.root_specs["lm_head"].layout == LAYOUT_RAW_GGUF
+    assert plan.root_specs["lm_head"].quant_key == "gguf_q6_k"
+
+    layer0 = plan.layer_specs[0]
+    assert layer0["ffn_gate_exps"].layout == LAYOUT_GGUF_Q4_K_T16
+    assert layer0["ffn_gate_exps"].quant_key == "gguf_q4_k_t16_v1"
+    assert layer0["ffn_gate_exps"].allocation_names == ("tiles",)
+    assert layer0["ffn_gate_exps"].sidecar_layouts == ()
+    assert layer0["ffn_up_exps"].layout == LAYOUT_GGUF_Q4_K_T16
+    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_T16
+    assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k_t16_v1"
+    assert layer0["ffn_gate_shexp"].layout == LAYOUT_GGUF_Q8_0_T16
+    assert layer0["ffn_gate_shexp"].quant_key == "gguf_q8_0_t16_v1"
+    assert layer0["ffn_gate_inp"].layout == LAYOUT_DENSE_BF16
 
 
 @pytest.mark.parametrize(
@@ -120,7 +152,7 @@ def test_qwen35_gguf_materialization_plan_covers_local_quant_variants(
         pytest.skip(f"local GGUF fixture not found: {path}")
     reader = GGUFReader(path)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
-    plan = plan_qwen35_gguf_materialization(model_map)
+    plan = plan_qwen35_gguf_materialization(model_map, decode_repack=False)
 
     assert set(plan.tensor_names) == {tensor.name for tensor in reader.info.tensors}
     for slot_path, (layout, quant_key) in expected.items():
@@ -142,6 +174,7 @@ def test_qwen35_gguf_materializes_selected_resident_records() -> None:
             "layers.0.ssm_alpha",
             "layers.3.attn_v",
         ),
+        decode_repack=False,
         runtime=runtime,
     )
     try:
@@ -187,6 +220,7 @@ def test_qwen35_gguf_materializes_dense_bf16_fallback_records() -> None:
     q4_1 = materialize_qwen35_gguf_weights(
         Q4_1_MODEL,
         selected_slots=("layers.0.attn_gate",),
+        decode_repack=False,
         runtime=runtime,
     )
     try:
@@ -201,6 +235,7 @@ def test_qwen35_gguf_materializes_dense_bf16_fallback_records() -> None:
     ud = materialize_qwen35_gguf_weights(
         UD_Q4_K_XL_MODEL,
         selected_slots=("layers.0.ssm_alpha", "layers.8.ffn_gate"),
+        decode_repack=False,
         runtime=runtime,
     )
     try:
