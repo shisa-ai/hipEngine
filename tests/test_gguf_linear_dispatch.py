@@ -9,8 +9,14 @@ import pytest
 import hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill  # noqa: F401
+import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv  # noqa: F401
 from hipengine.kernels.registry import KernelKey, register, resolve
-from hipengine.loading.qwen35_gguf_materialize import LAYOUT_DENSE_BF16, LAYOUT_Q4_K_PACK8, LAYOUT_RAW_GGUF
+from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_DENSE_BF16,
+    LAYOUT_GGUF_Q8_0_T16,
+    LAYOUT_Q4_K_PACK8,
+    LAYOUT_RAW_GGUF,
+)
 from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_BF16,
     GGUF_OUTPUT_F32,
@@ -30,6 +36,7 @@ def _fake_weight(*, layout: str, quant_key: str):
         "qweight": SimpleNamespace(tensor=SimpleNamespace(ptr=11)),
         "scales": SimpleNamespace(tensor=SimpleNamespace(ptr=12)),
         "mins": SimpleNamespace(tensor=SimpleNamespace(ptr=13)),
+        "tiles": SimpleNamespace(tensor=SimpleNamespace(ptr=14)),
     }
 
     class Weight:
@@ -66,6 +73,13 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     assert resolve_gguf_linear_dispatch(q41, rows=4).key == KernelKey(
         "hip_gfx1100", "dense_gemv", "bf16", "prefill_out"
     )
+    q8_t16 = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    assert resolve_gguf_linear_dispatch(q8_t16).key == KernelKey(
+        "hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"
+    )
+    assert resolve_gguf_linear_dispatch(q8_t16, output_dtype=GGUF_OUTPUT_FP16).key == KernelKey(
+        "hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_fp16_fp16_out"
+    )
 
 
 @pytest.mark.parametrize(
@@ -94,6 +108,12 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
             GGUF_OUTPUT_BF16,
             KernelKey("hip_gfx1100", "dense_gemv", "bf16", "prefill_out"),
             (100, 10, 200, 2, 1024, 2048),
+        ),
+        (
+            _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1"),
+            GGUF_OUTPUT_BF16,
+            KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
+            (100, 14, 200, 2, 1024, 2048),
         ),
     ],
 )

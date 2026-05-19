@@ -20728,3 +20728,56 @@ PY
 Result: selected T16 allocations materialized and freed successfully.
 
 This is still not a performance claim and does not complete #51. Next missing pieces are HIP rows=1 T16 decode kernels, registry entries, dispatch/routing, then P9.E2/P9.B7 acceptance.
+
+## 2026-05-19 P9.H3 task #51: Q8T16 dense/shared GEMV decode kernel
+
+Third scoped #51 implementation unit: first HIP consumer for the T16 replacement layouts.
+
+Changes:
+
+- Added `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.{hip,py}`.
+- Kernels consume `repack_gguf_q8_0_tile16()` output (`tiles[out_tiles16,blocks_per_row,544]`).
+- Single-output variants:
+  - `t16_gemv_decode_bf16_bf16_out`
+  - `t16_gemv_decode_fp16_fp16_out`
+- Dual gate/up variants for future shared-expert routing:
+  - `t16_dual_gate_up_gemv_decode_bf16_bf16_out`
+  - `t16_dual_gate_up_gemv_decode_fp16_fp16_out`
+- Runtime single-projection dispatch now supports `LAYOUT_GGUF_Q8_0_T16` through ABI `t16` using the `tiles` allocation. Pair dispatch intentionally falls back to two singleton launches for now.
+
+Validation:
+
+```bash
+uv run python -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py \
+  hipengine/runtime/gguf_linear.py \
+  tests/test_gguf_q8_0_t16_gemv_decode.py \
+  tests/test_gguf_linear_dispatch.py
+uv run --with pytest pytest \
+  tests/test_gguf_q8_0_t16_gemv_decode.py \
+  tests/test_gguf_linear_dispatch.py \
+  -q --tb=short
+# 47 passed
+```
+
+Correctness coverage:
+
+- Registry/build-plan/wrapper validation for all four Q8T16 variants.
+- BF16/FP16 single-output GPU correctness vs CPU `gguf_quant_gemv(..., Q8_0)` across rows `{1,4}` and Qwen-like in/out shapes.
+- BF16/FP16 dual gate/up GPU correctness vs separate CPU references.
+- Runtime dispatch table/ABI tests prove `LAYOUT_GGUF_Q8_0_T16` calls kernels with the `tiles` allocation.
+
+Kernel trace smoke:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+rocprofv3 --kernel-trace -d /tmp/p9_h3c_q8t16_rocprof_csv -f csv -- \
+  python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q \
+  -k 'single_bf16_bf16 and 32 and 16'
+# rc=0
+```
+
+Trace CSV: `/tmp/p9_h3c_q8t16_rocprof_csv/rocm/1159928_kernel_trace.csv`.
+Observed kernel: `q8_0_t16_gemv_kernel<unsigned short, unsigned short>` with `End_Timestamp - Start_Timestamp = 8481 ns`.
+
+This is still not a performance claim and does not complete #51. Missing next: selected-MoE Q4T16 dual gate/up and Q5T16/Q6T16 down kernels, then dispatch/routing and P9.E2/P9.B7 acceptance.

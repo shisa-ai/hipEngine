@@ -25,9 +25,13 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out,
     register_gguf_q8_0_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
+    register_gguf_q8_0_t16_gemv_kernels,
+)
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
+    LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     Qwen35GGUFDeviceWeight,
@@ -103,6 +107,14 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
     (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
         "dense_bf16",
+    ),
+    (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
+        "t16",
+    ),
+    (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_fp16_fp16_out"),
+        "t16",
     ),
 }
 
@@ -582,6 +594,18 @@ def _launch_dense_bf16(fn, weight, x_ptr, out_ptr, rows, in_features, out_featur
     )
 
 
+def _launch_t16(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
+    fn(
+        x_ptr,
+        weight.allocation("tiles").tensor.ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
 def _pack8_decode_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -761,12 +785,14 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_q4_k_gemv_kernels()
     register_gguf_q4_k_prefill_kernels()
     register_gguf_q8_0_prefill_kernels()
+    register_gguf_q8_0_t16_gemv_kernels()
 
 
 _LAUNCH_ABI = {
     "dense_bf16": _launch_dense_bf16,
     "pack8": _launch_pack8,
     "raw": _launch_raw,
+    "t16": _launch_t16,
     "wmma_raw": _launch_wmma_raw,
 }
 

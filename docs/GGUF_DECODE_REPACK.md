@@ -12,7 +12,10 @@ Implementation progress:
 - P9.H3b added the resident materialization opt-in
   `HIPENGINE_GGUF_DECODE_REPACK=1` / `decode_repack=True`, which plans and
   copies T16 `tiles` allocations without raw expert sidecars for covered
-  qwen35moe slots. Runtime dispatch still lacks T16 HIP kernels.
+  qwen35moe slots.
+- P9.H3c added the first HIP consumer: Q8T16 single and dual dense/shared
+  rows=1 GEMV decode kernels plus registry/runtime single-dispatch support.
+  Selected-MoE Q4/Q5/Q6 T16 kernels are still missing.
 
 This is the high-priority design for tasks #50/#51. It responds to the P9.B7
 finding that the current rows=1 GGUF decode opt-in is wired but not useful:
