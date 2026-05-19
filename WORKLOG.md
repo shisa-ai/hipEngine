@@ -19492,3 +19492,55 @@ Status / remaining blocker:
   device-side expert dispatch (or an acceptable production scheduler strategy),
   and captured target hidden from `Qwen35ParoResidentSession` so Task #40 can run
   a real shared-verifier MTP speed/acceptance diagnostic.
+
+## 2026-05-19 (continued) — Native MTP proposal smoke now recurses to B=2
+
+Extended `scripts/mtp_native_decode_step_smoke.py` from one native proposal step
+to a native proposal chain.  The smoke now accepts `--draft-budget`, keeps a
+native MTP K/V cache for the proposal layer, feeds the previous native MTP hidden
+state and top-1 token into the next proposal step, and emits a candidate-only
+`DraftBatch` for all proposed rows.
+
+Validation command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_native_decode_step_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --root-token 151646 --root-position 0 --draft-budget 2 --torch-compare \
+  --json /tmp/hipengine-mtp-native-chain-b2.json
+# {"candidates": [12, 4773], "matches": true, "native_seconds": 0.016295696987072006, "status": "passed", "torch": [12, 4773]}
+```
+
+Verifier-facing rows:
+
+```json
+{
+  "draft_batch": {
+    "candidate_tokens": [12, 4773],
+    "parent_positions": [0, 1],
+    "draft_depths": [1, 2],
+    "active_mask": [true, true],
+    "mode": "verify_chain"
+  },
+  "target_verify_batch": {
+    "tokens": [151646, 12, 4773],
+    "positions": [0, 1, 2],
+    "parent_rows": [-1, 0, 1],
+    "active_mask": [true, true, true],
+    "mode": "verify_chain"
+  }
+}
+```
+
+Retained artifact:
+
+- `benchmarks/results/2026-05-19-hipengine-mtp-native-chain-b2-smoke-diagnostic.json`
+
+Status / remaining blocker:
+
+- Native recursive proposal semantics are now matched against torch for B=2.
+- This remains diagnostic only: selected expert ids are copied to host for
+  per-expert GEMV pointer selection, and the smoke still uses synthetic target
+  hidden.  Remaining production work is captured target-hidden wiring from
+  `Qwen35ParoResidentSession`, then a real `mtp_chain_e2e_bench.py` provider path
+  through `verify_chain_bulk_and_commit`.

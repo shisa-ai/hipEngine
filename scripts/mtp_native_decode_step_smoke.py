@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Native one-step Qwen3.6 MTP proposal smoke.
+"""Native Qwen3.6 MTP proposal-chain smoke.
 
-This script is a correctness-first bring-up harness for task #41.  It executes a
-single MTP decode/proposal step with torch-free hipEngine kernels for the runtime
-path, then optionally compares the produced top-1 candidate with the optional
-torch reference from ``scripts/mtp_torch_proposal_smoke.py``.
+This script is a correctness-first bring-up harness for task #41.  It executes
+one or more MTP decode/proposal steps with torch-free hipEngine kernels for the
+runtime path, then optionally compares the produced candidate chain with the
+optional torch reference from ``scripts/mtp_torch_proposal_smoke.py``.
 
 It is not a throughput benchmark: the harness intentionally keeps route/expert
 orchestration simple and copies the selected expert ids to the host so existing
@@ -27,7 +27,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.dtype import DType
-from hipengine.core.hip import get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head, lm_head_argmax_stage1_blocks, lm_head_fp16_argmax_bf16, topk_f32_rows_i32
 from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
@@ -124,6 +124,7 @@ def _run_torch_reference(
     root_token: int,
     root_position: int,
     target_hidden_bits: np.ndarray,
+    draft_budget: int,
 ) -> dict[str, Any]:
     import torch
 
@@ -131,23 +132,31 @@ def _run_torch_reference(
 
     device = torch.device("cuda")
     cfg, embed, lm_head, weights = _load_model(model, device)
-    target_hidden = torch.from_numpy(_bf16_bits_to_f32(target_hidden_bits).copy()).to(device=device, dtype=torch.bfloat16)
-    cos, sin = _torch_rope_tables(int(root_position) + 2, cfg.rotary_dim or cfg.head_dim, cfg.rope_theta, device=device)
-    state = _advance(
-        token=int(root_token),
-        target_hidden=target_hidden,
-        state=None,
-        embed_tokens=embed,
-        lm_head=lm_head,
-        weights=weights,
-        position=int(root_position),
-        cfg=cfg,
-        cos=cos,
-        sin=sin,
-    )
-    torch.cuda.synchronize()
-    candidate = int(torch.argmax(state.logits, dim=-1).item())
-    return {"candidate_token": candidate, "finite_logits": bool(torch.isfinite(state.logits).all().item())}
+    cos, sin = _torch_rope_tables(int(root_position) + int(draft_budget) + 1, cfg.rotary_dim or cfg.head_dim, cfg.rope_theta, device=device)
+    current_token = int(root_token)
+    current_hidden = torch.from_numpy(_bf16_bits_to_f32(target_hidden_bits).copy()).to(device=device, dtype=torch.bfloat16)
+    state = None
+    candidates: list[int] = []
+    finite_logits = True
+    for depth in range(int(draft_budget)):
+        state = _advance(
+            token=current_token,
+            target_hidden=current_hidden,
+            state=state,
+            embed_tokens=embed,
+            lm_head=lm_head,
+            weights=weights,
+            position=int(root_position) + depth,
+            cfg=cfg,
+            cos=cos,
+            sin=sin,
+        )
+        torch.cuda.synchronize()
+        finite_logits = finite_logits and bool(torch.isfinite(state.logits).all().item())
+        current_token = int(torch.argmax(state.logits, dim=-1).item())
+        candidates.append(current_token)
+        current_hidden = state.hidden.detach()
+    return {"candidate_tokens": candidates, "finite_logits": finite_logits}
 
 
 def run_smoke(
@@ -155,6 +164,7 @@ def run_smoke(
     *,
     root_token: int,
     root_position: int,
+    draft_budget: int,
     torch_compare: bool,
 ) -> dict[str, Any]:
     model = Path(model)
@@ -177,6 +187,8 @@ def run_smoke(
     eps = float(cfg.rms_norm_eps)
     if top_k > 8:
         raise ValueError("native smoke currently supports top_k <= 8")
+    if draft_budget <= 0:
+        raise ValueError("draft_budget must be positive")
     if not (0 <= root_token < vocab):
         raise ValueError(f"root_token must be in [0, {vocab})")
 
@@ -185,7 +197,7 @@ def run_smoke(
     target_hidden_bits = _f32_to_bf16_bits(target_hidden_f32)
     token_ids = np.asarray([root_token], dtype=np.int64)
     positions = np.asarray([root_position], dtype=np.int32)
-    max_positions = max(int(root_position) + 2, 2)
+    max_positions = max(int(root_position) + int(draft_budget) + 1, 2)
     cos, sin = _rope_tables(max_positions, rotary_dim, float(cfg.rope_theta))
 
     allocations: list[DeviceTensorAllocation] = []
@@ -231,6 +243,8 @@ def run_smoke(
         _, gate_buf = _empty_device((1, q_features), np.uint16, buffers)
         _, query_rot_buf = _empty_device((1, q_features), np.float32, buffers)
         _, key_rot_buf = _empty_device((1, kv_features), np.float32, buffers)
+        _, key_cache_buf = _empty_device((draft_budget, kv_features), np.float32, buffers)
+        _, value_cache_buf = _empty_device((draft_budget, kv_features), np.uint16, buffers)
         _, attn_out_buf = _empty_device((1, q_features), np.uint16, buffers)
         _, gated_buf = _empty_device((1, q_features), np.uint16, buffers)
         _, o_out_buf = _empty_device((1, hidden), np.uint16, buffers)
@@ -262,146 +276,160 @@ def run_smoke(
         mtp_lib = build_mtp_speculative(load=True)
         dflash_lib = build_dflash_drafter(load=True)
         lm_lib = build_lm_head(load=True)
-        started = time.perf_counter()
-        mtp_fuse_inputs_f16_bf16(
-            token_buf.ptr,
-            weights["embed_tokens.weight"].ptr,
-            target_hidden_buf.ptr,
-            weights["mtp.pre_fc_norm_embedding.weight"].ptr,
-            weights["mtp.pre_fc_norm_hidden.weight"].ptr,
-            fused_buf.ptr,
-            1,
-            hidden,
-            vocab,
-            eps=eps,
-            threads=256,
-            library=mtp_lib,
-        )
-        dflash_dense_bf16_to_bf16(fused_buf.ptr, weights["mtp.fc.weight"].ptr, fc_buf.ptr, 1, 2 * hidden, hidden, threads=128, library=dflash_lib)
-        mtp_rmsnorm_bf16_oneplus(fc_buf.ptr, weights["mtp.layers.0.input_layernorm.weight"].ptr, attn_in_buf.ptr, 1, hidden, eps=eps, threads=256, library=mtp_lib)
-        dflash_qkv_proj_bf16_mixed(
-            attn_in_buf.ptr,
-            weights["mtp.layers.0.self_attn.q_proj.weight"].ptr,
-            weights["mtp.layers.0.self_attn.k_proj.weight"].ptr,
-            weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
-            q_proj_buf.ptr,
-            k_proj_buf.ptr,
-            v_proj_buf.ptr,
-            1,
-            hidden,
-            q_proj_features,
-            kv_features,
-            threads=128,
-            library=dflash_lib,
-        )
-        mtp_split_q_gate_f32_bf16(q_proj_buf.ptr, query_buf.ptr, gate_buf.ptr, 1, q_heads, head_dim, threads=256, library=mtp_lib)
-        dflash_head_rmsnorm_rotary_f32(
-            query_buf.ptr,
-            k_proj_buf.ptr,
-            q_norm_oneplus.ptr,
-            k_norm_oneplus.ptr,
-            cos_buf.ptr,
-            sin_buf.ptr,
-            position_buf.ptr,
-            position_buf.ptr,
-            query_rot_buf.ptr,
-            key_rot_buf.ptr,
-            1,
-            1,
-            1,
-            q_heads,
-            kv_heads,
-            head_dim,
-            rotary_dim,
-            max_positions,
-            eps=eps,
-            threads=128,
-            library=dflash_lib,
-        )
-        dflash_gqa_attention_f32_bf16(query_rot_buf.ptr, key_rot_buf.ptr, v_proj_buf.ptr, attn_out_buf.ptr, 1, 1, 1, q_heads, kv_heads, head_dim, threads=128, library=dflash_lib)
-        mtp_gate_mul_bf16(attn_out_buf.ptr, gate_buf.ptr, gated_buf.ptr, q_features, threads=256, library=mtp_lib)
-        dflash_dense_bf16_to_bf16(gated_buf.ptr, weights["mtp.layers.0.self_attn.o_proj.weight"].ptr, o_out_buf.ptr, 1, q_features, hidden, threads=128, library=dflash_lib)
-        mtp_add_rmsnorm_bf16_oneplus(
-            o_out_buf.ptr,
-            fc_buf.ptr,
-            weights["mtp.layers.0.post_attention_layernorm.weight"].ptr,
-            moe_in_buf.ptr,
-            residual2_buf.ptr,
-            1,
-            hidden,
-            eps=eps,
-            threads=256,
-            library=mtp_lib,
-        )
-        dflash_dense_bf16_to_f32(moe_in_buf.ptr, weights["mtp.layers.0.mlp.gate.weight"].ptr, router_logits_buf.ptr, 1, hidden, int(cfg.num_experts), threads=128, library=dflash_lib)
-        topk_f32_rows_i32(router_logits_buf.ptr, topk_values_buf.ptr, topk_ids_buf.ptr, 1, int(cfg.num_experts), top_k, threads=256, library=lm_lib)
-        mtp_softmax_topk_f32(topk_values_buf.ptr, routing_buf.ptr, 1, top_k, library=mtp_lib)
-        copy_device_to_host(host_array_ptr(topk_ids_host), topk_ids_buf, topk_ids_host.nbytes)
-        copy_device_to_host(host_array_ptr(topk_values_host), topk_values_buf, topk_values_host.nbytes)
-        runtime.memset(moe_accum_buf.ptr, 0, moe_accum_buf.nbytes)
         gate_up_base = weights["mtp.layers.0.mlp.experts.gate_up_proj"].ptr
         down_base = weights["mtp.layers.0.mlp.experts.down_proj"].ptr
         gate_up_expert_bytes = (2 * intermediate) * hidden * DType.BF16.itemsize
         down_expert_bytes = hidden * intermediate * DType.BF16.itemsize
-        for route, expert_id_value in enumerate(topk_ids_host.reshape(-1)):
-            expert_id = int(expert_id_value)
-            dflash_dense_bf16_to_bf16(
+        candidates: list[int] = []
+        candidate_logits: list[float] = []
+        topk_experts_by_step: list[list[int]] = []
+        topk_logits_by_step: list[list[float]] = []
+        started = time.perf_counter()
+        for depth in range(int(draft_budget)):
+            position_value = np.asarray([int(root_position) + depth], dtype=np.int32)
+            copy_host_to_device(position_buf, host_array_ptr(position_value), position_value.nbytes)
+            token_ptr = token_buf.ptr if depth == 0 else out_index_buf.ptr
+            hidden_ptr = target_hidden_buf.ptr if depth == 0 else final_hidden_buf.ptr
+            mtp_fuse_inputs_f16_bf16(
+                token_ptr,
+                weights["embed_tokens.weight"].ptr,
+                hidden_ptr,
+                weights["mtp.pre_fc_norm_embedding.weight"].ptr,
+                weights["mtp.pre_fc_norm_hidden.weight"].ptr,
+                fused_buf.ptr,
+                1,
+                hidden,
+                vocab,
+                eps=eps,
+                threads=256,
+                library=mtp_lib,
+            )
+            dflash_dense_bf16_to_bf16(fused_buf.ptr, weights["mtp.fc.weight"].ptr, fc_buf.ptr, 1, 2 * hidden, hidden, threads=128, library=dflash_lib)
+            mtp_rmsnorm_bf16_oneplus(fc_buf.ptr, weights["mtp.layers.0.input_layernorm.weight"].ptr, attn_in_buf.ptr, 1, hidden, eps=eps, threads=256, library=mtp_lib)
+            dflash_qkv_proj_bf16_mixed(
+                attn_in_buf.ptr,
+                weights["mtp.layers.0.self_attn.q_proj.weight"].ptr,
+                weights["mtp.layers.0.self_attn.k_proj.weight"].ptr,
+                weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
+                q_proj_buf.ptr,
+                k_proj_buf.ptr,
+                v_proj_buf.ptr,
+                1,
+                hidden,
+                q_proj_features,
+                kv_features,
+                threads=128,
+                library=dflash_lib,
+            )
+            mtp_split_q_gate_f32_bf16(q_proj_buf.ptr, query_buf.ptr, gate_buf.ptr, 1, q_heads, head_dim, threads=256, library=mtp_lib)
+            dflash_head_rmsnorm_rotary_f32(
+                query_buf.ptr,
+                k_proj_buf.ptr,
+                q_norm_oneplus.ptr,
+                k_norm_oneplus.ptr,
+                cos_buf.ptr,
+                sin_buf.ptr,
+                position_buf.ptr,
+                position_buf.ptr,
+                query_rot_buf.ptr,
+                key_rot_buf.ptr,
+                1,
+                1,
+                1,
+                q_heads,
+                kv_heads,
+                head_dim,
+                rotary_dim,
+                max_positions,
+                eps=eps,
+                threads=128,
+                library=dflash_lib,
+            )
+            runtime.memcpy(key_cache_buf.ptr + depth * kv_features * DType.FP32.itemsize, key_rot_buf.ptr, kv_features * DType.FP32.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE)
+            runtime.memcpy(value_cache_buf.ptr + depth * kv_features * DType.BF16.itemsize, v_proj_buf.ptr, kv_features * DType.BF16.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE)
+            dflash_gqa_attention_f32_bf16(query_rot_buf.ptr, key_cache_buf.ptr, value_cache_buf.ptr, attn_out_buf.ptr, 1, 1, depth + 1, q_heads, kv_heads, head_dim, threads=128, library=dflash_lib)
+            mtp_gate_mul_bf16(attn_out_buf.ptr, gate_buf.ptr, gated_buf.ptr, q_features, threads=256, library=mtp_lib)
+            dflash_dense_bf16_to_bf16(gated_buf.ptr, weights["mtp.layers.0.self_attn.o_proj.weight"].ptr, o_out_buf.ptr, 1, q_features, hidden, threads=128, library=dflash_lib)
+            mtp_add_rmsnorm_bf16_oneplus(
+                o_out_buf.ptr,
+                fc_buf.ptr,
+                weights["mtp.layers.0.post_attention_layernorm.weight"].ptr,
                 moe_in_buf.ptr,
-                gate_up_base + expert_id * gate_up_expert_bytes,
-                gate_up_buf.ptr,
+                residual2_buf.ptr,
                 1,
                 hidden,
-                2 * intermediate,
-                threads=128,
-                library=dflash_lib,
+                eps=eps,
+                threads=256,
+                library=mtp_lib,
             )
-            dflash_silu_mul_bf16(gate_up_buf.ptr, gate_up_buf.ptr + intermediate * DType.BF16.itemsize, expert_intermediate_buf.ptr, intermediate, threads=256, library=dflash_lib)
-            dflash_dense_bf16_to_bf16(
-                expert_intermediate_buf.ptr,
-                down_base + expert_id * down_expert_bytes,
-                expert_down_buf.ptr,
-                1,
-                intermediate,
+            dflash_dense_bf16_to_f32(moe_in_buf.ptr, weights["mtp.layers.0.mlp.gate.weight"].ptr, router_logits_buf.ptr, 1, hidden, int(cfg.num_experts), threads=128, library=dflash_lib)
+            topk_f32_rows_i32(router_logits_buf.ptr, topk_values_buf.ptr, topk_ids_buf.ptr, 1, int(cfg.num_experts), top_k, threads=256, library=lm_lib)
+            mtp_softmax_topk_f32(topk_values_buf.ptr, routing_buf.ptr, 1, top_k, library=mtp_lib)
+            copy_device_to_host(host_array_ptr(topk_ids_host), topk_ids_buf, topk_ids_host.nbytes)
+            copy_device_to_host(host_array_ptr(topk_values_host), topk_values_buf, topk_values_host.nbytes)
+            topk_experts_by_step.append([int(x) for x in topk_ids_host.reshape(-1)])
+            topk_logits_by_step.append([float(x) for x in topk_values_host.reshape(-1)])
+            runtime.memset(moe_accum_buf.ptr, 0, moe_accum_buf.nbytes)
+            for route, expert_id_value in enumerate(topk_ids_host.reshape(-1)):
+                expert_id = int(expert_id_value)
+                dflash_dense_bf16_to_bf16(
+                    moe_in_buf.ptr,
+                    gate_up_base + expert_id * gate_up_expert_bytes,
+                    gate_up_buf.ptr,
+                    1,
+                    hidden,
+                    2 * intermediate,
+                    threads=128,
+                    library=dflash_lib,
+                )
+                dflash_silu_mul_bf16(gate_up_buf.ptr, gate_up_buf.ptr + intermediate * DType.BF16.itemsize, expert_intermediate_buf.ptr, intermediate, threads=256, library=dflash_lib)
+                dflash_dense_bf16_to_bf16(
+                    expert_intermediate_buf.ptr,
+                    down_base + expert_id * down_expert_bytes,
+                    expert_down_buf.ptr,
+                    1,
+                    intermediate,
+                    hidden,
+                    threads=128,
+                    library=dflash_lib,
+                )
+                mtp_accumulate_route_bf16_to_f32(expert_down_buf.ptr, routing_buf.ptr, moe_accum_buf.ptr, hidden, route, threads=256, library=mtp_lib)
+            dflash_dense_bf16_to_f32(moe_in_buf.ptr, weights["mtp.layers.0.mlp.shared_expert_gate.weight"].ptr, shared_gate_buf.ptr, 1, hidden, 1, threads=128, library=dflash_lib)
+            dflash_dense_bf16_to_bf16(moe_in_buf.ptr, weights["mtp.layers.0.mlp.shared_expert.gate_proj.weight"].ptr, shared_gate_proj_buf.ptr, 1, hidden, shared_intermediate, threads=128, library=dflash_lib)
+            dflash_dense_bf16_to_bf16(moe_in_buf.ptr, weights["mtp.layers.0.mlp.shared_expert.up_proj.weight"].ptr, shared_up_proj_buf.ptr, 1, hidden, shared_intermediate, threads=128, library=dflash_lib)
+            dflash_silu_mul_bf16(shared_gate_proj_buf.ptr, shared_up_proj_buf.ptr, shared_intermediate_buf.ptr, shared_intermediate, threads=256, library=dflash_lib)
+            dflash_dense_bf16_to_bf16(shared_intermediate_buf.ptr, weights["mtp.layers.0.mlp.shared_expert.down_proj.weight"].ptr, shared_down_buf.ptr, 1, shared_intermediate, hidden, threads=128, library=dflash_lib)
+            mtp_accumulate_sigmoid_gate_bf16_to_f32(shared_down_buf.ptr, shared_gate_buf.ptr, moe_accum_buf.ptr, hidden, threads=256, library=mtp_lib)
+            mtp_finalize_f32_to_bf16(moe_accum_buf.ptr, moe_out_buf.ptr, hidden, threads=256, library=mtp_lib)
+            mtp_add_rmsnorm_bf16_oneplus(moe_out_buf.ptr, residual2_buf.ptr, weights["mtp.norm.weight"].ptr, final_hidden_buf.ptr, final_residual_buf.ptr, 1, hidden, eps=eps, threads=256, library=mtp_lib)
+            lm_head_fp16_argmax_bf16(
+                final_hidden_buf.ptr,
+                weights["lm_head.weight"].ptr,
+                logits_buf.ptr,
+                block_values_buf.ptr,
+                block_indices_buf.ptr,
+                out_index_buf.ptr,
+                out_value_buf.ptr,
                 hidden,
-                threads=128,
-                library=dflash_lib,
+                vocab,
+                threads=256,
+                library=lm_lib,
             )
-            mtp_accumulate_route_bf16_to_f32(expert_down_buf.ptr, routing_buf.ptr, moe_accum_buf.ptr, hidden, route, threads=256, library=mtp_lib)
-        dflash_dense_bf16_to_f32(moe_in_buf.ptr, weights["mtp.layers.0.mlp.shared_expert_gate.weight"].ptr, shared_gate_buf.ptr, 1, hidden, 1, threads=128, library=dflash_lib)
-        dflash_dense_bf16_to_bf16(moe_in_buf.ptr, weights["mtp.layers.0.mlp.shared_expert.gate_proj.weight"].ptr, shared_gate_proj_buf.ptr, 1, hidden, shared_intermediate, threads=128, library=dflash_lib)
-        dflash_dense_bf16_to_bf16(moe_in_buf.ptr, weights["mtp.layers.0.mlp.shared_expert.up_proj.weight"].ptr, shared_up_proj_buf.ptr, 1, hidden, shared_intermediate, threads=128, library=dflash_lib)
-        dflash_silu_mul_bf16(shared_gate_proj_buf.ptr, shared_up_proj_buf.ptr, shared_intermediate_buf.ptr, shared_intermediate, threads=256, library=dflash_lib)
-        dflash_dense_bf16_to_bf16(shared_intermediate_buf.ptr, weights["mtp.layers.0.mlp.shared_expert.down_proj.weight"].ptr, shared_down_buf.ptr, 1, shared_intermediate, hidden, threads=128, library=dflash_lib)
-        mtp_accumulate_sigmoid_gate_bf16_to_f32(shared_down_buf.ptr, shared_gate_buf.ptr, moe_accum_buf.ptr, hidden, threads=256, library=mtp_lib)
-        mtp_finalize_f32_to_bf16(moe_accum_buf.ptr, moe_out_buf.ptr, hidden, threads=256, library=mtp_lib)
-        mtp_add_rmsnorm_bf16_oneplus(moe_out_buf.ptr, residual2_buf.ptr, weights["mtp.norm.weight"].ptr, final_hidden_buf.ptr, final_residual_buf.ptr, 1, hidden, eps=eps, threads=256, library=mtp_lib)
-        lm_head_fp16_argmax_bf16(
-            final_hidden_buf.ptr,
-            weights["lm_head.weight"].ptr,
-            logits_buf.ptr,
-            block_values_buf.ptr,
-            block_indices_buf.ptr,
-            out_index_buf.ptr,
-            out_value_buf.ptr,
-            hidden,
-            vocab,
-            threads=256,
-            library=lm_lib,
-        )
+            copy_device_to_host(host_array_ptr(out_index_host), out_index_buf, out_index_host.nbytes)
+            copy_device_to_host(host_array_ptr(out_value_host), out_value_buf, out_value_host.nbytes)
+            candidates.append(int(out_index_host[0]))
+            candidate_logits.append(float(out_value_host[0]))
         runtime.device_synchronize()
         native_seconds = time.perf_counter() - started
-        copy_device_to_host(host_array_ptr(out_index_host), out_index_buf, out_index_host.nbytes)
-        copy_device_to_host(host_array_ptr(out_value_host), out_value_buf, out_value_host.nbytes)
     finally:
         for buf in reversed(buffers):
             free(buf)
         for alloc in reversed(allocations):
             alloc.free()
 
-    candidate = int(out_index_host[0])
     draft = compile_mtp_chain(
-        [MtpDraftRequest(request_id=0, root_position=int(root_position), candidate_tokens=(candidate,), active_count=1)],
-        candidate_budget=1,
+        [MtpDraftRequest(request_id=0, root_position=int(root_position), candidate_tokens=tuple(candidates), active_count=len(candidates))],
+        candidate_budget=int(draft_budget),
     )
     target = TargetVerifyBatch.from_draft(draft, root_tokens=(int(root_token),), root_positions=(int(root_position),))
     result: dict[str, Any] = {
@@ -409,11 +437,14 @@ def run_smoke(
         "model": str(model),
         "root_token": int(root_token),
         "root_position": int(root_position),
-        "candidate_token": candidate,
-        "candidate_logit": float(out_value_host[0]),
+        "draft_budget": int(draft_budget),
+        "candidate_tokens": candidates,
+        "candidate_logits": candidate_logits,
+        "candidate_token": candidates[-1],
+        "candidate_logit": candidate_logits[-1],
         "native_seconds": native_seconds,
-        "topk_experts": [int(x) for x in topk_ids_host.reshape(-1)],
-        "topk_logits": [float(x) for x in topk_values_host.reshape(-1)],
+        "topk_experts": topk_experts_by_step,
+        "topk_logits": topk_logits_by_step,
         "mtp_validation": validation.to_json_dict(),
         "draft_batch": {
             "request_ids": list(draft.request_ids),
@@ -432,12 +463,12 @@ def run_smoke(
             "active_mask": list(target.active_mask),
             "mode": target.mode,
         },
-        "note": "Single-step native MTP proposal smoke; expert ids are host-orchestrated and this is not a throughput benchmark.",
+        "note": "Native MTP proposal-chain smoke; expert ids are host-orchestrated and this is not a throughput benchmark.",
     }
     if torch_compare:
-        reference = _run_torch_reference(model, root_token=root_token, root_position=root_position, target_hidden_bits=target_hidden_bits)
+        reference = _run_torch_reference(model, root_token=root_token, root_position=root_position, target_hidden_bits=target_hidden_bits, draft_budget=int(draft_budget))
         result["torch_reference"] = reference
-        result["candidate_matches_torch"] = bool(candidate == int(reference["candidate_token"]))
+        result["candidate_matches_torch"] = bool(candidates == list(reference["candidate_tokens"]))
         if not result["candidate_matches_torch"]:
             result["status"] = "candidate_mismatch"
     return result
@@ -448,15 +479,16 @@ def main() -> int:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--root-token", type=int, default=151646)
     parser.add_argument("--root-position", type=int, default=0)
+    parser.add_argument("--draft-budget", type=int, default=1)
     parser.add_argument("--torch-compare", action="store_true")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
 
-    result = run_smoke(args.model, root_token=args.root_token, root_position=args.root_position, torch_compare=bool(args.torch_compare))
+    result = run_smoke(args.model, root_token=args.root_token, root_position=args.root_position, draft_budget=int(args.draft_budget), torch_compare=bool(args.torch_compare))
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"status": result["status"], "candidate": result["candidate_token"], "torch": result.get("torch_reference", {}).get("candidate_token"), "matches": result.get("candidate_matches_torch"), "native_seconds": result["native_seconds"]}, sort_keys=True))
+    print(json.dumps({"status": result["status"], "candidates": result["candidate_tokens"], "torch": result.get("torch_reference", {}).get("candidate_tokens"), "matches": result.get("candidate_matches_torch"), "native_seconds": result["native_seconds"]}, sort_keys=True))
     return 0 if result["status"] == "passed" else 1
 
 
