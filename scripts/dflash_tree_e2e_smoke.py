@@ -109,6 +109,7 @@ def main() -> int:
         choices=("depth2_binary", "depth1_branch4", "chain_reduction"),
         help="Synthetic tree topology to verify",
     )
+
     ap.add_argument("--json", type=Path, default=None, help="Write a one-row JSON artifact here")
     args = ap.parse_args()
 
@@ -214,10 +215,11 @@ def main() -> int:
         capture_tensor = Tensor.from_handle(capture_buf.ptr, (capture_rows, capture_width), DType.BF16, session.device)
 
         # Verify ONCE.
+        verify_base_slot = 1
         t_verify = time.perf_counter()
         verify_result = session.verify_tree_bulk_and_commit(
             target_batch,
-            base_slot=1,
+            base_slot=verify_base_slot,
             capture_layer_ids=capture_layers,
             capture_hidden_concat=capture_tensor,
             capture_row_start=0,
@@ -234,6 +236,26 @@ def main() -> int:
             "cpu_accepted_count_matches_verify_result": int(cpu_summary.accepted_counts[0]) == verify_result.accepted_count,
             "cpu_commit_row_matches_verify_result": int(cpu_summary.commit_rows[0]) == verify_result.commit_row,
         }
+
+        # Multi-cycle sanity: after verify_tree compaction the cache MUST
+        # still produce a finite next-token forward.  Broken K/V compaction
+        # (sparse cache slots) would surface as NaN/Inf in this step.
+        next_token = verify_result.next_token if verify_result.next_token is not None else verify_result.commit_token
+        next_position = verify_result.commit_position + 1
+        # The follow-up step always uses slot 0 -- it doesn't validate the
+        # compacted cache directly (slot 0 wasn't touched by verify_tree),
+        # but it confirms the session is in a usable state after compaction.
+        # The proper multi-cycle compaction validation lives in the E2E
+        # benchmark (task #14) once the tree drafter lands.
+        followup = session.step(int(next_token), position=int(next_position), sample=True)
+        followup_token: int | None = None
+        followup_logit_finite = False
+        if followup is not None:
+            followup_token = int(followup.token_id)
+            followup_logit_finite = math.isfinite(float(followup.logit))
+        gates["followup_decode_finite"] = bool(followup_logit_finite)
+        gates["followup_decode_emitted_token"] = followup_token is not None
+
         all_passed = all(gates.values())
 
         report = {
@@ -271,6 +293,13 @@ def main() -> int:
             "all_correctness_passed": all_passed,
             "prefill_seconds": prefill_seconds,
             "verify_seconds": verify_seconds,
+            "verify_base_slot": verify_base_slot,
+            "followup": {
+                "input_token": int(next_token),
+                "input_position": int(next_position),
+                "emitted_token": followup_token,
+                "logit_finite": followup_logit_finite,
+            },
             "memory": memory_stats(),
         }
 

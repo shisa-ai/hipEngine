@@ -2460,13 +2460,14 @@ class Qwen35ParoResidentSession:
         computed by ``dflash_accept_chain_i32`` which already walks
         ``parent_rows`` to find the longest matching path through the tree.
 
-        Currently a SINGLE-CYCLE path: the accepted leaf may live at a
-        sparse cache slot (its verifier-row index, not its depth), which is
-        fine for one verify call but breaks subsequent decode cycles
-        because the cache between ``current_pos`` and the accepted slot
-        still holds unaccepted sibling K/V.  Multi-cycle decode requires
-        the K/V compaction step tracked in task #15.  Until that lands the
-        caller must treat this as a one-shot verifier (no follow-on decode).
+        Multi-cycle-safe: after accept, ``_commit_tree_full_attention_kv``
+        compacts the accepted path's K/V cells from their sparse verifier-
+        row slots back to the canonical dense slots
+        ``[tree_committed_count, tree_committed_count + accepted_count]``
+        for every full-attention layer.  Linear-attention recurrent state
+        for the accepted leaf is committed by ``_commit_bulk_linear_states``
+        as for chain mode.  Subsequent decode cycles can read the correct
+        dense context.
 
         Graph capture is not supported for tree mode (yet) because graph
         capture must observe a fixed kernel/address layout per bucket and
@@ -2523,12 +2524,20 @@ class Qwen35ParoResidentSession:
         cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
         gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
         selected_row = int(cpu_summary.commit_rows[0])
-        # NOTE: K/V cache compaction across the accepted path is NOT done
-        # here.  Single-cycle callers can ignore the sparse cache; multi-
-        # cycle decode must wait for task #15 before consuming this
-        # entry point.  The linear-attention recurrent state IS committed
-        # via ``_commit_bulk_linear_states`` (which already follows
-        # parent_rows to assemble the accepted-leaf state).
+        # Compact accepted-path K/V cells from their sparse verifier-row
+        # slots back to canonical dense slots, so the next decode cycle
+        # reads the correct context.  Skipped (no-op) when the accepted
+        # path is already in canonical layout (e.g. a degenerate tree
+        # that is a chain).
+        self._commit_tree_full_attention_kv(
+            batch,
+            selected_row,
+            base_slot=base_slot,
+            stream=stream,
+        )
+        # Linear-attention recurrent state commit follows the chain path:
+        # the tree t-loop already produced the exact leaf state and
+        # ``_commit_bulk_linear_states`` picks it via selected_row.
         self._commit_bulk_linear_states(selected_row, base_slot=base_slot, stream=stream)
         self._set_slot_position(int(cpu_summary.commit_positions[0]), slot=base_slot, stream=stream)
         self.runtime.stream_synchronize(stream)
@@ -3582,6 +3591,115 @@ class Qwen35ParoResidentSession:
             and payload["next_tokens"] == expected_next
             and payload["full_accept"] == tuple(bool(x) for x in summary.full_accept)
         )
+
+    def _commit_tree_full_attention_kv(
+        self,
+        batch: TargetVerifyBatch,
+        selected_row: int,
+        *,
+        base_slot: int,
+        stream: int = 0,
+    ) -> None:
+        """Compact accepted-path K/V cells into canonical dense cache slots.
+
+        After ``verify_tree_bulk_and_commit`` runs, each verifier row's K/V
+        lives at cache slot ``tree_committed_count + row_index``, which is
+        sparse: unaccepted sibling rows occupy slots between the accepted
+        path's slots.  For a multi-cycle decode to read the correct context
+        on the next step, the accepted path's K/V must occupy slots
+        ``[tree_committed_count, tree_committed_count + accepted_count]``
+        densely.
+
+        This method walks ``batch.parent_rows`` from ``selected_row`` back to
+        the root, collecting the accepted path (root first, leaf last), and
+        for every full-attention layer copies each path row's K/V cell from
+        its sparse source slot ``tree_committed_count + path_row`` to its
+        canonical dense destination slot ``tree_committed_count + depth``.
+        Source slots are strictly greater than (or equal to) destination
+        slots because tree row indices grow with depth, so the copy ordering
+        root→leaf is safe (no source slot is overwritten before being read).
+
+        Linear-attention recurrent state for the leaf is committed separately
+        by ``_commit_bulk_linear_states``; only the leaf state matters because
+        linear attention is path-dependent and the tree t-loop already
+        produced the leaf's exact state.
+        """
+
+        if batch.mode != "verify_tree":
+            return
+        # Build the accepted path: root first, leaf last.
+        path: list[int] = []
+        cursor = int(selected_row)
+        while cursor >= 0:
+            path.append(cursor)
+            parent = int(batch.parent_rows[cursor])
+            if parent < 0:
+                break
+            cursor = parent
+        path.reverse()
+        if not path:
+            return
+        if int(self.verify_tree_committed_count) < 0:
+            raise RuntimeError(
+                "verify_tree_committed_count must be set before tree K/V commit"
+            )
+        committed = int(self.verify_tree_committed_count)
+        # Compute the byte stride of a single position's K/V cell from one
+        # of the resident full-attention caches.  Layout within a slot view
+        # is ``[blocks, block_size, num_kv_heads, head_dim]`` packed
+        # contiguously, so position ``P`` lives at byte offset
+        # ``P * num_kv_heads * head_dim * itemsize`` from the slot base.
+        if not self.full_caches:
+            return  # no full-attention layers; nothing to compact
+        sample_layer = next(iter(self.full_caches))
+        sample_key_cache, _sample_value_cache, _key_buf, _value_buf = self.full_caches[sample_layer]
+        cell_nbytes = int(
+            self.config.num_key_value_heads
+            * self.config.head_dim
+            * sample_key_cache.dtype.itemsize
+        )
+        copies: list[tuple[int, int]] = []  # (dest_position, source_position)
+        for depth, source_row in enumerate(path):
+            source_position = committed + int(source_row)
+            dest_position = committed + depth
+            if source_position == dest_position:
+                continue
+            if dest_position < 0 or dest_position >= self.max_sequence_length:
+                raise RuntimeError(
+                    f"dest position {dest_position} out of cache range"
+                )
+            copies.append((dest_position, source_position))
+        if not copies:
+            return
+        for layer_id, (key_cache, _value_cache, _key_buf, _value_buf) in self.full_caches.items():
+            layer_type = self.config.layer_types[layer_id]
+            if layer_type != "full_attention":
+                continue
+            # ``_slot_full_cache`` returns slot-view tensors whose ``.ptr``
+            # already points at the slot's K/V region inside the global
+            # allocation, so position offsets within those tensors are
+            # relative to the slot base.
+            slot_key, slot_value = self._slot_full_cache(layer_id, base_slot)
+            for dest_position, source_position in copies:
+                src_off = source_position * cell_nbytes
+                dst_off = dest_position * cell_nbytes
+                self.runtime.memcpy_async(
+                    slot_key.ptr + dst_off,
+                    slot_key.ptr + src_off,
+                    cell_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                self.runtime.memcpy_async(
+                    slot_value.ptr + dst_off,
+                    slot_value.ptr + src_off,
+                    cell_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            # Force ``key_cache`` to look used so static analyzers don't
+            # warn about the dict-iteration variable.
+            _ = key_cache
 
     def _commit_bulk_linear_states(self, selected_row: int, *, base_slot: int, stream: int = 0) -> None:
         for layer_id, scratch in self.linear_scratch.items():
