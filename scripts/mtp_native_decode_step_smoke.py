@@ -26,9 +26,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head, lm_head_argmax_stage1_blocks, lm_head_fp16_argmax_bf16, topk_f32_rows_i32
 from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     build_dflash_drafter,
@@ -55,6 +57,7 @@ from hipengine.loading import TensorInfo, load_tensor_info_to_device, load_weigh
 from hipengine.loading.materialize import DeviceTensorAllocation
 from hipengine.loading.qwen35_paro import normalize_qwen35_weight_name
 from hipengine.loading.safetensors import read_tensor_storage_bytes
+from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from hipengine.speculative import MtpDraftRequest, TargetVerifyBatch, compile_mtp_chain
 
 DEFAULT_MODEL = Path("/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16")
@@ -159,6 +162,50 @@ def _run_torch_reference(
     return {"candidate_tokens": candidates, "finite_logits": finite_logits}
 
 
+def _capture_target_hidden_from_session(
+    model: Path,
+    *,
+    root_token: int,
+    root_position: int,
+    backend: str,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    if root_position != 0:
+        raise ValueError("target_session capture currently supports root_position=0 only; add prompt prefill before using larger positions")
+    runner = Qwen35ParoNextTokenRunner(model, backend=backend)
+    runtime = runner.runtime
+    capture_buf = None
+    with Qwen35ParoResidentSession(runner, max_sequence_length=max(2, root_position + 2)) as session:
+        capture_layer_id = int(session.layer_limit) - 1
+        capture_host = np.zeros((1, session.config.hidden_size), dtype=np.uint16)
+        capture_buf = malloc(capture_host.nbytes, runtime=runtime)
+        try:
+            capture_tensor = Tensor.from_handle(capture_buf.ptr, capture_host.shape, DType.BF16, Device("hip", 0))
+            started = time.perf_counter()
+            step_result = session.step_with_hidden_taps(
+                int(root_token),
+                position=int(root_position),
+                capture_layer_ids=(capture_layer_id,),
+                capture_hidden_concat=capture_tensor,
+                capture_row=0,
+                sample=True,
+            )
+            runtime.device_synchronize()
+            capture_seconds = time.perf_counter() - started
+            copy_device_to_host(host_array_ptr(capture_host), capture_buf, capture_host.nbytes, runtime=runtime)
+        finally:
+            if capture_buf is not None:
+                free(capture_buf, runtime=runtime)
+        return capture_host.copy(), {
+            "source": "target_session_last_layer",
+            "backend": session.backend,
+            "target_arch": session.target_arch,
+            "capture_layer_id": capture_layer_id,
+            "capture_seconds": capture_seconds,
+            "target_next_token": None if step_result is None else int(step_result.token_id),
+            "target_next_logit": None if step_result is None else float(step_result.logit),
+        }
+
+
 def run_smoke(
     model: str | Path,
     *,
@@ -166,6 +213,8 @@ def run_smoke(
     root_position: int,
     draft_budget: int,
     torch_compare: bool,
+    target_hidden_source: str = "synthetic",
+    target_backend: str = "auto",
 ) -> dict[str, Any]:
     model = Path(model)
     validation = validate_qwen35_mtp_model(model)
@@ -192,9 +241,20 @@ def run_smoke(
     if not (0 <= root_token < vocab):
         raise ValueError(f"root_token must be in [0, {vocab})")
 
-    rng = np.random.default_rng(1234)
-    target_hidden_f32 = (rng.standard_normal((1, hidden), dtype=np.float32) * np.float32(0.25)).astype(np.float32)
-    target_hidden_bits = _f32_to_bf16_bits(target_hidden_f32)
+    if target_hidden_source == "synthetic":
+        rng = np.random.default_rng(1234)
+        target_hidden_f32 = (rng.standard_normal((1, hidden), dtype=np.float32) * np.float32(0.25)).astype(np.float32)
+        target_hidden_bits = _f32_to_bf16_bits(target_hidden_f32)
+        target_hidden_metadata: dict[str, Any] = {"source": "synthetic_rng_seed_1234"}
+    elif target_hidden_source == "target_session":
+        target_hidden_bits, target_hidden_metadata = _capture_target_hidden_from_session(
+            model,
+            root_token=int(root_token),
+            root_position=int(root_position),
+            backend=target_backend,
+        )
+    else:
+        raise ValueError("target_hidden_source must be 'synthetic' or 'target_session'")
     token_ids = np.asarray([root_token], dtype=np.int64)
     positions = np.asarray([root_position], dtype=np.int32)
     max_positions = max(int(root_position) + int(draft_budget) + 1, 2)
@@ -443,6 +503,7 @@ def run_smoke(
         "candidate_token": candidates[-1],
         "candidate_logit": candidate_logits[-1],
         "native_seconds": native_seconds,
+        "target_hidden": target_hidden_metadata,
         "topk_experts": topk_experts_by_step,
         "topk_logits": topk_logits_by_step,
         "mtp_validation": validation.to_json_dict(),
@@ -480,11 +541,21 @@ def main() -> int:
     parser.add_argument("--root-token", type=int, default=151646)
     parser.add_argument("--root-position", type=int, default=0)
     parser.add_argument("--draft-budget", type=int, default=1)
+    parser.add_argument("--target-hidden-source", choices=("synthetic", "target_session"), default="synthetic")
+    parser.add_argument("--target-backend", default="auto", help="Backend for target-session hidden capture; default auto")
     parser.add_argument("--torch-compare", action="store_true")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
 
-    result = run_smoke(args.model, root_token=args.root_token, root_position=args.root_position, draft_budget=int(args.draft_budget), torch_compare=bool(args.torch_compare))
+    result = run_smoke(
+        args.model,
+        root_token=args.root_token,
+        root_position=args.root_position,
+        draft_budget=int(args.draft_budget),
+        torch_compare=bool(args.torch_compare),
+        target_hidden_source=str(args.target_hidden_source),
+        target_backend=str(args.target_backend),
+    )
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")

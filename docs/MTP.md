@@ -80,9 +80,12 @@ kernels for zero-centered RMSNorm, q/gate split, BF16 gate multiply, router
 softmax, MoE accumulation, and FP32-to-BF16 finalization.  On gfx1151 with the
 assembled artifact, `--draft-budget 2 --torch-compare` produced candidate chain
 `[12, 4773]` in both native and torch-reference paths and emitted verifier rows
-`[root, d1, d2]` with parent rows `[-1, 0, 1]`.  This remains a diagnostic smoke,
-not a speed row: selected expert ids are host-orchestrated, and real target-hidden
-capture from `Qwen35ParoResidentSession` is still required.
+`[root, d1, d2]` with parent rows `[-1, 0, 1]`.  The same smoke can now consume a
+BF16 target hidden row captured by `Qwen35ParoResidentSession.step_with_hidden_taps`
+using `--target-hidden-source target_session`; that path produced native/torch
+candidate chain `[27399, 220]`.  This remains a diagnostic smoke, not a speed row:
+selected expert ids are host-orchestrated and the full shared-verifier loop is
+still being wired.
 
 ## Alignment with existing hipEngine design
 

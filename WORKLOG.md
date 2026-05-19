@@ -19544,3 +19544,48 @@ Status / remaining blocker:
   hidden.  Remaining production work is captured target-hidden wiring from
   `Qwen35ParoResidentSession`, then a real `mtp_chain_e2e_bench.py` provider path
   through `verify_chain_bulk_and_commit`.
+
+## 2026-05-19 (continued) — Native MTP proposal consumes target-session hidden
+
+Extended `scripts/mtp_native_decode_step_smoke.py` with real BF16 target-hidden
+capture from `Qwen35ParoResidentSession.step_with_hidden_taps`:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_native_decode_step_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --root-token 151646 --root-position 0 --draft-budget 2 \
+  --target-hidden-source target_session --target-backend hip_gfx1151 \
+  --torch-compare --json /tmp/hipengine-mtp-native-chain-b2-target-hidden.json
+# {"candidates": [27399, 220], "matches": true, "native_seconds": 0.016163823020178825, "status": "passed", "torch": [27399, 220]}
+```
+
+The target hidden row was captured from resident layer 39:
+
+```json
+{
+  "source": "target_session_last_layer",
+  "backend": "hip_gfx1151",
+  "target_arch": "gfx1151",
+  "capture_layer_id": 39,
+  "capture_seconds": 0.10032113298075274,
+  "target_next_token": 180184,
+  "target_next_logit": 12.139425277709961
+}
+```
+
+Verifier-facing metadata remains the expected chain layout:
+
+```json
+{
+  "draft_batch": {"candidate_tokens": [27399, 220], "draft_depths": [1, 2], "active_mask": [true, true]},
+  "target_verify_batch": {"tokens": [151646, 27399, 220], "positions": [0, 1, 2], "parent_rows": [-1, 0, 1]}
+}
+```
+
+Retained artifact:
+
+- `benchmarks/results/2026-05-19-hipengine-mtp-native-chain-b2-target-hidden-smoke-diagnostic.json`
+
+This closes the synthetic-hidden gap for the native proposal smoke. Continuing
+rather than stopping: next work is a real shared-verifier MTP E2E loop with
+correct prompt/MTP prefill alignment, then iteration toward an AR speed win.
