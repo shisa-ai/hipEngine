@@ -19251,3 +19251,43 @@ Result:
   ``DraftBatch``.
 - Model weights remain outside git; only the assembler script, docs, and compact
   diagnostics should be committed.
+
+## 2026-05-19 (continued) — MTP native proposal dev starts: input-fusion kernel
+
+With the local PARO+MTP-BF16 artifact assembled, MTP is no longer blocked on
+missing weights.  It is still not ready for an end-to-end speed benchmark: the
+native proposal execution path must be ported first.  This session starts that
+path with the first reusable primitive.
+
+Implemented:
+
+- New HIP kernel library ``hipengine/kernels/hip_gfx1100/speculative/mtp.hip``
+  and wrapper ``mtp.py``.
+- New symbol ``hipengine_mtp_fuse_inputs_f16_bf16``:
+  - reads candidate/root token ids;
+  - gathers token embedding rows from the target FP16 embedding table;
+  - reads target hidden rows in BF16;
+  - applies Qwen-style RMSNorm with ``(1 + weight)`` separately to embedding and
+    hidden streams using ``mtp.pre_fc_norm_embedding.weight`` and
+    ``mtp.pre_fc_norm_hidden.weight``;
+  - writes concatenated BF16 rows ``[embed_norm, hidden_norm]`` of shape
+    ``[rows, 2 * hidden]`` for the existing BF16 dense GEMV wrapper to apply
+    ``mtp.fc.weight``.
+- Registered under ``KernelKey(backend, 'mtp_fuse_inputs', 'bf16',
+  'f16_embed_bf16_hidden')`` for ``hip_gfx1100`` and ``hip_gfx1151``.
+
+Validation:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_mtp_input_fusion_kernel.py -q
+# 1 passed; kernel output matches CPU reference after BF16 rounding
+```
+
+Status:
+
+- This is not an MTP throughput benchmark yet; it is the first native proposal
+  primitive required before a real benchmark can run.
+- Next MTP dev step: apply ``mtp.fc`` with existing BF16 dense GEMV, then port
+  the one-layer MTP full-attention + MoE + final norm + shared lm-head/top1 into
+  a provider that emits candidate-only ``DraftBatch`` rows for
+  ``verify_chain_bulk_and_commit``.

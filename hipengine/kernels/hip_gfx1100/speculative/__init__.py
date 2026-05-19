@@ -30,6 +30,12 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     plan_dflash_drafter_build,
     register_dflash_drafter_kernels,
 )
+from hipengine.kernels.hip_gfx1100.speculative.mtp import (
+    build_mtp_speculative,
+    mtp_fuse_inputs_f16_bf16,
+    plan_mtp_speculative_build,
+    register_mtp_speculative_kernels,
+)
 
 __all__ = [
     "build_dflash_accept",
@@ -50,10 +56,14 @@ __all__ = [
     "dflash_rmsnorm_bf16",
     "dflash_silu_mul_bf16",
     "dflash_update_kv_metadata_i32",
+    "build_mtp_speculative",
+    "mtp_fuse_inputs_f16_bf16",
     "plan_dflash_accept_build",
     "plan_dflash_commit_build",
     "plan_dflash_drafter_build",
+    "plan_mtp_speculative_build",
     "register_dflash_accept_kernels",
     "register_dflash_commit_kernels",
     "register_dflash_drafter_kernels",
+    "register_mtp_speculative_kernels",
 ]
