@@ -20214,3 +20214,20 @@ rocprof `--kernel-trace` for Q5 opt:
 Diagnosis: decode hoisting looks attractive statically but regresses real replay by `+26%`. It likely increases instruction scheduling/register lifetime enough to lose even though trace VGPR remains `64`. The retained generic raw-Q5 legacy 16x16 kernel remains the fastest available Q5 path.
 
 Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c7-q5-opt-v1-rejected.json`.
+
+## 2026-05-18 P9.C8 task #39: Q6 selected-down validation
+
+Ran Q6_K selected-down tile validation with the P9.C2 replay harness, varying only `HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_{M,N}`:
+
+| Q6 tile | Q6 down replay ms | selected-MoE replay ms |
+| --- | ---: | ---: |
+| 16x16 | 2.839 | 90.185 |
+| 32x16 | 3.138 | 90.208 |
+| 16x32 | 3.576 | 90.514 |
+| 32x32 | 3.608 | 90.830 |
+| 64x16 | 3.248 | 89.827 |
+| 64x32 | 4.826 | 92.455 |
+
+Decision: retain legacy Q6 `16x16`. Q6 contributes only about `2.8 ms` across 3 layers, the generic larger tiles regress, and the Q5 decode-hoist idea did not produce a generalizable win. No dedicated Q6 hot path is warranted for P9.C8.
+
+Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c8-q6-retain-legacy.json`.
