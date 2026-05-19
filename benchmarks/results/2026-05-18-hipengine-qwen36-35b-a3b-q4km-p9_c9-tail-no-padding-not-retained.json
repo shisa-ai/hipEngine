@@ -1,0 +1,67 @@
+{
+  "schema": "p9_c9_tail_no_padding_decision",
+  "status": "not_retained",
+  "performance_claim": false,
+  "timestamp": "2026-05-19T08:49:37.080341+00:00",
+  "task": "#40 P9.C9 selected-MoE tail/no-padding hybrid",
+  "git_commit": "df4d289edec71eb8ef4e7c9688cf7f764d2b4a34",
+  "summary": "Revisited tail/no-padding after Q4/Q5/Q6 prototypes. Padding is real (13.45% padded rows), but true residual rows are only 5.40% of compact rows and P9.C4 measured a Q4 tail-by-expert fallback at 17.47 ms, erasing the full-tile benefit. Bulk no-padding GEMV had already been rejected as much slower. A retained hybrid would need a new compact tail-list ABI across Q4/Q5/Q6; not justified for P9.C9 without a winning hot path.",
+  "baseline_replay_json": "/tmp/p9_c2/moe-replay-512-0-batched.json",
+  "aggregate_rows": {
+    "compact": 163840,
+    "wmma": 185872,
+    "padding": 22032,
+    "residual_rows": 8848,
+    "full_rows": 154992,
+    "nonzero_experts": 1966,
+    "expert_instances": 10240,
+    "layers": 40,
+    "gate_ms": 59.89599107997493,
+    "down_ms": 29.827702980643764,
+    "padding_pct_of_compact": 13.447265624999998,
+    "residual_pct_of_compact": 5.400390625,
+    "wmma_rows_removed_by_full_tile_only_pct": 16.6135835413618
+  },
+  "by_down_quant": {
+    "gguf_q5_k": {
+      "compact": 151552,
+      "wmma": 171312,
+      "padding": 19760,
+      "residual_rows": 7936,
+      "full_rows": 143616,
+      "nonzero_experts": 1764,
+      "expert_instances": 9472,
+      "layers": 37,
+      "gate_ms": 54.93892474720876,
+      "down_ms": 26.999416520508632,
+      "padding_pct_of_compact": 13.038429054054054,
+      "residual_pct_of_compact": 5.236486486486487,
+      "wmma_rows_removed_by_full_tile_only_pct": 16.16699355561782
+    },
+    "gguf_q6_k": {
+      "compact": 12288,
+      "wmma": 14560,
+      "padding": 2272,
+      "residual_rows": 912,
+      "full_rows": 11376,
+      "nonzero_experts": 202,
+      "expert_instances": 768,
+      "layers": 3,
+      "gate_ms": 4.957066332766165,
+      "down_ms": 2.828286460135132,
+      "padding_pct_of_compact": 18.489583333333336,
+      "residual_pct_of_compact": 7.421875,
+      "wmma_rows_removed_by_full_tile_only_pct": 21.86813186813187
+    }
+  },
+  "measured_tail_evidence": {
+    "p9_c4_q4_tail_by_expert_ms": 17.470017,
+    "p9_c4_q4_hot_fulltile_ms": 49.211642,
+    "p9_c4_retained_q4_replay_ms": 59.89599107997493,
+    "p9_c4_decision": "Q4 hot/full-tile + tail fallback was slower (66.08 ms) than retained 32x16 (59.90 ms)."
+  },
+  "decision": {
+    "retain_default": false,
+    "reason": "No measured tail path improves the selected-MoE bucket by 3-5 ms. Existing tail fallback costs more than the padding it removes; bulk no-padding GEMV is much slower; a compact tail-list ABI is future R&D, not a safe P9.C9 landing."
+  }
+}

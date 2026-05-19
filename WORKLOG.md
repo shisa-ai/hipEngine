@@ -20231,3 +20231,30 @@ Ran Q6_K selected-down tile validation with the P9.C2 replay harness, varying on
 Decision: retain legacy Q6 `16x16`. Q6 contributes only about `2.8 ms` across 3 layers, the generic larger tiles regress, and the Q5 decode-hoist idea did not produce a generalizable win. No dedicated Q6 hot path is warranted for P9.C8.
 
 Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c8-q6-retain-legacy.json`.
+
+## 2026-05-18 P9.C9 task #40: tail/no-padding hybrid decision
+
+Revisited padding/tail after the Q4/Q5/Q6 prototype outcomes.
+
+Retained P9.C2 replay row accounting:
+
+- Compact rows: `163,840`.
+- WMMA rows: `185,872`.
+- Padding rows: `22,032` (`+13.45%` vs compact).
+- True residual/tail rows: `8,848` (`5.40%` of compact).
+- Full-tile-only WMMA would remove `30,880` row-equivalents (`wmma_rows - full_rows`, `16.61%` of WMMA rows), but those residual rows still need a tail path.
+
+By quant:
+
+- Q5-down layers: compact `151,552`, WMMA `171,312`, padding `19,760` (`13.04%`), residual `7,936` (`5.24%`).
+- Q6-down layers: compact `12,288`, WMMA `14,560`, padding `2,272` (`18.49%`), residual `912` (`7.42%`).
+
+Measured tail-path evidence already exists from P9.C4:
+
+- Q4 full-tile hot kernel: `49.212 ms`.
+- Q4 tail-by-expert fallback: `17.470 ms`.
+- Complete Q4 hot/full/tail hybrid: `66.08 ms`, slower than retained Q4 `59.90 ms`.
+
+Decision: do not retain a tail/no-padding hybrid for P9.C9. Existing tail fallback costs more than the padding it removes, bulk no-padding GEMV was already rejected as much slower, and a genuinely useful version would require a new compact tail-list ABI and three quant-specific tail kernels. Without a winning hot path, this is not justified and does not meet the `3-5 ms` selected-MoE improvement bar.
+
+Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c9-tail-no-padding-not-retained.json`.
