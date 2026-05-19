@@ -219,6 +219,21 @@ uv run python scripts/smoke.py --model Qwen3-0.6B --prompt fixtures/smoke_prompt
 
 Runs the full `LLM.generate()` path on a fixed prompt set, saves logits, diffs against the archived CPU-reference logits. Same KL ≤ 0.05 / top-1 ≥ 90% gate.
 
+### P9 qwen35moe GGUF WMMA+GEMV decode gate
+
+For P9.A3/P9.B7-style qwen35moe GGUF benchmark rows that enable the P8 WMMA bulk-prefill opt-in and/or the P9 decode GEMV opt-in, run the resident 512/128 contract before reporting throughput:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --json benchmarks/results/<date>-qwen36-35b-a3b-q4km-p9-e2-correctness.json
+```
+
+The fixture compares `HIPENGINE_GGUF_WMMA_PREFILL=1` + `HIPENGINE_GGUF_GEMV_DECODE=1` against the legacy row-GEMV path (`0`/`0`) over the prefill sample plus 128 eager decode logits rows. Acceptance is mean KL ≤ 0.05, top-1 agreement ≥ 90%, finite final logits, and deterministic candidate tail token IDs across three runs. A failed gate makes any dependent throughput row `rejected_correctness`; do not promote it to the rollup.
+
 Fixtures (prompts + reference logits) are tiny (< 10 MB) and *are* committed under `fixtures/`. They are not "benchmark outputs" and do not count against the never-commit rule.
 
 ## Post-run Quality Gates

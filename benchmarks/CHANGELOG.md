@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-19
+
+- [correctness rejected] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #30 P9.E2 WMMA+GEMV E2E fixture: new formal 512/128×3 gate reports candidate tails deterministic and final logits finite but rejects the P8 WMMA prefill + P9 GEMV decode opt-in combination vs legacy row-GEMV (`KL 5.993 > 0.05`, top-1 `5.43% < 90%`, first mismatch prefill row `128449 -> 59639`); dependent P9.A3/P9.B7 throughput rows must be `rejected_correctness`/blocked until this gate passes; `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_e2-e2e-correctness-rejected.json`.
+
 ## 2026-05-18
 
 - [final blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #27 P9.C hot-expert selected-MoE final: combined Q8_0 WMMA + Q4_K selected dual + Q5/Q6 selected down bucket `139.442 -> 140.110 ms` (`+0.5%`, noise) after rejecting Q4 hot/full-tile, Q4 scale/min sidecar, Q5 decode-hoist, Q6 larger tiles, and tail/no-padding hybrid; still misses `<=110 ms` target, so #27 remains open/blocked; 512/0 wall prefill `1678.004 -> 1661.788 tok/s` (`-1.0%`, noise), 512/128 prefill/decode `1677.561/62.557 tok/s`; final adjacent correctness bundle passes (`143` tests); next bottleneck Q4 selected dual `58.126 ms`; `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c11-hot-expert-final-blocked.json`.

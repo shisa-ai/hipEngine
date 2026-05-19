@@ -20404,3 +20404,59 @@ Result: first layer record reports `tile16_materialized=true` and `tile16_materi
 Artifact: `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_c13-q4t16-materializer.json`.
 
 Next: P9.C14/#45 should implement a HIP WMMA kernel consuming Q4T16, then measure first-layer `<=1.35 ms` and replay `<=45 ms` go/no-go gates.
+
+## 2026-05-19 P9.E2 task #30: qwen35moe WMMA+GEMV E2E correctness gate
+
+Added the formal P9 qwen35moe GGUF 512/128 E2E correctness contract for the P8 WMMA prefill + P9 decode GEMV opt-in combination:
+
+- Script: `scripts/qwen35_gguf_p9_e2e_correctness.py`.
+  - Runs `Qwen35GGUFResidentSession` directly so it can collect full logits for the prefill sample plus every eager decode step.
+  - Reference mode: `HIPENGINE_GGUF_WMMA_PREFILL=0`, `HIPENGINE_GGUF_GEMV_DECODE=0` (legacy row-GEMV path).
+  - Candidate mode: `HIPENGINE_GGUF_WMMA_PREFILL=1`, `HIPENGINE_GGUF_GEMV_DECODE=1`.
+  - Enforces KL <= `0.05`, top-1 >= `90%`, finite final logits, and deterministic candidate tail token IDs across repeats. Artifacts include first top-1 mismatch and max logit delta to make reduction-order drift loud.
+- Fixture: `tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json`.
+  - Model: `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`.
+  - Prompt shape: repeated token `9707`, length `512`.
+  - Generation: `128` eager decode steps after the prefill sample, `3` candidate repeats.
+- Tests: `tests/test_qwen35_gguf_p9_e2e_correctness.py` covers fixture contract, passing small-drift metrics, loud drift failure, and nondeterministic tail failure.
+
+Validation:
+
+```bash
+uv run python -m py_compile scripts/qwen35_gguf_p9_e2e_correctness.py tests/test_qwen35_gguf_p9_e2e_correctness.py
+uv run --with pytest pytest tests/test_qwen35_gguf_p9_e2e_correctness.py -q --tb=short
+# 4 passed
+```
+
+Real qwen35moe gate command:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --json benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_e2-e2e-correctness-rejected.json
+```
+
+Result: **rejected_correctness** (`rc=1`, elapsed `118s`). Candidate tails were deterministic across all three repeats and final logits were finite, but the formal drift gate failed:
+
+- Worst KL mean: `5.992554` vs threshold `0.05`.
+- Worst top-1 agreement: `0.054264` vs threshold `0.90`.
+- First mismatch: row `0` (prefill sample), reference argmax `128449`, candidate argmax `59639`.
+- Candidate final token IDs: `[220, 220, 220]`.
+- Reference final token ID: `220`.
+
+A 512/1 four-mode bisect showed both opt-ins independently exceed the formal contract:
+
+- WMMA-only (`1/0`) vs legacy: aggregate KL `1.4285`, top-1 `0.0`; prefill row mismatch `128449 -> 59639`.
+- GEMV-only (`0/1`) vs legacy: aggregate KL `2.6138`, top-1 `0.5`; first decode row mismatch `12656 -> 220`.
+- Combined (`1/1`) vs legacy: aggregate KL `1.7672`, top-1 `0.0` on the 512/1 smoke.
+
+Docs updated:
+
+- `docs/BENCHMARK.md` now lists this command as the required P9.A3/P9.B7 correctness gate before reporting throughput when WMMA prefill + GEMV decode opt-ins are in play.
+- `benchmarks/README.md` smoke/non-throughput table records the rejected gate and artifact.
+- `benchmarks/CHANGELOG.md` records the rejected correctness contract.
+
+Conclusion: task #30 delivered the public fixture/script/tests and retained a real full-shape gate artifact. Dependent throughput rows must stay `rejected_correctness`/blocked until the WMMA prefill and decode GEMV drift are fixed against this contract.
