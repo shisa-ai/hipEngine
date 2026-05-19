@@ -2933,6 +2933,272 @@ class Qwen35ParoResidentSession:
         )
         return append_spans, prefill_spans
 
+    def _run_full_attention_tree_batched(
+        self,
+        state: Qwen35ParoDecodeState,
+        *,
+        layer_id: int,
+        hidden: Tensor,
+        next_hidden: Tensor,
+        rows: int,
+        base_slot: int,
+        stream: int = 0,
+    ) -> None:
+        """Tree-topology variant of ``_run_full_attention_chain_batched``.
+
+        Pipeline differences vs the chain orchestrator:
+
+          1. Cache slots are taken from ``verify_cache_slot_buf`` (one
+             UNIQUE slot per verifier row) so sibling rows do not collide
+             on K/V writes.  ``prefill_position_buf`` still carries the
+             depth-based RoPE phases ``batch.positions``.
+          2. The K/V append writes each row at its cache slot.
+          3. The full-attention attention step uses
+             ``prefill_full_attention_gqa_gate_tree_fp16`` with the dense
+             ``[rows, rows]`` ancestor mask in ``verify_ancestor_mask_u8``
+             so siblings/cousins do not see each other.  Committed-context
+             positions in ``[0, tree_committed_count)`` are visible to
+             every row.
+          4. MoE/MLP/post-norm reuse the c=1 multi-token primitives,
+             same as chain batched.
+
+        Pre-conditions: ``_write_verify_chain_metadata`` has already run
+        with ``batch.mode == 'verify_tree'``, which populated
+        ``verify_cache_slot_buf``, ``verify_ancestor_mask_u8``, and
+        ``self.verify_tree_committed_count``.
+        """
+
+        _ = base_slot  # base_slot already encoded in prefill_block_table_buf
+        if self.verify_tree_committed_count < 0:
+            raise RuntimeError(
+                "verify_tree_committed_count must be set by"
+                " _write_verify_chain_metadata before invoking the tree"
+                " orchestrator"
+            )
+
+        rope_positions = Tensor.from_handle(
+            self.prefill_position_buf.ptr,
+            (rows,),
+            DType.INT64,
+            self.device,
+        )
+        cache_slots = Tensor.from_handle(
+            self.verify_cache_slot_buf.ptr,
+            (rows,),
+            DType.INT64,
+            self.device,
+        )
+        ancestor_mask = Tensor.from_handle(
+            self.verify_ancestor_mask_u8.ptr,
+            (rows, rows),
+            DType.BOOL,
+            self.device,
+        )
+        append_spans, prefill_spans = self._verify_tree_full_attention_spans_batched(
+            rows,
+            cache_slots=cache_slots,
+        )
+        key_cache, value_cache = self._full_cache_all_slots(layer_id)
+        attention_scratch = self._ensure_full_prefill_scratch(tokens=rows)
+        moe_scratch = self._ensure_moe_c1_prefill_scratch(layer_id=layer_id, tokens=rows)
+
+        state.input_rmsnorm_fp16(
+            hidden,
+            attention_scratch.attn_input,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        state.rotate_full_attention_inputs_fp16(
+            attention_scratch.attn_input,
+            attention_scratch,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        state.project_full_attention_qkv_fp16(
+            attention_scratch,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        # RoPE phases come from the depth-based ``prefill_position_buf``
+        # (== batch.positions); siblings share their RoPE phase.
+        _query, _key, _value, gate = state.prepare_full_attention_qkv_fp16(
+            attention_scratch,
+            cos_table=self.cos,
+            sin_table=self.sin,
+            position=rope_positions,
+            max_positions=self.max_sequence_length,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        # K/V append writes each row at its UNIQUE cache slot so sibling
+        # writes do not collide.
+        state.append_full_attention_kv_fp16_batch(
+            attention_scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=append_spans,
+            rows=rows,
+            block_size=self.block_size,
+            library=self.libraries,
+            stream=stream,
+        )
+        # Tree-aware attention: ancestor mask filters sibling/cousin rows
+        # inside the verifier-row K/V block.  Committed-context positions
+        # below ``tree_committed_count`` are visible to every row.
+        gated = state.prefill_full_attention_gqa_gate_tree_fp16(
+            attention_scratch,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            spans=prefill_spans,
+            rows=rows,
+            ancestor_mask=ancestor_mask,
+            tree_committed_count=int(self.verify_tree_committed_count),
+            gate=gate,
+            block_size=self.block_size,
+            library=self.libraries,
+            stream=stream,
+        )
+        attn_out = state.project_full_attention_o_fp16(
+            gated,
+            attention_scratch,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        mlp_input, residual = state.post_attention_add_rmsnorm_fp16(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=rows,
+            library=self.libraries,
+            stream=stream,
+        )
+        dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
+        if dense_mlp:
+            out = state.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=rows,
+                library=self.libraries,
+                stream=stream,
+            )
+        else:
+            out = state.run_moe_c1_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=rows,
+                library=self.libraries,
+                stream=stream,
+            )
+        if out.ptr != next_hidden.ptr:
+            self.runtime.memcpy_async(
+                next_hidden.ptr,
+                out.ptr,
+                rows * self.hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+
+    def _verify_tree_full_attention_spans_batched(
+        self,
+        rows: int,
+        *,
+        cache_slots: Tensor,
+    ) -> tuple[KVLiveSpans, KVLiveSpans]:
+        """Build [rows]-sized append and decode spans for the tree verifier.
+
+        ``append_spans.live_counts`` are the UNIQUE per-row write positions
+        (``cache_slots``) consumed by
+        ``qwen35_write_paged_kv_mixed_value_fp16_prompt_spans``.
+        ``prefill_spans.live_counts`` is set to ``tree_committed_count + rows``
+        for every row so the tree-aware GQA gate kernel walks every committed
+        position plus the entire verifier-row block; the ancestor mask then
+        filters out sibling/cousin rows inside that block.  ``row_positions``
+        provides the kernel's causal upper bound (also uniform = total length
+        minus one) so its existing causal-limit branch is a no-op and the mask
+        does all the work.
+        """
+
+        if cache_slots.dtype is not DType.INT64 or cache_slots.shape != (rows,):
+            raise ValueError("cache_slots must be INT64 with shape (rows,)")
+        block_table = self._prefill_block_table_rows(rows, start=0)
+        tree_committed = int(self.verify_tree_committed_count)
+        total_len = tree_committed + rows
+        # Uniform live_counts/row_positions for the prefill spans: total
+        # length (committed + verifier-rows).  Each row sees [0, total_len)
+        # logically; the ancestor mask filters siblings inside the
+        # verifier-row block.
+        uniform_counts_host = np.full((rows,), total_len, dtype=np.int64)
+        uniform_positions_host = np.full((rows,), total_len - 1, dtype=np.int64)
+        # Cache these uniform arrays in pinned device buffers; they are
+        # small and reused across layers within a cycle.  Allocate on
+        # demand against ``verify_tree_uniform_counts_buf``.
+        counts_buf = self._ensure_verify_tree_uniform_buf(
+            name="verify_tree_uniform_counts",
+            host=uniform_counts_host,
+        )
+        positions_buf = self._ensure_verify_tree_uniform_buf(
+            name="verify_tree_uniform_positions",
+            host=uniform_positions_host,
+        )
+        uniform_counts = Tensor.from_handle(
+            counts_buf.ptr, (rows,), DType.INT64, self.device,
+        )
+        uniform_positions = Tensor.from_handle(
+            positions_buf.ptr, (rows,), DType.INT64, self.device,
+        )
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table,
+            live_counts=cache_slots,
+            max_live_count=max(1, total_len),
+            storage_dtype=DType.BF16,
+            row_positions=cache_slots,
+            span_role="verify_tree",
+        )
+        prefill_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table,
+            live_counts=uniform_counts,
+            max_live_count=total_len,
+            storage_dtype=DType.BF16,
+            row_positions=uniform_positions,
+            span_role="verify_tree",
+        )
+        return append_spans, prefill_spans
+
+    def _ensure_verify_tree_uniform_buf(self, *, name: str, host: np.ndarray):
+        """Reserve a small device buffer for the tree verifier uniform vectors.
+
+        Tree verify needs two ``[rows]`` int64 vectors (uniform context counts
+        and uniform row positions) per cycle.  Allocate them lazily and reuse
+        the buffer across layers within a cycle.  The buffer is keyed by
+        ``name`` so multiple tree-only auxiliary arrays can coexist.
+        """
+
+        attr = f"_{name}_buf"
+        attr_size = f"_{name}_buf_nbytes"
+        nbytes = int(host.nbytes)
+        existing = getattr(self, attr, None)
+        existing_size = getattr(self, attr_size, 0)
+        if existing is not None and existing_size >= nbytes:
+            copy_host_to_device(
+                existing, host_array_ptr(np.ascontiguousarray(host)), nbytes, runtime=self.runtime,
+            )
+            return existing
+        buf = malloc(nbytes, runtime=self.runtime)
+        copy_host_to_device(
+            buf, host_array_ptr(np.ascontiguousarray(host)), nbytes, runtime=self.runtime,
+        )
+        setattr(self, attr, buf)
+        setattr(self, attr_size, nbytes)
+        self.buffers.append(buf)
+        return buf
+
     def _ensure_moe_c1_prefill_scratch(
         self,
         layer_id: int | None = None,
