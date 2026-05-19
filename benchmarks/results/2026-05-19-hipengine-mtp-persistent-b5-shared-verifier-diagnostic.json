@@ -1,0 +1,139 @@
+{
+  "acceptance_rate": 1.0,
+  "accepted_lengths": [
+    5,
+    1
+  ],
+  "active_budgets": [
+    5,
+    1
+  ],
+  "ar_tokens": [
+    3841,
+    6646,
+    17145,
+    8,
+    478,
+    5956,
+    478,
+    3841
+  ],
+  "backend": "hip_gfx1151",
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens <stable/code:quicksort_prefix ids> --decode-tokens 8 --candidate-budget 5 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --json /tmp/hipengine-mtp-chain-e2e-persistent-b5-stable1-final.json",
+  "date": "2026-05-19",
+  "decision_reason": "Persistent native MTP provider keeps weights/cache resident and target hidden on device, reaches shared verifier, and achieved 100% draft acceptance on the quicksort prompt for B=5. It still loses to AR: decode 31.34 tok/s vs AR 52.98 tok/s (0.59x) because current bulk verifier is slower than serial AR and selected expert ids are still host-orchestrated. Continue optimizing verifier/provider before promoting any speed row.",
+  "decode_comparison": {
+    "ar_decode_seconds": 0.15098995601874776,
+    "ar_decode_tok_s": 52.98365673413849,
+    "mtp_decode_seconds": 0.2552556219743565,
+    "mtp_decode_tok_s": 31.341131443536618,
+    "mtp_vs_ar_decode_tok_s_ratio": 0.5915245072796733
+  },
+  "exact_ar_match": true,
+  "hardware": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "mtp_tokens": [
+    3841,
+    6646,
+    17145,
+    8,
+    478,
+    5956,
+    478,
+    3841
+  ],
+  "performance_claim": false,
+  "prompt": {
+    "fixture": "fixtures/dflash/stable_prompts.jsonl",
+    "id": "code:quicksort_prefix",
+    "prompt_tokens": 90
+  },
+  "proposal_decode_update_seconds": 0.0142096679774113,
+  "proposal_prefill_seconds": 0.6922951970191207,
+  "proposal_trace_sample": [
+    {
+      "accepted": 5,
+      "bonus_token": 478,
+      "committed_tokens": [
+        3841,
+        6646,
+        17145,
+        8,
+        478,
+        5956
+      ],
+      "cycle": 1,
+      "draft_candidates": [
+        6646,
+        17145,
+        8,
+        478,
+        5956
+      ],
+      "proposer_cache_len_before_update": 94,
+      "root_position": 90,
+      "root_token": 3841,
+      "target_parent_rows": [
+        -1,
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "target_top1_path": [
+        6646,
+        17145,
+        8,
+        478,
+        5956,
+        478
+      ]
+    },
+    {
+      "accepted": 1,
+      "bonus_token": 6646,
+      "committed_tokens": [
+        478,
+        3841
+      ],
+      "cycle": 2,
+      "draft_candidates": [
+        3841
+      ],
+      "proposer_cache_len_before_update": 96,
+      "root_position": 96,
+      "root_token": 478,
+      "target_parent_rows": [
+        -1,
+        0
+      ],
+      "target_top1_path": [
+        3841,
+        6646
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "software": {
+    "hipengine_branch": "dflash",
+    "hipengine_commit": "e27222c2b52662d841be25b9635f0dc679bee8ec",
+    "hipengine_dirty": true
+  },
+  "status": "diagnostic_persistent_provider_loses_ar",
+  "title": "MTP persistent native provider B=5 shared-verifier diagnostic",
+  "total_comparison": {
+    "ar_seconds": 25.65520208401722,
+    "ar_tok_s": 0.31182759636042284,
+    "mtp_seconds": 30.843312602984952,
+    "mtp_tok_s": 0.25937551205916115,
+    "mtp_vs_ar_total_tok_s_ratio": 0.8317913971904031
+  },
+  "verify_seconds": 0.21251897703041323,
+  "workload": {
+    "candidate_budget": 5,
+    "chain_attn_mode": "c1_loop",
+    "decode_tokens": 8,
+    "proposal_impl": "persistent_device"
+  }
+}

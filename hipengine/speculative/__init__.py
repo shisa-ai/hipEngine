@@ -55,6 +55,7 @@ from hipengine.speculative.mtp import (
     Qwen35MtpDraftProvider,
     compile_mtp_chain,
 )
+from hipengine.speculative.mtp_native import NativeMtpChainProposer, NativeMtpStateSnapshot, NativeMtpStepResult
 from hipengine.speculative.verify_graph import (
     DFlashVerifyGraphAddresses,
     DFlashVerifyGraphBucketKey,
@@ -115,6 +116,9 @@ __all__ = [
     "MtpDraftRequest",
     "MtpProposalContext",
     "MtpTokenGenerator",
+    "NativeMtpChainProposer",
+    "NativeMtpStateSnapshot",
+    "NativeMtpStepResult",
     "Qwen35MtpDraftProvider",
     "compile_mtp_chain",
     "append_materialized_kv_reference",

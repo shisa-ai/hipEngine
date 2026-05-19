@@ -19619,3 +19619,53 @@ Important caveats:
 - Continuing work: persistent native MTP provider state/cache, proper MTP prompt
   prefill alignment, then acceptance search and speed iteration until MTP can
   beat AR or a real incompatibility is proven.
+
+## 2026-05-19 (continued) — Persistent native MTP provider reaches 100% acceptance but loses AR speed
+
+Added `hipengine/speculative/mtp_native.py` with `NativeMtpChainProposer`:
+
+- loads MTP weights once;
+- keeps MTP K/V cache resident;
+- consumes target hidden rows directly from device capture buffers;
+- supports state snapshots/restores for multi-token candidate chains;
+- still host-orchestrates selected expert ids for per-expert GEMV pointer selection.
+
+Extended `scripts/mtp_chain_e2e_smoke.py --proposal-impl persistent_device` to use
+that provider through `Qwen35ParoResidentSession.verify_chain_bulk_and_commit`.
+
+Best current diagnostic command:
+
+```bash
+PROMPT=$(python3 - <<'PY'
+import json
+row=json.loads(open('fixtures/dflash/stable_prompts.jsonl').readline())
+print(','.join(map(str,row['prompt_ids'])))
+PY
+)
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT" --decode-tokens 8 --candidate-budget 5 \
+  --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop \
+  --json /tmp/hipengine-mtp-chain-e2e-persistent-b5-stable1-final.json
+# {"accepted": [5, 1], "ar": [3841, 6646, 17145, 8, 478, 5956, 478, 3841], "exact_ar_match": true, "mtp": [3841, 6646, 17145, 8, 478, 5956, 478, 3841], "status": "passed"}
+```
+
+Key measurements:
+
+- Exact AR: passed.
+- Active draft acceptance: 100% (`accepted_lengths=[5,1]`).
+- AR decode: `0.150989956s`, `52.98 tok/s`.
+- MTP decode: `0.255255622s`, `31.34 tok/s`.
+- MTP/AR decode tok/s ratio: `0.59x`.
+- MTP verify time: `0.212518977s`.
+- MTP proposal decode-update time: `0.014209668s`.
+
+Retained artifact:
+
+- `benchmarks/results/2026-05-19-hipengine-mtp-persistent-b5-shared-verifier-diagnostic.json`
+
+Status: acceptance is no longer the blocker for this prompt; speed is.  The
+current target bulk verifier is slower than serial AR for the same exact output,
+and MTP still copies selected expert ids to host.  Continuing work should focus
+on verifier speed (or device-side expert dispatch if proposal time becomes the
+bottleneck after verifier improvements).

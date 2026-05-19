@@ -87,9 +87,13 @@ candidate chain `[27399, 220]`.  This remains a diagnostic smoke, not a speed ro
 selected expert ids are host-orchestrated.  The first shared-verifier E2E smoke
 is `scripts/mtp_chain_e2e_smoke.py`; it feeds native MTP candidate rows into
 `Qwen35ParoResidentSession.verify_chain_bulk_and_commit` and matched exact AR on
-a 3-token gfx1151 smoke.  It is still diagnostic-only because it copies proposal
-hidden rows to host, reloads MTP weights per proposal call, and recorded zero
-accepted draft tokens on the initial prompt.
+a 3-token gfx1151 smoke.  A persistent native provider now lives in
+`hipengine/speculative/mtp_native.py`; it keeps MTP weights/cache resident and
+uses device-resident target hidden rows.  On the stable quicksort prompt with
+B=5 it matched exact AR and accepted all proposed draft tokens for the 8-token
+sample (`accepted_lengths=[5,1]`), but still lost the decode speed gate
+(`31.34 tok/s` vs AR `52.98 tok/s`) because the current bulk verifier is slower
+than serial AR and expert dispatch still copies selected expert ids to host.
 
 ## Alignment with existing hipEngine design
 

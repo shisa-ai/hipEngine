@@ -29,7 +29,8 @@ from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
-from hipengine.speculative import MtpDraftRequest, TargetVerifyBatch, compile_mtp_chain
+from hipengine.speculative import MTP_CHAIN_CANDIDATE_BUDGETS, MtpDraftRequest, TargetVerifyBatch, compile_mtp_chain
+from hipengine.speculative.mtp_native import NativeMtpChainProposer
 from scripts.mtp_native_decode_step_smoke import run_smoke as run_native_mtp_proposal
 
 DEFAULT_MODEL = Path("/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16")
@@ -58,25 +59,47 @@ def _run_ar_baseline(
     max_sequence = len(prompt_tokens) + int(decode_tokens) + 2
     started = time.perf_counter()
     generated: list[int] = []
+    prefill_seconds = 0.0
+    decode_seconds = 0.0
     with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence) as session:
         next_result = None
+        prefill_started = time.perf_counter()
         for pos, token in enumerate(prompt_tokens):
             next_result = session.step(int(token), position=pos, sample=(pos == len(prompt_tokens) - 1))
         if next_result is None:
             raise RuntimeError("prompt did not produce a root token")
+        prefill_seconds = time.perf_counter() - prefill_started
         root = int(next_result.token_id)
         context = len(prompt_tokens)
-        while len(generated) < int(decode_tokens):
+        decode_started = time.perf_counter()
+        for _offset in range(int(decode_tokens)):
             generated.append(root)
-            if len(generated) >= int(decode_tokens):
-                break
             next_result = session.step(root, position=context, sample=True)
             if next_result is None:
                 raise RuntimeError("AR decode step produced no token")
             root = int(next_result.token_id)
             context += 1
+        decode_seconds = time.perf_counter() - decode_started
     seconds = time.perf_counter() - started
-    return generated, {"seconds": seconds, "tok_s": len(generated) / seconds if seconds > 0 else None}
+    return generated, {
+        "seconds": seconds,
+        "prefill_seconds": prefill_seconds,
+        "decode_seconds": decode_seconds,
+        "tok_s": len(generated) / seconds if seconds > 0 else None,
+        "decode_tok_s": len(generated) / decode_seconds if decode_seconds > 0 else None,
+    }
+
+
+def _target_batch(root: int, context: int, candidates: Sequence[int], active_count: int, candidate_budget: int | None = None) -> TargetVerifyBatch:
+    budget = int(candidate_budget if candidate_budget is not None else active_count)
+    return TargetVerifyBatch.from_draft(
+        compile_mtp_chain(
+            [MtpDraftRequest(request_id=0, root_position=int(context), candidate_tokens=tuple(int(x) for x in candidates), active_count=int(active_count))],
+            candidate_budget=budget,
+        ),
+        root_tokens=(int(root),),
+        root_positions=(int(context),),
+    )
 
 
 def _run_spec_smoke(
@@ -155,14 +178,7 @@ def _run_spec_smoke(
                 proposal_seconds += time.perf_counter() - t_prop
                 candidates = [int(token) for token in proposal["candidate_tokens"][:active_budget]]
                 draft = proposal["draft_batch"]
-                target_batch = TargetVerifyBatch.from_draft(
-                    compile_mtp_chain(
-                        [MtpDraftRequest(request_id=0, root_position=context, candidate_tokens=tuple(candidates), active_count=len(candidates))],
-                        candidate_budget=active_budget,
-                    ),
-                    root_tokens=(root,),
-                    root_positions=(context,),
-                )
+                target_batch = _target_batch(root, context, candidates, active_budget)
                 t_verify = time.perf_counter()
                 verify = session.verify_chain_bulk_and_commit(
                     target_batch,
@@ -217,20 +233,174 @@ def _run_spec_smoke(
     }
 
 
+def _run_spec_persistent_device(
+    model: Path,
+    prompt_tokens: Sequence[int],
+    *,
+    decode_tokens: int,
+    candidate_budget: int,
+    backend: str,
+    chain_attn_mode: str,
+) -> tuple[list[int], dict[str, Any]]:
+    runner = Qwen35ParoNextTokenRunner(model, backend=backend)
+    max_sequence = len(prompt_tokens) + int(decode_tokens) + int(candidate_budget) + 4
+    generated: list[int] = []
+    accepted_lengths: list[int] = []
+    proposal_trace: list[dict[str, Any]] = []
+    verify_seconds = 0.0
+    proposal_prefill_seconds = 0.0
+    proposal_decode_update_seconds = 0.0
+    capture_rows = max_sequence + 2
+    capture_buf: DeviceBuffer | None = None
+    started = time.perf_counter()
+    active_budgets: list[int] = []
+    with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence, max_batch_size=int(candidate_budget) + 1) as session:
+        hidden = int(session.config.hidden_size)
+        capture_layer_id = int(session.layer_limit) - 1
+        capture_buf = malloc(capture_rows * hidden * DType.BF16.itemsize, runtime=session.runtime)
+        capture = _capture_tensor(capture_buf, capture_rows, hidden)
+        try:
+            next_result = None
+            for pos, token in enumerate(prompt_tokens):
+                next_result = session.step_with_hidden_taps(
+                    int(token),
+                    position=pos,
+                    capture_layer_ids=(capture_layer_id,),
+                    capture_hidden_concat=capture,
+                    capture_row=pos,
+                    sample=(pos == len(prompt_tokens) - 1),
+                )
+            if next_result is None:
+                raise RuntimeError("prompt did not produce a root token")
+            root = int(next_result.token_id)
+            context = len(prompt_tokens)
+            with NativeMtpChainProposer(
+                model,
+                max_positions=max_sequence + int(decode_tokens) + 4,
+                max_mtp_tokens=len(prompt_tokens) + 2 * int(decode_tokens) + 8,
+                runtime=session.runtime,
+            ) as proposer:
+                prefill_started = time.perf_counter()
+                proposer.prefill_from_target_hidden_rows(prompt_tokens, capture_base_ptr=capture_buf.ptr, seed_token=root)
+                proposal_prefill_seconds += time.perf_counter() - prefill_started
+                cycles = 0
+                decode_started = time.perf_counter()
+                while len(generated) < int(decode_tokens):
+                    remaining = int(decode_tokens) - len(generated)
+                    active_budget = min(int(candidate_budget), max(0, remaining - 1))
+                    if active_budget <= 0:
+                        step_result = session.step_with_hidden_taps(
+                            root,
+                            position=context,
+                            capture_layer_ids=(capture_layer_id,),
+                            capture_hidden_concat=capture,
+                            capture_row=context,
+                            sample=True,
+                        )
+                        if step_result is None:
+                            raise RuntimeError("terminal AR step produced no root")
+                        generated.append(root)
+                        root = int(step_result.token_id)
+                        context += 1
+                        break
+                    cycles += 1
+                    snapshots = [proposer.save_state(0)]
+                    candidates = [int(proposer.current.token)]
+                    for draft_idx in range(1, active_budget):
+                        proposer.advance_with_previous_hidden(input_token=candidates[-1], position=proposer.position + 1)
+                        snapshots.append(proposer.save_state(draft_idx))
+                        candidates.append(int(proposer.current.token))
+                    active_budgets.append(active_budget)
+                    verify_budget = active_budget if active_budget in MTP_CHAIN_CANDIDATE_BUDGETS else int(candidate_budget)
+                    target_batch = _target_batch(root, context, candidates, active_budget, candidate_budget=verify_budget)
+                    t_verify = time.perf_counter()
+                    verify = session.verify_chain_bulk_and_commit(
+                        target_batch,
+                        base_slot=0,
+                        capture_layer_ids=(capture_layer_id,),
+                        capture_hidden_concat=capture,
+                        capture_row_start=context,
+                        chain_attn_mode=chain_attn_mode,
+                    )
+                    verify_seconds += time.perf_counter() - t_verify
+                    accepted = int(verify.accepted_count)
+                    accepted_lengths.append(accepted)
+                    committed = [root, *candidates[:accepted]]
+                    generated.extend(committed)
+                    bonus = int(verify.next_token) if verify.next_token is not None else int(verify.target_top1[min(accepted, len(verify.target_top1) - 1)])
+                    if len(proposal_trace) < 16:
+                        proposal_trace.append(
+                            {
+                                "cycle": cycles,
+                                "root_position": context,
+                                "root_token": root,
+                                "draft_candidates": candidates,
+                                "target_top1_path": list(map(int, verify.target_top1[: 1 + active_budget])),
+                                "accepted": accepted,
+                                "committed_tokens": committed,
+                                "bonus_token": bonus,
+                                "target_parent_rows": list(map(int, target_batch.parent_rows)),
+                                "proposer_cache_len_before_update": int(proposer.cache_len),
+                            }
+                        )
+                    update_started = time.perf_counter()
+                    if len(generated) < int(decode_tokens):
+                        if accepted < active_budget:
+                            proposer.restore_state(snapshots[accepted])
+                        else:
+                            proposer.restore_state(snapshots[active_budget - 1])
+                            proposer.advance_with_previous_hidden(input_token=candidates[-1], position=proposer.position + 1)
+                        proposer.advance_with_previous_hidden(input_token=bonus, position=proposer.position + 1)
+                    proposal_decode_update_seconds += time.perf_counter() - update_started
+                    context += len(committed)
+                    root = bonus
+                decode_seconds = time.perf_counter() - decode_started
+        finally:
+            if capture_buf is not None:
+                free(capture_buf, runtime=session.runtime)
+    seconds = time.perf_counter() - started
+    return generated[: int(decode_tokens)], {
+        "seconds": seconds,
+        "decode_seconds": decode_seconds,
+        "tok_s": int(decode_tokens) / seconds if seconds > 0 else None,
+        "decode_tok_s": int(decode_tokens) / decode_seconds if decode_seconds > 0 else None,
+        "proposal_prefill_seconds": proposal_prefill_seconds,
+        "proposal_decode_update_seconds": proposal_decode_update_seconds,
+        "verify_seconds": verify_seconds,
+        "accepted_lengths": accepted_lengths,
+        "active_budgets": active_budgets,
+        "acceptance_rate": (sum(accepted_lengths) / sum(active_budgets)) if active_budgets and sum(active_budgets) else 0.0,
+        "proposal_trace_sample": proposal_trace,
+        "chain_attn_mode": chain_attn_mode,
+        "proposal_impl": "persistent_device",
+        "note": "Persistent native MTP provider: weights/cache resident and target hidden stays on device; selected expert ids are still host-orchestrated.",
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     model = Path(args.model)
     prompt_tokens = tuple(int(part.strip()) for part in str(args.prompt_tokens).split(",") if part.strip())
     if not prompt_tokens:
         raise ValueError("at least one prompt token is required")
     ar_tokens, ar = _run_ar_baseline(model, prompt_tokens, decode_tokens=int(args.decode_tokens), backend=str(args.backend))
-    spec_tokens, spec = _run_spec_smoke(
-        model,
-        prompt_tokens,
-        decode_tokens=int(args.decode_tokens),
-        candidate_budget=int(args.candidate_budget),
-        backend=str(args.backend),
-        chain_attn_mode=str(args.chain_attn_mode),
-    )
+    if args.proposal_impl in {"persistent_device", "persistent_device_b1"}:
+        spec_tokens, spec = _run_spec_persistent_device(
+            model,
+            prompt_tokens,
+            decode_tokens=int(args.decode_tokens),
+            candidate_budget=int(args.candidate_budget),
+            backend=str(args.backend),
+            chain_attn_mode=str(args.chain_attn_mode),
+        )
+    else:
+        spec_tokens, spec = _run_spec_smoke(
+            model,
+            prompt_tokens,
+            decode_tokens=int(args.decode_tokens),
+            candidate_budget=int(args.candidate_budget),
+            backend=str(args.backend),
+            chain_attn_mode=str(args.chain_attn_mode),
+        )
     return {
         "status": "passed" if spec_tokens == ar_tokens else "exact_ar_mismatch",
         "performance_claim": False,
@@ -243,7 +413,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "exact_ar_match": spec_tokens == ar_tokens,
         "ar": ar,
         "mtp": spec,
-        "decision_reason": "Native MTP proposal rows reached verify_chain_bulk_and_commit and exact AR was checked. This is not a speed row because proposal hidden rows are copied to host and MTP weights are reloaded per proposal call.",
+        "proposal_impl": str(args.proposal_impl),
+        "decision_reason": "Native MTP proposal rows reached verify_chain_bulk_and_commit and exact AR was checked. persistent_device keeps MTP weights/cache resident, but artifacts remain diagnostic until acceptance and speed gates pass.",
     }
 
 
@@ -253,6 +424,7 @@ def main() -> int:
     parser.add_argument("--prompt-tokens", default="151646")
     parser.add_argument("--decode-tokens", type=int, default=3)
     parser.add_argument("--candidate-budget", type=int, default=2)
+    parser.add_argument("--proposal-impl", choices=("reload_d2h", "persistent_device", "persistent_device_b1"), default="reload_d2h")
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched"), default="c1_loop")
     parser.add_argument("--json", type=Path)
