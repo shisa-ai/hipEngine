@@ -1,0 +1,145 @@
+{
+  "acceptance_rate": 0.0,
+  "accepted_lengths": [
+    0,
+    0
+  ],
+  "ar_tokens": [
+    180184,
+    148897,
+    205222
+  ],
+  "backend": "hip_gfx1151",
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 151646 --decode-tokens 3 --candidate-budget 2 --backend hip_gfx1151 --chain-attn-mode c1_loop --json /tmp/hipengine-mtp-chain-e2e-smoke.json",
+  "date": "2026-05-19",
+  "decision_reason": "Native MTP proposal rows reached Qwen35ParoResidentSession.verify_chain_bulk_and_commit and exact AR output matched on a 3-token smoke. This is not a speed row: proposal hidden rows are copied device-to-host, MTP weights are reloaded per proposal call, and accepted draft count was zero in this prompt.",
+  "diagnostic_times": {
+    "ar_seconds": 45.17183176497929,
+    "ar_tok_s": 0.06641306944576537,
+    "mtp_seconds": 43.121624638995854,
+    "mtp_tok_s": 0.06957066263424204,
+    "proposal_seconds": 10.807889393006917,
+    "verify_seconds": 0.1629210270184558
+  },
+  "exact_ar_match": true,
+  "hardware": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "mtp_tokens": [
+    180184,
+    148897,
+    205222
+  ],
+  "performance_claim": false,
+  "proposal_trace_sample": [
+    {
+      "accepted": 0,
+      "bonus_token": 148897,
+      "committed_tokens": [
+        180184
+      ],
+      "cycle": 1,
+      "draft_candidates": [
+        220,
+        16
+      ],
+      "proposal_draft_batch": {
+        "active_mask": [
+          true,
+          true
+        ],
+        "candidate_tokens": [
+          220,
+          16
+        ],
+        "draft_depths": [
+          1,
+          2
+        ],
+        "mode": "verify_chain",
+        "parent_positions": [
+          1,
+          2
+        ],
+        "request_ids": [
+          0
+        ],
+        "row_to_request": [
+          0,
+          0
+        ]
+      },
+      "proposal_native_seconds": 0.01907382599893026,
+      "root_position": 1,
+      "root_token": 180184,
+      "target_parent_rows": [
+        -1,
+        0,
+        1
+      ],
+      "target_top1_path": [
+        148897,
+        16,
+        15
+      ]
+    },
+    {
+      "accepted": 0,
+      "bonus_token": 205222,
+      "committed_tokens": [
+        148897
+      ],
+      "cycle": 2,
+      "draft_candidates": [
+        186245
+      ],
+      "proposal_draft_batch": {
+        "active_mask": [
+          true
+        ],
+        "candidate_tokens": [
+          186245
+        ],
+        "draft_depths": [
+          1
+        ],
+        "mode": "verify_chain",
+        "parent_positions": [
+          2
+        ],
+        "request_ids": [
+          0
+        ],
+        "row_to_request": [
+          0
+        ]
+      },
+      "proposal_native_seconds": 0.007697993976762518,
+      "root_position": 2,
+      "root_token": 148897,
+      "target_parent_rows": [
+        -1,
+        0
+      ],
+      "target_top1_path": [
+        205222,
+        271
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "software": {
+    "hipengine_branch": "dflash",
+    "hipengine_commit": "f976e5dac94e1dda6939fcec61c77f794e793b63",
+    "hipengine_dirty": true
+  },
+  "status": "diagnostic_e2e_exact_ar_passed",
+  "title": "MTP native proposal to shared-verifier E2E smoke",
+  "workload": {
+    "candidate_budget": 2,
+    "chain_attn_mode": "c1_loop",
+    "decode_tokens": 3,
+    "prompt_tokens": [
+      151646
+    ]
+  }
+}

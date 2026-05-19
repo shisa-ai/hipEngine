@@ -19589,3 +19589,33 @@ Retained artifact:
 This closes the synthetic-hidden gap for the native proposal smoke. Continuing
 rather than stopping: next work is a real shared-verifier MTP E2E loop with
 correct prompt/MTP prefill alignment, then iteration toward an AR speed win.
+
+## 2026-05-19 (continued) — MTP native proposal reaches shared verifier E2E
+
+Added `scripts/mtp_chain_e2e_smoke.py`, a correctness-first bridge from the
+native MTP proposal smoke into `Qwen35ParoResidentSession.verify_chain_bulk_and_commit`.
+
+Validation command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens 151646 --decode-tokens 3 --candidate-budget 2 \
+  --backend hip_gfx1151 --chain-attn-mode c1_loop \
+  --json /tmp/hipengine-mtp-chain-e2e-smoke.json
+# {"accepted": [0, 0], "ar": [180184, 148897, 205222], "ar_tok_s": 0.06641306944576537, "exact_ar_match": true, "mtp": [180184, 148897, 205222], "mtp_tok_s_diagnostic": 0.06957066263424204, "status": "passed"}
+```
+
+Retained artifact:
+
+- `benchmarks/results/2026-05-19-hipengine-mtp-chain-e2e-shared-verifier-smoke-diagnostic.json`
+
+Important caveats:
+
+- This is not a speed row. The bridge copies target hidden rows D2H and reloads
+  MTP weights per proposal call.
+- Acceptance on this first prompt was `[0, 0]`; exact AR is guaranteed by the
+  verifier, but MTP is not useful yet.
+- Continuing work: persistent native MTP provider state/cache, proper MTP prompt
+  prefill alignment, then acceptance search and speed iteration until MTP can
+  beat AR or a real incompatibility is proven.

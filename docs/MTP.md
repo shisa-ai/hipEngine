@@ -84,8 +84,12 @@ assembled artifact, `--draft-budget 2 --torch-compare` produced candidate chain
 BF16 target hidden row captured by `Qwen35ParoResidentSession.step_with_hidden_taps`
 using `--target-hidden-source target_session`; that path produced native/torch
 candidate chain `[27399, 220]`.  This remains a diagnostic smoke, not a speed row:
-selected expert ids are host-orchestrated and the full shared-verifier loop is
-still being wired.
+selected expert ids are host-orchestrated.  The first shared-verifier E2E smoke
+is `scripts/mtp_chain_e2e_smoke.py`; it feeds native MTP candidate rows into
+`Qwen35ParoResidentSession.verify_chain_bulk_and_commit` and matched exact AR on
+a 3-token gfx1151 smoke.  It is still diagnostic-only because it copies proposal
+hidden rows to host, reloads MTP weights per proposal call, and recorded zero
+accepted draft tokens on the initial prompt.
 
 ## Alignment with existing hipEngine design
 

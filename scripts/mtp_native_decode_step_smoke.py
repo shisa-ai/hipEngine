@@ -215,6 +215,7 @@ def run_smoke(
     torch_compare: bool,
     target_hidden_source: str = "synthetic",
     target_backend: str = "auto",
+    target_hidden_bits_override: np.ndarray | None = None,
 ) -> dict[str, Any]:
     model = Path(model)
     validation = validate_qwen35_mtp_model(model)
@@ -241,11 +242,16 @@ def run_smoke(
     if not (0 <= root_token < vocab):
         raise ValueError(f"root_token must be in [0, {vocab})")
 
-    if target_hidden_source == "synthetic":
+    if target_hidden_bits_override is not None:
+        target_hidden_bits = np.ascontiguousarray(target_hidden_bits_override, dtype=np.uint16)
+        if target_hidden_bits.shape != (1, hidden):
+            raise ValueError(f"target_hidden_bits_override must have shape (1, {hidden}), got {target_hidden_bits.shape}")
+        target_hidden_metadata: dict[str, Any] = {"source": "provided_bf16_bits"}
+    elif target_hidden_source == "synthetic":
         rng = np.random.default_rng(1234)
         target_hidden_f32 = (rng.standard_normal((1, hidden), dtype=np.float32) * np.float32(0.25)).astype(np.float32)
         target_hidden_bits = _f32_to_bf16_bits(target_hidden_f32)
-        target_hidden_metadata: dict[str, Any] = {"source": "synthetic_rng_seed_1234"}
+        target_hidden_metadata = {"source": "synthetic_rng_seed_1234"}
     elif target_hidden_source == "target_session":
         target_hidden_bits, target_hidden_metadata = _capture_target_hidden_from_session(
             model,
