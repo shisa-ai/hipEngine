@@ -1,9 +1,10 @@
 # hipEngine MTP Native Implementation Plan
 
-> Status: implementation plan. This is the sister document to
-> [`DFLASH.md`](DFLASH.md). MTP should be implemented **after** the shared
-> native verifier/commit infrastructure from DFlash exists, not as a separate
-> c=1 native-loop tuning lane.
+> Status: shared ABI + metadata/loading scaffold landed; native MTP proposal
+> kernels are blocked on a retained target-attached MTP artifact. This is the
+> sister document to [`DFLASH.md`](DFLASH.md). MTP must reuse the shared native
+> verifier/commit infrastructure from DFlash, not fork a separate c=1 native-loop
+> tuning lane.
 
 ## Thesis
 
@@ -28,31 +29,34 @@ separate block-draft model plus draft context KV. MTP uses target-attached MTP
 weights to propose a short chain. The verifier, accept, commit, graph, and
 benchmark contracts should be shared.
 
-For the current `dflash` branch, MTP is explicitly deferred. The immediate lane
-is **z-lab/Qwen3.6-35B-A3B-DFlash** drafting against the
-**shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed** target on native Strix Halo
-`gfx1151` (`--offload-arch=gfx1151`). MTP should be added later as another
-`DraftModel` on the DFlash-built verifier only after chain verification,
-device-side accept, and state/KV commit are exact and faster than serial c=1.
-As of the retained 2026-05-18 native-B+1 DFlash row, the shared verifier is
-exact/finite and GPU accept matches the CPU oracle, but the full chain remains
-purely diagnostic (`performance_claim=false`, `0.124x` AR) because the native
-verifier is slower than the serial fallback. The drafter HIP graph prototype is
-also correctness-only: graph replay matches direct candidates, but exact context
-buckets do not repeat and drafter time regresses to `133.8 ms/call`. The first
-QKV projection fusion is bit-exact and profiled, but neutral (`69.6 ms/call` vs
-`68.9 ms/call` no-fusion), so it remains opt-in. Warm verifier scratch improves
-native B+1 verifier latency by ~26-35%, but B={1,2,4,8} is still `1.8x-4.9x`
-slower than serial c=1. The follow-on true-batched chain verifier
-(`--full-attn-chain-mode batched`) lands the proper bulk full-attention path
-(batched RMSNorm + rotate + QKV projection + multi-token RoPE + prompt-style
-K/V append + gated GQA prefill attention + batched O proj + post-norm + forced
-c=1 MoE per full-attention layer): exact vs c1_loop, 6-8% faster than c1_loop
-at B=2/4 but still `2.0-5.0x` slower than serial c=1 across all B.  MTP speed
-work stays blocked on the same B+1 cost wall.  The batched path is retained
-as DDTree infrastructure (tree branches make serial early-exit structurally
-impossible) and is the same ABI MTP should reuse once a tree-shaped MTP
-proposer lands; chain MTP should not fork a separate verifier path.
+For the current `dflash` branch, the DFlash-built verifier is now exact enough
+for MTP integration work: chain B+1 verification, GPU accept summaries,
+transactional state/KV commit, batched full-attention verification, and DDTree
+verification are all landed as shared infrastructure.  It is **not** yet a speed
+win over serial c=1: the true-batched chain verifier is 6-8% faster than
+`c1_loop` at B=2/4 but remains `2.0-5.0x` slower than serial c=1, and the first
+real branching DDTree proposer beats chain/tree baselines at B=2/4/8 but still
+loses to serial.  MTP speed work therefore remains blocked on the same verifier
+row-cost wall.
+
+What is now landed for MTP (2026-05-19):
+
+- provider-neutral chain metadata in `hipengine.speculative.chain`:
+  `ChainDraftRequest`, `ChainDraftCompiler`, and `compile_chain_draft()`;
+- `hipengine.speculative.mtp` with `MtpProposalContext`, `MtpDraftProvider`,
+  `Qwen35MtpDraftProvider`, `MtpChainCompiler`, and `compile_mtp_chain()`;
+- target-attached Qwen3.5/Qwen3.6 `mtp.*` metadata/loading in
+  `hipengine.loading.mtp`, including validation and `load_qwen35_mtp_bf16_weights()`;
+- `scripts/mtp_chain_e2e_bench.py`, a readiness diagnostic that records the MTP
+  chain ABI and refuses to fake a speed row when tensors are missing.
+
+The current shisa packed PARO target snapshot
+`501ef8635e5cfb5a7497d232358ca8d1afc0c66e` contains `0/19` expected `mtp.*`
+tensors.  The retained artifact
+`benchmarks/results/2026-05-19-hipengine-mtp-chain-readiness-missing-tensors-diagnostic.json`
+therefore marks MTP as `blocked_missing_mtp_tensors` while preserving the shared
+verifier contract.  A real MTP proposal run needs a retained target-attached MTP
+artifact first; then the native proposal kernels can consume the scaffold above.
 
 ## Alignment with existing hipEngine design
 
@@ -209,26 +213,21 @@ position.
 
 ## Phased implementation plan
 
-### Phase M0 — Wait for the shared verifier baseline
+### Phase M0 — Shared verifier baseline
 
-Do not start a speed lane until the DFlash/native verifier work has landed at
-least these pieces:
+The shared verifier/accept/commit baseline has landed for correctness and ABI
+reuse, but not for speed promotion:
 
-- native topk=1 chain `TargetVerifyBatch`;
-- exact selectable per-row target state;
-- no accepted-prefix target re-forward in the measured fast path;
-- GPU target top1 + chain accept summary;
-- benchmark rows proving the verifier is faster than serial c=1 verification.
+- native topk=1 chain `TargetVerifyBatch` exists;
+- exact selectable per-row target state exists;
+- accepted-prefix target re-forward is avoided in native commit paths;
+- GPU target top1 + chain accept summary exists;
+- batched chain and tree verifier variants exist.
 
-Current DFlash status: the exact native-B+1 row exists and should be reused for
-API/commit correctness, but it has not cleared this speed gate. Exact-context
-DFlash drafter graph capture also exists, but has no E2E cache-hit replay because
-`context_tokens` changes every cycle. QKV projection fusion exists as an opt-in
-correctness/profiling proof point, not as a promoted speed path. Warm verifier
-scratch/accept reordering improves native latency but does not clear the
-faster-than-serial gate.
-
-MTP can use CPU/reference tests before M0, but retained speed work should wait.
+The unresolved M0 speed gate remains: the verifier is still slower than serial
+c=1 on chain-shaped work.  MTP integration may proceed as metadata/proposal
+bring-up, but retained MTP speed claims must wait until either verifier row cost
+falls or MTP acceptance density clearly overcomes it.
 
 ### Phase M1 — Model metadata and native MTP proposal oracle
 

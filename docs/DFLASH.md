@@ -35,10 +35,12 @@ that increases row reuse and avoids PyTorch/host overhead may shift DFlash from
 near-break-even to worthwhile. This is a hypothesis until same-session AR rows
 on the packed target prove it.
 
-The same infrastructure should later support MTP and other speculative decoders,
-but DFlash is the first native block-verifier target. See [`MTP.md`](MTP.md) for
-the target-attached multi-token predictor plan that reuses this verifier/commit
-infrastructure after DFlash lands.
+The same infrastructure now also has an MTP-facing scaffold: provider-neutral
+chain `DraftBatch` compilation, target-attached `mtp.*` metadata/loading, and a
+readiness diagnostic that confirms the current packed PARO target lacks MTP
+weights. DFlash remains the first native block-verifier target; see
+[`MTP.md`](MTP.md) for the target-attached multi-token predictor plan that
+reuses this verifier/commit path rather than forking it.
 
 ## Current hipEngine status (2026-05-18)
 

@@ -19116,3 +19116,72 @@ Decision:
   active nodes to alternate branches that do not land on the accepted path; but
   B=4/8 still improve decode cycles (5 accepted draft tokens in 3 cycles) enough
   to beat chain/tree verifier variants.
+
+## 2026-05-19 (continued) — MTP shared-verifier scaffold lands, blocked by missing tensors
+
+User asked whether the DFlash/DDTree verifier work can be repurposed for MTP.
+Answer: yes for the verifier/accept/commit side.  This session lands the shared
+MTP-facing scaffold and proves the current shisa packed PARO target does **not**
+carry target-attached MTP tensors, so a real proposal/speed row is blocked on a
+retained MTP artifact rather than verifier plumbing.
+
+Lineage / audit:
+
+```bash
+python3 scripts/check_lineage.py --file '*MTP*' --diff stat --evidence-limit 1
+# tracked_sources: 9 changed_or_dirty: 0
+```
+
+Implementation:
+
+- Added provider-neutral chain metadata in ``hipengine/speculative/chain.py``:
+  ``ChainDraftRequest``, ``ChainDraftCompiler``, and ``compile_chain_draft``.
+  DFlash now wraps this instead of owning the only chain compiler.
+- Added ``hipengine/speculative/mtp.py``:
+  ``MtpProposalContext``, ``MtpDraftProvider`` protocol,
+  ``Qwen35MtpDraftProvider`` shell, ``MtpChainCompiler``, and
+  ``compile_mtp_chain``.  The provider emits candidate rows only ``[d1..dB]``;
+  ``TargetVerifyBatch.from_draft`` remains responsible for materializing the
+  root row ``[root,d1..dB]`` before verification.
+- Added ``hipengine/loading/mtp.py`` with the Qwen3.5/Qwen3.6 target-attached
+  BF16 ``mtp.*`` tensor contract from parent ``nano-vllm-amd``:
+  ``mtp.fc``, pre-fc norms, one MTP decoder layer, MoE/shared-expert tensors,
+  and ``mtp.norm``.  It provides validation, runtime tensor names, and
+  ``load_qwen35_mtp_bf16_weights`` for a future retained MTP artifact.
+- Added ``scripts/mtp_chain_e2e_bench.py`` readiness diagnostic.  It validates
+  ``mtp.*`` tensors, records the shared MTP chain ABI, and exits successfully
+  with ``status=blocked_missing_mtp_tensors`` when the current target lacks MTP
+  weights.  It does **not** fake proposal logits or a speed row.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/speculative/chain.py hipengine/speculative/dflash.py \
+  hipengine/speculative/mtp.py hipengine/loading/mtp.py \
+  hipengine/loading/__init__.py hipengine/speculative/__init__.py \
+  scripts/mtp_chain_e2e_bench.py
+python3 -m pytest tests/test_mtp_metadata.py tests/test_dflash_metadata.py -q
+# 15 passed
+
+python3 scripts/mtp_chain_e2e_bench.py \
+  --target-model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --draft-budgets 1,2,3 --json /tmp/hipengine-mtp-readiness.json
+# {"missing": 19, "passed": false, "status": "blocked_missing_mtp_tensors"}
+```
+
+Retained artifact:
+
+- ``benchmarks/results/2026-05-19-hipengine-mtp-chain-readiness-missing-tensors-diagnostic.json``
+
+Result:
+
+- Current packed PARO target snapshot has ``0/19`` expected ``mtp.*`` tensors.
+- Shared verifier contract for MTP is now explicit and test-covered:
+  ``DraftBatch`` candidate rows only -> ``TargetVerifyBatch.from_draft`` root
+  materialization -> ``verify_chain_bulk_and_commit`` -> existing GPU accept
+  summary / transactional commit.
+- Native MTP proposal kernels are the next MTP-specific implementation step, but
+  they require a retained target-attached MTP artifact first.  Until then, MTP
+  speed claims remain blocked; DFlash/DDTree speed work remains focused on the
+  shared verifier row-cost wall.

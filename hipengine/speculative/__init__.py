@@ -6,6 +6,7 @@ from hipengine.speculative.buffers import (
     TargetVerifyScratchHandle,
     TargetVerifyScratchSpec,
 )
+from hipengine.speculative.chain import ChainDraftCompiler, ChainDraftRequest, compile_chain_draft
 from hipengine.speculative.dflash import (
     DFLASH_CHAIN_CANDIDATE_BUDGETS,
     DFlashChainCompiler,
@@ -43,6 +44,17 @@ from hipengine.speculative.dflash_drafter import (
     project_dflash_target_hidden_bf16,
     dflash_silu_mul_bf16,
 )
+from hipengine.speculative.mtp import (
+    MTP_CHAIN_CANDIDATE_BUDGETS,
+    MissingMtpWeightsError,
+    MtpChainCompiler,
+    MtpDraftProvider,
+    MtpDraftRequest,
+    MtpProposalContext,
+    MtpTokenGenerator,
+    Qwen35MtpDraftProvider,
+    compile_mtp_chain,
+)
 from hipengine.speculative.verify_graph import (
     DFlashVerifyGraphAddresses,
     DFlashVerifyGraphBucketKey,
@@ -78,6 +90,9 @@ __all__ = [
     "TargetVerifyBufferSpec",
     "TargetVerifyScratchHandle",
     "TargetVerifyScratchSpec",
+    "ChainDraftCompiler",
+    "ChainDraftRequest",
+    "compile_chain_draft",
     "DFLASH_CHAIN_CANDIDATE_BUDGETS",
     "DFlashChainCompiler",
     "DFlashDraftKVAppendPlan",
@@ -93,6 +108,15 @@ __all__ = [
     "DFlashVerifyGraphAddresses",
     "DFlashVerifyGraphBucketKey",
     "DFlashVerifyGraphValidation",
+    "MTP_CHAIN_CANDIDATE_BUDGETS",
+    "MissingMtpWeightsError",
+    "MtpChainCompiler",
+    "MtpDraftProvider",
+    "MtpDraftRequest",
+    "MtpProposalContext",
+    "MtpTokenGenerator",
+    "Qwen35MtpDraftProvider",
+    "compile_mtp_chain",
     "append_materialized_kv_reference",
     "compile_dflash_chain",
     "dflash_layer_kv_weights",

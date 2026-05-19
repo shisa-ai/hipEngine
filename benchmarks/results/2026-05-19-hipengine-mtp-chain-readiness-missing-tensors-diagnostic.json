@@ -1,0 +1,281 @@
+{
+  "contract_examples": {
+    "1": {
+      "draft_batch": {
+        "active_mask": [
+          true
+        ],
+        "candidate_tokens": [
+          1001
+        ],
+        "draft_depths": [
+          1
+        ],
+        "mode": "verify_chain",
+        "parent_positions": [
+          100
+        ],
+        "request_ids": [
+          0
+        ],
+        "row_to_request": [
+          0
+        ]
+      },
+      "target_verify_batch": {
+        "active_mask": [
+          true,
+          true
+        ],
+        "candidate_rows": [
+          1
+        ],
+        "draft_depths": [
+          0,
+          1
+        ],
+        "mode": "verify_chain",
+        "parent_rows": [
+          -1,
+          0
+        ],
+        "positions": [
+          100,
+          101
+        ],
+        "root_rows": [
+          0
+        ],
+        "tokens": [
+          1000,
+          1001
+        ],
+        "tree_shape": [
+          0
+        ]
+      }
+    },
+    "2": {
+      "draft_batch": {
+        "active_mask": [
+          true,
+          true
+        ],
+        "candidate_tokens": [
+          1001,
+          1002
+        ],
+        "draft_depths": [
+          1,
+          2
+        ],
+        "mode": "verify_chain",
+        "parent_positions": [
+          100,
+          101
+        ],
+        "request_ids": [
+          0
+        ],
+        "row_to_request": [
+          0,
+          0
+        ]
+      },
+      "target_verify_batch": {
+        "active_mask": [
+          true,
+          true,
+          true
+        ],
+        "candidate_rows": [
+          1,
+          2
+        ],
+        "draft_depths": [
+          0,
+          1,
+          2
+        ],
+        "mode": "verify_chain",
+        "parent_rows": [
+          -1,
+          0,
+          1
+        ],
+        "positions": [
+          100,
+          101,
+          102
+        ],
+        "root_rows": [
+          0
+        ],
+        "tokens": [
+          1000,
+          1001,
+          1002
+        ],
+        "tree_shape": [
+          0,
+          1
+        ]
+      }
+    },
+    "3": {
+      "draft_batch": {
+        "active_mask": [
+          true,
+          true,
+          true
+        ],
+        "candidate_tokens": [
+          1001,
+          1002,
+          1003
+        ],
+        "draft_depths": [
+          1,
+          2,
+          3
+        ],
+        "mode": "verify_chain",
+        "parent_positions": [
+          100,
+          101,
+          102
+        ],
+        "request_ids": [
+          0
+        ],
+        "row_to_request": [
+          0,
+          0,
+          0
+        ]
+      },
+      "target_verify_batch": {
+        "active_mask": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "candidate_rows": [
+          1,
+          2,
+          3
+        ],
+        "draft_depths": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "mode": "verify_chain",
+        "parent_rows": [
+          -1,
+          0,
+          1,
+          2
+        ],
+        "positions": [
+          100,
+          101,
+          102,
+          103
+        ],
+        "root_rows": [
+          0
+        ],
+        "tokens": [
+          1000,
+          1001,
+          1002,
+          1003
+        ],
+        "tree_shape": [
+          0,
+          1,
+          2
+        ]
+      }
+    }
+  },
+  "date": "2026-05-19",
+  "decision_reason": "MTP can reuse the DFlash native chain verifier/accept/commit ABI. The current target checkpoint must carry BF16 target-attached `mtp.*` tensors before a real MtpDraftProvider can produce proposals.  The shisa packed PARO snapshot currently has no `mtp.*` tensors, so this run is retained as a readiness/blocked diagnostic rather than a speed row.",
+  "draft_budgets": [
+    1,
+    2,
+    3
+  ],
+  "mtp_validation": {
+    "artifact_kind": "qwen35_mtp_target_attached",
+    "config": {
+      "architecture": "Qwen3_5MoeForConditionalGeneration+MTP",
+      "head_dim": 256,
+      "hidden_size": 2048,
+      "moe_intermediate_size": 512,
+      "num_attention_heads": 16,
+      "num_experts": 256,
+      "num_experts_per_tok": 8,
+      "num_key_value_heads": 2,
+      "num_mtp_layers": 1,
+      "rms_norm_eps": 1e-06,
+      "rotary_dim": 64,
+      "shared_expert_intermediate_size": 512,
+      "source_quant_method": "paroquant",
+      "vocab_size": 248320
+    },
+    "config_errors": [],
+    "dtype_errors": [],
+    "expected_count": 19,
+    "missing": [
+      "mtp.fc.weight",
+      "mtp.pre_fc_norm_embedding.weight",
+      "mtp.pre_fc_norm_hidden.weight",
+      "mtp.layers.0.input_layernorm.weight",
+      "mtp.layers.0.post_attention_layernorm.weight",
+      "mtp.layers.0.self_attn.q_proj.weight",
+      "mtp.layers.0.self_attn.k_proj.weight",
+      "mtp.layers.0.self_attn.v_proj.weight",
+      "mtp.layers.0.self_attn.o_proj.weight",
+      "mtp.layers.0.self_attn.q_norm.weight",
+      "mtp.layers.0.self_attn.k_norm.weight",
+      "mtp.layers.0.mlp.gate.weight",
+      "mtp.layers.0.mlp.experts.gate_up_proj",
+      "mtp.layers.0.mlp.experts.down_proj",
+      "mtp.layers.0.mlp.shared_expert_gate.weight",
+      "mtp.layers.0.mlp.shared_expert.gate_proj.weight",
+      "mtp.layers.0.mlp.shared_expert.up_proj.weight",
+      "mtp.layers.0.mlp.shared_expert.down_proj.weight",
+      "mtp.norm.weight"
+    ],
+    "model_path": "/data/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+    "passed": false,
+    "present_count": 0,
+    "shape_errors": [],
+    "unexpected_mtp": []
+  },
+  "performance_claim": false,
+  "schema_version": 1,
+  "shared_contract": {
+    "accept_summary": "dflash_accept_chain_i32 / TargetVerifyBatch.accept_from_top1 semantics",
+    "candidate_rows_exclude_root": true,
+    "proposal_mode": "chain",
+    "provider": "mtp",
+    "transactional_commit_reuse": true,
+    "verifier_entrypoint": "Qwen35ParoResidentSession.verify_chain_bulk_and_commit",
+    "verify_mode": "verify_chain"
+  },
+  "software": {
+    "hipengine": {
+      "branch": "dflash",
+      "commit": "504cf9bc6bb9e9ca98597700caca478dc1c1c019",
+      "dirty": true
+    }
+  },
+  "status": "blocked_missing_mtp_tensors",
+  "target_model": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+  "title": "MTP chain verifier readiness diagnostic"
+}
