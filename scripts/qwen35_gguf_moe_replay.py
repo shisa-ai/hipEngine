@@ -37,6 +37,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
     selected_wmma_prefill_compact_default_tiles,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
+    gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out,
     selected_dual_wmma_prefill_compact_default_tiles,
 )
 import hipengine.runtime.qwen35_gguf_runner as qgr
@@ -328,8 +329,30 @@ def _install_replay_helper(recorder: ReplayRecorder):
 
         gate_tile_m, gate_tile_n = selected_dual_wmma_prefill_compact_default_tiles()
         down_tile_m, down_tile_n = selected_wmma_prefill_compact_default_tiles(down_weight.spec.quant_key)
+        use_hot_q4 = int(getattr(recorder, "q4_hot_fulltile_threshold", 0)) > 0
+        hot_threshold = int(getattr(recorder, "q4_hot_fulltile_threshold", 0))
 
         def launch_gate_up() -> None:
+            if use_hot_q4:
+                gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out(
+                    scratch.moe_down_out.ptr,
+                    scratch.moe_expert_start_compact.ptr,
+                    scratch.moe_expert_start_wmma.ptr,
+                    scratch.moe_tile_expert.ptr,
+                    gate_weight.allocation("raw").tensor.ptr,
+                    up_weight.allocation("raw").tensor.ptr,
+                    scratch.ffn_gate_up.ptr,
+                    selected_rows,
+                    hidden_size,
+                    expert_ffn,
+                    expert_ffn,
+                    num_experts,
+                    wmma_total_rows,
+                    hot_threshold=hot_threshold,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                return
             gate_up_fn(
                 scratch.moe_down_out.ptr,
                 scratch.moe_expert_start_compact.ptr,
@@ -495,7 +518,11 @@ def _install_replay_helper(recorder: ReplayRecorder):
             "padding_rows": padding_rows,
             "padding_pct": ((float(wmma_total_rows) / compact_rows) - 1.0) * 100.0 if compact_rows else 0.0,
             "tile_decisions": {
-                "gate_up": {"tile_m": int(gate_tile_m), "tile_n": int(gate_tile_n)},
+                "gate_up": {
+                    "tile_m": int(gate_tile_m),
+                    "tile_n": int(gate_tile_n),
+                    "hot_fulltile_threshold": hot_threshold if use_hot_q4 else None,
+                },
                 "down": {"tile_m": int(down_tile_m), "tile_n": int(down_tile_n)},
             },
             "counts_summary": summarize_counts(counts),
@@ -532,6 +559,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         replay_iters=int(args.replay_iters),
         sample_groups=int(args.sample_groups),
     )
+    recorder.q4_hot_fulltile_threshold = int(args.q4_hot_fulltile_threshold)
     original = _install_replay_helper(recorder)
     start = time.perf_counter()
     try:
@@ -579,6 +607,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "warmup_iters": int(args.warmup_iters),
         "replay_iters": int(args.replay_iters),
         "sample_groups": int(args.sample_groups),
+        "q4_hot_fulltile_threshold": int(args.q4_hot_fulltile_threshold),
         "git_commit": _git_commit(),
         "git_status": _git_status(),
         "elapsed_seconds_including_model_load": elapsed,
@@ -610,6 +639,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--reference-artifact", type=Path, default=DEFAULT_REFERENCE_ARTIFACT)
+    parser.add_argument(
+        "--q4-hot-fulltile-threshold",
+        type=int,
+        default=0,
+        help="Use the P9.C4 Q4 hot/full-tile prototype for gate+up when >0.",
+    )
     parser.add_argument("--json", type=Path, required=True)
     return parser.parse_args()
 
@@ -620,6 +655,8 @@ def main() -> None:
         raise ValueError("--prompt-length must be > 1 for selected-MoE replay")
     if args.warmup_iters < 0 or args.replay_iters <= 0 or args.sample_groups <= 0:
         raise ValueError("--warmup-iters must be >=0 and --replay-iters/--sample-groups must be >0")
+    if args.q4_hot_fulltile_threshold < 0:
+        raise ValueError("--q4-hot-fulltile-threshold must be >=0")
     report = run(args)
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps(report, indent=2) + "\n")

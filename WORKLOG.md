@@ -20106,3 +20106,38 @@ Ranked optimization plan for P9.C4+:
 4. Tail/no-padding hybrid remains secondary; padding bound is only ~13.45% / ~11 ms ideal and cannot close the gap without Q4/Q5 inner-loop redesign.
 
 Validation: artifact JSON validates; no code changes besides docs/artifact for this task. Task #34 can complete and unblocks P9.C4 (#35).
+
+## 2026-05-18 P9.C4 task #35: Q4 hot/full-tile v1 prototype (rejected)
+
+Implemented and tested an optional experimental Q4_K selected dual hot/full-tile hybrid:
+
+- New HIP kernels in `gguf_q4_k_selected_prefill.hip`:
+  - `gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile32_kernel`: processes full 16-row tiles for experts with `expert_count >= hot_threshold` using retained `32x16` column grouping, no per-row validity checks. Trace VGPR `64`.
+  - `gguf_q4_k_selected_dual_wmma_prefill_compact_tailcold16_kernel`: legacy-style fallback for tiles not handled by the hot kernel.
+  - `gguf_q4_k_selected_dual_wmma_prefill_compact_tail_by_expert16_kernel`: compact tail fallback for the `hot_threshold=1` all-full-tiles mode (one row tile per expert tail instead of all row tiles).
+- New wrappers:
+  - `gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out`
+  - `gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out`
+- Replay harness option: `--q4-hot-fulltile-threshold`.
+- Correctness: new synthetic fixture covers hot full tiles, hot tails, cold full tiles, cold tails, and empty experts; CPU selected reference passes. Full Q4 selected fixture file passes (`13 passed`).
+
+Replay results (512/0 qwen35moe, P9.C2 harness, 3x5 batched timing):
+
+| Q4 mode | Q4 replay ms | selected-MoE replay ms | Decision |
+| --- | ---: | ---: | --- |
+| retained 32x16 baseline | 59.896 | 89.724 | current default |
+| hot/full threshold 1 | 66.083 | 95.581 | reject |
+| hot/full threshold 32 | 65.844 | 95.515 | reject |
+| hot/full threshold 64 | 65.283 | 94.711 | reject |
+| hot/full threshold 128 | 65.254 | 94.629 | reject |
+
+rocprof threshold=1 split:
+
+- hot full-tile kernel: `49.212 ms / 40 dispatches`, avg `1.230 ms`, trace VGPR `64`, grid_x `1024`.
+- tail-by-expert fallback: `17.470 ms / 40 dispatches`, avg `0.437 ms`, trace VGPR `56`, grid_x `2048`, grid_y `256`.
+
+Diagnosis: the full-tile kernel itself is promising (near the P9.C4 target if it did not need fallback), but complete output needs a second fallback launch and that fallback still launches many column blocks. The hybrid is therefore slower than retained 32x16 and is not wired into the default runtime.
+
+Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c4-q4-hot-fulltile-v1-rejected.json`.
+
+Conclusion for task #35: prototype v1 is correct but fails the performance acceptance. Proceeding to P9.C5 sidecar/reduced-decode work is necessary; a future hot/full-tile path would need compact tail lists and/or sidecar to become useful.

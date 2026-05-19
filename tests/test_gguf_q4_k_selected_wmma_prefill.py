@@ -37,6 +37,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     build_gguf_q4_k_selected_prefill,
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
+    gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out,
+    gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out,
     plan_gguf_q4_k_selected_prefill_build,
     selected_dual_wmma_prefill_compact_default_tiles,
 )
@@ -87,6 +89,15 @@ def test_gguf_q4_k_selected_wmma_registry_and_build_plan(monkeypatch: pytest.Mon
         )
         is gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out
+    )
 
     artifact = plan_gguf_q4_k_selected_prefill_build(compiler_version="test-compiler")
     assert artifact.output_path.name == "gguf_q4_k_selected_prefill.so"
@@ -117,6 +128,28 @@ def test_p9_c1_q4_k_selected_default_tile_decision(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M", "64")
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N", "32")
     assert selected_dual_wmma_prefill_compact_default_tiles() == (64, 32)
+
+
+def test_gguf_q4_k_selected_wmma_hot_wrapper_validates_threshold() -> None:
+    kwargs = dict(
+        x_ptr=1,
+        expert_start_compact_ptr=2,
+        expert_start_wmma_ptr=3,
+        tile_expert_ptr=4,
+        qweight_a_ptr=5,
+        qweight_b_ptr=6,
+        out_ptr=7,
+        compact_rows=17,
+        in_features=256,
+        out_features_a=32,
+        out_features_b=32,
+        num_experts=2,
+        wmma_total_rows=32,
+    )
+    with pytest.raises(ValueError, match="hot_threshold"):
+        gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out(
+            **kwargs, hot_threshold=0
+        )
 
 
 def test_gguf_q4_k_selected_wmma_wrapper_validates_common_contract() -> None:
@@ -312,7 +345,13 @@ def _build_compact_fixture(
     )
 
 
-def _run_selected_dual_gpu(fixture: CompactFixture, dtype: str) -> np.ndarray:
+def _run_selected_dual_gpu(
+    fixture: CompactFixture,
+    dtype: str,
+    *,
+    hot_fulltile: bool = False,
+    hot_threshold: int = 64,
+) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
@@ -322,11 +361,18 @@ def _run_selected_dual_gpu(fixture: CompactFixture, dtype: str) -> np.ndarray:
         (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
         dtype=out_dtype,
     )
-    wrapper = (
-        gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out
-        if dtype == "bf16"
-        else gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out
-    )
+    if hot_fulltile:
+        wrapper = (
+            gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out
+            if dtype == "bf16"
+            else gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out
+        )
+    else:
+        wrapper = (
+            gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out
+            if dtype == "bf16"
+            else gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out
+        )
 
     bufs = []
     try:
@@ -360,6 +406,9 @@ def _run_selected_dual_gpu(fixture: CompactFixture, dtype: str) -> np.ndarray:
                 dev, host_array_ptr(np.ascontiguousarray(arr)), runtime=runtime
             )
 
+        kwargs = {"library": library, "runtime": runtime}
+        if hot_fulltile:
+            kwargs["hot_threshold"] = hot_threshold
         wrapper(
             x_dev.ptr,
             start_compact_dev.ptr,
@@ -374,8 +423,7 @@ def _run_selected_dual_gpu(fixture: CompactFixture, dtype: str) -> np.ndarray:
             fixture.out_features_b,
             fixture.num_experts,
             fixture.wmma_total_rows,
-            library=library,
-            runtime=runtime,
+            **kwargs,
         )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
@@ -437,6 +485,29 @@ def test_gguf_q4_k_selected_wmma_fp16_matches_cpu_selected_reference(
     )
     actual = _run_selected_dual_gpu(fixture, "fp16")
     np.testing.assert_allclose(actual, fixture.reference, **_TOLERANCE_FP16)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_p9_c4_q4_k_hot_fulltile_hybrid_matches_cpu_selected_reference() -> None:
+    """P9.C4 hot/full-tile prototype preserves the compact selected ABI.
+
+    Counts include hot full tiles, hot tails, cold full tiles, cold tails, and
+    empty experts so both the full-tile and tail/cold kernels must participate.
+    """
+
+    fixture = _build_compact_fixture(
+        counts=[0, 7, 16, 63, 64, 79, 128],
+        in_features=512,
+        out_features_a=64,
+        out_features_b=64,
+        dtype="bf16",
+        seed=13,
+    )
+    actual = _run_selected_dual_gpu(
+        fixture, "bf16", hot_fulltile=True, hot_threshold=64
+    )
+    np.testing.assert_allclose(actual, fixture.reference, **_TOLERANCE_BF16)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

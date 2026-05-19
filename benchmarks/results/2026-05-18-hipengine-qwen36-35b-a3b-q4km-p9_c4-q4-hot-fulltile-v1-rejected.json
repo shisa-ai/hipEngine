@@ -1,0 +1,53 @@
+{
+  "schema": "p9_c4_q4_hot_fulltile_v1_rejected",
+  "status": "rejected_prototype",
+  "performance_claim": false,
+  "timestamp": "2026-05-19T07:06:23.480259+00:00",
+  "task": "#35 P9.C4 prototype hot-expert Q4_K selected dual WMMA kernel v1",
+  "git_commit": "486e622d1ee628441b57043d50e2165761cecba4",
+  "git_status": "## gguf-bulk-prefill\n M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip\n M hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py\n M scripts/qwen35_gguf_moe_replay.py\n M tests/test_gguf_q4_k_selected_wmma_prefill.py\n?? uv.lock",
+  "summary": "P9.C4 v1 hot/full-tile Q4_K selected dual prototype is correct but slower than retained 32x16. Full-tile hot kernel alone is promising (~49 ms / VGPR 64), but complete fallback tail/cold work costs ~17-20 ms, so total Q4 replay rises to ~65-66 ms vs retained ~59.9 ms. Sidecar/reduced-decode work remains necessary.",
+  "baseline_replay": {
+    "json": "/tmp/p9_c2/moe-replay-512-0-batched.json",
+    "q4_dual_gate_up_ms": 59.89599107997493,
+    "selected_moe_total_ms": 89.7236940606187
+  },
+  "prototype_results_by_hot_threshold": {
+    "1": {
+      "q4_dual_gate_up_ms": 66.08349423234661,
+      "selected_moe_total_ms": 95.58097231201828,
+      "delta_q4_vs_replay_baseline_pct": 10.330412838665515
+    },
+    "32": {
+      "q4_dual_gate_up_ms": 65.84375533663358,
+      "selected_moe_total_ms": 95.51475771780437,
+      "delta_q4_vs_replay_baseline_pct": 9.930154171281714
+    },
+    "64": {
+      "q4_dual_gate_up_ms": 65.2834521761785,
+      "selected_moe_total_ms": 94.71096257523944,
+      "delta_q4_vs_replay_baseline_pct": 8.994693967097177
+    },
+    "128": {
+      "q4_dual_gate_up_ms": 65.2539334531563,
+      "selected_moe_total_ms": 94.62895972343782,
+      "delta_q4_vs_replay_baseline_pct": 8.945410663674092
+    }
+  },
+  "rocprof_trace_hot1_tailcompact": {
+    "csv": "/tmp/p9_c4/rocprof-hot1-tailcompact/rocm/584079_kernel_trace.csv",
+    "hot_fulltile32_ms": 49.211642,
+    "tail_by_expert16_ms": 17.470017,
+    "hot_fulltile32_vgpr": 64,
+    "tail_by_expert16_vgpr": 56
+  },
+  "correctness": {
+    "passed": true,
+    "evidence": "tests/test_gguf_q4_k_selected_wmma_prefill.py::test_p9_c4_q4_k_hot_fulltile_hybrid_matches_cpu_selected_reference passes; full Q4 selected fixture file passes (13 tests)."
+  },
+  "decision": {
+    "retain_default": false,
+    "reason": "Hybrid requires a second fallback launch. The full-tile kernel reduces VGPR to 64 and removes row-valid checks, but tail/cold fallback over row/expert grids dominates enough to erase gains.",
+    "next": "Proceed to P9.C5 sidecar/reduced-decode prototype. Full-tile kernel can be reused only if paired with a much more compact tail list and/or sidecar."
+  }
+}
