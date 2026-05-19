@@ -45,7 +45,70 @@ single-model tuning targets
 (19.07 GiB, 4.68 bpw) in packed
 [ParoQuant](https://github.com/shisa-ai/paroquant) format.
 
-## gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
+- INT8 KV cache support has been added. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
+
+
+## Hardware targets
+
+| Backend | Hardware | Status |
+| --- | --- | --- |
+| `cpu_reference` | Any CPU, numpy | Correctness oracle; CI without GPU |
+| `hip_gfx1100` | AMD Radeon Pro W7900 / RX 7900 XTX (RDNA3) | Active backend |
+| `hip_gfx1151` | AMD Ryzen AI MAX+ 395 / Radeon 8060S (Strix Halo, RDNA3.5) | Active backend |
+| `cuda_sm86` | NVIDIA Ampere consumer (3090-class) | Planned peer backend |
+
+`backend="auto"` is the public API/server default. It maps exact `gfx1100` and
+`gfx1151` detections to the matching HIP backend; unknown ROCm targets warn and
+select `cpu_reference` where a CPU implementation exists. Users on nearby targets
+such as `gfx1101`/`gfx1102` can force a backend with `backend="hip_gfx1100"`,
+`--backend hip_gfx1100`, or `HIPENGINE_BACKEND=hip_gfx1100` after validating
+correctness/performance.
+
+Wave32 is the default for `hip_gfx1100` device code; wave64 is treated as an
+isolated experiment with its own gates (see
+[`docs/PLAN.md`](docs/PLAN.md#rdna3-wavefront-and-scheduling-caveat)).
+
+## Memory Usage
+
+With BF16 KV cache, hipEngine running the packed Qwen 3.6 PARO model fits
+>128K context window in a 24GB-class memory budget. The INT8 KV cache option
+(with FP16 per-token/per-head scales) uses the
+`--kv-storage int8_per_token_head` flag and lets the **full 256K context** fit
+under 24 GiB tracked allocator peak.
+
+The numbers below are for
+`shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed` on W7900/gfx1100 with q3072
+full-attention prefill chunks:
+
+| Model                | Context | KV cache | Sampled peak | Allocator peak | Retained KV | Prefill      | Decode     |
+| -------------------- | ------: | -------- | -----------: | -------------: | ----------: | -----------: | ---------: |
+| Qwen3.6 35B-A3B PARO |    128K | BF16     |    21.04 GiB |      21.88 GiB |    2.69 GiB | 1091.9 tok/s | 62.2 tok/s |
+| Qwen3.6 35B-A3B PARO |    128K | INT8     |    19.80 GiB |      20.89 GiB |    1.36 GiB | 1076.5 tok/s | 60.0 tok/s |
+| Qwen3.6 35B-A3B PARO |    256K | INT8     |    21.96 GiB |      23.71 GiB |    2.71 GiB |  670.2 tok/s | 40.3 tok/s |
+
+Regardless of the difference in PARO weight storage (legacy or packed),
+loaded-weight memory is about the same - approximately 16.4GB in VRAM.
+
+The INT8 KV correctness gate is currently the deterministic Qwen3.5 PARO
+fixture `fixtures/qwen35_paro/parent_512_32_seed1234.json` (512-token prompt,
+32 greedy decode tokens): `max_kl=0.015328`, `mean_kl=0.001639`, top-1 agreement
+100%, and generated IDs match BF16 KV exactly. Layer attention probes at context
+64 and 520 also had top-1 agreement 100% with max quantized-vs-BF16 KL
+`2.34e-7`. This is a fixture/regression gate, not a long-rollout perplexity
+study, so long context generations may have unmeasured compounding errors.
+
+The same 128K/128 Qwen3.5 BF16-vs-INT8 run measured -0.99% prefill tok/s and
+-3.20% decode tok/s for INT8 KV, so speed loss is also very small.
+
+See
+[`benchmarks/results/2026-05-19-hipengine-qwen36-packed-int8-kv-readme-memory-diagnostic.json`](benchmarks/results/2026-05-19-hipengine-qwen36-packed-int8-kv-readme-memory-diagnostic.json),
+[`benchmarks/README.md`](benchmarks/README.md#blocked--diagnostic-benchmark-attempts),
+and [`docs/KVCACHE.md`](docs/KVCACHE.md) for commands, artifacts, and the full
+no-shadow memory audit.
+
+## Performance
+
+### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
 While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family. The latest W7900 packed rows use the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks.
 
@@ -76,7 +139,7 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/b
 | 32K/128 | **20.267** | 21.738 | 21.533 |
 | 128K/128 | **23.235** | 23.605 | 23.596 |
 
-## gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
+### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 
 The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the same registry-keyed kernel surface. The Strix Halo snapshot below uses 256-row prefill chunks, which removed the 4K prefill gap without hurting long-context decode.
 
@@ -103,26 +166,6 @@ On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so cross-
 See [`benchmarks/README.md`](benchmarks/README.md) for full protocol details,
 correctness status, source-lineage targets, and external comparison baselines.
 
-## Hardware targets
-
-| Backend | Hardware | Status |
-| --- | --- | --- |
-| `hip_gfx1100` | AMD Radeon Pro W7900 / RX 7900 XTX (RDNA3) | Primary, in active bring-up |
-| `hip_gfx1151` | AMD Ryzen AI MAX+ 395 / Radeon 8060S (Strix Halo, RDNA3.5) | Active backend |
-| `cuda_sm86` | NVIDIA Ampere consumer (3090-class) | Planned peer backend |
-| `cpu_reference` | Any CPU, numpy | Correctness oracle; CI without GPU |
-
-`backend="auto"` is the public API/server default. It maps exact `gfx1100` and
-`gfx1151` detections to the matching HIP backend; unknown ROCm targets warn and
-select `cpu_reference` where a CPU implementation exists. Users on nearby targets
-such as `gfx1101`/`gfx1102` can force a backend with `backend="hip_gfx1100"`,
-`--backend hip_gfx1100`, or `HIPENGINE_BACKEND=hip_gfx1100` after validating
-correctness/performance.
-
-Wave32 is the default for `hip_gfx1100` device code; wave64 is treated as an
-isolated experiment with its own gates (see
-[`docs/PLAN.md`](docs/PLAN.md#rdna3-wavefront-and-scheduling-caveat)).
-
 ## Architecture at a glance
 
 ```
@@ -147,7 +190,7 @@ isolated experiment with its own gates (see
 │  KERNELS (backend-keyed, 120 __global__ in the Qwen/PARO port)  │
 │  kernels/hip_gfx1100/  attention / linear_attn / moe / quant    │
 │                        wmma / norm / rotary / fused             │
-│  kernels/hip_gfx1151/  native target-arch peer backend           │
+│  kernels/hip_gfx1151/  native target-arch peer backend          │
 │  kernels/cuda_sm86/    (future)                                 │
 │  kernels/cpu_reference/ correctness oracle, no GPU required     │
 └─────────────────────────────────────────────────────────────────┘
