@@ -20293,3 +20293,26 @@ P9.E1 512/0 rocprof buckets:
 Target remains missed: `140.110 ms` vs `<=110 ms` (gap `30.110 ms`, `+27.4%`). Next single bottleneck is Q4 selected dual at `58.1 ms`, followed by dense Q8_0 at `52.3 ms`. If Q8 remains fixed, Q4 would need to drop to about `28.0 ms`; shallow hot/full-tile, scale/min sidecar, and tail variants did not move in the right direction, so the next viable design is deeper expert-weight repack/layout or a different selected-MoE kernel that avoids raw GGUF-K repeated decode without adding a large side stream.
 
 Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c10-combined-gap-analysis.json`.
+
+## 2026-05-18 P9.C11 task #42: final hot-expert artifact / #27 remains blocked
+
+Ran final P9.C adjacent correctness bundle:
+
+`HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt uv run --with pytest pytest tests/test_gguf_q8_0_wmma_prefill_dual.py tests/test_gguf_q8_0_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_moe_replay.py -q --tb=short`
+
+Result: pass. Collected counts total `143` tests (`12 + 69 + 15 + 26 + 14 + 4 + 3`). Current 512/128 bench final logits are finite and final token ids are deterministic `[220, 220, 220]`.
+
+Final P9.C status:
+
+- Q4 hot/full-tile v1: correct but slower; rejected.
+- Q4 scale/min side metadata: correct but slower and too memory-heavy; rejected.
+- Q4 hot/cold dispatcher: not wired because no winning hot path exists.
+- Q5 decode-hoist: correct but slower; rejected.
+- Q6: retained legacy `16x16` after tile sweep.
+- Tail/no-padding: not retained; measured tail fallback erases padding gain.
+- Combined retained default bucket at 512/0: `140.110 ms` (`Q4 58.126`, `Q5 27.043`, `Q6 2.656`, `Q8 52.285`) vs target `<=110 ms`; gap `30.110 ms`.
+
+Conclusion: task #27 **must remain open/blocked**. The P9.C hot-expert/shallow-sidecar task list is done, but acceptance is not met. Next bottleneck is Q4 selected dual (`58.1 ms`), and the next plausible path is a deeper expert-weight repack/layout or a different selected-MoE design that avoids repeated raw GGUF-K decode without a large side stream.
+
+Final artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c11-hot-expert-final-blocked.json`.
+Updated `benchmarks/README.md` blocked row and `benchmarks/CHANGELOG.md` final blocked one-liner.
