@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -77,6 +77,18 @@ Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 entry and
 | Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 4K/128 split | 1705.093 | 120.163 | 20.969 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
 | Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 32K/128 split | 1128.554 | 98.073 | 21.533 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
 | Qwen3.6-35B-A3B | UD-Q4_K_M GGUF | llama.cpp Vulkan | 128K/128 split | 480.539 | 64.478 | 23.596 | same as above; peak [`2026-05-17-llamacpp-vulkan-qwen36-peak.json`](results/2026-05-17-llamacpp-vulkan-qwen36-peak.json) | 2026-05-17 | Same instrumentation note. |
+
+### llama.cpp ROCm / Qwen3.6-27B Q4_K_M MTP
+
+Source: [`benchmarks/MTP.md`](MTP.md) and
+[`2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json`](results/2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json).
+These are external llama.cpp diagnostics, not hipEngine performance claims.
+
+| Model | Quant | Backend | Workload | Base decode tok/s | MTP decode tok/s | MTP speedup / acceptance | Source | Last updated | Notes |
+| --- | --- | --- | --- | ---: | ---: | --- | --- | --- | --- |
+| Qwen3.6-27B | Q4_K_M GGUF | llama.cpp ROCm server | 10-prompt code/general/JA suite, max 512 generated tokens | 25.21 | 40.17 | 1.593x / 0.745 | [`2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json`](results/2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json) | 2026-05-19 | `--spec-type draft-mtp --spec-draft-n-max 2`; natural prompt suite. |
+| Qwen3.6-27B | Q4_K_M GGUF | llama.cpp ROCm server | token `9707` repeated, 512/128 | 25.61 | 48.96 | 1.912x / 1.000 | same as above | 2026-05-19 | Artificial perfect-acceptance MTP case; compare only as a diagnostic. |
+| Qwen3.6-27B | Q4_K_M GGUF | llama.cpp ROCm server | token `9707` repeated, 4K/128 | 25.12 | 47.95 | 1.909x / 1.000 | same as above | 2026-05-19 | Artificial perfect-acceptance MTP case; compare only as a diagnostic. |
 
 ### Host-architecture comparator: Qwen3-0.6B FP16 c=1
 

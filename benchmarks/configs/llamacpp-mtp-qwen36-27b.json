@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "description": "llama.cpp external MTP diagnostic for Qwen3.6 27B on W7900/gfx1100.",
+  "llama_cpp_dir": "/home/lhl/llama.cpp/llama.cpp-hip",
+  "server_bin": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+  "llama_bench_bin": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench",
+  "model": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+  "model_alias": "qwen36",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8011,
+    "ctx_size": 8192,
+    "gpu_layers": 99,
+    "flash_attn": "on",
+    "cache_type_k": "f16",
+    "cache_type_v": "f16",
+    "no_cache_prompt": true
+  },
+  "mtp": {
+    "spec_type": "draft-mtp",
+    "draft_max_default": 2,
+    "draft_max_sweep": [2, 4, 6]
+  },
+  "natural_prompt_protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "max_tokens": 512,
+    "seed": 12345,
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "repeat": 1
+  },
+  "token_repeat_protocol": {
+    "token_id": 9707,
+    "shapes": ["512/128", "4096/128"],
+    "seed": 12345,
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "ignore_eos": true
+  },
+  "cache_sweep": {
+    "draft_max": 2,
+    "cache_types": ["f16", "q8_0", "q4_0"]
+  },
+  "notes": [
+    "Rows produced by this config are external comparison diagnostics, not hipEngine accepted performance claims.",
+    "Natural prompt MTP output hashes can differ from base output hashes even at temperature=0.",
+    "The token-repeat protocol is intentionally easy for MTP and should not be used as a natural-prompt speedup estimate."
+  ]
+}

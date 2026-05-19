@@ -1,0 +1,537 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "run_tag": "llamacpp-mtp-qwen36-27b-external-comparison",
+  "timestamp": "2026-05-19T08:37:58Z",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "notes": "Measurements were taken on the shared W7900 host; some source runs are single-run diagnostics."
+  },
+  "software": {
+    "hipengine_commit_at_import": "a503967628ece8c14097bd34afa1b2309818fd51",
+    "hipengine_dirty_at_import": true,
+    "llama_cpp_repo": "/home/lhl/llama.cpp/llama.cpp-hip",
+    "llama_cpp_commit_at_run": "232f46658",
+    "llama_cpp_build_number": 9214,
+    "llama_cpp_worktree_commit_now": "45b455e66fc09abed65b7d52d42a4a29ba0d45d6",
+    "llama_cpp_dirty_now": false
+  },
+  "models": {
+    "llamacpp_target": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "hipengine_paro": "/models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+  },
+  "repo_paths": {
+    "runner": "scripts/llamacpp_mtp_bench.py",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "config": "benchmarks/configs/llamacpp-mtp-qwen36-27b.json",
+    "writeup": "benchmarks/MTP.md"
+  },
+  "protocols": {
+    "natural_prompt_suite": {
+      "description": "10 deterministic chat prompts covering code, general English, general Japanese, and mixed JA/EN.",
+      "prompt_file_source": "/home/lhl/mtpbench/prompts.jsonl",
+      "max_tokens": 512,
+      "seed": 12345,
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0
+    },
+    "token_repeat": {
+      "description": "Artificial repeated token-id prompt used to line up with hipEngine repeated-token diagnostics.",
+      "token_id": 9707,
+      "shapes": [
+        "512/128",
+        "4096/128"
+      ],
+      "seed": 12345,
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "ignore_eos": true
+    }
+  },
+  "natural_prompt_draft_sweep": [
+    {
+      "run_dir": "/home/lhl/mtpbench/runs/20260519-023133",
+      "base_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 25.17822356069064,
+        "predicted_per_second_mean": 25.212468115464123,
+        "predicted_per_second_weighted": 25.211690923046245,
+        "wall_tokens_per_second_median": 24.90573034130051,
+        "draft_n": 0,
+        "draft_n_accepted": 0,
+        "draft_acceptance": null
+      },
+      "mtp_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 40.26320916211617,
+        "predicted_per_second_mean": 40.278117896751084,
+        "predicted_per_second_weighted": 40.17071549818842,
+        "wall_tokens_per_second_median": 39.41501213071202,
+        "draft_n": 4100,
+        "draft_n_accepted": 3055,
+        "draft_acceptance": 0.7451219512195122
+      },
+      "speedup": 1.5933368222227409,
+      "category_summary": {
+        "code": {
+          "base_weighted_predicted_per_second": 25.332107265938564,
+          "mtp_weighted_predicted_per_second": 41.719645489756964,
+          "speedup": 1.646907817489507,
+          "mtp_draft_acceptance": 0.7887767969735183
+        },
+        "general_en": {
+          "base_weighted_predicted_per_second": 25.178218883452704,
+          "mtp_weighted_predicted_per_second": 38.26633902608654,
+          "speedup": 1.519819142220399,
+          "mtp_draft_acceptance": 0.6872093023255814
+        },
+        "general_ja": {
+          "base_weighted_predicted_per_second": 25.144362156408985,
+          "mtp_weighted_predicted_per_second": 37.993231639353404,
+          "speedup": 1.5110039937787565,
+          "mtp_draft_acceptance": 0.6797687861271676
+        },
+        "mixed_ja_en": {
+          "base_weighted_predicted_per_second": 25.073787086769478,
+          "mtp_weighted_predicted_per_second": 41.534052102278096,
+          "speedup": 1.6564730313193932,
+          "mtp_draft_acceptance": 0.7921419518377694
+        }
+      },
+      "same_output_count": 1,
+      "request_count": 10,
+      "draft_max": 2
+    },
+    {
+      "run_dir": "/home/lhl/mtpbench/runs/20260519-023738",
+      "base_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 25.006974006917382,
+        "predicted_per_second_mean": 25.012017686121126,
+        "predicted_per_second_weighted": 25.011992933076343,
+        "wall_tokens_per_second_median": 24.72536278946143,
+        "draft_n": 0,
+        "draft_n_accepted": 0,
+        "draft_acceptance": null
+      },
+      "mtp_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 37.04075597298066,
+        "predicted_per_second_mean": 36.86724022221305,
+        "predicted_per_second_weighted": 36.48606993205211,
+        "wall_tokens_per_second_median": 36.42701208223046,
+        "draft_n": 6251,
+        "draft_n_accepted": 3542,
+        "draft_acceptance": 0.5666293393057111
+      },
+      "speedup": 1.45874301298887,
+      "category_summary": {
+        "code": {
+          "base_weighted_predicted_per_second": 25.035718990826307,
+          "mtp_weighted_predicted_per_second": 38.09913234248924,
+          "speedup": 1.5217910201200806,
+          "mtp_draft_acceptance": 0.6023391812865497
+        },
+        "general_en": {
+          "base_weighted_predicted_per_second": 25.004497879403697,
+          "mtp_weighted_predicted_per_second": 33.213020464085794,
+          "speedup": 1.3282818405021237,
+          "mtp_draft_acceptance": 0.4930909090909091
+        },
+        "general_ja": {
+          "base_weighted_predicted_per_second": 25.00186476310672,
+          "mtp_weighted_predicted_per_second": 32.99340354247983,
+          "speedup": 1.3196377092306169,
+          "mtp_draft_acceptance": 0.4884393063583815
+        },
+        "mixed_ja_en": {
+          "base_weighted_predicted_per_second": 24.982250769539935,
+          "mtp_weighted_predicted_per_second": 41.44870678010983,
+          "speedup": 1.6591261997356508,
+          "mtp_draft_acceptance": 0.6794171220400729
+        }
+      },
+      "same_output_count": 1,
+      "request_count": 10,
+      "draft_max": 4
+    },
+    {
+      "run_dir": "/home/lhl/mtpbench/runs/20260519-024359",
+      "base_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 24.919419510813327,
+        "predicted_per_second_mean": 24.919649595643303,
+        "predicted_per_second_weighted": 24.919641093116994,
+        "wall_tokens_per_second_median": 24.64152948108643,
+        "draft_n": 0,
+        "draft_n_accepted": 0,
+        "draft_acceptance": null
+      },
+      "mtp_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 31.90489116669216,
+        "predicted_per_second_mean": 31.599620499605333,
+        "predicted_per_second_weighted": 31.02840559628808,
+        "wall_tokens_per_second_median": 31.41900036155956,
+        "draft_n": 8465,
+        "draft_n_accepted": 3693,
+        "draft_acceptance": 0.43626698168930894
+      },
+      "speedup": 1.2451385427400228,
+      "category_summary": {
+        "code": {
+          "base_weighted_predicted_per_second": 24.929398252164347,
+          "mtp_weighted_predicted_per_second": 33.366978913486776,
+          "speedup": 1.338459058496925,
+          "mtp_draft_acceptance": 0.4815756035578145
+        },
+        "general_en": {
+          "base_weighted_predicted_per_second": 24.91815093108958,
+          "mtp_weighted_predicted_per_second": 27.45509108548207,
+          "speedup": 1.1018109313732116,
+          "mtp_draft_acceptance": 0.3667711598746082
+        },
+        "general_ja": {
+          "base_weighted_predicted_per_second": 24.91853173197374,
+          "mtp_weighted_predicted_per_second": 26.938737391375263,
+          "speedup": 1.081072419560312,
+          "mtp_draft_acceptance": 0.35655737704918034
+        },
+        "mixed_ja_en": {
+          "base_weighted_predicted_per_second": 24.902745537423137,
+          "mtp_weighted_predicted_per_second": 36.15487789325527,
+          "speedup": 1.451843044331106,
+          "mtp_draft_acceptance": 0.5368711233631978
+        }
+      },
+      "same_output_count": 1,
+      "request_count": 10,
+      "draft_max": 6
+    }
+  ],
+  "natural_prompt_cache_sweep": [
+    {
+      "run_dir": "/home/lhl/mtpbench/runs/cache-sweep-20260519-043042/cache-f16",
+      "base_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 25.1689838495735,
+        "predicted_per_second_mean": 25.191423818192398,
+        "predicted_per_second_weighted": 25.19078253916259,
+        "wall_tokens_per_second_median": 24.88468955718476,
+        "draft_n": 0,
+        "draft_n_accepted": 0,
+        "draft_acceptance": null
+      },
+      "mtp_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 40.14541534334346,
+        "predicted_per_second_mean": 40.14437179673791,
+        "predicted_per_second_weighted": 40.03756587176615,
+        "wall_tokens_per_second_median": 39.28218291954413,
+        "draft_n": 4100,
+        "draft_n_accepted": 3055,
+        "draft_acceptance": 0.7451219512195122
+      },
+      "speedup": 1.5893736452816485,
+      "category_summary": {
+        "code": {
+          "base_weighted_predicted_per_second": 25.29743133736106,
+          "mtp_weighted_predicted_per_second": 41.563834398481006,
+          "speedup": 1.6430061156879812,
+          "mtp_draft_acceptance": 0.7887767969735183
+        },
+        "general_en": {
+          "base_weighted_predicted_per_second": 25.168978103849316,
+          "mtp_weighted_predicted_per_second": 38.130490357733635,
+          "speedup": 1.5149796785711376,
+          "mtp_draft_acceptance": 0.6872093023255814
+        },
+        "general_ja": {
+          "base_weighted_predicted_per_second": 25.122990409175742,
+          "mtp_weighted_predicted_per_second": 37.87703649178746,
+          "speedup": 1.5076643295598091,
+          "mtp_draft_acceptance": 0.6797687861271676
+        },
+        "mixed_ja_en": {
+          "base_weighted_predicted_per_second": 25.06877633476178,
+          "mtp_weighted_predicted_per_second": 41.430154363333635,
+          "speedup": 1.6526596196833208,
+          "mtp_draft_acceptance": 0.7921419518377694
+        }
+      },
+      "same_output_count": 1,
+      "request_count": 10,
+      "cache_kv": "f16/f16",
+      "draft_max": 2
+    },
+    {
+      "run_dir": "/home/lhl/mtpbench/runs/cache-sweep-20260519-043042/cache-q8_0",
+      "base_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 24.156378593084128,
+        "predicted_per_second_mean": 24.16305599837664,
+        "predicted_per_second_weighted": 24.163034031368152,
+        "wall_tokens_per_second_median": 23.888188411687903,
+        "draft_n": 0,
+        "draft_n_accepted": 0,
+        "draft_acceptance": null
+      },
+      "mtp_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 39.7549390727646,
+        "predicted_per_second_mean": 39.63519062946547,
+        "predicted_per_second_weighted": 39.55432748639256,
+        "wall_tokens_per_second_median": 39.041971376558664,
+        "draft_n": 4080,
+        "draft_n_accepted": 3065,
+        "draft_acceptance": 0.7512254901960784
+      },
+      "speedup": 1.636976856260833,
+      "category_summary": {
+        "code": {
+          "base_weighted_predicted_per_second": 24.184117560223562,
+          "mtp_weighted_predicted_per_second": 40.72471540025793,
+          "speedup": 1.6839446508165858,
+          "mtp_draft_acceptance": 0.7870195337114052
+        },
+        "general_en": {
+          "base_weighted_predicted_per_second": 24.156378581407232,
+          "mtp_weighted_predicted_per_second": 38.30792546459863,
+          "speedup": 1.5858306465723142,
+          "mtp_draft_acceptance": 0.7117437722419929
+        },
+        "general_ja": {
+          "base_weighted_predicted_per_second": 24.151508450386384,
+          "mtp_weighted_predicted_per_second": 37.10032147935793,
+          "speedup": 1.5361492453182313,
+          "mtp_draft_acceptance": 0.6751152073732719
+        },
+        "mixed_ja_en": {
+          "base_weighted_predicted_per_second": 24.13911579880377,
+          "mtp_weighted_predicted_per_second": 41.25414369470902,
+          "speedup": 1.7090163549716018,
+          "mtp_draft_acceptance": 0.8056265984654731
+        }
+      },
+      "same_output_count": 3,
+      "request_count": 10,
+      "cache_kv": "q8_0/q8_0",
+      "draft_max": 2
+    },
+    {
+      "run_dir": "/home/lhl/mtpbench/runs/cache-sweep-20260519-043042/cache-q4_0",
+      "base_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 23.942756303708908,
+        "predicted_per_second_mean": 23.94576582497546,
+        "predicted_per_second_weighted": 23.945757172886083,
+        "wall_tokens_per_second_median": 23.68616144583673,
+        "draft_n": 0,
+        "draft_n_accepted": 0,
+        "draft_acceptance": null
+      },
+      "mtp_summary": {
+        "requests": 10,
+        "predicted_per_second_median": 40.09749137297936,
+        "predicted_per_second_mean": 39.62250193177883,
+        "predicted_per_second_weighted": 39.53872883357476,
+        "wall_tokens_per_second_median": 39.276374512550674,
+        "draft_n": 4071,
+        "draft_n_accepted": 3069,
+        "draft_acceptance": 0.7538688282977155
+      },
+      "speedup": 1.651178893534621,
+      "category_summary": {
+        "code": {
+          "base_weighted_predicted_per_second": 23.9590999445899,
+          "mtp_weighted_predicted_per_second": 41.135881397219585,
+          "speedup": 1.7169209816877238,
+          "mtp_draft_acceptance": 0.8022959183673469
+        },
+        "general_en": {
+          "base_weighted_predicted_per_second": 23.938372903183215,
+          "mtp_weighted_predicted_per_second": 37.518988033751114,
+          "speedup": 1.56731571462662,
+          "mtp_draft_acceptance": 0.6899766899766899
+        },
+        "general_ja": {
+          "base_weighted_predicted_per_second": 23.942756050181305,
+          "mtp_weighted_predicted_per_second": 37.61960895665578,
+          "speedup": 1.5712313518882013,
+          "mtp_draft_acceptance": 0.6935672514619883
+        },
+        "mixed_ja_en": {
+          "base_weighted_predicted_per_second": 23.929485601355097,
+          "mtp_weighted_predicted_per_second": 40.643992954776614,
+          "speedup": 1.698490039939471,
+          "mtp_draft_acceptance": 0.7924050632911392
+        }
+      },
+      "same_output_count": 1,
+      "request_count": 10,
+      "cache_kv": "q4_0/q4_0",
+      "draft_max": 2
+    }
+  ],
+  "token_repeat_27b_comparison": {
+    "hipengine_rows": [
+      {
+        "engine": "hipEngine",
+        "mode": "paro_eager_decode",
+        "shape": "4096/128",
+        "model": "/models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_per_second": 626.0133469667934,
+        "predicted_per_second": 28.688740855131016,
+        "tracked_peak_allocated_gib": 25.695957669056952,
+        "hip_used_peak_sampled_gib": 25.089599609375,
+        "graph_replay": false,
+        "source_json": "/tmp/hipengine-qwen36-27b-paro-w7900-20260519-053605/qwen36-27b-paro-w7900-4096-128-eager.json"
+      },
+      {
+        "engine": "hipEngine",
+        "mode": "paro_eager_decode",
+        "shape": "512/128",
+        "model": "/models/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+        "quant": "w4_paro",
+        "backend": "hip_gfx1100",
+        "prompt_per_second": 575.802405113151,
+        "predicted_per_second": 32.101781974890805,
+        "tracked_peak_allocated_gib": 24.015122403390706,
+        "hip_used_peak_sampled_gib": 24.813720703125,
+        "graph_replay": false,
+        "source_json": "/tmp/hipengine-qwen36-27b-paro-w7900-20260519-053605/qwen36-27b-paro-w7900-512-128-eager.json"
+      }
+    ],
+    "llama_bench_rows": [
+      {
+        "engine": "llama.cpp",
+        "mode": "llama-bench_base",
+        "shape": "pp512",
+        "model": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+        "model_type": "qwen35 27B Q4_K - Medium",
+        "backend": "ROCm",
+        "avg_ts": 851.545761,
+        "stddev_ts": 8.910297,
+        "samples_ts": [
+          841.293,
+          855.931,
+          857.414
+        ],
+        "build_commit": "232f46658",
+        "build_number": 9214
+      },
+      {
+        "engine": "llama.cpp",
+        "mode": "llama-bench_base",
+        "shape": "pp4096",
+        "model": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+        "model_type": "qwen35 27B Q4_K - Medium",
+        "backend": "ROCm",
+        "avg_ts": 812.496455,
+        "stddev_ts": 3.535375,
+        "samples_ts": [
+          815.789,
+          812.94,
+          808.76
+        ],
+        "build_commit": "232f46658",
+        "build_number": 9214
+      },
+      {
+        "engine": "llama.cpp",
+        "mode": "llama-bench_base",
+        "shape": "tg128",
+        "model": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+        "model_type": "qwen35 27B Q4_K - Medium",
+        "backend": "ROCm",
+        "avg_ts": 25.254128,
+        "stddev_ts": 0.034842,
+        "samples_ts": [
+          25.2825,
+          25.2647,
+          25.2152
+        ],
+        "build_commit": "232f46658",
+        "build_number": 9214
+      }
+    ],
+    "llama_server_rows": [
+      {
+        "engine": "llama.cpp server",
+        "mode": "base",
+        "shape": "512/128",
+        "tokens_evaluated": 512,
+        "tokens_predicted": 128,
+        "prompt_per_second": 721.0922293861984,
+        "predicted_per_second": 25.605136390359906,
+        "draft_n": null,
+        "draft_n_accepted": null,
+        "draft_acceptance": null,
+        "wall_s": 5.739884942071512
+      },
+      {
+        "engine": "llama.cpp server",
+        "mode": "base",
+        "shape": "4096/128",
+        "tokens_evaluated": 4096,
+        "tokens_predicted": 128,
+        "prompt_per_second": 800.0571915883049,
+        "predicted_per_second": 25.1155856532711,
+        "draft_n": null,
+        "draft_n_accepted": null,
+        "draft_acceptance": null,
+        "wall_s": 10.219420447014272
+      },
+      {
+        "engine": "llama.cpp server",
+        "mode": "mtp",
+        "shape": "512/128",
+        "tokens_evaluated": 512,
+        "tokens_predicted": 128,
+        "prompt_per_second": 685.4119700774837,
+        "predicted_per_second": 48.95814766848296,
+        "draft_n": 84,
+        "draft_n_accepted": 84,
+        "draft_acceptance": 1.0,
+        "wall_s": 3.391528225969523
+      },
+      {
+        "engine": "llama.cpp server",
+        "mode": "mtp",
+        "shape": "4096/128",
+        "tokens_evaluated": 4096,
+        "tokens_predicted": 128,
+        "prompt_per_second": 749.1554625614314,
+        "predicted_per_second": 47.945695506626805,
+        "draft_n": 84,
+        "draft_n_accepted": 84,
+        "draft_acceptance": 1.0,
+        "wall_s": 8.141685161972418
+      }
+    ],
+    "source_dirs": {
+      "hipengine": "/tmp/hipengine-qwen36-27b-paro-w7900-20260519-053605",
+      "llama_bench": "/tmp/llamacpp-qwen36-27b-w7900-20260519-053826",
+      "llama_server": "/tmp/llamacpp-server-qwen36-27b-token9707-w7900-20260519-054018"
+    }
+  },
+  "conclusions": [
+    "For the natural prompt suite, DRAFT_MAX=2 was best: weighted decode 25.21 -> 40.17 tok/s, 1.593x, draft acceptance 0.745.",
+    "Increasing DRAFT_MAX to 4 or 6 reduced acceptance enough to reduce throughput to 1.459x and 1.245x respectively.",
+    "KV cache quantization did not improve absolute single-stream throughput: f16/f16 remained best at 40.04 tok/s MTP weighted decode.",
+    "On repeated-token 512/128 and 4096/128 prompts, llama.cpp MTP reached 1.000 draft acceptance and about 48 tok/s decode; this is an artificial easy case, not a natural prompt estimate.",
+    "hipEngine PARO eager decode beat llama.cpp server base on the repeated-token shape, but llama.cpp MTP remained faster when draft acceptance was perfect."
+  ],
+  "correctness": {
+    "accepted_performance_claim": false,
+    "reason": "External llama.cpp comparison plus hipEngine diagnostic rows; no shared KL/top-1 correctness gate across GGUF Q4_K_M and PARO w4 quantizations. Natural prompt output hashes often differ between base and MTP."
+  }
+}

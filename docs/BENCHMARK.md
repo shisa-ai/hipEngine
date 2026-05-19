@@ -106,6 +106,52 @@ Source: `~/amd-gpu-tuning/WORKLOG.md` 2026-04-28 shootout entry. Reference for t
 
 mini-sglang is 1.47× faster on decode; nano-vllm is 1.49× faster on prefill. Both sit far below the 35B llama.cpp decode baseline despite being 0.6B — the current torch-SDPA paged decode path is the bottleneck.
 
+### llama.cpp MTP external comparison diagnostics
+
+llama.cpp MTP rows are external comparison diagnostics, not accepted hipEngine
+performance claims. Use them to answer "what does current llama.cpp do on this
+model and prompt mix?" before comparing hipEngine changes.
+
+Default config:
+
+- Runner: `python3 scripts/llamacpp_mtp_bench.py`
+- Config: `benchmarks/configs/llamacpp-mtp-qwen36-27b.json`
+- Prompt suite: `benchmarks/prompts/mtpbench-code-general-ja.jsonl`
+- Model: `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf`
+- Server: `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server`
+- Hardware: W7900/gfx1100
+- Server flags: `-ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 --no-cache-prompt`
+- MTP flags: `--spec-type draft-mtp --spec-draft-n-max 2`
+
+Run both natural prompts and token-repeat prompts:
+
+```bash
+python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
+  --ctx-size 8192 \
+  --draft-max 2 \
+  --protocol both \
+  --mode both \
+  --output /tmp/llamacpp-mtp-qwen36-27b-diagnostic.json
+```
+
+Protocols:
+
+- `natural`: `/v1/chat/completions` over code, English, Japanese, and mixed
+  JA/EN prompts, `temperature=0`, `top_k=1`, `max_tokens=512`, `seed=12345`.
+- `token-repeat`: `/completion` with explicit prompt token arrays
+  `[9707] * {512,4096}`, `n_predict=128`, `ignore_eos=true`.
+
+Artifact status must be `diagnostic_retained` and `performance_claim=false`
+unless a future protocol defines a shared correctness gate. Reasons:
+
+- llama.cpp GGUF Q4_K_M and hipEngine PARO w4 are different quantizations.
+- MTP can change output hashes at `temperature=0` because target verification
+  changes the sampled path and batching shape.
+- Repeated-token prompts can produce perfect draft acceptance and overstate
+  natural-prompt MTP speedups.
+
 ## Standard Workloads
 
 Every new perf number should match one of these shapes unless there's a documented reason not to. Protocol-shape drift is how baselines become uncomparable.

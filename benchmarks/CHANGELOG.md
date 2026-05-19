@@ -17,6 +17,11 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-19
+
+- [external diagnostic] llama.cpp ROCm / Qwen3.6-27B Q4_K_M / MTP natural prompt suite: base `25.21` -> MTP `40.17 tok/s` (+59.3%) with draft acceptance `0.745` at `--spec-draft-n-max 2`; draft max 4 and 6 fell to `36.49` and `31.03 tok/s`; KV f16 remained best absolute throughput; `benchmarks/results/2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json`.
+- [external diagnostic] llama.cpp ROCm + hipEngine / Qwen3.6-27B token-repeat comparison: llama.cpp server base `25.61/25.12 tok/s` -> MTP `48.96/47.95 tok/s` at 512/128 and 4K/128 with perfect repeated-token draft acceptance, while hipEngine PARO eager decode measured `32.10/28.69 tok/s`; retained as an artificial MTP upper-bound diagnostic, not a hipEngine performance claim; `benchmarks/MTP.md`.
+
 ## 2026-05-18
 
 - [diagnostic retained] hipEngine / z-lab Qwen3.6-27B-PARO / gfx1100 512/128 + 4K/128: no prior W7900 row -> graph-replay single-run `630.739 / 32.955 tok/s` and `631.673 / 29.567 tok/s` (prefill/decode), with eager decode `32.013 / 28.777 tok/s`; tracked peak `24.233 / 26.839 GiB` exceeds the 24 GiB gate but fits W7900; `performance_claim=false` pending repeated stats and a committed 27B KL/top-1 oracle; `benchmarks/results/2026-05-18-hipengine-gfx1100-qwen36-27b-paro-diagnostic.json`.

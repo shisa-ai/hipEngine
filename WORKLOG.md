@@ -17938,3 +17938,17 @@ gh release view v0.1.1 --json tagName,name,isDraft,isPrerelease,url,publishedAt
 ```
 
 Release URL: https://github.com/shisa-ai/hipEngine/releases/tag/v0.1.1. Updated `docs/PUBLISH.md` to explicitly require non-empty GitHub release notes from the matching changelog entry and to verify them with `gh release view`.
+
+## 2026-05-19 — llama.cpp MTP external benchmark import
+
+Imported the scratch `~/mtpbench` work into hipEngine as an external comparison diagnostic, not a hipEngine accepted performance claim. Added:
+
+- `scripts/llamacpp_mtp_bench.py`: launches llama-server in base and MTP modes, runs the natural prompt suite and/or repeated-token protocol, cleans up the server, and writes one compact JSON artifact.
+- `benchmarks/prompts/mtpbench-code-general-ja.jsonl`: 10 deterministic prompts covering code, general English, general Japanese, and mixed JA/EN.
+- `benchmarks/configs/llamacpp-mtp-qwen36-27b.json`: default W7900/Qwen3.6 27B GGUF MTP config.
+- `benchmarks/MTP.md`: markdown writeup of draft-window, KV-cache, and token-repeat comparison results.
+- `benchmarks/results/2026-05-19-llamacpp-mtp-qwen36-27b-diagnostic.json`: durable artifact generated from the scratch run directories and the current `/tmp` token-repeat runs.
+
+Retained conclusions: natural prompt suite best setting is `--spec-draft-n-max 2`, with base weighted decode `25.21 tok/s`, MTP `40.17 tok/s`, speedup `1.593x`, draft acceptance `0.745`. Draft max 4 and 6 drop to `1.459x` and `1.245x`. KV cache quantization did not improve absolute single-stream throughput (`f16/f16` MTP weighted `40.04 tok/s`, `q8_0/q8_0` `39.55`, `q4_0/q4_0` `39.54`). Repeated token-id `9707` is an artificial perfect-acceptance case: llama.cpp server base `25.61/25.12 tok/s` -> MTP `48.96/47.95 tok/s` at 512/128 and 4K/128, while hipEngine PARO eager decode measured `32.10/28.69 tok/s`.
+
+Updated `docs/BENCHMARK.md` with the llama.cpp MTP diagnostic protocol and added concise external-baseline rows to `benchmarks/README.md` plus changelog entries.
