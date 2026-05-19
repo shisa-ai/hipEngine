@@ -20316,3 +20316,52 @@ Conclusion: task #27 **must remain open/blocked**. The P9.C hot-expert/shallow-s
 
 Final artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c11-hot-expert-final-blocked.json`.
 Updated `benchmarks/README.md` blocked row and `benchmarks/CHANGELOG.md` final blocked one-liner.
+
+## 2026-05-19 P9.C12 task #43: Q4T16 selected-dual repack/layout design
+
+User requested that blocked #27 be marked blocked and that deeper dependencies be created/worked next. The task tool has no explicit `blocked` status, so #27 now carries `metadata.blocked=true`, `blocked_reason`, and `blockedBy=[#48]`.
+
+Created dependency chain:
+
+- #43 P9.C12: design deeper Q4 selected-dual repack/layout path.
+- #44 P9.C13: build Q4 selected-dual repack materializer prototype (blocked by #43).
+- #45 P9.C14: prototype repacked Q4 selected-dual WMMA kernel (blocked by #44).
+- #46 P9.C15: integrate repacked Q4 path into replay and tune thresholds (blocked by #45).
+- #47 P9.C16: evaluate alternative selected-MoE design if repack is insufficient (blocked by #46).
+- #48 P9.C17: wire winning Q4 redesign and final #27 benchmark gate (blocked by #46/#47, and blocks #27).
+
+Worked #43 and selected a concrete v1 design: **Q4T16 tile-major replacement layout**.
+
+Evidence used:
+
+- Final #27 blocked artifact: combined target bucket `140.110 ms` vs `<=110 ms`; Q4 selected dual `58.126 ms` is next bottleneck.
+- P9.C4 hot/full-tile: correct but Q4 replay `65-66 ms` vs retained `59.9 ms`; full-tile kernel alone `~49 ms`, fallback `17.47 ms`.
+- P9.C5 scale/min side metadata: correct but first real qwen layer `2.339 ms` vs raw `1.678 ms`; extra side stream lost.
+- P9.C9 tail/no-padding: residual rows only `5.4%`; tail fallback erases likely gain.
+
+Actual qwen35moe Q4 shape from GGUF metadata:
+
+- linear-attention/MoE layers: `30` of `40` blocks.
+- `hidden=2048`, `expert_count=256`, `top_k=8`, `expert_ffn=512`, `blocks_per_row=8`.
+- Q4 gate/up tensor shape: `[256, 512, 2048]`, byte shape `[256, 512, 1152]`.
+- raw Q4 gate or up tensor: `150,994,944 B`.
+- raw gate+up per layer: `301,989,888 B`.
+
+Q4T16 v1 layout:
+
+- Repack raw Q4_K gate/up from `[E,out,row_bytes]` into `[E,out_tile16,k_block]` slabs.
+- Per 16-column/k-block slab stores:
+  - fp16 `d/dmin` per output column (`16*4 B`).
+  - predecoded uint8 scale/min per subblock/column (`8*2*16 B`).
+  - q4 nibbles arranged by `[subblock, kt, k_lane16, col]` for coalesced B-fragment loads.
+- Raw bytes per 16-col/k-block: `2304`; Q4T16 bytes: `2368` (`+2.78%`).
+- Gate or up tensor: `155,189,248 B` (`+4.0 MiB` vs raw); final runtime must replace raw Q4 gate/up allocation instead of duplicating all MoE layers. Replay prototype may allocate one-layer side buffers.
+
+Go/no-go for follow-ups:
+
+- P9.C13: CPU roundtrip exact against raw GGUF Q4_K block decode.
+- P9.C14 first-layer gate+up: `<=1.35 ms` (>=20% faster than current `1.678 ms`) before broad wiring.
+- P9.C15 full Q4 replay: `<=45 ms` to continue; `<=35 ms` to plausibly unblock #27.
+
+Artifact: `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_c12-q4t16-repack-design.json`.
+Docs: `docs/KERNELS.md` now records the Q4T16 design and go/no-go gates.
