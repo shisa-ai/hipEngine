@@ -37,8 +37,8 @@ on the packed target prove it.
 
 The same infrastructure now also has an MTP-facing scaffold: provider-neutral
 chain `DraftBatch` compilation, target-attached `mtp.*` metadata/loading, and a
-readiness diagnostic that confirms the current packed PARO target lacks MTP
-weights. DFlash remains the first native block-verifier target; see
+local PARO+MTP-BF16 artifact assembled from the packed PARO trunk plus Qwen's
+MTP sidecar. DFlash remains the first native block-verifier target; see
 [`MTP.md`](MTP.md) for the target-attached multi-token predictor plan that
 reuses this verifier/commit path rather than forking it.
 

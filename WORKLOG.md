@@ -19185,3 +19185,69 @@ Result:
   they require a retained target-attached MTP artifact first.  Until then, MTP
   speed claims remain blocked; DFlash/DDTree speed work remains focused on the
   shared verifier row-cost wall.
+
+## 2026-05-19 (continued) — Local Qwen3.6 PARO+MTP-BF16 artifact assembled
+
+User asked whether we can assemble a BF16 PARO+MTP artifact for the 3.6 model so
+MTP proposal implementation can be tested.  The original shisa packed PARO target
+has no MTP tensors, but Qwen publishes a compatible MTP sidecar in the FP8
+artifact:
+
+```bash
+python3 - <<'PY'
+from huggingface_hub import hf_hub_download
+print(hf_hub_download('Qwen/Qwen3.6-35B-A3B-FP8', filename='mtp.safetensors'))
+PY
+# /home/lhl/.cache/huggingface/hub/models--Qwen--Qwen3.6-35B-A3B-FP8/snapshots/95a723d08a9490559dae23d0cff1d9466213d989/mtp.safetensors
+```
+
+That source has BF16 norms/router/fc tensors plus FP8 block-128 projections and
+experts.  It matches the PARO runtime dimensions: hidden=2048, heads=16,
+kv_heads=2, head_dim=256, experts=256, moe_intermediate=512,
+shared_expert_intermediate=512.  I added ``scripts/assemble_paro_mtp_bf16.py``
+to build a local, non-git model artifact by:
+
+- symlinking/reusing the existing PARO trunk files from
+  ``/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e``;
+- dequantizing FP8 E4M3 block-128 source weights with their ``*_scale_inv``
+  tensors to BF16;
+- fusing per-expert ``gate_proj`` and ``up_proj`` into
+  ``mtp.layers.0.mlp.experts.gate_up_proj``;
+- writing the 19 runtime MTP tensors to ``mtp-bf16.safetensors``.
+
+Assembly command:
+
+```bash
+python3 scripts/assemble_paro_mtp_bf16.py \
+  --target-model /models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --mtp-source /home/lhl/.cache/huggingface/hub/models--Qwen--Qwen3.6-35B-A3B-FP8/snapshots/95a723d08a9490559dae23d0cff1d9466213d989/mtp.safetensors \
+  --output /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --overwrite
+# {"output_model": "/data/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16", "present_count": 19, "sidecar_bytes": 1689283864, "validation_passed": true}
+```
+
+Readiness validation on the assembled artifact:
+
+```bash
+python3 scripts/mtp_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --draft-budgets 1,2,3,5 \
+  --json /tmp/hipengine-mtp-paro-bf16-readiness.json
+# {"missing": 0, "passed": true, "status": "blocked_native_mtp_proposal_kernels_not_ported"}
+```
+
+Retained artifact:
+
+- ``benchmarks/results/2026-05-19-hipengine-qwen36-paro-mtp-bf16-assembly-diagnostic.json``
+
+Result:
+
+- We now have a local PARO+MTP-BF16 artifact with all 19 expected MTP tensors:
+  ``/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16``.
+- The previous MTP blocker changes from **missing weights** to **native MTP
+  proposal kernels not ported**.  Task #30 can now proceed to actual proposal
+  execution: normalized token embedding + target hidden -> ``mtp.fc`` -> one MTP
+  decoder layer -> ``mtp.norm`` -> shared lm-head/top1 -> candidate-only
+  ``DraftBatch``.
+- Model weights remain outside git; only the assembler script, docs, and compact
+  diagnostics should be committed.

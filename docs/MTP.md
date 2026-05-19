@@ -1,10 +1,10 @@
 # hipEngine MTP Native Implementation Plan
 
-> Status: shared ABI + metadata/loading scaffold landed; native MTP proposal
-> kernels are blocked on a retained target-attached MTP artifact. This is the
-> sister document to [`DFLASH.md`](DFLASH.md). MTP must reuse the shared native
-> verifier/commit infrastructure from DFlash, not fork a separate c=1 native-loop
-> tuning lane.
+> Status: shared ABI + metadata/loading scaffold landed; a local PARO+MTP-BF16
+> artifact is assembled for bring-up. Native MTP proposal kernels are the next
+> blocker. This is the sister document to [`DFLASH.md`](DFLASH.md). MTP must
+> reuse the shared native verifier/commit infrastructure from DFlash, not fork a
+> separate c=1 native-loop tuning lane.
 
 ## Thesis
 
@@ -50,13 +50,22 @@ What is now landed for MTP (2026-05-19):
 - `scripts/mtp_chain_e2e_bench.py`, a readiness diagnostic that records the MTP
   chain ABI and refuses to fake a speed row when tensors are missing.
 
-The current shisa packed PARO target snapshot
+The original shisa packed PARO target snapshot
 `501ef8635e5cfb5a7497d232358ca8d1afc0c66e` contains `0/19` expected `mtp.*`
-tensors.  The retained artifact
+tensors; the retained artifact
 `benchmarks/results/2026-05-19-hipengine-mtp-chain-readiness-missing-tensors-diagnostic.json`
-therefore marks MTP as `blocked_missing_mtp_tensors` while preserving the shared
-verifier contract.  A real MTP proposal run needs a retained target-attached MTP
-artifact first; then the native proposal kernels can consume the scaffold above.
+records that initial `blocked_missing_mtp_tensors` state.
+
+A local bring-up artifact now exists at
+`/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16`.  It reuses
+(symlinks) the packed PARO trunk and adds `mtp-bf16.safetensors` generated from
+`Qwen/Qwen3.6-35B-A3B-FP8` `mtp.safetensors`: BF16 tensors are copied as-is,
+FP8 block-128 projection/expert tensors are dequantized to BF16, and per-expert
+`gate_proj`/`up_proj` are fused into the hipEngine runtime layout
+`mtp.layers.0.mlp.experts.gate_up_proj`.  The retained assembly diagnostic is
+`benchmarks/results/2026-05-19-hipengine-qwen36-paro-mtp-bf16-assembly-diagnostic.json`.
+Validation now sees all `19/19` required tensors.  The remaining blocker is
+native MTP proposal execution kernels, not model artifact availability.
 
 ## Alignment with existing hipEngine design
 
