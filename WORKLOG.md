@@ -21718,3 +21718,62 @@ python3 scripts/qwen35_gguf_rocprof_summary.py \
 ```
 
 Decision: retain and promote the P9.B7 decode-repack row. #51/#52/#26 decode target is met locally (`98.837 tok/s` >= `95 tok/s`), with artifact `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d18-splitk-gqa-gate.json`. #27 remains open/blocked because its compact-MoE/Q8 prefill bucket target is a separate unmet acceptance criterion.
+
+## 2026-05-20 P9.G1 task #32: final combined acceptance blocked by prefill
+
+Ran the final P9.G1 combined acceptance protocol after P9.B7/#52. Decode now passes the `>=95 tok/s` target via the retained P9.D18 split-K GQA gated attention path, but combined P9 acceptance is blocked because qwen35moe safety disables requested WMMA prefill and 512/0 total prefill kernel time remains far above the `<=350 ms` target.
+
+Validation / measurements:
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 \
+  --warmup-decode-tokens 0 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_g1_512x0_bench.json
+# 512/0 prefill samples: 504.210, 505.132, 506.110 tok/s; median=505.132
+# effective_wmma_prefill_all=false; effective_gemv_decode_all=true; tracked peak=21.3431208 GiB
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_g1_512x128_bench.json
+# 512/128 decode samples: 98.144, 98.153, 98.047 tok/s; median=98.144 (decode target met)
+# 512/128 prefill median=506.447 tok/s; final logits finite; final token IDs all 1510
+```
+
+512/0 prefill rocprof:
+
+```bash
+rm -rf /tmp/p9_g1_512x0_rocprof_csv && \
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+rocprofv3 --kernel-trace -d /tmp/p9_g1_512x0_rocprof_csv -f csv -- \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 \
+  --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_g1_512x0_rocprof_bench.json
+
+python3 scripts/qwen35_gguf_rocprof_summary.py \
+  --csv /tmp/p9_g1_512x0_rocprof_csv/rocm/2568754_kernel_trace.csv \
+  --json /tmp/p9_g1_512x0_summary.json --quiet
+# total prefill kernel time=1004.494 ms / 1228 dispatches (target <=350 ms; stretch <=250 ms)
+# top buckets: Q4 selected T16 287.662 ms, Q5 selected T16 231.973 ms, other 183.836 ms, Q8 T16 160.418 ms, GDN recurrent 52.787 ms, full-attn prefill 40.136 ms
+```
+
+P9.E2 correctness gate carried forward from P9.D18 remains accepted (`KL=0`, top-1 `100%`, deterministic tails), and targeted tests remain `42 passed`.
+
+Decision: emit blocked final P9.G1 artifact `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_g1-final-acceptance-blocked.json` and keep P9 combined acceptance open/blocked on prefill. Decode acceptance is covered by P9.D18/#52/#26; #27 remains open/blocked for the compact-MoE/Q8 prefill bucket path.
