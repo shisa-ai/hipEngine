@@ -20495,3 +20495,176 @@ the same kernel names through a wrong lens.
 - WORKLOG.md: this entry.
 
 No `hipengine/` runtime changes yet. Next: M7.C.2.
+
+## 2026-05-21 — M7.C.2 INVESTIGATION + REVERT: small-batch dispatch is blocked on dual-GEMV split
+
+Tried to land the 10-site small-batch threshold bump described in M7.C.2.
+Implemented and tested; found a row-stride aliasing bug at two of the
+sites that broke exact-AR-match on the smoke harness. Bisected to the
+two culprits and reverted the dispatch changes; kept the
+`_small_batch_decode_threshold()` helper as infrastructure for the
+follow-up fix (M7.C.6).
+
+### What was tried
+
+- Added `_small_batch_decode_threshold()` helper next to
+  `_verify_moe_grouped_min_tokens()` in `hipengine/runtime/qwen35_paro.py`.
+  Default value `7`, env override
+  `HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD`.
+- Changed 10 dispatch sites from `tokens == 1` / `rows > 1` (and the
+  matching `tokens != 1` paro_rotate1 fall-throughs) to use the new
+  helper:
+  - `project_full_attention_qkv_fp16` (line 2002)
+  - `project_linear_attention_qkv_z_fp16` (line 3337)
+  - `shared_expert_paro_w4_fp16` gate+up (line 4989) + rotate (5072) + down (5089)
+  - `dense_mlp_paro_w4_fp16` gate+up (line 5182) + rotate (5256) + down (5265)
+  - `project_pack8_fp16` strided branch (line 491)
+  - `project_pack8_fp16` transposed branch (line 527)
+
+### Bisect
+
+Smoke harness (B=3, decode=16, threshold=7) showed
+`exact_ar_match=false` with `accepted_lengths=[0,0,...]`.  AR mode was
+unchanged (tokens=1 routes the same path either way) confirming the
+refactor wasn't broken for the AR baseline.  Bisecting one site at a
+time:
+
+| Sites with threshold=7  | Result                       |
+|-------------------------|------------------------------|
+| all 10                  | exact_ar_mismatch ❌          |
+| 9 (project_pack8 reverted) | exact_ar_mismatch ❌      |
+| 8 (also revert linear-attn QKV site #2) | exact_ar_match ✅ |
+| 7 (only sites #3-#6 + helper, site #1+#2 reverted) | exact_ar_match ✅ |
+| 8 (revert full-attn QKV site #1 instead) | exact_ar_mismatch ❌ |
+
+So both site #1 (`project_full_attention_qkv_fp16`) and site #2
+(`project_linear_attention_qkv_z_fp16`) have the same bug; whichever
+one is changed in isolation triggers divergence.
+
+### Root cause: row-stride aliasing on the dual GEMV output buffer
+
+At site #1 the dual GEMV writes `q_proj_key` (shape
+`(tokens, 2*q_width + kv_width)`).  `q_proj` and `key_bf16` are *views*
+into that buffer (different shapes, different starting pointers).  At
+`tokens > 1`:
+- GEMV writes row N at byte offset `N * (2*q_width + kv_width) * itemsize`
+- `q_proj` view (shape `(tokens, 2*q_width)`) expects row N at byte
+  offset `N * 2*q_width * itemsize` (contiguous)
+- Mismatch → `q_proj[1]` reads garbage from inside row 0's K region
+
+The downstream kernel `qwen35_split_qgate_fp16` indexes
+`q_proj[(token * num_q_heads + head) * 2 * head_dim + dim]` assuming the
+2*q_width row stride, so for any `token >= 1` it reads wrong data.
+
+Site #2 has the same pattern with `qkv_z` / `qkv` / `z`.
+
+The bf16 sibling `project_linear_attention_qkv_z_bf16` already knows
+this — at lines 1075–1092 it uses TWO separate single GEMVs writing
+`qkv` and `z` independently, with the explicit comment:
+
+  > The dual GEMV writes row-major [qkv,z] per token.  Native prefill
+  > conv/GDN consumes contiguous [tokens,qkv] and [tokens,z] streams,
+  > so split multi-token prefill into two projections.
+
+The fp16 sibling never needed this because its multi-token path always
+went to `awq_fusedw4_prefill_dual_fp16` which writes two separate
+buffers.
+
+### Safe-subset measurement
+
+To check whether the still-correct sites alone deliver useful savings,
+re-ran rocprofv3 at threshold=7 with site #1 and site #2 reverted
+(only helper + sites #3-#6 active):
+
+| Cost                            | threshold=1 | threshold=7 safe-subset | Δ        |
+|---------------------------------|------------:|------------------------:|---------:|
+| kernel_ms/pass (total)           |       54.69 |                   59.29 |   +4.60  |
+| `w4_single_prefill_smallbatch`  |        3.49 |                    0.00 |   −3.49  |
+| `w4_single_gemv` (replacement)  |        0.29 |                    3.34 |   +3.05  |
+| linear_attention_gdn_decode      |       12.55 |                   14.22 |   +1.68  |
+| w8a16_linear (lm_head)           |        9.83 |                   10.46 |   +0.64  |
+| moe_gate_up_dual_gemv            |        5.84 |                    7.01 |   +1.17  |
+| moe_down_gemv                    |        5.82 |                    6.91 |   +1.10  |
+
+Sites #3-#6 are dormant on the BF16 verifier (the BF16 path takes
+`shared_expert_paro_w4_bf16` / `dense_mlp_paro_w4_bf16` which doesn't
+use prefill kernels).  The only safe-subset change with measurable
+effect is the `project_pack8_fp16` helper: local saving −0.44 ms but
+shifted cache footprint adds ~+3 ms across downstream MoE/GDN kernels
+that we didn't touch.  Net: **+2.6 ms regression**.
+
+Bottom line: the projected ~6–8 ms M7.C reach is ENTIRELY tied to
+sites #1 and #2.  Without the dual-GEMV split, M7.C is a net loss.
+
+### What we kept vs reverted
+
+Kept:
+- `_small_batch_decode_threshold()` helper in qwen35_paro.py.
+- Investigation comments at the reverted dispatch sites so the next
+  agent doesn't re-discover the row-stride bug.
+- Corrected `_family` classifier in `scripts/mtp_verifier_rocprof.py`
+  (committed earlier as part of M7.C.1).
+
+Reverted to original code (now exact-AR-match at default threshold=7
+because the dispatch sites still use `tokens == 1` and `rows > 1`):
+- All 10 dispatch sites in qwen35_paro.py.
+
+Verified: smoke harness exact-AR-match holds, accepted lengths
+`[3, 3, 2, 0, 2, 0, 0, 1, 3]` identical to baseline.
+
+### M7.C.6 (new sub-task in docs/MTP.md)
+
+Port the bf16 sibling's two-single-GEMV pattern to
+`project_full_attention_qkv_fp16` and `project_linear_attention_qkv_z_fp16`
+small-batch path.  Implementation sketch:
+
+```python
+if tokens == 1:
+    # existing fast paths (kv_fused, rotate_fused, simple dual GEMV)
+elif tokens <= _small_batch_decode_threshold():
+    # NEW: two separate single GEMVs writing q_proj and key_bf16 directly
+    gemv_awq_pack8_transposed_fp16(scratch.q_rot.ptr, q_qweight.ptr, ..., scratch.q_proj.ptr, ...)
+    gemv_awq_pack8_transposed_fp16(scratch.k_rot.ptr, k_qweight.ptr, ..., scratch.key_bf16.ptr, ...)
+else:
+    # existing prefill path
+```
+
+The kernels already exist (`gemv_awq_pack8_transposed_fp16` is used by
+the bf16 sibling).  Estimated reach ~6–8 ms / pass.
+
+### Plan impact
+
+- M7.C scoreboard row stays at projected 8-9 ms reach but Status is
+  **partial/reverted** with Actual = 0 (helper kept, no dispatch wins).
+- M7.C.3, M7.C.4, M7.C.5 are now blocked on M7.C.6.
+- M7.C.6 added as the actual fix.
+- Master scoreboard's "Small-batch prefill kernels" row Actual = 0
+  (revert), Δ vs baseline = 0, Δ vs target = +11.0 ms (still missing
+  the entire reach).
+
+Decision: **stop M7.C tonight here**.  M7.C.6 is invasive enough
+(adding ~30 lines of carefully-mirrored code at two sites) that it
+deserves a clean slate.  Next concrete step depends on priority:
+- **M9 (LM head)**: 9.9 ms cost, projected reach 3 ms.  Standalone
+  kernel work.
+- **M7.B (GDN chain_tloop)**: 13.1 ms cost, projected reach 2-3 ms.
+- **M7.C.6**: 7.4 ms cost, projected reach 6-8 ms.  Highest absolute
+  reach.
+
+### Files this commit
+
+- hipengine/runtime/qwen35_paro.py:
+  - Added `_small_batch_decode_threshold()` helper (kept).
+  - Added documentation comments at the 10 dispatch sites explaining
+    the row-stride aliasing investigation and what M7.C.6 needs to do.
+  - All dispatch behavior is the pre-M7.C baseline (the helper is
+    unused by the dispatch sites right now).
+- docs/MTP.md:
+  - M7.C.2 row marked partial/reverted, Actual=0.
+  - M7.C.3/4/5 marked blocked on M7.C.6.
+  - Added M7.C.6 row with implementation sketch.
+  - Added "M7.C.2 investigation report" section with measured noise +
+    bisect data + bf16 sibling reference.
+- WORKLOG.md: this entry.
+
+No correctness regression. No retained perf claim.

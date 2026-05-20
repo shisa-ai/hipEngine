@@ -489,6 +489,13 @@ class Qwen35ParoDecodeState:
             if not qweight.shape:
                 raise ValueError(f"{prefix}.qweight must have at least one dimension")
             out_packed = _out_packed_from_strided_qweight(qweight)
+            # M7.C investigation (2026-05-21): bumping this to
+            # ``rows > _small_batch_decode_threshold()`` is functionally correct in
+            # isolation (the single-output GEMV has no row-stride aliasing) but on
+            # gfx1151 the resulting cache footprint shifts the downstream MoE/GDN
+            # kernels by ~+3 ms per pass, wiping out the local -0.44 ms saving.
+            # Re-enable once M7.C.6 lands the safe path for sites #1/#2 below so the
+            # net reach justifies the secondary kernel-cache cost.
             if rows > 1 and group_size % 16 == 0 and width % group_size == 0:
                 awq_fusedw4_prefill_strided_fp16(
                     x.ptr,
@@ -523,6 +530,10 @@ class Qwen35ParoDecodeState:
         else:
             qweight = self.tensor(f"{prefix}.qweight_pack8_decode")
             out_packed = _out_packed_from_generic_transposed_qweight(qweight)
+            # M7.C investigation (2026-05-21): bumping this to
+            # ``rows > _small_batch_decode_threshold()`` is functionally correct in
+            # isolation but the resulting cache shift adds ~+3 ms in downstream
+            # MoE/GDN kernels.  Re-enable once M7.C.6 unlocks the dual-GEMV reach.
             if rows > 1 and group_size % 16 == 0 and width % group_size == 0:
                 awq_fusedw4_prefill_fp16(
                     x.ptr,
@@ -1999,6 +2010,12 @@ class Qwen35ParoDecodeState:
         k_out_packed = _out_packed_from_generic_transposed_qweight(k_qweight)
         awq_library = _library_for(library, "awq")
         kv_fused = False
+        # M7.C: dual GEMV writes row-major [q,k] per token sharing the q_proj_key
+        # buffer with q_proj and key_bf16 as views; at tokens > 1 the view strides
+        # do not match the dual-GEMV row stride.  The bf16 sibling (line 1075+)
+        # handles this by splitting into two single GEMVs at tokens > 1.  We have
+        # not ported that split to the fp16 path yet, so keep the legacy
+        # ``tokens == 1`` gate here.  See M7.C tracker subtask M7.C.6.
         if tokens == 1:
             use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
             if scratch.kv_proj is not None and not use_rotate_fused:
@@ -3334,6 +3351,12 @@ class Qwen35ParoDecodeState:
         z_qweight = self.tensor(f"{z}.qweight_pack8_decode")
         qkv_out_packed = _out_packed_from_generic_transposed_qweight(qkv_qweight)
         z_out_packed = _out_packed_from_generic_transposed_qweight(z_qweight)
+        # M7.C: same row-stride aliasing as project_full_attention_qkv_fp16 —
+        # ``qkv`` and ``z`` are views into a combined ``qkv_z`` buffer.  At
+        # tokens > 1 the dual GEMV row stride (qkv_width + z_width) does not
+        # match the views' contiguous strides; the bf16 sibling (line ~1075)
+        # splits into two single GEMVs at tokens > 1 for this reason.  Keep the
+        # legacy ``tokens == 1`` gate here until M7.C.6 ports the split.
         if tokens == 1:
             awq_library = _library_for(library, "awq")
             use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
@@ -4986,6 +5009,12 @@ class Qwen35ParoDecodeState:
 
         gate_qweight = self.tensor(f"{gate_base}.qweight_pack8_decode")
         up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
+        # M7.C investigation (2026-05-21): this site is safe to bump to the
+        # small-batch threshold (``shared_up`` is its own (tokens, 2*intermediate)
+        # buffer with no view aliasing), but the BF16 verifier path doesn't exercise
+        # this fp16 helper, so the change is a no-op for the current model and
+        # introduces cache-pressure noise on the downstream MoE kernels.  Kept the
+        # legacy ``tokens == 1`` gate; tracked under M7.C.6.
         if tokens == 1:
             gemv_awq_dual_pack8_transposed_fp16(
                 scratch.shared_gate_input.ptr,
@@ -5179,6 +5208,9 @@ class Qwen35ParoDecodeState:
 
         gate_qweight = self.tensor(f"{gate_base}.qweight_pack8_decode")
         up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
+        # M7.C investigation (2026-05-21): see shared_expert_paro_w4_fp16 above
+        # for the same rationale.  Safe but not in any verifier path today; left
+        # at ``tokens == 1`` to avoid cache-pressure noise.  Tracked under M7.C.6.
         if tokens == 1:
             gemv_awq_dual_pack8_transposed_fp16(
                 scratch.shared_gate_input.ptr,
@@ -6552,6 +6584,36 @@ def _verify_moe_grouped_min_tokens() -> int:
     if value is None or value.strip() == "":
         return 16
     return max(2, int(value))
+
+
+def _small_batch_decode_threshold() -> int:
+    """Largest ``tokens`` value that still routes through the decode-style GEMV /
+    fused-silu kernel chain instead of the multi-token prefill kernel.
+
+    The fp16 dispatch sites in ``project_full_attention_qkv_fp16``,
+    ``project_linear_attention_qkv_z_fp16``, ``shared_expert_paro_w4_fp16``,
+    and ``dense_mlp_paro_w4_fp16`` were originally gated
+    ``if tokens == 1 … else awq_fusedw4_prefill_*``.  M7.0 (rocprofv3 baseline)
+    showed those prefill kernels firing at ~123 / ~60 µs per launch for the
+    B=3 verifier (tokens=4), 60 launches/pass each, costing ~11 ms / pass.
+    The bf16 sibling paths (``shared_expert_paro_w4_bf16`` etc.) already use
+    the same GEMV kernel for every ``tokens`` value — the kernels accept
+    ``rows > 1`` (grid is ``(out_packed_a + out_packed_b, row)``).
+
+    The threshold controls the changeover.  Default ``7`` matches llama.cpp’s
+    ``MMVF_MAX_BATCH_SIZE = 8`` minus one (the verifier B=3 batch is 4 rows;
+    keep headroom for B ∈ {4, 5, 6}).  Override via
+    ``HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD``.  Set to ``1`` to restore the
+    pre-M7.C behavior exactly.
+    """
+
+    value = os.environ.get("HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD")
+    if value is None or value.strip() == "":
+        return 7
+    parsed = int(value)
+    if parsed < 1:
+        return 1
+    return parsed
 
 
 def _linear_ab_prefill_rocblas_min_tokens() -> int:

@@ -750,11 +750,78 @@ value”. M7.C extends the same logic to the FP16 path for small batches.
 | #   | Sub-task                                                                                | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
 |-----|-----------------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
 | M7.C.1| **Identify culprit** — LANDED. Six dispatch sites listed above use prefill kernels for `tokens > 1`. The 11 ms “memset” was a `_family` classifier substring match against “fill” in “prefill”. | 0 (diagnostic) | ✅ **Landed** | 0 | this section + corrected M7.0 artifact |
-| M7.C.2| Add a `_small_batch_decode_threshold` constant + env override; change six dispatch sites from `if tokens == 1` to `if tokens <= _small_batch_decode_threshold()` |             ~6–8 | _Pending_ |               _TBD_ | _TBD_            |
-| M7.C.3| Cross-check: prefill batches (16+ tokens) still take the prefill kernel; verify with a `--rocprof-warmup-cycles 0 --prefill-only` smoke run | 0 | _Pending_ | _TBD_ | _TBD_ (gate only) |
-| M7.C.4| Correctness: full B=3 chain still exact-AR-match on the quicksort fixture; KL/top-1 unchanged | 0 | _Pending_ | _TBD_ | _TBD_ (gate only) |
-| M7.C.5| Re-run M7.0 rocprof; new per-pass kernel ms drops by ~7–8 ms (the prefill kernels fall out, replaced by ~85 μs / 4 μs/row GEMVs at < 3 ms total). | 0 | _Pending_ | _TBD_ | _TBD_            |
-| **M7.C total** |                                                                               |              **~6–8** |          |             **_TBD_**|                  |
+| M7.C.2| Add a `_small_batch_decode_threshold` constant + env override; change the six dispatch sites from `if tokens == 1` to `if tokens <= _small_batch_decode_threshold()`. | ~6–8 | ⚠️ **Partial / reverted** | 0 (kept helper only) | Investigation report: see below + commit log |
+| M7.C.3| Cross-check: prefill batches (16+ tokens) still take the prefill kernel; verify with a `--rocprof-warmup-cycles 0 --prefill-only` smoke run | 0 | _Blocked on M7.C.6_ | _TBD_ | _TBD_ (gate only) |
+| M7.C.4| Correctness: full B=3 chain still exact-AR-match on the quicksort fixture; KL/top-1 unchanged | 0 | _Blocked on M7.C.6_ | _TBD_ | _TBD_ (gate only) |
+| M7.C.5| Re-run M7.0 rocprof; new per-pass kernel ms drops by ~7–8 ms (the prefill kernels fall out, replaced by ~85 μs / 4 μs/row GEMVs at < 3 ms total). | 0 | _Blocked on M7.C.6_ | _TBD_ | _TBD_            |
+| M7.C.6| **Split dual GEMV into two single GEMVs at `tokens > 1`** for `project_full_attention_qkv_fp16` and `project_linear_attention_qkv_z_fp16`, mirroring the bf16 sibling pattern at `project_linear_attention_qkv_z_bf16` line ~1075 (“The dual GEMV writes row-major [qkv,z] per token. Native prefill conv/GDN consumes contiguous [tokens,qkv] and [tokens,z] streams”). This unblocks the threshold bump in the only two sites the BF16 verifier actually exercises. | ~6–8 | _Pending_ | _TBD_ | _TBD_ |
+| **M7.C total** |                                                                               |              **~6–8** | partial    |             **0** |                  |
+
+##### M7.C.2 investigation report (2026-05-21)
+
+Implemented the naive threshold bump across all 10 sites (six `tokens == 1`
+gates plus the two `rows > 1` gates inside `project_pack8_fp16` plus the
+`if tokens != 1` paro_rotate1 fall-throughs at the shared-expert /
+dense-MLP gate-up paths). Default threshold set to 7 (verifier B ≤ 6).
+Added `HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD` env override.
+
+**Result: reverted.** The smoke harness exact-AR-match gate failed at
+threshold=7. Bisecting the 10 sites isolated the divergence to **two
+specific sites** with a row-stride aliasing bug:
+
+- `project_full_attention_qkv_fp16` (line 2002): the dual GEMV writes
+  `q_proj_key` (shape `(tokens, 2*q_width + kv_width)`) with row stride
+  `2*q_width + kv_width`. But `q_proj` and `key_bf16` are *views* into
+  `q_proj_key` with contiguous strides `2*q_width` and `kv_width`. At
+  tokens > 1 the view strides do not match the dual GEMV’s row stride,
+  so downstream kernels like `qwen35_split_qgate_fp16` read garbage rows.
+- `project_linear_attention_qkv_z_fp16` (line 3337): same pattern with
+  `qkv_z` as the combined buffer and `qkv` / `z` as the per-row views.
+
+The **BF16 sibling already knows about this**: see
+`project_linear_attention_qkv_z_bf16` lines 1075–1092 — the multi-token
+path uses TWO separate single GEMVs writing `qkv` and `z` independently,
+with an explicit comment: *“The dual GEMV writes row-major [qkv,z] per
+token. Native prefill conv/GDN consumes contiguous [tokens,qkv] and
+[tokens,z] streams, so split multi-token prefill into two projections.”*
+The BF16 code was written with this constraint in mind; the FP16 sibling
+never needed it because its multi-token path always called the
+`awq_fusedw4_prefill_*` kernel (which writes two separate buffers).
+
+Sites that DO NOT have this bug, but were also part of the reverted
+change:
+- `shared_expert_paro_w4_fp16` / `dense_mlp_paro_w4_fp16` (sites 4989,
+  5025, 5089, 5182, 5218, 5282): the small-batch path writes
+  `scratch.shared_up` which is its own backing tensor of shape
+  `(tokens, 2*intermediate)` — no aliasing. These sites are safe to bump
+  but are *not exercised* by the BF16 verifier (the BF16 path uses
+  `shared_expert_paro_w4_bf16`, which already does the right thing).
+- `project_pack8_fp16` helper (lines 491, 527): single-output GEMV with
+  contiguous output buffer — no aliasing. Safe.
+
+The “safe subset” (helper + sites #3–#6) was measured under rocprofv3:
+- threshold=1 (baseline): **54.69 ms / pass** kernel time
+- threshold=7 (safe subset active): **59.29 ms / pass**
+- Local saving: `w4_single_prefill_smallbatch` 3.49 ms → `w4_single_gemv`
+  3.05 ms = −0.44 ms
+- Cache effect: downstream `linear_attention_gdn_decode`, `w8a16_linear`,
+  `moe_*_gemv` kernels show +3 ms collectively from changed cache
+  footprint
+- **Net: −0.44 + ~+3 = ~+2.6 ms regression**
+
+So the safe subset alone is a net regression, the unsafe subset breaks
+correctness, and the proper fix (M7.C.6) is required to unlock the
+reach. We left in:
+- The `_small_batch_decode_threshold()` helper (infrastructure for
+  M7.C.6 and future small-batch dispatch decisions).
+- The corrected family classifier in
+  `scripts/mtp_verifier_rocprof.py` (committed earlier as part of M7.C.1).
+- The investigation comments on the reverted dispatch sites so the next
+  agent finds the bug without re-discovering it.
+
+Reverted code restores exact-AR-match on the 24-token quicksort fixture
+with accepted lengths `[3, 3, 2, 0, 2, 0, 0, 1, 3]` identical to
+baseline.
 
 Design notes:
 - Grid `(n_out_tiles, n_expert_used, n_tokens)`. Each block reads `expert = ids[token, slot]` and indexes `W[expert, tile, :]`.
