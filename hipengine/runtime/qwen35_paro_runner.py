@@ -1775,7 +1775,7 @@ class Qwen35ParoResidentSession:
         return value.strip().lower() not in {"0", "false", "no", "off"}
 
     def _should_use_chain_tloop_linear_verify(self, batch: TargetVerifyBatch, *, rows: int, graph_mode: str) -> bool:
-        if graph_mode != "off" or not self._verify_chain_linear_tloop_enabled():
+        if not self._verify_chain_linear_tloop_enabled():
             return False
         if batch.mode != "verify_chain" or len(batch.request_ids) != 1:
             return False
@@ -2418,10 +2418,12 @@ class Qwen35ParoResidentSession:
                     capture_row_start=capture_target_start,
                     rows=rows,
                     graph_mode=graph_mode,
+                    chain_attn_mode=chain_attn_mode,
+                    linear_attn_mode=linear_attn_mode,
                     stream=stream,
                 )
                 graph_info["chain_attn_mode"] = chain_attn_mode
-                graph_info["linear_attn_mode"] = "tree_tloop"
+                graph_info["linear_attn_mode"] = linear_attn_mode
                 graph_info["linear_attn_fallback"] = False
             gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
             target_top1, target_values = self._read_verify_top1(rows)
@@ -2592,7 +2594,7 @@ class Qwen35ParoResidentSession:
         if rows <= 0 or rows > self.max_batch_size:
             raise ValueError("rows outside verifier staging capacity")
         max_width = len(self.config.layer_types) * self.config.hidden_size
-        if width <= 0 or width > max_width:
+        if width < 0 or width > max_width:
             raise ValueError("capture width outside verifier staging capacity")
         return Tensor.from_handle(self.verify_capture_hidden_concat.ptr, (rows, width), DType.BF16, self.device)
 
@@ -2632,6 +2634,8 @@ class Qwen35ParoResidentSession:
         capture_row_start: int,
         rows: int,
         graph_mode: str,
+        chain_attn_mode: str = "c1_loop",
+        linear_attn_mode: str = "tree_tloop",
         stream: int = 0,
     ) -> dict[str, Any]:
         key = (int(rows), int(capture_hidden_concat.shape[1]), int(base_slot))
@@ -2657,6 +2661,8 @@ class Qwen35ParoResidentSession:
             capture_row_start=capture_row_start,
             rows=rows,
             stream=stream,
+            chain_attn_mode=chain_attn_mode,
+            linear_attn_mode=linear_attn_mode,
         )
         self.runtime.stream_synchronize(stream)
         direct_top1, _ = self._read_verify_top1(rows)
@@ -2675,6 +2681,8 @@ class Qwen35ParoResidentSession:
                     capture_row_start=capture_row_start,
                     rows=rows,
                     stream=graph_stream,
+                    chain_attn_mode=chain_attn_mode,
+                    linear_attn_mode=linear_attn_mode,
                 )
                 graph = self.runtime.stream_end_capture(graph_stream)
             except Exception:
@@ -2702,6 +2710,8 @@ class Qwen35ParoResidentSession:
                     capture_row_start=capture_row_start,
                     rows=rows,
                     stream=stream,
+                    chain_attn_mode=chain_attn_mode,
+                    linear_attn_mode=linear_attn_mode,
                 )
                 return {
                     "mode": graph_mode,
@@ -2749,6 +2759,8 @@ class Qwen35ParoResidentSession:
                 capture_row_start=capture_row_start,
                 rows=rows,
                 stream=stream,
+                chain_attn_mode=chain_attn_mode,
+                linear_attn_mode=linear_attn_mode,
             )
             return {
                 "mode": graph_mode,

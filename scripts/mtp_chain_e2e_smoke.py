@@ -242,6 +242,7 @@ def _run_spec_persistent_device(
     candidate_budget: int,
     backend: str,
     chain_attn_mode: str,
+    graph_mode: str = "off",
 ) -> tuple[list[int], dict[str, Any]]:
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_tokens) + int(decode_tokens) + int(candidate_budget) + 4
@@ -323,6 +324,7 @@ def _run_spec_persistent_device(
                         capture_hidden_concat=verifier_no_capture,
                         capture_row_start=0,
                         chain_attn_mode=chain_attn_mode,
+                        graph_mode=graph_mode,
                     )
                     verify_seconds += time.perf_counter() - t_verify
                     accepted = int(verify.accepted_count)
@@ -394,6 +396,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             candidate_budget=int(args.candidate_budget),
             backend=str(args.backend),
             chain_attn_mode=str(args.chain_attn_mode),
+            graph_mode=str(args.graph_mode),
         )
     else:
         spec_tokens, spec = _run_spec_smoke(
@@ -430,6 +433,7 @@ def main() -> int:
     parser.add_argument("--proposal-impl", choices=("reload_d2h", "persistent_device", "persistent_device_b1"), default="reload_d2h")
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched"), default="c1_loop")
+    parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
     result = run(args)

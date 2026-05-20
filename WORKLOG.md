@@ -19835,3 +19835,25 @@ Higher B=3 with perfect acceptance improves the MTP/AR ratio from 0.54x (B=2) to
 Implication: The llama.cpp result (MTP-3 faster than MTP-2, both faster than AR) is not achievable with our current verifier architecture. To reach parity or exceed AR, we need either (a) graph capture to cut per-pass launch overhead, (b) fused verifier layers so 3-row processing costs <2× single row, or (c) higher B with sustained acceptance (but even B=5 only achieved 0.63x earlier, suggesting diminishing returns).
 
 Artifact retained: benchmarks/results/2026-05-19-hipengine-mtp-persistent-b3-shared-verifier-diagnostic.json
+
+## 2026-05-19 — Task #47: Verifier graph capture investigation
+
+Blockers found and fixed:
+1. `_verify_capture_staging_tensor` rejected `width <= 0`, breaking graph paths with empty `capture_layer_ids`.
+2. `_should_use_chain_tloop_linear_verify` disabled `chain_tloop` when `graph_mode != "off"`, forcing slower `tree_tloop` fallback.
+
+Fixes applied:
+- `hipengine/runtime/qwen35_paro_runner.py`: allow `width=0` in `_verify_capture_staging_tensor`; remove graph_mode gate from `_should_use_chain_tloop_linear_verify`; pass `chain_attn_mode` and `linear_attn_mode` through `_run_verify_graph_or_direct` to `_launch_verify_chain_forward_accept`; record actual `linear_attn_mode` in graph_info.
+- `scripts/mtp_chain_e2e_smoke.py`: added `--graph-mode` CLI option and pass through to `verify_chain_bulk_and_commit`.
+
+Validation:
+- `graph_mode=validate` with B=2, `chain_tloop`, `c1_loop` passes exact validation for all cycles.
+- Graph info shows `status=captured_validated`, `linear_attn_mode=chain_tloop`.
+
+Speed measurement on stable quicksort prompt, 32 decode tokens, B=2:
+- graph=off: AR 61.5 tok/s, MTP 28.6 tok/s, verify 0.806s/14 cycles (57.6ms/cycle)
+- graph=auto: AR 61.2 tok/s, MTP 26.1 tok/s, verify 0.912s/14 cycles (65.1ms/cycle)
+
+Graph replay is slightly SLOWER than direct. Capture/validation overhead for bucket changes (rows=3 -> rows=2) negates replay savings. Per-cycle GPU execution time dominates; launch overhead is a minor fraction.
+
+Conclusion: graph capture alone does not close the MTP/AR gap. Next speed work must target kernel execution cost (fused verifier layers, better batched row processing).

@@ -101,6 +101,30 @@ measured `33.13 tok/s` vs AR `52.63 tok/s`, so the speed blocker moved from
 linear-state materialization specifically to the broader target-verifier
 launch/row-cost wall.
 
+A subsequent verifier graph-capture experiment fixed two blockers:
+1. `_verify_capture_staging_tensor` rejected `width <= 0`, breaking graph paths
+   where hidden-tap capture is empty (`capture_layer_ids=()`).
+2. `_should_use_chain_tloop_linear_verify` disabled `chain_tloop` whenever
+   `graph_mode != "off"`, forcing the slower `tree_tloop` fallback during capture.
+
+After those fixes, B=2 and B=3 graph capture with `chain_tloop` validates
+exactly against the direct path.  Measured on the stable quicksort prompt with
+32 decode tokens and `graph_mode=auto`:
+
+| mode | AR decode tok/s | MTP decode tok/s | verify sec/14 cycles | avg ms/cycle |
+|---|---|---|---|---|
+| graph=off | 61.5 | 28.6 | 0.806 | 57.6 |
+| graph=auto | 61.2 | 26.1 | 0.912 | 65.1 |
+
+Graph replay is **not faster**; it is slightly slower.  The verifier per-cycle
+execution time (~57-65 ms for B=2) is dominated by GPU kernel work, not CPU
+launch overhead.  Capture/validation overhead for new buckets (`rows=3`,
+`rows=2`) negates any replay savings when buckets change frequently.  Even with
+13 replays and 1 capture over 14 cycles, the total verify time is higher than
+the direct path.  This means graph capture alone will not close the MTP/AR gap.
+The remaining speed work must attack kernel execution cost (fused verifier layers,
+batched row processing) rather than launch overhead.
+
 ## Alignment with existing hipEngine design
 
 hipEngine already has the right abstract contracts:
