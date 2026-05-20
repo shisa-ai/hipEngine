@@ -16,6 +16,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_full_attn_gate_mul_bf16,
     qwen35_paged_full_attn_decode_context_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
@@ -1671,29 +1672,53 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        qwen35_paged_full_attn_decode_context_bf16_spans(
-            scratch.full_query.ptr,
-            key_cache.ptr,
-            value_cache.ptr,
-            scratch.full_attn_context.ptr,
-            scratch.decode_spans,
-            scratch.max_positions,
-            scratch.block_size,
-            cfg.head_count,
-            cfg.head_count_kv,
-            cfg.key_length,
-            cfg.key_length ** -0.5,
-            stream=stream,
-            runtime=runtime,
-        )
-        qwen35_full_attn_gate_mul_bf16(
-            scratch.full_attn_context.ptr,
-            scratch.full_gate.ptr,
-            scratch.full_gated.ptr,
-            self.q_width,
-            stream=stream,
-            runtime=runtime,
-        )
+        if cfg.is_moe and gguf_decode_repack_enabled():
+            qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
+                scratch.full_query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                scratch.full_attn_split_partial.ptr,
+                scratch.full_attn_split_m.ptr,
+                scratch.full_attn_split_l.ptr,
+                scratch.decode_spans,
+                256,
+                scratch.full_attn_split_count,
+                scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length,
+                1,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            qwen35_paged_full_attn_decode_context_bf16_spans(
+                scratch.full_query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                scratch.full_attn_context.ptr,
+                scratch.decode_spans,
+                scratch.max_positions,
+                scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                runtime=runtime,
+            )
+            qwen35_full_attn_gate_mul_bf16(
+                scratch.full_attn_context.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                self.q_width,
+                stream=stream,
+                runtime=runtime,
+            )
         launch_gguf_linear(
             layer.weight("attn_output"),
             scratch.full_gated.ptr,
@@ -3510,6 +3535,10 @@ class _FullStackScratch:
     full_key: object
     full_gate: object
     full_attn_context: object
+    full_attn_split_partial: object
+    full_attn_split_m: object
+    full_attn_split_l: object
+    full_attn_split_count: int
     full_gated: object
     full_key_caches: tuple[object | None, ...]
     full_value_caches: tuple[object | None, ...]
@@ -3593,6 +3622,9 @@ class _FullStackScratch:
         kv_bf16_bytes = runner.kv_width * 2
         q_f32_bytes = runner.q_width * 4
         kv_f32_bytes = runner.kv_width * 4
+        full_attn_split_count = (max_positions + block_size - 1) // block_size
+        full_attn_split_partial_bytes = runner.q_width * full_attn_split_count * 4
+        full_attn_split_stat_bytes = cfg.head_count * full_attn_split_count * 4
         conv_zero = np.zeros((runner.linear_qkv_width, cfg.ssm_conv_kernel), dtype=np.float32)
         recurrent_zero = np.zeros((cfg.ssm_time_step_rank, cfg.ssm_state_size, runner.ssm_value_dim), dtype=np.float32)
         layer_conv_states: list[object | None] = []
@@ -3676,6 +3708,9 @@ class _FullStackScratch:
             "full_key": buf(kv_f32_bytes),
             "full_gate": buf(runner.q_width * 2),
             "full_attn_context": buf(q_f32_bytes),
+            "full_attn_split_partial": buf(full_attn_split_partial_bytes),
+            "full_attn_split_m": buf(full_attn_split_stat_bytes),
+            "full_attn_split_l": buf(full_attn_split_stat_bytes),
             "full_gated": buf(runner.q_width * 2),
             "ffn_gate_up": buf(2 * ffn_bytes * moe_lane_count),
             "ffn_intermediate": buf(ffn_bytes * moe_lane_count),
@@ -3704,6 +3739,7 @@ class _FullStackScratch:
         metadata_buffers = (block_table, position_buf, context_buf, cos_table_buf, sin_table_buf)
         return cls(
             **fields,
+            full_attn_split_count=full_attn_split_count,
             full_key_caches=tuple(full_key_caches),
             full_value_caches=tuple(full_value_caches),
             block_table=block_table,

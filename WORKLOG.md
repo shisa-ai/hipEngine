@@ -21643,3 +21643,78 @@ python3 scripts/qwen35_gguf_bench.py \
 512/16 rocprof diagnostic (`/tmp/p9_d17_keybf16_rope_summary.json`) showed total decode kernel time `150.736 -> 150.129 ms` and dispatches `10138 -> 9968` vs the D16 summary. The `bf16_to_f32` decode work was removed (`0.302 ms / 159 dispatches` in D16). The new `gguf_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight_kernel` took `0.787 ms / 159` vs the previous F32-key RoPE kernel `0.763 ms / 159`; net savings comes from removing the standalone conversion launch.
 
 Decision: retain as a correctness-neutral launch removal, but #51/#52/#26 remain below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d17-key-bf16-rope.json`.
+
+## 2026-05-20 P9.D18 task #51/#52: split-K grouped-GQA full-attention gated decode retained
+
+Retained qwen35moe GGUF resident decode-repack full-attention routing through the existing split-K grouped-GQA context kernel plus BF16 gated reducer. The fallback path remains the previous `qwen35_paged_full_attn_decode_context_bf16_spans` + `qwen35_full_attn_gate_mul_bf16` chain when `HIPENGINE_GGUF_DECODE_REPACK=0` or the model is not MoE. Scratch now reserves split-K partial/m/l buffers and a split count for full-attention decode.
+
+Validation:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 -m pytest tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_gguf_ops.py tests/test_gguf_linear_dispatch.py -q --tb=short
+# 42 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d18_splitk_gqa_gate_e2e.json
+# status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits; effective_gemv_decode=true; effective_wmma_prefill=false
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --decode-tokens 16 --repeats 2 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d18_splitk_gqa_gate_e2e_16.json
+# status=accepted; KL=0; top1=1.0; deterministic tails
+```
+
+512/128 graph replay benchmark:
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d18_splitk_gqa_gate_512x128_bench.json
+# measured decode samples: 98.865, 98.766, 98.837 tok/s; median=98.837
+# D17 retained median=90.868 tok/s; delta=+7.969 tok/s (+8.77%)
+# task #16/current baseline 62.557 tok/s -> +36.280 tok/s (+57.99%)
+# measured prefill median=506.363 tok/s; tracked peak=21.3431218 GiB
+```
+
+512/16 rocprof diagnostic:
+
+```bash
+rm -rf /tmp/p9_d18_splitk_gqa_gate_512x16_rocprof_csv2 && \
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+rocprofv3 --kernel-trace -d /tmp/p9_d18_splitk_gqa_gate_512x16_rocprof_csv2 -f csv -- \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 16 \
+  --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d18_splitk_gqa_gate_512x16_rocprof_bench2.json
+
+python3 scripts/qwen35_gguf_rocprof_summary.py \
+  --prefill-csv /tmp/p9_next_current_512x0_rocprof_csv/rocm/2215754_kernel_trace.csv \
+  --decode-csv /tmp/p9_d18_splitk_gqa_gate_512x16_rocprof_csv2/rocm/2549650_kernel_trace.csv \
+  --strip-prefill-prefix --json /tmp/p9_d18_splitk_gqa_gate_summary.json --quiet
+# total decode kernel time 150.129 -> 138.776 ms vs D17; dispatches stay 9968
+# full_attention_decode 25.421 ms / 159 dispatches -> 13.884 ms / 318 dispatches
+# split-K context 13.201 ms, reduce+gate 0.684 ms; legacy prefill_out absent from stripped decode trace
+```
+
+Decision: retain and promote the P9.B7 decode-repack row. #51/#52/#26 decode target is met locally (`98.837 tok/s` >= `95 tok/s`), with artifact `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d18-splitk-gqa-gate.json`. #27 remains open/blocked because its compact-MoE/Q8 prefill bucket target is a separate unmet acceptance criterion.
