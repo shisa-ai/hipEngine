@@ -21409,3 +21409,15 @@ Closed the remaining original P9.D small-op checklist items without code changes
 - D5 gate-combine-residual fusion is already satisfied on the measured decode path. The D10 512/16 rocprof summary shows the MoE-combine bucket as 640 dispatches of `weighted_sum_shared_gate_combine_residual_out_kernel` only; the separate `weighted_lanes_sum_out + shared_gate_combine_residual_batch_out` pair is not present in the active c=1 decode trace.
 
 With D1 retained, D2 rejected, D3 deferred/rejected for decode, D4 retained, D5 already active, and D6-D11 follow-on Q8T16 probes accepted/rejected, task #28's small-op bundle is complete. The retained performance state remains D10 (`88.801 tok/s` median 512/128 graph decode), so #51/#52/#26 remain blocked below `95 tok/s`.
+
+## 2026-05-20 P9.H3 task #51: rejected full-attention context 128-thread launch
+
+Prototyped reducing `qwen35_paged_full_attn_decode_context_tensor_kernel` from 256 to 128 threads for the c=1 paged full-attention context path. The exploratory 512/16 graph replay regressed and changed the generated tail, so the patch was reverted immediately:
+
+```bash
+# /tmp/p9_d12_attn128_512x16_bench.json
+# D10 local 512/16 single-run decode 78.745 tok/s -> 69.739 tok/s
+# final token 38118 -> 220 (tail changed), finite final logits true
+```
+
+Caveat: the first exploratory rocprof run rebuilt the attention `.so` under the profiler despite `--require-cached-build`, so I am not using its kernel trace as retained profiler evidence. The wall regression plus token drift are sufficient rejection evidence. Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-attn128.json`.
