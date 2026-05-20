@@ -21441,3 +21441,20 @@ Full-model 512/16 graph replay rejected it:
 ```
 
 Decision: reject and revert. The retained 128-thread reduction topology remains required for P9.E2 alignment unless a new oracle-backed accumulation design is introduced. Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-q4t16-silu256.json`.
+
+## 2026-05-20 P9.H3 task #51: rejected Q5/Q6T16 selected-direct probes
+
+Tried two Q5/Q6 selected-direct decode micro-probes after the Q4 launch probe; both were reverted:
+
+- `qk_t16_selected_direct_gemv_kernel` 64-thread launch: synthetic selected-GEMV fixtures passed, and local 512/16 graph replay rose `78.745 -> 79.494 tok/s`, but the generated tail/final token changed (`38118 -> 220`). Reject as not correctness-safe without a new accumulation/oracle design.
+- `qk_t16_selected_direct_gemv_kernel` d/dmin preload: synthetic fixtures passed and the local 512/16 tail matched D10, but wall decode regressed to `77.084 tok/s`, likely due extra register pressure. Reject as a perf regression.
+
+Validation while each candidate was present:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 -m pytest tests/test_gguf_t16_selected_gemv_decode.py -q --tb=short
+# 65 passed
+```
+
+Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-q5q6-direct-probes.json`.
