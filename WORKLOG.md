@@ -19934,3 +19934,41 @@ Conv+GDN fusion. Potential paths:
 Decision: block task #49 on the specific Conv+GDN fusion path. The profiling
 shows it is not the bottleneck. A new task should be opened for MoE/RMSNorm/QKV
 fusion or batched MoE optimization.
+
+## 2026-05-19 — Task #50: Provider-side expert dispatch for MTP (BLOCKED)
+
+Investigation into moving expert selection/dispatch into GPU kernel path for
+MTP draft generation.
+
+Finding: the MTP model weights are **raw dense BF16**, not AWQ quantized.
+The target model's GPU-side expert dispatch relies on AWQ stacked weights
+(`stacked_gate_qweight_pack8_decode`, `stacked_up_qweight_pack8_decode`, etc.)
+and kernels like `gemv_awq_selected_dual_pack8_transposed_fp16` that consume
+these AWQ weights directly.
+
+The MTP proposer (`NativeMtpChainProposer`) loads:
+- `mtp.layers.0.mlp.experts.gate_up_proj` (BF16, shape=(experts, 2*moe, hidden))
+- `mtp.layers.0.mlp.experts.down_proj` (BF16, shape=(experts, hidden, moe))
+
+There are **zero AWQ weights** (`qweight`, `qzeros`, `scales`) for MTP in the
+model checkpoint.
+
+Therefore, porting the target model's GPU-side expert dispatch approach to MTP
+requires either:
+1. Quantizing MTP weights to AWQ — a model conversion task requiring new
+   safetensors, re-validation, and updating the loader requirements.
+2. Writing new dense-BF16 expert-dispatch kernels — a substantial kernel R&D
+   task (dense selected-expert GEMV for BF16 weights, scatter-gather for
+   routing, etc.).
+
+Additionally, the MTP proposer is **not the current bottleneck**:
+- proposal_decode_update_seconds for B=3: ~0.015s
+- verify_seconds for B=3: ~0.154s (10× larger)
+
+Even eliminating all host-side expert dispatch overhead in the proposer would
+not measurably improve overall MTP throughput. The verifier forward pass
+remains the sole blocker.
+
+Decision: **BLOCK task #50** pending either (a) AWQ quantization of MTP weights
+or (b) a new kernel path for dense BF16 expert dispatch. Neither is justified
+while the verifier dominates.
