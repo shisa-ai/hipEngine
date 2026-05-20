@@ -1688,6 +1688,12 @@ routing lowers Q4 only to `54.775 ms`; measured wider-column proxies were
 reuse cannot close the gap, so #48 should not wire a Q4 redesign unless a new
 parent-workspace kernel R&D result appears.
 
+**Status 2026-05-20 (P9.C17).** Final #27 gate remains blocked with no runtime
+wiring: carried-forward P9.C11 combined Q4/Q5/Q6/Q8 bucket is `140.110 ms` vs
+`<=110 ms`, and P9.C15/P9.C16 found no Q4 redesign worth promoting. #27 stays
+open/blocked; any next Q4 selected-MoE attempt needs parent-workspace R&D or a
+new design task before hipENGINE dispatch changes.
+
 ### P9.4 — Dispatch reduction and small-op fusion (Track D)
 
 **Why.** With GDN and the decode-GEMV families addressed, the residual

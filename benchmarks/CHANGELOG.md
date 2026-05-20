@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-05-20
 
+- [final blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #48 P9.C17 final #27 gate: no winning Q4 redesign exists to wire after Q4T16 replay `62.199 -> 59.395 ms` (`-4.5%`), modeled no-padding lower bound `54.775 ms`, and measured wider-tile proxies `64x16=61.868 ms` / `64x32=91.831 ms`; carry forward #27 combined bucket `140.110 ms` vs `<=110 ms` target and leave #27 open/blocked; `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c17-no-q4-redesign-blocked.json`.
+
 - [diagnostic rejected] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #47 P9.C16 selected-MoE alternatives: raw Q4 `62.199 ms -> 54.775 ms` modeled no-padding lower bound (still above `<=35-40 ms` target), measured `64x16` `61.868 ms` and `64x32` `91.831 ms`; reject compact tile-list/wider-column alternatives and select no in-repo Q4 redesign for #48; `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json`.
 
 - [diagnostic rejected] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #46 P9.C15 Q4T16 replay sweep: raw Q4 selected gate+up `62.199 ms -> 59.395 ms` (`-4.5%`, best launch-bound min-blocks `1`) and selected-MoE total `93.138 -> 92.478 ms` (`-0.7%`) under real 512/0 routing; misses the `<=35-40 ms` Q4 continuation target, so reject compact32 Q4T16 as a default and move to P9.C16 alternative design; `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c15-q4t16-replay-rejected.json`.

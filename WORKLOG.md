@@ -21132,3 +21132,9 @@ HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M=64 HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TI
 ```
 
 Decision: no in-repo selected-MoE alternative is selected for #48. Padding/tails and shallow column reuse cannot close the Q4 gap; further Q4 selected-MoE work should move to parent kernel R&D/new design rather than broad runtime changes here. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json`.
+
+## 2026-05-20 P9.C17 task #48: no Q4 redesign to wire; #27 remains blocked
+
+Closed the final #27 gate decision after P9.C15/P9.C16. No runtime Q4 selected-MoE redesign was wired: compact32 Q4T16 only moved all-layer Q4 `62.199 -> 59.395 ms`, compact tile-list/no-padding models to `54.775 ms`, and wider-tile proxies measured `64x16=61.868 ms`, `64x32=91.831 ms`. None can close the P9.C1 `<=110 ms` combined bucket target.
+
+Carried forward the retained P9.C11 final gate for #27: adjacent correctness bundle passed (`143` tests), 512/128 logits were finite/deterministic (token `220`), but the 512/0 combined Q4/Q5/Q6/Q8 bucket remains `140.110 ms` vs `<=110 ms` (`gap 30.110 ms`). Decision: #27 stays open/blocked; further Q4 selected-MoE work should move to parent kernel R&D or a new design task before hipENGINE dispatch changes. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c17-no-q4-redesign-blocked.json`.
