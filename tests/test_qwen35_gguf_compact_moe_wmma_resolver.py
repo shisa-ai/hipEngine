@@ -45,24 +45,20 @@ def test_raw_q4_q5_resolves_returns_plan_with_raw_allocations(monkeypatch: pytes
     assert callable(plan.down_fn)
 
 
-def test_t16_q4_q5_resolves_returns_plan_with_tiles_allocations(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("down_quant", ["gguf_q5_k_t16_v1", "gguf_q6_k_t16_v1"])
+def test_t16_q4_q5_q6_resolves_returns_plan_with_tiles_allocations(
+    monkeypatch: pytest.MonkeyPatch, down_quant: str
+) -> None:
+    """P10.B1+B2+B3 wired: Q4T16/Q4T16 gate+up plus Q5T16 or Q6T16 down resolves.
+
+    Once all three keys are present in their respective dispatch tables,
+    the resolver returns a plan whose allocation names are ``"tiles"`` so
+    the caller picks up the resident T16 byte-lossless layout.
+    """
+
     gate = _fake_weight("gguf_q4_k_t16_v1")
     up = _fake_weight("gguf_q4_k_t16_v1")
-    # Q5T16 down WMMA prefill is wired in P10.B2; until that lands, simulate
-    # the Q5T16 down key being present in ``_COMPACT_MOE_DOWN_KEYS`` so the
-    # resolver test exercises the allocation-name branch without depending
-    # on P10.B2 land timing.
-    down = _fake_weight("gguf_q5_k_t16_v1")
-    monkeypatch.setitem(
-        qgr._COMPACT_MOE_DOWN_KEYS,
-        "gguf_q5_k_t16_v1",
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
-            "gguf_q5_k_t16_v1",
-            "selected_wmma_prefill_compact_bf16_bf16_out",
-        ),
-    )
+    down = _fake_weight(down_quant)
     monkeypatch.setattr(
         qgr,
         "resolve",
@@ -97,16 +93,16 @@ def test_t16_q4_dispatch_key_points_to_registered_t16_alias() -> None:
 
 
 def test_missing_down_key_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Without a wired down T16 key, the chain refuses to dispatch.
+    """An unknown down quant key declines the WMMA dispatch.
 
-    This documents the Wave 1 dependency: P10.B1 alone cannot deliver perf
-    because the down resolver fails. P10.B2 (Q5T16) and P10.B3 (Q6T16) must
-    land before the bulk WMMA path takes effect in decode-repack mode.
+    The resolver falls back to ``None`` so the runner can take its slower
+    per-row selected GEMV path instead of crashing. This documents that
+    only the four wired quants (raw + T16 for Q5 / Q6) are valid.
     """
 
     gate = _fake_weight("gguf_q4_k_t16_v1")
     up = _fake_weight("gguf_q4_k_t16_v1")
-    down = _fake_weight("gguf_q6_k_t16_v1")  # not yet in _COMPACT_MOE_DOWN_KEYS
+    down = _fake_weight("gguf_q8_0_t16_v1")  # Q8 is dense, not selected
     monkeypatch.setattr(
         qgr,
         "resolve",
@@ -116,6 +112,22 @@ def test_missing_down_key_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
     plan = qgr._resolve_compact_moe_wmma_kernels(gate, up, down)
 
     assert plan is None
+
+
+def test_t16_down_keys_point_at_registered_aliases() -> None:
+    """P10.B2 / P10.B3: T16 down keys resolve to the new compact aliases."""
+
+    q5 = qgr._COMPACT_MOE_DOWN_KEYS["gguf_q5_k_t16_v1"]
+    assert q5.backend == "hip_gfx1100"
+    assert q5.layer == "moe_linear"
+    assert q5.quant == "gguf_q5_k_t16_v1"
+    assert q5.variant == "selected_wmma_prefill_compact_bf16_bf16_out"
+
+    q6 = qgr._COMPACT_MOE_DOWN_KEYS["gguf_q6_k_t16_v1"]
+    assert q6.backend == "hip_gfx1100"
+    assert q6.layer == "moe_linear"
+    assert q6.quant == "gguf_q6_k_t16_v1"
+    assert q6.variant == "selected_wmma_prefill_compact_bf16_bf16_out"
 
 
 def test_allocation_name_helper() -> None:

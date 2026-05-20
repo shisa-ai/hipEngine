@@ -85,6 +85,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     register_gguf_q4_k_t16_selected_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
+    register_gguf_k_t16_selected_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_pack8_gemv import (
     register_gguf_q4_k_selected_pack8_gemv_kernels,
 )
@@ -3865,10 +3868,20 @@ _COMPACT_MOE_DOWN_KEYS = {
         "gguf_q6_k",
         "selected_wmma_prefill_compact_bf16_bf16_out",
     ),
-    # P10.B2 / P10.B3 land here: T16 selected single-output WMMA prefill
-    # kernels for Q5_K / Q6_K down projections. Entries get added once the
-    # kernels register their ``selected_wmma_prefill_compact_*`` alias under
-    # the T16 quant keys.
+    # P10.B2: Q5T16 selected single-output WMMA prefill.
+    "gguf_q5_k_t16_v1": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q5_k_t16_v1",
+        "selected_wmma_prefill_compact_bf16_bf16_out",
+    ),
+    # P10.B3: Q6T16 selected single-output WMMA prefill.
+    "gguf_q6_k_t16_v1": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q6_k_t16_v1",
+        "selected_wmma_prefill_compact_bf16_bf16_out",
+    ),
 }
 _COMPACT_MOE_Q4_DUAL_GEMV_KEYS = {
     ("gguf_q4_k", "gguf_q4_k"): KernelKey(
@@ -4976,6 +4989,7 @@ def _ensure_compact_moe_wmma_registered() -> None:
     register_gguf_q4_k_selected_prefill_kernels()
     register_gguf_q4_k_t16_selected_prefill_kernels()
     register_gguf_k_selected_prefill_kernels()
+    register_gguf_k_t16_selected_prefill_kernels()
 
 
 def _ensure_compact_moe_gemv_registered() -> None:
