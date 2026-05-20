@@ -21907,3 +21907,37 @@ The non-determinism in repeat 0 vs 1/2 is a separate symptom (likely a Q8T16 dua
 **Action: P10.B5 stays BLOCKED on P10.X1.** Cannot retain a benchmark row from Wave 1 throughput until the T16 decode-repack path is fixed (P10.X1.a–d in `docs/GGUF.md`). The Wave 1 kernels themselves pass the per-kernel CPU-oracle gate (97 fixtures); the failure surface is the production-shape T16 GEMV decode reader path, not Wave 1 WMMA prefill.
 
 Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-b5-p9-e2e-gate-blocked.json`.
+
+## 2026-05-20 P10.B6 — Wave-1 retained acceptance bench: THROUGHPUT GATES MET, rollup promotion BLOCKED on P10.X1
+
+Re-ran the formal P10.B6 acceptance benches at HEAD (`54acd53`) with all four Wave 1 commits live (P10.B1+B2+B3+B4), 3 measured runs each, `effective_use_wmma_prefill=true + effective_use_gemv_decode=true + decode_repack=1`:
+
+| Workload | Samples | Median | Threshold | Met |
+| --- | --- | ---: | ---: | --- |
+| 512/0 prefill (tok/s) | `1900.444, 1900.198, 1900.231` | **1900.231** | `>= 1500` | ✅ +26.7% |
+| 512/128 prefill (tok/s) | `1901.353, 1844.409, 1903.986` | 1901.353 | (informational) | ✅ |
+| 512/128 decode (tok/s) | `98.250, 98.351, 98.195` | **98.250** | `>= 95` | ✅ +3.4% |
+| 512/0 peak GiB | — | 21.343 | (informational) | — |
+| 512/128 peak GiB | — | 21.343 | (informational) | — |
+| `effective_use_wmma_prefill` | all 3 repeats | true | required | ✅ |
+| `effective_use_gemv_decode` | all 3 repeats | true | required | ✅ |
+| `finite_final_logits` | all 3 (512/128) | true | required | ✅ |
+
+Both throughput gates pass with comfortable margins (+27% prefill, +3% decode over the Wave 1 thresholds; prefill is +275% vs the pre-P10 baseline of 506.363).
+
+But per AGENTS.md "Every performance claim carries ... correctness gate. No exceptions" and per the maintenance contract at `benchmarks/README.md`, this row CANNOT promote to the "Current fastest hipENGINE rows" table or the rollup's normal entries because:
+
+1. P10.B5 P9.E2 KL gate is **rejected** (KL `5.611` vs `<= 0.05`; top-1 `0.047` vs `>= 0.90`; non-deterministic tails) at this same commit.
+2. The blocker is **P10.X1** (pre-existing T16 decode-repack model correctness regression), reproducible at the P9.G1 retained commit `7ffb4e9` with `DECODE_REPACK=1` alone and no other fastpaths. The smoke produces `'oneka.  '` instead of `'izio.'` on `tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json`.
+3. The Wave 1 kernels themselves pass the per-kernel CPU-oracle correctness gate per AGENTS.md (104 fixtures across `tests/test_gguf_k_t16_selected_wmma_prefill.py`, `tests/test_gguf_q8_0_t16_wmma_prefill.py`, `tests/test_qwen35_gguf_compact_moe_wmma_resolver.py`). Failure surface is upstream in the T16 GEMV decode reader path on production weight magnitudes.
+
+### Action
+
+- Recorded P10.B6 results as a **blocked diagnostic** artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-b6-acceptance-blocked.json` with full samples, kernel correctness state, e2e correctness state, and bisect summary.
+- Added a `[blocked diagnostic]` one-liner to `benchmarks/CHANGELOG.md` under the existing 2026-05-20 day cluster, cross-referencing all three Wave-1 diagnostic artifacts.
+- **Did NOT** modify the "Current fastest hipENGINE rows" table in `benchmarks/README.md` per the README maintenance contract step 6 ("Keep blocked/rejected attempts in JSON artifacts and WORKLOG.md; do not put them in 'current fastest' tables").
+- Did NOT update the `Last updated:` line in `benchmarks/README.md` because no retained row changed.
+
+### Status
+
+**P10.B6 stays BLOCKED on P10.X1.** The Wave 1 throughput gate is comfortably met; correctness is the blocker. Suggested next move: P10.X1.a-d in `docs/GGUF.md` — bisect which T16 GEMV decode kernel reader corrupts production-shape outputs, fix it, then re-run P10.B5 + P10.B6 together. Once both pass, this artifact promotes to the retained row and replaces the current 506.363/98.837 entry in `benchmarks/README.md`.
