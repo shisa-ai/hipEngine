@@ -227,7 +227,7 @@ def classify_kernel(name: str) -> str:
         return "dense_q8_0_wmma_prefill"
     if "gguf_q8_0_pack8_gemv_decode" in base or "gguf_q8_0_pack8_dual_gate_up_gemv_decode" in base:
         return "dense_q8_0_pack8_gemv_decode_p9"
-    if "q8_0_t16_gemv" in base or "q8_0_t16_dual_gemv" in base:
+    if "q8_0_t16_gemv" in base or "q8_0_t16_dual_gemv" in base or "q8_0_t16_triple" in base:
         return "dense_q8_0_t16_gemv_decode_p9"
     if "gguf_k_pack8_prefill_out" in base and (", 8" in name or ",8" in name):
         return "dense_q8_0_legacy_decode"

@@ -21275,3 +21275,60 @@ python3 scripts/qwen35_gguf_bench.py \
 ```
 
 Decision: reject and revert the code. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d8-q8t16-dcache-rejected.json`. Further Q8T16 kernel-body changes should start in `~/amd-gpu-tuning/` with an ISA/occupancy audit instead of speculative in-repo synchronization changes.
+
+## 2026-05-20 P9.D9 task #28/#51: Q8T16 full-attention Q/K/V triple dispatch retained
+
+Added a split-output triple Q8T16 GEMV kernel/wrapper and routed full-attention `attn_q+attn_k+attn_v` through one same-input launch when all three weights are resident T16. The output contract preserves the existing separate `full_q`, `full_k`, and `full_v` scratch buffers, so downstream Q/gate split, K RMSNorm/RoPE, KV write, and graph replay behavior stay unchanged. This is a launch-count reduction only; the per-output-tile accumulation order remains the existing T16 GEMV order.
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py \
+  hipengine/runtime/gguf_linear.py hipengine/runtime/qwen35_gguf_runner.py \
+  tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py
+# passed
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q --tb=short
+# 58 passed
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_linear_dispatch.py tests/test_gguf_q8_0_t16_gemv_decode.py \
+  tests/test_qwen35_gguf_p9_e2e_correctness.py tests/test_qwen35_gguf_fastpath_safety.py \
+  -q --tb=short
+# 67 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d9_q8_triple_qkv_e2e.json
+# status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits
+
+rocprofv3 --kernel-trace -d /tmp/p9_d9_q8_triple_unit_rocprof_csv -f csv -- \
+  python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q \
+  -k 'triple_split_bf16_bf16_matches_cpu_oracle and 2048' --tb=short
+# q8_0_t16_triple_split_gemv_kernel<unsigned short,unsigned short>, DurationNs=22119, VGPR=56, SGPR=128
+```
+
+512/128 graph replay benchmark (same D7 settings, cached builds):
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d9_q8_triple_qkv_512x128_bench.json
+# measured decode samples: 88.281, 88.243, 88.197 tok/s; median=88.243
+# D7 baseline median=87.961 tok/s; delta=+0.282 tok/s (+0.32%)
+# measured prefill median=499.356 tok/s; tracked peak=21.343 GiB
+```
+
+Decision: retain as a correctness-neutral full-attention Q8T16 dispatch reduction. #51/#52/#26 remain blocked below the `95 tok/s` decode target; the remaining gap is selected-MoE/T16 decode dominated after the small Q8 launch wins. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d9-q8t16-triple-qkv.json`.

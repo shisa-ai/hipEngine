@@ -1764,6 +1764,13 @@ individually; together they currently sit around ~30 ms at prefill and
   from D7 `87.961 -> 81.253 tok/s` (-7.62%) and prefill `500.480 ->
   476.853 tok/s` (-4.72%). Reverted; do not retry without a parent-workspace
   ISA/occupancy audit.
+- **P9.D9** Full-attention Q/K/V Q8T16 triple dispatch. **Status
+  2026-05-20:** retained a split-output triple Q8T16 GEMV and routed
+  `attn_q+attn_k+attn_v` through one same-input launch while preserving
+  separate Q/K/V scratch buffers. Synthetic CPU-oracle fixtures pass, rocprof
+  saw `q8_0_t16_triple_split_gemv_kernel`, and P9.E2 accepted (`KL=0`, top-1
+  `100%`, deterministic tails). 512/128 graph replay moved D7 `87.961 ->
+  88.243 tok/s` (+0.32%). #51 remains below the `95 tok/s` target.
 
 **Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
 → ~50 ms. Modest in absolute terms; visible at decode because each savings

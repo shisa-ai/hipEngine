@@ -24,6 +24,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
+    launch_gguf_linear_triple,
     resolve_gguf_linear_dispatch,
     set_wmma_prefill_enabled,
     wmma_prefill_session,
@@ -590,6 +591,46 @@ def test_t16_pair_fuses_q8_separate_outputs() -> None:
         ((101, 14, 14, 201, 301, 1, 2048, 1536, 512), {"stream": 8, "runtime": "runtime-sentinel"}),
     ]
 
+
+def test_t16_triple_fuses_q8_separate_outputs() -> None:
+    """Resident Q8T16 full-attention Q/K/V can share one split-output launch."""
+
+    weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_c = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    import hipengine.runtime.gguf_linear as gl
+
+    triple_calls: list[tuple] = []
+
+    def fake_triple(*args, **kwargs):
+        triple_calls.append((args, kwargs))
+
+    original = gl.gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out
+    gl.gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out = fake_triple  # type: ignore[assignment]
+    try:
+        fused = launch_gguf_linear_triple(
+            weight_a,
+            weight_b,
+            weight_c,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            out_c_ptr=400,
+            rows=1,
+            in_features=2048,
+            out_features=1024,
+            out_features_b=512,
+            out_features_c=512,
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+    finally:
+        gl.gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out = original  # type: ignore[assignment]
+
+    assert fused is True
+    assert triple_calls == [
+        ((100, 14, 14, 14, 200, 300, 400, 1, 2048, 1024, 512, 512), {"stream": 7, "runtime": "runtime-sentinel"})
+    ]
 
 
 def test_wmma_prefill_pair_declines_fusion_when_q8_0_rows_gt_1() -> None:

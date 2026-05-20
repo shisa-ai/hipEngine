@@ -136,6 +136,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_raw_ptr,
+    launch_gguf_linear_triple,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig
@@ -976,48 +977,64 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        launch_gguf_linear(
+        if not launch_gguf_linear_triple(
             layer.weight("attn_q"),
-            scratch.norm.ptr,
-            scratch.full_q.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=2 * self.q_width,
-            stream=stream,
-            runtime=runtime,
-        )
-        if not launch_gguf_linear_pair(
             layer.weight("attn_k"),
             layer.weight("attn_v"),
             scratch.norm.ptr,
+            scratch.full_q.ptr,
             scratch.full_k.ptr,
             scratch.full_v.ptr,
             rows=rows,
             in_features=self.hidden_size,
-            out_features=self.kv_width,
+            out_features=2 * self.q_width,
+            out_features_b=self.kv_width,
+            out_features_c=self.kv_width,
             stream=stream,
             runtime=runtime,
         ):
             launch_gguf_linear(
-                layer.weight("attn_k"),
+                layer.weight("attn_q"),
                 scratch.norm.ptr,
-                scratch.full_k.ptr,
+                scratch.full_q.ptr,
                 rows=rows,
                 in_features=self.hidden_size,
-                out_features=self.kv_width,
+                out_features=2 * self.q_width,
                 stream=stream,
                 runtime=runtime,
             )
-            launch_gguf_linear(
+            if not launch_gguf_linear_pair(
+                layer.weight("attn_k"),
                 layer.weight("attn_v"),
                 scratch.norm.ptr,
+                scratch.full_k.ptr,
                 scratch.full_v.ptr,
                 rows=rows,
                 in_features=self.hidden_size,
                 out_features=self.kv_width,
                 stream=stream,
                 runtime=runtime,
-            )
+            ):
+                launch_gguf_linear(
+                    layer.weight("attn_k"),
+                    scratch.norm.ptr,
+                    scratch.full_k.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=self.kv_width,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                launch_gguf_linear(
+                    layer.weight("attn_v"),
+                    scratch.norm.ptr,
+                    scratch.full_v.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=self.kv_width,
+                    stream=stream,
+                    runtime=runtime,
+                )
         qwen35_split_qgate_bf16(
             scratch.full_q.ptr,
             scratch.full_query_raw.ptr,
@@ -1489,48 +1506,64 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        launch_gguf_linear(
+        if not launch_gguf_linear_triple(
             layer.weight("attn_q"),
-            scratch.norm.ptr,
-            scratch.full_q.ptr,
-            rows=1,
-            in_features=self.hidden_size,
-            out_features=2 * self.q_width,
-            stream=stream,
-            runtime=runtime,
-        )
-        if not launch_gguf_linear_pair(
             layer.weight("attn_k"),
             layer.weight("attn_v"),
             scratch.norm.ptr,
+            scratch.full_q.ptr,
             scratch.full_k.ptr,
             scratch.full_v.ptr,
             rows=1,
             in_features=self.hidden_size,
-            out_features=self.kv_width,
+            out_features=2 * self.q_width,
+            out_features_b=self.kv_width,
+            out_features_c=self.kv_width,
             stream=stream,
             runtime=runtime,
         ):
             launch_gguf_linear(
-                layer.weight("attn_k"),
+                layer.weight("attn_q"),
                 scratch.norm.ptr,
-                scratch.full_k.ptr,
+                scratch.full_q.ptr,
                 rows=1,
                 in_features=self.hidden_size,
-                out_features=self.kv_width,
+                out_features=2 * self.q_width,
                 stream=stream,
                 runtime=runtime,
             )
-            launch_gguf_linear(
+            if not launch_gguf_linear_pair(
+                layer.weight("attn_k"),
                 layer.weight("attn_v"),
                 scratch.norm.ptr,
+                scratch.full_k.ptr,
                 scratch.full_v.ptr,
                 rows=1,
                 in_features=self.hidden_size,
                 out_features=self.kv_width,
                 stream=stream,
                 runtime=runtime,
-            )
+            ):
+                launch_gguf_linear(
+                    layer.weight("attn_k"),
+                    scratch.norm.ptr,
+                    scratch.full_k.ptr,
+                    rows=1,
+                    in_features=self.hidden_size,
+                    out_features=self.kv_width,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                launch_gguf_linear(
+                    layer.weight("attn_v"),
+                    scratch.norm.ptr,
+                    scratch.full_v.ptr,
+                    rows=1,
+                    in_features=self.hidden_size,
+                    out_features=self.kv_width,
+                    stream=stream,
+                    runtime=runtime,
+                )
         qwen35_split_qgate_bf16(
             scratch.full_q.ptr,
             scratch.full_query_raw.ptr,

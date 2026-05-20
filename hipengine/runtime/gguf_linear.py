@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
+    gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out,
     register_gguf_q8_0_t16_gemv_kernels,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -535,6 +536,77 @@ def launch_gguf_linear_pair(
     return False
 
 
+def launch_gguf_linear_triple(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    weight_c: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    out_c_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    out_features_b: int | None = None,
+    out_features_c: int | None = None,
+    stream: int = 0,
+    runtime=None,
+) -> bool:
+    """Launch a supported same-input triple of GGUF projections."""
+
+    out_features_b = out_features if out_features_b is None else int(out_features_b)
+    out_features_c = out_features if out_features_c is None else int(out_features_c)
+    dispatch_a = _pack8_decode_dispatch(
+        resolve_gguf_linear_dispatch(weight_a, rows=rows),
+        rows=rows,
+        out_features=out_features,
+    )
+    dispatch_b = _pack8_decode_dispatch(
+        resolve_gguf_linear_dispatch(weight_b, rows=rows),
+        rows=rows,
+        out_features=out_features_b,
+    )
+    dispatch_c = _pack8_decode_dispatch(
+        resolve_gguf_linear_dispatch(weight_c, rows=rows),
+        rows=rows,
+        out_features=out_features_c,
+    )
+    q8_t16_triple = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q8_0_t16_v1",
+        "t16_triple_gemv_decode_bf16_bf16_out",
+    )
+    if (
+        dispatch_a.abi == "t16"
+        and dispatch_b.abi == "t16"
+        and dispatch_c.abi == "t16"
+        and dispatch_a.key.quant == "gguf_q8_0_t16_v1"
+        and dispatch_b.key.quant == "gguf_q8_0_t16_v1"
+        and dispatch_c.key.quant == "gguf_q8_0_t16_v1"
+        and is_registered(q8_t16_triple)
+    ):
+        gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            weight_c.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            out_c_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            out_features_c,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+    return False
+
+
 def launch_gguf_linear_pair_concat(
     weight_a: Qwen35GGUFDeviceWeight,
     weight_b: Qwen35GGUFDeviceWeight,
@@ -876,7 +948,9 @@ __all__ = [
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
     "launch_gguf_linear_pair",
+    "launch_gguf_linear_pair_concat",
     "launch_gguf_linear_raw_ptr",
+    "launch_gguf_linear_triple",
     "resolve_gguf_linear_dispatch",
     "set_wmma_prefill_enabled",
     "wmma_prefill_session",
