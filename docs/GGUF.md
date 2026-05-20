@@ -1780,6 +1780,14 @@ individually; together they currently sit around ~30 ms at prefill and
   dual prototype reduced launches but inflated the Q8T16 bucket in 512/16
   rocprof, so only the launch-width change is retained. #51 remains below the
   `95 tok/s` target.
+- **P9.D11** Q8T16 shared gate/up SiLU fusion. **Status 2026-05-20:
+  rejected/reverted.** A fused shared-expert Q8T16 gate/up GEMV that wrote
+  `SiLU(gate) * up` directly removed the separate `silu_mul` launch, but the
+  fused kernel was slower than the existing `dual_gate_up + silu_mul` chain:
+  local 512/16 graph replay regressed D10 `78.745 -> 76.527 tok/s` with a
+  128-thread block, while a 64-thread variant fell to `75.458 tok/s` and changed
+  the 512/16 generated tail. Do not retry this path without a different tiling
+  strategy; artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d11-rejected-q8t16-shared-silu.json`.
 
 **Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
 → ~50 ms. Modest in absolute terms; visible at decode because each savings

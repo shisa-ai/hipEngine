@@ -21374,3 +21374,29 @@ python3 scripts/qwen35_gguf_bench.py \
 512/16 rocprof diagnostic (`/tmp/p9_d10_dualsplit64_summary.json`) showed total decode kernel time `157.013 -> 156.247 ms` vs the local D9 summary and `q8_0_t16_dual_split_gemv_kernel` `20.685 -> 19.460 ms` across 480 dispatches.
 
 Decision: retain as a small correctness-neutral Q8T16 kernel launch-width win. #51/#52/#26 remain blocked below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d10-q8t16-dual-split-64.json`.
+
+## 2026-05-20 P9.D11 task #28/#51: rejected Q8T16 shared gate/up SiLU fusion
+
+Prototyped a fused shared-expert Q8T16 gate/up GEMV that writes `SiLU(gate) * up` directly to the shared-intermediate buffer. The prototype kept the split numerical contract in unit tests by rounding gate/up accumulators to the output scalar type before the SiLU multiply, and the synthetic BF16/FP16 plus dispatch tests passed while the candidate code was present:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q --tb=short
+# 62 passed
+```
+
+Perf rejected the idea. The fused kernel removed the separate `silu_mul` launch but made the shared gate/up math slower than the retained D10 chain:
+
+```bash
+# 128-thread fused block, 512/16 graph replay under rocprof
+# /tmp/p9_d11_q8silu_512x16_bench.json
+# D10 local 512/16 single-run decode 78.745 tok/s -> 76.527 tok/s
+# total decode kernel time ~155.897 ms, but q8_silu bucket ~11.342 ms vs
+# prior q8 dual gate/up 7.228 ms + silu_mul 1.524 ms
+
+# 64-thread fused block, same workload
+# /tmp/p9_d11_q8silu64_512x16_bench.json
+# decode 75.458 tok/s and generated tail changed, so not correctness-safe
+```
+
+Decision: reject and revert all D11 code. Do not retry Q8T16 shared gate/up SiLU fusion without a different tiling strategy. Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d11-rejected-q8t16-shared-silu.json`.
