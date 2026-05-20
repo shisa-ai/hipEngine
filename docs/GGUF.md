@@ -1799,6 +1799,13 @@ individually; together they currently sit around ~30 ms at prefill and
   128-thread block, while a 64-thread variant fell to `75.458 tok/s` and changed
   the 512/16 generated tail. Do not retry this path without a different tiling
   strategy; artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d11-rejected-q8t16-shared-silu.json`.
+- **P9.D12** Full-attention context+gate fusion. **Status 2026-05-20:
+  rejected/reverted.** A direct BF16 gated-context attention kernel removed the
+  separate `qwen35_full_attn_gate_mul_bf16` launch and passed P9.E2 (`KL=0`,
+  top-1 `100%`, deterministic tails), but the heavier attention kernel
+  outweighed the launch removal: 512/128 graph replay regressed D10 `88.801 ->
+  88.576 tok/s`. Keep the unfused paged-attention context plus gate-mul chain;
+  artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-attn-gate-fusion.json`.
 
 **Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
 → ~50 ms. Modest in absolute terms; visible at decode because each savings

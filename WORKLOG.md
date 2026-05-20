@@ -21470,3 +21470,41 @@ python3 -m pytest tests/test_gguf_q6_k_t16_gemv_decode.py -q --tb=short
 ```
 
 Full-model 512/16 graph replay rejected it: the generated tail matched D10, but decode regressed `78.745 -> 77.004 tok/s` (`/tmp/p9_d13_q6dense_dpreload_512x16_bench.json`). Decision: reject/revert; the extra registers likely cost more than the repeated half-scale loads. Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-q6dense-dpreload.json`.
+
+## 2026-05-20 P9.H3 task #51: rejected full-attention context+gate fusion
+
+Prototyped a fused rows=1 paged full-attention decode kernel that writes the BF16 gated context directly, replacing `qwen35_paged_full_attn_decode_context_bf16_spans` followed by `qwen35_full_attn_gate_mul_bf16`. The prototype was reverted after measurement.
+
+Validation while the candidate was present:
+
+```bash
+PYTHONPATH=. python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py -q --tb=short
+# 3 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d14_fused_attn_gate_e2e.json
+# status=accepted; KL=0; top1=1.0; deterministic tails
+```
+
+512/128 graph replay rejected it despite correctness:
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d14_fused_attn_gate_512x128_bench.json
+# measured decode samples: 88.633, 88.521, 88.576 tok/s; median=88.576
+# D10 retained median=88.801 tok/s; delta=-0.225 tok/s (-0.25%)
+```
+
+Decision: reject/revert. Removing the tiny `gate_mul` launch is not worth making the attention kernel heavier. Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-attn-gate-fusion.json`.
