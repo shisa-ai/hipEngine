@@ -209,6 +209,7 @@ def _run_spec_smoke(
                             "bonus_token": bonus,
                             "target_parent_rows": list(map(int, target_batch.parent_rows)),
                             "verify_graph": verify.graph,
+                            "gpu_accept_match_cpu": bool(verify.gpu_accept_match_cpu) if verify.gpu_accept_match_cpu is not None else None,
                             "proposal_native_seconds": float(proposal["native_seconds"]),
                             "proposal_draft_batch": draft,
                         }
@@ -345,6 +346,7 @@ def _run_spec_persistent_device(
                                 "bonus_token": bonus,
                                 "target_parent_rows": list(map(int, target_batch.parent_rows)),
                                 "verify_graph": verify.graph,
+                                "gpu_accept_match_cpu": bool(verify.gpu_accept_match_cpu) if verify.gpu_accept_match_cpu is not None else None,
                                 "proposer_cache_len_before_update": int(proposer.cache_len),
                             }
                         )

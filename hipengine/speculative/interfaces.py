@@ -655,6 +655,57 @@ class TargetAcceptSummary:
             raise ValueError("mode must be verify_chain or verify_tree")
 
     @classmethod
+    def from_gpu_payload(
+        cls,
+        target: TargetVerifyBatch,
+        payload: dict[str, tuple[int, ...] | tuple[bool, ...]],
+    ) -> "TargetAcceptSummary":
+        """Build a summary from the GPU accept-summary kernel output.
+
+        Reconstructs ``accepted_tokens`` by walking parent rows from the
+        commit row back to the root, so the result is semantically identical
+        to the CPU oracle path.
+        """
+        accepted_counts = payload["accepted_counts"]
+        commit_rows = payload["commit_rows"]
+        commit_tokens = payload["commit_tokens"]
+        commit_positions = payload["commit_positions"]
+        next_tokens_raw = payload.get("next_tokens", ())
+        next_tokens: tuple[int | None, ...] | None = tuple(
+            None if token < 0 else int(token) for token in next_tokens_raw
+        ) if next_tokens_raw else None
+        full_accept = payload["full_accept"]
+
+        def _reconstruct(row: int) -> tuple[int, ...]:
+            tokens: list[int] = []
+            current = int(row)
+            while 0 <= current < len(target.parent_rows):
+                parent = target.parent_rows[current]
+                if parent < 0:
+                    break
+                tokens.append(int(target.tokens[current]))
+                current = int(parent)
+            tokens.reverse()
+            return tuple(tokens)
+
+        accepted_tokens = tuple(_reconstruct(int(cr)) for cr in commit_rows)
+
+        return cls(
+            request_ids=target.request_ids,
+            accepted_counts=accepted_counts,
+            accepted_tokens=accepted_tokens,
+            commit_rows=commit_rows,
+            commit_tokens=commit_tokens,
+            commit_positions=commit_positions,
+            full_accept=full_accept,
+            next_tokens=next_tokens,
+            candidate_counts=target.candidate_counts,
+            draft_depth=target.draft_depth,
+            tree_shape=target.tree_shape,
+            mode=target.mode,
+        )
+
+    @classmethod
     def from_accept_result(
         cls,
         target: TargetVerifyBatch,

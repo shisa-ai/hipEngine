@@ -125,6 +125,37 @@ the direct path.  This means graph capture alone will not close the MTP/AR gap.
 The remaining speed work must attack kernel execution cost (fused verifier layers,
 batched row processing) rather than launch overhead.
 
+### GPU-fast token accept
+
+`verify_chain_bulk_and_commit` and `verify_tree_bulk_and_commit` historically
+read target top1 tokens back to CPU (`_read_verify_top1`), ran the CPU oracle
+`batch.accept_from_top1()`, and then compared with a GPU-side accept-summary
+kernel (`dflash_accept_chain_i32`) for validation.  The GPU kernel already
+computes the full acceptance result (commit row, commit token, next token,
+full-accept flag); the CPU path is redundant overhead.
+
+A GPU-fast accept path was added:
+- `TargetAcceptSummary.from_gpu_payload(batch, gpu_payload)` reconstructs
+  accepted tokens by walking `batch.parent_rows` from the commit row back to
+  the root, producing a semantically identical result to the CPU oracle.
+- `_verify_gpu_accept_enabled()` checks `HIPENGINE_VERIFY_GPU_ACCEPT`.
+  - `0` / `false` / `no` / `off` → disabled (default).
+  - `1` / `true` / `yes` / `on` → fast path: skip CPU top1 read and CPU
+    accept computation; trust the GPU accept-summary kernel directly.
+  - `validate` → run both paths and compare; fall back to CPU on mismatch.
+- When enabled, `verify_chain_bulk_and_commit` reads only the small GPU accept
+  payload (`~28 bytes/request`) instead of the larger top1 buffer
+  (`rows * 8 bytes`), and avoids the CPU tree-walk entirely.
+
+Validation on the stable quicksort prompt with B=2, 32 decode tokens:
+- `HIPENGINE_VERIFY_GPU_ACCEPT=validate` → exact AR match, all cycles
+  `gpu_accept_match_cpu=True`.
+- Speed impact is **neutral to noise**: the CPU top1 read + accept walk is
+  `<0.1 ms/cycle`, negligible next to the `~60 ms/cycle` verifier forward pass.
+  The fast path is architecturally cleaner but does not measurably improve
+  throughput.  The dominant verifier cost remains the forward-pass kernel
+  execution, not host-side acceptance logic.
+
 ## Alignment with existing hipEngine design
 
 hipEngine already has the right abstract contracts:

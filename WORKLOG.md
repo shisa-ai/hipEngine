@@ -19857,3 +19857,33 @@ Speed measurement on stable quicksort prompt, 32 decode tokens, B=2:
 Graph replay is slightly SLOWER than direct. Capture/validation overhead for bucket changes (rows=3 -> rows=2) negates replay savings. Per-cycle GPU execution time dominates; launch overhead is a minor fraction.
 
 Conclusion: graph capture alone does not close the MTP/AR gap. Next speed work must target kernel execution cost (fused verifier layers, better batched row processing).
+
+## 2026-05-19 — Task #48: GPU-fast token accept
+
+Implemented GPU-fast accept path to skip CPU top1 readback and CPU accept computation.
+
+Changes:
+- `hipengine/speculative/interfaces.py`: added `TargetAcceptSummary.from_gpu_payload(batch, payload)`
+  which reconstructs accepted tokens by walking `parent_rows` from commit row back to root.
+- `hipengine/runtime/qwen35_paro_runner.py`:
+  - Added `_verify_gpu_accept_enabled()` checking `HIPENGINE_VERIFY_GPU_ACCEPT`.
+  - Modified `verify_chain_bulk_and_commit` and `verify_tree_bulk_and_commit` to use
+    GPU accept-summary payload directly when enabled, skipping `_read_verify_top1()`
+    and `batch.accept_from_top1()`.
+  - `validate` mode still runs both paths and compares; falls back to CPU on mismatch.
+- `scripts/mtp_chain_e2e_smoke.py`: added `gpu_accept_match_cpu` to proposal trace.
+
+Validation:
+- `HIPENGINE_VERIFY_GPU_ACCEPT=validate` on B=2 quicksort 32 tokens:
+  - exact AR match: true
+  - all cycles: `gpu_accept_match_cpu=True`
+- `test_mtp_input_fusion_kernel.py`: 2 passed
+
+Speed measurement (B=2, 32 decode tokens, stable quicksort):
+- baseline (GPU accept disabled): MTP decode ~32.8 tok/s, verify 0.710s
+- fast path (GPU accept enabled): MTP decode ~29.7 tok/s, verify 0.788s
+
+Result: speed impact is **noise/neutral**. CPU top1 read (3 rows * 8 bytes) + CPU accept
+computation is <0.1ms per cycle, negligible next to ~60ms verifier forward pass.
+The GPU-fast path is architecturally cleaner but does not move the throughput needle.
+The verifier forward-pass kernel execution remains the sole bottleneck.

@@ -1774,6 +1774,12 @@ class Qwen35ParoResidentSession:
             return True
         return value.strip().lower() not in {"0", "false", "no", "off"}
 
+    def _verify_gpu_accept_enabled(self) -> bool:
+        value = os.environ.get("HIPENGINE_VERIFY_GPU_ACCEPT")
+        if value is None or value.strip() == "":
+            return False
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+
     def _should_use_chain_tloop_linear_verify(self, batch: TargetVerifyBatch, *, rows: int, graph_mode: str) -> bool:
         if not self._verify_chain_linear_tloop_enabled():
             return False
@@ -2426,34 +2432,53 @@ class Qwen35ParoResidentSession:
                 graph_info["linear_attn_mode"] = linear_attn_mode
                 graph_info["linear_attn_fallback"] = False
             gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
-            target_top1, target_values = self._read_verify_top1(rows)
-            cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
-            cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
-            gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
-            selected_row = int(cpu_summary.commit_rows[0])
+            if self._verify_gpu_accept_enabled():
+                # Fast path: trust GPU accept-summary kernel, skip CPU top1 read + CPU accept.
+                summary = TargetAcceptSummary.from_gpu_payload(batch, gpu_payload)
+                selected_row = int(summary.commit_rows[0])
+                gpu_accept_match = True
+                # Optional validation against CPU oracle.
+                if os.environ.get("HIPENGINE_VERIFY_GPU_ACCEPT", "").strip().lower() == "validate":
+                    target_top1, target_values = self._read_verify_top1(rows)
+                    cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
+                    cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
+                    gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
+                    if not gpu_accept_match:
+                        summary = cpu_summary
+                        selected_row = int(cpu_summary.commit_rows[0])
+                else:
+                    target_top1 = ()
+                    target_values = ()
+            else:
+                target_top1, target_values = self._read_verify_top1(rows)
+                cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
+                cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
+                gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
+                summary = cpu_summary
+                selected_row = int(cpu_summary.commit_rows[0])
             if graph_mode != "off":
                 self._copy_verify_capture_prefix(
                     capture_target,
                     capture_hidden_concat,
                     capture_row_start=capture_row_start,
-                    rows=int(cpu_summary.accepted_counts[0]) + 1,
+                    rows=int(summary.accepted_counts[0]) + 1,
                     stream=stream,
                 )
             self._commit_bulk_linear_states(selected_row, base_slot=base_slot, stream=stream)
-            self._set_slot_position(int(cpu_summary.commit_positions[0]), slot=base_slot, stream=stream)
+            self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
             self.runtime.stream_synchronize(stream)
-            next_token = None if cpu_summary.next_tokens is None else cpu_summary.next_tokens[0]
+            next_token = None if summary.next_tokens is None else summary.next_tokens[0]
             return Qwen35ParoBulkVerifyResult(
-                target_top1=tuple(int(token) for token in target_top1),
-                target_top1_values=tuple(float(value) for value in target_values),
-                accepted_count=int(cpu_summary.accepted_counts[0]),
-                accepted_tokens=tuple(int(token) for token in cpu_summary.accepted_tokens[0]),
+                target_top1=tuple(int(token) for token in target_top1) if target_top1 else (),
+                target_top1_values=tuple(float(value) for value in target_values) if target_values else (),
+                accepted_count=int(summary.accepted_counts[0]),
+                accepted_tokens=tuple(int(token) for token in summary.accepted_tokens[0]),
                 commit_row=selected_row,
-                commit_token=int(cpu_summary.commit_tokens[0]),
-                commit_position=int(cpu_summary.commit_positions[0]),
+                commit_token=int(summary.commit_tokens[0]),
+                commit_position=int(summary.commit_positions[0]),
                 next_token=None if next_token is None else int(next_token),
-                full_accept=bool(cpu_summary.full_accept[0]),
-                finite_logits=all(math.isfinite(float(value)) for value in target_values),
+                full_accept=bool(summary.full_accept[0]),
+                finite_logits=all(math.isfinite(float(value)) for value in target_values) if target_values else True,
                 gpu_accept_match_cpu=bool(gpu_accept_match),
                 rows=rows,
                 graph=graph_info,
@@ -2544,11 +2569,30 @@ class Qwen35ParoResidentSession:
             chain_attn_mode="batched",
         )
         gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
-        target_top1, target_values = self._read_verify_top1(rows)
-        cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
-        cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
-        gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
-        selected_row = int(cpu_summary.commit_rows[0])
+        if self._verify_gpu_accept_enabled():
+            # Fast path: trust GPU accept-summary kernel, skip CPU top1 read + CPU accept.
+            summary = TargetAcceptSummary.from_gpu_payload(batch, gpu_payload)
+            selected_row = int(summary.commit_rows[0])
+            gpu_accept_match = True
+            # Optional validation against CPU oracle.
+            if os.environ.get("HIPENGINE_VERIFY_GPU_ACCEPT", "").strip().lower() == "validate":
+                target_top1, target_values = self._read_verify_top1(rows)
+                cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
+                cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
+                gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
+                if not gpu_accept_match:
+                    summary = cpu_summary
+                    selected_row = int(cpu_summary.commit_rows[0])
+            else:
+                target_top1 = ()
+                target_values = ()
+        else:
+            target_top1, target_values = self._read_verify_top1(rows)
+            cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
+            cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
+            gpu_accept_match = self._gpu_accept_payload_matches(gpu_payload, cpu_summary)
+            summary = cpu_summary
+            selected_row = int(cpu_summary.commit_rows[0])
         # Compact accepted-path K/V cells from their sparse verifier-row
         # slots back to canonical dense slots, so the next decode cycle
         # reads the correct context.  Skipped (no-op) when the accepted
@@ -2571,20 +2615,20 @@ class Qwen35ParoResidentSession:
         # the tree t-loop already produced the exact leaf state and
         # ``_commit_bulk_linear_states`` picks it via selected_row.
         self._commit_bulk_linear_states(selected_row, base_slot=base_slot, stream=stream)
-        self._set_slot_position(int(cpu_summary.commit_positions[0]), slot=base_slot, stream=stream)
+        self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
         self.runtime.stream_synchronize(stream)
-        next_token = None if cpu_summary.next_tokens is None else cpu_summary.next_tokens[0]
+        next_token = None if summary.next_tokens is None else summary.next_tokens[0]
         return Qwen35ParoBulkVerifyResult(
-            target_top1=tuple(int(token) for token in target_top1),
-            target_top1_values=tuple(float(value) for value in target_values),
-            accepted_count=int(cpu_summary.accepted_counts[0]),
-            accepted_tokens=tuple(int(token) for token in cpu_summary.accepted_tokens[0]),
+            target_top1=tuple(int(token) for token in target_top1) if target_top1 else (),
+            target_top1_values=tuple(float(value) for value in target_values) if target_values else (),
+            accepted_count=int(summary.accepted_counts[0]),
+            accepted_tokens=tuple(int(token) for token in summary.accepted_tokens[0]),
             commit_row=selected_row,
-            commit_token=int(cpu_summary.commit_tokens[0]),
-            commit_position=int(cpu_summary.commit_positions[0]),
+            commit_token=int(summary.commit_tokens[0]),
+            commit_position=int(summary.commit_positions[0]),
             next_token=None if next_token is None else int(next_token),
-            full_accept=bool(cpu_summary.full_accept[0]),
-            finite_logits=all(math.isfinite(float(value)) for value in target_values),
+            full_accept=bool(summary.full_accept[0]),
+            finite_logits=all(math.isfinite(float(value)) for value in target_values) if target_values else True,
             gpu_accept_match_cpu=bool(gpu_accept_match),
             rows=rows,
             graph=graph_info,
