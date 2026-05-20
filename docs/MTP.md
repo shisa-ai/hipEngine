@@ -581,18 +581,98 @@ cheap pointwise ops we already have.
 
 #### M7 tracker
 
-Projected savings target: **~8–12 ms** out of the ~20 ms MoE budget at B=3 / 30 layers. Each row is a separately landable unit with its own correctness + rocprofv3 gate. Fill `Actual (ms)` and `Status` as each row commits.
+Projected savings target: **~4–6 ms** of the 17 ms MoE chain at B=3 / 30
+layers (revised down from 8–12 after M7.0). Each row is a separately
+landable unit with its own correctness + rocprofv3 gate. Fill `Actual (ms)`
+and `Status` as each row commits.
 
-**Important pre-condition (M7.0):** code inspection (2026-05-21) shows the
-existing `gemv_awq_selected_dual_pack8_transposed_bf16` is already a
-llama.cpp-style mul_mat_id kernel — grid `(out_packed_a+out_packed_b, rows)`
-with `rows = tokens * num_experts_per_tok`, reading `selected[row]` inside
-the kernel. So “60 tiny launches” in Task #52’s analysis is “30 layers × 2
-fused MoE ops”, not “1 launch per expert”. M7.0 below is the prerequisite
-rocprofv3 re-baseline that decides whether M7.2–M7.5 should be
-*“tune the existing kernel for the 32-row small-batch shape”* (likely) or
-*“write a brand-new layer-array kernel”* (only if the existing path can’t
-be pushed below the budget).
+**Pre-condition (M7.0):** code inspection (2026-05-21) confirmed the existing
+`gemv_awq_selected_dual_pack8_transposed_bf16` is already a llama.cpp-style
+mul_mat_id kernel — grid `(out_packed_a+out_packed_b, rows)` with
+`rows = tokens * num_experts_per_tok`, reading `selected[row]` inside the
+kernel. So “60 tiny launches” in Task #52’s analysis is “30 layers × 2 fused
+MoE ops”, not “1 launch per expert”. M7 work is small-batch tile retuning
+of the existing kernel, not a brand-new layer-array kernel.
+
+##### M7.0 measured per-pass breakdown (B=3, 4 rows, gfx1151)
+
+Artifact: `benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-baseline.json`.
+Command: `python3 scripts/mtp_verifier_rocprof.py --prompt-tokens "$(cat
+quicksort-tokens)" --decode-tokens 24 --candidate-budget 3 --steady-state-skip 2`.
+
+Run: 9 verifier passes total, **7 kept** after dropping the 2 cold cycles.
+Acceptance 64% mean (vs 100% on the 8-token persistent_b3 diagnostic from
+2026-05-19). Per-pass numbers:
+
+| Family                                | calls/pass | ms/pass | share | avg μs | max μs | Notes |
+|---------------------------------------|-----------:|--------:|------:|-------:|-------:|-------|
+| linear_attention_gdn_decode           |        30  |   13.07 | 23.4% |  435.7 |  513.8 | #1 cost; already chain_tloop. → M7.B |
+| runtime_memset                        |       120  |   11.02 | 19.7% |   91.8 |  409.7 | Hidden cost. 120 hipMemsetAsync calls/pass. → M7.C |
+| w8a16_linear (lm_head)                |         1  |    9.93 | 17.8% | 9930.4 | 10326.8| Single big launch, bandwidth-bound. → M9 |
+| moe_down_gemv                         |        70  |    5.99 | 10.7% |   85.6 |  307.3 | Already mul_mat_id; tile retune. → M7.4 |
+| moe_gate_up_dual_gemv                 |        70  |    5.93 | 10.6% |   84.7 |  283.5 | Already fused gate+up. → M7.4 |
+| moe_paro_rotate_in                    |       310  |    1.78 |  3.2% |    5.8 |   27.3 | Many small launches; low margin. |
+| w4_dual_gemv (attn QKV)               |        80  |    1.69 |  3.0% |   21.1 |  101.2 | M8 reach is small (~1 ms). |
+| decode_attention                      |        40  |    1.11 |  2.0% |   27.7 |   77.8 | Lean already. |
+| router                                |       140  |    1.05 |  1.9% |    7.5 |   78.9 | Lean already. |
+| (runtime_copy + other small ops)      |       ~720 |    ~4.6 |  ~8%  |        |        | Includes silu, attn_gate, combine, rmsnorm. |
+| **TOTAL per pass**                    |     1838   | **56.0**| 100%  |        |        | Host window: **~65 ms** (kernel 56 + host ~9). |
+
+##### M7.0 findings vs. Task #52 plan assumptions
+
+1. **MoE is NOT the dominant bottleneck.** Combined MoE chain (gate_up +
+   down + rotate + silu + router + combine + w4_dual_gemv attn) = **17.0 ms**
+   (~30% of pass), not 20 ms / 44% as Task #52 estimated. The existing
+   kernel is already llama.cpp-style. M7 reach drops from 8–12 ms to
+   **4–6 ms** (small-batch tile retune of the existing kernel).
+2. **GDN chain_tloop is the actual #1 cost: 13.1 ms.** Plan had this as
+   “unchanged / already chain_tloop”. 30 launches × 436 μs avg = real
+   bottleneck. Added new phase **M7.B** with ~2–3 ms reach (chain length /
+   tile / wave-group sweep).
+3. **runtime_memset is 11 ms hidden cost.** 120 hipMemsetAsync calls per
+   pass at 92 μs avg. Was not in any phase plan. Added new phase **M7.C**
+   with ~8–9 ms reach (move scratch zeroing to one-shot at session init
+   or let kernels overwrite without prior zero). **Highest ROI per LoC.**
+4. **LM head is 9.9 ms** (vs Task #52’s 7.5 ms estimate). M9 reach adjusted
+   to ~3 ms.
+5. **Pre-attention chain (M8) is only ~3.3 ms total** (w4_dual_gemv +
+   rmsnorm + decode_attention + paged_kv + attn_gate). Task #52’s “~5 ms”
+   was high; M8 reach now ~1–1.5 ms.
+6. **Host-side Python overhead is ~9 ms** vs Task #52’s 7 ms estimate. M10
+   ~5 ms reach still plausible.
+
+Revised total reachable savings: **~23–27 ms** (was 18.5–22.5 ms in the
+original plan).
+Verifier wall: 65 ms → **~38–42 ms**.
+Ceiling MTP/AR @ B=3 perfect-accept: **~1.65–1.88×** (was 2.06–2.36×).
+Measured MTP/AR @ B=3 60% accept: **~1.0–1.4×** (was 1.3–1.7×).
+**A 1.5× measured row is now contingent on landing M7 + M7.C + M9** — not
+M7 alone. M7.C is the highest single-phase ROI; landing it first puts us
+at ~57 ms verifier wall before any kernel work.
+
+##### M7.0 tooling notes (for next rocprofv3 run)
+
+- **rocprofv3 1.1.0 silently drops `--selected-regions true`** output on this
+  gfx1151 host, even when roctxProfilerResume/Pause symbols are correctly
+  resolved via the therock SDK overlay. Workaround: full
+  `--kernel-trace --marker-trace`, post-process by filtering kernel-CSV
+  Start_Timestamp against the roctxRangePush window ns boundaries (markers
+  named `mtp_verify_pass_N`).
+- **Marker CSV uses `Function` column**, not `Marker_Name` / `Marker_Text`
+  (rocprofv3 1.1.0 schema).
+- **JIT compile under rocprofv3 spawns subprocesses** that each attach as
+  separate rocprofv3 instances (hipcc → clang-23 → lld), producing
+  hundreds of “tool initialization” / “tool finalization” log lines and
+  breaking output. Fix: set `HIPENGINE_COMPILER_VERSION_FILE` env var so
+  the JIT cache key stays stable; pre-warm the build cache by running the
+  smoke once before rocprofv3.
+- **SDK ROCTX library needs sysdeps on LD_LIBRARY_PATH**: the therock
+  `librocprofiler-sdk-roctx.so.1` depends on `librocm_sysdeps_dw.so.1`,
+  which lives under `<sdk_core>/lib/rocm_sysdeps/lib`. Without it,
+  `ctypes.CDLL('libroctx64.so')` succeeds against the legacy library but
+  has no `roctxProfilerResume` symbol and the marker calls silently no-op.
+- `scripts/mtp_verifier_rocprof.py` handles all of the above automatically.
+  Re-run with `--steady-state-skip N` to drop more cold cycles.
 
 | #   | Sub-task                                                                                   | Variant            | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
 |-----|--------------------------------------------------------------------------------------------|--------------------|-----------------------:|----------|--------------------:|------------------|

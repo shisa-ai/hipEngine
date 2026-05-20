@@ -20357,3 +20357,24 @@ No code in `hipengine/` changed yet; this is the M7.0 diagnostic + plan
 adjustment. Next concrete step is **M7.C** (memset elimination) since it
 has the highest reachable ms per LoC. M7.1 (CPU-ref MoE fixture) is
 still required before tuning M7.2/M7.4.
+
+## 2026-05-21 — Capture M7.0 results section into docs/MTP.md
+
+Expanded the M7 tracker preamble in `docs/MTP.md` to include the full
+measured per-pass breakdown table, the six findings vs Task #52's plan
+assumptions, the revised reachable-savings totals, and the rocprofv3
+1.1.0 tooling notes (selected-regions broken, marker CSV uses Function
+column, JIT compile under profiler needs HIPENGINE_COMPILER_VERSION_FILE,
+SDK ROCTX needs sysdeps on LD_LIBRARY_PATH).
+
+Why in the doc and not just WORKLOG: the M7.0 measurement is the new
+"baseline" reference for every M7.x/M7.B/M7.C/M8/M9/M10 commit. Future
+work will need to compare against this table, not against Task #52's
+estimates. The tooling notes also need to be discoverable for the next
+rocprofv3 run.
+
+Files touched: docs/MTP.md (added "M7.0 measured per-pass breakdown",
+"M7.0 findings vs. Task #52 plan assumptions", "M7.0 tooling notes"
+sub-sections under the M7 tracker preamble). No code changes.
+
+Next: M7.C.1 — identify which scratch buffers get memset per pass.
