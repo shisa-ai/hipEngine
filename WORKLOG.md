@@ -21814,3 +21814,60 @@ P10.D1 (fused selected gate+up+silu+down+combine) is the largest single decode l
 No code changes in this entry; this is the plan/punchlist commit before P10.B1 starts.
 
 Next: claim P10.B1 task, add `("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1")` entry to `_COMPACT_MOE_Q4_DUAL_KEYS` in `hipengine/runtime/qwen35_gguf_runner.py`, add a dispatch test, then bench 512/0 + 512/128 with rocprof to confirm the Q4T16 WMMA prefill bucket replaces the Q4T16 GEMV bucket.
+
+## 2026-05-20 P10 Wave 1 (B1-B4) landed; P10.X1 T16 correctness regression blocks acceptance
+
+Wave 1 four-kernel set landed and is bench-correct at the kernel level, but the formal P9.E2 KL gate fails because of a **pre-existing P9-era T16 decode-repack model correctness regression**. This entry captures the observed throughput, the bisection, and the next-step plan.
+
+Commits landed:
+
+- `731241a` feat(P10.B1): wire Q4T16 selected dual WMMA prefill into compact MoE dispatch.
+- `bb0c933` feat(P10.B2,P10.B3): Q5_K T16 + Q6_K T16 selected WMMA prefill kernels.
+- `ed14ed5` feat(P10.B4): Q8_0 T16 dense WMMA prefill kernel + dispatch wire (incl. pair/triple/concat decline-to-singleton fix that unlocked the ~176 ms `q8_0_t16_dual_split_gemv` bucket).
+
+Tests: 22 Q5T16/Q6T16 + 75 Q8T16 + 7 resolver fixtures pass (kernel-level CPU-oracle gate per AGENTS.md).
+
+Measured impact on Qwen3.6-35B-A3B-UD-Q4_K_M @ 512/0 in T16 decode-repack + WMMA prefill + GEMV decode mode (W7900 / gfx1100):
+
+| Metric | Pre-P10 | Post-Wave-1 | Notes |
+| --- | ---: | ---: | --- |
+| Prefill 512/0 (tok/s) | 506 | **1900** | +275% |
+| Prefill 512/128 (tok/s) | 470 | **~1890** | similar |
+| Decode 512/128 (tok/s) | 98 | 98 | unchanged; Wave 3 lever |
+| Total kernel ms (512/0) | 1004.5 | **261.8** | -74% |
+| Q4_K selected gate+up ms | 287.7 | 37.2 | T16 GEMV -> T16 WMMA |
+| Q5_K selected down ms | 232.0 | 26.0 | T16 GEMV -> T16 WMMA |
+| Q6_K selected down ms | 3.0 | 2.3 | T16 GEMV -> T16 WMMA |
+| Q8_0 dense (3 tile shapes) ms | 160.4 + 176.5 dual_split_gemv | 30.6 + 25.9 + 2.8 = 59.3 | T16 GEMV -> T16 WMMA + pair-decline fix |
+| Other / scheduler / cast residue ms | 183.8 | ~24 | mostly killed by Q8 fix |
+
+Wave 1 already beats `llama.cpp Vulkan UD-Q4_K_M 512/128 1817/128` on prefill. Within ~22% of `llama.cpp HIP UD-Q4_K_M 512/128 2436/85` prefill, beats it on decode. Still ~30% below PARO `Qwen3.5-35B-A3B w4a16 2696/116` on prefill, 16% below on decode.
+
+### P10.X1 — pre-P10 T16 decode-repack correctness regression (blocks B5/B6)
+
+While running the P10.B5 P9.E2 KL gate, gate failed catastrophically (KL 5.6, top-1 0.04). Bisection at this commit AND at the P9.G1 retained commit `7ffb4e9`:
+
+| Configuration | First token argmax | Expected | First 4 tokens | Status |
+| --- | ---: | ---: | --- | --- |
+| `REPACK=0, WMMA=0, GEMV=0` (pristine) | 43482 | 43482 | `'izio..吓得'` | ✅ correct |
+| `REPACK=0, WMMA=1, GEMV=0` (raw + WMMA, unsafe override) | 43482 | 43482 | `'izio..吓得'` | ✅ correct |
+| `REPACK=1, WMMA=0, GEMV=0` (T16 only) | 263 | 43482 | `'oneka. '` | ❌ broken |
+| `REPACK=1, WMMA=0, GEMV=1` (T16 + GEMV decode) | 263 | 43482 | `'oneka.  2SY OOOO, 0  0'` | ❌ broken |
+| `REPACK=1, WMMA=1, GEMV=1` (T16 + Wave 1 fastpath) | 263 | 43482 | `'oneka.  2SY OOOO, 0  0 11007面...'` | ❌ broken |
+
+Root cause hypothesis: T16 GEMV decode kernels (`gguf_q8_0_t16_*_gemv_*` and/or `gguf_q*_k_t16_*_gemv_*`) have a per-layer numerical bug at decode-shape rows on real model weights. Synthetic-fixture unit tests pass; the bug doesn't appear in the test scales. Repack round-trip is bit-lossless on real and random inputs, so the bug is in the kernel readers (or possibly the materializer's `_is_selected_expert_tensor` slot routing).
+
+Why P9.E2 passed historically: at P9.G1 commit the safety gate was the pre-prior-agent version that blanket-disabled WMMA prefill / GEMV decode for qwen35moe, so the candidate ran the pristine row-GEMV path (KL=0 vs the same path). The 506 tok/s number was measured with `effective_use_wmma=false` even though `--use-wmma-prefill` was requested.
+
+Why bench passes but smoke fails: the qwen35moe bench script checks finite logits, not text quality. The kernels run without crashing and produce finite values — just wrong ones.
+
+### Next: P10.X1.a-d
+
+| Sub | Candidate | Approach |
+| --- | --- | --- |
+| P10.X1.a | Reproduce broken first-token argmax with `LLM.generate` at smallest possible shape to isolate which T16 kernel diverges. | `--max-new-tokens 1`, prompt `[9419]`, capture per-layer activations. |
+| P10.X1.b | Compare T16 GEMV decode vs raw GGUF decode on real model weights for one layer's projections. Suspect `q8_0_t16_dual_split_gemv_kernel` and `q8_0_t16_triple_split_gemv_kernel` first (they handle Q/K/V at decode). | Layer-by-layer numerical diff. |
+| P10.X1.c | Re-run smoke with `REPACK=1 + WMMA=0 + GEMV=0`; bisect which kernel family breaks first. | One smoke + diff. |
+| P10.X1.d | Land a correctness fix and re-run smoke. Only after this can Wave 1 be retained. | |
+
+Until P10.X1 lands, Wave 1 kernel throughput numbers (1900 prefill / 98 decode) are diagnostic-only and cannot promote to `benchmarks/README.md` / `CHANGELOG.md`. The kernel-level CPU-oracle correctness gates pass per AGENTS.md, so the kernels themselves are not the blocker; the upstream T16 dispatch path is.
