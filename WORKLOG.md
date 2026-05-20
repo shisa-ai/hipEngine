@@ -19798,3 +19798,40 @@ With perfect acceptance at B=2, MTP does 3 verifier passes for 8 tokens vs AR's 
 Implication: Even the llama.cpp MTP-2 equivalent fails to beat AR on our current verifier. To win, we need either (a) graph capture to reduce per-pass launch overhead, (b) fused verifier layers so 3-row batched processing is <2× the cost of 1 row, or (c) higher B with enough acceptance to amortize the verifier cost across more tokens per cycle.
 
 Artifact retained: benchmarks/results/2026-05-19-hipengine-mtp-persistent-b2-shared-verifier-diagnostic.json
+
+## 2026-05-19 — Task #46: MTP-3 persistent native provider benchmark
+
+Benchmark command:
+```
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens $(cat /tmp/quicksort_prompt_ids.txt) \
+  --decode-tokens 8 \
+  --candidate-budget 3 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1151 \
+  --chain-attn-mode c1_loop \
+  --json /tmp/hipengine-mtp-persistent-b3-diagnostic.json
+```
+
+Key results:
+- exact AR match: true
+- AR decode: 45.14 tok/s
+- MTP decode: 39.45 tok/s
+- Ratio MTP/AR: 0.87x
+- accepted_lengths: [3, 3] (100% acceptance rate)
+- active_budgets: [3, 3]
+- proposal_prefill_seconds: 0.759
+- proposal_decode_update_seconds: 0.015 (fast)
+- verify_seconds: 0.154 (dominant)
+- decode_seconds MTP: 0.203
+- decode_seconds AR: 0.177
+- linear_attn_mode: chain_tloop for all verifier cycles
+- verify_graph: disabled
+
+Analysis:
+Higher B=3 with perfect acceptance improves the MTP/AR ratio from 0.54x (B=2) to 0.87x. However, MTP still loses because each verifier pass for 3 draft rows averages ~77ms while each AR single pass is ~22ms. For 8 tokens, we need 2 verifier passes (6 tokens accepted) plus 2 AR fallback tokens, totaling ~0.203s, vs 8 AR passes at ~0.177s. The proposal path remains fast (0.015s), confirming the verifier is still the sole bottleneck.
+
+Implication: The llama.cpp result (MTP-3 faster than MTP-2, both faster than AR) is not achievable with our current verifier architecture. To reach parity or exceed AR, we need either (a) graph capture to cut per-pass launch overhead, (b) fused verifier layers so 3-row processing costs <2× single row, or (c) higher B with sustained acceptance (but even B=5 only achieved 0.63x earlier, suggesting diminishing returns).
+
+Artifact retained: benchmarks/results/2026-05-19-hipengine-mtp-persistent-b3-shared-verifier-diagnostic.json
