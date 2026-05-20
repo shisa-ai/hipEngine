@@ -21458,3 +21458,15 @@ python3 -m pytest tests/test_gguf_t16_selected_gemv_decode.py -q --tb=short
 ```
 
 Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-q5q6-direct-probes.json`.
+
+## 2026-05-20 P9.H3 task #51: rejected Q6T16 dense d-scale preload
+
+Prototyped preloading Q6T16 dense lm-head per-column `d` values into registers once per tile/block. The synthetic dense Q6T16 tests passed while the candidate was present:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 -m pytest tests/test_gguf_q6_k_t16_gemv_decode.py -q --tb=short
+# 6 passed
+```
+
+Full-model 512/16 graph replay rejected it: the generated tail matched D10, but decode regressed `78.745 -> 77.004 tok/s` (`/tmp/p9_d13_q6dense_dpreload_512x16_bench.json`). Decision: reject/revert; the extra registers likely cost more than the repeated half-scale loads. Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-q6dense-dpreload.json`.
