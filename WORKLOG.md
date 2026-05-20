@@ -21038,3 +21038,43 @@ PYTHONPATH=. python3 -m pytest \
   -q --tb=short
 # 68 passed
 ```
+
+## 2026-05-20 P9.C14 task #45: Q4T16 selected-dual WMMA prototype landed
+
+Implemented the first HIP WMMA consumer for the P9.C13 Q4T16 selected gate/up layout:
+
+- Added `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_{bf16,fp16}_...`, consuming `tiles[E,out_tiles16,blocks_per_row,2368]` and preserving the existing compact selected-MoE scheduler/output ABI.
+- Registered the prototype under quant key `gguf_q4_k_t16_v1` and added replay harness option `--q4-tile16-wmma-layers` for first-layer/full-replay R&D.
+- Added synthetic BF16/FP16 correctness fixtures vs the CPU selected GGUF Q4_K reference.
+
+Validation and evidence on the local RX 7900 XTX/gfx1100:
+
+```bash
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_q4_k_tile16_repack.py \
+  tests/test_gguf_q4_k_t16_selected_wmma_prefill.py \
+  tests/test_gguf_q4_k_selected_wmma_prefill.py \
+  -q --tb=short
+# 28 passed
+
+rm -rf /tmp/p9_c14_q4t16_wmma_unit_rocprof_csv && \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+rocprofv3 --kernel-trace -d /tmp/p9_c14_q4t16_wmma_unit_rocprof_csv -f csv -- \
+  python3 -m pytest tests/test_gguf_q4_k_t16_selected_wmma_prefill.py -q \
+  -k runs_exported_bf16_symbol_on_w7900 --tb=short
+# 1 passed; kernel gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>
+# DurationNs=41516, VGPR=64, SGPR=128, Scratch=0, LDS=0, dispatch_count=1
+
+HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_moe_replay.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --warmup-iters 0 --replay-iters 1 --sample-groups 1 \
+  --q4-tile16-wmma-layers 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_c14_q4t16_wmma_first_layer_replay.json
+# first layer gate+up Q4T16=3.897 ms, 296 MiB transient gate+up T16 buffers
+# same one-sample raw baseline first layer gate+up=5.274 ms
+```
+
+Decision: mark #45 as an accepted prototype diagnostic, not a default runtime or throughput promotion. The one-layer signal is positive (`5.274 -> 3.897 ms`, `-26.1%`), but P9.C15/#46 must determine whether this survives full-layer integration, replacement-layout residency, and P9.E2 acceptance. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c14-q4t16-selected-wmma-prototype.json`.

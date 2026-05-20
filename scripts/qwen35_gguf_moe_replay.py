@@ -43,6 +43,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     q4_k_predecode_scale_min_sidemeta,
     selected_dual_wmma_prefill_compact_default_tiles,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
+    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
+)
 import hipengine.runtime.qwen35_gguf_runner as qgr
 from hipengine.loading.gguf import GGUFReader
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
@@ -342,7 +345,8 @@ def _install_replay_helper(recorder: ReplayRecorder):
         sidemeta_bufs = []
         tile16_bufs = []
         tile16_materialized_bytes = 0
-        use_tile16_materialize = int(getattr(recorder, "q4_tile16_materialize_layers", 0)) > layer_order
+        use_tile16_wmma = int(getattr(recorder, "q4_tile16_wmma_layers", 0)) > layer_order
+        use_tile16_materialize = use_tile16_wmma or int(getattr(recorder, "q4_tile16_materialize_layers", 0)) > layer_order
         if use_sidemeta_q4:
             reader = getattr(recorder, "q4_sidemeta_reader")
             for weight in (gate_weight, up_weight):
@@ -362,6 +366,25 @@ def _install_replay_helper(recorder: ReplayRecorder):
                 tile16_bufs.append(buf)
 
         def launch_gate_up() -> None:
+            if use_tile16_wmma:
+                gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
+                    scratch.moe_down_out.ptr,
+                    scratch.moe_expert_start_compact.ptr,
+                    scratch.moe_expert_start_wmma.ptr,
+                    scratch.moe_tile_expert.ptr,
+                    tile16_bufs[0].ptr,
+                    tile16_bufs[1].ptr,
+                    scratch.ffn_gate_up.ptr,
+                    selected_rows,
+                    hidden_size,
+                    expert_ffn,
+                    expert_ffn,
+                    num_experts,
+                    wmma_total_rows,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                return
             if use_sidemeta_q4:
                 gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out(
                     scratch.moe_down_out.ptr,
@@ -582,6 +605,7 @@ def _install_replay_helper(recorder: ReplayRecorder):
                     "hot_fulltile_threshold": hot_threshold if use_hot_q4 else None,
                     "sidemeta": bool(use_sidemeta_q4),
                     "tile16_materialized": bool(use_tile16_materialize),
+                    "tile16_wmma": bool(use_tile16_wmma),
                     "tile16_materialized_bytes": tile16_materialized_bytes,
                 },
                 "down": {"tile_m": int(down_tile_m), "tile_n": int(down_tile_n), "q5_opt": use_q5_opt},
@@ -624,7 +648,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     recorder.q4_sidemeta_layers = int(args.q4_sidemeta_layers)
     recorder.q4_sidemeta_reader = GGUFReader(args.model) if args.q4_sidemeta_layers else None
     recorder.q4_tile16_materialize_layers = int(args.q4_tile16_materialize_layers)
-    recorder.q4_tile16_reader = GGUFReader(args.model) if args.q4_tile16_materialize_layers else None
+    recorder.q4_tile16_wmma_layers = int(args.q4_tile16_wmma_layers)
+    recorder.q4_tile16_reader = GGUFReader(args.model) if (args.q4_tile16_materialize_layers or args.q4_tile16_wmma_layers) else None
     recorder.q5_opt = bool(args.q5_opt)
     original = _install_replay_helper(recorder)
     start = time.perf_counter()
@@ -676,6 +701,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "q4_hot_fulltile_threshold": int(args.q4_hot_fulltile_threshold),
         "q4_sidemeta_layers": int(args.q4_sidemeta_layers),
         "q4_tile16_materialize_layers": int(args.q4_tile16_materialize_layers),
+        "q4_tile16_wmma_layers": int(args.q4_tile16_wmma_layers),
         "q5_opt": bool(args.q5_opt),
         "git_commit": _git_commit(),
         "git_status": _git_status(),
@@ -731,6 +757,12 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Build/copy the P9.C13 Q4T16 repack prototype for the first N MoE layers without using it for compute.",
     )
+    parser.add_argument(
+        "--q4-tile16-wmma-layers",
+        type=int,
+        default=0,
+        help="Use the P9.C14 Q4T16 selected-dual WMMA prototype for gate+up in the first N MoE layers.",
+    )
     parser.add_argument("--json", type=Path, required=True)
     return parser.parse_args()
 
@@ -747,6 +779,8 @@ def main() -> None:
         raise ValueError("--q4-sidemeta-layers must be >=0")
     if args.q4_tile16_materialize_layers < 0:
         raise ValueError("--q4-tile16-materialize-layers must be >=0")
+    if args.q4_tile16_wmma_layers < 0:
+        raise ValueError("--q4-tile16-wmma-layers must be >=0")
     report = run(args)
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps(report, indent=2) + "\n")

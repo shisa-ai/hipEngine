@@ -1663,6 +1663,17 @@ their win from VGPR/launch_bounds tuning and per-shape tile selection.
 **Expected impact.** Compact MoE + Q8_0 WMMA combined: 165 ms → ~110 ms at
 512/0. Modest standalone, meaningful after P9.1 has reduced GDN.
 
+**Status 2026-05-20 (P9.C14).** The first Q4T16 selected-dual WMMA prototype
+now consumes the P9.C13 tile-major layout directly via
+`gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_{bf16,fp16}_...` while
+preserving the compact selected-MoE output ABI. Synthetic BF16/FP16 fixtures
+pass vs the CPU selected GGUF Q4_K reference; rocprof smoke records the new
+kernel at `VGPR=64`, `SGPR=128`, `Scratch=0`, `LDS=0`. A one-sample first-layer
+replay on the local RX 7900 XTX/gfx1100 measured raw gate+up `5.274 ms` vs
+Q4T16 gate+up `3.897 ms` with `296 MiB` transient Q4T16 gate+up buffers. This
+is diagnostic only, not a default runtime promotion; P9.C15 decides whether the
+one-layer win survives full replay/replacement-layout integration.
+
 ### P9.4 — Dispatch reduction and small-op fusion (Track D)
 
 **Why.** With GDN and the decode-GEMV families addressed, the residual
