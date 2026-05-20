@@ -131,6 +131,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
 from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
+    GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_F32,
     gemv_decode_session,
     gguf_gemv_decode_enabled,
@@ -1271,23 +1272,36 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        f32_to_bf16(
-            scratch.recurrent_out.ptr,
-            scratch.recurrent_bf16.ptr,
-            cfg.ssm_inner_size,
-            stream=stream,
-            runtime=runtime,
-        )
-        launch_gguf_linear(
-            layer.weight("ssm_out"),
-            scratch.recurrent_bf16.ptr,
-            attn_out_ptr,
-            rows=1,
-            in_features=cfg.ssm_inner_size,
-            out_features=self.hidden_size,
-            stream=stream,
-            runtime=runtime,
-        )
+        if cfg.is_moe and gguf_decode_repack_enabled():
+            launch_gguf_linear(
+                layer.weight("ssm_out"),
+                scratch.recurrent_out.ptr,
+                attn_out_ptr,
+                rows=1,
+                in_features=cfg.ssm_inner_size,
+                out_features=self.hidden_size,
+                activation_dtype=GGUF_ACTIVATION_F32,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            f32_to_bf16(
+                scratch.recurrent_out.ptr,
+                scratch.recurrent_bf16.ptr,
+                cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ssm_out"),
+                scratch.recurrent_bf16.ptr,
+                attn_out_ptr,
+                rows=1,
+                in_features=cfg.ssm_inner_size,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
 
     def _run_native_attention_bulk_ffn_layer_rows(
         self,

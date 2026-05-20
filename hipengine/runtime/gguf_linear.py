@@ -45,6 +45,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
 )
 
 GGUF_ACTIVATION_BF16 = "bf16"
+GGUF_ACTIVATION_F32 = "f32"
 GGUF_OUTPUT_BF16 = "bf16"
 GGUF_OUTPUT_FP16 = "fp16"
 GGUF_OUTPUT_F32 = "f32"
@@ -125,6 +126,10 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
     ),
     (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_fp16_fp16_out"),
+        "t16",
+    ),
+    (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_F32, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_f32_bf16_out"),
         "t16",
     ),
 }
@@ -941,6 +946,7 @@ _LAUNCH_ABI = {
 
 __all__ = [
     "GGUF_ACTIVATION_BF16",
+    "GGUF_ACTIVATION_F32",
     "GGUF_OUTPUT_BF16",
     "GGUF_OUTPUT_FP16",
     "GGUF_OUTPUT_F32",

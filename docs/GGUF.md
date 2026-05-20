@@ -1815,6 +1815,15 @@ individually; together they currently sit around ~30 ms at prefill and
   rocprof diagnostic reduced the dense alpha/beta bucket from `2.950 ms / 960`
   singleton dispatches to `1.667 ms / 478` dual dispatches. #51 remains below
   the `95 tok/s` target.
+- **P9.D14** Q8T16 F32-input `ssm_out` decode. **Status 2026-05-20:**
+  retained a Q8_0 T16 F32-input/BF16-output single GEMV registry variant and
+  route qwen35moe rows=1 `ssm_out` directly from the FP32 GDN output when
+  resident decode repack is enabled. This removes the per-layer
+  `f32_to_bf16` conversion launch before `ssm_out`. P9.E2 accepted (`KL=0`,
+  top-1 `100%`, deterministic tails); 512/128 graph replay moved D13 `89.303
+  -> 90.149 tok/s` (+0.95%). 512/16 rocprof diagnostic reduced total decode
+  dispatches `10648 -> 10138` and removed the `f32_to_bf16` decode bucket
+  (`0.860 ms / 478` dispatches). #51 remains below the `95 tok/s` target.
 
 **Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
 → ~50 ms. Modest in absolute terms; visible at decode because each savings

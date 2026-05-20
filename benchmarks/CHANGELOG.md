@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-05-20
 
+- [small-op retained blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #51 P9.D14 Q8T16 F32-input `ssm_out` decode: graph 512/128 decode `89.303 -> 90.149 tok/s` (`+0.95%`) by routing qwen35moe rows=1 `ssm_out` directly from FP32 GDN output through a Q8_0 T16 F32-input/BF16-output variant, removing `f32_to_bf16` before `ssm_out`; P9.E2 gate passes (`KL 0`, top-1 `100%`, deterministic tails), tracked peak remains `21.343 GiB`, but target still blocked (`<95 tok/s`); `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d16-q8t16-f32-ssm-out.json`.
+
 - [small-op retained blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #51 P9.D13 dense BF16 alpha/beta dual decode: graph 512/128 decode `88.801 -> 89.303 tok/s` (`+0.56%`) by routing qwen35moe rows=1 `ssm_alpha+ssm_beta` through one `dense_dual_gemv_out_bf16` launch into combined scratch; P9.E2 gate passes (`KL 0`, top-1 `100%`, deterministic tails), tracked peak remains `21.343 GiB`, but target still blocked (`<95 tok/s`); `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d15-dense-dual-alpha-beta.json`.
 
 - [small-op retained blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #28 P9.D10 Q8T16 dual-split 64-thread launch: graph 512/128 decode `88.243 -> 88.801 tok/s` (`+0.63%`) by launching separate-output Q8T16 dual-split decode pairs at 64 threads/block instead of 128; P9.E2 gate passes (`KL 0`, top-1 `100%`, deterministic tails), tracked peak remains `21.343 GiB`, but target still blocked (`<95 tok/s`); `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d10-q8t16-dual-split-64.json`.

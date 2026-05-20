@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out,
     gguf_q8_0_t16_gemv_decode_bf16_bf16_out,
+    gguf_q8_0_t16_gemv_decode_f32_bf16_out,
     gguf_q8_0_t16_gemv_decode_fp16_fp16_out,
     gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out,
@@ -174,6 +175,7 @@ def test_p9_h3c_registry_keys_resolve() -> None:
     register_gguf_q8_0_t16_gemv_kernels()
     for variant in (
         "t16_gemv_decode_bf16_bf16_out",
+        "t16_gemv_decode_f32_bf16_out",
         "t16_gemv_decode_fp16_fp16_out",
         "t16_dual_gate_up_gemv_decode_bf16_bf16_out",
         "t16_dual_gate_up_gemv_decode_fp16_fp16_out",
@@ -201,6 +203,8 @@ def test_p9_h3c_wrappers_validate_args() -> None:
         gguf_q8_0_t16_gemv_decode_bf16_bf16_out(0, 0, 0, 1, 31, 16)
     with pytest.raises(ValueError, match="multiple of 16"):
         gguf_q8_0_t16_gemv_decode_bf16_bf16_out(0, 0, 0, 1, 32, 8)
+    with pytest.raises(ValueError, match="block size 32"):
+        gguf_q8_0_t16_gemv_decode_f32_bf16_out(0, 0, 0, 1, 31, 16)
     with pytest.raises(ValueError, match="rows must be positive"):
         gguf_q8_0_t16_gemv_decode_bf16_bf16_out(0, 0, 0, 0, 32, 16)
     with pytest.raises(ValueError, match="multiples of 16"):
@@ -241,6 +245,36 @@ def test_p9_h3c_single_bf16_bf16_matches_cpu_oracle(rows, in_features, out_featu
     )
 
     expected = gguf_quant_gemv(x_ref, qweight, GGMLQuantizationType.Q8_0)
+    expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
+    np.testing.assert_allclose(_bf16_u16_to_f32(actual), expected_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "rows,in_features,out_features",
+    [
+        (1, 256, 256),
+        (1, 2048, 512),
+    ],
+)
+def test_p9_h3c_single_f32_bf16_matches_cpu_oracle(rows, in_features, out_features, q8_t16_library) -> None:
+    rng = np.random.default_rng(rows * 19 + in_features + out_features)
+    qweight = make_q8_0_weight(out_features, in_features)
+    tiles = repack_gguf_q8_0_tile16(qweight).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+
+    actual = _run_single(
+        gguf_q8_0_t16_gemv_decode_f32_bf16_out,
+        x,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q8_t16_library,
+    )
+
+    expected = gguf_quant_gemv(x, qweight, GGMLQuantizationType.Q8_0)
     expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
     np.testing.assert_allclose(_bf16_u16_to_f32(actual), expected_bf16, **_TOL)
 

@@ -21550,3 +21550,45 @@ python3 scripts/qwen35_gguf_bench.py \
 512/16 rocprof diagnostic (`/tmp/p9_d15_dense_dual_ab_summary.json`) showed total decode kernel time `156.247 -> 152.461 ms` and dispatches `11158 -> 10648` vs the local D10 summary. The dense alpha/beta work changed from `dense_gemv_out_kernel` `2.950 ms / 960 dispatches` to `dense_dual_gemv_out_kernel` `1.667 ms / 478 dispatches`.
 
 Decision: retain as a correctness-neutral launch reduction, but #51/#52/#26 remain below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d15-dense-dual-alpha-beta.json`.
+
+## 2026-05-20 P9.D14 task #51: Q8T16 F32-input ssm_out decode retained
+
+Retained a Q8_0 T16 F32-input/BF16-output single GEMV variant for qwen35moe rows=1 linear-attention `ssm_out`. When resident decode repack is enabled, `ssm_out` now consumes the FP32 GDN output directly and skips the per-layer `f32_to_bf16` conversion launch. Non-repacked/default fallback still uses the BF16 conversion and ordinary GGUF linear dispatch.
+
+Validation:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q --tb=short
+# 60 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d16_q8f32_ssmout_e2e.json
+# status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits
+```
+
+512/128 graph replay benchmark:
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d16_q8f32_ssmout_512x128_bench.json
+# measured decode samples: 90.149, 90.071, 90.179 tok/s; median=90.149
+# D13 retained median=89.303 tok/s; delta=+0.846 tok/s (+0.95%)
+# measured prefill median=505.598 tok/s; tracked peak=21.3430756 GiB
+```
+
+512/16 rocprof diagnostic (`/tmp/p9_d16_q8f32_ssmout_summary.json`) showed total decode kernel time `152.461 -> 150.736 ms` and dispatches `10648 -> 10138` vs the D15 summary. The `f32_to_bf16` decode work was removed (`0.860 ms / 478 dispatches` in D15). Q8T16 single GEMV time rose slightly from `29.699 -> 30.027 ms` due the F32 input load path, but the removed conversion launches made the net path faster.
+
+Decision: retain as a correctness-neutral launch removal, but #51/#52/#26 remain below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d16-q8t16-f32-ssm-out.json`.

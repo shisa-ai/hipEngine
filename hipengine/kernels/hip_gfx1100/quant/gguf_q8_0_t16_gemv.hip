@@ -480,6 +480,12 @@ extern "C" int hipengine_gguf_q8_0_t16_gemv_decode_fp16_fp16_out(
   return launch_single<half_t, half_t>(x, tiles, out, rows, in_features, out_features, stream);
 }
 
+extern "C" int hipengine_gguf_q8_0_t16_gemv_decode_f32_bf16_out(
+    const void* x, const void* tiles, void* out, int64_t rows, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_single<float, uint16_t>(x, tiles, out, rows, in_features, out_features, stream);
+}
+
 extern "C" int hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out(
     const void* x, const void* tiles_a, const void* tiles_b, void* out, int64_t rows,
     int64_t in_features, int64_t out_features_a, int64_t out_features_b, hipStream_t stream) {

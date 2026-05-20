@@ -20,6 +20,7 @@ _SOURCE = Path(__file__).with_name("gguf_q8_0_t16_gemv.hip")
 _OUTPUT_NAME = "gguf_q8_0_t16_gemv.so"
 _Q8_0_SINGLE_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_bf16_bf16_out"
 _Q8_0_SINGLE_FP16 = "hipengine_gguf_q8_0_t16_gemv_decode_fp16_fp16_out"
+_Q8_0_SINGLE_F32_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_f32_bf16_out"
 _Q8_0_DUAL_BF16 = "hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out"
 _Q8_0_DUAL_FP16 = "hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out"
 _Q8_0_DUAL_SPLIT_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out"
@@ -120,6 +121,37 @@ def gguf_q8_0_t16_gemv_decode_fp16_fp16_out(
 
     _launch_single(
         _Q8_0_SINGLE_FP16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q8_0_t16_gemv_decode_f32_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch F32-input, BF16-output dense single Q8T16 GEMV decode."""
+
+    del threads
+
+    _launch_single(
+        _Q8_0_SINGLE_F32_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -586,6 +618,7 @@ def register_gguf_q8_0_t16_gemv_kernels(*, replace: bool = True) -> None:
     for variant, fn in (
         ("t16_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_gemv_decode_bf16_bf16_out),
         ("t16_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_gemv_decode_fp16_fp16_out),
+        ("t16_gemv_decode_f32_bf16_out", gguf_q8_0_t16_gemv_decode_f32_bf16_out),
         ("t16_dual_gate_up_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out),
         ("t16_dual_gate_up_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out),
         ("t16_dual_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out),
@@ -610,6 +643,7 @@ __all__ = [
     "gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out",
     "gguf_q8_0_t16_gemv_decode_bf16_bf16_out",
+    "gguf_q8_0_t16_gemv_decode_f32_bf16_out",
     "gguf_q8_0_t16_gemv_decode_fp16_fp16_out",
     "gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out",
