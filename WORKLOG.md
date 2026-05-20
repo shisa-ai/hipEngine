@@ -20173,3 +20173,54 @@ All projected savings sum to the master-scoreboard targets:
 Files touched: docs/MTP.md (master scoreboard + 5 phase trackers replace
 prose bullets), WORKLOG.md (this entry). No code, no benchmark artifact
 changes.
+
+## 2026-05-21 — M7 kickoff: pre-condition discovery
+
+Started M7 (batched selected-expert MoE GEMV) and immediately hit a planning
+issue while reading the source.
+
+**Discovery (code inspection, not measurement):**
+- `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip` lines 2280–2440 show
+  the existing `hipengine_gemv_awq_selected_dual_pack8_transposed_bf16` is
+  **already a llama.cpp-style mul_mat_id kernel**. Grid is
+  `dim3(out_packed_a + out_packed_b, rows)` with
+  `rows = tokens * num_experts_per_tok`; the kernel reads `selected[row]`
+  internally and indexes the per-expert qweight slab.
+- The `run_moe_c1_bf16` MoE path in `hipengine/runtime/qwen35_paro.py` lines
+  5620–5800 already drives that kernel as one launch per (layer, gate+up) and
+  one per (layer, down). So Task #52's "60 tiny launches per pass" really
+  is "30 layers × 2 fused MoE GEMVs", not "one launch per expert".
+- This means M7 isn't "invent the kernel"; it's either (a) "tune the existing
+  kernel for the 32-row small-batch shape" or (b) "the bottleneck isn't the
+  GEMV at all and we need a real rocprofv3 trace before tuning". Both paths
+  start with the same prerequisite: a per-kernel breakdown of one B=3
+  verifier pass.
+
+**Plan adjustment:**
+- Prepended an **M7.0 rocprofv3 re-baseline** row to the M7 tracker in
+  `docs/MTP.md`. Output artifact target:
+  `benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-baseline.json`
+  with per-family + top-N kernel rankings (calls, total ms, per-launch μs,
+  share-of-window), same schema as `qwen35_rocprof_audit.py` emits.
+- M7.2–M7.5 wording softened from "new kernel" to "tuned variant **or** new
+  layer-array kernel; per M7.0's decision". The 8–12 ms M7 budget stays.
+- M7.5 was originally "fused gate+up packed-weight kernel"; updated note to
+  reflect that the dual_pack8_transposed kernel already does that fusion —
+  M7.5 may end up being a no-op or refocus on incremental gate+up tile
+  optimization.
+
+**Next concrete step:**
+- Add a `--rocprof-verify-cycles N --rocprof-warmup-cycles M` mode to
+  `scripts/mtp_chain_e2e_smoke.py` that wraps `roctxProfilerResume/Pause`
+  around the steady-state verify_chain_bulk_and_commit window.
+- Add `scripts/mtp_verifier_rocprof.py` driver mirroring
+  `qwen35_rocprof_audit.py`'s pattern: invoke smoke under
+  `rocprofv3 --kernel-trace --selected-regions true`, parse the kernel CSV,
+  emit the artifact.
+- Run it on the packed PARO+MTP-BF16 model with the same stable
+  quicksort-style prompt used in the persistent_b3 diagnostic. Don't tune
+  anything until that artifact lands.
+
+Files touched this commit:
+- docs/MTP.md (added M7.0 row + adjusted M7.2–M7.5 framing).
+- WORKLOG.md (this entry).

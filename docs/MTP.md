@@ -564,14 +564,26 @@ cheap pointwise ops we already have.
 
 Projected savings target: **~8–12 ms** out of the ~20 ms MoE budget at B=3 / 30 layers. Each row is a separately landable unit with its own correctness + rocprofv3 gate. Fill `Actual (ms)` and `Status` as each row commits.
 
+**Important pre-condition (M7.0):** code inspection (2026-05-21) shows the
+existing `gemv_awq_selected_dual_pack8_transposed_bf16` is already a
+llama.cpp-style mul_mat_id kernel — grid `(out_packed_a+out_packed_b, rows)`
+with `rows = tokens * num_experts_per_tok`, reading `selected[row]` inside
+the kernel. So “60 tiny launches” in Task #52’s analysis is “30 layers × 2
+fused MoE ops”, not “1 launch per expert”. M7.0 below is the prerequisite
+rocprofv3 re-baseline that decides whether M7.2–M7.5 should be
+*“tune the existing kernel for the 32-row small-batch shape”* (likely) or
+*“write a brand-new layer-array kernel”* (only if the existing path can’t
+be pushed below the budget).
+
 | #   | Sub-task                                                                                   | Variant            | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
 |-----|--------------------------------------------------------------------------------------------|--------------------|-----------------------:|----------|--------------------:|------------------|
-| M7.1| CPU-reference fixture: 4-tok / 30-layer + 8-tok routed MoE, KL≤0.05 / top-1≥0.90 oracle    | n/a                |                     0  | _Pending_|                _TBD_| _TBD_            |
-| M7.2| Kernel skeleton: grid `(n_out_tiles, n_expert_used, n_tokens)`, fp16/bf16 dense, gate-only |`dense_bf16`        |                     0  | _Pending_|                _TBD_| _TBD_ (skeleton; saves nothing until M7.3) |
+| M7.0| **rocprofv3 re-baseline**: one MTP verifier pass at B=3, top-N kernel table (launches, total ms, per-launch μs). Decides whether M7.2–M7.5 tune the existing AWQ-selected kernel or write a new layer-array one. | n/a |       0  | _Pending_|                _TBD_| `benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-baseline.json` |
+| M7.1| CPU-reference fixture: 4-tok / 30-layer + 8-tok routed MoE, KL≤0.05 / top-1≥0.90 oracle    | n/a                |                     0  | _Pending_|                _TBD_| _TBD_ (depends on M7.0’s decision but the fixture itself is the same either way) |
+| M7.2| Kernel skeleton or tuned variant: per M7.0 decision, BF16 path for MTP proposer            |`dense_bf16`        |                     0  | _Pending_|                _TBD_| _TBD_ (skeleton; saves nothing until M7.3) |
 | M7.3| Land `dense_bf16` for MTP proposer (down_proj + gate_up_proj fused), route via registry    |`dense_bf16`        |                  ~2–3  | _Pending_|                _TBD_| _TBD_            |
-| M7.4| AWQ pack8 dequant variant, reuse `gemv_awq_selected_*` microcode                           |`awq_q4_pack8`      |                  ~6–8  | _Pending_|                _TBD_| _TBD_            |
-| M7.5| Fused gate+up packed-weight kernel (one launch for 2×n_ff_exp output)                      |`awq_q4_pack8_gu`   |                  ~1–2  | _Pending_|                _TBD_| _TBD_            |
-| M7.6| Verify: rocprofv3 shows new kernel runs <8 ms total at B=3/30 layers, replaces 4 awq paths | both               |                     0  | _Pending_|                _TBD_| _TBD_ (gate only) |
+| M7.4| AWQ pack8 variant: either tuned-existing kernel for 32-row batch, or new layer-array kernel|`awq_q4_pack8`      |                  ~6–8  | _Pending_|                _TBD_| _TBD_            |
+| M7.5| Fused gate+up packed-weight kernel (one launch for 2×n_ff_exp output) — already in tree as `dual_pack8_transposed`; check what additional fusion adds | `awq_q4_pack8_gu`   |                  ~1–2  | _Pending_|                _TBD_| _TBD_            |
+| M7.6| Verify: rocprofv3 shows MoE chain runs <8 ms total at B=3/30 layers, KL≤0.05 vs CPU-ref    | both               |                     0  | _Pending_|                _TBD_| _TBD_ (gate only) |
 | **M7 total** |                                                                                |                    |              **8–12**  |          |             **_TBD_**|                  |
 
 Design notes:
