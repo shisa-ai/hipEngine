@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-20
+
+- [small-op retained blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #28 P9.D1 split-router cooperative decode: graph 512/128 decode `85.728 -> 85.817 tok/s` (`+0.10%`) by replacing c=1 expert-router logits + shared-gate logits + top-k select with one `qwen35_router_topk_split_shared_coop_out_kernel` launch; P9.E2 gate passes (`KL 0`, top-1 `100%`, deterministic tails) and tracked peak remains `21.343 GiB`, but target still blocked (`<95 tok/s`); `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d1-router-split-coop.json`.
+
 ## 2026-05-19
 
 - [design retained] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #50 P9.H2 decode repack layout: selected replacement T16 resident layouts for Q4 gate/up, Q5/Q6 down, and Q8 dense/shared projections after P9.B7 showed decode stuck at `~63 tok/s` with legacy `prefill_out` still large; estimated persistent delta `~+0.457 GiB` and tracked 512/128 peak `~21.34 GiB`, raw+packed duplication rejected; implementation acceptance is P9.E2 with `effective_* = true`, 512/128 graph decode `>=95 tok/s`, and rocprof T16 dominance; `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h2-decode-repack-design.json`.

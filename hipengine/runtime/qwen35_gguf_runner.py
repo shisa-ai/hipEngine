@@ -107,6 +107,7 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16,
     qwen35_router_select,
+    qwen35_router_topk_split_shared_coop_out_bf16,
 )
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION, build_qwen35_gguf_tensor_map
@@ -1490,32 +1491,17 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("qwen35moe scratch top-k capacity is too small")
 
         # Router weights are GGUF F32 tensors converted to BF16 at materialization time.
-        qwen35_router_logits_bf16(
+        # Decode fuses expert logits, shared-gate logit, and top-k selection into one
+        # cooperative launch while preserving the existing logits scratch ABI.
+        qwen35_router_topk_split_shared_coop_out_bf16(
             scratch.post_norm.ptr,
             layer.weight("ffn_gate_inp").allocation().tensor.ptr,
-            scratch.moe_router_logits.ptr,
-            1,
-            self.hidden_size,
-            cfg.expert_count,
-            stream=stream,
-            runtime=runtime,
-        )
-        qwen35_router_logits_bf16(
-            scratch.post_norm.ptr,
             layer.weight("ffn_gate_inp_shexp").allocation().tensor.ptr,
-            scratch.moe_router_logits.ptr + cfg.expert_count * 4,
-            1,
-            self.hidden_size,
-            1,
-            stream=stream,
-            runtime=runtime,
-        )
-        qwen35_router_select(
             scratch.moe_router_logits.ptr,
             scratch.moe_selected_experts.ptr,
             scratch.moe_routing_weights.ptr,
             1,
-            cfg.expert_count + 1,
+            self.hidden_size,
             cfg.expert_count,
             top_k,
             stream=stream,

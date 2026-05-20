@@ -20851,3 +20851,61 @@ python3 scripts/qwen35_gguf_bench.py \
 - Legacy `prefill_out` buckets are absent in this retained summary.
 
 Conclusion for #51: correctness and kernel-mix acceptance are now satisfied, and tracked peak remains within the 24 GiB-class budget, but the performance target is still blocked (`85.728 tok/s < 95 tok/s`). I also tried a local, non-retained Q8/Q4/Q5/Q6 T16 metadata-broadcast micro-optimization with wave shuffles; it was reverted because a 512/128 diagnostic regressed to `41.111 tok/s`. A Q8T16 block-size micro sweep likewise rejected `64`/`96` threads (slower than `128`) and `256` threads (invalid for the current launch-bounds/shared reduction). Next viable work is task #28/#31 style dispatch/small-op fusion or a deeper Q8/full-attention decode reduction; do not mark #51/#52/#26 accepted from the current H3 artifacts.
+
+## 2026-05-20 P9.D1 task #28: split router cooperative decode
+
+Scoped P9.D1 launch-count reduction for qwen35moe GGUF decode:
+
+- Added `qwen35_router_topk_split_shared_coop_out_{bf16,fp16}` in `hipengine/kernels/hip_gfx1100/moe/router.{hip,py}`.
+  - It is the decode-only cooperative router pattern adapted for GGUF's separate `ffn_gate_inp` expert matrix and `ffn_gate_inp_shexp` shared-gate vector, avoiding a resident concatenated router weight.
+  - It writes the existing `[num_experts + 1]` logits scratch ABI, selected expert ids, and routing weights, so downstream shared-gate combine remains unchanged.
+- Wired `Qwen35GGUFFullStackRunner._run_post_attention_moe_c1()` to use the split cooperative router by default, replacing three launches (`expert logits`, `shared-gate logits`, `router_select`) with one launch per MoE layer/token.
+- Updated router registry exports, the GGUF c=1 routing tests, `docs/GGUF.md`, `docs/KERNELS.md`, and the benchmark rollups/artifact.
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m pytest \
+  tests/test_qwen35_router_plan.py \
+  tests/test_qwen35_gguf_compact_moe_gemv_routing.py \
+  tests/test_qwen35_gguf_p9_e2e_correctness.py \
+  tests/test_qwen35_gguf_fastpath_safety.py \
+  -q --tb=short
+# 20 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/p9_d1_router_split_e2e.json
+# status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+rocprofv3 --kernel-trace -d /tmp/p9_d1_router_split_unit_rocprof_csv -f csv -- \
+  python3 -m pytest tests/test_qwen35_router_plan.py -q \
+  -k split_shared_coop_bf16_matches_cpu_router --tb=short
+# observed qwen35_router_topk_split_shared_coop_out_kernel<unsigned short>, End-Start=17440 ns
+```
+
+512/128 graph replay benchmark (W7900/gfx1100 target, cached builds, same command as P9.H3 with the split router default):
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d1_router_split_512x128_bench.json
+# measured decode samples: 85.8168, 85.8746, 85.8175 tok/s; median=85.817 tok/s
+# previous P9.H3 T16 median=85.728 tok/s; delta +0.089 tok/s (+0.10%)
+# tracked peak median=21.343 GiB
+```
+
+Decision: retain the split router default because it is correctness-neutral and slightly improves graph decode, but it is only a small launch-count win. #51/#52/#26 remain blocked (`85.817 < 95 tok/s`). Next #28 candidates are D2 cast audit, D3 scheduler consolidation where still active, or deeper Q8/full-attention decode reductions.
+
+Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d1-router-split-coop.json`.

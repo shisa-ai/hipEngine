@@ -67,6 +67,32 @@ def test_compact_gemv_off_by_default_uses_legacy_selected_decode(monkeypatch: py
     assert "compact_gate_up" not in [name for name, _ in calls]
 
 
+def test_c1_decode_uses_split_router_coop_launch(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_pair",
+        lambda *args, **kwargs: calls.append(("legacy_pair", None)) or False,
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("legacy_linear", weight.spec.source.name)),
+    )
+
+    runner._run_post_attention_moe_c1(0, out_ptr=9000, scratch=scratch, stream=7)
+
+    names = [name for name, _ in calls]
+    assert names.count("router_split_coop") == 1
+    assert "router" not in names
+    assert "router_select" not in names
+    assert ("router_split_coop", (10, 11, 110, 1, 256, 4, 2)) in calls
+
+
+
 def test_compact_gemv_opt_in_routes_grouped_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
     runner, scratch = _fake_runner_and_scratch()
     calls: list[tuple[str, object]] = []
@@ -331,6 +357,11 @@ def _buf(ptr: int):
 def _patch_common_moe_kernels(monkeypatch: pytest.MonkeyPatch, calls: list[tuple[str, object]]) -> None:
     monkeypatch.setattr(qgr, "qwen35_router_logits_bf16", lambda *args, **kwargs: calls.append(("router", None)))
     monkeypatch.setattr(qgr, "qwen35_router_select", lambda *args, **kwargs: calls.append(("router_select", None)))
+    monkeypatch.setattr(
+        qgr,
+        "qwen35_router_topk_split_shared_coop_out_bf16",
+        lambda *args, **kwargs: calls.append(("router_split_coop", args[1:4] + args[6:10])),
+    )
     monkeypatch.setattr(qgr, "copy_host_to_device", lambda *args, **kwargs: calls.append(("zero", None)))
     monkeypatch.setattr(qgr, "silu_mul_separate_out_bf16", lambda *args, **kwargs: calls.append(("silu_separate", None)))
     monkeypatch.setattr(

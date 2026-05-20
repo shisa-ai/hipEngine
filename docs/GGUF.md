@@ -1676,7 +1676,13 @@ individually; together they currently sit around ~30 ms at prefill and
 
 - **P9.D1** Fuse `qwen35_router_logits_token_tile + qwen35_router_select`
   into a single launch (in tree these are already small, but the launch
-  overhead is wasted at decode).
+  overhead is wasted at decode). **Status 2026-05-20:** decode uses the
+  GGUF split expert/shared cooperative router for `rows=1`, replacing
+  expert-router logits + shared-gate logits + select with one launch.
+  Correctness: P9.E2 accepted (`KL=0`, top-1 `100%`, deterministic tails).
+  512/128 graph replay on W7900/gfx1100 moved median decode `85.728 ->
+  85.817 tok/s` (+0.10%); retained as a small positive D1 reduction, but
+  #51 remains below the `95 tok/s` target.
 - **P9.D2** Audit redundant `bf16_to_f32` / `f32_to_bf16` boundary kernels.
   In the post-P8 prefill trace they appear in pairs; in decode they fire
   thousands of times. Most can be folded into the consumer kernel as an
