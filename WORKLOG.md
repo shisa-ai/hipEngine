@@ -19887,3 +19887,50 @@ Result: speed impact is **noise/neutral**. CPU top1 read (3 rows * 8 bytes) + CP
 computation is <0.1ms per cycle, negligible next to ~60ms verifier forward pass.
 The GPU-fast path is architecturally cleaner but does not move the throughput needle.
 The verifier forward-pass kernel execution remains the sole bottleneck.
+
+## 2026-05-19 — Task #49: Fuse verifier linear-attention sub-kernels (investigation)
+
+Ran rocprofv3 --kernel-trace on isolated verifier passes (B=2, chain_tloop, c1_loop)
+to quantify exactly where the ~50ms per-pass verifier time is spent.
+
+Key finding: the `qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel`
+(Conv chain t-loop) is **completely negligible** in the verifier pass:
+- 30 launches per pass (one per layer)
+- Total time: ~0.17ms per pass
+- Fraction of total verifier kernel time: **0.4%**
+
+The actual verifier pass breakdown (~45ms kernel-only time per pass):
+- GDN chain t-loop: 30x, ~10ms per pass (22.0%)
+- W8A16 linear (LM head projection): 1x, ~7.5ms per pass (16.3%)
+- AWQ fused prefill dual fp16 (MoE): 60x, ~7.4ms per pass (16.0%)
+- AWQ selected pack8 GEMV (MoE): 60x, ~4.3ms per pass (9.2%)
+- AWQ selected dual strided GEMV (MoE): 60x, ~4.1ms per pass (8.8%)
+- AWQ prefill fp16 (MoE): 60x, ~3.3ms per pass (7.2%)
+- AWQ dual pack8 GEMV: 60x, ~1.3ms per pass (2.8%)
+- Full attention decode: 30x, ~0.9ms per pass (1.9%)
+- Various RMSNorms/rotates/copies: ~5.5ms per pass (12%)
+
+Implication: fusing Conv+GDN would save at most ~0.17ms per pass (the Conv
+time plus one launch overhead, which is already negligible per task #47).
+That is a ~0.4% improvement on verifier time, or ~0.3% improvement on total
+MTP decode time. The engineering cost of fusing two kernels with different
+grid configurations (Conv: channels/256 blocks; GDN: num_v_heads × head_v_dim
+blocks) is high for this negligible return.
+
+The real verifier bottlenecks are:
+1. MoE expert GEMV execution (~20ms = 44% of kernel time)
+2. LM head W8A16 projection (~7.5ms = 16%)
+3. GDN recurrent attention (~10ms = 22%)
+
+To make MTP beat AR, we need to attack one of these dominant costs, not
+Conv+GDN fusion. Potential paths:
+- Batched MoE routing so 3-row verifier uses fewer MoE kernel launches
+- Fusing the full pre-attention sub-path (RMSNorm→rotate→QKV projection)
+- Optimizing GDN for small batch (already chain_tloop helps; further gains
+  would need algorithmic changes)
+- Reducing LM head cost (it's 1x but 7.5ms for 3 rows; maybe parallelizing
+  across rows better)
+
+Decision: block task #49 on the specific Conv+GDN fusion path. The profiling
+shows it is not the bottleneck. A new task should be opened for MoE/RMSNorm/QKV
+fusion or batched MoE optimization.
