@@ -522,20 +522,24 @@ MTP/AR measured = 0.87×              # i.e. avg_accepted < 3 per cycle
 
 To hit a **≥1.5×** target at B=3 the verifier must drop below
 `22×3 / 1.5 = 44 ms` wall — ~15% off today. To hit **≥2.0×** it must drop
-below `33 ms` — ~37% off today. That tells us which kernels need to land:
+below `33 ms` — ~37% off today.
 
-| Cost | Now (ms) | If we land… | New (ms) | Wall-time saved |
-|---|---:|---|---:|---:|
-| MoE selected-expert GEMV (4 rows) | ~20 | batched mul_mat_id-style kernel, 3 launches/layer | ~8–12 | ~8–12 ms |
-| GDN chain t-loop (4 rows) | ~10 | unchanged (already chain_tloop) | ~10 | 0 |
-| LM head W8A16 (4 rows) | ~7.5 | row-parallel split-k kernel | ~5 | ~2.5 ms |
-| Pre-attention 90-launch chain | ~5 | fused rmsnorm+qkv+rope per layer | ~2 | ~3 ms |
-| Host-side Python overhead | ~7 | graph capture + GPU sampling tail | ~2 | ~5 ms |
-| **Total verifier wall** | **~52** | | **~28–32** | **~20–24 ms** |
+#### Master scoreboard — verifier wall-time budget (B=3, 4 rows, gfx1151)
 
-That lands us at MTP/AR = `22×3 / 30 ≈ 2.2×` ceiling at B=3 perfect-accept,
-with expected real-world acceptance of 60–80% → measured **1.3–1.7× AR**.
-That matches the llama.cpp range on the same workload class.
+Updated as each phase lands. “Baseline (ms)” is the Task #52 reading; “Target (ms)” is the post-phase projection; “Actual (ms)” is filled in from the rocprofv3 + wall-time artifact when the phase commits. Negative values mean we beat the target.
+
+| Cost component                      | Phase | Baseline (ms) | Target (ms) | Actual (ms) | Δ vs baseline | Δ vs target | Artifact / source |
+|-------------------------------------|:-----:|--------------:|------------:|------------:|---------------:|-------------:|-------------------|
+| MoE selected-expert GEMV (4 rows)   | M7    |          ~20  |       8–12  |       _TBD_ |          _TBD_ |        _TBD_ | _TBD_             |
+| Pre-attention 90-launch chain       | M8    |           ~5  |        ~2   |       _TBD_ |          _TBD_ |        _TBD_ | _TBD_             |
+| LM head W8A16 (4 rows)              | M9    |          ~7.5 |        ~5   |       _TBD_ |          _TBD_ |        _TBD_ | _TBD_             |
+| Host-side Python overhead           | M10   |           ~7  |        ~2   |       _TBD_ |          _TBD_ |        _TBD_ | _TBD_             |
+| GDN chain t-loop (4 rows)           |  —   |          ~10  |       ~10   |        ~10  |            0   |          0   | already chain_tloop |
+| **Total verifier wall**             |       |        **~52**| **~28–32**  |       _TBD_ |          _TBD_ |        _TBD_ |                   |
+| **MTP/AR ceiling @ B=3 (22×3/wall)** |       |       **1.27×**| **2.06–2.36×**| _TBD_      |          _TBD_ |        _TBD_ |                   |
+| **MTP/AR measured @ B=3**           |       |       **0.87×**| **1.3–1.7×** | _TBD_      |          _TBD_ |        _TBD_ |                   |
+
+Real-world MTP/AR depends on accepted-token density (60–80% expected on chain_tloop), which is why projected measured (1.3–1.7×) is lower than the perfect-accept ceiling (2.06–2.36×). The 1.3–1.7× range matches llama.cpp on the same workload class.
 
 ### Phase M7 — batched selected-expert GEMV (HIGHEST PRIORITY)
 
@@ -556,44 +560,35 @@ moe_selected_expert_gemv(
 Weighted-combine and shared-expert add stay outside the kernel; they are
 cheap pointwise ops we already have.
 
+#### M7 tracker
+
+Projected savings target: **~8–12 ms** out of the ~20 ms MoE budget at B=3 / 30 layers. Each row is a separately landable unit with its own correctness + rocprofv3 gate. Fill `Actual (ms)` and `Status` as each row commits.
+
+| #   | Sub-task                                                                                   | Variant            | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
+|-----|--------------------------------------------------------------------------------------------|--------------------|-----------------------:|----------|--------------------:|------------------|
+| M7.1| CPU-reference fixture: 4-tok / 30-layer + 8-tok routed MoE, KL≤0.05 / top-1≥0.90 oracle    | n/a                |                     0  | _Pending_|                _TBD_| _TBD_            |
+| M7.2| Kernel skeleton: grid `(n_out_tiles, n_expert_used, n_tokens)`, fp16/bf16 dense, gate-only |`dense_bf16`        |                     0  | _Pending_|                _TBD_| _TBD_ (skeleton; saves nothing until M7.3) |
+| M7.3| Land `dense_bf16` for MTP proposer (down_proj + gate_up_proj fused), route via registry    |`dense_bf16`        |                  ~2–3  | _Pending_|                _TBD_| _TBD_            |
+| M7.4| AWQ pack8 dequant variant, reuse `gemv_awq_selected_*` microcode                           |`awq_q4_pack8`      |                  ~6–8  | _Pending_|                _TBD_| _TBD_            |
+| M7.5| Fused gate+up packed-weight kernel (one launch for 2×n_ff_exp output)                      |`awq_q4_pack8_gu`   |                  ~1–2  | _Pending_|                _TBD_| _TBD_            |
+| M7.6| Verify: rocprofv3 shows new kernel runs <8 ms total at B=3/30 layers, replaces 4 awq paths | both               |                     0  | _Pending_|                _TBD_| _TBD_ (gate only) |
+| **M7 total** |                                                                                |                    |              **8–12**  |          |             **_TBD_**|                  |
+
 Design notes:
-- Grid `(n_out_tiles, n_expert_used, n_tokens)`. Each block reads
-  `expert = ids[token, slot]` and indexes `W[expert, tile, :]`.
-- For BF16 dense weights (MTP proposer): the kernel is a straight
-  fp16/bf16 vec-mat reduction with a 32-thread warp per row tile. Variant
-  `"dense_bf16"`.
-- For AWQ pack8 weights (target verifier): same kernel structure, just
-  swap the inner dequant. Variant `"awq_q4_pack8"`. Reuse the dequant
-  microcode from the existing `gemv_awq_selected_*` kernels.
-- For n_tokens ≤ 8 (verifier B=1–7 and any proposer step): keep the entire
-  ids tensor in registers; no shared-memory scratch. This matches llama.cpp’s
-  `MMVF_MAX_BATCH_SIZE = 8` fast path.
-- Fused gate+up variant: weights `W` already have shape
-  `[n_experts, 2*n_ff_exp, n_embd]` for `gate_up_proj`; output `Y` becomes
-  `[n_tokens, n_expert_used, 2*n_ff_exp]` and the SwiGLU multiply runs as
-  the existing `silu(Y[:, :, :n_ff_exp]) * Y[:, :, n_ff_exp:]` pointwise.
-- Correctness gate: KL ≤ 0.05 and top-1 ≥ 0.90 vs `kernels/cpu_reference/`
-  on a 4-token / 30-layer fixture and an 8-token fixture. Compare against
-  the current AWQ-selected GEMV path on identical inputs.
-- Promote only if `rocprofv3 --kernel-trace` confirms the new kernel runs
-  in <8 ms total for B=3 / 30 layers (the gate+up variant) and replaces
-  the four `awq_*_selected_*` kernels in the trace.
+- Grid `(n_out_tiles, n_expert_used, n_tokens)`. Each block reads `expert = ids[token, slot]` and indexes `W[expert, tile, :]`.
+- For BF16 dense weights (MTP proposer): straight fp16/bf16 vec-mat reduction with a 32-thread warp per row tile. Variant `"dense_bf16"`.
+- For AWQ pack8 weights (target verifier): same kernel structure, swap inner dequant. Variant `"awq_q4_pack8"`. Reuse the dequant microcode from `gemv_awq_selected_*`.
+- For n_tokens ≤ 8: keep `ids` in registers; no shared-memory scratch. Matches llama.cpp’s `MMVF_MAX_BATCH_SIZE = 8` fast path.
+- Fused gate+up: weights `[n_experts, 2*n_ff_exp, n_embd]`; output `[n_tokens, n_expert_used, 2*n_ff_exp]`; SwiGLU stays as the existing pointwise op.
 
 Plugin discipline:
-- The registry key uses the four-axis form (`backend, layer, quant, variant`).
-  Routing decision lives in `hipengine/kernels/registry.py` and
-  `hipengine/dispatch/fusion.py`, **not** in branches inside the engine or
-  model code.
-- Both `dense_bf16` and `awq_q4_pack8` variants register against the same
-  layer key `"moe_selected_expert"`, so the MTP proposer and target verifier
-  pick the same kernel family with different variant tags.
-- The unfused chain (per-expert GEMV) must remain registered as the
-  fallback; the new kernel only registers under the fused composite key.
+- Registry key uses four-axis form (`backend, layer, quant, variant`). Routing lives in `hipengine/kernels/registry.py` and `hipengine/dispatch/fusion.py`, **not** in `if backend ==` / `if quant ==` branches.
+- Both `dense_bf16` and `awq_q4_pack8` variants register under the same layer key `"moe_selected_expert"`; proposer and verifier pick the same kernel family with different variant tags.
+- The unfused per-expert GEMV chain stays registered as fallback.
 
 ### Phase M8 — fused pre-attention sub-path (SECOND PRIORITY)
 
-Goal: collapse the ~90 launches per verifier pass for RMSNorm → QKV → RoPE
-→ q_norm/k_norm into one composite launch per layer.
+Goal: collapse the ~90 launches per verifier pass for RMSNorm → QKV → RoPE → q_norm/k_norm into one composite launch per layer.
 
 ABI (registry key `("hip_gfx1151", "pre_attention_fused", quant, variant)`):
 
@@ -607,52 +602,74 @@ pre_attention_fused(
 ) -> Q, K, V    # already RoPE’d, q/k normalized
 ```
 
-Unfused fallback: RMSNorm → QKV GEMV → split → rotate → q_norm/k_norm.
-This stays registered; the fused composite is registered as a separate
-layer key.
+Unfused fallback: RMSNorm → QKV GEMV → split → rotate → q_norm/k_norm. Stays registered; the fused composite registers as a separate layer key.
 
-Expected savings ~3 ms per verifier pass.
+#### M8 tracker
+
+Projected savings target: **~3 ms** out of the ~5 ms pre-attn chain at B=3 / 30 layers. The composite is correct-by-construction iff each step matches the unfused fallback on the same fixture; promote per-step.
+
+| #   | Sub-task                                                                              | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
+|-----|---------------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
+| M8.1| CPU-reference fixture: 4-tok / 30-layer pre-attn input → (Q, K, V) post-RoPE oracle    |                     0  | _Pending_|                _TBD_| _TBD_            |
+| M8.2| Fused RMSNorm + QKV GEMV (skip RoPE) — collapse ~60 launches → ~30                    |                  ~1–1.5| _Pending_|                _TBD_| _TBD_            |
+| M8.3| Add RoPE inside the kernel (cos/sin from constant buffer)                              |                  ~1   | _Pending_|                _TBD_| _TBD_            |
+| M8.4| Add q_norm / k_norm inside the kernel (collapse final ~30 launches)                    |                  ~0.5–1| _Pending_|                _TBD_| _TBD_            |
+| M8.5| Verify: rocprofv3 shows 1 launch per layer pre-attn at B=3, KL≤0.05 vs unfused        |                     0  | _Pending_|                _TBD_| _TBD_ (gate only)|
+| **M8 total** |                                                                          |               **~3**   |          |             **_TBD_**|                  |
 
 ### Phase M9 — parallelized LM head over verifier rows (THIRD PRIORITY)
 
 Goal: cut the 7.5 ms 4-row W8A16 lm_head projection by ~30%.
 
-- Switch from current `gemv_w8a16` chained over rows to a row-parallel
-  split-k variant that streams the 248320-row weight matrix once per pass
-  and computes all 4 rows in parallel.
-- Same ABI as today’s lm_head (just a different variant under
-  `("hip_gfx1151", "lm_head", "w8a16", "row_parallel")`).
-- Promote only if it beats the current path on B ∈ {2, 3, 4, 8}.
+Switch from current `gemv_w8a16` chained over rows to a row-parallel split-k variant that streams the 248320-row weight matrix once per pass and computes all 4 rows in parallel.
+
+Same ABI as today’s lm_head; new variant under `("hip_gfx1151", "lm_head", "w8a16", "row_parallel")`. Promote only if it beats the current path on B ∈ {2, 3, 4, 8}.
+
+#### M9 tracker
+
+Projected savings target: **~2.5 ms** of the ~7.5 ms LM head at B=3, 4 verifier rows. Bandwidth-bound — the win comes from streaming the weight matrix once, not from arithmetic.
+
+| #   | Sub-task                                                                          | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
+|-----|-----------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
+| M9.1| Row-parallel split-k kernel: grid `(n_out_tiles, n_tokens)`, single weight stream  |                  ~2–2.5| _Pending_|                _TBD_| _TBD_            |
+| M9.2| Promote per `B ∈ {2, 3, 4, 8}` sweep; gate via existing lm_head correctness test  |                  ~0   | _Pending_|                _TBD_| _TBD_ (gate only)|
+| **M9 total** |                                                                      |              **~2.5** |          |             **_TBD_**|                  |
 
 ### Phase M10 — align proposer with target dispatch
 
-Once Phase M7 lands the `dense_bf16` variant of the MoE GEMV, the native
-MTP proposer (`hipengine/speculative/mtp_native.py`) should:
+Once Phase M7 lands the `dense_bf16` variant of the MoE GEMV, the native MTP proposer (`hipengine/speculative/mtp_native.py`) plugs into the same registry path. This phase also eliminates host-side overhead (~7 ms/pass per Task #52).
 
-1. Route `mtp.layers.0.mlp.experts.gate_up_proj` through the same
-   `moe_selected_expert` registry entry (variant `dense_bf16`). This removes
-   the host-side per-expert dispatch that triggered the Task #50 blocker.
-2. Keep selected expert ids on-device throughout the proposer chain. The
-   only D2H sync per draft step is the sampled token (matches llama.cpp).
-3. Add a small GPU top-1 + write kernel so the proposer never reads `top1`
-   to host for the next draft step.
+No new model quant required — BF16 MTP weights stay. If we later quantize MTP, register an `awq_q4_pack8` variant under the same layer key and the proposer picks it up via the variant axis (no code branching).
 
-No new model quant is required; the BF16 weights already work. If we later
-decide to ship a quantized MTP head, register an `awq_q4_pack8` variant the
-same way and the proposer picks it up via the variant axis (no code
-branching).
+#### M10 tracker
+
+Projected savings target: **~5 ms** of host-side overhead (the ~7 ms baseline minus an irreducible ~2 ms for batch prep + sampling read).
+
+| #    | Sub-task                                                                                                   | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
+|------|------------------------------------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
+| M10.1| Route `mtp.layers.0.mlp.experts.gate_up_proj` through `moe_selected_expert` / `dense_bf16` (removes Task #50 blocker) |              ~2     | _Pending_|                _TBD_| _TBD_            |
+| M10.2| Keep selected-expert ids on-device throughout the proposer chain (only D2H sync per draft step = sampled tok) |              ~1.5–2 | _Pending_|                _TBD_| _TBD_            |
+| M10.3| GPU top-1 + write kernel for the next draft seed (proposer never reads top1 to host)                       |                  ~1–1.5| _Pending_|                _TBD_| _TBD_            |
+| M10.4| Re-capture HIP graph for the post-M7/M10 proposer chain (one captured graph per draft depth)               |                  ~0.5–1| _Pending_|                _TBD_| _TBD_            |
+| **M10 total** |                                                                                              |              **~5**   |          |             **_TBD_**|                  |
 
 ### Phase M11 — fixed-depth chain bucket sweep on the fast verifier
 
-After M7 lands (the only mandatory phase for a 1.5× row), re-run the B=1/2/3
-sweep with same-session AR and decide between:
-- chain at B=3 (most likely if acceptance ≥ 0.7);
-- chain at B=2 (if M7’s savings shift the per-token-cost curve);
-- DDTree at B=4/8 only after a flat-chain row clears ≥1.3× AR.
+After M7 lands (the only mandatory phase for a 1.5× row), re-run the B=1/2/3 sweep with same-session AR. Pick the operating point that maximizes measured MTP/AR.
 
-Keep the existing exact-equality gate. The benchmark rollup
-(`benchmarks/README.md` + `benchmarks/CHANGELOG.md` + JSON artifact) is the
-only path to a retained speed claim, per `AGENTS.md`.
+Keep the existing exact-equality gate. The benchmark rollup (`benchmarks/README.md` + `benchmarks/CHANGELOG.md` + JSON artifact) is the only path to a retained speed claim, per `AGENTS.md`.
+
+#### M11 tracker — operating-point sweep (post-M7…M10)
+
+This phase doesn’t add per-kernel savings; it picks the chain depth and acceptance policy that maximize end-to-end MTP/AR on the fast verifier. Projected MTP/AR is the perfect-accept ceiling at the listed B given the post-M10 verifier wall; “measured target” assumes 60–80% acceptance.
+
+| #    | Operating point                                                  | Projected ceiling MTP/AR | Projected measured MTP/AR | Status   | Actual measured MTP/AR | Artifact / source |
+|------|------------------------------------------------------------------|-------------------------:|--------------------------:|----------|-----------------------:|-------------------|
+| M11.1| Chain B=2 (drafts/verify=2, target rows=3)                       |                  ~1.5×  |              ~1.2–1.4×    | _Pending_|                  _TBD_ | _TBD_             |
+| M11.2| Chain B=3 (drafts/verify=3, target rows=4) — default candidate   |                  ~2.0×  |              ~1.3–1.7×    | _Pending_|                  _TBD_ | _TBD_             |
+| M11.3| Chain B=4 (drafts/verify=4, target rows=5)                       |                  ~2.0×  |              ~1.2–1.6×    | _Pending_|                  _TBD_ | _TBD_ (only run if M11.2 < 1.3×) |
+| M11.4| DDTree B=4/8 (tree drafts)                                       |                _≥2.0×_  |                    _TBD_  | _Pending_|                  _TBD_ | _TBD_ (only run if any chain row ≥ 1.3×) |
+| **M11 retained row** |                                                          |               **≥1.5×** |                  **≥1.3×** |          |             **_TBD_**  | benchmarks/README.md row + benchmarks/CHANGELOG.md entry |
 
 ### Out-of-scope (don’t pre-build)
 

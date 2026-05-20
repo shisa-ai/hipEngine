@@ -20125,3 +20125,51 @@ Files touched in this commit:
 - docs/MTP.md (added top-priority pointer to the new section; appended
   the kernel roadmap; left M0–M6 phases and Do-not-chase intact).
 - WORKLOG.md (this entry).
+
+## 2026-05-21 — MTP plan refresh: per-phase tracker tables
+
+Converted the M7–M11 plan in docs/MTP.md from prose bullets into trackable
+tables so projected vs. actual savings can be compared after every phase
+lands.
+
+Structure:
+- "Master scoreboard" table directly under the break-even math: 6 cost
+  components × {Phase, Baseline, Target, Actual, Δ vs baseline, Δ vs
+  target, Artifact}. Rolls up to total verifier wall, MTP/AR ceiling,
+  MTP/AR measured. Updated when each phase commits.
+- Per-phase tracker: each of M7/M8/M9/M10/M11 now has its own table with
+  rows for sub-tasks (M7.1…M7.6, M8.1…M8.5, etc.). Columns:
+  {#, Sub-task, [Variant for M7], Projected savings (ms), Status, Actual
+  savings (ms), Notes / artifact}. Last row of each is **M<phase> total**.
+- M11 tracker is different shape (operating-point sweep, not kernel work):
+  columns {#, Operating point, Projected ceiling MTP/AR, Projected
+  measured MTP/AR, Status, Actual measured MTP/AR, Artifact}. Retained
+  row criterion: ≥1.5× ceiling AND ≥1.3× measured.
+
+Granularity choice:
+- M7 split into 6 rows because each sub-step (fixture → skeleton →
+  dense_bf16 → AWQ pack8 → fused gate+up → rocprofv3 gate) is a separate
+  landable unit with its own correctness + profile gate. Roughly halves
+  the per-row touch radius vs. landing the whole kernel in one commit.
+- M8 split into 5 (fixture + 3 fusion steps + gate). The composite can
+  promote per-step because each intermediate is correct-by-construction
+  vs. the unfused fallback on the same fixture.
+- M9 only 2 rows because it's a single kernel variant; the second row is
+  the cross-B sweep gate.
+- M10 split into 4: registry route + on-device ids + GPU top-1 +
+  re-capture. Each ~1–2 ms savings stage.
+- M11 4 operating-point rows; B=3 is the default candidate, B=4/DDTree
+  only triggered conditionally on prior measurements.
+
+All projected savings sum to the master-scoreboard targets:
+- M7 total: 8–12 ms (matches scoreboard MoE row)
+- M8 total: ~3 ms (matches pre-attn row)
+- M9 total: ~2.5 ms (matches LM head row)
+- M10 total: ~5 ms (matches host overhead row)
+- Sum: ~18.5–22.5 ms → puts verifier wall at ~29.5–33.5 ms → ceiling MTP/AR
+  ~1.97–2.24× at B=3 perfect-accept (master scoreboard says 2.06–2.36×;
+  variance is the 8–12 ms range on M7 vs. point-estimates per row).
+
+Files touched: docs/MTP.md (master scoreboard + 5 phase trackers replace
+prose bullets), WORKLOG.md (this entry). No code, no benchmark artifact
+changes.
