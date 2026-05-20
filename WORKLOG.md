@@ -21078,3 +21078,33 @@ python3 scripts/qwen35_gguf_moe_replay.py \
 ```
 
 Decision: mark #45 as an accepted prototype diagnostic, not a default runtime or throughput promotion. The one-layer signal is positive (`5.274 -> 3.897 ms`, `-26.1%`), but P9.C15/#46 must determine whether this survives full-layer integration, replacement-layout residency, and P9.E2 acceptance. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c14-q4t16-selected-wmma-prototype.json`.
+
+## 2026-05-20 P9.C15 task #46: Q4T16 replay sweep rejected
+
+Swept the P9.C14 Q4T16 compact32 selected-dual WMMA consumer on real qwen35moe 512/0 routing through `scripts/qwen35_gguf_moe_replay.py --q4-tile16-wmma-layers`.
+
+Commands (local RX 7900 XTX/gfx1100, cached builds, unsafe fast-path gate enabled for kernel R&D replay only):
+
+```bash
+HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_moe_replay.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --warmup-iters 1 --replay-iters 3 --sample-groups 3 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_c15_raw_baseline_replay.json
+# raw Q4 gate+up 62.199 ms; selected-MoE total 93.138 ms
+
+HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS=1 \
+HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_moe_replay.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-length 512 --warmup-iters 1 --replay-iters 3 --sample-groups 3 \
+  --q4-tile16-wmma-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_c15_q4t16_wmma_lb1_all_layers_replay.json
+# best Q4T16 Q4 gate+up 59.395 ms; selected-MoE total 92.478 ms
+```
+
+Other Q4T16 launch-bound results: default min-blocks `2` Q4 `59.680 ms`, min-blocks `4` Q4 `59.689 ms`. Best all-layer Q4T16 is only `-4.5%` vs raw and leaves Q4 far above the `<=35-40 ms` continuation target; selected-MoE total moves only `-0.7%`. Decision: reject compact32 Q4T16 as a default/runtime integration and proceed to #47/P9.C16 alternative selected-MoE design. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c15-q4t16-replay-rejected.json`.

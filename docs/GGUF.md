@@ -1674,6 +1674,13 @@ Q4T16 gate+up `3.897 ms` with `296 MiB` transient Q4T16 gate+up buffers. This
 is diagnostic only, not a default runtime promotion; P9.C15 decides whether the
 one-layer win survives full replay/replacement-layout integration.
 
+**Status 2026-05-20 (P9.C15).** Full 512/0 replay rejected the compact32 Q4T16
+WMMA path as a default. Same-run raw Q4 selected gate+up was `62.199 ms`; best
+all-layer Q4T16 replay (launch-bound min-blocks `1`) was `59.395 ms` (`-4.5%`),
+and selected-MoE total was effectively unchanged (`93.138 -> 92.478 ms`). This
+misses the `<=35-40 ms` Q4 continuation target, so P9.C16 should evaluate a
+different selected-MoE design rather than keep tuning this layout/consumer.
+
 ### P9.4 — Dispatch reduction and small-op fusion (Track D)
 
 **Why.** With GDN and the decode-GEMV families addressed, the residual

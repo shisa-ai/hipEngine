@@ -1,0 +1,100 @@
+{
+  "schema": "p9_c15_q4t16_replay_sweep_v1",
+  "date": "2026-05-20",
+  "task": "#46 P9.C15: Integrate repacked Q4 path into replay and tune thresholds",
+  "status": "rejected_target_not_met",
+  "performance_claim": false,
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100"
+  },
+  "git": {
+    "commit": "68e299ad20cb311d8814c6bafe580ad0e0080b9d",
+    "status": "## gguf-bulk-prefill\n?? uv.lock"
+  },
+  "workload": {
+    "prompt_length": 512,
+    "warmup_iters": 1,
+    "replay_iters": 3,
+    "sample_groups": 3,
+    "bulk_prefill_attention_mode": "bulk",
+    "unsafe_fastpaths_for_r_and_d": true
+  },
+  "commands": {
+    "raw_lb2": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --warmup-iters 1 --replay-iters 3 --sample-groups 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c15_raw_baseline_replay.json",
+    "q4t16_lb2": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --warmup-iters 1 --replay-iters 3 --sample-groups 3 --q4-tile16-wmma-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c15_q4t16_wmma_all_layers_replay.json",
+    "q4t16_lb1": "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS=1 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --warmup-iters 1 --replay-iters 3 --sample-groups 3 --q4-tile16-wmma-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c15_q4t16_wmma_lb1_all_layers_replay.json",
+    "q4t16_lb4": "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS=4 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --warmup-iters 1 --replay-iters 3 --sample-groups 3 --q4-tile16-wmma-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c15_q4t16_wmma_lb4_all_layers_replay.json"
+  },
+  "runs": {
+    "raw_lb2": {
+      "json": "/tmp/p9_c15_raw_baseline_replay.json",
+      "q4_gate_up_total_ms": 62.1991644341809,
+      "selected_moe_total_ms": 93.13792494099793,
+      "first_layer_gate_up_ms": 1.7974961083382368,
+      "tile16_layers": 0,
+      "tile16_materialized_bytes_sum_across_layers": 0,
+      "tile16_materialized_gib_sum_across_layers": 0.0
+    },
+    "q4t16_lb2": {
+      "json": "/tmp/p9_c15_q4t16_wmma_all_layers_replay.json",
+      "q4_gate_up_total_ms": 59.68033349037999,
+      "selected_moe_total_ms": 92.72956653472244,
+      "first_layer_gate_up_ms": 1.3539631165460582,
+      "tile16_layers": 40,
+      "tile16_materialized_bytes_sum_across_layers": 12415139840,
+      "tile16_materialized_gib_sum_across_layers": 11.5625,
+      "q4_delta_vs_raw_ms": -2.518830943800914,
+      "q4_delta_vs_raw_pct": -4.049621834496408
+    },
+    "q4t16_lb1": {
+      "json": "/tmp/p9_c15_q4t16_wmma_lb1_all_layers_replay.json",
+      "q4_gate_up_total_ms": 59.39505456222427,
+      "selected_moe_total_ms": 92.47795884342243,
+      "first_layer_gate_up_ms": 1.3273703387110596,
+      "tile16_layers": 40,
+      "tile16_materialized_bytes_sum_across_layers": 12415139840,
+      "tile16_materialized_gib_sum_across_layers": 11.5625,
+      "q4_delta_vs_raw_ms": -2.8041098719566335,
+      "q4_delta_vs_raw_pct": -4.508275790302518
+    },
+    "q4t16_lb4": {
+      "json": "/tmp/p9_c15_q4t16_wmma_lb4_all_layers_replay.json",
+      "q4_gate_up_total_ms": 59.68853701940839,
+      "selected_moe_total_ms": 92.63121979569807,
+      "first_layer_gate_up_ms": 1.3537007746183212,
+      "tile16_layers": 40,
+      "tile16_materialized_bytes_sum_across_layers": 12415139840,
+      "tile16_materialized_gib_sum_across_layers": 11.5625,
+      "q4_delta_vs_raw_ms": -2.5106274147725074,
+      "q4_delta_vs_raw_pct": -4.036432703897896
+    }
+  },
+  "best_q4t16": {
+    "json": "/tmp/p9_c15_q4t16_wmma_lb1_all_layers_replay.json",
+    "q4_gate_up_total_ms": 59.39505456222427,
+    "selected_moe_total_ms": 92.47795884342243,
+    "first_layer_gate_up_ms": 1.3273703387110596,
+    "tile16_layers": 40,
+    "tile16_materialized_bytes_sum_across_layers": 12415139840,
+    "tile16_materialized_gib_sum_across_layers": 11.5625,
+    "q4_delta_vs_raw_ms": -2.8041098719566335,
+    "q4_delta_vs_raw_pct": -4.508275790302518
+  },
+  "target": {
+    "q4_gate_up_total_ms_required": "<=35-40 ms",
+    "selected_moe_goal": "material improvement toward #27 <=110 ms combined selected-MoE/Q8 bucket"
+  },
+  "decision": {
+    "retain_default": false,
+    "reason": "Best Q4T16 compact32 all-layer replay is 59.395 ms, only -4.5% vs raw 62.199 ms and far above the <=35-40 ms continuation target. Selected-MoE total is effectively unchanged (93.138 -> 92.478 ms). The layout reduces some first-layer/hot cases but does not remove enough K-loop/dequant/activation work across all routed layers.",
+    "next": "Proceed to P9.C16 alternative selected-MoE design rather than wire this Q4T16 compact32 prototype into default runtime or #27 acceptance."
+  },
+  "correctness_reference": {
+    "prototype_commit": "68e299a",
+    "command": "PYTHONPATH=. python3 -m pytest tests/test_gguf_q4_k_tile16_repack.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py tests/test_gguf_q4_k_selected_wmma_prefill.py -q --tb=short",
+    "result": "28 passed"
+  }
+}
