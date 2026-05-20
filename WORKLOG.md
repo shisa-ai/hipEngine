@@ -21777,3 +21777,40 @@ python3 scripts/qwen35_gguf_rocprof_summary.py \
 P9.E2 correctness gate carried forward from P9.D18 remains accepted (`KL=0`, top-1 `100%`, deterministic tails), and targeted tests remain `42 passed`.
 
 Decision: emit blocked final P9.G1 artifact `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_g1-final-acceptance-blocked.json` and keep P9 combined acceptance open/blocked on prefill. Decode acceptance is covered by P9.D18/#52/#26; #27 remains open/blocked for the compact-MoE/Q8 prefill bucket path.
+
+## 2026-05-20 P10 task #PLAN: docs/GGUF.md P10 prefill+decode optimization plan landed
+
+Opened the P10 optimization plan in `docs/GGUF.md` after the P9.G1 blocked acceptance. P10 is the focused push to make one safe-mode (T16 decode-repack + effective WMMA prefill + effective GEMV decode) artifact meet both `>=2500 tok/s` prefill and `>=120 tok/s` decode at 512/{0,128} on Qwen3.6-35B-A3B-UD-Q4_K_M, beating llama.cpp HIP (`2436/85`) and approaching PARO (`2696/116`).
+
+Plan contents:
+
+- P10.0 — current state table: T16 mode `506/98`, raw+WMMA mode `1859/62`, neither close to target.
+- P10.0a — root cause: T16 layout has GEMV decode kernels for every quant but no WMMA prefill kernel for any quant, so bulk prefill falls back to per-row decode-shape GEMV. The Q4T16 selected-dual WMMA prefill kernel already exists (`gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_*`, P9.C14) but is not wired into `_COMPACT_MOE_Q4_DUAL_KEYS`.
+- P10.0b — decode 98 → >=120 needs ~22% improvement on top of the P9.D1-D18 grind; largest residual bucket is selected Q4T16 dual GEMV.
+- P10.1 — single roadmap table with `(ID, candidate, expected prefill Δ, expected decode Δ, memory Δ, effort, status, actual Δ, evidence)` rows across four waves:
+  - Wave 1 (P10.B1-B4): wire existing Q4T16 WMMA + build Q5T16/Q6T16/Q8T16 WMMA prefill kernels.
+  - Wave 1.5 (P10.B5-B6): P9.E2 effective-fastpath gate + retained 512/{0,128} acceptance.
+  - Wave 2 (P10.C1-C5): WMMA tile sweeps, hipGraph prefill capture, compact-scheduler fusion, BF16<->F32 cast fold.
+  - Wave 3 (P10.D1-D5): fused selected gate+up+SiLU+down+combine decode launch, Q4T16 tile width, Q8T16 shared fused, 2-token replay, remaining cast folds.
+  - Wave 4 (P10.E1-E4): moonshots — INT8 activation WMMA, Q4_K LUT, rocBLAS dense GEMM, hot-expert cache. Only triggered if Wave 1-3 closes short.
+- P10.2-P10.6 — per-wave detail with parent kernel references, change scope, pass/fail criteria.
+- P10.7 — explicit non-goals: no new layouts beyond T16, no unsafe combo revival, no torch on `LLM.generate()`, no `if quant == ...` branches, no premature decode microtuning.
+- P10.8 — sequencing and per-wave performance gates.
+- Acceptance checklist for closing P10 (combined prefill+decode artifact, no torch, registry-only dispatch).
+
+Math summary:
+
+```
+Wave 1 conservative (all four T16 WMMA prefill kernels at parity with raw WMMA):
+  total kernel 1004 -> ~468 ms; wall prefill ~1094 tok/s
+
+Wave 1+2 optimistic (tile sweeps + hipGraph prefill capture + scheduler fusion + cast fold):
+  total kernel ~200-250 ms; wall prefill ~2048-2560 tok/s
+
+Decode 98 -> ~105-125 tok/s with P10.D1-D5 conservative aggregates;
+P10.D1 (fused selected gate+up+silu+down+combine) is the largest single decode lever.
+```
+
+No code changes in this entry; this is the plan/punchlist commit before P10.B1 starts.
+
+Next: claim P10.B1 task, add `("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1")` entry to `_COMPACT_MOE_Q4_DUAL_KEYS` in `hipengine/runtime/qwen35_gguf_runner.py`, add a dispatch test, then bench 512/0 + 512/128 with rocprof to confirm the Q4T16 WMMA prefill bucket replaces the Q4T16 GEMV bucket.

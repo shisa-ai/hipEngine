@@ -1980,3 +1980,438 @@ Every P9 kernel honours the project policy:
   atomically.
 - [ ] No `import torch` on the `LLM.generate()` path; no `if backend == ...`
   / `if quant == ...` branches added to runtime dispatch.
+
+## P10: Path to >2500 prefill / >120 decode (active)
+
+Date opened: 2026-05-20
+
+P9 closed the decode target (`98 tok/s` median in T16 decode-repack mode
+vs `≥95 tok/s` gate) and closed the raw-WMMA prefill arm
+(`~1859 tok/s` at 512/0, `~1506 tok/s` at 512/128). The combined P9.G1
+acceptance is still **blocked on prefill in T16 mode**, and neither current
+mode beats llama.cpp HIP (`2436/85`) or PARO (`2696/116`). P10 is the
+focused push to make one correct mode meet both targets at once.
+
+This section is the **live optimization punchlist** for that push. It mirrors
+the table format from `docs/OPTIMIZE.md` (per-candidate `Expected Δ / Actual Δ`
+rows) so we can see at a glance which levers are still on the table, which
+have landed, and which were rejected with evidence.
+
+Per-kernel detail stays in `docs/KERNELS.md`. Per-run evidence stays in
+`benchmarks/results/`, `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and
+`WORKLOG.md`. Anything that lands in this section requires:
+
+1. P9.E2 KL/top-1 gate passes with `effective_wmma_prefill=true` and/or
+   `effective_gemv_decode=true` as appropriate (not safety-disabled).
+2. `rocprofv3 --kernel-trace` shows the new kernel and confirms the old
+   bucket shrank.
+3. A retained benchmark JSON artifact in `benchmarks/results/` with exact
+   command and hardware (W7900 / gfx1100 when possible; otherwise local
+   RX 7900 XTX / gfx1100 noted explicitly).
+
+No `import torch` on the `LLM.generate()` path. No `if quant == ...` or
+`if backend == ...` branches in dispatch — every new variant enters via a
+`KernelKey` registration.
+
+### P10.0 — Where we are after P9 (post-P9.G1 blocked acceptance)
+
+Two competing peaks, **neither close to target on its own**:
+
+| Mode | Prefill 512/0 (tok/s) | Decode 512/128 (tok/s) | Correctness | 512/0 total kernel ms |
+| --- | ---: | ---: | --- | ---: |
+| T16 decode-repack (default, safe) | **506** | **98** | P9.E2 accepted (`KL 0`, top-1 `100%`) | **1004** |
+| Raw + WMMA prefill (legacy decode) | **1859** | **62** | Deterministic but drifts vs serial ref | **265** |
+| Raw + WMMA prefill + GEMV decode | safety-gated | safety-gated | P9.E2 rejected (`KL 5.99`) | n/a |
+| llama.cpp HIP UD-Q4_K_M 512/128 | 2436 | 85 | — | — |
+| llama.cpp Vulkan UD-Q4_K_M 512/128 | 1817 | 128 | — | — |
+| PARO Qwen3.5-35B-A3B w4a16 512/128 | 2696 | 116 | graph/step true | — |
+| **P10 target** | **≥2500** | **≥120** | **P9.E2 effective fastpath gate passes** | ≤205 (= 2500 tok/s) |
+
+Sources: `benchmarks/README.md` 2026-05-20 rollup,
+`benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_g1-final-acceptance-blocked.json`,
+`benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_a3-gdn-k2-chain-accepted.json`,
+`~/amd-gpu-tuning/docs/OPTIMAL.md` 2026-05-13.
+
+### P10.0a — Root cause of the prefill gap (T16 mode 512/0 bucket profile)
+
+From the P9.G1 blocked artifact:
+
+| Bucket | Kernel family | Total ms | Share | Status |
+| --- | --- | ---: | ---: | --- |
+| Q4_K selected gate+up (T16 **GEMV** at prefill rows) | `gguf_q4_k_t16_selected_dual_gemv_*` | **287.7** | 28.6% | **decode-shape kernel running at prefill rows — P10.B1** |
+| Q5_K selected down (T16 **GEMV** at prefill rows) | `gguf_q5_k_t16_selected_gemv_*` | **232.0** | 23.1% | **decode-shape kernel running at prefill rows — P10.B2** |
+| Q8_0 dense/shared (T16 **GEMV** at prefill rows) | `gguf_q8_0_t16_*_gemv_*` | **160.4** | 16.0% | **decode-shape kernel running at prefill rows — P10.B4** |
+| Other small ops (router, silu, gate combine, lane sum, lm-head, casts) | many | **183.8** | 18.3% | per-op cleanup — P10.D |
+| GDN recurrent (linear-attention) | `qwen35_gdn_prefill_recurrent_segments_k2_kernel` | 52.8 | 5.3% | already optimized (P9.A1) |
+| Full-attention prefill (10 layers) | `qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel` | 40.1 | 4.0% | already optimized |
+| Q6_K selected down (T16 GEMV) | `gguf_q6_k_t16_selected_gemv_*` | ~3 | 0.3% | small (3 layers); folds into P10.B3 |
+| **Total** | | **1004.5** | 100% | wall: 506 tok/s |
+
+**Root cause in one sentence:** the T16 (decode-repack) memory layout has
+`gemv` decode kernels for every quant but **no WMMA prefill kernel for any
+quant**. The bulk prefill runner therefore falls through `_resolve_compact_moe_wmma_kernels`
+(table lookup returns `None` for T16 quant keys) and dispatches the
+rows=1-shaped T16 GEMV per row, paying ~512× the launch overhead and missing
+WMMA throughput entirely. The Q4T16 selected-dual WMMA prefill kernel
+(`gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_*`, P9.C14) **already
+exists in tree but is not wired into `_COMPACT_MOE_Q4_DUAL_KEYS`**. Q5T16,
+Q6T16, and Q8T16 WMMA prefill kernels do not yet exist.
+
+Reference: raw-WMMA mode total kernel time at 512/0 is `265 ms` for the same
+shape and model. The raw WMMA buckets are: Q4 dual `62 ms`, Q5 down `27 ms`,
+Q6 down `2.7 ms`, Q8_0 dense `52 ms`, GDN `56 ms`, other `~65 ms`. If T16
+WMMA prefill reaches raw-WMMA parity, total kernel time falls from `1004 ms`
+to roughly `265–290 ms` (`~3.5×`), wall prefill from `506` to roughly
+`1750–1900 tok/s`. From there, additional WMMA-layout tuning and small-op
+fusion close the remaining gap to ≥2500.
+
+### P10.0b — Decode 98 → ≥120 tok/s
+
+Decode is bandwidth-bound: Q4_K_M Qwen3.5-35B-A3B active weights are
+`~1.7 GB/token`, so the W7900 `864 GB/s` peak gives `≤508 tok/s` hard ceiling
+and `≈412 tok/s` at 80% realistic peak. PARO at `116 tok/s` reaches `~28%`,
+llama.cpp Vulkan at `128 tok/s` reaches `~31%`, and we are at `98 / 412 ≈ 24%`.
+Closing to `≥120` (`≈29%`) is a `~22%` improvement on the current decode
+bucket mix.
+
+512/16-minus-512/0 rocprof deltas (P9.D18 artifact) show the remaining decode
+buckets are: selected Q4T16 dual GEMV `~85 ms`, Q8T16 dense/shared GEMV
+`~30 ms`, paged full-attention split-K GQA `~14 ms`, GDN recurrent + RMSNorm
+`~15 ms`, MoE scatter / scheduler / lane sum / combine / router / silu
+`~7 ms`. Most levers are sub-1ms-per-token launches that compound across 128
+tokens. P10 decode work concentrates there.
+
+### P10.1 — Optimization roadmap (priority order, expected vs actual)
+
+Priority is `(impact × confidence) / effort`. Wave 1 (P10.B + P10.C) is the
+big prefill closeout. Wave 2 (P10.D) is decode cleanup. Wave 3 (P10.E) is
+fusion / activation-quant moonshots that may unlock the stretch target.
+IDs are stable for `WORKLOG.md` and commit messages.
+
+| ID | Candidate | Expected prefill Δ (tok/s) | Expected decode Δ (tok/s) | Memory Δ | Effort | Status | Actual prefill | Actual decode | Evidence |
+| --- | --- | ---: | ---: | --- | --- | --- | ---: | ---: | --- |
+| **Wave 1 — unblock T16 prefill (Q4 → Q5 → Q6 → Q8)** | | | | | | | | | |
+| P10.B1 | Wire existing Q4T16 selected-dual WMMA prefill kernel into `_COMPACT_MOE_Q4_DUAL_KEYS` | **+700 to +900** (Q4 bucket `287→~60 ms`) | ~0 | 0 GiB | **XS** (one table entry + dispatch validation) | pending | | | kernel exists: `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_*`, P9.C14 artifact |
+| P10.B2 | Build Q5T16 selected-down WMMA prefill kernel + wire to `_COMPACT_MOE_DOWN_KEYS` | **+250 to +400** (Q5 bucket `232→~30 ms`) | ~0 | 0 GiB (T16 already resident) | M (port from `gguf_k_selected_prefill.hip<...,5>` consuming T16 tiles) | pending | | | parent: `gguf_k_selected_wmma_prefill_compact_kernel<...,5>`; T16 layout in `docs/GGUF_DECODE_REPACK.md` |
+| P10.B3 | Build Q6T16 selected-down WMMA prefill kernel + wire (3 layers, small) | +20 to +40 | ~0 | 0 GiB | S | pending | | | same as P10.B2 with `,6>` |
+| P10.B4 | Build Q8T16 dense WMMA prefill kernel (shape-aware tiles like P9.C3) + wire dense dispatch | **+150 to +250** (Q8 bucket `160→~55 ms`) | ~+5 | 0 GiB | M | pending | | | parent: `gguf_q8_0_prefill_wmma_kernel<...,TM,TN>` consuming T16 tiles |
+| **Wave 1.5 — acceptance gate after Wave 1** | | | | | | | | | |
+| P10.B5 | P9.E2 KL/top-1 fixture re-run with effective WMMA prefill + GEMV decode (T16 mode) | gate, not perf | gate, not perf | 0 | XS (re-run) | pending | | | gate command in P9.E2 section |
+| P10.B6 | Retained 512/0 + 512/128 acceptance with rollups | gate | gate | 0 | XS (one bench) | pending | | | `scripts/qwen35_gguf_bench.py` |
+| **Wave 2 — push prefill from ~1850 to ≥2500** | | | | | | | | | |
+| P10.C1 | Tile / `__launch_bounds__` sweep for Q4T16 dual WMMA prefill on real 512 routing | +100 to +200 | ~0 | 0 | S | pending | | | extend P9.C15 method, drive by `scripts/qwen35_gguf_rocprof_summary.py` |
+| P10.C2 | Tile sweep for Q5T16 / Q6T16 / Q8T16 WMMA prefill (per-shape decision) | +50 to +150 | ~0 | 0 | S | pending | | | mirror P9.C3/P9.C4 |
+| P10.C3 | hipGraph capture of bulk prefill chunks (one capture per (rows, layer-type)) | +100 to +300 (eliminates per-launch host latency on ~1200 dispatches/step) | ~0 | small scratch | M | research (P9.E3 covers decode; prefill capture is new) | | | parent does not graph prefill; llama.cpp HIP does graph prefill via cudaGraph clones |
+| P10.C4 | Compact scheduler launch reduction (fuse `group_count + group_prefix + wmma_tile_map` to one launch) | +20 to +60 (residual `other` bucket) | ~0 | 0 | S | rejected for decode in P9.D3; **revisit for rows>1 prefill** with new acceptance bench | | | P9.D3 WORKLOG; `qwen35_moe_group_*` kernels |
+| P10.C5 | Drop redundant BF16↔F32 casts on the prefill path (fold cast into consumer kernel where safe) | +20 to +60 | +1 to +3 | 0 | S | pending | | | mirror P9.D2 method on the prefill side; P9.D2 decode variant was rejected |
+| **Wave 3 — decode push from 98 to ≥120 tok/s** | | | | | | | | | |
+| P10.D1 | Fused Q4T16 selected dual gate+up + SiLU + Q5T16/Q6T16 down + scatter combine — single decode launch per layer | ~0 | **+8 to +15** | 0 | L (parent has analog: PARO `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`) | pending | | | builds on P9.D4 (Q4T16 SiLU fusion retained); not yet down-fused |
+| P10.D2 | Wider tile or block-launch tuning on Q4T16 selected decode (currently `compact32`); try `compact64`/`compact96` for hot experts | ~0 | +3 to +8 | 0 | S | pending | | | follows P9.D10 width-tuning method on dual_split GEMV |
+| P10.D3 | Q8T16 shared-expert gate+up+SiLU+down fused decode kernel | ~0 | +3 to +8 | 0 | M | re-attempt (P9.D11 failed on 128/64-thread variants; try a different K-tile + LDS plan) | | | parent: `w8a16_shared_gate_up_bulk_kernel` + `w8a16_shared_down_bulk_combine_kernel` |
+| P10.D4 | Decode-only Q4T16 fused-K micro-batch (write 2 tokens per launch when capture allows) | ~0 | +5 to +10 | small scratch | M | pending | | | hipGraph 2-step replay extension; needs P9.E3 graph bucket update |
+| P10.D5 | Drop `f32_to_bf16` casts already folded for `ssm_out` (P9.D14) into other narrow surfaces (router logits, lm-head) | ~0 | +1 to +3 | 0 | S | pending | | | mirror P9.D14 |
+| **Wave 4 — stretch moonshots (only if Wave 1–3 still short of target)** | | | | | | | | | |
+| P10.E1 | INT8 activation quant for Q8_0 dense path (`W8A8` WMMA INT32 accum) | +200 to +400 | ~0 | 0 | L (correctness-gated by P9.E2) | research | | | RDNA3 has `v_wmma_i32_16x16x16_iu8` at `2×` BF16 rate; deliberately deferred in P9 "not doing" list |
+| P10.E2 | Replace Q4_K dequant in K-loop with on-chip `scale/min` LUT precomputed once per workgroup | +50 to +150 | +2 to +5 | small LDS | M | research (P9.D8 d-scale shared cache regressed Q8 decode −7.6%; needs different design) | | | parent kernel R&D; do not retry without parent workspace win |
+| P10.E3 | rocBLAS / hipBLASLt for Q8_0 dense BF16 GEMM after on-the-fly dequant | +50 to +150 | ~0 | +1 GiB transient | L (adds runtime dep behind extra) | research | | | llama.cpp HIP uses rocBLAS for dense GEMM; would add `roc::rocblas` runtime link |
+| P10.E4 | Lossy MoE expert path with sticky hot-expert cache (top-N pre-decode of expert weights) | +100 to +200 | +5 to +10 | +1 to +2 GiB | L (gate on KL drift) | research | | | parent workspace evidence required first |
+
+#### Wave 1 “if everything hits the low end” math
+
+```
+current T16 mode  prefill 506 tok/s @ 1004 ms total kernel
+P10.B1 lands     ~+700                  bucket 287 →  60  (∆ = 227 ms saved)
+P10.B2 lands     ~+250                  bucket 232 →  30  (∆ = 202 ms saved)
+P10.B3 lands     ~+30                   bucket   3 →   1  (∆ =   2 ms saved)
+P10.B4 lands     ~+170                  bucket 160 →  55  (∆ = 105 ms saved)
+→ total kernel  ~ 468 ms; wall prefill ~ 512/0.468 ≈ 1094 tok/s
+```
+
+That is **below** the Wave 1 simple sum because the bottlenecks reorder once
+the big T16 GEMV buckets are killed; the floor is set by the `other 184 ms`
+bucket. Wave 2 (P10.C1–C5) attacks `other` and the WMMA tile efficiency.
+
+#### Wave 1+2 “everything hits the high end” math
+
+```
+after Wave 1 high end:  total kernel ~ 290 ms; wall prefill ~ 1766 tok/s
+P10.C1 high end:        −6 to −18 ms WMMA tile sweep on Q4T16
+P10.C2 high end:        −8 to −18 ms WMMA tile sweep on Q5/Q6/Q8T16
+P10.C3 high end:        −2 to −20 ms hipGraph prefill capture removes ~1ms
+                                       host-call latency × 1200 dispatches
+P10.C4 high end:        −8 to −20 ms compact-scheduler fusion
+P10.C5 high end:        −5 to −20 ms BF16↔F32 cast fold
+→ total kernel ~ 200–250 ms; wall prefill ~ 2048–2560 tok/s
+```
+
+That range matches the `>=2500` target only at the optimistic edge of
+Wave 1+2. Wave 4 (P10.E1 INT8 WMMA) is the documented insurance lever if
+Wave 1–2 lands at the conservative edge.
+
+#### Decode 98 → ≥120 path
+
+```
+current T16 decode 98 tok/s, ~150 ms / 128 tokens (1.17 ms/token)
+P10.D1 conservative −0.5 to −0.8 ms/token  fused selected gate+up+silu+down+combine
+P10.D2 conservative −0.10 to −0.20 ms/token  Q4T16 tile width tuning
+P10.D3 conservative −0.10 to −0.20 ms/token  Q8T16 shared fused
+P10.D4 conservative −0.05 to −0.10 ms/token  2-token graph replay
+P10.D5 conservative −0.02 to −0.05 ms/token  remaining cast fold
+→ ~ 0.40–0.60 ms savings per token ≈ ≥5 ms over 128 tokens
+→ wall decode ~ 105–125 tok/s
+```
+
+P10.D1 is the largest single decode lever and has the most parent-template
+precedent (PARO `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`).
+
+### P10.2 — P10.B1: wire existing Q4T16 WMMA prefill (XS, do first)
+
+This is the highest impact / lowest effort lever in the whole P10 plan. The
+kernel already exists, already passes its CPU-reference unit fixture
+(P9.C14), and is already registered. The only thing missing is the dispatch
+table entry so the runner finds it when weight quant keys are T16.
+
+**Change scope.**
+
+- `hipengine/runtime/qwen35_gguf_runner.py`: add a `("gguf_q4_k_t16_v1",
+  "gguf_q4_k_t16_v1")` entry to `_COMPACT_MOE_Q4_DUAL_KEYS` pointing at
+  `KernelKey("hip_gfx1100", "moe_linear", "gguf_q4_k_t16_v1",
+  "selected_dual_wmma_prefill_compact_bf16_bf16_out")`. The alias spelling
+  is already registered in
+  `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.py`.
+- Add a dispatch test in `tests/test_qwen35_gguf_dispatch.py` (or extend
+  existing) proving the WMMA prefill resolver returns a real callable when
+  weights have T16 quant keys.
+
+**Verification.**
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 \
+  --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build
+```
+
+rocprof CSV must show `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel`
+active and the Q4T16 selected GEMV bucket gone for prefill rows. Q5T16, Q6T16,
+and Q8T16 buckets still on the GEMV path until P10.B2–B4 land.
+
+**Pass / fail criteria.**
+
+- Pass: P9.E2 KL `≤ 0.05` and top-1 `≥ 90%` with effective WMMA prefill on,
+  effective GEMV decode on, decode repack on.
+- Pass: 512/0 wall prefill `≥ 800 tok/s` (conservative; the Q5/Q6/Q8 buckets
+  are still GEMV after only P10.B1).
+- Fail: any KL > 0.05 → revert, file follow-up.
+
+### P10.3 — P10.B2/B3/B4: build Q5T16 / Q6T16 / Q8T16 WMMA prefill kernels
+
+**Layout fact:** T16 tile layouts are already defined and materializers
+already emit them at load time when `HIPENGINE_GGUF_DECODE_REPACK=1`. See
+`docs/GGUF_DECODE_REPACK.md` for exact byte layouts:
+
+- Q5T16: `tiles[expert, out_tile16, k_block, 2880]` per 16-column / 256-K slab.
+- Q6T16: `tiles[expert, out_tile16, k_block, 3360]` per slab (byte-neutral vs raw).
+- Q8T16: `tiles[out_tile16, k_block32, 544]` per slab.
+
+**Kernel template.** Use the raw-WMMA precedent kernels as the structural
+starting point and swap the inner K-loop dequant for the T16 layout:
+
+- Q5T16 / Q6T16: parent =
+  `hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.hip
+  :gguf_k_selected_wmma_prefill_compact_kernel<scalar_t, K>` template,
+  specialized to `K=5` (Q5) and `K=6` (Q6). The T16 version reads from a
+  contiguous `tiles[expert, out_tile16, k_block, slab]` instead of per-row
+  raw GGUF blocks; expected to be a small win versus raw because the load
+  pattern is already coalesced.
+- Q8T16: parent =
+  `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_prefill_wmma.hip
+  :gguf_q8_0_prefill_wmma_kernel<scalar_t, out_t, TM, TN>`. The T16 version
+  takes `tiles[out_tile16, k_block32, 544]` and is dense (no expert
+  dimension). Tile sweep (P10.C2) is recommended at build time.
+
+**Acceptance per kernel.**
+
+1. Standalone CPU-reference fixture under `tests/test_gguf_q*_t16_wmma_prefill.py`.
+   Same KL `≤ 0.05` / top-1 `≥ 90%` policy.
+2. `rocprofv3 --kernel-trace` smoke verifies the new kernel symbol launches
+   under the expected name and old `gguf_q*_t16_*gemv_*` bucket drops to
+   `<= 5 ms` per layer at 512/0.
+3. After all three land, full P9.E2 E2E gate plus 512/0 + 512/128 bench in
+   one accepted artifact.
+
+### P10.4 — P10.C: Wave 2 prefill closeout (tile sweeps + hipGraph + scheduler)
+
+This wave converts the new T16 WMMA prefill kernels from “works” to “tuned.”
+P9.C method applies directly:
+
+- **P10.C1/C2:** drive the sweep with `scripts/qwen35_gguf_rocprof_summary.py`
+  (already lands kernel-time and back-calculated GB/s per kernel from a CSV).
+  Pin the chosen variant per-shape via `_variant_for_rows(...)` in
+  `hipengine/runtime/gguf_linear.py`. Default off until each accepted artifact
+  lands; explicit opt-in via the same `--use-wmma-prefill` toggle.
+- **P10.C3 (research first):** P9.E3 added a decode hipGraph bucket. The
+  open question is whether bulk-prefill rows>1 can be captured with the same
+  scratch/scheduler ABI. Risk: prefill kernel sizes vary with token count
+  and routing. Mitigation: bucket by prompt-length quanta (`[1, 512]`,
+  `[513, 1024]`, etc.) like decode does for `(active_c, context_bucket)`.
+- **P10.C4:** P9.D3 closed for decode (the decode path no longer hits the
+  three scheduler launches), but the **prefill rows>1 path still does**.
+  Three launches × 40 layers × 64 threads each is significant launch-side
+  cost on the residue bucket. Acceptance: rocprof shows one merged scheduler
+  kernel and `other` bucket drops by `≥ 10 ms`.
+- **P10.C5:** mirror P9.D2 method for prefill. The decode variant was
+  rejected (`−0.27%`), but prefill has many more BF16↔F32 dispatches in
+  the `other` bucket and the per-launch overhead amortizes differently.
+
+### P10.5 — P10.D: decode push 98 → ≥120 tok/s
+
+Decode work after the P9.D1–D18 small-op grind plateaued near
+`88–98 tok/s`. The largest remaining decode bucket is selected Q4T16 dual
+GEMV. P10.D1 is the highest-impact decode lever and has a clean parent
+analog.
+
+**P10.D1 sketch.** Today the decode chain per MoE layer/token is:
+
+```
+router (split coop, D1)
+  → group_count / prefix / scatter_gather
+    → Q4T16 selected dual GEMV (gate+up, with fused SiLU on dual output, D4)
+      → Q5T16 or Q6T16 selected GEMV (down)
+        → weighted lane scatter + shared-gate combine + residual (D5 fused)
+```
+
+PARO’s decode template `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`
+does gate+up+SiLU+down+rotation in **one launch**, removing the entire middle
+hop. For GGUF / T16 we cannot fuse rotation (no rotation in GGUF), but we can
+fuse `gate_up_silu + down + scatter_combine` if the down weight shape can be
+staged in LDS or in registers. The Q5/Q6 down per expert is
+`[2048, 512]` BF16 → `1 MiB` per expert; for 8 routed experts/token that is
+`8 MiB` LDS budget which exceeds gfx1100. Therefore the fused kernel needs to
+be a producer-consumer pipeline: one workgroup does gate+up+SiLU, the next
+block does down for that lane, all within one launch (via cooperative groups
+or a single multi-stage kernel). This is genuinely new kernel R&D; it does
+not fit on the “wire existing kernel” shape of P10.B.
+
+**P10.D3 sketch.** P9.D11 rejected shared-expert Q8T16 fused gate/up+SiLU
+at `128` and `64` thread block widths. Don't retry without one of:
+(a) a different K-tile size that fits LDS for the gate+up+SiLU intermediate,
+(b) register-resident accumulator pipeline that avoids the LDS hop, or
+(c) a parent-workspace ISA-level audit demonstrating a win first.
+
+### P10.6 — P10.E moonshots (only if Wave 1–3 stops short)
+
+These are deliberately not started until Wave 1–3 results are in. Two of
+the four (P10.E2 d-scale LUT, P10.E4 hot-expert cache) explicitly require
+parent-workspace evidence (`~/amd-gpu-tuning/`) before any hipENGINE work.
+P10.E1 (INT8 activation WMMA) needs a P9.E2-level correctness gate plan
+before touching kernels. P10.E3 (rocBLAS) adds a runtime dep and goes
+behind the existing `hipengine[torch]`-style optional extra (`hipengine[rocblas]`),
+not the hot path.
+
+### P10.7 — What we are deliberately not doing in P10
+
+- **No new memory layout beyond T16.** The T16 family covers Q4/Q5/Q6/Q8
+  selected and dense; if a kernel cannot be built on T16, it stops in P10
+  and moves to parent workspace R&D first (per P9.C17 conclusion).
+- **No revival of raw-GGUF + WMMA prefill + GEMV decode unsafe combo.** The
+  fix path is to make T16 prefill fast, not to relax the P9.E2 gate.
+- **No `import torch` on the `LLM.generate()` path.** P10.E3 rocBLAS, if it
+  lands, sits behind an optional extra and does not touch the default path.
+- **No `if quant == ...` / `if backend == ...` branches.** All new variants
+  go through `KernelKey` registry plus the existing `_variant_for_rows(...)`
+  / `_resolve_compact_moe_*` resolvers.
+- **No prefill graph capture that hides shape-dependent work.** P10.C3 must
+  preserve correctness across prompt-length buckets; ill-defined capture is
+  a regression even when wall time improves.
+- **No premature decode microtuning before Wave 1 lands.** The decode arm is
+  already at target (`≥95`) and the small-op residue lever is sub-1ms in
+  every direction; chasing P10.D before fast prefill exists wastes the
+  acceptance-gate budget.
+
+### P10.8 — Sequencing and acceptance
+
+1. **P10.B1** (one-line dispatch fix, `XS`). Bench + rocprof + KL gate. Land.
+2. **P10.B2 / B3 / B4** in parallel where staffing allows. Each lands its
+   own correctness fixture, rocprof smoke, and contributes a column to a
+   single retained 512/0 + 512/128 acceptance artifact after all four
+   ship. **Do not retain partial Wave 1 perf rows** — they confuse the
+   roadmap. Use `status=diagnostic` until Wave 1 closes.
+3. **P10.B5 + P10.B6 acceptance.** P9.E2 KL/top-1 must pass with
+   `effective_wmma_prefill=true` and `effective_gemv_decode=true`. The
+   accepted artifact replaces the current `2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d18-splitk-gqa-gate.json`
+   row in `benchmarks/README.md`.
+4. **Wave 2 (P10.C)** drives prefill to ≥2500. Tile sweeps are diagnostic
+   only until the closeout artifact lands.
+5. **Wave 3 (P10.D)** drives decode to ≥120. Each retained row updates the
+   same rollup.
+6. **Wave 4 (P10.E)** triggers only if Wave 1–3 closes short. Open a fresh
+  research task in `WORKLOG.md` first; do not let moonshots run in parallel
+  with the deterministic levers.
+
+### Performance gates
+
+| Gate | Target | Where it lives |
+| --- | --- | --- |
+| P10.B1 Q4T16 WMMA prefill dispatched | rocprof shows `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_*` on Q4 selected at 512/0 | rocprof CSV + dispatch test |
+| P10.B5 P9.E2 effective fastpath gate | `effective_wmma_prefill=true` + `effective_gemv_decode=true`, KL `≤ 0.05`, top-1 `≥ 90%` over 3 runs | `scripts/qwen35_gguf_p9_e2e_correctness.py` |
+| P10.B6 Wave 1 closeout | 512/0 ≥ 1500 tok/s and 512/128 decode ≥ 95 tok/s in one accepted artifact | `benchmarks/results/` + rollup |
+| P10.C closeout | 512/0 ≥ 2500 tok/s and 512/128 decode ≥ 95 tok/s | same |
+| P10.D closeout | 512/128 decode ≥ 120 tok/s, 512/0 prefill ≥ 2500 tok/s | same |
+| P10 final acceptance | 512/0 ≥ 2500 tok/s **and** 512/128 decode ≥ 120 tok/s in one safe-mode artifact (T16 decode-repack + effective WMMA prefill + effective GEMV decode) | `benchmarks/README.md` row plus `CHANGELOG.md` |
+
+### Correctness gates
+
+Identical to P9: KL `≤ 0.05` and top-1 `≥ 90%` vs the cpu-reference oracle for
+every new kernel, plus the full P9.E2 KL gate before promotion. Each new
+kernel ships with a CPU-reference fixture (extend
+`tests/test_gguf_q*_wmma_prefill.py` pattern) and a rocprof smoke.
+
+### Open questions (decide before each Wave lands)
+
+1. Does the Q4T16 dual WMMA kernel's `compact32` ABI work unchanged once
+   Q5T16/Q6T16/Q8T16 WMMA prefill kernels are also active? (`compact32`
+   refers to the lane-bucket compaction width; the dispatch should match.)
+2. Should Wave 2 hipGraph prefill (P10.C3) bucket by prompt-length quanta
+   `(≤512, ≤1024, ≤2048, ≤4096, ≤8192, ≤16K, ≤32K, ≥128K)` or by
+   sequence-length only? Decision lives in P9.E3 follow-up.
+3. Is the Wave 3 fused selected gate+up+down+combine kernel one launch or
+   multi-stage cooperative? Depends on whether the down weight fits in
+   register file at the chosen tile shape. Decide after P10.B2 lands and
+   the per-expert register pressure is measured.
+4. Wave 4 trigger threshold: if Wave 1+2+3 closes at
+   `512/0 ≥ 2200 tok/s` and `decode ≥ 110 tok/s`, do we open Wave 4 or
+   declare success vs llama.cpp HIP (`2436/85`)? Decide at the Wave 2
+   closeout meeting; the answer probably depends on whether PARO parity is
+   a hard requirement or a stretch.
+
+### Acceptance checklist for closing P10
+
+- [ ] **P10.B1** Q4T16 WMMA prefill wired into `_COMPACT_MOE_Q4_DUAL_KEYS`;
+  dispatch test added; rocprof confirms.
+- [ ] **P10.B2** Q5T16 selected-down WMMA prefill kernel landed + wired;
+  CPU-reference fixture + rocprof + KL gate passed.
+- [ ] **P10.B3** Q6T16 selected-down WMMA prefill kernel landed + wired.
+- [ ] **P10.B4** Q8T16 dense WMMA prefill kernel landed + wired with
+  shape-aware tiles.
+- [ ] **P10.B5** P9.E2 full 512/128×3 gate passes with
+  `effective_wmma_prefill=true` + `effective_gemv_decode=true` +
+  decode-repack on.
+- [ ] **P10.B6** 512/0 prefill `≥ 1500 tok/s` and 512/128 decode
+  `≥ 95 tok/s` in one retained artifact.
+- [ ] **P10.C closeout** 512/0 prefill `≥ 2500 tok/s` and 512/128 decode
+  `≥ 95 tok/s` in one retained artifact.
+- [ ] **P10.D closeout** 512/128 decode `≥ 120 tok/s` while keeping
+  512/0 prefill `≥ 2500 tok/s`.
+- [ ] **P10 final** `benchmarks/README.md` shows the combined safe-mode
+  row meeting both targets; `benchmarks/CHANGELOG.md` records the
+  old→new metric, % delta, and artifact for both prefill and decode
+  rows.
+- [ ] No `import torch` on the `LLM.generate()` path; no
+  `if quant == ...` / `if backend == ...` added to dispatch; T16 layout
+  family unchanged; raw-GGUF unsafe combo still gated.
