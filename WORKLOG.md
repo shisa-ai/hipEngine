@@ -21195,3 +21195,49 @@ python3 scripts/qwen35_gguf_bench.py \
 ```
 
 Decision: retain. This is correctness-neutral and larger than the prior D1/D4 launch wins, but still only a small step; #51/#52/#26 remain blocked below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d6-q8t16-pair-dispatch.json`.
+
+## 2026-05-20 P9.D7 task #28: Q8T16 qkv+gate pair dispatch retained
+
+Extended the retained D6 split-output Q8T16 dual GEMV dispatch to the linear-attention `attn_qkv+attn_gate` pair. The runtime now tries `launch_gguf_linear_pair(..., out_features_b=cfg.ssm_inner_size)` before falling back to separate `attn_qkv` and `attn_gate` launches, preserving the existing `linear_qkv` and `linear_z` scratch buffers. This reuses the existing `gguf_q8_0_t16_dual_gemv_decode_*_out` kernel; no new HIP symbol was added.
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py
+# passed
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_linear_dispatch.py \
+  tests/test_qwen35_gguf_p9_e2e_correctness.py \
+  tests/test_qwen35_gguf_fastpath_safety.py -q --tb=short
+# 45 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d7_q8t16_qkv_gate_pair_e2e.json
+# status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits
+```
+
+512/128 graph replay benchmark (same D6 settings, cached builds):
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d7_q8t16_qkv_gate_pair_512x128_bench.json
+# measured decode samples: 88.363, 87.961, 87.806 tok/s; median=87.961
+# D6 baseline median=86.502 tok/s; delta=+1.459 tok/s (+1.69%)
+# measured prefill median=500.480 tok/s; tracked peak=21.343 GiB
+```
+
+Decision: retain as a correctness-neutral #28 launch-dispatch win. It is the largest retained #28 increment so far, but #51/#52/#26 remain blocked below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d7-q8t16-qkv-gate-pair.json`.

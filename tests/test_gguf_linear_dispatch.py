@@ -541,7 +541,7 @@ def test_t16_pair_concat_fuses_q8_shared_gate_up() -> None:
 
 
 def test_t16_pair_fuses_q8_separate_outputs() -> None:
-    """Resident Q8T16 K/V and alpha/beta pairs can share one split-output launch."""
+    """Resident Q8T16 same-input pairs can share one split-output launch."""
 
     weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
     weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
@@ -555,7 +555,7 @@ def test_t16_pair_fuses_q8_separate_outputs() -> None:
     original = gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
     gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = fake_pair  # type: ignore[assignment]
     try:
-        fused = launch_gguf_linear_pair(
+        fused_equal = launch_gguf_linear_pair(
             weight_a,
             weight_b,
             x_ptr=100,
@@ -567,12 +567,27 @@ def test_t16_pair_fuses_q8_separate_outputs() -> None:
             stream=7,
             runtime="runtime-sentinel",
         )
+        fused_unequal = launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=101,
+            out_a_ptr=201,
+            out_b_ptr=301,
+            rows=1,
+            in_features=2048,
+            out_features=1536,
+            out_features_b=512,
+            stream=8,
+            runtime="runtime-sentinel",
+        )
     finally:
         gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = original  # type: ignore[assignment]
 
-    assert fused is True
+    assert fused_equal is True
+    assert fused_unequal is True
     assert pair_calls == [
-        ((100, 14, 14, 200, 300, 1, 2048, 512, 512), {"stream": 7, "runtime": "runtime-sentinel"})
+        ((100, 14, 14, 200, 300, 1, 2048, 512, 512), {"stream": 7, "runtime": "runtime-sentinel"}),
+        ((101, 14, 14, 201, 301, 1, 2048, 1536, 512), {"stream": 8, "runtime": "runtime-sentinel"}),
     ]
 
 

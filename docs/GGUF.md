@@ -1748,8 +1748,15 @@ individually; together they currently sit around ~30 ms at prefill and
   and `ssm_alpha+ssm_beta` pairs. It preserves separate scratch buffers while
   removing one Q8T16 launch per pair. P9.E2 accepted (`KL=0`, top-1 `100%`,
   deterministic tails); 512/128 graph replay moved the D4 baseline `86.025 ->
-  86.502 tok/s` (+0.55%). #51 remains below the `95 tok/s` target, so the
-  remaining gap needs deeper Q8/full-attention decode reductions.
+  86.502 tok/s` (+0.55%). #51 remains below the `95 tok/s` target.
+- **P9.D7** Extend Q8T16 pair dispatch to unequal-width full-attention
+  projections. **Status 2026-05-20:** routed `attn_qkv+attn_gate` through the
+  same split-output dual Q8T16 GEMV with `out_features_b` for the smaller gate
+  projection, preserving the existing `linear_qkv` and `linear_z` scratch
+  buffers. P9.E2 accepted (`KL=0`, top-1 `100%`, deterministic tails);
+  512/128 graph replay moved the D6 baseline `86.502 -> 87.961 tok/s`
+  (+1.69%). #51 remains below the `95 tok/s` target, so the remaining gap
+  needs deeper Q8/full-attention decode reductions.
 
 **Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
 → ~50 ms. Modest in absolute terms; visible at decode because each savings

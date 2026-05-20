@@ -1139,26 +1139,39 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        launch_gguf_linear(
+        if not launch_gguf_linear_pair(
             layer.weight("attn_qkv"),
-            scratch.norm.ptr,
-            scratch.linear_qkv.ptr,
-            rows=1,
-            in_features=self.hidden_size,
-            out_features=self.linear_qkv_width,
-            stream=stream,
-            runtime=runtime,
-        )
-        launch_gguf_linear(
             layer.weight("attn_gate"),
             scratch.norm.ptr,
+            scratch.linear_qkv.ptr,
             scratch.linear_z.ptr,
             rows=1,
             in_features=self.hidden_size,
-            out_features=cfg.ssm_inner_size,
+            out_features=self.linear_qkv_width,
+            out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
-        )
+        ):
+            launch_gguf_linear(
+                layer.weight("attn_qkv"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_z.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
         if not launch_gguf_linear_pair(
             layer.weight("ssm_alpha"),
             layer.weight("ssm_beta"),
@@ -1311,26 +1324,39 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        launch_gguf_linear(
+        if not launch_gguf_linear_pair(
             layer.weight("attn_qkv"),
-            scratch.norm.ptr,
-            scratch.linear_qkv.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=self.linear_qkv_width,
-            stream=stream,
-            runtime=runtime,
-        )
-        launch_gguf_linear(
             layer.weight("attn_gate"),
             scratch.norm.ptr,
+            scratch.linear_qkv.ptr,
             scratch.linear_z.ptr,
             rows=rows,
             in_features=self.hidden_size,
-            out_features=cfg.ssm_inner_size,
+            out_features=self.linear_qkv_width,
+            out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
-        )
+        ):
+            launch_gguf_linear(
+                layer.weight("attn_qkv"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_z.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
         if cfg.is_moe:
             # The small dense time-step projections feed the recurrent update.
             # Use the GEMV-order dense kernel even for multi-row qwen35moe prefill
