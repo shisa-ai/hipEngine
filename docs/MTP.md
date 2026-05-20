@@ -1,12 +1,19 @@
 # hipEngine MTP Native Implementation Plan
 
-> Status: shared ABI + metadata/loading scaffold landed; a local PARO+MTP-BF16
-> artifact is assembled for bring-up. A single-step native proposal smoke now
-> matches the torch-reference top-1; production E2E remains blocked on recursive
-> native proposal state/captured target-hidden wiring. This is the sister
-> document to [`DFLASH.md`](DFLASH.md). MTP must
-> reuse the shared native verifier/commit infrastructure from DFlash, not fork a
-> separate c=1 native-loop tuning lane.
+> Status (2026-05-21): shared ABI + metadata/loading scaffold landed; a local
+> PARO+MTP-BF16 artifact is assembled for bring-up. A single-step native
+> proposal smoke matches the torch-reference top-1. E2E correctness is exact at
+> B=2/3/5 on the stable quicksort prompt. **Speed is blocked at 0.87× AR (B=3,
+> chain_tloop, gfx1151)**; closing the gap to llama.cpp’s 1.5–2× wins requires
+> new HIP kernels (Tasks #45–#52, see WORKLOG.md 2026-05-19/2026-05-20).
+> This is the sister document to [`DFLASH.md`](DFLASH.md). MTP must reuse the
+> shared native verifier/commit infrastructure from DFlash, not fork a separate
+> c=1 native-loop tuning lane.
+
+> **Top priority for the next push:** batched selected-expert MoE GEMV with an
+> ids-tensor ABI (see ["Closing the gap with llama.cpp MTP"](#closing-the-gap-with-llamacpp-mtp--kernel-roadmap-2026-05-21)).
+> Expected savings ~10–20 ms of the ~45 ms verifier kernel time, which is
+> enough to clear the >14% break-even bar at B=3 perfect-accept.
 
 ## Thesis
 
@@ -456,6 +463,208 @@ A retained hipEngine MTP row must satisfy:
 If MTP does not beat AR after the shared verifier is fast, run a fresh split
 before optimizing: proposal cost may dominate, or acceptance may be insufficient
 for the measured prompt class.
+
+## Closing the gap with llama.cpp MTP — kernel roadmap (2026-05-21)
+
+With Tasks #45–#52 done, the picture is no longer “does MTP work?” but “why is
+llama.cpp MTP 1.5–2× over AR while ours is 0.87×?” This section is the
+focused plan to close that gap. It refines (not replaces) Phase M3/M4 above.
+
+### Architectural lessons from llama.cpp (`/home/lhl/llama.cpp/llama.cpp-hip`)
+
+llama.cpp MTP for Qwen3.5/3.6 has the same model boundary we already model
+([qwen35moe.cpp `graph_mtp`](../../../llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp)
+lines ~555–727) and the same draft/verify dance
+([common/speculative.cpp `common_speculative_impl_draft_mtp`](../../../llama.cpp/llama.cpp-hip/common/speculative.cpp)
+lines ~409–775). What it has that we don’t:
+
+1. **One `mul_mat_id` kernel per MoE op.** Their `ggml_cuda_mul_mat_vec_f`
+   (and `mul_mat_vec_q` for quantized weights) launches a single 3D grid
+   `(rows_in_dst, n_expert_used, n_tokens)` and reads `ids[token, slot]` inside
+   the kernel to pick which expert tile to GEMV against. There is no
+   host-side dispatch loop; all 60 expert GEMVs at B=3 collapse to **1 launch
+   per (layer, MoE op)** instead of our 60 tiny launches per pass.
+   References: `ggml/src/ggml-cuda/mmvf.cu` (kernel), `ggml/src/ggml-cuda/mmid.cu`
+   (the slow-path token-sort helper used only when `n_tokens > 8` per expert).
+   The fast path is mmvf/mmvq with the ids tensor itself — no sort, no scatter.
+2. **Fused gate+up matmul.** `gate_up_proj` is a single expert weight stack;
+   `build_moe_ffn` issues one `mul_mat_id` for gate_up, then views it as two
+   halves. We already pack `mtp.layers.0.mlp.experts.gate_up_proj` the same
+   way in `loading/mtp.py`; the runtime currently splits it back into two
+   GEMVs because dispatch doesn’t have a fused selected-expert path.
+3. **One captured graph per verifier row count.** The entire trunk forward
+   (RMSNorm → GQA → MoE → residual … ×30 layers + lm_head) compiles once
+   per `(B+1, kv_pos_bucket)` and replays as a single HIP graph each cycle.
+   We have graph capture (Task #47) but it didn’t move the needle because the
+   *kernel* time — not launch time — dominates.
+4. **MTP head is a standalone “draft model”.** llama.cpp’s
+   `convert_hf_to_gguf.py --mtp` produces a separate `mtp-*.gguf` containing
+   only the MTP block + shared head. `ctx_dft` loads it as a normal model
+   with `LLAMA_CONTEXT_TYPE_MTP` and its own KV cache; the draft loop is just
+   `llama_decode(ctx_dft, batch)` per step. This is the clean separation our
+   shared-verifier story already promises — we just need our proposer to ride
+   the same kernel registry as the target.
+5. **Backend sampling.** `llama_sampler_chain_add(… top_k(10))` runs as a ggml
+   op on-device; the host gets only the sampled id back. Our GPU-fast accept
+   (Task #48) is the equivalent on the verify side; we still do a host loop
+   to greedy-pick draft tokens. Move that to a tiny GPU top-1 + write.
+
+### Verifier break-even math (gfx1151, packed PARO+MTP-BF16)
+
+From Task #52 profiling, B=3, perfect-accept assumption:
+
+```
+T_AR_step      ~= 22 ms        # AR decode tok/s ~= 45.5
+T_verify_B3    ~= 52 ms wall   # ~45 ms kernel + ~7 ms host
+MTP/AR (B=3)   ~= 22×3 / 52 = 1.27×   # ceiling, perfect accept
+MTP/AR measured = 0.87×              # i.e. avg_accepted < 3 per cycle
+```
+
+To hit a **≥1.5×** target at B=3 the verifier must drop below
+`22×3 / 1.5 = 44 ms` wall — ~15% off today. To hit **≥2.0×** it must drop
+below `33 ms` — ~37% off today. That tells us which kernels need to land:
+
+| Cost | Now (ms) | If we land… | New (ms) | Wall-time saved |
+|---|---:|---|---:|---:|
+| MoE selected-expert GEMV (4 rows) | ~20 | batched mul_mat_id-style kernel, 3 launches/layer | ~8–12 | ~8–12 ms |
+| GDN chain t-loop (4 rows) | ~10 | unchanged (already chain_tloop) | ~10 | 0 |
+| LM head W8A16 (4 rows) | ~7.5 | row-parallel split-k kernel | ~5 | ~2.5 ms |
+| Pre-attention 90-launch chain | ~5 | fused rmsnorm+qkv+rope per layer | ~2 | ~3 ms |
+| Host-side Python overhead | ~7 | graph capture + GPU sampling tail | ~2 | ~5 ms |
+| **Total verifier wall** | **~52** | | **~28–32** | **~20–24 ms** |
+
+That lands us at MTP/AR = `22×3 / 30 ≈ 2.2×` ceiling at B=3 perfect-accept,
+with expected real-world acceptance of 60–80% → measured **1.3–1.7× AR**.
+That matches the llama.cpp range on the same workload class.
+
+### Phase M7 — batched selected-expert GEMV (HIGHEST PRIORITY)
+
+Goal: replace the 60 tiny per-pass MoE GEMV launches with O(layer) launches.
+
+ABI (registry key `("hip_gfx1151", "moe_selected_expert", quant, variant)`):
+
+```text
+moe_selected_expert_gemv(
+    A:    [n_tokens, n_embd]                 fp16/bf16,           # token rows
+    W:    [n_experts, n_out, n_embd]         bf16 | awq_q4 stack, # expert weight stack
+    ids:  [n_tokens, n_expert_used]          int32,               # selected experts
+    Y:    [n_tokens, n_expert_used, n_out]   fp16/bf16,           # per-slot output
+    bias_or_scale:  optional,
+) -> Y
+```
+
+Weighted-combine and shared-expert add stay outside the kernel; they are
+cheap pointwise ops we already have.
+
+Design notes:
+- Grid `(n_out_tiles, n_expert_used, n_tokens)`. Each block reads
+  `expert = ids[token, slot]` and indexes `W[expert, tile, :]`.
+- For BF16 dense weights (MTP proposer): the kernel is a straight
+  fp16/bf16 vec-mat reduction with a 32-thread warp per row tile. Variant
+  `"dense_bf16"`.
+- For AWQ pack8 weights (target verifier): same kernel structure, just
+  swap the inner dequant. Variant `"awq_q4_pack8"`. Reuse the dequant
+  microcode from the existing `gemv_awq_selected_*` kernels.
+- For n_tokens ≤ 8 (verifier B=1–7 and any proposer step): keep the entire
+  ids tensor in registers; no shared-memory scratch. This matches llama.cpp’s
+  `MMVF_MAX_BATCH_SIZE = 8` fast path.
+- Fused gate+up variant: weights `W` already have shape
+  `[n_experts, 2*n_ff_exp, n_embd]` for `gate_up_proj`; output `Y` becomes
+  `[n_tokens, n_expert_used, 2*n_ff_exp]` and the SwiGLU multiply runs as
+  the existing `silu(Y[:, :, :n_ff_exp]) * Y[:, :, n_ff_exp:]` pointwise.
+- Correctness gate: KL ≤ 0.05 and top-1 ≥ 0.90 vs `kernels/cpu_reference/`
+  on a 4-token / 30-layer fixture and an 8-token fixture. Compare against
+  the current AWQ-selected GEMV path on identical inputs.
+- Promote only if `rocprofv3 --kernel-trace` confirms the new kernel runs
+  in <8 ms total for B=3 / 30 layers (the gate+up variant) and replaces
+  the four `awq_*_selected_*` kernels in the trace.
+
+Plugin discipline:
+- The registry key uses the four-axis form (`backend, layer, quant, variant`).
+  Routing decision lives in `hipengine/kernels/registry.py` and
+  `hipengine/dispatch/fusion.py`, **not** in branches inside the engine or
+  model code.
+- Both `dense_bf16` and `awq_q4_pack8` variants register against the same
+  layer key `"moe_selected_expert"`, so the MTP proposer and target verifier
+  pick the same kernel family with different variant tags.
+- The unfused chain (per-expert GEMV) must remain registered as the
+  fallback; the new kernel only registers under the fused composite key.
+
+### Phase M8 — fused pre-attention sub-path (SECOND PRIORITY)
+
+Goal: collapse the ~90 launches per verifier pass for RMSNorm → QKV → RoPE
+→ q_norm/k_norm into one composite launch per layer.
+
+ABI (registry key `("hip_gfx1151", "pre_attention_fused", quant, variant)`):
+
+```text
+pre_attention_fused(
+    H_in:     [n_tokens, n_embd]    bf16,        # post-prev-residual
+    W_qkv:    AWQ-packed Q/K/V
+    W_q_norm, W_k_norm:  bf16,
+    rope_cos, rope_sin: fp16,
+    pos_ids:  int32,
+) -> Q, K, V    # already RoPE’d, q/k normalized
+```
+
+Unfused fallback: RMSNorm → QKV GEMV → split → rotate → q_norm/k_norm.
+This stays registered; the fused composite is registered as a separate
+layer key.
+
+Expected savings ~3 ms per verifier pass.
+
+### Phase M9 — parallelized LM head over verifier rows (THIRD PRIORITY)
+
+Goal: cut the 7.5 ms 4-row W8A16 lm_head projection by ~30%.
+
+- Switch from current `gemv_w8a16` chained over rows to a row-parallel
+  split-k variant that streams the 248320-row weight matrix once per pass
+  and computes all 4 rows in parallel.
+- Same ABI as today’s lm_head (just a different variant under
+  `("hip_gfx1151", "lm_head", "w8a16", "row_parallel")`).
+- Promote only if it beats the current path on B ∈ {2, 3, 4, 8}.
+
+### Phase M10 — align proposer with target dispatch
+
+Once Phase M7 lands the `dense_bf16` variant of the MoE GEMV, the native
+MTP proposer (`hipengine/speculative/mtp_native.py`) should:
+
+1. Route `mtp.layers.0.mlp.experts.gate_up_proj` through the same
+   `moe_selected_expert` registry entry (variant `dense_bf16`). This removes
+   the host-side per-expert dispatch that triggered the Task #50 blocker.
+2. Keep selected expert ids on-device throughout the proposer chain. The
+   only D2H sync per draft step is the sampled token (matches llama.cpp).
+3. Add a small GPU top-1 + write kernel so the proposer never reads `top1`
+   to host for the next draft step.
+
+No new model quant is required; the BF16 weights already work. If we later
+decide to ship a quantized MTP head, register an `awq_q4_pack8` variant the
+same way and the proposer picks it up via the variant axis (no code
+branching).
+
+### Phase M11 — fixed-depth chain bucket sweep on the fast verifier
+
+After M7 lands (the only mandatory phase for a 1.5× row), re-run the B=1/2/3
+sweep with same-session AR and decide between:
+- chain at B=3 (most likely if acceptance ≥ 0.7);
+- chain at B=2 (if M7’s savings shift the per-token-cost curve);
+- DDTree at B=4/8 only after a flat-chain row clears ≥1.3× AR.
+
+Keep the existing exact-equality gate. The benchmark rollup
+(`benchmarks/README.md` + `benchmarks/CHANGELOG.md` + JSON artifact) is the
+only path to a retained speed claim, per `AGENTS.md`.
+
+### Out-of-scope (don’t pre-build)
+
+- Cross-arch (CUDA / gfx1100) variants of the new kernels. Land on gfx1151
+  first, get a retained row, then port. Backend tree is peer-structured so
+  porting is a per-arch task.
+- Quantizing MTP weights. Not required for a 1.5× row; revisit if MoE
+  bandwidth becomes the new bottleneck after M7.
+- Tree-shaped MTP drafts. Chain at B ∈ {2,3} is enough for the first row;
+  DDTree is a separate axis covered by `docs/DFLASH.md`.
+- Long-context tuning. Get the short-prompt row first; long-context is a
+  separate validation matrix.
 
 ## Do-not-chase list
 

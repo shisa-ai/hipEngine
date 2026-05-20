@@ -20030,3 +20030,98 @@ kernel-level changes. Two high-value targets remain unattempted:
 
 All three require new HIP kernel development and validation. They are
 substantial standalone R&D tasks beyond the scope of a single quick optimization.
+
+## 2026-05-21 — MTP plan refresh: llama.cpp gap analysis & kernel roadmap
+
+Reviewed llama.cpp-hip MTP path (`/home/lhl/llama.cpp/llama.cpp-hip`) to map
+how it gets 1.5–2× over AR on Qwen3.5/3.6 MoE while ours is stuck at 0.87×
+(Task #52 outcome). Key sources:
+- `src/models/qwen35moe.cpp` lines ~555–727: `graph_mtp` (single ggml graph
+  for the MTP decoder block + MoE + lm_head, identical model boundary to
+  ours).
+- `src/models/qwen35.cpp` lines ~490–632: dense-series equivalent.
+- `common/speculative.cpp` lines ~409–775:
+  `common_speculative_impl_draft_mtp` (draft loop: ctx_dft has its own KV,
+  one `llama_decode` per draft step; verify mirrors target verify batch
+  into ctx_dft so MTP cache stays in sync).
+- `tools/server/server-context.cpp` lines ~805–870: two-context setup
+  (`ctx_tgt`, `ctx_dft`) with `LLAMA_CONTEXT_TYPE_MTP` selecting
+  `LLM_GRAPH_TYPE_DECODER_MTP`.
+- `ggml/src/ggml-cuda/mmvf.cu` + `mmvq.cu`: the single-kernel
+  `mul_mat_vec_f/q` that takes `(A, W_expert_stack, ids[], Y)` and does
+  selected-expert GEMV in one launch. Grid is
+  `(rows_in_dst, n_expert_used, n_tokens)`; `ids[token, slot]` is read
+  inside the kernel to pick the expert tile. Fast path for `n_tokens ≤ 8`
+  (MMVF_MAX_BATCH_SIZE) avoids the sort-by-expert helper entirely.
+- `ggml/src/ggml-cuda/ggml-cuda.cu` lines 2622–2670: `ggml_cuda_mul_mat_id`
+  dispatch — picks mmvf/mmvq for small batches and the mmid sort+grouped
+  path only when expert load is large.
+- `src/llama-graph.cpp` lines ~1313–1600: `build_moe_ffn` — fused gate_up
+  shared weight, `mul_mat_id` for gate_up, view-split, SwiGLU, then
+  `mul_mat_id` for down. 3 MoE-related ops per layer total in the graph.
+
+Confirmed hipfire (`reference/hipfire/`) doesn't implement MTP; it
+implements DFlash (separate draft model), so it's not directly relevant
+for the MTP kernel gap. Its `mul_mat_id`-equivalent dispatch design will
+be referenced if/when we port the new kernel.
+
+### Verifier break-even math (gfx1151)
+
+```
+T_AR_step      ~= 22 ms        # measured this morning, B=1 AR step
+T_verify_B3    ~= 52 ms wall   # ~45 ms kernel + ~7 ms host overhead
+ceiling MTP/AR = 22*3 / 52  = 1.27×   (perfect accept, B=3)
+measured MTP/AR = 0.87× (avg_accepted ~2.6 per cycle)
+
+to hit ≥1.5×: T_verify must drop below 22*3/1.5 = 44 ms (15% off)
+to hit ≥2.0×: T_verify must drop below 22*3/2.0 = 33 ms (37% off)
+```
+
+Breakdown of where ~24 ms of savings is reachable:
+
+| Cost                              | Now   | After kernel work | Savings |
+|-----------------------------------|------:|------------------:|--------:|
+| MoE selected-expert GEMV (4 rows) | ~20ms |   ~8–12ms         | ~8–12ms |
+| LM head W8A16 (4 rows)            |  ~7.5ms|  ~5ms            |  ~2.5ms |
+| Pre-attention 90-launch chain     |  ~5ms |   ~2ms            |  ~3ms   |
+| Host overhead (Python/dispatch)   |  ~7ms |   ~2ms            |  ~5ms   |
+| **Total**                         | **~52ms** | **~28–32ms**  | **~20–24ms** |
+
+That puts the perfect-accept ceiling at MTP/AR ≈ 2.2× at B=3 and a
+realistic measured row at ≈1.3–1.7× AR depending on accepted-token
+density. Matches the llama.cpp range.
+
+### Plan landed in docs/MTP.md
+
+Added section "Closing the gap with llama.cpp MTP — kernel roadmap
+(2026-05-21)" with phases M7–M11:
+- M7 (highest priority): batched selected-expert MoE GEMV kernel with
+  ids-tensor ABI, dense_bf16 + awq_q4_pack8 variants registered under
+  `(backend, "moe_selected_expert", quant, variant)`. Fused gate+up
+  matches llama.cpp's `build_moe_ffn`. CPU-reference correctness gate
+  required; rocprofv3 confirmation required.
+- M8: fused pre-attention composite (rmsnorm + qkv + rope + q/k_norm).
+- M9: row-parallel LM head split-k variant.
+- M10: route the native MTP proposer through the same registry entry
+  (variant `dense_bf16`) — kills the host-orchestrated expert dispatch
+  that triggered the Task #50 blocker without quantizing MTP weights.
+- M11: chain B=1/2/3 sweep on the fast verifier; DDTree only after a
+  flat-chain row beats AR.
+
+Architectural invariants honored:
+- Four-axis registry key (`backend, layer, quant, variant`) — both
+  dense_bf16 and awq_q4_pack8 variants live under the same `layer` key.
+- Fused composite has a registered unfused fallback.
+- No `if backend == ...` / `if quant == ...` branches; routing is via
+  the registry.
+- Torch-free runtime preserved.
+- `KVLiveSpans(span_role="verify_chain")` ABI for the new fused
+  attention path stays unchanged.
+
+No code yet — this commit is plan-only. The next logical unit is M7's
+CPU-reference fixture + the dense_bf16 kernel skeleton.
+
+Files touched in this commit:
+- docs/MTP.md (added top-priority pointer to the new section; appended
+  the kernel roadmap; left M0–M6 phases and Do-not-chase intact).
+- WORKLOG.md (this entry).
