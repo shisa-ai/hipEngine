@@ -21421,3 +21421,23 @@ Prototyped reducing `qwen35_paged_full_attn_decode_context_tensor_kernel` from 2
 ```
 
 Caveat: the first exploratory rocprof run rebuilt the attention `.so` under the profiler despite `--require-cached-build`, so I am not using its kernel trace as retained profiler evidence. The wall regression plus token drift are sufficient rejection evidence. Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-attn128.json`.
+
+## 2026-05-20 P9.H3 task #51: rejected Q4T16 selected SiLU 256-thread launch
+
+Prototyped changing `q4_k_t16_selected_dual_silu_direct_gemv_kernel` from the retained 128-thread direct-selected topology to 256 threads. The synthetic selected-GEMV decode fixtures passed while the candidate was present:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 -m pytest tests/test_gguf_t16_selected_gemv_decode.py -q --tb=short
+# 65 passed
+```
+
+Full-model 512/16 graph replay rejected it:
+
+```bash
+# /tmp/p9_d12_q4silu256_512x16_bench.json
+# D10 local 512/16 single-run decode 78.745 tok/s -> 76.365 tok/s
+# final token 38118 -> 37065 (tail changed), finite final logits true
+```
+
+Decision: reject and revert. The retained 128-thread reduction topology remains required for P9.E2 alignment unless a new oracle-backed accumulation design is introduced. Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-q4t16-silu256.json`.
