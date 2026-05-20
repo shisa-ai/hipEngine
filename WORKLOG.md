@@ -20942,3 +20942,65 @@ Scoped P9.D2 diagnostic for redundant full-attention decode casts:
   ```
 
 Decision: reject and revert the BF16-key RoPE cast-fold; avoiding the cast did not pay for the lower-throughput templated head-normalization variant. #28 remains open for other D3/D4/D5 or deeper decode reductions. Compact rejection artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d2-bf16-key-rope-rejected.json`.
+
+## 2026-05-20 P9.D4 task #28: Q4T16 decode-only SiLU fusion retained
+
+Scoped P9.D4 small-op fusion for qwen35moe GGUF decode:
+
+- Added `hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out`, a rows=1 Q4T16 selected dual gate/up GEMV variant that writes `silu(gate) * up` directly to `ffn_intermediate`.
+- The fused path round-trips both gate and up accumulators through BF16 before SiLU so it remains bitwise-aligned with the existing split `dual_gemv -> silu_mul_separate_out_bf16` contract.
+- Runtime wiring uses the fused variant only for decode (`_run_post_attention_moe_c1`). Rows>1 bulk prefill stays on the split pair+SiLU path because the local all-rows fusion trial reached only `496.370/85.909` prefill/decode tok/s (vs D1 `502.138/85.817`), so the accumulator-side exp/rounding work did not pay at prefill shapes.
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py \
+  hipengine/runtime/qwen35_gguf_runner.py && \
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_t16_selected_gemv_decode.py \
+  tests/test_qwen35_gguf_compact_moe_gemv_routing.py \
+  -q --tb=short
+# 72 passed
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_qwen35_gguf_p9_e2e_correctness.py \
+  tests/test_qwen35_gguf_fastpath_safety.py \
+  -q --tb=short
+# 9 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d4_q4t16_silu_decode_only_e2e.json
+# status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+rocprofv3 --kernel-trace -d /tmp/p9_d4_q4t16_silu_decode_only_unit_rocprof_csv -f csv -- \
+  python3 -m pytest tests/test_gguf_t16_selected_gemv_decode.py -q \
+  -k p9_d4_q4_t16_direct_dual_silu_matches_split_kernel_bits --tb=short
+# observed q4_k_t16_selected_dual_silu_direct_gemv_kernel<unsigned short>, End-Start=24919 ns
+```
+
+512/128 graph replay benchmark (W7900/gfx1100 target, cached builds, same command as retained D1/H3 runs):
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d4_q4t16_silu_decode_only_512x128_bench.json
+# measured decode samples: 85.987, 86.025, 86.041 tok/s; median=86.025 tok/s
+# P9.D1 baseline median=85.817 tok/s; delta=+0.208 tok/s (+0.24%)
+# measured prefill samples: 501.107, 500.509, 502.643 tok/s; median=501.107 tok/s
+# tracked peak median=21.343 GiB
+```
+
+Decision: retain the decode-only Q4T16 SiLU fusion because it is correctness-neutral and the D1→D4 decode samples move above the D1 range. It is still only a small launch-count win, so #51/#52/#26 remain blocked (`86.025 < 95 tok/s`). Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d4-q4t16-silu-decode.json`.

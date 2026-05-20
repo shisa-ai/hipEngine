@@ -17,6 +17,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out,
+    gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
@@ -248,6 +249,40 @@ def _run_direct_dual(fn, x_dev, selected, ta, tb, out_features, out_dtype, libra
             free(buf)
 
 
+def _run_direct_dual_silu(fn, x_dev, selected, ta, tb, out_features, out_dtype, library) -> np.ndarray:
+    rows = int(selected.size)
+    in_features = x_dev.shape[1]
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    sel_buf = malloc(selected.nbytes)
+    copy_host_to_device(sel_buf, host_array_ptr(selected), selected.nbytes)
+    ta_buf = malloc(ta.nbytes)
+    copy_host_to_device(ta_buf, host_array_ptr(ta), ta.nbytes)
+    tb_buf = malloc(tb.nbytes)
+    copy_host_to_device(tb_buf, host_array_ptr(tb), tb.nbytes)
+    out_arr = np.zeros((rows, out_features), dtype=out_dtype)
+    out_buf = malloc(out_arr.nbytes)
+    try:
+        fn(
+            x_buf.ptr,
+            sel_buf.ptr,
+            ta_buf.ptr,
+            tb_buf.ptr,
+            out_buf.ptr,
+            x_dev.shape[0],
+            rows,
+            ta.shape[0],
+            in_features,
+            out_features,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buf in (x_buf, sel_buf, ta_buf, tb_buf, out_buf):
+            free(buf)
+
+
 def _run_direct_single(fn, x_dev, selected, tiles, out_features, out_dtype, library) -> np.ndarray:
     rows = int(selected.size)
     in_features = x_dev.shape[1]
@@ -337,6 +372,7 @@ def test_p9_h3d_registry_keys_resolve() -> None:
             "selected_dual_t16_gemv_decode_compact_fp16_fp16_out",
             "selected_dual_t16_gemv_decode_bf16_bf16_out",
             "selected_dual_t16_gemv_decode_fp16_fp16_out",
+            "selected_dual_t16_silu_gemv_decode_bf16_bf16_out",
         ),
         "gguf_q5_k_t16_v1": (
             "selected_t16_gemv_decode_compact_bf16_bf16_out",
@@ -370,6 +406,8 @@ def test_p9_h3d_wrappers_validate_args() -> None:
         gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out(0, 0, 0, 0, 1, 256, 8, 1)
     with pytest.raises(ValueError, match="out_features_b must be a multiple of 16"):
         gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out(0, 0, 0, 0, 0, 1, 256, 16, 8, 1)
+    with pytest.raises(ValueError, match="rows must be divisible by x_rows"):
+        gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(0, 0, 0, 0, 0, 3, 8, 1, 256, 16)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
@@ -441,6 +479,49 @@ def test_p9_h3d_q4_t16_direct_dual_bf16_matches_cpu_oracle(t16_selected_library)
     expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
     actual = np.concatenate([_bf16_u16_to_f32(actual_a), _bf16_u16_to_f32(actual_b)], axis=1)
     np.testing.assert_allclose(actual, expected_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_p9_d4_q4_t16_direct_dual_silu_matches_split_kernel_bits(t16_selected_library) -> None:
+    x_rows, top_k = 2, 3
+    rows = x_rows * top_k
+    selected = np.array([2, 0, 1, 1, 2, 0], dtype=np.int64)
+    in_features, out_features = 512, 256
+    num_experts = 3
+    rng = np.random.default_rng(20260520)
+    qa = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=31)
+    qb = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=37)
+    ta = repack_gguf_q4_k_tile16(qa).tiles
+    tb = repack_gguf_q4_k_tile16(qb).tiles
+    x = rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    gate_bits, up_bits = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    fused_bits = _run_direct_dual_silu(
+        gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    gate = _bf16_u16_to_f32(gate_bits)
+    up = _bf16_u16_to_f32(up_bits)
+    with np.errstate(over="ignore"):
+        expected_bits = _f32_to_bf16_u16((gate / (1.0 + np.exp(-gate))) * up)
+    np.testing.assert_array_equal(fused_bits, expected_bits)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

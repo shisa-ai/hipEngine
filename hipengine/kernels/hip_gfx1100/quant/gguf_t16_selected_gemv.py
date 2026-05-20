@@ -22,6 +22,7 @@ _OUTPUT_NAME = "gguf_t16_selected_gemv.so"
 
 _Q4_DUAL_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out"
 _Q4_DUAL_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out"
+_Q4_DUAL_SILU_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out"
 _Q5_SINGLE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out"
 _Q5_SINGLE_DIRECT_FP16 = "hipengine_gguf_q5_k_t16_selected_gemv_fp16_fp16_out"
 _Q6_SINGLE_DIRECT_BF16 = "hipengine_gguf_q6_k_t16_selected_gemv_bf16_bf16_out"
@@ -142,6 +143,42 @@ def gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out(
         tiles_b_ptr,
         out_a_ptr,
         out_b_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 selected Q4T16 dual GEMV fused with split-kernel-equivalent SiLU."""
+
+    _launch_dual_silu_direct(
+        _Q4_DUAL_SILU_DIRECT_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
         x_rows,
         rows,
         num_experts,
@@ -658,6 +695,62 @@ def _launch_dual_direct(
         runtime.check(int(err))
 
 
+def _launch_dual_silu_direct(
+    symbol: str,
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_direct_common(x_rows, rows, in_features, num_experts)
+    if out_features <= 0:
+        raise ValueError("out_features must be positive")
+    if out_features % _T16_COLS != 0:
+        raise ValueError("out_features must be a multiple of 16 (T16 tile)")
+    library = library or build_gguf_t16_selected_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(tiles_a_ptr),
+        ctypes.c_void_p(tiles_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(x_rows),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch_single_direct(
     symbol: str,
     x_ptr: int,
@@ -756,6 +849,10 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         (
             "selected_dual_t16_gemv_decode_fp16_fp16_out",
             gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out,
+        ),
+        (
+            "selected_dual_t16_silu_gemv_decode_bf16_bf16_out",
+            gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
         ),
     ):
         register(

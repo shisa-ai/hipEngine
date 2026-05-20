@@ -97,6 +97,11 @@ __device__ inline uint16_t float_to_scalar<uint16_t>(float v) {
   return float_to_bf16_bits(v);
 }
 
+template <typename scalar_t>
+__device__ inline float round_trip_scalar_to_float(float v) {
+  return scalar_to_float<scalar_t>(float_to_scalar<scalar_t>(v));
+}
+
 #define GGUF_T16_WAVE_REDUCE(acc) \
   do {                            \
     acc += __shfl_down(acc, 16);  \
@@ -416,6 +421,97 @@ __global__ __launch_bounds__(256, 2) void q4_k_t16_selected_dual_direct_gemv_ker
   }
 }
 
+template <typename scalar_t>
+__global__ __launch_bounds__(256, 2) void q4_k_t16_selected_dual_silu_direct_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    scalar_t* __restrict__ out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  const int64_t out_tile = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int64_t lanes_per_x_row = rows / x_rows;
+  const int64_t x_row_idx = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  const scalar_t* __restrict__ x_row = x + x_row_idx * in_features;
+
+  float acc_a[T16_COLS];
+  float acc_b[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    acc_a[col] = 0.0f;
+    acc_b[col] = 0.0f;
+  }
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile_a = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+        tiles_a, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    const uint8_t* __restrict__ tile_b = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+        tiles_b, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    const int64_t k_base = blk * QK_K;
+    for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
+      const float xv = scalar_to_float<scalar_t>(x_row[k_base + k_in_block]);
+#pragma unroll
+      for (int col = 0; col < T16_COLS; ++col) {
+        const float wv_a = t16_q4_weight(tile_a, k_in_block, col);
+        const float wv_b = t16_q4_weight(tile_b, k_in_block, col);
+        acc_a[col] += xv * wv_a;
+        acc_b[col] += xv * wv_b;
+      }
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc_a[col]);
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc_b[col]);
+
+  __shared__ float xchg_a[8 * T16_COLS];
+  __shared__ float xchg_b[8 * T16_COLS];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      xchg_a[sub_id * T16_COLS + col] = acc_a[col];
+      xchg_b[sub_id * T16_COLS + col] = acc_b[col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out_row = out + row * out_features + out_tile * T16_COLS;
+    const int sub_groups = blockDim.x >> 5;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total_a = 0.0f;
+      float total_b = 0.0f;
+      for (int g = 0; g < sub_groups; ++g) {
+        total_a += xchg_a[g * T16_COLS + col];
+        total_b += xchg_b[g * T16_COLS + col];
+      }
+      // Preserve the split-kernel reduction/rounding contract: the legacy
+      // direct path writes BF16 gate/up first, then the SiLU kernel reads those
+      // rounded values.  Round-trip through scalar_t before applying SiLU so
+      // P9.E2 full-model logits remain aligned with the existing reference.
+      const float gate = round_trip_scalar_to_float<scalar_t>(total_a);
+      const float up = round_trip_scalar_to_float<scalar_t>(total_b);
+      const float sig = 1.0f / (1.0f + expf(-gate));
+      out_row[col] = float_to_scalar<scalar_t>(gate * sig * up);
+    }
+  }
+}
+
 template <typename scalar_t, int qtype>
 __global__ __launch_bounds__(128, 4) void qk_t16_selected_direct_gemv_kernel(
     const scalar_t* __restrict__ x,
@@ -590,6 +686,34 @@ int launch_q4_dual_direct(const void* x,
   return hipGetLastError();
 }
 
+template <typename scalar_t>
+int launch_q4_dual_silu_direct(const void* x,
+                                const void* selected,
+                                const void* tiles_a,
+                                const void* tiles_b,
+                                void* out,
+                                int64_t x_rows,
+                                int64_t rows,
+                                int64_t in_features,
+                                int64_t out_features,
+                                int64_t num_experts,
+                                hipStream_t stream) {
+  if (!x || !selected || !tiles_a || !tiles_b || !out || x_rows <= 0 || rows <= 0 ||
+      rows % x_rows != 0 || in_features <= 0 || out_features <= 0 || num_experts <= 0 ||
+      (in_features % QK_K) != 0 || (out_features % T16_COLS) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS), static_cast<unsigned int>(rows));
+  hipLaunchKernelGGL((q4_k_t16_selected_dual_silu_direct_gemv_kernel<scalar_t>), grid, block, 0, stream,
+                     reinterpret_cast<const scalar_t*>(x), reinterpret_cast<const int64_t*>(selected),
+                     reinterpret_cast<const uint8_t*>(tiles_a), reinterpret_cast<const uint8_t*>(tiles_b),
+                     reinterpret_cast<scalar_t*>(out), x_rows, rows, in_features, out_features,
+                     num_experts);
+  return static_cast<int>(hipGetLastError());
+}
+
+
 template <typename scalar_t, int qtype>
 int launch_qk_direct(const void* x,
                      const void* selected,
@@ -634,6 +758,15 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out(
   return launch_q4_dual_direct<half_t>(x, selected, tiles_a, tiles_b, out_a, out_b,
                                        x_rows, rows, in_features, out_features,
                                        num_experts, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles_a, const void* tiles_b,
+    void* out, int64_t x_rows, int64_t rows, int64_t num_experts,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q4_dual_silu_direct<uint16_t>(x, selected, tiles_a, tiles_b, out,
+                                               x_rows, rows, in_features,
+                                               out_features, num_experts, stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out(

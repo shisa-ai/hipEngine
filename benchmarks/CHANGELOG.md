@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-05-20
 
+- [small-op retained blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #28 P9.D4 Q4T16 decode-only SiLU fusion: graph 512/128 decode `85.817 -> 86.025 tok/s` (`+0.24%`) by fusing split-kernel-equivalent BF16 SiLU*up into the rows=1 Q4T16 selected gate/up GEMV while keeping rows>1 prefill on the split pair+SiLU path; P9.E2 gate passes (`KL 0`, top-1 `100%`, deterministic tails) and tracked peak remains `21.343 GiB`, but target still blocked (`<95 tok/s`); `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d4-q4t16-silu-decode.json`.
+
 - [small-op retained blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #28 P9.D1 split-router cooperative decode: graph 512/128 decode `85.728 -> 85.817 tok/s` (`+0.10%`) by replacing c=1 expert-router logits + shared-gate logits + top-k select with one `qwen35_router_topk_split_shared_coop_out_kernel` launch; P9.E2 gate passes (`KL 0`, top-1 `100%`, deterministic tails) and tracked peak remains `21.343 GiB`, but target still blocked (`<95 tok/s`); `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d1-router-split-coop.json`.
 
 ## 2026-05-19

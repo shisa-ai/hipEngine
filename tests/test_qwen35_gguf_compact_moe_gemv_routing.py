@@ -136,8 +136,8 @@ def test_t16_weights_route_direct_selected_tiles_allocations(monkeypatch: pytest
     monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
     monkeypatch.setattr(
         qgr,
-        "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
-        lambda *args, **kwargs: calls.append(("t16_pair", (args[2], args[3], args[4], args[5], args[6:11]))),
+        "gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("t16_pair_silu", (args[2], args[3], args[4], args[5:10]))),
     )
     monkeypatch.setattr(
         qgr,
@@ -148,7 +148,7 @@ def test_t16_weights_route_direct_selected_tiles_allocations(monkeypatch: pytest
 
     runner._run_post_attention_moe_c1(0, out_ptr=9000, scratch=scratch, stream=7)
 
-    assert ("t16_pair", (1012, 1013, 150, 150 + 2 * 256 * 2, (1, 2, 4, 256, 256))) in calls
+    assert ("t16_pair_silu", (1012, 1013, 160, (1, 2, 4, 256, 256))) in calls
     assert ("t16_down", (1014, 180, (2, 2, 4, 256, 256))) in calls
     assert ("weighted_shared", None) in calls
 

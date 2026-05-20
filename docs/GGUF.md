@@ -1700,7 +1700,14 @@ individually; together they currently sit around ~30 ms at prefill and
 - **P9.D4** Decide where SiLU+Mul lives. Today qwen35moe uses
   `silu_mul_dual_out_bf16` after the dual gate+up WMMA. PARO fuses the SiLU
   into the gate-side accumulator and emits only `mul` over half operands.
-  Try the fused PARO style; gate on KL + top-1.
+  **Status 2026-05-20:** retained the decode-only Q4T16 selected-dual
+  GEMV+SiLU variant for rows=1. It round-trips gate/up accumulators through
+  BF16 before SiLU to match the existing split-kernel contract; P9.E2 accepted
+  (`KL=0`, top-1 `100%`, deterministic tails). Rows>1 bulk prefill remains on
+  the split gate/up + SiLU launch because the same accumulator-side fusion did
+  not pay for the extra exp/rounding work at prefill shapes. 512/128 graph
+  replay moved the retained D1 baseline `85.817 -> 86.025 tok/s` (+0.24%);
+  #51 remains below the `95 tok/s` target.
 - **P9.D5** Decide where the gate-combine-residual lives. Today qwen35moe
   emits two small kernels (`weighted_lanes_sum_out` then
   `shared_gate_combine_residual_batch_out`). PARO fuses these into one. Try
@@ -1815,9 +1822,9 @@ Every P9 kernel honours the project policy:
   `_variant_for_rows(rows=1)`? The latter avoids a new layer key; the former
   isolates the c=1 contract from the prefill rows>1 path. Decision tracked
   in P9.B6.
-3. Where does the fused PARO SiLU live for GGUF (P9.D4)? Inside the new
-  decode GEMV (cheap), or in a separate compact `silu_mul_dual_out` kernel
-  (current state). Decide once P9.B1 has a working baseline.
+3. Where does the fused PARO SiLU live for GGUF (P9.D4)? Resolved for the
+   current Q4T16 decode path: rows=1 uses a decode GEMV+SiLU variant, while
+   rows>1 bulk prefill keeps the separate compact SiLU kernel.
 4. Should P9 expand to dense Qwen3.5 (qwen35) as well, or stay scoped to
   qwen35moe? Dense Qwen3.5 currently uses the GDN k2 path already, and the
   P8 dense Q4_K WMMA path is blocked by materialization. P9 stays scoped to
