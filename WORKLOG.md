@@ -21871,3 +21871,39 @@ Why bench passes but smoke fails: the qwen35moe bench script checks finite logit
 | P10.X1.d | Land a correctness fix and re-run smoke. Only after this can Wave 1 be retained. | |
 
 Until P10.X1 lands, Wave 1 kernel throughput numbers (1900 prefill / 98 decode) are diagnostic-only and cannot promote to `benchmarks/README.md` / `CHANGELOG.md`. The kernel-level CPU-oracle correctness gates pass per AGENTS.md, so the kernels themselves are not the blocker; the upstream T16 dispatch path is.
+
+## 2026-05-20 P10.B5 — P9.E2 KL gate re-run at Wave-1 HEAD (6362fda): REJECTED, blocker confirmed as P10.X1
+
+Ran the formal P9.E2 KL gate command from `tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json` against HEAD (`6362fda`) on Qwen3.6-35B-A3B-UD-Q4_K_M, W7900 / gfx1100:
+
+```
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-b5-p9-e2e-gate-blocked.json
+```
+
+Result: **REJECTED.** All three candidate repeats had `effective_use_wmma_prefill=True`, `effective_use_gemv_decode=True`, no safety-gate veto (`reason=None`) — i.e. the Wave 1 fastpath chain was fully active as designed.
+
+| Metric | Threshold | Actual | Δ vs threshold |
+| --- | ---: | ---: | --- |
+| worst KL mean | ≤ 0.05 | 5.611 | 112× over |
+| worst KL max | n/a | 23.583 | — |
+| worst top-1 agreement | ≥ 0.90 | 0.047 | ~5% match (essentially random) |
+| candidate deterministic tail | required | **False** | repeat 0 differs from repeats 1/2 |
+
+Per-repeat: `repeat 0 kl_mean=5.374 top1=0.101`, `repeat 1/2 kl_mean=5.611 top1=0.047`. First top-1 mismatch is at row 0 (prefill sample), so the divergence starts at prefill, not decode.
+
+This re-confirms the P10.X1 bisection from the 2026-05-20 P10 Wave 1 entry: the regression is in the T16 decode-repack path itself, not in the new Wave 1 WMMA prefill kernels:
+
+- Pristine baseline (`REPACK=0, WMMA=0, GEMV=0`) — coherent text, gate passes (KL=0).
+- raw + WMMA prefill only (`REPACK=0, WMMA=1, GEMV=0, ALLOW_UNSAFE=1`) — coherent text, KL drifts but model functional.
+- T16 only (`REPACK=1, WMMA=0, GEMV=0`) — **incoherent text** on the smoke fixture; reproducible at the P9.G1 retained commit `7ffb4e9`.
+- T16 + Wave 1 fastpath (`REPACK=1, WMMA=1, GEMV=1`) — KL=5.6, non-deterministic.
+
+The non-determinism in repeat 0 vs 1/2 is a separate symptom (likely a Q8T16 dual-shape uninit / race surface on the first dispatch), but it is downstream of the same T16 reader bug — the model is already wrong on the deterministic repeats too.
+
+**Action: P10.B5 stays BLOCKED on P10.X1.** Cannot retain a benchmark row from Wave 1 throughput until the T16 decode-repack path is fixed (P10.X1.a–d in `docs/GGUF.md`). The Wave 1 kernels themselves pass the per-kernel CPU-oracle gate (97 fixtures); the failure surface is the production-shape T16 GEMV decode reader path, not Wave 1 WMMA prefill.
+
+Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-b5-p9-e2e-gate-blocked.json`.
