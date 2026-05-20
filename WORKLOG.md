@@ -21138,3 +21138,60 @@ Decision: no in-repo selected-MoE alternative is selected for #48. Padding/tails
 Closed the final #27 gate decision after P9.C15/P9.C16. No runtime Q4 selected-MoE redesign was wired: compact32 Q4T16 only moved all-layer Q4 `62.199 -> 59.395 ms`, compact tile-list/no-padding models to `54.775 ms`, and wider-tile proxies measured `64x16=61.868 ms`, `64x32=91.831 ms`. None can close the P9.C1 `<=110 ms` combined bucket target.
 
 Carried forward the retained P9.C11 final gate for #27: adjacent correctness bundle passed (`143` tests), 512/128 logits were finite/deterministic (token `220`), but the 512/0 combined Q4/Q5/Q6/Q8 bucket remains `140.110 ms` vs `<=110 ms` (`gap 30.110 ms`). Decision: #27 stays open/blocked; further Q4 selected-MoE work should move to parent kernel R&D or a new design task before hipENGINE dispatch changes. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c17-no-q4-redesign-blocked.json`.
+
+## 2026-05-20 P9.D6 task #28: Q8T16 split-output pair dispatch retained
+
+Scoped an opportunistic #28 dispatch reduction for the largest remaining H3 decode bucket (`dense_q8_0_t16_gemv_decode_p9`). Added a split-output Q8T16 dual GEMV (`gguf_q8_0_t16_dual_gemv_decode_{bf16,fp16}_{bf16,fp16}_out`) so same-input projection pairs can share one launch without changing existing separate scratch buffers. Runtime routing now pairs full-attention `attn_k+attn_v` and linear-attention `ssm_alpha+ssm_beta` when both weights are resident Q8T16.
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py \
+  hipengine/runtime/gguf_linear.py hipengine/runtime/qwen35_gguf_runner.py \
+  tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py
+# passed
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_linear_dispatch.py tests/test_gguf_q8_0_t16_gemv_decode.py \
+  -q --tb=short
+# 53 passed
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_qwen35_gguf_p9_e2e_correctness.py tests/test_qwen35_gguf_fastpath_safety.py \
+  -q --tb=short
+# 9 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/p9_d6_q8t16_pair_e2e.json
+# status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits
+
+rocprofv3 --kernel-trace -d /tmp/p9_d6_q8t16_dual_split_unit_rocprof_csv -f csv -- \
+  python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q \
+  -k 'dual_split_bf16_bf16_matches_cpu_oracle and 2048' --tb=short
+# q8_0_t16_dual_split_gemv_kernel<unsigned short,unsigned short>, DurationNs=13999, VGPR=56, SGPR=128
+```
+
+512/128 graph replay benchmark (same H3/D4 settings, cached builds):
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d6_q8t16_pair_512x128_bench.json
+# measured decode samples: 86.534, 86.456, 86.502 tok/s; median=86.502
+# D4 baseline median=86.025 tok/s; delta=+0.476 tok/s (+0.55%)
+# measured prefill median=501.384 tok/s; tracked peak=21.343 GiB
+```
+
+Decision: retain. This is correctness-neutral and larger than the prior D1/D4 launch wins, but still only a small step; #51/#52/#26 remain blocked below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d6-q8t16-pair-dispatch.json`.

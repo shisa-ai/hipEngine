@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-05-20
 
+- [small-op retained blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #28 P9.D6 Q8T16 pair dispatch: graph 512/128 decode `86.025 -> 86.502 tok/s` (`+0.55%`) by routing same-input Q8T16 K/V and SSM alpha/beta pairs through a new split-output dual GEMV; P9.E2 gate passes (`KL 0`, top-1 `100%`, deterministic tails), tracked peak remains `21.343 GiB`, but target still blocked (`<95 tok/s`); `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d6-q8t16-pair-dispatch.json`.
+
 - [final blocked] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #48 P9.C17 final #27 gate: no winning Q4 redesign exists to wire after Q4T16 replay `62.199 -> 59.395 ms` (`-4.5%`), modeled no-padding lower bound `54.775 ms`, and measured wider-tile proxies `64x16=61.868 ms` / `64x32=91.831 ms`; carry forward #27 combined bucket `140.110 ms` vs `<=110 ms` target and leave #27 open/blocked; `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c17-no-q4-redesign-blocked.json`.
 
 - [diagnostic rejected] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #47 P9.C16 selected-MoE alternatives: raw Q4 `62.199 ms -> 54.775 ms` modeled no-padding lower bound (still above `<=35-40 ms` target), measured `64x16` `61.868 ms` and `64x32` `91.831 ms`; reject compact tile-list/wider-column alternatives and select no in-repo Q4 redesign for #48; `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json`.

@@ -13,6 +13,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     build_gguf_q8_0_t16_gemv,
     gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out,
+    gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
+    gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out,
     gguf_q8_0_t16_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_gemv_decode_fp16_fp16_out,
     plan_gguf_q8_0_t16_gemv_build,
@@ -91,6 +93,38 @@ def _run_dual(fn, x, tiles_a, tiles_b, rows, in_features, oa, ob, out_dtype, lib
             free(b)
 
 
+def _run_dual_split(fn, x, tiles_a, tiles_b, rows, in_features, oa, ob, out_dtype, library):
+    x_buf = malloc(x.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
+    a_buf = malloc(tiles_a.nbytes)
+    copy_host_to_device(a_buf, host_array_ptr(tiles_a), tiles_a.nbytes)
+    b_buf = malloc(tiles_b.nbytes)
+    copy_host_to_device(b_buf, host_array_ptr(tiles_b), tiles_b.nbytes)
+    out_a = np.zeros((rows, oa), dtype=out_dtype)
+    out_b = np.zeros((rows, ob), dtype=out_dtype)
+    a_out_buf = malloc(out_a.nbytes)
+    b_out_buf = malloc(out_b.nbytes)
+    try:
+        fn(
+            x_buf.ptr,
+            a_buf.ptr,
+            b_buf.ptr,
+            a_out_buf.ptr,
+            b_out_buf.ptr,
+            rows,
+            in_features,
+            oa,
+            ob,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out_a), a_out_buf, out_a.nbytes)
+        copy_device_to_host(host_array_ptr(out_b), b_out_buf, out_b.nbytes)
+        return out_a, out_b
+    finally:
+        for b in (x_buf, a_buf, b_buf, a_out_buf, b_out_buf):
+            free(b)
+
+
 _TOL = dict(atol=5.0e-4, rtol=5.0e-3)
 
 
@@ -101,6 +135,8 @@ def test_p9_h3c_registry_keys_resolve() -> None:
         "t16_gemv_decode_fp16_fp16_out",
         "t16_dual_gate_up_gemv_decode_bf16_bf16_out",
         "t16_dual_gate_up_gemv_decode_fp16_fp16_out",
+        "t16_dual_gemv_decode_bf16_bf16_out",
+        "t16_dual_gemv_decode_fp16_fp16_out",
     ):
         assert resolve(
             backend="hip_gfx1100",
@@ -125,6 +161,8 @@ def test_p9_h3c_wrappers_validate_args() -> None:
         gguf_q8_0_t16_gemv_decode_bf16_bf16_out(0, 0, 0, 0, 32, 16)
     with pytest.raises(ValueError, match="multiples of 16"):
         gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out(0, 0, 0, 0, 1, 32, 16, 8)
+    with pytest.raises(ValueError, match="multiples of 16"):
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(0, 0, 0, 0, 0, 1, 32, 16, 8)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
@@ -229,6 +267,77 @@ def test_p9_h3c_dual_bf16_bf16_matches_cpu_oracle(
     expected[:, out_features_a:] = gguf_quant_gemv(x_ref, qb, GGMLQuantizationType.Q8_0)
     expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
     np.testing.assert_allclose(_bf16_u16_to_f32(actual), expected_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "rows,in_features,out_features_a,out_features_b",
+    [
+        (1, 256, 16, 32),
+        (1, 2048, 512, 512),
+        (3, 512, 64, 128),
+    ],
+)
+def test_p9_d6_dual_split_bf16_bf16_matches_cpu_oracle(
+    rows, in_features, out_features_a, out_features_b, q8_t16_library,
+) -> None:
+    rng = np.random.default_rng(rows * 29 + in_features + out_features_a + out_features_b)
+    qa = make_q8_0_weight(out_features_a, in_features)
+    qb = make_q8_0_weight(out_features_b, in_features)
+    ta = repack_gguf_q8_0_tile16(qa).tiles
+    tb = repack_gguf_q8_0_tile16(qb).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+    x_ref = _bf16_u16_to_f32(x_bf16)
+
+    actual_a, actual_b = _run_dual_split(
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        ta,
+        tb,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        np.uint16,
+        q8_t16_library,
+    )
+
+    expected_a = gguf_quant_gemv(x_ref, qa, GGMLQuantizationType.Q8_0)
+    expected_b = gguf_quant_gemv(x_ref, qb, GGMLQuantizationType.Q8_0)
+    expected_a_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected_a))
+    expected_b_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected_b))
+    np.testing.assert_allclose(_bf16_u16_to_f32(actual_a), expected_a_bf16, **_TOL)
+    np.testing.assert_allclose(_bf16_u16_to_f32(actual_b), expected_b_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_p9_d6_dual_split_fp16_fp16_matches_cpu_oracle(q8_t16_library) -> None:
+    rows, in_features, out_features_a, out_features_b = 2, 512, 64, 128
+    rng = np.random.default_rng(1029)
+    qa = make_q8_0_weight(out_features_a, in_features)
+    qb = make_q8_0_weight(out_features_b, in_features)
+    ta = repack_gguf_q8_0_tile16(qa).tiles
+    tb = repack_gguf_q8_0_tile16(qb).tiles
+    x_f16 = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float16)
+
+    actual_a, actual_b = _run_dual_split(
+        gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out,
+        x_f16,
+        ta,
+        tb,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        np.float16,
+        q8_t16_library,
+    )
+
+    expected_a = gguf_quant_gemv(x_f16.astype(np.float32), qa, GGMLQuantizationType.Q8_0)
+    expected_b = gguf_quant_gemv(x_f16.astype(np.float32), qb, GGMLQuantizationType.Q8_0)
+    np.testing.assert_allclose(actual_a.astype(np.float32), expected_a.astype(np.float16).astype(np.float32), **_TOL)
+    np.testing.assert_allclose(actual_b.astype(np.float32), expected_b.astype(np.float16).astype(np.float32), **_TOL)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

@@ -1743,6 +1743,13 @@ individually; together they currently sit around ~30 ms at prefill and
   emits two small kernels (`weighted_lanes_sum_out` then
   `shared_gate_combine_residual_batch_out`). PARO fuses these into one. Try
   the fused PARO style; gate on KL + top-1.
+- **P9.D6** Opportunistic Q8T16 same-input pair dispatch. **Status
+  2026-05-20:** retained a split-output Q8T16 dual GEMV for `attn_k+attn_v`
+  and `ssm_alpha+ssm_beta` pairs. It preserves separate scratch buffers while
+  removing one Q8T16 launch per pair. P9.E2 accepted (`KL=0`, top-1 `100%`,
+  deterministic tails); 512/128 graph replay moved the D4 baseline `86.025 ->
+  86.502 tok/s` (+0.55%). #51 remains below the `95 tok/s` target, so the
+  remaining gap needs deeper Q8/full-attention decode reductions.
 
 **Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
 → ~50 ms. Modest in absolute terms; visible at decode because each savings

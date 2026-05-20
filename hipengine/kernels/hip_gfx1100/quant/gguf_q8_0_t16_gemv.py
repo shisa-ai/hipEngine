@@ -22,6 +22,8 @@ _Q8_0_SINGLE_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_bf16_bf16_out"
 _Q8_0_SINGLE_FP16 = "hipengine_gguf_q8_0_t16_gemv_decode_fp16_fp16_out"
 _Q8_0_DUAL_BF16 = "hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out"
 _Q8_0_DUAL_FP16 = "hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out"
+_Q8_0_DUAL_SPLIT_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out"
+_Q8_0_DUAL_SPLIT_FP16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out"
 _Q8_0_BLOCK = 32
 _T16_COLS = 16
 
@@ -198,6 +200,80 @@ def gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out(
     )
 
 
+def gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 dense dual Q8T16 GEMV decode into separate outputs."""
+
+    del threads
+
+    _launch_dual_split(
+        _Q8_0_DUAL_SPLIT_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16 dense dual Q8T16 GEMV decode into separate outputs."""
+
+    del threads
+
+    _launch_dual_split(
+        _Q8_0_DUAL_SPLIT_FP16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def _launch_single(
     symbol: str,
     x_ptr: int,
@@ -292,6 +368,59 @@ def _launch_dual(
         runtime.check(int(err))
 
 
+def _launch_dual_split(
+    symbol: str,
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_common(rows, in_features)
+    if out_features_a <= 0 or out_features_b <= 0:
+        raise ValueError("out_features_a/out_features_b must be positive")
+    if out_features_a % _T16_COLS != 0 or out_features_b % _T16_COLS != 0:
+        raise ValueError("out_features_a/out_features_b must be multiples of 16 (T16 tile)")
+    library = library or build_gguf_q8_0_t16_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_a_ptr),
+        ctypes.c_void_p(tiles_b_ptr),
+        ctypes.c_void_p(out_a_ptr),
+        ctypes.c_void_p(out_b_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _check_common(rows: int, in_features: int) -> None:
     if rows <= 0:
         raise ValueError("rows must be positive")
@@ -309,6 +438,8 @@ def register_gguf_q8_0_t16_gemv_kernels(*, replace: bool = True) -> None:
         ("t16_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_gemv_decode_fp16_fp16_out),
         ("t16_dual_gate_up_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out),
         ("t16_dual_gate_up_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out),
+        ("t16_dual_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out),
+        ("t16_dual_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out),
     ):
         register(
             KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", variant),
@@ -324,6 +455,8 @@ __all__ = [
     "build_gguf_q8_0_t16_gemv",
     "gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out",
+    "gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out",
+    "gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out",
     "gguf_q8_0_t16_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_gemv_decode_fp16_fp16_out",
     "plan_gguf_q8_0_t16_gemv_build",

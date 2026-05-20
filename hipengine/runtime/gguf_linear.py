@@ -30,6 +30,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out,
+    gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
     register_gguf_q8_0_t16_gemv_kernels,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -400,6 +401,7 @@ def launch_gguf_linear_pair(
     in_features: int,
     out_features: int,
     *,
+    out_features_b: int | None = None,
     stream: int = 0,
     runtime=None,
     use_wmma_prefill: bool | None = None,
@@ -423,6 +425,7 @@ def launch_gguf_linear_pair(
 
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     use_gemv = _resolve_use_gemv_decode(use_gemv_decode)
+    out_features_b = out_features if out_features_b is None else int(out_features_b)
     dispatch_a = _pack8_decode_dispatch(
         resolve_gguf_linear_dispatch(weight_a, rows=rows),
         rows=rows,
@@ -438,7 +441,8 @@ def launch_gguf_linear_pair(
             "hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out"
         )
         if (
-            dispatch_a.abi == "raw"
+            out_features_b == out_features
+            and dispatch_a.abi == "raw"
             and dispatch_b.abi == "raw"
             and dispatch_a.key == q4_prefill_raw
             and dispatch_b.key == q4_prefill_raw
@@ -465,8 +469,36 @@ def launch_gguf_linear_pair(
         for d in (dispatch_a, dispatch_b):
             if _dispatch_can_use_wmma_prefill(d, rows=rows, in_features=in_features):
                 return False
+    q8_t16_dual = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q8_0_t16_v1",
+        "t16_dual_gemv_decode_bf16_bf16_out",
+    )
+    if (
+        dispatch_a.abi == "t16"
+        and dispatch_b.abi == "t16"
+        and dispatch_a.key.quant == "gguf_q8_0_t16_v1"
+        and dispatch_b.key.quant == "gguf_q8_0_t16_v1"
+        and is_registered(q8_t16_dual)
+    ):
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
     q8_decode = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
-    if rows == 1 and dispatch_a.key == q8_decode and dispatch_b.key == q8_decode:
+    if rows == 1 and out_features_b == out_features and dispatch_a.key == q8_decode and dispatch_b.key == q8_decode:
         gguf_q8_0_dual_gemv_bf16_bf16_out(
             x_ptr,
             weight_a.allocation("raw").tensor.ptr,
@@ -482,7 +514,7 @@ def launch_gguf_linear_pair(
         return True
 
     q4_prefill = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out")
-    if rows > 1 and dispatch_a.key == q4_prefill and dispatch_b.key == q4_prefill:
+    if rows > 1 and out_features_b == out_features and dispatch_a.key == q4_prefill and dispatch_b.key == q4_prefill:
         gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
             x_ptr,
             weight_a.allocation("qweight").tensor.ptr,
