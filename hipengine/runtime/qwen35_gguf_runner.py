@@ -82,6 +82,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_pack8_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     register_gguf_q4_k_selected_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
+    register_gguf_q4_k_t16_selected_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_pack8_gemv import (
     register_gguf_q4_k_selected_pack8_gemv_kernels,
 )
@@ -2385,29 +2388,30 @@ def resolve_qwen35moe_fastpath_safety(
 ) -> Qwen35GGUFFastPathSafety:
     """Resolve correctness-safe qwen35moe WMMA/GEMV opt-in state.
 
-    P9.E2 showed that the current qwen35moe full-model path fails the formal
-    KL/top-1 contract when either the P8 WMMA prefill or raw-GGUF P9 rows=1
-    GEMV decode opt-in is enabled.  The GEMV opt-in is correctness-safe again
-    only when the resident decode-repack materializer is enabled, because the
-    compact MoE path then resolves to the Q4/Q5/Q6 T16 replacement kernels.
-    WMMA prefill remains gated unless the caller sets the explicit unsafe
-    override.  The lower-level kernel/unit-test entry points remain opt-in so
-    kernel R&D can continue, but public/resident benchmark paths cannot be
-    promoted by accident.
+    P9.E2 showed that the raw-GGUF (non-repack) qwen35moe full-model path fails
+    the formal KL/top-1 contract when WMMA prefill and GEMV decode are BOTH
+    enabled.  The T16 decode-repack path (P9.H3/D1-D18) passes E2E correctness
+    with both opt-ins active, but T16 has no WMMA prefill kernels yet, so
+    prefill stays on the slow GEMV fallback.  Raw-GGUF WMMA prefill without
+    GEMV decode is deterministic (P9.C11) and the fastest correct-ish prefill
+    path available today.  The unsafe combination we block is specifically
+    raw weights + WMMA prefill + GEMV decode together.
     """
 
     requested_wmma = gguf_wmma_prefill_enabled(use_wmma_prefill)
     requested_gemv = gguf_gemv_decode_enabled(use_gemv_decode)
     decode_repack = gguf_decode_repack_enabled(None)
     allow_unsafe = _env_truthy(_QWEN35MOE_UNSAFE_FASTPATH_ENV)
-    disabled_wmma = bool(is_qwen35moe and requested_wmma and not allow_unsafe)
+    # Block the proven-unsafe raw-GGUF combo: WMMA + GEMV decode without T16.
+    disabled_wmma = bool(is_qwen35moe and requested_wmma and requested_gemv and not decode_repack and not allow_unsafe)
     disabled_gemv = bool(is_qwen35moe and requested_gemv and not allow_unsafe and not decode_repack)
     reason = None
     if disabled_wmma or disabled_gemv:
         reason = (
-            "qwen35moe WMMA prefill / raw-GGUF GEMV decode fast paths are disabled by default "
-            "because P9.E2 rejected the old opt-in combination; enable resident T16 decode repack "
-            f"or set {_QWEN35MOE_UNSAFE_FASTPATH_ENV}=1 only for explicit unsafe kernel R&D."
+            "qwen35moe raw-GGUF GEMV decode is disabled by default because P9.E2 "
+            "rejected the raw-GGUF opt-in; raw-GGUF WMMA prefill + GEMV decode is "
+            "also blocked as the unsafe combo. Enable resident T16 decode repack "
+            f"(HIPENGINE_GGUF_DECODE_REPACK=1) or set {_QWEN35MOE_UNSAFE_FASTPATH_ENV}=1."
         )
     return Qwen35GGUFFastPathSafety(
         is_qwen35moe=bool(is_qwen35moe),
@@ -3835,6 +3839,18 @@ _COMPACT_MOE_Q4_DUAL_KEYS = {
         "gguf_q4_k",
         "selected_dual_wmma_prefill_compact_bf16_bf16_out",
     ),
+    # P10.B1: T16 decode-repack mode reuses the same compact selected dual
+    # WMMA prefill ABI, with tile bytes consumed in place of raw GGUF bytes.
+    # The kernel below is registered by
+    # ``register_gguf_q4_k_t16_selected_prefill_kernels`` under the same
+    # ``selected_dual_wmma_prefill_compact_*`` alias spelling so dispatch can
+    # route on ``quant_key`` alone (no backend / quant branch).
+    ("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1"): KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q4_k_t16_v1",
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out",
+    ),
 }
 _COMPACT_MOE_DOWN_KEYS = {
     "gguf_q5_k": KernelKey(
@@ -3849,6 +3865,10 @@ _COMPACT_MOE_DOWN_KEYS = {
         "gguf_q6_k",
         "selected_wmma_prefill_compact_bf16_bf16_out",
     ),
+    # P10.B2 / P10.B3 land here: T16 selected single-output WMMA prefill
+    # kernels for Q5_K / Q6_K down projections. Entries get added once the
+    # kernels register their ``selected_wmma_prefill_compact_*`` alias under
+    # the T16 quant keys.
 }
 _COMPACT_MOE_Q4_DUAL_GEMV_KEYS = {
     ("gguf_q4_k", "gguf_q4_k"): KernelKey(
@@ -3941,6 +3961,15 @@ _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT = 256
 
 @dataclass(frozen=True)
 class _CompactMoeGemvPlan:
+    gate_up_fn: object
+    down_fn: object
+    gate_allocation: str
+    up_allocation: str
+    down_allocation: str
+
+
+@dataclass(frozen=True)
+class _CompactMoeWmmaPlan:
     gate_up_fn: object
     down_fn: object
     gate_allocation: str
@@ -4166,10 +4195,11 @@ def _try_run_post_attention_moe_rows_compact_wmma(
     cfg = runner.weights.config if runner.weights is not None else None
     if cfg is None:
         return False
-    kernels = _resolve_compact_moe_wmma_kernels(gate_weight, up_weight, down_weight)
-    if kernels is None:
+    plan = _resolve_compact_moe_wmma_kernels(gate_weight, up_weight, down_weight)
+    if plan is None:
         return False
-    gate_up_fn, down_fn = kernels
+    gate_up_fn = plan.gate_up_fn
+    down_fn = plan.down_fn
     num_experts = int(cfg.expert_count)
     hidden_size = int(runner.hidden_size)
     expert_ffn = int(cfg.expert_feed_forward_length)
@@ -4256,8 +4286,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         scratch.moe_expert_start_compact.ptr,
         scratch.moe_expert_start_wmma.ptr,
         scratch.moe_tile_expert.ptr,
-        gate_weight.allocation("raw").tensor.ptr,
-        up_weight.allocation("raw").tensor.ptr,
+        gate_weight.allocation(plan.gate_allocation).tensor.ptr,
+        up_weight.allocation(plan.up_allocation).tensor.ptr,
         scratch.ffn_gate_up.ptr,
         selected_rows,
         hidden_size,
@@ -4281,7 +4311,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         scratch.moe_expert_start_compact.ptr,
         scratch.moe_expert_start_wmma.ptr,
         scratch.moe_tile_expert.ptr,
-        down_weight.allocation("raw").tensor.ptr,
+        down_weight.allocation(plan.down_allocation).tensor.ptr,
         scratch.moe_down_out.ptr,
         selected_rows,
         expert_ffn,
@@ -4879,6 +4909,18 @@ def _resolve_compact_moe_wmma_kernels(
     up_weight: Qwen35GGUFDeviceWeight,
     down_weight: Qwen35GGUFDeviceWeight,
 ):
+    """Resolve the compact selected MoE WMMA prefill chain.
+
+    Returns a :class:`_CompactMoeWmmaPlan` carrying the resolved gate+up /
+    down callables and the per-weight allocation name (``"raw"`` for raw
+    GGUF, ``"tiles"`` for T16 decode-repack). Mirrors
+    :func:`_resolve_compact_moe_gemv_kernels` so the same plan structure
+    can route to either layout family without a quant branch in the caller.
+
+    Falls back to ``None`` when any required kernel is missing so the
+    runtime can transparently use the slower per-row fallback paths.
+    """
+
     gate_up_key = _COMPACT_MOE_Q4_DUAL_KEYS.get((gate_weight.spec.quant_key, up_weight.spec.quant_key))
     down_key = _COMPACT_MOE_DOWN_KEYS.get(down_weight.spec.quant_key)
     if gate_up_key is None or down_key is None:
@@ -4890,7 +4932,28 @@ def _resolve_compact_moe_wmma_kernels(
         resolved = _resolve_compact_moe_required_keys(required)
     if any(fn is None for fn in resolved):
         return None
-    return resolved[-2], resolved[-1]
+    return _CompactMoeWmmaPlan(
+        gate_up_fn=resolved[-2],
+        down_fn=resolved[-1],
+        gate_allocation=_selected_wmma_allocation_name(gate_weight),
+        up_allocation=_selected_wmma_allocation_name(up_weight),
+        down_allocation=_selected_wmma_allocation_name(down_weight),
+    )
+
+
+def _selected_wmma_allocation_name(weight: Qwen35GGUFDeviceWeight) -> str:
+    """Return the allocation name for the WMMA prefill chain.
+
+    Raw-layout quant keys carry their bytes in the ``"raw"`` allocation
+    (single contiguous rank-3 buffer). T16 decode-repack quant keys keep
+    the byte-lossless tiles under ``"tiles"`` (see
+    ``docs/GGUF_DECODE_REPACK.md``). The compact WMMA prefill kernels
+    accept whichever layout was materialized via the same compact ABI;
+    dispatch picks the allocation name here so the runner stays
+    quant-agnostic.
+    """
+
+    return "tiles" if weight.spec.quant_key.endswith("_t16_v1") else "raw"
 
 
 def _resolve_compact_moe_required_keys(keys: tuple[KernelKey, ...]):
@@ -4911,6 +4974,7 @@ def _ensure_compact_moe_wmma_registered() -> None:
     register_paro_silu_kernels()
     register_paro_combine_kernels()
     register_gguf_q4_k_selected_prefill_kernels()
+    register_gguf_q4_k_t16_selected_prefill_kernels()
     register_gguf_k_selected_prefill_kernels()
 
 
