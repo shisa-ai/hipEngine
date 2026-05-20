@@ -19761,3 +19761,40 @@ Retained diagnostic artifact:
 `benchmarks/results/2026-05-19-hipengine-mtp-chain-linear-tloop-b5-diagnostic.json`.
 This is still not a speed win (`performance_claim=false`); the target verifier
 launch/row-cost wall remains the Task #40 blocker.
+
+## 2026-05-19 — Task #45: MTP-2 persistent native provider benchmark
+
+Benchmark command:
+```
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens $(cat /tmp/quicksort_prompt_ids.txt) \
+  --decode-tokens 8 \
+  --candidate-budget 2 \
+  --proposal-impl persistent_device \
+  --backend hip_gfx1151 \
+  --chain-attn-mode c1_loop \
+  --json /tmp/hipengine-mtp-persistent-b2-diagnostic.json
+```
+
+Key results:
+- exact AR match: true
+- AR decode: 59.71 tok/s
+- MTP decode: 32.07 tok/s
+- Ratio MTP/AR: 0.54x
+- accepted_lengths: [2, 2, 1] (100% acceptance rate)
+- active_budgets: [2, 2, 1]
+- proposal_prefill_seconds: 0.645
+- proposal_decode_update_seconds: 0.029
+- verify_seconds: 0.205 (dominant)
+- decode_seconds MTP: 0.249
+- decode_seconds AR: 0.134
+- linear_attn_mode: chain_tloop for all verifier cycles
+- verify_graph: disabled
+
+Analysis:
+With perfect acceptance at B=2, MTP does 3 verifier passes for 8 tokens vs AR's 8 single passes. Yet MTP decode takes 0.249s vs AR's 0.134s. Each MTP verifier pass averages ~68ms while each AR pass is ~17ms — a 4× per-pass penalty for processing 3 rows. The proposal path is fast (0.029s), so the verifier remains the sole bottleneck.
+
+Implication: Even the llama.cpp MTP-2 equivalent fails to beat AR on our current verifier. To win, we need either (a) graph capture to reduce per-pass launch overhead, (b) fused verifier layers so 3-row batched processing is <2× the cost of 1 row, or (c) higher B with enough acceptance to amortize the verifier cost across more tokens per cycle.
+
+Artifact retained: benchmarks/results/2026-05-19-hipengine-mtp-persistent-b2-shared-verifier-diagnostic.json

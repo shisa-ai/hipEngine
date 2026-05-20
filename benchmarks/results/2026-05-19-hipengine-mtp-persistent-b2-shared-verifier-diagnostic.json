@@ -1,0 +1,258 @@
+{
+  "ar": {
+    "decode_seconds": 0.13397382601397112,
+    "decode_tok_s": 59.713156203852385,
+    "prefill_seconds": 1.6225398859824054,
+    "seconds": 64.05833750899183,
+    "tok_s": 0.12488616331757041
+  },
+  "ar_tokens": [
+    3841,
+    6646,
+    17145,
+    8,
+    478,
+    5956,
+    478,
+    3841
+  ],
+  "candidate_budget": 2,
+  "decision_reason": "Native MTP proposal rows reached verify_chain_bulk_and_commit and exact AR was checked. persistent_device keeps MTP weights/cache resident, but artifacts remain diagnostic until acceptance and speed gates pass.",
+  "decode_tokens": 8,
+  "exact_ar_match": true,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "mtp": {
+    "acceptance_rate": 1.0,
+    "accepted_lengths": [
+      2,
+      2,
+      1
+    ],
+    "active_budgets": [
+      2,
+      2,
+      1
+    ],
+    "chain_attn_mode": "c1_loop",
+    "decode_seconds": 0.24941992398817092,
+    "decode_tok_s": 32.07442241213822,
+    "note": "Persistent native MTP provider: weights/cache resident and target hidden stays on device; selected expert ids are still host-orchestrated.",
+    "proposal_decode_update_seconds": 0.029374621924944222,
+    "proposal_impl": "persistent_device",
+    "proposal_prefill_seconds": 0.644600238010753,
+    "proposal_trace_sample": [
+      {
+        "accepted": 2,
+        "bonus_token": 8,
+        "committed_tokens": [
+          3841,
+          6646,
+          17145
+        ],
+        "cycle": 1,
+        "draft_candidates": [
+          6646,
+          17145
+        ],
+        "proposer_cache_len_before_update": 91,
+        "root_position": 90,
+        "root_token": 3841,
+        "target_parent_rows": [
+          -1,
+          0,
+          1
+        ],
+        "target_top1_path": [
+          6646,
+          17145,
+          8
+        ],
+        "verify_graph": {
+          "chain_attn_mode": "c1_loop",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "off",
+          "replayed": false,
+          "status": "disabled",
+          "validation_passed": null
+        }
+      },
+      {
+        "accepted": 2,
+        "bonus_token": 478,
+        "committed_tokens": [
+          8,
+          478,
+          5956
+        ],
+        "cycle": 2,
+        "draft_candidates": [
+          478,
+          5956
+        ],
+        "proposer_cache_len_before_update": 94,
+        "root_position": 93,
+        "root_token": 8,
+        "target_parent_rows": [
+          -1,
+          0,
+          1
+        ],
+        "target_top1_path": [
+          478,
+          5956,
+          478
+        ],
+        "verify_graph": {
+          "chain_attn_mode": "c1_loop",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "off",
+          "replayed": false,
+          "status": "disabled",
+          "validation_passed": null
+        }
+      },
+      {
+        "accepted": 1,
+        "bonus_token": 6646,
+        "committed_tokens": [
+          478,
+          3841
+        ],
+        "cycle": 3,
+        "draft_candidates": [
+          3841
+        ],
+        "proposer_cache_len_before_update": 96,
+        "root_position": 96,
+        "root_token": 478,
+        "target_parent_rows": [
+          -1,
+          0
+        ],
+        "target_top1_path": [
+          3841,
+          6646
+        ],
+        "verify_graph": {
+          "chain_attn_mode": "c1_loop",
+          "linear_attn_fallback": false,
+          "linear_attn_mode": "chain_tloop",
+          "mode": "off",
+          "replayed": false,
+          "status": "disabled",
+          "validation_passed": null
+        }
+      }
+    ],
+    "seconds": 48.30890701699536,
+    "tok_s": 0.1656009314635405,
+    "verify_seconds": 0.20545638597104698
+  },
+  "mtp_tokens": [
+    3841,
+    6646,
+    17145,
+    8,
+    478,
+    5956,
+    478,
+    3841
+  ],
+  "performance_claim": false,
+  "prompt_tokens": [
+    727,
+    3841,
+    6646,
+    19490,
+    1590,
+    198,
+    262,
+    4071,
+    5423,
+    264,
+    10300,
+    2880,
+    314,
+    2663,
+    71483,
+    198,
+    262,
+    413,
+    2343,
+    19490,
+    8,
+    2564,
+    220,
+    16,
+    25,
+    198,
+    285,
+    460,
+    2663,
+    198,
+    262,
+    25212,
+    283,
+    2663,
+    23915,
+    19490,
+    8,
+    434,
+    220,
+    17,
+    60,
+    198,
+    262,
+    2047,
+    283,
+    498,
+    87,
+    364,
+    830,
+    303,
+    2663,
+    413,
+    830,
+    361,
+    25212,
+    60,
+    198,
+    262,
+    5956,
+    283,
+    498,
+    87,
+    364,
+    830,
+    303,
+    2663,
+    413,
+    830,
+    606,
+    25212,
+    60,
+    198,
+    262,
+    1245,
+    283,
+    498,
+    87,
+    364,
+    830,
+    303,
+    2663,
+    413,
+    830,
+    835,
+    25212,
+    60,
+    198,
+    262,
+    460,
+    220
+  ],
+  "proposal_impl": "persistent_device",
+  "status": "passed"
+}
