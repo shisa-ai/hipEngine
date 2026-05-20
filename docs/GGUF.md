@@ -1686,7 +1686,12 @@ individually; together they currently sit around ~30 ms at prefill and
 - **P9.D2** Audit redundant `bf16_to_f32` / `f32_to_bf16` boundary kernels.
   In the post-P8 prefill trace they appear in pairs; in decode they fire
   thousands of times. Most can be folded into the consumer kernel as an
-  in-register cast.
+  in-register cast. **Status 2026-05-20:** a BF16-key variant of the GGUF
+  head RMSNorm+partial-RoPE kernel removed the full-attention key
+  `bf16_to_f32` launch and passed P9.E2 (`KL=0`, top-1 `100%`), but 512/128
+  graph replay regressed versus the retained split-router baseline
+  `85.817 -> 85.582 tok/s` (-0.27%). Rejected and reverted; artifact:
+  `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d2-bf16-key-rope-rejected.json`.
 - **P9.D3** Consolidate the compact scheduler. `group_count + group_prefix +
   wmma_tile_map` are three separate launches sharing the same `num_experts`
   workgroup; on small expert counts the three-launch sequence dominates the

@@ -20909,3 +20909,36 @@ python3 scripts/qwen35_gguf_bench.py \
 Decision: retain the split router default because it is correctness-neutral and slightly improves graph decode, but it is only a small launch-count win. #51/#52/#26 remain blocked (`85.817 < 95 tok/s`). Next #28 candidates are D2 cast audit, D3 scheduler consolidation where still active, or deeper Q8/full-attention decode reductions.
 
 Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d1-router-split-coop.json`.
+
+## 2026-05-20 P9.D2 task #28: BF16-key RoPE cast-fold rejected
+
+Scoped P9.D2 diagnostic for redundant full-attention decode casts:
+
+- Tried a local BF16-key variant of `gguf_qwen35_head_rmsnorm_partial_rotary_{position,positions}_f32_weight` and routed qwen35moe GGUF full-attention key normalization directly from BF16 `full_k`, removing the separate `bf16_to_f32` key cast.
+- Correctness gate passed:
+  ```bash
+  HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+    --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --json /tmp/p9_d2_bf16_key_rope_e2e.json
+  # status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits
+  ```
+- 512/128 graph replay regressed versus the retained P9.D1 split-router baseline:
+  ```bash
+  HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/qwen35_gguf_bench.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+    --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+    --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+    --graph-replay-decode --graph-steps-per-replay 1 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+    --json /tmp/p9_d2_bf16_key_rope_512x128_bench.json
+  # measured decode samples: 85.637, 85.523, 85.582 tok/s; median=85.582 tok/s
+  # P9.D1 baseline median=85.817 tok/s; delta=-0.235 tok/s (-0.27%)
+  ```
+
+Decision: reject and revert the BF16-key RoPE cast-fold; avoiding the cast did not pay for the lower-throughput templated head-normalization variant. #28 remains open for other D3/D4/D5 or deeper decode reductions. Compact rejection artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d2-bf16-key-rope-rejected.json`.
