@@ -425,7 +425,7 @@ int launch_dual_split(const void* x,
       (out_features_a % T16_COLS) != 0 || (out_features_b % T16_COLS) != 0) {
     return hipErrorInvalidValue;
   }
-  const dim3 block(128);
+  const dim3 block(64);
   const dim3 grid(static_cast<unsigned int>((out_features_a + out_features_b) / T16_COLS), static_cast<unsigned int>(rows));
   hipLaunchKernelGGL((q8_0_t16_dual_split_gemv_kernel<scalar_t, out_t>), grid, block, 0, stream,
                      reinterpret_cast<const scalar_t*>(x), reinterpret_cast<const uint8_t*>(tiles_a),

@@ -1771,6 +1771,15 @@ individually; together they currently sit around ~30 ms at prefill and
   saw `q8_0_t16_triple_split_gemv_kernel`, and P9.E2 accepted (`KL=0`, top-1
   `100%`, deterministic tails). 512/128 graph replay moved D7 `87.961 ->
   88.243 tok/s` (+0.32%). #51 remains below the `95 tok/s` target.
+- **P9.D10** Q8T16 separate-output dual launch width. **Status
+  2026-05-20:** retained a narrower `64`-thread block for
+  `q8_0_t16_dual_split_gemv_kernel` (used by separate-output unequal-width
+  Q8T16 decode pairs) without changing the ABI or dispatch graph. P9.E2
+  accepted (`KL=0`, top-1 `100%`, deterministic tails); 512/128 graph replay
+  moved D9 `88.243 -> 88.801 tok/s` (+0.63%). A rejected adjacent prefix-only
+  dual prototype reduced launches but inflated the Q8T16 bucket in 512/16
+  rocprof, so only the launch-width change is retained. #51 remains below the
+  `95 tok/s` target.
 
 **Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
 → ~50 ms. Modest in absolute terms; visible at decode because each savings

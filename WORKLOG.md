@@ -21332,3 +21332,45 @@ python3 scripts/qwen35_gguf_bench.py \
 ```
 
 Decision: retain as a correctness-neutral full-attention Q8T16 dispatch reduction. #51/#52/#26 remain blocked below the `95 tok/s` decode target; the remaining gap is selected-MoE/T16 decode dominated after the small Q8 launch wins. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d9-q8t16-triple-qkv.json`.
+
+## 2026-05-20 P9.D10 task #28/#51: Q8T16 dual-split 64-thread launch retained
+
+Retained a one-line Q8T16 decode tuning change: `q8_0_t16_dual_split_gemv_kernel` now launches with a 64-thread block instead of 128 threads. This only affects the separate-output Q8T16 dual-split path used by unequal-width same-input decode pairs; the ABI, registry key, dispatch policy, and accumulation order are otherwise unchanged. I also tested same-tile/prefix dual variants during the probe; the prefix variant reduced launches but inflated the Q8T16 bucket in 512/16 rocprof, so it was removed before retention.
+
+Validation:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q --tb=short
+# 58 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d10_dualsplit64_e2e_current.json
+# status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits
+```
+
+512/128 graph replay benchmark (same D9 settings, cached builds):
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d10_dualsplit64_512x128_bench.json
+# measured decode samples: 88.895, 88.786, 88.801 tok/s; median=88.801
+# D9 baseline median=88.243 tok/s; delta=+0.559 tok/s (+0.63%)
+# measured prefill median=504.937 tok/s; tracked peak=21.343 GiB
+```
+
+512/16 rocprof diagnostic (`/tmp/p9_d10_dualsplit64_summary.json`) showed total decode kernel time `157.013 -> 156.247 ms` vs the local D9 summary and `q8_0_t16_dual_split_gemv_kernel` `20.685 -> 19.460 ms` across 480 dispatches.
+
+Decision: retain as a small correctness-neutral Q8T16 kernel launch-width win. #51/#52/#26 remain blocked below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d10-q8t16-dual-split-64.json`.
