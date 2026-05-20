@@ -1681,6 +1681,13 @@ and selected-MoE total was effectively unchanged (`93.138 -> 92.478 ms`). This
 misses the `<=35-40 ms` Q4 continuation target, so P9.C16 should evaluate a
 different selected-MoE design rather than keep tuning this layout/consumer.
 
+**Status 2026-05-20 (P9.C16).** Alternative evaluation did not select an
+in-repo Q4 selected-MoE redesign. A compact tile-list/no-padding model on real
+routing lowers Q4 only to `54.775 ms`; measured wider-column proxies were
+`64x16 = 61.868 ms` and `64x32 = 91.831 ms`. Padding/tails and shallow column
+reuse cannot close the gap, so #48 should not wire a Q4 redesign unless a new
+parent-workspace kernel R&D result appears.
+
 ### P9.4 — Dispatch reduction and small-op fusion (Track D)
 
 **Why.** With GDN and the decode-GEMV families addressed, the residual

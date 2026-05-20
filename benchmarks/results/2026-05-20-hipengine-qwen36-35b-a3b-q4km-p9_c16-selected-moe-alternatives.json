@@ -1,0 +1,135 @@
+{
+  "schema": "p9_c16_selected_moe_alternative_eval_v1",
+  "date": "2026-05-20",
+  "task": "#47 P9.C16: Evaluate alternative selected-MoE design if repack is insufficient",
+  "status": "rejected_no_inrepo_alternative_selected",
+  "performance_claim": false,
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100"
+  },
+  "git": {
+    "commit": "ce98c481710023494971f7efba97a58fe68b13cf",
+    "status": "## gguf-bulk-prefill\n?? uv.lock"
+  },
+  "baseline": {
+    "source_json": "/tmp/p9_c15_raw_baseline_replay.json",
+    "q4_gate_up_total_ms": 62.1991644341809,
+    "selected_moe_total_ms": 93.13792494099793,
+    "compact_rows": 163840,
+    "wmma_rows": 185872,
+    "padding_rows": 22032,
+    "padding_pct_of_compact": 13.447265624999998,
+    "residual_tail_rows": 8848,
+    "residual_tail_pct_of_compact": 5.400390625
+  },
+  "alternatives": [
+    {
+      "name": "compact tile-list / no per-expert padding ABI",
+      "kind": "modeled from real replay counts",
+      "model": "Scale each layer Q4 time by compact_rows/wmma_rows, an optimistic lower bound that assumes tail rows are as efficient as full WMMA rows and metadata cost is unchanged.",
+      "estimated_q4_ms": 54.77548608743973,
+      "delta_vs_raw_ms": -7.42367834674117,
+      "delta_vs_raw_pct": -11.935334524625162,
+      "evidence": {
+        "threshold_row_summary": {
+          "16": {
+            "experts": 715,
+            "compact_rows": 160500,
+            "padded_rows": 165856,
+            "compact_row_share_pct": 97.96142578125,
+            "padding_overhead_pct": 3.3370716510903398
+          },
+          "32": {
+            "experts": 604,
+            "compact_rows": 157967,
+            "padded_rows": 162368,
+            "compact_row_share_pct": 96.4154052734375,
+            "padding_overhead_pct": 2.786024929257369
+          },
+          "64": {
+            "experts": 501,
+            "compact_rows": 153241,
+            "padded_rows": 156832,
+            "compact_row_share_pct": 93.5308837890625,
+            "padding_overhead_pct": 2.34336763659857
+          },
+          "128": {
+            "experts": 390,
+            "compact_rows": 143218,
+            "padded_rows": 145904,
+            "compact_row_share_pct": 87.413330078125,
+            "padding_overhead_pct": 1.8754625815190717
+          },
+          "256": {
+            "experts": 286,
+            "compact_rows": 124018,
+            "padded_rows": 125872,
+            "compact_row_share_pct": 75.694580078125,
+            "padding_overhead_pct": 1.4949442822816073
+          },
+          "384": {
+            "experts": 216,
+            "compact_rows": 101636,
+            "padded_rows": 102928,
+            "compact_row_share_pct": 62.03369140625,
+            "padding_overhead_pct": 1.2712031170057925
+          }
+        }
+      },
+      "decision": "reject",
+      "reason": "Even the optimistic no-padding lower bound is ~54.8 ms, above the <=35-40 ms target; residual tail rows are only 5.4% and padding is only 13.45%, so a compact tile-list ABI cannot close the gap alone."
+    },
+    {
+      "name": "wider/persistent column grouping proxy (64x16)",
+      "kind": "measured replay using existing tile_m/tile_n dispatch",
+      "command": "HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M=64 HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N=16 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --warmup-iters 1 --replay-iters 3 --sample-groups 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c16_raw_q4_tile64x16_replay.json",
+      "result": {
+        "q4_gate_up_total_ms": 61.868439447910845,
+        "selected_moe_total_ms": 92.95876294426208,
+        "first_layer_gate_up_ms": 1.5720265542363956,
+        "gate_tile": {
+          "tile_m": 64,
+          "tile_n": 16,
+          "hot_fulltile_threshold": null,
+          "sidemeta": false,
+          "tile16_materialized": false,
+          "tile16_wmma": false,
+          "tile16_materialized_bytes": 0
+        }
+      },
+      "delta_vs_raw_ms": -0.33072498627005587,
+      "delta_vs_raw_pct": -0.5317193394455133,
+      "decision": "reject",
+      "reason": "64x16 reuses activation across more columns but only moves Q4 62.199 -> 61.868 ms (-0.5%), far below target."
+    },
+    {
+      "name": "wider row+column grouping proxy (64x32)",
+      "kind": "measured replay using existing tile_m/tile_n dispatch",
+      "command": "HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M=64 HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N=32 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --warmup-iters 1 --replay-iters 3 --sample-groups 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c16_raw_q4_tile64x32_replay.json",
+      "result": {
+        "q4_gate_up_total_ms": 91.83081524032687,
+        "selected_moe_total_ms": 122.76076114115618,
+        "first_layer_gate_up_ms": 1.857616996858269,
+        "gate_tile": {
+          "tile_m": 64,
+          "tile_n": 32,
+          "hot_fulltile_threshold": null,
+          "sidemeta": false,
+          "tile16_materialized": false,
+          "tile16_wmma": false,
+          "tile16_materialized_bytes": 0
+        }
+      },
+      "delta_vs_raw_ms": 29.63165080614597,
+      "delta_vs_raw_pct": 47.63994995061736,
+      "decision": "reject",
+      "reason": "64x32 increases register pressure/lifetime and regresses Q4 to 91.831 ms."
+    }
+  ],
+  "selected_design": null,
+  "next_implementation_task": "#48 should record that there is no winning in-repo Q4 selected-MoE redesign to wire for #27; any further Q4 selected-MoE work should move to kernel R&D in ~/amd-gpu-tuning or a new design task, while hipENGINE focus can return to #51/#28 decode/small-op blockers.",
+  "commands_common": "All measured commands used prompt_length=512, warmup_iters=1, replay_iters=3, sample_groups=3, cached builds, and HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 for replay-only kernel R&D."
+}

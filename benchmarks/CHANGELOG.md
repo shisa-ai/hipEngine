@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-05-20
 
+- [diagnostic rejected] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #47 P9.C16 selected-MoE alternatives: raw Q4 `62.199 ms -> 54.775 ms` modeled no-padding lower bound (still above `<=35-40 ms` target), measured `64x16` `61.868 ms` and `64x32` `91.831 ms`; reject compact tile-list/wider-column alternatives and select no in-repo Q4 redesign for #48; `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json`.
+
 - [diagnostic rejected] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #46 P9.C15 Q4T16 replay sweep: raw Q4 selected gate+up `62.199 ms -> 59.395 ms` (`-4.5%`, best launch-bound min-blocks `1`) and selected-MoE total `93.138 -> 92.478 ms` (`-0.7%`) under real 512/0 routing; misses the `<=35-40 ms` Q4 continuation target, so reject compact32 Q4T16 as a default and move to P9.C16 alternative design; `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c15-q4t16-replay-rejected.json`.
 
 - [prototype diagnostic] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / task #45 P9.C14 Q4T16 selected-dual WMMA: synthetic BF16/FP16 selected-MoE correctness no row -> `28 passed`; rocprof smoke records `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>` with `VGPR=64`, `SGPR=128`, `Scratch=0`; first-layer replay raw `5.274 ms -> 3.897 ms` (`-26.1%`) under unsafe R&D opt-in, with `296 MiB` transient Q4T16 gate+up buffers; diagnostic only, not default runtime/perf promotion; `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c14-q4t16-selected-wmma-prototype.json`.

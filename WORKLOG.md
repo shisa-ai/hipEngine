@@ -21108,3 +21108,27 @@ python3 scripts/qwen35_gguf_moe_replay.py \
 ```
 
 Other Q4T16 launch-bound results: default min-blocks `2` Q4 `59.680 ms`, min-blocks `4` Q4 `59.689 ms`. Best all-layer Q4T16 is only `-4.5%` vs raw and leaves Q4 far above the `<=35-40 ms` continuation target; selected-MoE total moves only `-0.7%`. Decision: reject compact32 Q4T16 as a default/runtime integration and proceed to #47/P9.C16 alternative selected-MoE design. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c15-q4t16-replay-rejected.json`.
+
+## 2026-05-20 P9.C16 task #47: selected-MoE alternatives rejected
+
+Evaluated alternatives after P9.C15 showed compact32 Q4T16 was insufficient:
+
+- **Compact tile-list / no-padding ABI model.** Real 512/0 replay counts have `163,840` compact rows, `185,872` WMMA rows, `22,032` padding rows (`13.45%`), and `8,848` residual tail rows (`5.40%`). Optimistically scaling layer Q4 time by `compact_rows/wmma_rows` gives `62.199 -> 54.775 ms`, still above the `<=35-40 ms` continuation target.
+- **Wider-column/persistent proxy.** Existing raw selected WMMA `64x16` tile replay measured Q4 `61.868 ms` (only `-0.5%` vs raw `32x16`), while `64x32` regressed to `91.831 ms`.
+
+Commands for measured proxies used the same 512 prompt replay settings as P9.C15 (`warmup_iters=1`, `replay_iters=3`, `sample_groups=3`, cached builds, unsafe replay-only opt-in):
+
+```bash
+HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M=64 HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N=16 \
+HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_moe_replay.py ... \
+  --json /tmp/p9_c16_raw_q4_tile64x16_replay.json
+# Q4 61.868 ms; selected-MoE total 92.959 ms
+
+HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M=64 HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_N=32 \
+... --json /tmp/p9_c16_raw_q4_tile64x32_replay.json
+# Q4 91.831 ms; selected-MoE total 122.761 ms
+```
+
+Decision: no in-repo selected-MoE alternative is selected for #48. Padding/tails and shallow column reuse cannot close the Q4 gap; further Q4 selected-MoE work should move to parent kernel R&D/new design rather than broad runtime changes here. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json`.
