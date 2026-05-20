@@ -2010,12 +2010,14 @@ class Qwen35ParoDecodeState:
         k_out_packed = _out_packed_from_generic_transposed_qweight(k_qweight)
         awq_library = _library_for(library, "awq")
         kv_fused = False
-        # M7.C: dual GEMV writes row-major [q,k] per token sharing the q_proj_key
-        # buffer with q_proj and key_bf16 as views; at tokens > 1 the view strides
-        # do not match the dual-GEMV row stride.  The bf16 sibling (line 1075+)
-        # handles this by splitting into two single GEMVs at tokens > 1.  We have
-        # not ported that split to the fp16 path yet, so keep the legacy
-        # ``tokens == 1`` gate here.  See M7.C tracker subtask M7.C.6.
+        # M7.C.6: small-batch path mirrors the bf16 sibling at
+        # ``project_linear_attention_qkv_z_bf16`` line 1075+.  The dual GEMV
+        # writes row-major [q,k] per token into the combined ``q_proj_key``
+        # buffer; ``q_proj`` and ``key_bf16`` are views with strides that do
+        # NOT match that layout at tokens > 1.  Split into two single GEMVs
+        # writing the views' backing memory directly (matches
+        # ``awq_fusedw4_prefill_dual_fp16``'s two-output ABI without paying for
+        # the prefill-tuned kernel at small batch).
         if tokens == 1:
             use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
             if scratch.kv_proj is not None and not use_rotate_fused:
@@ -2100,6 +2102,42 @@ class Qwen35ParoDecodeState:
                     library=awq_library,
                     runtime=self.runtime,
                 )
+        elif tokens <= _small_batch_decode_threshold():
+            # M7.C.6: two single GEMVs, one for Q (writes scratch.q_proj.ptr)
+            # and one for K (writes scratch.key_bf16.ptr).  Mirrors the bf16
+            # sibling at project_linear_attention_qkv_z_bf16 line 1090+ — the
+            # views' contiguous strides match the single-GEMV row strides, so
+            # the downstream qwen35_split_qgate / attention path reads correct
+            # rows.  scratch.q_proj_key (the combined view) is intentionally
+            # left inconsistent here; nothing downstream reads it directly.
+            gemv_awq_pack8_transposed_fp16(
+                scratch.q_rot.ptr,
+                q_qweight.ptr,
+                self.tensor(f"{q}.qzeros").ptr,
+                self.tensor(f"{q}.scales").ptr,
+                scratch.q_proj.ptr,
+                tokens,
+                scratch.q_rot.shape[-1],
+                q_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+            gemv_awq_pack8_transposed_fp16(
+                scratch.k_rot.ptr,
+                k_qweight.ptr,
+                self.tensor(f"{k}.qzeros").ptr,
+                self.tensor(f"{k}.scales").ptr,
+                scratch.key_bf16.ptr,
+                tokens,
+                scratch.k_rot.shape[-1],
+                k_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         else:
             awq_fusedw4_prefill_dual_fp16(
                 scratch.q_rot.ptr,
@@ -3351,12 +3389,12 @@ class Qwen35ParoDecodeState:
         z_qweight = self.tensor(f"{z}.qweight_pack8_decode")
         qkv_out_packed = _out_packed_from_generic_transposed_qweight(qkv_qweight)
         z_out_packed = _out_packed_from_generic_transposed_qweight(z_qweight)
-        # M7.C: same row-stride aliasing as project_full_attention_qkv_fp16 —
-        # ``qkv`` and ``z`` are views into a combined ``qkv_z`` buffer.  At
-        # tokens > 1 the dual GEMV row stride (qkv_width + z_width) does not
-        # match the views' contiguous strides; the bf16 sibling (line ~1075)
-        # splits into two single GEMVs at tokens > 1 for this reason.  Keep the
-        # legacy ``tokens == 1`` gate here until M7.C.6 ports the split.
+        # M7.C.6: small-batch path mirrors the bf16 sibling at
+        # ``project_linear_attention_qkv_z_bf16`` line 1083+.  The dual GEMV
+        # writes row-major [qkv,z] per token sharing the combined ``qkv_z``
+        # buffer with ``qkv`` and ``z`` as views; at tokens > 1 the view strides
+        # don't match the dual GEMV row stride.  Split into two single GEMVs
+        # writing the views' backing memory directly.
         if tokens == 1:
             awq_library = _library_for(library, "awq")
             use_rotate_fused = scratch.rotate_fuse_barrier.ptr in self._rotate_fuse_ready
@@ -3410,6 +3448,39 @@ class Qwen35ParoDecodeState:
                     library=awq_library,
                     runtime=self.runtime,
                 )
+        elif tokens <= _small_batch_decode_threshold():
+            # M7.C.6: two single GEMVs, one for QKV (writes scratch.qkv.ptr)
+            # and one for Z (writes scratch.z.ptr).  Direct port of the bf16
+            # sibling pattern at project_linear_attention_qkv_z_bf16 line 1090+.
+            awq_library = _library_for(library, "awq")
+            gemv_awq_pack8_transposed_fp16(
+                scratch.qkv_rot.ptr,
+                qkv_qweight.ptr,
+                self.tensor(f"{qkv}.qzeros").ptr,
+                self.tensor(f"{qkv}.scales").ptr,
+                scratch.qkv.ptr,
+                tokens,
+                scratch.qkv_rot.shape[-1],
+                qkv_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+            gemv_awq_pack8_transposed_fp16(
+                scratch.z_rot.ptr,
+                z_qweight.ptr,
+                self.tensor(f"{z}.qzeros").ptr,
+                self.tensor(f"{z}.scales").ptr,
+                scratch.z.ptr,
+                tokens,
+                scratch.z_rot.shape[-1],
+                z_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         else:
             awq_fusedw4_prefill_dual_fp16(
                 scratch.qkv_rot.ptr,
