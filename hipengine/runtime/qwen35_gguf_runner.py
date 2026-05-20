@@ -158,6 +158,183 @@ class Qwen35GGUFFullAttentionPrefillResult:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFDecodeGraphWeightRole:
+    """Small, serialisable description of one resident weight's decode role."""
+
+    slot_path: str
+    quant_key: str
+    rank: int
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFDecodeGraphBucketKey:
+    """Shape/dispatch bucket used for one resident GGUF decode graph capture.
+
+    The c=1 GGUF graph is still captured directly by
+    :meth:`Qwen35GGUFResidentSession.capture_decode_graph`; this key records the
+    replay budget and active kernel-symbol groups that must be present in the
+    captured graph's rocprof trace before a P9 graph-replay row is retained.
+    """
+
+    active_c: int
+    context_bucket: int
+    replay_context_limit: int
+    block_size: int
+    replay_steps: int
+    max_replay_steps: int
+    use_gemv_decode: bool
+    decode_repack: bool
+    active_symbol_groups: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+def qwen35_gguf_decode_graph_weight_roles(
+    weights: Qwen35GGUFResidentWeights,
+) -> tuple[Qwen35GGUFDecodeGraphWeightRole, ...]:
+    """Return the lightweight weight-role inventory used by graph buckets."""
+
+    return tuple(
+        Qwen35GGUFDecodeGraphWeightRole(
+            slot_path=str(weight.spec.slot_path),
+            quant_key=str(weight.spec.quant_key),
+            rank=len(weight.spec.source.shape),
+        )
+        for weight in weights.weights
+    )
+
+
+def qwen35_gguf_decode_graph_active_symbol_groups(
+    *,
+    is_moe: bool,
+    layer_types: tuple[str, ...],
+    weight_roles: tuple[Qwen35GGUFDecodeGraphWeightRole, ...],
+    use_gemv_decode: bool,
+) -> tuple[str, ...]:
+    """Derive the active decode kernel-symbol groups for a GGUF graph trace.
+
+    Groups are intentionally semantic rather than exact mangled symbols: the
+    graph coverage smoke maps these names to the current T16 and pack8 symbol
+    spellings. Only groups implied by the materialized weights are included, so
+    optional families such as dense Q4_K are required only when active.
+    """
+
+    groups: list[str] = []
+
+    def add(group: str) -> None:
+        if group not in groups:
+            groups.append(group)
+
+    if any(layer_type == LINEAR_ATTENTION for layer_type in layer_types):
+        add("gdn_decode")
+    if any(layer_type == FULL_ATTENTION for layer_type in layer_types):
+        add("paged_kv_write")
+        add("paged_full_attention_decode")
+
+    if is_moe:
+        if _has_role(weight_roles, quant_key="gguf_q4_k_t16_v1", slot_contains="ffn_gate_exps"):
+            add("moe_q4_k_selected_dual")
+        elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q4_k", rank=3, slot_contains="ffn_gate_exps"):
+            add("moe_q4_k_selected_dual")
+
+        if _has_role(weight_roles, quant_key="gguf_q5_k_t16_v1", slot_contains="ffn_down_exps"):
+            add("moe_q5_k_selected")
+        elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q5_k", rank=3, slot_contains="ffn_down_exps"):
+            add("moe_q5_k_selected")
+
+        if _has_role(weight_roles, quant_key="gguf_q6_k_t16_v1", slot_contains="ffn_down_exps"):
+            add("moe_q6_k_selected")
+        elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q6_k", rank=3, slot_contains="ffn_down_exps"):
+            add("moe_q6_k_selected")
+
+    if _has_role(weight_roles, quant_key="gguf_q8_0_t16_v1", rank=2):
+        add("dense_q8_0_single")
+    elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q8_0", rank=2):
+        add("dense_q8_0_single")
+    if (
+        _has_role(weight_roles, quant_key="gguf_q8_0_t16_v1", rank=2, slot_contains="ffn_gate_shexp")
+        and _has_role(weight_roles, quant_key="gguf_q8_0_t16_v1", rank=2, slot_contains="ffn_up_shexp")
+    ) or (
+        use_gemv_decode
+        and _has_role(weight_roles, quant_key="gguf_q8_0", rank=2, slot_contains="ffn_gate_shexp")
+        and _has_role(weight_roles, quant_key="gguf_q8_0", rank=2, slot_contains="ffn_up_shexp")
+    ):
+        add("dense_q8_0_dual")
+
+    if use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q4_k", rank=2):
+        add("dense_q4_k")
+    if _has_role(weight_roles, quant_key="gguf_q6_k_t16_v1", rank=2, slot_contains="root.lm_head"):
+        add("dense_q6_k_lm_head")
+    elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q6_k", rank=2, slot_contains="root.lm_head"):
+        add("dense_q6_k_lm_head")
+    return tuple(groups)
+
+
+def build_qwen35_gguf_decode_graph_bucket_key(
+    *,
+    position: int,
+    steps_per_replay: int,
+    max_replay_steps: int,
+    block_size: int,
+    max_positions: int,
+    is_moe: bool,
+    layer_types: tuple[str, ...],
+    weight_roles: tuple[Qwen35GGUFDecodeGraphWeightRole, ...],
+    use_gemv_decode: bool,
+) -> Qwen35GGUFDecodeGraphBucketKey:
+    """Build the c=1 GGUF decode graph bucket key for a replay budget."""
+
+    if position < 0:
+        raise ValueError("position must be non-negative")
+    if steps_per_replay <= 0:
+        raise ValueError("steps_per_replay must be positive")
+    if max_replay_steps <= 0:
+        raise ValueError("max_replay_steps must be positive")
+    if block_size <= 0:
+        raise ValueError("block_size must be positive")
+    replay_context_limit = int(position) + int(max_replay_steps)
+    context_bucket = ((replay_context_limit + int(block_size) - 1) // int(block_size)) * int(block_size)
+    if context_bucket > int(max_positions):
+        raise ValueError("decode graph bucket exceeds resident cache capacity")
+    decode_repack = any(role.quant_key.endswith("_t16_v1") for role in weight_roles)
+    return Qwen35GGUFDecodeGraphBucketKey(
+        active_c=1,
+        context_bucket=context_bucket,
+        replay_context_limit=replay_context_limit,
+        block_size=int(block_size),
+        replay_steps=int(steps_per_replay),
+        max_replay_steps=int(max_replay_steps),
+        use_gemv_decode=bool(use_gemv_decode),
+        decode_repack=bool(decode_repack),
+        active_symbol_groups=qwen35_gguf_decode_graph_active_symbol_groups(
+            is_moe=bool(is_moe),
+            layer_types=tuple(layer_types),
+            weight_roles=tuple(weight_roles),
+            use_gemv_decode=bool(use_gemv_decode),
+        ),
+    )
+
+
+def _has_role(
+    roles: tuple[Qwen35GGUFDecodeGraphWeightRole, ...],
+    *,
+    quant_key: str,
+    rank: int | None = None,
+    slot_contains: str | None = None,
+) -> bool:
+    for role in roles:
+        if role.quant_key != quant_key:
+            continue
+        if rank is not None and role.rank != rank:
+            continue
+        if slot_contains is not None and slot_contains not in role.slot_path:
+            continue
+        return True
+    return False
+
+
+@dataclass(frozen=True)
 class _DeviceExpertPackedTensor:
     quant_key: str
     qweight_low: DeviceBuffer
@@ -2611,6 +2788,17 @@ class Qwen35GGUFResidentSession:
             raise ValueError("decode graph replay span exceeds GGUF resident cache capacity")
         if position + steps_per_replay - 1 >= self.scratch.max_positions:
             raise ValueError("decode graph capture span exceeds GGUF resident cache capacity")
+        bucket_key = build_qwen35_gguf_decode_graph_bucket_key(
+            position=int(position),
+            steps_per_replay=int(steps_per_replay),
+            max_replay_steps=int(replay_span),
+            block_size=int(self.scratch.block_size),
+            max_positions=int(self.scratch.max_positions),
+            is_moe=bool(self.runner.weights.config.is_moe),
+            layer_types=tuple(self.runner.weights.config.layer_types),
+            weight_roles=qwen35_gguf_decode_graph_weight_roles(self.runner.weights),
+            use_gemv_decode=bool(self.use_gemv_decode),
+        )
 
         runtime = self.runtime or get_hip_runtime()
         generated_buf: DeviceBuffer | None = None
@@ -2670,6 +2858,7 @@ class Qwen35GGUFResidentSession:
             generated=generated_buf,
             generated_index=generated_index_buf,
             record_steps=int(record_steps),
+            bucket_key=bucket_key,
         )
 
     def _step_from_device_token(
@@ -2765,6 +2954,7 @@ class Qwen35GGUFDecodeGraph:
     generated: DeviceBuffer | None = None
     generated_index: DeviceBuffer | None = None
     record_steps: int = 0
+    bucket_key: Qwen35GGUFDecodeGraphBucketKey | None = None
     closed: bool = False
 
     def replay(self, steps: int) -> None:
@@ -4780,11 +4970,16 @@ def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[n
 
 __all__ = [
     "Qwen35GGUFDecodeGraph",
+    "Qwen35GGUFDecodeGraphBucketKey",
+    "Qwen35GGUFDecodeGraphWeightRole",
     "Qwen35GGUFFullAttentionPrefillResult",
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFNextTokenProbeResult",
     "Qwen35GGUFOneLayerProbe",
     "Qwen35GGUFFastPathSafety",
     "Qwen35GGUFResidentSession",
+    "build_qwen35_gguf_decode_graph_bucket_key",
+    "qwen35_gguf_decode_graph_active_symbol_groups",
+    "qwen35_gguf_decode_graph_weight_roles",
     "resolve_qwen35moe_fastpath_safety",
 ]

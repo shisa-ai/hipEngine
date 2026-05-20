@@ -1735,7 +1735,15 @@ The perf tracks above will be hard to evaluate without these:
   captured graph covers the new GEMV decode families (and the existing
   GDN/full-attention decode kernels) under one replay budget. Required
   before the P9.G acceptance run can be a real graph-replay number rather
-  than an eager rocprof workaround.
+  than an eager rocprof workaround. **Status 2026-05-20:** implemented as a
+  c=1 `Qwen35GGUFDecodeGraphBucketKey` attached to every resident decode
+  graph capture. The key records `(active_c, context_bucket, replay_steps,
+  max_replay_steps)` plus the active rocprof symbol groups derived from the
+  materialized qwen35moe weights (Q4 selected dual, Q5/Q6 selected, Q8_0
+  single/dual, optional dense Q4, Q6 lm-head, GDN, paged KV write, and paged
+  full-attention decode). `scripts/qwen35_gguf_decode_graph_smoke.py` now
+  emits the bucket and has a `--coverage-only --coverage-csv ...` mode that
+  fails if a trace is missing any active symbol group.
 
 ### P9.6 — Acceptance benchmark and rollups (Track G)
 

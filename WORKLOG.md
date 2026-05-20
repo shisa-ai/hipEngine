@@ -21004,3 +21004,37 @@ python3 scripts/qwen35_gguf_bench.py \
 ```
 
 Decision: retain the decode-only Q4T16 SiLU fusion because it is correctness-neutral and the D1→D4 decode samples move above the D1 range. It is still only a small launch-count win, so #51/#52/#26 remain blocked (`86.025 < 95 tok/s`). Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d4-q4t16-silu-decode.json`.
+
+## 2026-05-20 P9.E3 task #31: decode graph bucket coverage landed
+
+Implemented the qwen35moe GGUF decode graph bucket metadata and coverage smoke:
+
+- Added `Qwen35GGUFDecodeGraphBucketKey` to `Qwen35GGUFResidentSession.capture_decode_graph(...)`. The key records the c=1 replay budget (`context_bucket`, `replay_steps`, `max_replay_steps`) and active rocprof symbol groups inferred from materialized qwen35moe weights.
+- Active groups now cover the P9 decode families under one replay budget: Q4 selected dual, Q5/Q6 selected, Q8_0 single/dual, optional dense Q4, Q6 lm-head, GDN decode, paged KV write, and paged full-attention decode.
+- Extended `scripts/qwen35_gguf_decode_graph_smoke.py` to emit `graph_bucket` and added `--coverage-only --coverage-csv ...` validation that fails when a trace is missing any active symbol group.
+- Documented P9.E3 status in `docs/GGUF.md`.
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/qwen35_gguf_decode_graph_smoke.py \
+  tests/test_qwen35_gguf_decode_graph_policy.py
+# passed
+
+PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_decode_graph_policy.py -q --tb=short
+# 5 passed
+```
+
+No performance claim; this is graph-replay acceptance tooling for #31/P9.E3.
+
+Additional validation for the P9.E3 coverage helper:
+
+```bash
+PYTHONPATH=. python3 -m pytest \
+  tests/test_qwen35_gguf_decode_graph_policy.py \
+  tests/test_qwen35_gguf_rocprof_summary.py \
+  -q --tb=short
+# 68 passed
+```
