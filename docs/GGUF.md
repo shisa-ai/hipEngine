@@ -1727,7 +1727,12 @@ individually; together they currently sit around ~30 ms at prefill and
   wmma_tile_map` are three separate launches sharing the same `num_experts`
   workgroup; on small expert counts the three-launch sequence dominates the
   scheduler bucket. A single fused launch keeps the existing compact-MoE
-  ABI.
+  ABI. **Status 2026-05-20: rejected/deferred for P9 decode.** The retained
+  512/128 c=1 graph path no longer spends time in the compact-scheduler trio;
+  it falls back to the selected decode path before those rows>1 compact WMMA
+  helpers. The remaining scheduler work is prefill/rows>1 scope already tracked
+  by #27, whose tile/launch sweep is exhausted without meeting its prefill
+  target. No D3 code was retained for #51.
 - **P9.D4** Decide where SiLU+Mul lives. Today qwen35moe uses
   `silu_mul_dual_out_bf16` after the dual gate+up WMMA. PARO fuses the SiLU
   into the gate-side accumulator and emits only `mul` over half operands.
@@ -1742,7 +1747,13 @@ individually; together they currently sit around ~30 ms at prefill and
 - **P9.D5** Decide where the gate-combine-residual lives. Today qwen35moe
   emits two small kernels (`weighted_lanes_sum_out` then
   `shared_gate_combine_residual_batch_out`). PARO fuses these into one. Try
-  the fused PARO style; gate on KL + top-1.
+  the fused PARO style; gate on KL + top-1. **Status 2026-05-20: satisfied in
+  the active decode path.** The retained c=1 fallback already uses
+  `weighted_sum_shared_gate_combine_residual_out_bf16_f32w`; D10 512/16
+  rocprof saw the MoE-combine bucket as exactly 640 dispatches of
+  `weighted_sum_shared_gate_combine_residual_out_kernel` and no separate
+  `weighted_lanes_sum_out + shared_gate_combine_residual_batch_out` pair on the
+  measured decode path. Rows>1 helper cleanup is outside the #51 decode target.
 - **P9.D6** Opportunistic Q8T16 same-input pair dispatch. **Status
   2026-05-20:** retained a split-output Q8T16 dual GEMV for `attn_k+attn_v`
   and `ssm_alpha+ssm_beta` pairs. It preserves separate scratch buffers while
@@ -1926,7 +1937,7 @@ Every P9 kernel honours the project policy:
   decode shapes (Q6_K lm-head fallback excluded).
 - [ ] P9.C1–C4 WMMA prefill kernels tuned per-shape; `docs/KERNELS.md` row
   updated with the chosen variants.
-- [ ] P9.D1–D5 small-op fusions either landed (with bench evidence) or
+- [x] P9.D1–D5 small-op fusions either landed (with bench evidence) or
   explicitly rejected (with diagnostic evidence) in this doc and `WORKLOG.md`.
 - [ ] P9.E1–E3 tooling landed (rocprof summary, KL gate, decode graph
   bucket).

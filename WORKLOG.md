@@ -21400,3 +21400,12 @@ Perf rejected the idea. The fused kernel removed the separate `silu_mul` launch 
 ```
 
 Decision: reject and revert all D11 code. Do not retry Q8T16 shared gate/up SiLU fusion without a different tiling strategy. Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d11-rejected-q8t16-shared-silu.json`.
+
+## 2026-05-20 P9.D3/D5 task #28 closure audit
+
+Closed the remaining original P9.D small-op checklist items without code changes:
+
+- D3 compact scheduler fusion is rejected/deferred for the P9 decode target. The retained 512/128 c=1 graph path does not spend time in the `group_count + group_prefix + wmma_tile_map` trio; that work is rows>1 compact-WMMA/prefill scope already tracked by #27. No #51 decode win is available there.
+- D5 gate-combine-residual fusion is already satisfied on the measured decode path. The D10 512/16 rocprof summary shows the MoE-combine bucket as 640 dispatches of `weighted_sum_shared_gate_combine_residual_out_kernel` only; the separate `weighted_lanes_sum_out + shared_gate_combine_residual_batch_out` pair is not present in the active c=1 decode trace.
+
+With D1 retained, D2 rejected, D3 deferred/rejected for decode, D4 retained, D5 already active, and D6-D11 follow-on Q8T16 probes accepted/rejected, task #28's small-op bundle is complete. The retained performance state remains D10 (`88.801 tok/s` median 512/128 graph decode), so #51/#52/#26 remain blocked below `95 tok/s`.
