@@ -19669,3 +19669,45 @@ current target bulk verifier is slower than serial AR for the same exact output,
 and MTP still copies selected expert ids to host.  Continuing work should focus
 on verifier speed (or device-side expert dispatch if proposal time becomes the
 bottleneck after verifier improvements).
+
+## 2026-05-19 (continued) — Reviewed MTP verifier hot path
+
+Reviewed `Qwen35ParoResidentSession.verify_chain_bulk_and_commit` after the
+persistent MTP provider still lost to AR.  A synchronized local profile of the
+B=5 quicksort diagnostic showed the dominant verifier cost is the 30
+linear-attention `run_linear_attention_moe_tree_tloop_layer_fp16` calls; metadata
+copies, CPU top-1/accept reads, and linear-state commit are sub-millisecond per
+cycle.  Full-attention `c1_loop` is not the main blocker on this shape.
+
+Small verifier chains/trees were still taking the grouped compact/WMMA MoE route
+inside the linear-attention tree t-loop.  Added a verifier-specific MoE threshold
+(`HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS`, default 16) so tiny speculative
+verify rows use the c=1 MoE route while normal prefill keeps its existing
+`HIPENGINE_MOE_PREFILL_COMPACT_WMMA_MIN_TOKENS` policy.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/mtp_chain_e2e_smoke.py
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_mtp_input_fusion_kernel.py
+# 2 passed
+PROMPT=$(python3 - <<'PY'
+import json
+row=json.loads(open('fixtures/dflash/stable_prompts.jsonl').readline())
+print(','.join(map(str,row['prompt_ids'])))
+PY
+)
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT" --decode-tokens 8 --candidate-budget 5 \
+  --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop \
+  --json /tmp/hipengine-mtp-review-b5-final-smallmoe.json
+# exact_ar_match=true, accepted_lengths=[5,1], AR decode 59.22 tok/s, MTP decode 30.68 tok/s, verify_seconds=0.217862818s
+```
+
+Status: exactness/acceptance preserved, but MTP still loses AR.  Next real speed
+work needs a verifier linear-attention kernel that does not materialize every
+row's full recurrent state when the chain is fully accepted (optimistic
+leaf-state fast path with exact fallback on rejection), or a better batched
+linear-state/MoE route; host accept reads and commit copies are not worth chasing
+first.

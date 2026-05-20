@@ -4231,7 +4231,10 @@ class Qwen35ParoDecodeState:
             raise ValueError("parent_rows must be int64 with shape (tokens,)")
         linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
-        use_grouped_moe = False if dense_mlp else _use_moe_grouped_compact_prefill(tokens)
+        # Verifier chains/trees are tiny (typically B+1 <= 8).  The grouped
+        # compact/WMMA MoE route wins for real prefill chunks, but its fixed
+        # routing/compaction overhead dominates these small speculative rows.
+        use_grouped_moe = False if dense_mlp else tokens >= _verify_moe_grouped_min_tokens()
         if dense_mlp:
             if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
                 moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
@@ -6396,6 +6399,13 @@ def _moe_prefill_compact_wmma_min_tokens() -> int:
 
 def _use_moe_grouped_compact_prefill(tokens: int) -> bool:
     return tokens > 1 and tokens >= _moe_prefill_compact_wmma_min_tokens()
+
+
+def _verify_moe_grouped_min_tokens() -> int:
+    value = os.environ.get("HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS")
+    if value is None or value.strip() == "":
+        return 16
+    return max(2, int(value))
 
 
 def _linear_ab_prefill_rocblas_min_tokens() -> int:
