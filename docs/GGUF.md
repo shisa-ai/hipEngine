@@ -1757,6 +1757,13 @@ individually; together they currently sit around ~30 ms at prefill and
   512/128 graph replay moved the D6 baseline `86.502 -> 87.961 tok/s`
   (+1.69%). #51 remains below the `95 tok/s` target, so the remaining gap
   needs deeper Q8/full-attention decode reductions.
+- **P9.D8** Reject Q8T16 d-scale shared-cache prototype. **Status
+  2026-05-20:** a kernel-local shared-memory cache for the Q8_0 T16 `d`
+  scales preserved the synthetic CPU-oracle fixture (`17 passed`) but added
+  enough synchronization/occupancy cost to regress the 512/128 graph replay
+  from D7 `87.961 -> 81.253 tok/s` (-7.62%) and prefill `500.480 ->
+  476.853 tok/s` (-4.72%). Reverted; do not retry without a parent-workspace
+  ISA/occupancy audit.
 
 **Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
 → ~50 ms. Modest in absolute terms; visible at decode because each savings

@@ -21241,3 +21241,37 @@ python3 scripts/qwen35_gguf_bench.py \
 ```
 
 Decision: retain as a correctness-neutral #28 launch-dispatch win. It is the largest retained #28 increment so far, but #51/#52/#26 remain blocked below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d7-q8t16-qkv-gate-pair.json`.
+
+## 2026-05-20 P9.D8 task #28/#51: Q8T16 d-scale cache prototype rejected
+
+Profiled the post-D7 graph path with 512/0 and 512/16 rocprof traces. The stripped decode summary still shows selected-MoE T16 kernels as the largest bucket, but Q8T16 remains material: `q8_0_t16_dual_split_gemv_kernel` appeared at 242.488 ms / 1400 dispatches and `q8_0_t16_gemv_kernel` at 184.893 ms / 3150 dispatches in the diagnostic trace (trace includes warmup/capture/replay and is not an acceptance metric).
+
+Tried a Q8T16 kernel-local shared-memory cache for the per-block T16 `d` scales in single, concatenated-dual, and split-output dual GEMV kernels. The intent was to avoid repeated fp16 scale loads by each lane in a Q8_0 block. The patch preserved synthetic correctness but regressed wall time, likely from extra `__syncthreads()` and lower occupancy/latency hiding.
+
+Validation / rejection evidence:
+
+```bash
+PYTHONPATH=. python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py \
+  tests/test_gguf_q8_0_t16_gemv_decode.py
+# passed
+
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py -q --tb=short
+# 17 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d8_q8_dcache_512x128_bench_1.json
+# candidate measured decode=81.253 tok/s, prefill=476.853 tok/s, finite final logits
+# D7 retained baseline decode=87.961 tok/s, prefill=500.480 tok/s
+```
+
+Decision: reject and revert the code. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d8-q8t16-dcache-rejected.json`. Further Q8T16 kernel-body changes should start in `~/amd-gpu-tuning/` with an ISA/occupancy audit instead of speculative in-repo synchronization changes.
