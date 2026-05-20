@@ -27,6 +27,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_bf16_add,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
+    gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight,
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
     register_paro_combine_kernels,
@@ -1610,32 +1611,53 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        bf16_to_f32(
-            scratch.full_k.ptr,
-            scratch.full_key_raw.ptr,
-            self.kv_width,
-            stream=stream,
-            runtime=runtime,
-        )
-        gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
-            scratch.full_query_raw.ptr,
-            scratch.full_key_raw.ptr,
-            layer.weight("attn_q_norm").allocation().tensor.ptr,
-            layer.weight("attn_k_norm").allocation().tensor.ptr,
-            scratch.cos_table.ptr,
-            scratch.sin_table.ptr,
-            scratch.position_tensor.ptr,
-            scratch.full_query.ptr,
-            scratch.full_key.ptr,
-            cfg.rms_norm_eps,
-            cfg.head_count,
-            cfg.head_count_kv,
-            cfg.key_length,
-            cfg.rope_dimension_count,
-            scratch.max_positions,
-            stream=stream,
-            runtime=runtime,
-        )
+        if cfg.is_moe and gguf_decode_repack_enabled():
+            gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight(
+                scratch.full_query_raw.ptr,
+                scratch.full_k.ptr,
+                layer.weight("attn_q_norm").allocation().tensor.ptr,
+                layer.weight("attn_k_norm").allocation().tensor.ptr,
+                scratch.cos_table.ptr,
+                scratch.sin_table.ptr,
+                scratch.position_tensor.ptr,
+                scratch.full_query.ptr,
+                scratch.full_key.ptr,
+                cfg.rms_norm_eps,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.rope_dimension_count,
+                scratch.max_positions,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            bf16_to_f32(
+                scratch.full_k.ptr,
+                scratch.full_key_raw.ptr,
+                self.kv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
+                scratch.full_query_raw.ptr,
+                scratch.full_key_raw.ptr,
+                layer.weight("attn_q_norm").allocation().tensor.ptr,
+                layer.weight("attn_k_norm").allocation().tensor.ptr,
+                scratch.cos_table.ptr,
+                scratch.sin_table.ptr,
+                scratch.position_tensor.ptr,
+                scratch.full_query.ptr,
+                scratch.full_key.ptr,
+                cfg.rms_norm_eps,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.rope_dimension_count,
+                scratch.max_positions,
+                stream=stream,
+                runtime=runtime,
+            )
         key_cache, value_cache = scratch.full_cache(layer_id)
         qwen35_write_paged_kv_mixed_value_bf16_spans(
             scratch.full_key.ptr,

@@ -177,6 +177,47 @@ __device__ __forceinline__ void gguf_head_rmsnorm_partial_rotary_f32_weight_row(
   }
 }
 
+__device__ __forceinline__ void gguf_head_rmsnorm_partial_rotary_bf16_input_f32_weight_row(
+    const uint16_t* __restrict__ src,
+    const float* __restrict__ weight,
+    const float* __restrict__ cos,
+    const float* __restrict__ sin,
+    float* __restrict__ dst,
+    float eps,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    float* partial) {
+  const int64_t tid = threadIdx.x;
+  float sum = 0.0f;
+  for (int64_t dim = tid; dim < head_dim; dim += blockDim.x) {
+    const float value = bf16_bits_to_float(src[dim]);
+    sum += value * value;
+  }
+  partial[tid] = sum;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(head_dim) + eps);
+  const int64_t half_rotary = rotary_dim / 2;
+  for (int64_t dim = tid; dim < head_dim; dim += blockDim.x) {
+    const float src_value = bf16_bits_to_float(src[dim]);
+    const float value = src_value * inv_rms * (1.0f + weight[dim]);
+    float out_value = value;
+    if (dim < rotary_dim) {
+      const int64_t pair_dim = dim < half_rotary ? dim + half_rotary : dim - half_rotary;
+      const float paired_src = bf16_bits_to_float(src[pair_dim]);
+      const float paired = paired_src * inv_rms * (1.0f + weight[pair_dim]);
+      const float rotated = dim < half_rotary ? -paired : paired;
+      out_value = value * cos[dim] + rotated * sin[dim];
+    }
+    dst[dim] = out_value;
+  }
+}
+
 __global__ void gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel(
     const float* __restrict__ query,
     const float* __restrict__ key,
@@ -220,6 +261,61 @@ __global__ void gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel(
       head_dim,
       rotary_dim,
       partial);
+}
+
+__global__ void gguf_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight_kernel(
+    const float* __restrict__ query,
+    const uint16_t* __restrict__ key,
+    const float* __restrict__ q_weight,
+    const float* __restrict__ k_weight,
+    const float* __restrict__ cos_table,
+    const float* __restrict__ sin_table,
+    const int64_t* __restrict__ position_ptr,
+    float* __restrict__ query_out,
+    float* __restrict__ key_out,
+    float eps,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions) {
+  const int64_t position = position_ptr[0];
+  if (position < 0 || position >= max_positions) {
+    return;
+  }
+  const int64_t head = blockIdx.x;
+  if (head >= num_q_heads + num_kv_heads) {
+    return;
+  }
+  const bool is_query = head < num_q_heads;
+  const int64_t local_head = is_query ? head : head - num_q_heads;
+  const int64_t offset = local_head * head_dim;
+  const float* cos = cos_table + position * rotary_dim;
+  const float* sin = sin_table + position * rotary_dim;
+  extern __shared__ float partial[];
+  if (is_query) {
+    gguf_head_rmsnorm_partial_rotary_f32_weight_row(
+        query + offset,
+        q_weight,
+        cos,
+        sin,
+        query_out + offset,
+        eps,
+        head_dim,
+        rotary_dim,
+        partial);
+  } else {
+    gguf_head_rmsnorm_partial_rotary_bf16_input_f32_weight_row(
+        key + offset,
+        k_weight,
+        cos,
+        sin,
+        key_out + offset,
+        eps,
+        head_dim,
+        rotary_dim,
+        partial);
+  }
 }
 
 __global__ void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(
@@ -404,6 +500,54 @@ extern "C" int hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_we
     threads = 256;
   }
   gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel<<<
+      static_cast<unsigned int>(num_q_heads + num_kv_heads),
+      static_cast<unsigned int>(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(
+      query,
+      key,
+      q_weight,
+      k_weight,
+      cos_table,
+      sin_table,
+      position,
+      query_out,
+      key_out,
+      eps,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      rotary_dim,
+      max_positions);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight(
+    const float* query,
+    const uint16_t* key,
+    const float* q_weight,
+    const float* k_weight,
+    const float* cos_table,
+    const float* sin_table,
+    const int64_t* position,
+    float* query_out,
+    float* key_out,
+    float eps,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    int64_t threads,
+    hipStream_t stream) {
+  if (num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 || rotary_dim <= 0 || rotary_dim > head_dim ||
+      (rotary_dim % 2) != 0 || max_positions <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  gguf_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight_kernel<<<
       static_cast<unsigned int>(num_q_heads + num_kv_heads),
       static_cast<unsigned int>(threads),
       static_cast<size_t>(threads) * sizeof(float),

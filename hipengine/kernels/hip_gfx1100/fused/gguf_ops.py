@@ -240,6 +240,57 @@ def gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
     )
 
 
+def gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight(
+    query_ptr: int,
+    key_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    cos_table_ptr: int,
+    sin_table_ptr: int,
+    position_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    eps: float,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch F32-weight head RMSNorm + RoPE with BF16 key input."""
+
+    _check_common_attention_shape(num_q_heads, num_kv_heads, head_dim, rotary_dim)
+    _check_positive(max_positions, "max_positions")
+    _check_threads(threads)
+    _launch_head_rmsnorm_partial_rotary(
+        "hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight",
+        query_ptr,
+        key_ptr,
+        q_weight_ptr,
+        k_weight_ptr,
+        cos_table_ptr,
+        sin_table_ptr,
+        position_ptr,
+        query_out_ptr,
+        key_out_ptr,
+        eps,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        rotary_dim,
+        max_positions,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
     query_ptr: int,
     key_ptr: int,
@@ -319,6 +370,16 @@ def register_gguf_ops(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "head_rmsnorm+partial_rotary", "gguf_f32_weight", "qwen35_position_f32"),
         gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "head_rmsnorm+partial_rotary",
+            "gguf_f32_weight",
+            "qwen35_position_key_bf16_f32",
+        ),
+        gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight,
         replace=replace,
     )
     register(
@@ -615,6 +676,7 @@ __all__ = [
     "gguf_rmsnorm_bf16_f32_weight",
     "gguf_gate_repeat_value_bf16",
     "gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight",
+    "gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight",
     "gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight",
     "plan_gguf_ops_build",
     "register_gguf_ops",

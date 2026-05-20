@@ -12,6 +12,7 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_bf16_add,
     gguf_gate_repeat_value_bf16,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
+    gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
 )
 from hipengine.loading.materialize import float_array_to_bf16_bits
@@ -139,10 +140,14 @@ def test_gguf_ops_qwen35_f32_weight_head_rmsnorm_rope() -> None:
     position = np.asarray([2], dtype=np.int64)
     query_out = np.empty_like(query)
     key_out = np.empty_like(key)
+    query_out_bf16_key = np.empty_like(query)
+    key_out_bf16_key = np.empty_like(key)
+    key_bf16 = float_array_to_bf16_bits(key)
     bufs = []
     try:
         dq = _dev(query, runtime, bufs)
         dk = _dev(key, runtime, bufs)
+        dk_bf16 = _dev(key_bf16, runtime, bufs)
         dqw = _dev(q_weight, runtime, bufs)
         dkw = _dev(k_weight, runtime, bufs)
         dcos = _dev(cos, runtime, bufs)
@@ -150,7 +155,9 @@ def test_gguf_ops_qwen35_f32_weight_head_rmsnorm_rope() -> None:
         dpos = _dev(position, runtime, bufs)
         dqo = malloc(query_out.nbytes, runtime=runtime)
         dko = malloc(key_out.nbytes, runtime=runtime)
-        bufs.extend((dqo, dko))
+        dqo_bf16_key = malloc(query_out_bf16_key.nbytes, runtime=runtime)
+        dko_bf16_key = malloc(key_out_bf16_key.nbytes, runtime=runtime)
+        bufs.extend((dqo, dko, dqo_bf16_key, dko_bf16_key))
         gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
             dq.ptr,
             dk.ptr,
@@ -170,17 +177,43 @@ def test_gguf_ops_qwen35_f32_weight_head_rmsnorm_rope() -> None:
             library=library,
             runtime=runtime,
         )
+        gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight(
+            dq.ptr,
+            dk_bf16.ptr,
+            dqw.ptr,
+            dkw.ptr,
+            dcos.ptr,
+            dsin.ptr,
+            dpos.ptr,
+            dqo_bf16_key.ptr,
+            dko_bf16_key.ptr,
+            1.0e-6,
+            2,
+            1,
+            4,
+            4,
+            3,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(query_out), dqo, runtime=runtime)
         copy_device_to_host(host_array_ptr(key_out), dko, runtime=runtime)
+        copy_device_to_host(host_array_ptr(query_out_bf16_key), dqo_bf16_key, runtime=runtime)
+        copy_device_to_host(host_array_ptr(key_out_bf16_key), dko_bf16_key, runtime=runtime)
     finally:
         for buf in reversed(bufs):
             free(buf, runtime=runtime)
 
     expected_query = _apply_rope(_rmsnorm_offset(query, q_weight), cos[2], sin[2], 4)
     expected_key = _apply_rope(_rmsnorm_offset(key, k_weight), cos[2], sin[2], 4)
+    expected_key_bf16_input = _apply_rope(
+        _rmsnorm_offset(bf16_to_float32(key_bf16), k_weight), cos[2], sin[2], 4
+    )
     np.testing.assert_allclose(query_out, expected_query, rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(key_out, expected_key, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(query_out_bf16_key, expected_query, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(key_out_bf16_key, expected_key_bf16_input, rtol=1e-6, atol=1e-6)
 
 
 def _dev(array: np.ndarray, runtime, bufs: list):

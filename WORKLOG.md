@@ -21592,3 +21592,54 @@ python3 scripts/qwen35_gguf_bench.py \
 512/16 rocprof diagnostic (`/tmp/p9_d16_q8f32_ssmout_summary.json`) showed total decode kernel time `152.461 -> 150.736 ms` and dispatches `10648 -> 10138` vs the D15 summary. The `f32_to_bf16` decode work was removed (`0.860 ms / 478 dispatches` in D15). Q8T16 single GEMV time rose slightly from `29.699 -> 30.027 ms` due the F32 input load path, but the removed conversion launches made the net path faster.
 
 Decision: retain as a correctness-neutral launch removal, but #51/#52/#26 remain below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d16-q8t16-f32-ssm-out.json`.
+
+## 2026-05-20 P9.D15 task #51: full-attention BF16-key RoPE decode retained
+
+Retained a GGUF F32-weight Qwen head-RMSNorm+RoPE decode variant that consumes the full-attention K projection as BF16 input and converts inside the fused RoPE/RMSNorm kernel. In qwen35moe resident decode-repack rows=1 full-attention layers, this removes the separate `bf16_to_f32` key conversion launch. Non-repacked/default fallback still uses the existing conversion plus F32-key RoPE path.
+
+Validation:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 -m pytest tests/test_gguf_ops.py tests/test_gguf_linear_dispatch.py -q --tb=short
+# 40 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d17_keybf16_rope_e2e.json
+# status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --decode-tokens 16 --repeats 2 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d17_keybf16_rope_e2e_16.json
+# status=accepted; KL=0; top1=1.0; deterministic tails
+```
+
+512/128 graph replay benchmark:
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d17_keybf16_rope_512x128_bench.json
+# measured decode samples: 90.838, 90.868, 90.868 tok/s; median=90.868
+# D14 retained median=90.149 tok/s; delta=+0.719 tok/s (+0.80%)
+# measured prefill median=506.218 tok/s; tracked peak=21.3430756 GiB
+```
+
+512/16 rocprof diagnostic (`/tmp/p9_d17_keybf16_rope_summary.json`) showed total decode kernel time `150.736 -> 150.129 ms` and dispatches `10138 -> 9968` vs the D16 summary. The `bf16_to_f32` decode work was removed (`0.302 ms / 159 dispatches` in D16). The new `gguf_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight_kernel` took `0.787 ms / 159` vs the previous F32-key RoPE kernel `0.763 ms / 159`; net savings comes from removing the standalone conversion launch.
+
+Decision: retain as a correctness-neutral launch removal, but #51/#52/#26 remain below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d17-key-bf16-rope.json`.

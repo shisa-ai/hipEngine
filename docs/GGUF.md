@@ -1824,6 +1824,16 @@ individually; together they currently sit around ~30 ms at prefill and
   -> 90.149 tok/s` (+0.95%). 512/16 rocprof diagnostic reduced total decode
   dispatches `10648 -> 10138` and removed the `f32_to_bf16` decode bucket
   (`0.860 ms / 478` dispatches). #51 remains below the `95 tok/s` target.
+- **P9.D15** Full-attention BF16-key RoPE decode. **Status 2026-05-20:**
+  retained a GGUF F32-weight head-RMSNorm+RoPE variant that consumes the
+  full-attention K projection as BF16 input and converts inside the fused
+  RoPE/RMSNorm kernel. This removes the separate `bf16_to_f32` key conversion
+  launch in rows=1 resident decode-repack full-attention layers. P9.E2 accepted
+  (`KL=0`, top-1 `100%`, deterministic tails); a 16-token correctness override
+  also accepted. 512/128 graph replay moved D14 `90.149 -> 90.868 tok/s`
+  (+0.80%). 512/16 rocprof diagnostic reduced total decode dispatches `10138
+  -> 9968` and removed the `bf16_to_f32` decode work (`0.302 ms / 159`
+  dispatches). #51 remains below the `95 tok/s` target.
 
 **Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
 → ~50 ms. Modest in absolute terms; visible at decode because each savings
