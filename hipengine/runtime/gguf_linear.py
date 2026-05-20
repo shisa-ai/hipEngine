@@ -34,6 +34,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out,
     register_gguf_q8_0_t16_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+    register_gguf_q8_0_t16_prefill_kernels,
+)
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
@@ -76,6 +79,9 @@ _gemv_decode_session_enabled: bool | None = None
 _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
     "gguf_q8_0": 32,
     "gguf_q4_k": 256,
+    # P10.B4: Q8T16 dense WMMA prefill consumes T16 tiles with 32 K-values
+    # per tile slab. Same block alignment as raw Q8_0.
+    "gguf_q8_0_t16_v1": 32,
 }
 
 
@@ -488,6 +494,14 @@ def launch_gguf_linear_pair(
         and dispatch_b.key.quant == "gguf_q8_0_t16_v1"
         and is_registered(q8_t16_dual)
     ):
+        # P10.B4: decline the Q8T16 dual GEMV fusion at rows>1 when WMMA
+        # prefill is opted in, so the caller falls back to two singletons
+        # that each take the dense Q8T16 WMMA prefill path.
+        if use_wmma and rows > 1 and (
+            _dispatch_can_use_t16_wmma_prefill(dispatch_a, rows=rows, in_features=in_features)
+            or _dispatch_can_use_t16_wmma_prefill(dispatch_b, rows=rows, in_features=in_features)
+        ):
+            return False
         gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
             x_ptr,
             weight_a.allocation("tiles").tensor.ptr,
@@ -577,12 +591,22 @@ def launch_gguf_linear_triple(
         rows=rows,
         out_features=out_features_c,
     )
+    use_wmma = _resolve_use_wmma_prefill(None)
     q8_t16_triple = KernelKey(
         "hip_gfx1100",
         "linear",
         "gguf_q8_0_t16_v1",
         "t16_triple_gemv_decode_bf16_bf16_out",
     )
+    if use_wmma and rows > 1 and (
+        _dispatch_can_use_t16_wmma_prefill(dispatch_a, rows=rows, in_features=in_features)
+        or _dispatch_can_use_t16_wmma_prefill(dispatch_b, rows=rows, in_features=in_features)
+        or _dispatch_can_use_t16_wmma_prefill(dispatch_c, rows=rows, in_features=in_features)
+    ):
+        # P10.B4: decline Q8T16 triple GEMV fusion at rows>1 when WMMA
+        # prefill is opted in, so the caller falls back to singletons that
+        # each take the dense Q8T16 WMMA prefill path.
+        return False
     if (
         dispatch_a.abi == "t16"
         and dispatch_b.abi == "t16"
@@ -624,6 +648,7 @@ def launch_gguf_linear_pair_concat(
     stream: int = 0,
     runtime=None,
     use_wmma_prefill: bool | None = None,
+    use_gemv_decode: bool | None = None,
 ) -> bool:
     """Launch a supported projection pair into one concatenated output buffer.
 
@@ -635,6 +660,7 @@ def launch_gguf_linear_pair_concat(
     decode so the two Q8_0 projections share one T16 kernel launch family.
     """
 
+    use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     dispatch_a = resolve_gguf_linear_dispatch(weight_a, rows=rows)
     dispatch_b = resolve_gguf_linear_dispatch(weight_b, rows=rows)
     q8_t16_dual = KernelKey(
@@ -650,6 +676,16 @@ def launch_gguf_linear_pair_concat(
         and dispatch_b.key.quant == "gguf_q8_0_t16_v1"
         and is_registered(q8_t16_dual)
     ):
+        # P10.B4: decline the Q8T16 dual-gate-up GEMV fusion at rows>1 when
+        # WMMA prefill is opted in, so the caller falls back through
+        # ``launch_gguf_linear_pair`` (which itself declines T16 fusion when
+        # WMMA prefill is on) all the way down to two singletons that each
+        # take the dense Q8T16 WMMA prefill path.
+        if use_wmma and rows > 1 and (
+            _dispatch_can_use_t16_wmma_prefill(dispatch_a, rows=rows, in_features=in_features)
+            or _dispatch_can_use_t16_wmma_prefill(dispatch_b, rows=rows, in_features=in_features)
+        ):
+            return False
         gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out(
             x_ptr,
             weight_a.allocation("tiles").tensor.ptr,
@@ -664,7 +700,6 @@ def launch_gguf_linear_pair_concat(
         )
         return True
 
-    use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     if not use_wmma or rows <= 1:
         return False
     q8_prefill_raw = KernelKey(
@@ -831,37 +866,78 @@ def _wmma_prefill_dispatch(
     in_features: int,
     use_wmma: bool,
 ) -> GGUFLinearDispatch:
-    """Rewrite ``prefill_*`` -> ``wmma_prefill_*`` for supported quants.
+    """Rewrite decode-shape variants -> ``wmma_prefill_*`` for supported quants.
 
     A no-op unless all of the following hold:
 
     * ``use_wmma`` is ``True`` (kwarg / session / env opt-in resolved).
     * ``rows > 1`` (decode is not affected).
-    * ``dispatch.abi == "raw"`` (the WMMA kernel consumes raw GGUF bytes
-      via the same single ``raw`` allocation as the decode-shaped path).
-    * ``dispatch.key.quant`` ships a registered WMMA prefill family
-      (``gguf_q8_0`` or raw-layout ``gguf_q4_k``).
-    * ``dispatch.key.variant`` is one of the ``prefill_*`` aliases (i.e.
-      the rows>1 rewrite from ``_variant_for_rows`` already happened).
-    * ``in_features`` satisfies the quant's raw block-size constraint
-      (32 for Q8_0, 256 for Q4_K).
+    * ``dispatch.abi`` is one of the supported source ABIs:
+      - ``"raw"`` -> ``"wmma_raw"`` (the legacy raw-GGUF WMMA prefill
+        family for ``gguf_q8_0`` and raw-layout ``gguf_q4_k``).
+      - ``"t16"`` -> ``"t16"`` (P10.B4: ``gguf_q8_0_t16_v1`` rewrites the
+        ``t16_gemv_decode_*`` variant to ``t16_wmma_prefill_*`` and keeps
+        the same allocation name + launch signature, so the existing
+        ``_launch_t16`` ABI helper is reused).
+    * ``dispatch.key.quant`` ships a registered WMMA prefill family.
+    * ``dispatch.key.variant`` is the rows>1 alias produced by
+      ``_variant_for_rows``.
+    * ``in_features`` satisfies the quant's K-block alignment constraint.
     """
 
     if not use_wmma or rows <= 1:
         return dispatch
-    if dispatch.abi != "raw":
-        return dispatch
-    if not _dispatch_can_use_wmma_prefill(dispatch, rows=rows, in_features=in_features):
-        return dispatch
-    variant = dispatch.key.variant
-    return GGUFLinearDispatch(
-        KernelKey(
-            dispatch.key.backend,
-            dispatch.key.layer,
-            dispatch.key.quant,
-            f"wmma_{variant}",
-        ),
-        "wmma_raw",
+    if dispatch.abi == "raw":
+        if not _dispatch_can_use_wmma_prefill(dispatch, rows=rows, in_features=in_features):
+            return dispatch
+        variant = dispatch.key.variant
+        return GGUFLinearDispatch(
+            KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                f"wmma_{variant}",
+            ),
+            "wmma_raw",
+        )
+    if dispatch.abi == "t16":
+        if not _dispatch_can_use_t16_wmma_prefill(dispatch, rows=rows, in_features=in_features):
+            return dispatch
+        # The T16 decode variant is named ``t16_gemv_decode_<in>_<out>_out``;
+        # the rewrite swaps that for ``t16_wmma_prefill_<in>_<out>_out`` while
+        # keeping the ``t16`` ABI (same (x, tiles, out, rows, in_f, out_f)
+        # signature, additional (tile_m, tile_n) kwargs).
+        variant = dispatch.key.variant
+        if not variant.startswith("t16_gemv_decode_"):
+            return dispatch
+        suffix = variant[len("t16_gemv_decode_") :]
+        return GGUFLinearDispatch(
+            KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                f"t16_wmma_prefill_{suffix}",
+            ),
+            "t16",
+        )
+    return dispatch
+
+
+def _dispatch_can_use_t16_wmma_prefill(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+) -> bool:
+    """P10.B4 gate: T16 dense rows>1 only rewrites when the kernel is wired."""
+
+    return (
+        rows > 1
+        and dispatch.abi == "t16"
+        and dispatch.key.variant.startswith("t16_gemv_decode_")
+        and dispatch.key.quant in _WMMA_PREFILL_QUANT_BLOCKS
+        and dispatch.key.quant.endswith("_t16_v1")
+        and _wmma_prefill_shape_supported(dispatch.key.quant, in_features)
     )
 
 
@@ -933,6 +1009,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_q6_k_t16_gemv_kernels()
     register_gguf_q8_0_prefill_kernels()
     register_gguf_q8_0_t16_gemv_kernels()
+    register_gguf_q8_0_t16_prefill_kernels()
 
 
 _LAUNCH_ABI = {
