@@ -16,6 +16,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,
     LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q5_K_T16,
+    LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
@@ -98,8 +99,9 @@ def test_qwen35moe_decode_repack_plan_replaces_covered_weights(monkeypatch: pyte
     plan = plan_qwen35_gguf_materialization(model_map)
 
     assert set(plan.tensor_names) == {tensor.name for tensor in reader.info.tensors}
-    assert plan.root_specs["lm_head"].layout == LAYOUT_RAW_GGUF
-    assert plan.root_specs["lm_head"].quant_key == "gguf_q6_k"
+    assert plan.root_specs["lm_head"].layout == LAYOUT_GGUF_Q6_K_T16
+    assert plan.root_specs["lm_head"].quant_key == "gguf_q6_k_t16_v1"
+    assert plan.root_specs["lm_head"].allocation_names == ("tiles",)
 
     layer0 = plan.layer_specs[0]
     assert layer0["ffn_gate_exps"].layout == LAYOUT_GGUF_Q4_K_T16

@@ -21,16 +21,21 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_wmma_prefill_dual_bf16_bf16_out,
     register_gguf_q4_k_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
+    register_gguf_q6_k_t16_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out,
     register_gguf_q8_0_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
+    gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out,
     register_gguf_q8_0_t16_gemv_kernels,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
+    LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
@@ -107,6 +112,10 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
     (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
         "dense_bf16",
+    ),
+    (LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_f32_out"),
+        "t16",
     ),
     (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
@@ -513,14 +522,42 @@ def launch_gguf_linear_pair_concat(
     kernels whose natural ABI is ``[rows, out_a + out_b]``. P9.C1 uses it for
     the Q8_0 shared-expert gate+up WMMA prefill path so the downstream
     ``silu_mul_dual_out_*`` kernel can consume the same layout as the selected
-    MoE gate+up path.
+    MoE gate+up path. P9.H3 also uses it for resident Q8T16 shared gate/up
+    decode so the two Q8_0 projections share one T16 kernel launch family.
     """
+
+    dispatch_a = resolve_gguf_linear_dispatch(weight_a, rows=rows)
+    dispatch_b = resolve_gguf_linear_dispatch(weight_b, rows=rows)
+    q8_t16_dual = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q8_0_t16_v1",
+        "t16_dual_gate_up_gemv_decode_bf16_bf16_out",
+    )
+    if (
+        dispatch_a.abi == "t16"
+        and dispatch_b.abi == "t16"
+        and dispatch_a.key.quant == "gguf_q8_0_t16_v1"
+        and dispatch_b.key.quant == "gguf_q8_0_t16_v1"
+        and is_registered(q8_t16_dual)
+    ):
+        gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
 
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     if not use_wmma or rows <= 1:
         return False
-    dispatch_a = resolve_gguf_linear_dispatch(weight_a, rows=rows)
-    dispatch_b = resolve_gguf_linear_dispatch(weight_b, rows=rows)
     q8_prefill_raw = KernelKey(
         "hip_gfx1100", "linear", "gguf_q8_0", "prefill_bf16_bf16_out"
     )
@@ -784,6 +821,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_k_gemv_kernels()
     register_gguf_q4_k_gemv_kernels()
     register_gguf_q4_k_prefill_kernels()
+    register_gguf_q6_k_t16_gemv_kernels()
     register_gguf_q8_0_prefill_kernels()
     register_gguf_q8_0_t16_gemv_kernels()
 

@@ -20781,3 +20781,73 @@ Trace CSV: `/tmp/p9_h3c_q8t16_rocprof_csv/rocm/1159928_kernel_trace.csv`.
 Observed kernel: `q8_0_t16_gemv_kernel<unsigned short, unsigned short>` with `End_Timestamp - Start_Timestamp = 8481 ns`.
 
 This is still not a performance claim and does not complete #51. Missing next: selected-MoE Q4T16 dual gate/up and Q5T16/Q6T16 down kernels, then dispatch/routing and P9.E2/P9.B7 acceptance.
+
+## 2026-05-20 P9.H3 task #51: selected T16 decode and blocked acceptance
+
+Fourth/fifth scoped #51 implementation units extended the P9.H2 replacement-layout runtime past the Q8T16 slice:
+
+- Added selected-MoE Q4T16/Q5T16/Q6T16 GEMV decode kernels in `gguf_t16_selected_gemv.{hip,py}`.
+  - Q4T16 dual gate/up supports direct selected-row ABI and compact grouped-MoE ABI.
+  - Q5T16/Q6T16 selected down supports direct selected-row ABI and compact grouped-MoE ABI.
+  - The decode c=1 path uses the direct ABI to avoid compact scheduler overhead; row-bulk replacement fallback uses the compact ABI when raw WMMA is safety-disabled.
+- Wired qwen35moe resident routing so replacement `gguf_q{4,5,6}_k_t16_v1` expert tensors resolve to their `tiles` allocations instead of raw GGUF/pack8 storage.
+- Wired Q8T16 pair-concat shared-expert gate/up routing to the dual Q8T16 kernel.
+- Added dense Q6T16 lm-head GEMV (`BF16 -> F32/BF16`) in `gguf_q6_k_t16_gemv.{hip,py}` and materialized `root.lm_head` as byte-neutral Q6T16 in decode-repack mode, removing the previously allowed Q6_K lm-head legacy `prefill_out` fallback from current decode traces.
+- Updated P9.E2 fixture semantics to make the resident T16 decode-repack path the public candidate (`HIPENGINE_GGUF_DECODE_REPACK=1`, GEMV decode effective, WMMA prefill still safety-disabled unless explicitly unsafe).
+- Extended the rocprof summary classifier/footprints for T16 selected/dense buckets.
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_q8_0_t16_gemv_decode.py \
+  tests/test_gguf_t16_selected_gemv_decode.py \
+  tests/test_gguf_q6_k_t16_gemv_decode.py \
+  -q --tb=short
+# 83 passed
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_linear_dispatch.py \
+  tests/test_qwen35_gguf_compact_moe_gemv_routing.py \
+  tests/test_qwen35_gguf_fastpath_safety.py \
+  tests/test_qwen35_gguf_materialize.py \
+  tests/test_qwen35_gguf_p9_e2e_correctness.py \
+  tests/test_qwen35_gguf_rocprof_summary.py \
+  -q --tb=short
+# 121 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h3-t16-e2e-correctness-accepted.json
+# status=accepted; KL=0, top1=1.0 for all 3 repeats; deterministic tail; finite logits
+```
+
+Benchmark / profiler evidence (W7900/gfx1100 target, local gfx1100 run, cached builds):
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h3-t16-512x128-bench.json
+# median decode=85.728 tok/s; median prefill=501.262 tok/s; peak tracked=21.343 GiB; finite final logits
+```
+
+`benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h3-t16-rocprof-512x16-summary.json` summarizes a 512/16-minus-512/0 profile with `decode_prefill_prefix_dispatches=1278`. Decode phase top buckets:
+
+- `dense_q8_0_t16_gemv_decode_p9`: `59.272 ms / 3570 dispatches` (`3.704 ms/token`).
+- `full_attention_decode`: `27.942 ms / 170 dispatches` (`1.746 ms/token`).
+- `moe_q4_k_selected_dual_t16_gemv_decode_p9`: `18.401 ms / 680 dispatches` (`1.150 ms/token`).
+- `moe_q5_k_selected_t16_gemv_decode_p9`: `14.145 ms / 629 dispatches` (`0.884 ms/token`).
+- `dense_q6_k_t16_gemv_decode_p9`: `10.545 ms / 17 dispatches` (`0.659 ms/token`).
+- Legacy `prefill_out` buckets are absent in this retained summary.
+
+Conclusion for #51: correctness and kernel-mix acceptance are now satisfied, and tracked peak remains within the 24 GiB-class budget, but the performance target is still blocked (`85.728 tok/s < 95 tok/s`). I also tried a local, non-retained Q8/Q4/Q5/Q6 T16 metadata-broadcast micro-optimization with wave shuffles; it was reverted because a 512/128 diagnostic regressed to `41.111 tok/s`. A Q8T16 block-size micro sweep likewise rejected `64`/`96` threads (slower than `128`) and `256` threads (invalid for the current launch-bounds/shared reduction). Next viable work is task #28/#31 style dispatch/small-op fusion or a deeper Q8/full-attention decode reduction; do not mark #51/#52/#26 accepted from the current H3 artifacts.

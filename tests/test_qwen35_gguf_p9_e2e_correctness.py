@@ -28,7 +28,7 @@ def _run(ids: list[int], logits: np.ndarray, *, finite: bool = True) -> p9_gate.
     )
 
 
-def test_p9_e2e_fixture_declares_wmma_and_gemv_decode_env_contract() -> None:
+def test_p9_e2e_fixture_declares_decode_repack_and_gemv_env_contract() -> None:
     fixture = p9_gate.load_fixture(FIXTURE)
 
     assert fixture["model"]["architecture"] == "qwen35moe"
@@ -44,6 +44,7 @@ def test_p9_e2e_fixture_declares_wmma_and_gemv_decode_env_contract() -> None:
     assert p9_gate.expected_env_from_mode(fixture["candidate"]) == {
         "HIPENGINE_GGUF_WMMA_PREFILL": "1",
         "HIPENGINE_GGUF_GEMV_DECODE": "1",
+        "HIPENGINE_GGUF_DECODE_REPACK": "1",
     }
 
 

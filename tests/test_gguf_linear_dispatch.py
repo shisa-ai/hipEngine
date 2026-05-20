@@ -23,6 +23,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_FP16,
     launch_gguf_linear,
     launch_gguf_linear_pair,
+    launch_gguf_linear_pair_concat,
     resolve_gguf_linear_dispatch,
     set_wmma_prefill_enabled,
     wmma_prefill_session,
@@ -502,6 +503,42 @@ def test_wmma_prefill_threads_silently_dropped_on_wmma_path() -> None:
     key2, _, kwargs2 = _capture_launch(rows=4, threads=128)
     assert key2 == _PREFILL_BF16
     assert kwargs2.get("threads") == 128
+
+
+def test_t16_pair_concat_fuses_q8_shared_gate_up() -> None:
+    """Resident Q8T16 shared gate/up can use the concatenated dual ABI."""
+
+    weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    import hipengine.runtime.gguf_linear as gl
+
+    pair_calls: list[tuple] = []
+
+    def fake_pair(*args, **kwargs):
+        pair_calls.append((args, kwargs))
+
+    original = gl.gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out
+    gl.gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out = fake_pair  # type: ignore[assignment]
+    try:
+        fused = launch_gguf_linear_pair_concat(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=2048,
+            out_features=512,
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+    finally:
+        gl.gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out = original  # type: ignore[assignment]
+
+    assert fused is True
+    assert pair_calls == [
+        ((100, 14, 14, 200, 1, 2048, 512, 512), {"stream": 7, "runtime": "runtime-sentinel"})
+    ]
+
 
 
 def test_wmma_prefill_pair_declines_fusion_when_q8_0_rows_gt_1() -> None:

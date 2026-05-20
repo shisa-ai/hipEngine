@@ -60,13 +60,16 @@ _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
     # one dispatch covers two HxF weight tensors per active expert.
     "moe_q4_k_selected_dual_wmma_prefill": int(8 * 2 * 2048 * 4096 * 0.5625),
     "moe_q4_k_selected_dual_pack8_gemv_decode_p9": int(8 * 2 * 2048 * 4096 * 0.5625),
+    "moe_q4_k_selected_dual_t16_gemv_decode_p9": int(8 * 2 * 2048 * 512 * 0.5625),
     "moe_q4_k_selected_legacy_decode": int(8 * 2 * 2048 * 4096 * 0.5625),
     # Selected down (P8.5 WMMA prefill / P9.B2 GEMV decode / legacy decode).
     "moe_q5_k_selected_wmma_prefill": int(8 * 4096 * 2048 * 0.6875),
     "moe_q5_k_selected_pack8_gemv_decode_p9": int(8 * 4096 * 2048 * 0.6875),
+    "moe_q5_k_selected_t16_gemv_decode_p9": int(8 * 512 * 2048 * 0.6875),
     "moe_q5_k_selected_legacy_decode": int(8 * 4096 * 2048 * 0.6875),
     "moe_q6_k_selected_wmma_prefill": int(8 * 4096 * 2048 * 0.8203),
     "moe_q6_k_selected_pack8_gemv_decode_p9": int(8 * 4096 * 2048 * 0.8203),
+    "moe_q6_k_selected_t16_gemv_decode_p9": int(8 * 512 * 2048 * 0.8203),
     "moe_q6_k_selected_legacy_decode": int(8 * 4096 * 2048 * 0.8203),
     # ------------------------------------------------------ Dense Q8_0 attn
     # Each per-layer attention or shared-expert projection touches one HxF
@@ -75,6 +78,7 @@ _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
     # midpoint for QKV/O at hidden_size=2048.
     "dense_q8_0_wmma_prefill": int(2048 * 2048 * 1.0625),
     "dense_q8_0_pack8_gemv_decode_p9": int(2048 * 2048 * 1.0625),
+    "dense_q8_0_t16_gemv_decode_p9": int(2048 * 2048 * 1.0625),
     "dense_q8_0_legacy_decode": int(2048 * 2048 * 1.0625),
     # ------------------------------------------------------ Dense Q4_K attn
     # Same midpoint shape (2048x2048); Q4_K density 0.5625 B/w.
@@ -85,6 +89,7 @@ _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
     # Vocab assumed 151_936 (Qwen3.6 default). Override via config-json for
     # other tokenisers.
     "dense_q6_k_pack8_gemv_decode_p9": int(2048 * 151_936 * 0.8203),
+    "dense_q6_k_t16_gemv_decode_p9": int(2048 * 151_936 * 0.8203),
     "dense_q6_k_legacy_decode": int(2048 * 151_936 * 0.8203),
     # ---------------------------------------------------------- Non-weight
     "gdn_prefill_recurrent": None,
@@ -192,6 +197,8 @@ def classify_kernel(name: str) -> str:
         return "moe_q4_k_selected_dual_wmma_prefill"
     if "gguf_q4_k_selected_dual_pack8_gemv_decode_compact" in base:
         return "moe_q4_k_selected_dual_pack8_gemv_decode_p9"
+    if "q4_k_t16_selected_dual" in base and "gemv" in base:
+        return "moe_q4_k_selected_dual_t16_gemv_decode_p9"
     if "gguf_q4_k_selected_dual_prefill_out" in base or "gguf_q4_k_selected_pack8_prefill_out" in base:
         return "moe_q4_k_selected_legacy_decode"
     # ------------------------------------------------- GGUF Q5_K / Q6_K MoE
@@ -205,6 +212,11 @@ def classify_kernel(name: str) -> str:
             return "moe_q5_k_selected_pack8_gemv_decode_p9"
         if ", 6" in name or ",6" in name:
             return "moe_q6_k_selected_pack8_gemv_decode_p9"
+    if "qk_t16_selected" in base and "gemv" in base:
+        if ", 5" in name or ",5" in name:
+            return "moe_q5_k_selected_t16_gemv_decode_p9"
+        if ", 6" in name or ",6" in name:
+            return "moe_q6_k_selected_t16_gemv_decode_p9"
     if "gguf_k_selected_pack8_prefill_out" in base:
         if ", 5" in name or ",5" in name:
             return "moe_q5_k_selected_legacy_decode"
@@ -215,6 +227,8 @@ def classify_kernel(name: str) -> str:
         return "dense_q8_0_wmma_prefill"
     if "gguf_q8_0_pack8_gemv_decode" in base or "gguf_q8_0_pack8_dual_gate_up_gemv_decode" in base:
         return "dense_q8_0_pack8_gemv_decode_p9"
+    if "q8_0_t16_gemv" in base or "q8_0_t16_dual_gemv" in base:
+        return "dense_q8_0_t16_gemv_decode_p9"
     if "gguf_k_pack8_prefill_out" in base and (", 8" in name or ",8" in name):
         return "dense_q8_0_legacy_decode"
     if "gguf_q4_k_pack8_gemv_decode" in base:
@@ -226,6 +240,8 @@ def classify_kernel(name: str) -> str:
         return "dense_q4_k_legacy_decode"
     if "gguf_q6_k_pack8_gemv_decode" in base:
         return "dense_q6_k_pack8_gemv_decode_p9"
+    if "q6_k_t16_gemv" in base:
+        return "dense_q6_k_t16_gemv_decode_p9"
     if "gguf_k_pack8_prefill_out" in base and (", 6" in name or ",6" in name):
         return "dense_q6_k_legacy_decode"
     # ------------------------------------------------------ GDN / linear-attn

@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""P9 qwen35moe GGUF WMMA+GEMV-decode E2E correctness gate.
+"""P9 qwen35moe GGUF E2E correctness gate.
 
-This is the formal P9 correctness contract for the opt-in combination of
-GGUF WMMA bulk prefill (P8) and GGUF pack8 GEMV decode (P9.B).  It compares a
-512-token qwen35moe generation against the legacy row-GEMV reference path:
+This is the formal P9 correctness contract for GGUF resident fast-path opt-ins.
+The current fixture compares a 512-token qwen35moe generation from the resident
+T16 decode-repack + GEMV path against the legacy row-GEMV reference path:
 
 * reference: ``HIPENGINE_GGUF_WMMA_PREFILL=0`` and
   ``HIPENGINE_GGUF_GEMV_DECODE=0``
-* candidate: ``HIPENGINE_GGUF_WMMA_PREFILL=1`` and
-  ``HIPENGINE_GGUF_GEMV_DECODE=1``
+* candidate: ``HIPENGINE_GGUF_DECODE_REPACK=1`` and
+  ``HIPENGINE_GGUF_GEMV_DECODE=1``; ``HIPENGINE_GGUF_WMMA_PREFILL=1`` remains
+  in the fixture to prove the qwen35moe safety gate keeps unsafe WMMA disabled
+  unless explicitly overridden.
 
 The script runs the resident GGUF session directly so it can collect full logits
 for the prefill sample plus every decode step.  It fails loudly when KL/top-1
-reduction-order drift exceeds the fixture thresholds, when final logits are not
-finite, or when the candidate token tail is not deterministic across repeats.
+drift exceeds the fixture thresholds, when final logits are not finite, or when
+the candidate token tail is not deterministic across repeats.
 """
 
 from __future__ import annotations
@@ -350,7 +352,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "schema": 1,
         "status": "accepted" if passed else "rejected_correctness",
         "performance_claim": False,
-        "mode": "qwen35moe_p9_wmma_prefill_plus_gemv_decode_e2e_correctness",
+        "mode": "qwen35moe_p9_t16_decode_repack_plus_gemv_decode_e2e_correctness",
         "fixture": str(args.fixture),
         "arguments": {
             "model_override": str(args.model) if args.model else "",
@@ -399,7 +401,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "notes": [
             "This gate intentionally uses the resident runner rather than public LLM.generate so it can compare full logits for every generated step.",
             "Reference is the legacy row-GEMV path with WMMA prefill and P9 GEMV decode disabled by env.",
-            "Candidate is launched with HIPENGINE_GGUF_WMMA_PREFILL=1 and HIPENGINE_GGUF_GEMV_DECODE=1; inspect candidate.fastpath_safety_repeats for requested vs effective qwen35moe flags.",
+            "Candidate is launched with HIPENGINE_GGUF_DECODE_REPACK=1 and HIPENGINE_GGUF_GEMV_DECODE=1 (and WMMA requested only to prove qwen35moe safety gating); inspect candidate.fastpath_safety_repeats for requested vs effective qwen35moe flags.",
             "Use this command as the correctness gate for P9.A3/P9.B7-style benchmark acceptance rows before reporting throughput.",
         ],
     }

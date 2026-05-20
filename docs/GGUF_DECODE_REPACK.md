@@ -15,7 +15,12 @@ Implementation progress:
   qwen35moe slots.
 - P9.H3c added the first HIP consumer: Q8T16 single and dual dense/shared
   rows=1 GEMV decode kernels plus registry/runtime single-dispatch support.
-  Selected-MoE Q4/Q5/Q6 T16 kernels are still missing.
+- P9.H3d added selected-MoE Q4T16 direct/compact dual gate-up and Q5T16/Q6T16
+  direct/compact down GEMV kernels, plus resident routing through the `tiles`
+  allocations.
+- P9.H3e added dense Q6T16 lm-head GEMV (`BF16 -> F32/BF16`) so current
+  decode-repack profiles no longer rely on the legacy Q6_K `prefill_out`
+  fallback.
 
 This is the high-priority design for tasks #50/#51. It responds to the P9.B7
 finding that the current rows=1 GGUF decode opt-in is wired but not useful:
@@ -191,6 +196,7 @@ If all targeted tensors are replaced rather than duplicated:
 | Q5_K selected down | 6.3594 | ~6.5039 | +0.1445 |
 | Q6_K selected down | 0.6152 | 0.6152 | 0.0000 |
 | Q8_0 dense/shared listed above | 1.2659 | 1.2659 | 0.0000 |
+| Q6_K lm-head | byte-neutral | byte-neutral | 0.0000 |
 | **Total targeted** | **19.4905** | **~19.9475** | **~+0.4570** |
 
 Expected tracked peak if the rest of the runtime is unchanged:
@@ -230,9 +236,11 @@ Raw+packed for just Q4/Q5/Q6 experts would exceed the 24 GiB-class budget.
    - The current #49 safety gate remains in place until the full P9.E2 contract
      passes with `effective_wmma_prefill=true` and/or `effective_gemv_decode=true`.
 
-5. lm-head exception: P9.B7 already allowed Q6_K lm-head logits pack8 fallback.
-   Leave lm-head raw/Q6 fallback out of the first replacement scope unless a
-   later trace shows it dominates after MoE/Q8 replacement.
+5. lm-head status: P9.B7 originally allowed Q6_K lm-head logits pack8 fallback,
+   but P9.H3e now materializes `root.lm_head` as `gguf_q6_k_t16_v1` in
+   decode-repack mode and routes logits through dense Q6T16 GEMV. Treat any
+   remaining legacy Q6_K `prefill_out` in decode traces as a regression unless
+   a future artifact documents an explicit fallback.
 
 ## Expected kernel families
 
@@ -249,6 +257,7 @@ Initial kernels for #51:
 | `moe_linear` | `gguf_q6_k_t16_v1` | `selected_t16_gemv_decode_compact_bf16_bf16_out` | selected down projection for Q6 layers |
 | `linear` | `gguf_q8_0_t16_v1` | `t16_gemv_decode_bf16_bf16_out` | dense/shared single projection |
 | `linear` | `gguf_q8_0_t16_v1` | `t16_dual_gate_up_gemv_decode_bf16_bf16_out` | shared-expert gate+up dual projection |
+| `linear` | `gguf_q6_k_t16_v1` | `t16_gemv_decode_bf16_f32_out` | lm-head logits |
 
 Kernel shape guidance:
 
@@ -295,7 +304,8 @@ Kernel shape guidance:
      `62.557 tok/s` baseline.
    - `rocprofv3 --kernel-trace` (full if possible, otherwise 512/16 decode-delta
      plus explicit explanation) must show T16 decode kernels dominating and
-     legacy `prefill_out` absent from decode except documented Q6_K lm-head.
+     legacy `prefill_out` absent from decode (including lm-head unless a future
+     artifact explicitly reinstates that fallback).
    - Peak tracked memory must remain below the 24 GiB-class budget; record both
      tracked and HIP sampled peaks.
 

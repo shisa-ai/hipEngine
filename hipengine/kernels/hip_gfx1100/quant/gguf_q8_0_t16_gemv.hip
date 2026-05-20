@@ -110,7 +110,7 @@ __global__ __launch_bounds__(128, 4) void q8_0_t16_gemv_kernel(
 #pragma unroll
     for (int col = 0; col < T16_COLS; ++col) {
       const float d = fp16_bytes_to_float(tile + col * 2);
-      acc[col] = fmaf(xv, d * static_cast<float>(q[col]), acc[col]);
+      acc[col] += xv * (d * static_cast<float>(q[col]));
     }
   }
 
@@ -181,7 +181,7 @@ __global__ __launch_bounds__(128, 4) void q8_0_t16_dual_gemv_kernel(
 #pragma unroll
     for (int col = 0; col < T16_COLS; ++col) {
       const float d = fp16_bytes_to_float(tile + col * 2);
-      acc[col] = fmaf(xv, d * static_cast<float>(q[col]), acc[col]);
+      acc[col] += xv * (d * static_cast<float>(q[col]));
     }
   }
 

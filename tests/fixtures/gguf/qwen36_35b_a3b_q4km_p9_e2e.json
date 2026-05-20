@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "P9.E2 formal qwen35moe Qwen3.6-35B-A3B-UD-Q4_K_M 512/128 E2E correctness contract for WMMA prefill plus GEMV decode opt-ins vs the legacy row-GEMV path.",
+  "description": "P9.E2 formal qwen35moe Qwen3.6-35B-A3B-UD-Q4_K_M 512/128 E2E correctness contract for the resident T16 decode-repack GEMV path vs the legacy row-GEMV path.",
   "model": {
     "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
     "quant": "gguf_q4_k_m",
@@ -28,10 +28,11 @@
     "bulk_prefill_attention_mode": "bulk"
   },
   "candidate": {
-    "name": "p9_wmma_prefill_plus_gemv_decode_opt_in",
+    "name": "p9_t16_decode_repack_plus_gemv_decode_opt_in",
     "env": {
       "HIPENGINE_GGUF_WMMA_PREFILL": "1",
-      "HIPENGINE_GGUF_GEMV_DECODE": "1"
+      "HIPENGINE_GGUF_GEMV_DECODE": "1",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1"
     },
     "use_bulk_prefill": true,
     "bulk_prefill_attention_mode": "bulk"
@@ -43,7 +44,7 @@
     "deterministic_tail_required": true,
     "candidate_repeat_count": 3,
     "comparison": "candidate logits vs legacy row-GEMV reference logits over 129 rows (prefill sample + 128 decode steps)",
-    "purpose": "Fail loudly if P8 reduction-order drift or P9 GEMV decode drift grows beyond the formal P9 threshold."
+    "purpose": "Fail loudly if resident T16 decode-repack GEMV drift grows beyond the formal P9 threshold."
   },
   "benchmark_gate_usage": {
     "p9_a3": "Run before accepting GDN/P9.A3 throughput rows when WMMA prefill is enabled.",

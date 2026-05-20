@@ -34,6 +34,7 @@ from hipengine.runtime.gguf_linear import set_gemv_decode_enabled
 @pytest.fixture(autouse=True)
 def _reset_gemv_decode_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_GEMV_DECODE", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_DECODE_REPACK", raising=False)
     set_gemv_decode_enabled(None)
     yield
     set_gemv_decode_enabled(None)
@@ -90,6 +91,82 @@ def test_compact_gemv_opt_in_routes_grouped_scheduler(monkeypatch: pytest.Monkey
     # Weighted lane combine and shared-gate residual combine fire at rows=1.
     assert ("weighted_lanes", (1, 2, 256)) in calls
     assert ("shared_batch", (1, 256, 1)) in calls
+
+
+def test_t16_weights_route_direct_selected_tiles_allocations(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_exps"] = _FakeWeight(
+        "ffn_gate_exps", "gguf_q4_k_t16_v1", 12, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_up_exps"] = _FakeWeight(
+        "ffn_up_exps", "gguf_q4_k_t16_v1", 13, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_down_exps"] = _FakeWeight(
+        "ffn_down_exps", "gguf_q6_k_t16_v1", 14, experts=4, out_features=256, in_features=256
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("t16_pair", (args[2], args[3], args[4], args[5], args[6:11]))),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q6_k_t16_selected_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("t16_down", (args[2], args[3], args[4:9]))),
+    )
+    set_gemv_decode_enabled(True)
+
+    runner._run_post_attention_moe_c1(0, out_ptr=9000, scratch=scratch, stream=7)
+
+    assert ("t16_pair", (1012, 1013, 150, 150 + 2 * 256 * 2, (1, 2, 4, 256, 256))) in calls
+    assert ("t16_down", (1014, 180, (2, 2, 4, 256, 256))) in calls
+    assert ("weighted_shared", None) in calls
+
+
+
+def test_row_bulk_t16_direct_selected_prefill_routes_without_compact_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_exps"] = _FakeWeight(
+        "ffn_gate_exps", "gguf_q4_k_t16_v1", 12, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_up_exps"] = _FakeWeight(
+        "ffn_up_exps", "gguf_q4_k_t16_v1", 13, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_down_exps"] = _FakeWeight(
+        "ffn_down_exps", "gguf_q5_k_t16_v1", 14, experts=4, out_features=256, in_features=256
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(qgr, "_launch_selected_expert_pack8_moe_pair", _fail_if_called("sidecar_pair"))
+    monkeypatch.setattr(qgr, "_launch_selected_expert_pack8_moe_linear", _fail_if_called("sidecar_linear"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("t16_pair", (args[2], args[3], args[4], args[5], args[6:11]))),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q5_k_t16_selected_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("t16_down", (args[2], args[3], args[4:9]))),
+    )
+    set_gemv_decode_enabled(True)
+
+    runner._run_post_attention_moe_rows(0, rows=2, out_ptr=9000, scratch=scratch, stream=7)
+
+    names = [name for name, _ in calls]
+    assert "group_count" not in names
+    assert "tile_map" not in names
+    assert "weighted_lanes" not in names
+    assert ("t16_pair", (1012, 1013, 150, 150 + 4 * 256 * 2, (2, 4, 4, 256, 256))) in calls
+    assert ("t16_down", (1014, 180, (4, 4, 4, 256, 256))) in calls
+    assert ("weighted_shared_batch", None) in calls
+
 
 
 def test_compact_gemv_missing_kernel_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -211,18 +288,23 @@ class _FakeWeight:
         in_features: int,
     ):
         row_bytes = max(1, in_features // 2)
+        layout = "gguf_q8_0_t16_v1" if quant_key.endswith("_t16_v1") else ("raw_gguf" if quant_key.startswith("gguf_") else "dense_bf16")
         self.spec = SimpleNamespace(
             quant_key=quant_key,
+            layout=layout,
             source=SimpleNamespace(
                 name=name,
                 shape=(experts, out_features, in_features),
                 byte_shape=(experts, out_features, row_bytes),
             ),
         )
-        self._allocation = SimpleNamespace(tensor=SimpleNamespace(ptr=ptr), buffer=SimpleNamespace(nbytes=1))
+        self._allocations = {
+            "raw": SimpleNamespace(tensor=SimpleNamespace(ptr=ptr), buffer=SimpleNamespace(nbytes=1)),
+            "tiles": SimpleNamespace(tensor=SimpleNamespace(ptr=ptr + 1000), buffer=SimpleNamespace(nbytes=1)),
+        }
 
     def allocation(self, name: str = "raw"):
-        return self._allocation
+        return self._allocations[name]
 
 
 class _FakeLayer:
@@ -291,7 +373,10 @@ def _patch_compact_scheduler(monkeypatch: pytest.MonkeyPatch, calls: list[tuple[
     monkeypatch.setattr(
         qgr,
         "shared_gate_combine_residual_batch_out_bf16",
-        lambda *args, **kwargs: calls.append(("shared_batch", args[5:8])),
+        lambda *args, **kwargs: (
+            calls.append(("shared_batch", args[5:8])),
+            calls.append(("shared_batch_gate_ptr", args[2])),
+        ),
     )
 
 
@@ -300,8 +385,10 @@ def _patch_compact_gemv_registry(
     calls: list[tuple[str, object]],
     *,
     down_quant: str,
+    gate_quant: str = "gguf_q4_k",
+    up_quant: str = "gguf_q4_k",
 ) -> None:
-    gate_key = qgr._COMPACT_MOE_Q4_DUAL_GEMV_KEYS[("gguf_q4_k", "gguf_q4_k")]
+    gate_key = qgr._COMPACT_MOE_Q4_DUAL_GEMV_KEYS[(gate_quant, up_quant)]
     down_key = qgr._COMPACT_MOE_DOWN_GEMV_KEYS[down_quant]
     scheduler_keys = (
         KernelKey("hip_gfx1100", "moe_group_count", "w4_paro", "qwen35"),
@@ -310,14 +397,16 @@ def _patch_compact_gemv_registry(
     )
 
     def fake_gate_up(*args, **kwargs):
-        # compact_dual_pack8_gemv signature:
+        # compact_dual_*_gemv signature:
         # (x, expert_start, qa, qb, out, compact_rows, in_f, out_a, out_b, num_experts)
         calls.append(("compact_gate_up", args[5:10]))
+        calls.append(("compact_gate_up_ptrs", args[2:4]))
 
     def fake_down(*args, **kwargs):
-        # compact_pack8_gemv signature:
+        # compact_*_gemv signature:
         # (x, expert_start, qweight, out, compact_rows, in_f, out_f, num_experts)
         calls.append(("compact_down", args[4:8]))
+        calls.append(("compact_down_ptr", args[2]))
 
     available = {
         gate_key: fake_gate_up,

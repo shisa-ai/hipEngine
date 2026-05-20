@@ -79,11 +79,16 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         # MoE compact selected -- P8 WMMA prefill and P9.B GEMV decode + legacy
         ("gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>", "moe_q4_k_selected_dual_wmma_prefill"),
         ("gguf_q4_k_selected_dual_pack8_gemv_decode_compact_kernel<unsigned short>", "moe_q4_k_selected_dual_pack8_gemv_decode_p9"),
+        ("q4_k_t16_selected_dual_direct_gemv_kernel<unsigned short>", "moe_q4_k_selected_dual_t16_gemv_decode_p9"),
+        ("q4_k_t16_selected_dual_gemv_kernel<unsigned short>", "moe_q4_k_selected_dual_t16_gemv_decode_p9"),
         ("gguf_q4_k_selected_dual_prefill_out_kernel<unsigned short, unsigned short>", "moe_q4_k_selected_legacy_decode"),
         ("gguf_k_selected_wmma_prefill_compact_kernel<unsigned short, 5>", "moe_q5_k_selected_wmma_prefill"),
         ("gguf_k_selected_wmma_prefill_compact_kernel<unsigned short, 6>", "moe_q6_k_selected_wmma_prefill"),
         ("gguf_k_selected_pack8_gemv_decode_compact_kernel<unsigned short, 5>", "moe_q5_k_selected_pack8_gemv_decode_p9"),
         ("gguf_k_selected_pack8_gemv_decode_compact_kernel<unsigned short, 6>", "moe_q6_k_selected_pack8_gemv_decode_p9"),
+        ("qk_t16_selected_direct_gemv_kernel<unsigned short, 5>", "moe_q5_k_selected_t16_gemv_decode_p9"),
+        ("qk_t16_selected_direct_gemv_kernel<unsigned short, 6>", "moe_q6_k_selected_t16_gemv_decode_p9"),
+        ("qk_t16_selected_gemv_kernel<unsigned short, 5>", "moe_q5_k_selected_t16_gemv_decode_p9"),
         ("gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 5>", "moe_q5_k_selected_legacy_decode"),
         ("gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>", "moe_q6_k_selected_legacy_decode"),
         # Dense Q8_0
@@ -92,12 +97,15 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         ("gguf_q8_0_pack8_gemv_kernel<unsigned short>", "other"),  # legacy non-decode pack8
         ("gguf_q8_0_pack8_gemv_decode_kernel<unsigned short>", "dense_q8_0_pack8_gemv_decode_p9"),
         ("gguf_q8_0_pack8_dual_gate_up_gemv_decode_kernel<unsigned short>", "dense_q8_0_pack8_gemv_decode_p9"),
+        ("q8_0_t16_gemv_kernel<unsigned short, unsigned short>", "dense_q8_0_t16_gemv_decode_p9"),
+        ("q8_0_t16_dual_gemv_kernel<unsigned short, unsigned short>", "dense_q8_0_t16_gemv_decode_p9"),
         ("gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>", "dense_q8_0_legacy_decode"),
         ("gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>", "dense_q6_k_legacy_decode"),
         # Dense Q4_K / Q6_K
         ("gguf_q4_k_pack8_gemv_decode_kernel<unsigned short, unsigned short>", "dense_q4_k_pack8_gemv_decode_p9"),
         ("gguf_q4_k_pack8_gemv_decode_kernel<unsigned short, float>", "dense_q4_k_pack8_gemv_decode_p9"),
         ("gguf_q6_k_pack8_gemv_decode_kernel<unsigned short, float>", "dense_q6_k_pack8_gemv_decode_p9"),
+        ("q6_k_t16_gemv_kernel<unsigned short, float>", "dense_q6_k_t16_gemv_decode_p9"),
         ("gguf_q4_k_prefill_wmma_kernel<unsigned short, unsigned short>", "dense_q4_k_prefill"),
         ("gguf_q4_k_prefill_dual_wmma_kernel<unsigned short>", "dense_q4_k_prefill"),
         ("gguf_q4_k_prefill_out_kernel<unsigned short, unsigned short>", "dense_q4_k_prefill"),
