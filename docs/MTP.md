@@ -526,20 +526,39 @@ below `33 ms` — ~37% off today.
 
 #### Master scoreboard — verifier wall-time budget (B=3, 4 rows, gfx1151)
 
-Updated as each phase lands. “Baseline (ms)” is the Task #52 reading; “Target (ms)” is the post-phase projection; “Actual (ms)” is filled in from the rocprofv3 + wall-time artifact when the phase commits. Negative values mean we beat the target.
+Updated as each phase lands. “Baseline (ms)” was Task #52’s informal estimate;
+M7.0’s rocprofv3 trace (`benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-baseline.json`) replaces it with measured per-pass kernel times.
+“Target (ms)” is the post-phase projection. “Actual (ms)” is filled in from the
+rocprofv3 + wall-time artifact when the phase commits. Negative deltas mean
+we beat the target.
 
-| Cost component                      | Phase | Baseline (ms) | Target (ms) | Actual (ms) | Δ vs baseline | Δ vs target | Artifact / source |
-|-------------------------------------|:-----:|--------------:|------------:|------------:|---------------:|-------------:|-------------------|
-| MoE selected-expert GEMV (4 rows)   | M7    |          ~20  |       8–12  |       _TBD_ |          _TBD_ |        _TBD_ | _TBD_             |
-| Pre-attention 90-launch chain       | M8    |           ~5  |        ~2   |       _TBD_ |          _TBD_ |        _TBD_ | _TBD_             |
-| LM head W8A16 (4 rows)              | M9    |          ~7.5 |        ~5   |       _TBD_ |          _TBD_ |        _TBD_ | _TBD_             |
-| Host-side Python overhead           | M10   |           ~7  |        ~2   |       _TBD_ |          _TBD_ |        _TBD_ | _TBD_             |
-| GDN chain t-loop (4 rows)           |  —   |          ~10  |       ~10   |        ~10  |            0   |          0   | already chain_tloop |
-| **Total verifier wall**             |       |        **~52**| **~28–32**  |       _TBD_ |          _TBD_ |        _TBD_ |                   |
-| **MTP/AR ceiling @ B=3 (22×3/wall)** |       |       **1.27×**| **2.06–2.36×**| _TBD_      |          _TBD_ |        _TBD_ |                   |
-| **MTP/AR measured @ B=3**           |       |       **0.87×**| **1.3–1.7×** | _TBD_      |          _TBD_ |        _TBD_ |                   |
+| Cost component                      | Phase | Task #52 est. (ms) | M7.0 measured (ms) | Target (ms) | Actual (ms) | Δ vs baseline | Δ vs target | Artifact / source |
+|-------------------------------------|:-----:|-------------------:|-------------------:|------------:|------------:|---------------:|-------------:|-------------------|
+| MoE chain (gate_up + down + rotate + silu + router + combine + w4_dual) | M7 | ~20 | **17.0** | 11–13 | _TBD_ | _TBD_ | _TBD_ | M7.0 artifact |
+| GDN chain t-loop (4 rows)           | M7.B*  |          ~10  |          **13.1** |    10–11  |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact (new phase, see below) |
+| runtime_memset (scratch zeroing)    | M7.C*  |             n/a  |          **11.0** |     2–3   |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact (new phase, see below) |
+| LM head W8A16 (4 rows)              | M9    |          ~7.5 |           **9.9** |     6–7   |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact |
+| Pre-attention chain (QKV + RoPE + norms) | M8 |          ~5  |           **~3.3** (w4_dual_gemv + rmsnorm + paged_kv + decode_attn + attn_gate) |     2.5   |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact |
+| Host-side Python overhead           | M10   |           ~7  |          **~9** (host_window − kernel = 65−56) |     2–3   |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact |
+| Other (runtime_copy + paro_rotate + misc) |  —  |          —   |          **~4.6** |     ~4    |       _TBD_ |             —  |          —   | M7.0 artifact |
+| **Total verifier wall (host)**      |       |             ~52  |             **~65** | **~35–40** |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact |
+| **MTP/AR ceiling @ B=3 (22×3/wall)** |       |          **1.27×**|          **1.02×** | **1.65–1.88×** |   _TBD_ |          _TBD_ |        _TBD_ |                   |
+| **MTP/AR measured @ B=3**           |       |          **0.87×**|          **~0.6×** (16-tok decode, 50% accept) | **1.0–1.4×** | _TBD_ |        _TBD_ |        _TBD_ | M7.0 + smoke      |
 
-Real-world MTP/AR depends on accepted-token density (60–80% expected on chain_tloop), which is why projected measured (1.3–1.7×) is lower than the perfect-accept ceiling (2.06–2.36×). The 1.3–1.7× range matches llama.cpp on the same workload class.
+\* M7.B and M7.C were added after M7.0 revealed the actual top costs differ
+from Task #52’s estimate. Both are simpler than the M7 MoE kernel work and may
+land first.
+
+Real-world MTP/AR depends on accepted-token density (50–80% measured on the
+stable quicksort prompt at B=3, mean ~64% in M7.0 run; the persistent-b3
+run on 2026-05-19 with 8-token decode hit 100%). The M7.0 measured ceiling
+(1.02×) is below the Task #52 estimate (1.27×) because per-pass kernel time
+is 56 ms vs Task #52’s 45 ms, plus ~9 ms host — i.e. “45 ms kernel + 7 ms
+host” understates today’s actual cost by ~10 ms. The post-M7…M10 ceiling
+range (1.65–1.88×) and measured target (1.0–1.4×) are correspondingly more
+conservative than the original 2.06–2.36× / 1.3–1.7× projection. A 1.5×
+measured row is now contingent on landing M7.C (memset) and M9 (LM head) in
+addition to M7 itself.
 
 ### Phase M7 — batched selected-expert GEMV (HIGHEST PRIORITY)
 
@@ -577,14 +596,41 @@ be pushed below the budget).
 
 | #   | Sub-task                                                                                   | Variant            | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
 |-----|--------------------------------------------------------------------------------------------|--------------------|-----------------------:|----------|--------------------:|------------------|
-| M7.0| **rocprofv3 re-baseline**: one MTP verifier pass at B=3, top-N kernel table (launches, total ms, per-launch μs). Decides whether M7.2–M7.5 tune the existing AWQ-selected kernel or write a new layer-array one. | n/a |       0  | _Pending_|                _TBD_| `benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-baseline.json` |
-| M7.1| CPU-reference fixture: 4-tok / 30-layer + 8-tok routed MoE, KL≤0.05 / top-1≥0.90 oracle    | n/a                |                     0  | _Pending_|                _TBD_| _TBD_ (depends on M7.0’s decision but the fixture itself is the same either way) |
-| M7.2| Kernel skeleton or tuned variant: per M7.0 decision, BF16 path for MTP proposer            |`dense_bf16`        |                     0  | _Pending_|                _TBD_| _TBD_ (skeleton; saves nothing until M7.3) |
-| M7.3| Land `dense_bf16` for MTP proposer (down_proj + gate_up_proj fused), route via registry    |`dense_bf16`        |                  ~2–3  | _Pending_|                _TBD_| _TBD_            |
-| M7.4| AWQ pack8 variant: either tuned-existing kernel for 32-row batch, or new layer-array kernel|`awq_q4_pack8`      |                  ~6–8  | _Pending_|                _TBD_| _TBD_            |
-| M7.5| Fused gate+up packed-weight kernel (one launch for 2×n_ff_exp output) — already in tree as `dual_pack8_transposed`; check what additional fusion adds | `awq_q4_pack8_gu`   |                  ~1–2  | _Pending_|                _TBD_| _TBD_            |
-| M7.6| Verify: rocprofv3 shows MoE chain runs <8 ms total at B=3/30 layers, KL≤0.05 vs CPU-ref    | both               |                     0  | _Pending_|                _TBD_| _TBD_ (gate only) |
-| **M7 total** |                                                                                |                    |              **8–12**  |          |             **_TBD_**|                  |
+| M7.0| **rocprofv3 re-baseline** — LANDED. 7 steady-state B=3 verifier passes traced via roctxRangePush markers; per-pass: 56 ms kernel + ~9 ms host = ~65 ms wall. Top families: GDN 13.1, memset 11.0, lm_head 9.9, MoE down 6.0, MoE gate_up 5.9. | n/a | 0 (diagnostic) | ✅ **Landed** | 0 | `benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-baseline.json` |
+| M7.1| CPU-reference fixture: 4-tok / 30-layer + 8-tok routed MoE, KL≤0.05 / top-1≥0.90 oracle    | n/a                |                     0  | _Pending_|                _TBD_| _TBD_            |
+| M7.2| Tune existing `gemv_awq_selected_dual_pack8_transposed_bf16` for 32-row batch (per M7.0: already llama.cpp-style, just needs small-batch micro-tuning). Variant `dense_bf16` for the MTP proposer side. | `dense_bf16` | 1–2 | _Pending_ | _TBD_ | _TBD_ |
+| M7.3| Land `dense_bf16` for MTP proposer (down_proj + gate_up_proj fused), route via registry    |`dense_bf16`        |                  ~1–2  | _Pending_|                _TBD_| _TBD_            |
+| M7.4| AWQ pack8 small-batch tile retune: 70 calls/pass at 86 μs avg; target 60 μs avg via LDS / wave-tile sizing for the 32-row case. | `awq_q4_pack8` | ~3–4 | _Pending_ | _TBD_ | _TBD_ |
+| M7.5| Skip: existing `dual_pack8_transposed` already fuses gate+up (one launch / layer / 2×n_ff_exp output). Reclassify as no-op. | n/a | 0 | ✅ **Landed (n/a)** | 0 | M7.0 confirmed |
+| M7.6| Verify: rocprofv3 shows MoE chain runs ≤11 ms total at B=3/30 layers, KL≤0.05 vs CPU-ref    | both               |                     0  | _Pending_|                _TBD_| _TBD_ (gate only) |
+| **M7 total** |                                                                                |                    |              **4–6**   |          |             **_TBD_**|                  |
+
+#### M7.B tracker — GDN chain t-loop tuning (NEW, surfaced by M7.0)
+
+Projected savings target: **~2–3 ms** of the 13.1 ms GDN chain t-loop budget.
+GDN decode runs 30 calls/pass at 436 μs avg — the per-launch cost is high
+and the kernel is already chain_tloop. Possible wins: chain length tile,
+shared-LDS K-tile, or wave-group sizing.
+
+| #   | Sub-task                                                                                | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
+|-----|-----------------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
+| M7.B.1| Confirm GDN chain_tloop launch parameters match the 4-row B=3 case (not stuck on 8-row defaults) |                  ~1   | _Pending_|                _TBD_| _TBD_            |
+| M7.B.2| Tile-size sweep on the 32-context decode shape; promote per CPU-ref correctness gate     |                  ~1–2  | _Pending_|                _TBD_| _TBD_            |
+| **M7.B total** |                                                                               |              **~2–3** |          |             **_TBD_**|                  |
+
+#### M7.C tracker — runtime_memset elimination (NEW, surfaced by M7.0)
+
+Projected savings target: **~8–9 ms** of the 11 ms runtime_memset budget.
+120 hipMemsetAsync calls per pass at 92 μs avg — most are scratch-buffer
+zeroing per MoE layer. Almost all of these should be one-shot (zero at
+session init) or unnecessary (kernels can overwrite without prior zero).
+
+| #   | Sub-task                                                                                | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
+|-----|-----------------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
+| M7.C.1| Identify which scratch buffers get memset per pass (`grep memset hipengine/runtime/qwen35_paro.py` and the MoE c1 path) |                     0  | _Pending_|                _TBD_| _TBD_            |
+| M7.C.2| Promote one-shot zeroing where the kernel reads no “old” state; remove redundant memsets |                  ~6–8  | _Pending_|                _TBD_| _TBD_            |
+| M7.C.3| Correctness: full b3 chain matches existing tests; KL/top-1 unchanged                    |                     0  | _Pending_|                _TBD_| _TBD_ (gate only) |
+| **M7.C total** |                                                                               |              **~8–9** |          |             **_TBD_**|                  |
 
 Design notes:
 - Grid `(n_out_tiles, n_expert_used, n_tokens)`. Each block reads `expert = ids[token, slot]` and indexes `W[expert, tile, :]`.

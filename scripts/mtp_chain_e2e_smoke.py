@@ -12,6 +12,7 @@ a throughput benchmark and must not be promoted as a speed row.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import sys
 import time
@@ -23,6 +24,62 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+
+class _RoctxProfilerWindow:
+    """Minimal roctxProfilerResume/Pause helper for selected-region rocprofv3.
+
+    The harness opens libroctx64.so lazily; if it fails (no rocprofv3 ROCTX SDK
+    overlay on LD_LIBRARY_PATH) the window is a no-op and the bench still runs.
+    Also exposes range push/pop and per-pass marker times so rocprofv3 1.1.0
+    hosts (which silently drop --selected-regions) can post-process the trace
+    using the per-pass wall-clock ns boundaries instead.
+    """
+
+    def __init__(self, *, enabled: bool) -> None:
+        self.enabled = bool(enabled)
+        self._lib: ctypes.CDLL | None = None
+        self._resume = None
+        self._pause = None
+        self._push = None
+        self._pop = None
+        self._active = False
+        if not self.enabled:
+            return
+        try:
+            self._lib = ctypes.CDLL("libroctx64.so")
+        except OSError as exc:
+            print(f"warning: roctxProfiler requested but libroctx64.so unavailable: {exc}", file=sys.stderr)
+            self._lib = None
+            return
+        self._resume = getattr(self._lib, "roctxProfilerResume", None)
+        self._pause = getattr(self._lib, "roctxProfilerPause", None)
+        self._push = getattr(self._lib, "roctxRangePushA", None)
+        self._pop = getattr(self._lib, "roctxRangePop", None)
+        if self._push is not None:
+            self._push.argtypes = [ctypes.c_char_p]
+            self._push.restype = ctypes.c_int
+        if self._pop is not None:
+            self._pop.argtypes = []
+            self._pop.restype = ctypes.c_int
+
+    def resume(self) -> None:
+        if self._resume is not None and not self._active:
+            self._resume(0)
+            self._active = True
+
+    def pause(self) -> None:
+        if self._pause is not None and self._active:
+            self._pause(0)
+            self._active = False
+
+    def range_push(self, name: str) -> None:
+        if self._push is not None:
+            self._push(name.encode("utf-8"))
+
+    def range_pop(self) -> None:
+        if self._pop is not None:
+            self._pop()
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
@@ -244,6 +301,8 @@ def _run_spec_persistent_device(
     backend: str,
     chain_attn_mode: str,
     graph_mode: str = "off",
+    rocprof_warmup_cycles: int = 0,
+    rocprof_verify_cycles: int = 0,
 ) -> tuple[list[int], dict[str, Any]]:
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_tokens) + int(decode_tokens) + int(candidate_budget) + 4
@@ -257,6 +316,28 @@ def _run_spec_persistent_device(
     capture_buf: DeviceBuffer | None = None
     started = time.perf_counter()
     active_budgets: list[int] = []
+    # Always load libroctx64 so range_push/pop markers fire even when the
+    # selected-region window is off (rocprofv3 1.1.0 path). The resume/pause
+    # path is still gated on rocprof_verify_cycles>0 below.
+    rocprof_window = _RoctxProfilerWindow(enabled=True)
+    rocprof_resume_window_enabled = int(rocprof_verify_cycles) > 0
+    rocprof_window_meta: dict[str, Any] = {
+        "enabled": bool(rocprof_resume_window_enabled),
+        "warmup_cycles": int(rocprof_warmup_cycles),
+        "verify_cycles": int(rocprof_verify_cycles),
+        "profiled_cycle_range": None,
+        "profiled_cycle_seconds": None,
+    }
+    rocprof_window_started = False
+    rocprof_window_done = False  # one-shot — keep the profiled region a single contiguous span
+    rocprof_window_first_cycle: int | None = None
+    rocprof_window_last_cycle: int | None = None
+    rocprof_window_t_start: float | None = None
+    rocprof_window_t_end: float | None = None
+    # Per-cycle wall-clock ns boundaries. Used by the rocprof post-processor on
+    # rocprofv3 hosts where --selected-regions is broken so it can filter the
+    # kernel trace by verifier-cycle window via timestamp arithmetic.
+    cycle_marker_ns: list[tuple[int, int, int]] = []
     with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence, max_batch_size=int(candidate_budget) + 1) as session:
         hidden = int(session.config.hidden_size)
         capture_layer_id = int(session.layer_limit) - 1
@@ -308,6 +389,18 @@ def _run_spec_persistent_device(
                         context += 1
                         break
                     cycles += 1
+                    if (
+                        rocprof_resume_window_enabled
+                        and not rocprof_window_done
+                        and not rocprof_window_started
+                        and cycles > int(rocprof_warmup_cycles)
+                    ):
+                        rocprof_window.resume()
+                        rocprof_window_started = True
+                        rocprof_window_first_cycle = cycles
+                        rocprof_window_t_start = time.perf_counter()
+                    rocprof_window.range_push(f"mtp_verify_cycle_{cycles}")
+                    cycle_t_ns_start = time.perf_counter_ns()
                     snapshots = [proposer.save_state(0)]
                     candidates = [int(proposer.current.token)]
                     for draft_idx in range(1, active_budget):
@@ -318,6 +411,7 @@ def _run_spec_persistent_device(
                     verify_budget = active_budget if active_budget in MTP_CHAIN_CANDIDATE_BUDGETS else int(candidate_budget)
                     target_batch = _target_batch(root, context, candidates, active_budget, candidate_budget=verify_budget)
                     t_verify = time.perf_counter()
+                    rocprof_window.range_push(f"mtp_verify_pass_{cycles}")
                     verify = session.verify_chain_bulk_and_commit(
                         target_batch,
                         base_slot=0,
@@ -327,6 +421,7 @@ def _run_spec_persistent_device(
                         chain_attn_mode=chain_attn_mode,
                         graph_mode=graph_mode,
                     )
+                    rocprof_window.range_pop()
                     verify_seconds += time.perf_counter() - t_verify
                     accepted = int(verify.accepted_count)
                     accepted_lengths.append(accepted)
@@ -361,11 +456,35 @@ def _run_spec_persistent_device(
                     proposal_decode_update_seconds += time.perf_counter() - update_started
                     context += len(committed)
                     root = bonus
+                    cycle_t_ns_end = time.perf_counter_ns()
+                    rocprof_window.range_pop()
+                    cycle_marker_ns.append((cycles, cycle_t_ns_start, cycle_t_ns_end))
+                    if (
+                        rocprof_resume_window_enabled
+                        and rocprof_window_started
+                        and rocprof_window_first_cycle is not None
+                        and cycles >= rocprof_window_first_cycle + int(rocprof_verify_cycles) - 1
+                    ):
+                        rocprof_window.pause()
+                        rocprof_window_last_cycle = cycles
+                        rocprof_window_t_end = time.perf_counter()
+                        rocprof_window_started = False
+                        rocprof_window_done = True
+                if rocprof_resume_window_enabled and rocprof_window_started:
+                    rocprof_window.pause()
+                    rocprof_window_last_cycle = cycles
+                    rocprof_window_t_end = time.perf_counter()
+                    rocprof_window_started = False
+                    rocprof_window_done = True
                 decode_seconds = time.perf_counter() - decode_started
         finally:
             if capture_buf is not None:
                 free(capture_buf, runtime=session.runtime)
     seconds = time.perf_counter() - started
+    if rocprof_window_first_cycle is not None and rocprof_window_last_cycle is not None:
+        rocprof_window_meta["profiled_cycle_range"] = [int(rocprof_window_first_cycle), int(rocprof_window_last_cycle)]
+        if rocprof_window_t_start is not None and rocprof_window_t_end is not None:
+            rocprof_window_meta["profiled_cycle_seconds"] = float(rocprof_window_t_end - rocprof_window_t_start)
     return generated[: int(decode_tokens)], {
         "seconds": seconds,
         "decode_seconds": decode_seconds,
@@ -381,6 +500,11 @@ def _run_spec_persistent_device(
         "chain_attn_mode": chain_attn_mode,
         "proposal_impl": "persistent_device",
         "note": "Persistent native MTP provider: weights/cache resident and target hidden stays on device; selected expert ids are still host-orchestrated.",
+        "rocprof_window": rocprof_window_meta,
+        "cycle_marker_ns": [
+            {"cycle": cycle_idx, "start_perf_ns": start_ns, "end_perf_ns": end_ns}
+            for cycle_idx, start_ns, end_ns in cycle_marker_ns
+        ],
     }
 
 
@@ -399,6 +523,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             backend=str(args.backend),
             chain_attn_mode=str(args.chain_attn_mode),
             graph_mode=str(args.graph_mode),
+            rocprof_warmup_cycles=int(getattr(args, "rocprof_warmup_cycles", 0)),
+            rocprof_verify_cycles=int(getattr(args, "rocprof_verify_cycles", 0)),
         )
     else:
         spec_tokens, spec = _run_spec_smoke(
@@ -436,6 +562,25 @@ def main() -> int:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched"), default="c1_loop")
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
+    parser.add_argument(
+        "--rocprof-warmup-cycles",
+        type=int,
+        default=0,
+        help=(
+            "persistent_device only: skip this many verify cycles before opening the "
+            "roctxProfilerResume window. Use to discard cold-cache iterations from the "
+            "rocprofv3 --selected-regions trace."
+        ),
+    )
+    parser.add_argument(
+        "--rocprof-verify-cycles",
+        type=int,
+        default=0,
+        help=(
+            "persistent_device only: number of verify cycles to keep inside the "
+            "roctxProfilerResume window. 0 disables the window (no profiling region)."
+        ),
+    )
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
     result = run(args)

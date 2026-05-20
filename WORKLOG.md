@@ -20224,3 +20224,136 @@ issue while reading the source.
 Files touched this commit:
 - docs/MTP.md (added M7.0 row + adjusted M7.2–M7.5 framing).
 - WORKLOG.md (this entry).
+
+## 2026-05-21 — M7.0 baseline LANDED: rocprofv3 per-pass kernel breakdown
+
+Added `scripts/mtp_verifier_rocprof.py` and roctxRangePush markers in
+`scripts/mtp_chain_e2e_smoke.py` to produce a per-verifier-pass kernel
+breakdown under rocprofv3 on the gfx1151 box.
+
+### Setup notes (rocprofv3 1.1.0 on gfx1151)
+
+- `--selected-regions true` is silently broken: it accepts the flag and
+  reports "tool finalization" but emits no kernel_trace CSV even when the
+  roctxProfilerResume / Pause symbols are resolved (we confirmed they
+  dispatch via the therock SDK roctx shim at
+  `_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1` with
+  `librocm_sysdeps_dw.so.1` on LD_LIBRARY_PATH).
+- Worked around by running full `--kernel-trace --marker-trace` and
+  filtering the kernel CSV by roctxRangePush ranges named
+  `mtp_verify_pass_N`. Marker CSV uses `Function` column, not
+  `Marker_Name` (rocprofv3 1.1.0 schema).
+- Also discovered that without `HIPENGINE_COMPILER_VERSION_FILE`, the
+  smoke harness JIT-compiles `lm_head.hip` etc. under rocprofv3, and the
+  hipcc subprocesses each get attached as separate rocprofv3 instances —
+  produces hundreds of "tool initialization" log lines and breaks output.
+  Solution: pin the cache key via env var; the cache then hits on
+  pre-warmed `.so` files and no subprocess is spawned.
+- Driver script adds the SDK rocm_sysdeps lib paths to LD_LIBRARY_PATH
+  automatically.
+
+### Run: B=3, quicksort prompt (90 prompt tokens), 24 decode tokens
+
+Command:
+```
+python3 scripts/mtp_verifier_rocprof.py \
+  --prompt-tokens "$(cat /tmp/quicksort-prompt-tokens.txt)" \
+  --decode-tokens 24 --candidate-budget 3 --steady-state-skip 2
+```
+
+Result: 9 verifier passes total, 7 kept after skipping the first 2 (cold).
+Per-pass breakdown:
+
+| Family                              | calls/pass | ms/pass | share | avg μs | max μs |
+|-------------------------------------|-----------:|--------:|------:|-------:|-------:|
+| linear_attention_gdn_decode         |        30  |   13.07 |  23.4%|   435.7|   513.8|
+| runtime_memset                      |       120  |   11.02 |  19.7%|    91.8|   409.7|
+| w8a16_linear (lm_head)              |         1  |    9.93 |  17.8%|  9930.4| 10326.8|
+| moe_down_gemv                       |        70  |    5.99 |  10.7%|    85.6|   307.3|
+| moe_gate_up_dual_gemv               |        70  |    5.93 |  10.6%|    84.7|   283.5|
+| moe_paro_rotate_in                  |       310  |    1.78 |   3.2%|     5.8|    27.3|
+| w4_dual_gemv (attn QKV)             |        80  |    1.69 |   3.0%|    21.1|   101.2|
+| decode_attention                    |        40  |    1.11 |   2.0%|    27.7|    77.8|
+| router                              |       140  |    1.05 |   1.9%|     7.5|    78.9|
+| runtime_copy + paro + misc          |       ~720 |   ~4.6  |   8%  |        |        |
+| **TOTAL**                           |     1838   | **56.0**|  100% |        |        |
+
+Host window: 65 ms wall per pass (56 ms kernel + ~9 ms host).
+MTP/AR measured this run: **0.6×** (16 tok decode, ~64% acceptance).
+MTP/AR same-prompt 0.87× from 2026-05-19 was an 8-token decode with 100%
+acceptance — small-N optimistic. Steady-state at 64% accept = 0.6×.
+
+### Big-picture findings (vs Task #52 plan assumptions)
+
+1. **MoE is NOT the dominant bottleneck.** Combined MoE chain
+   (gate_up + down + rotate + silu + router + combine + w4_dual_gemv) =
+   17.0 ms (~30% of pass), not the 20 ms / 44% Task #52 estimated. Per
+   M7-plan code inspection: the existing
+   `gemv_awq_selected_dual_pack8_transposed_bf16` is already
+   llama.cpp-style mul_mat_id (one launch per layer per gate+up op).
+   M7's reachable savings drop from 8–12 ms to **4–6 ms** (small-batch
+   tile retune of the existing kernel, NOT a new kernel).
+
+2. **GDN chain_tloop is the actual #1 cost: 13.1 ms.** Plan had this as
+   "unchanged" / "already chain_tloop". 30 launches × 436 μs avg = real
+   bottleneck. Added as new phase **M7.B** with ~2–3 ms reach (chain
+   length / tile / wave-group sweep).
+
+3. **runtime_memset is 11 ms hidden cost.** 120 hipMemsetAsync calls per
+   pass at 92 μs avg. Was not in any phase plan. Added as new phase
+   **M7.C** with ~8 ms reach (move scratch zeroing to one-shot at session
+   init / let kernels overwrite without prior zero).
+
+4. **LM head is 9.9 ms** vs Task #52's 7.5 ms estimate. M9 target
+   adjusted to ~3 ms savings.
+
+5. **Pre-attention chain (M8) is only ~3.3 ms total** (w4_dual_gemv +
+   rmsnorm + decode_attention + paged_kv + attn_gate). Task #52's "~5 ms"
+   was high; M8 reachable savings now ~1–1.5 ms.
+
+6. **Host-side Python overhead is ~9 ms** vs Task #52's 7 ms estimate.
+   M10's ~5 ms reach is still plausible.
+
+### Revised total reachable savings
+
+Sum of phase targets after M7.0:
+- M7 (MoE small-batch tile):       4–6 ms
+- M7.B (GDN chain_tloop tuning):   2–3 ms  (new)
+- M7.C (runtime_memset elim):      8–9 ms  (new, highest ROI)
+- M8 (pre-attn fusion):            1–1.5 ms (was ~3 ms)
+- M9 (LM head row-parallel):       3 ms (was 2.5 ms)
+- M10 (host overhead):             5 ms
+- **TOTAL**:                       23–27 ms
+
+Verifier wall: 65 ms → ~38–42 ms.
+Ceiling MTP/AR @ B=3: 22×3 / 40 ≈ **1.65–1.88×** (was 2.06–2.36×).
+Measured MTP/AR @ B=3 (60% accept): ~1.0–1.4× (was 1.3–1.7×).
+
+So 1.5× MTP/AR is now contingent on landing M7 + M7.C + M9 (not M7
+alone). M7.C jumped to highest ROI per effort: 8 ms saving from likely
+~50 lines of Python / scratch-buffer reuse changes.
+
+### Files this commit
+
+- scripts/mtp_chain_e2e_smoke.py: add roctxRangePush/Pop markers around
+  each verify cycle + each verifier pass; add ctypes loader for
+  libroctx64 with resume/pause/range_push/range_pop; add
+  `--rocprof-warmup-cycles` and `--rocprof-verify-cycles` flags. Markers
+  always fire; resume/pause path gated on flags.
+- scripts/mtp_verifier_rocprof.py: new driver. Wraps the smoke under
+  rocprofv3, sets HIPENGINE_COMPILER_VERSION_FILE to pin the JIT cache
+  key, adds SDK roctx + rocm_sysdeps lib paths to LD_LIBRARY_PATH,
+  reads the marker CSV to bracket steady-state cycles, filters the
+  kernel CSV by per-pass timestamps, emits the diagnostic artifact.
+- benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-baseline.json:
+  the M7.0 artifact (diagnostic_retained, performance_claim=false).
+- docs/MTP.md: replace the scoreboard Baseline column with M7.0-measured
+  values; add M7.B and M7.C tracker tables; adjust M7 sub-row projected
+  savings; soften the ceiling/measured projections from 2.06–2.36× /
+  1.3–1.7× down to 1.65–1.88× / 1.0–1.4×.
+- WORKLOG.md: this entry.
+
+No code in `hipengine/` changed yet; this is the M7.0 diagnostic + plan
+adjustment. Next concrete step is **M7.C** (memset elimination) since it
+has the highest reachable ms per LoC. M7.1 (CPU-ref MoE fixture) is
+still required before tuning M7.2/M7.4.
