@@ -21508,3 +21508,45 @@ python3 scripts/qwen35_gguf_bench.py \
 ```
 
 Decision: reject/revert. Removing the tiny `gate_mul` launch is not worth making the attention kernel heavier. Compact artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-attn-gate-fusion.json`.
+
+## 2026-05-20 P9.D13 task #51: dense BF16 ssm_alpha+ssm_beta dual decode retained
+
+Retained a small qwen35moe rows=1 linear-attention decode launch reduction: `ssm_alpha` and `ssm_beta` now use the existing `dense_dual_gemv_out_bf16` kernel into a tiny combined scratch buffer, and the GDN kernel receives alpha/beta pointers split within that buffer. Rows>1 prefill remains on the prior separate-output path.
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py && \
+PYTHONPATH=. python3 -m pytest tests/test_gguf_linear_dispatch.py tests/test_dense_gemv_plan.py -q --tb=short
+# 40 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d15_dense_dual_ab_e2e.json
+# status=accepted; KL=0; top1=1.0; deterministic tails; finite final logits
+```
+
+512/128 graph replay benchmark:
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --graph-replay-decode --graph-steps-per-replay 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p9_d15_dense_dual_ab_512x128_bench.json
+# measured decode samples: 89.293, 89.377, 89.303 tok/s; median=89.303
+# D10 retained median=88.801 tok/s; delta=+0.501 tok/s (+0.56%)
+# measured prefill median=505.539 tok/s; tracked peak=21.3430756 GiB
+```
+
+512/16 rocprof diagnostic (`/tmp/p9_d15_dense_dual_ab_summary.json`) showed total decode kernel time `156.247 -> 152.461 ms` and dispatches `11158 -> 10648` vs the local D10 summary. The dense alpha/beta work changed from `dense_gemv_out_kernel` `2.950 ms / 960 dispatches` to `dense_dual_gemv_out_kernel` `1.667 ms / 478 dispatches`.
+
+Decision: retain as a correctness-neutral launch reduction, but #51/#52/#26 remain below the `95 tok/s` decode target. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d15-dense-dual-alpha-beta.json`.

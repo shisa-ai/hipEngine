@@ -1806,6 +1806,15 @@ individually; together they currently sit around ~30 ms at prefill and
   outweighed the launch removal: 512/128 graph replay regressed D10 `88.801 ->
   88.576 tok/s`. Keep the unfused paged-attention context plus gate-mul chain;
   artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_h3-rejected-attn-gate-fusion.json`.
+- **P9.D13** Dense BF16 `ssm_alpha+ssm_beta` decode pair. **Status
+  2026-05-20:** retained a qwen35moe rows=1 linear-attention route that writes
+  `ssm_alpha` and `ssm_beta` through one existing `dense_dual_gemv_out_bf16`
+  launch into a tiny combined scratch buffer, then passes split pointers to the
+  GDN kernel. P9.E2 accepted (`KL=0`, top-1 `100%`, deterministic tails);
+  512/128 graph replay moved D10 `88.801 -> 89.303 tok/s` (+0.56%). 512/16
+  rocprof diagnostic reduced the dense alpha/beta bucket from `2.950 ms / 960`
+  singleton dispatches to `1.667 ms / 478` dual dispatches. #51 remains below
+  the `95 tok/s` target.
 
 **Expected impact.** ~30 ms at 512/0 → ~10 ms, ~150 ms at 512/128 decode
 → ~50 ms. Modest in absolute terms; visible at decode because each savings

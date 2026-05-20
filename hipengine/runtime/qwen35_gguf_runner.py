@@ -40,7 +40,10 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
 )
-from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
+from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
+    dense_dual_gemv_out_bf16,
+    dense_gemv_out_bf16,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32, build_lm_head, lm_head_argmax_stage1_blocks
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgate_bf16
 from hipengine.kernels.hip_gfx1100.runtime import (
@@ -1189,7 +1192,26 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-        if not launch_gguf_linear_pair(
+        linear_alpha_ptr = scratch.linear_alpha.ptr
+        linear_beta_ptr = scratch.linear_beta.ptr
+        if cfg.is_moe:
+            linear_alpha_ptr = scratch.linear_alpha_beta.ptr
+            linear_beta_ptr = (
+                scratch.linear_alpha_beta.ptr + cfg.ssm_time_step_rank * DType.BF16.itemsize
+            )
+            dense_dual_gemv_out_bf16(
+                scratch.norm.ptr,
+                layer.weight("ssm_alpha").allocation("raw").tensor.ptr,
+                layer.weight("ssm_beta").allocation("raw").tensor.ptr,
+                scratch.linear_alpha_beta.ptr,
+                1,
+                self.hidden_size,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_time_step_rank,
+                stream=stream,
+                runtime=runtime,
+            )
+        elif not launch_gguf_linear_pair(
             layer.weight("ssm_alpha"),
             layer.weight("ssm_beta"),
             scratch.norm.ptr,
@@ -1234,8 +1256,8 @@ class Qwen35GGUFFullStackRunner:
         qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
             scratch.conv_out.ptr,
             scratch.linear_z.ptr,
-            scratch.linear_alpha.ptr,
-            scratch.linear_beta.ptr,
+            linear_alpha_ptr,
+            linear_beta_ptr,
             layer.weight("ssm_dt_bias").allocation().tensor.ptr,
             layer.weight("ssm_a").allocation().tensor.ptr,
             layer.weight("ssm_norm").allocation().tensor.ptr,
@@ -3435,6 +3457,7 @@ class _FullStackScratch:
     linear_z: object
     linear_alpha: object
     linear_beta: object
+    linear_alpha_beta: object
     conv_out: object
     recurrent_out: object
     recurrent_bf16: object
@@ -3604,6 +3627,7 @@ class _FullStackScratch:
             "linear_z": buf(ssm_inner_bytes),
             "linear_alpha": buf(alpha_bytes),
             "linear_beta": buf(alpha_bytes),
+            "linear_alpha_beta": buf(2 * alpha_bytes),
             "conv_out": buf(runner.linear_qkv_width * 4),
             "recurrent_out": buf(cfg.ssm_inner_size * 4),
             "recurrent_bf16": buf(ssm_inner_bytes),
