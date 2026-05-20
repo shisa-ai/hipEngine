@@ -536,9 +536,9 @@ we beat the target.
 |-------------------------------------|:-----:|-------------------:|-------------------:|------------:|------------:|---------------:|-------------:|-------------------|
 | MoE chain (gate_up + down + rotate + silu + router + combine + w4_dual) | M7 | ~20 | **17.0** | 11–13 | _TBD_ | _TBD_ | _TBD_ | M7.0 artifact |
 | GDN chain t-loop (4 rows)           | M7.B*  |          ~10  |          **13.1** |    10–11  |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact (new phase, see below) |
-| runtime_memset (scratch zeroing)    | M7.C*  |             n/a  |          **11.0** |     2–3   |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact (new phase, see below) |
+| Small-batch prefill kernels (QKV / shared-expert / dense MLP @ tokens=4) | M7.C* |        n/a  |          **11.0** |     2–3   |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact (new phase, see below). Originally mis-labeled “runtime_memset” due to classifier bug. |
 | LM head W8A16 (4 rows)              | M9    |          ~7.5 |           **9.9** |     6–7   |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact |
-| Pre-attention chain (QKV + RoPE + norms) | M8 |          ~5  |           **~3.3** (w4_dual_gemv + rmsnorm + paged_kv + decode_attn + attn_gate) |     2.5   |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact |
+| Pre-attention chain (QKV + RoPE + norms) | M8 |          ~5  |           **~3.3** (w4_dual_gemv + rmsnorm + paged_kv + decode_attn + attn_gate) |     2.5   |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact. Likely no-op once M7.C lands (the QKV prefill→GEMV switch *is* the pre-attention win). |
 | Host-side Python overhead           | M10   |           ~7  |          **~9** (host_window − kernel = 65−56) |     2–3   |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact |
 | Other (runtime_copy + paro_rotate + misc) |  —  |          —   |          **~4.6** |     ~4    |       _TBD_ |             —  |          —   | M7.0 artifact |
 | **Total verifier wall (host)**      |       |             ~52  |             **~65** | **~35–40** |       _TBD_ |          _TBD_ |        _TBD_ | M7.0 artifact |
@@ -604,19 +604,30 @@ Run: 9 verifier passes total, **7 kept** after dropping the 2 cold cycles.
 Acceptance 64% mean (vs 100% on the 8-token persistent_b3 diagnostic from
 2026-05-19). Per-pass numbers:
 
-| Family                                | calls/pass | ms/pass | share | avg μs | max μs | Notes |
-|---------------------------------------|-----------:|--------:|------:|-------:|-------:|-------|
-| linear_attention_gdn_decode           |        30  |   13.07 | 23.4% |  435.7 |  513.8 | #1 cost; already chain_tloop. → M7.B |
-| runtime_memset                        |       120  |   11.02 | 19.7% |   91.8 |  409.7 | Hidden cost. 120 hipMemsetAsync calls/pass. → M7.C |
-| w8a16_linear (lm_head)                |         1  |    9.93 | 17.8% | 9930.4 | 10326.8| Single big launch, bandwidth-bound. → M9 |
-| moe_down_gemv                         |        70  |    5.99 | 10.7% |   85.6 |  307.3 | Already mul_mat_id; tile retune. → M7.4 |
-| moe_gate_up_dual_gemv                 |        70  |    5.93 | 10.6% |   84.7 |  283.5 | Already fused gate+up. → M7.4 |
-| moe_paro_rotate_in                    |       310  |    1.78 |  3.2% |    5.8 |   27.3 | Many small launches; low margin. |
-| w4_dual_gemv (attn QKV)               |        80  |    1.69 |  3.0% |   21.1 |  101.2 | M8 reach is small (~1 ms). |
-| decode_attention                      |        40  |    1.11 |  2.0% |   27.7 |   77.8 | Lean already. |
-| router                                |       140  |    1.05 |  1.9% |    7.5 |   78.9 | Lean already. |
-| (runtime_copy + other small ops)      |       ~720 |    ~4.6 |  ~8%  |        |        | Includes silu, attn_gate, combine, rmsnorm. |
-| **TOTAL per pass**                    |     1838   | **56.0**| 100%  |        |        | Host window: **~65 ms** (kernel 56 + host ~9). |
+| Family                                  | calls/pass | ms/pass | share | avg μs | max μs | Notes |
+|-----------------------------------------|-----------:|--------:|------:|-------:|-------:|-------|
+| linear_attention_gdn_decode             |        30  |   13.07 | 23.4% |  435.7 |  513.8 | #1 cost; already chain_tloop. → M7.B |
+| w8a16_linear (lm_head)                  |         1  |    9.93 | 17.7% | 9930.4 | 10326.8| Single big launch, bandwidth-bound. → M9 |
+| **w4_dual_prefill_smallbatch** (QKV / dense MLP / shared-expert gate+up @ tokens=4) | 60 | **7.40** | 13.2% | 123.4 |  239 | **Wrong kernel for small batch**. Sites: `project_full_attention_qkv_fp16` / `project_linear_attention_qkv_z_fp16` / `shared_expert_paro_w4_fp16` / `dense_mlp_paro_w4_fp16` gate `if tokens == 1: GEMV; else: PREFILL` — lower the threshold to e.g. `tokens > 7`. → M7.C |
+| moe_down_gemv                           |        70  |    5.99 | 10.7% |   85.6 |  307.3 | Already mul_mat_id; tile retune. → M7.4 |
+| moe_gate_up_dual_gemv                   |        70  |    5.93 | 10.6% |   84.7 |  283.5 | Already fused gate+up. → M7.4 |
+| **w4_single_prefill_smallbatch** (shared-expert down / dense-MLP down @ tokens=4) | 60 | **3.61** | 6.5% | 60.2 | 162 | Same kernel-choice bug as above, single-tensor path. → M7.C |
+| moe_paro_rotate_in                      |       310  |    1.78 |  3.2% |    5.8 |   27.3 | Many small launches; low margin. |
+| w4_dual_gemv (small-token QKV / shared) |        80  |    1.69 |  3.0% |   21.1 |  101.2 | The kernel we WANT the M7.C sites to use. |
+| decode_attention                        |        40  |    1.11 |  2.0% |   27.7 |   77.8 | Lean already. |
+| router                                  |       140  |    1.05 |  1.9% |    7.5 |   78.9 | Lean already. |
+| (runtime_copy + rmsnorm + silu + combine + other small ops) | ~720 | ~5.6 | ~10% | | | |
+| **TOTAL per pass**                      |     1838   | **56.0**| 100%  |        |        | Host window: **~65 ms** (kernel 56 + host ~9). |
+
+**Important classifier correction (2026-05-21):** the original `_family`
+classifier in `scripts/mtp_verifier_rocprof.py` matched bare `"fill"` which
+false-matched `"prefill"`. The two `awq_fusedw4_prefill_*` kernels (11 ms
+combined) were therefore mis-labeled `runtime_memset` in the first M7.0
+report. The artifact at
+`benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-baseline.json`
+has been re-processed with the corrected classifier; the kernel CSV / wall
+times are unchanged. **There is no memset bottleneck.** M7.C is
+rechartered around the small-batch kernel-choice bug below.
 
 ##### M7.0 findings vs. Task #52 plan assumptions
 
@@ -629,15 +640,27 @@ Acceptance 64% mean (vs 100% on the 8-token persistent_b3 diagnostic from
    “unchanged / already chain_tloop”. 30 launches × 436 μs avg = real
    bottleneck. Added new phase **M7.B** with ~2–3 ms reach (chain length /
    tile / wave-group sweep).
-3. **runtime_memset is 11 ms hidden cost.** 120 hipMemsetAsync calls per
-   pass at 92 μs avg. Was not in any phase plan. Added new phase **M7.C**
-   with ~8–9 ms reach (move scratch zeroing to one-shot at session init
-   or let kernels overwrite without prior zero). **Highest ROI per LoC.**
+3. **The “memset 11 ms” finding was a classifier bug.** It is actually two
+   `awq_fusedw4_prefill_*_fp16` kernels (60 + 60 calls/pass = 11.0 ms)
+   firing because `project_full_attention_qkv_fp16`,
+   `project_linear_attention_qkv_z_fp16`,
+   `shared_expert_paro_w4_fp16` and `dense_mlp_paro_w4_fp16` are gated
+   `if tokens == 1: GEMV; else: PREFILL`. At tokens=4 the prefill kernel
+   fires even though `gemv_awq_dual_pack8_kernel`’s grid is
+   `(out_packed_a + out_packed_b, row)` and already supports `rows > 1`.
+   The MoE selected GEMV runs at 85 μs avg; the prefill path runs at 60–123
+   μs avg for the same row count. **M7.C is now a small-batch threshold
+   fix** with the same ~8–9 ms reach — but it’s a few lines of dispatch
+   changes (`if tokens <= 7` instead of `if tokens == 1`), not a runtime
+   rewrite. **Still the highest ROI per LoC.**
 4. **LM head is 9.9 ms** (vs Task #52’s 7.5 ms estimate). M9 reach adjusted
    to ~3 ms.
 5. **Pre-attention chain (M8) is only ~3.3 ms total** (w4_dual_gemv +
    rmsnorm + decode_attention + paged_kv + attn_gate). Task #52’s “~5 ms”
-   was high; M8 reach now ~1–1.5 ms.
+   was high; M8 reach now ~1–1.5 ms. **Note**: M8 was “fused pre-attention
+   composite” in the original plan, but M7.C absorbs the bulk of that
+   reach (the prefill→GEMV switch *is* the pre-attention QKV win), so M8
+   may reduce to a no-op once M7.C lands.
 6. **Host-side Python overhead is ~9 ms** vs Task #52’s 7 ms estimate. M10
    ~5 ms reach still plausible.
 
@@ -698,19 +721,40 @@ shared-LDS K-tile, or wave-group sizing.
 | M7.B.2| Tile-size sweep on the 32-context decode shape; promote per CPU-ref correctness gate     |                  ~1–2  | _Pending_|                _TBD_| _TBD_            |
 | **M7.B total** |                                                                               |              **~2–3** |          |             **_TBD_**|                  |
 
-#### M7.C tracker — runtime_memset elimination (NEW, surfaced by M7.0)
+#### M7.C tracker — small-batch prefill→GEMV switch (RECHARTERED 2026-05-21)
 
-Projected savings target: **~8–9 ms** of the 11 ms runtime_memset budget.
-120 hipMemsetAsync calls per pass at 92 μs avg — most are scratch-buffer
-zeroing per MoE layer. Almost all of these should be one-shot (zero at
-session init) or unnecessary (kernels can overwrite without prior zero).
+Projected savings target: **~8–9 ms** of the 11.0 ms combined budget for the
+two `awq_fusedw4_prefill_*_fp16` kernels. This phase was originally framed as
+“runtime_memset elimination” — see M7.C.1 below for what the M7.0 trace actually
+showed once the classifier bug was fixed.
+
+Dispatch sites to change (all in `hipengine/runtime/qwen35_paro.py`,
+`if tokens == 1: ... else: awq_fusedw4_prefill_*` blocks):
+
+| Site                                          | Line(s) | Kernels removed @ tokens=4 | Replacement |
+|-----------------------------------------------|--------:|---------------------------|-------------|
+| `project_full_attention_qkv_fp16`             |   ~2087 | `awq_fusedw4_prefill_dual_fp16` | `gemv_awq_dual_pack8_transposed_fp16` |
+| `project_linear_attention_qkv_z_fp16`         |   ~3391 | `awq_fusedw4_prefill_dual_fp16` | `gemv_awq_dual_pack8_transposed_fp16` |
+| `shared_expert_paro_w4_fp16` (gate+up)        |   ~5025 | `awq_fusedw4_prefill_dual_fp16` | `gemv_awq_dual_pack8_transposed_fp16` |
+| `shared_expert_paro_w4_fp16` (down)           |   ~5089 | `awq_fusedw4_prefill_fp16`      | `gemv_awq_pack8_transposed_fp16`      |
+| `dense_mlp_paro_w4_fp16` (gate+up)            |   ~5218 | `awq_fusedw4_prefill_dual_fp16` | `gemv_awq_dual_pack8_transposed_fp16` |
+| `dense_mlp_paro_w4_fp16` (down)               |   ~5282 | `awq_fusedw4_prefill_fp16`      | `gemv_awq_pack8_transposed_fp16`      |
+
+The replacement kernels already accept `rows > 1` (grid is
+`(out_packed_a + out_packed_b, row)` in `gemv_awq_dual_pack8_kernel`). The
+BF16 paths (`shared_expert_paro_w4_bf16`, etc.) already do exactly this for
+all token counts — per the BF16 docstring: “BF16 has no fused prefill kernel,
+so the same dual GEMV (which accepts rows > 1) is used for every tokens
+value”. M7.C extends the same logic to the FP16 path for small batches.
 
 | #   | Sub-task                                                                                | Projected savings (ms) | Status   | Actual savings (ms) | Notes / artifact |
 |-----|-----------------------------------------------------------------------------------------|-----------------------:|----------|--------------------:|------------------|
-| M7.C.1| Identify which scratch buffers get memset per pass (`grep memset hipengine/runtime/qwen35_paro.py` and the MoE c1 path) |                     0  | _Pending_|                _TBD_| _TBD_            |
-| M7.C.2| Promote one-shot zeroing where the kernel reads no “old” state; remove redundant memsets |                  ~6–8  | _Pending_|                _TBD_| _TBD_            |
-| M7.C.3| Correctness: full b3 chain matches existing tests; KL/top-1 unchanged                    |                     0  | _Pending_|                _TBD_| _TBD_ (gate only) |
-| **M7.C total** |                                                                               |              **~8–9** |          |             **_TBD_**|                  |
+| M7.C.1| **Identify culprit** — LANDED. Six dispatch sites listed above use prefill kernels for `tokens > 1`. The 11 ms “memset” was a `_family` classifier substring match against “fill” in “prefill”. | 0 (diagnostic) | ✅ **Landed** | 0 | this section + corrected M7.0 artifact |
+| M7.C.2| Add a `_small_batch_decode_threshold` constant + env override; change six dispatch sites from `if tokens == 1` to `if tokens <= _small_batch_decode_threshold()` |             ~6–8 | _Pending_ |               _TBD_ | _TBD_            |
+| M7.C.3| Cross-check: prefill batches (16+ tokens) still take the prefill kernel; verify with a `--rocprof-warmup-cycles 0 --prefill-only` smoke run | 0 | _Pending_ | _TBD_ | _TBD_ (gate only) |
+| M7.C.4| Correctness: full B=3 chain still exact-AR-match on the quicksort fixture; KL/top-1 unchanged | 0 | _Pending_ | _TBD_ | _TBD_ (gate only) |
+| M7.C.5| Re-run M7.0 rocprof; new per-pass kernel ms drops by ~7–8 ms (the prefill kernels fall out, replaced by ~85 μs / 4 μs/row GEMVs at < 3 ms total). | 0 | _Pending_ | _TBD_ | _TBD_            |
+| **M7.C total** |                                                                               |              **~6–8** |          |             **_TBD_**|                  |
 
 Design notes:
 - Grid `(n_out_tiles, n_expert_used, n_tokens)`. Each block reads `expert = ids[token, slot]` and indexes `W[expert, tile, :]`.

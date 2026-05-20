@@ -490,6 +490,15 @@ def _family(kernel: str) -> str:
         return "moe_gate_up_dual_gemv"
     if "gemv_awq_selected" in k:
         return "moe_down_gemv"
+    # Multi-token QKV / shared-expert / dense-MLP fused-W4 prefill kernels.  Hit
+    # the verifier whenever ``tokens > 1`` because the call sites in
+    # project_full_attention_qkv_fp16 / project_linear_attention_qkv_z_fp16 /
+    # shared_expert_paro_w4_fp16 / dense_mlp_paro_w4_fp16 are gated
+    # ``if tokens == 1 … else awq_fusedw4_prefill_*``.
+    if "awq_fusedw4_prefill_dual" in k:
+        return "w4_dual_prefill_smallbatch"
+    if "awq_fusedw4_prefill" in k:
+        return "w4_single_prefill_smallbatch"
     if "gemv_awq_dual" in k:
         return "w4_dual_gemv"
     if "gemv_awq_pack8" in k or "gemv_awq" in k:
@@ -528,9 +537,12 @@ def _family(kernel: str) -> str:
         return "moe_combine"
     if "copybuffer" in k or "copy" in k:
         return "runtime_copy"
-    if "memset" in k or "fill" in k:
+    # NOTE: do NOT match bare "fill" — it false-matches "prefill".  Use
+    # the exact substring "memset" or the rocclr Memset signature.
+    if "memset" in k or "memsetd" in k:
         return "runtime_memset"
     return "other"
+
 
 
 def _int_or_none(value: str | None) -> int | None:

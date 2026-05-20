@@ -20378,3 +20378,120 @@ Files touched: docs/MTP.md (added "M7.0 measured per-pass breakdown",
 sub-sections under the M7 tracker preamble). No code changes.
 
 Next: M7.C.1 — identify which scratch buffers get memset per pass.
+
+## 2026-05-21 — M7.C.1 LANDED: classifier bug + small-batch dispatch finding
+
+Followed up M7.0 by trying to identify which scratch buffers were being
+memset 120 times per pass. Inspecting `hipengine/runtime/qwen35_paro.py`
+turned up only 5 `_memset_tensor` call sites total, none in the c1 MoE
+path that the B=3 verifier exercises. Cross-referenced against the
+rocprof CSV via the family classifier and found the actual cause:
+
+**Classifier bug in `scripts/mtp_verifier_rocprof.py::_family`**: the
+`runtime_memset` rule was `if "memset" in k or "fill" in k`. The bare
+"fill" substring matched "prefill" inside
+`awq_fusedw4_prefill_dual_fp16_kernel` and `awq_fusedw4_prefill_fp16_kernel`,
+labeling them as memset launches. There is no memset bottleneck.
+
+The 11 ms is actually two fp16 prefill kernels firing on the B=3
+verifier (4 tokens). Sites in `hipengine/runtime/qwen35_paro.py`:
+
+| Site                                          | Line  | When tokens > 1 falls into            |
+|-----------------------------------------------|------:|---------------------------------------|
+| `project_full_attention_qkv_fp16`             | 2087  | `awq_fusedw4_prefill_dual_fp16`       |
+| `project_linear_attention_qkv_z_fp16`         | 3391  | `awq_fusedw4_prefill_dual_fp16`       |
+| `shared_expert_paro_w4_fp16` (gate+up)        | 5025  | `awq_fusedw4_prefill_dual_fp16`       |
+| `shared_expert_paro_w4_fp16` (down)           | 5089  | `awq_fusedw4_prefill_fp16`            |
+| `dense_mlp_paro_w4_fp16` (gate+up)            | 5218  | `awq_fusedw4_prefill_dual_fp16`       |
+| `dense_mlp_paro_w4_fp16` (down)               | 5282  | `awq_fusedw4_prefill_fp16`            |
+
+All six are gated `if tokens == 1: GEMV; else: PREFILL`. At tokens=4
+(verifier B=3) the else branch fires. The GEMV kernels already accept
+`rows > 1` (grid is `(out_packed_a + out_packed_b, row)` in
+`gemv_awq_dual_pack8_kernel`), and the BF16 paths
+(`shared_expert_paro_w4_bf16` etc.) already do exactly this for all
+token counts — per its docstring "BF16 has no fused prefill kernel, so
+the same dual GEMV (which accepts rows > 1) is used for every tokens
+value".
+
+**Why is FP16 in a BF16 verifier path?** The Qwen3.5/3.6 model has
+`tie_word_embeddings: false` and uses FP16 inner activations for the
+attention QKV projection and shared-expert MLP even when the model
+weights are BF16 (the FP16/BF16 distinction here is activation precision
+in the AWQ pack8 dequant inner loop, not the model weight dtype). Worth
+documenting in `docs/KERNELS.md` if not already.
+
+**Fix scope: M7.C.2**: introduce a `_small_batch_decode_threshold()`
+helper (env override) and change the six dispatch sites from
+`if tokens == 1` to `if tokens <= _small_batch_decode_threshold()` with
+the default threshold = 7 (mirrors llama.cpp's MMVF_MAX_BATCH_SIZE = 8
+but biased one lower to keep the verifier B≤6 case on the GEMV path).
+
+Reach estimate: 11.0 ms (current prefill cost) - (~3 ms new GEMV cost at
+4 tokens × 85 μs × 12 launches ≈ 4 ms) = **~6-8 ms saved per pass**.
+
+Per-pass impact: ~65 ms → ~57-59 ms verifier wall. MTP/AR ceiling @ B=3
+moves from 1.02× to ~1.1-1.15×, measured 0.6× → ~0.7-0.75× at 60%
+accept.
+
+### Corrected M7.0 family table
+
+Re-processed the existing kernel CSV through the fixed `_family`
+classifier; kernel CSV / wall times are unchanged:
+
+| Family                                | calls/pass | ms/pass | share |
+|---------------------------------------|-----------:|--------:|------:|
+| linear_attention_gdn_decode           |        30  |   13.07 | 23.4% |
+| w8a16_linear (lm_head)                |         1  |    9.93 | 17.7% |
+| **w4_dual_prefill_smallbatch**        |        60  | **7.40**| 13.2% |
+| moe_down_gemv                         |        70  |    5.99 | 10.7% |
+| moe_gate_up_dual_gemv                 |        70  |    5.93 | 10.6% |
+| **w4_single_prefill_smallbatch**      |        60  | **3.61**|  6.5% |
+| moe_paro_rotate_in                    |       310  |    1.78 |  3.2% |
+| w4_dual_gemv (small-token)            |        80  |    1.69 |  3.0% |
+| (rest: rmsnorm + silu + copy + ...)   |       ~960 |    ~6.6 | ~12%  |
+| **TOTAL**                             |     1838   | **56.0**| 100%  |
+
+The two prefill rows combined (11.01 ms) match the previously mis-labeled
+"runtime_memset" total — confirming the classifier was just looking at
+the same kernel names through a wrong lens.
+
+### Plan impact
+
+- **M8 (pre-attention fusion) is likely a no-op** once M7.C lands — the
+  QKV prefill→GEMV switch IS the pre-attention win. The M8 tracker stays
+  in the doc as a fallback if M7.C lands and the residual ~3 ms QKV cost
+  is still worth fusing into a composite, but it's deprioritized.
+- M7.C.2 (the fix) becomes the next immediate work item; should be a
+  small commit (one helper + six dispatch site changes) gated by a
+  correctness check that the smoke harness still passes exact-AR-match.
+
+### Files this commit
+
+- scripts/mtp_verifier_rocprof.py: `_family` classifier
+  - removes bare "fill" → "runtime_memset" rule
+  - adds explicit "awq_fusedw4_prefill_dual" → "w4_dual_prefill_smallbatch"
+  - adds explicit "awq_fusedw4_prefill" → "w4_single_prefill_smallbatch"
+  - still classifies "memset" / "memsetd" → "runtime_memset"
+- benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-baseline.json:
+  re-processed summary with the corrected classifier; new
+  `notes_2026_05_21_revision` field documents the change.
+- docs/MTP.md:
+  - M7.0 measured-per-pass table updated to show the two prefill rows
+    and their dispatch-site notes
+  - Added classifier-correction note under the table
+  - M7.0 finding #3 rewritten from "runtime_memset is 11 ms hidden cost"
+    to "the memset 11 ms finding was a classifier bug; actually two
+    awq_fusedw4_prefill_* kernels triggered by small-batch dispatch"
+  - M7.0 finding #5 (M8) softened to "likely no-op once M7.C lands"
+  - Master scoreboard row renamed from "runtime_memset (scratch zeroing)"
+    to "Small-batch prefill kernels (QKV / shared-expert / dense MLP
+    @ tokens=4)"
+  - M7.C tracker rechartered: M7.C.1 marked LANDED with the dispatch
+    sites table; M7.C.2 is now "small-batch threshold helper + six
+    dispatch site changes" (the actual fix); M7.C.3 verifies prefill
+    batches still take the prefill kernel; M7.C.4 correctness gate;
+    M7.C.5 re-run rocprof for new actual ms.
+- WORKLOG.md: this entry.
+
+No `hipengine/` runtime changes yet. Next: M7.C.2.
