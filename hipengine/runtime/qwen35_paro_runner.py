@@ -1768,6 +1768,23 @@ class Qwen35ParoResidentSession:
             ),
         )
 
+    def _verify_chain_linear_tloop_enabled(self) -> bool:
+        value = os.environ.get("HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP")
+        if value is None or value.strip() == "":
+            return True
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+
+    def _should_use_chain_tloop_linear_verify(self, batch: TargetVerifyBatch, *, rows: int, graph_mode: str) -> bool:
+        if graph_mode != "off" or not self._verify_chain_linear_tloop_enabled():
+            return False
+        if batch.mode != "verify_chain" or len(batch.request_ids) != 1:
+            return False
+        if tuple(batch.root_rows) != (0,) or tuple(batch.candidate_rows) != tuple(range(1, rows)):
+            return False
+        if tuple(batch.parent_rows) != (-1, *tuple(range(0, rows - 1))):
+            return False
+        return all(bool(flag) for flag in batch.active_mask)
+
     def _slot_full_cache(self, layer_id: int, slot: int) -> tuple[Tensor, Tensor]:
         self._check_slot(slot)
         key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
@@ -2369,6 +2386,7 @@ class Qwen35ParoResidentSession:
             capture_target_start = 0
 
         self._write_verify_chain_metadata(batch, base_slot=base_slot, stream=stream)
+        linear_attn_mode = "chain_tloop" if self._should_use_chain_tloop_linear_verify(batch, rows=rows, graph_mode=graph_mode) else "tree_tloop"
         try:
             if graph_mode == "off":
                 graph_info: dict[str, Any] = {
@@ -2377,6 +2395,8 @@ class Qwen35ParoResidentSession:
                     "replayed": False,
                     "validation_passed": None,
                     "chain_attn_mode": chain_attn_mode,
+                    "linear_attn_mode": linear_attn_mode,
+                    "linear_attn_fallback": False,
                 }
                 self._launch_verify_chain_forward_accept(
                     batch,
@@ -2387,6 +2407,7 @@ class Qwen35ParoResidentSession:
                     rows=rows,
                     stream=stream,
                     chain_attn_mode=chain_attn_mode,
+                    linear_attn_mode=linear_attn_mode,
                 )
             else:
                 graph_info = self._run_verify_graph_or_direct(
@@ -2400,6 +2421,8 @@ class Qwen35ParoResidentSession:
                     stream=stream,
                 )
                 graph_info["chain_attn_mode"] = chain_attn_mode
+                graph_info["linear_attn_mode"] = "tree_tloop"
+                graph_info["linear_attn_fallback"] = False
             gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
             target_top1, target_values = self._read_verify_top1(rows)
             cpu_result = batch.accept_from_top1(target_top1, transaction_id=0)
@@ -2747,7 +2770,10 @@ class Qwen35ParoResidentSession:
         rows: int,
         stream: int = 0,
         chain_attn_mode: str = "c1_loop",
+        linear_attn_mode: str = "tree_tloop",
     ) -> None:
+        if linear_attn_mode not in {"tree_tloop", "chain_tloop"}:
+            raise ValueError("linear_attn_mode must be tree_tloop or chain_tloop")
         embedding_lookup_batch_fp16_i64(
             self.embedding.tensor.ptr,
             self.verify_token_ids_i64.ptr,
@@ -2771,17 +2797,31 @@ class Qwen35ParoResidentSession:
                 self.linear_scratch[layer_id] = linear_scratch
                 moe_scratch = self._reserve_mlp_scratch(state, tokens=rows)
                 self.moe_scratch[layer_id] = moe_scratch
-                out = state.run_linear_attention_moe_tree_tloop_layer_fp16(
-                    hidden,
-                    conv_state=conv_state,
-                    recurrent_state=recurrent_state,
-                    parent_rows=parent_rows,
-                    linear_scratch=linear_scratch,
-                    moe_scratch=moe_scratch,
-                    tokens=rows,
-                    library=self.libraries,
-                    stream=stream,
-                )
+                if linear_attn_mode == "chain_tloop":
+                    out = state.run_linear_attention_moe_chain_tloop_layer_fp16(
+                        hidden,
+                        conv_state=conv_state,
+                        recurrent_state=recurrent_state,
+                        chain_conv_state=linear_scratch.tree_conv_state,
+                        chain_recurrent_state=linear_scratch.tree_recurrent_state,
+                        linear_scratch=linear_scratch,
+                        moe_scratch=moe_scratch,
+                        tokens=rows,
+                        library=self.libraries,
+                        stream=stream,
+                    )
+                else:
+                    out = state.run_linear_attention_moe_tree_tloop_layer_fp16(
+                        hidden,
+                        conv_state=conv_state,
+                        recurrent_state=recurrent_state,
+                        parent_rows=parent_rows,
+                        linear_scratch=linear_scratch,
+                        moe_scratch=moe_scratch,
+                        tokens=rows,
+                        library=self.libraries,
+                        stream=stream,
+                    )
             elif layer_type == "full_attention":
                 if batch.mode == "verify_tree":
                     # Tree topology: sibling rows must not see each other; use

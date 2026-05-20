@@ -93,7 +93,13 @@ uses device-resident target hidden rows.  On the stable quicksort prompt with
 B=5 it matched exact AR and accepted all proposed draft tokens for the 8-token
 sample (`accepted_lengths=[5,1]`), but still lost the decode speed gate
 (`31.34 tok/s` vs AR `52.98 tok/s`) because the current bulk verifier is slower
-than serial AR and expert dispatch still copies selected expert ids to host.
+than serial AR and expert dispatch still copies selected expert ids to host.  A
+follow-up single-chain linear-attention verifier t-loop now avoids parent-row
+global state reloads while still materializing row states for exact partial
+accepts; the same B=5 sample stayed exact with `linear_attn_mode=chain_tloop` and
+measured `33.13 tok/s` vs AR `52.63 tok/s`, so the speed blocker moved from
+linear-state materialization specifically to the broader target-verifier
+launch/row-cost wall.
 
 ## Alignment with existing hipEngine design
 

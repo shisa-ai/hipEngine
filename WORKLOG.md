@@ -19711,3 +19711,53 @@ row's full recurrent state when the chain is fully accepted (optimistic
 leaf-state fast path with exact fallback on rejection), or a better batched
 linear-state/MoE route; host accept reads and commit copies are not worth chasing
 first.
+
+## 2026-05-19 (continued) — Single-chain linear verifier t-loop
+
+Continued Task #40 verifier work.  Added exact single-chain linear-attention
+Conv/GDN t-loop kernels for `verify_chain` batches whose parent rows are
+`[-1,0,1,...]`.  Unlike the parent-indexed tree kernel, the chain kernel carries
+Conv/GDN parent state forward in-kernel instead of reloading it from the previous
+row's global tree-state slot; unlike the earlier optimistic leaf-state sketch, it
+still materializes every row so partial accepts can commit exactly without a
+fallback replay.
+
+Code paths:
+
+- `hipengine_qwen35_linear_attn_chain_conv_decode_{bf16,fp16}_tloop`
+- `hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_{bf16,fp16}`
+- `Qwen35ParoDecodeState.run_linear_attention_moe_chain_tloop_layer_fp16`
+- `Qwen35ParoResidentSession.verify_chain_bulk_and_commit` auto-selects
+  `linear_attn_mode=chain_tloop` for single-request simple chains; disable with
+  `HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP=0`.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/linear_attn/conv.py \
+  hipengine/kernels/hip_gfx1100/linear_attn/gdn.py \
+  hipengine/runtime/qwen35_paro.py \
+  hipengine/runtime/qwen35_paro_runner.py \
+  scripts/mtp_chain_e2e_smoke.py
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_mtp_input_fusion_kernel.py
+# 2 passed
+PROMPT=$(python3 - <<'PY'
+import json
+row=json.loads(open('fixtures/dflash/stable_prompts.jsonl').readline())
+print(','.join(map(str,row['prompt_ids'])))
+PY
+)
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens "$PROMPT" --decode-tokens 8 --candidate-budget 5 \
+  --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop \
+  --json /tmp/hipengine-mtp-chain-tloop-b5-d8-final.json
+# exact_ar_match=true, accepted_lengths=[5,1], verifier trace linear_attn_mode=chain_tloop
+# AR decode 52.63 tok/s, MTP decode 33.13 tok/s, verify_seconds=0.197671706s
+```
+
+Retained diagnostic artifact:
+`benchmarks/results/2026-05-19-hipengine-mtp-chain-linear-tloop-b5-diagnostic.json`.
+This is still not a speed win (`performance_claim=false`); the target verifier
+launch/row-cost wall remains the Task #40 blocker.

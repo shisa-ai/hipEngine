@@ -208,6 +208,7 @@ def _run_spec_smoke(
                             "committed_tokens": committed,
                             "bonus_token": bonus,
                             "target_parent_rows": list(map(int, target_batch.parent_rows)),
+                            "verify_graph": verify.graph,
                             "proposal_native_seconds": float(proposal["native_seconds"]),
                             "proposal_draft_batch": draft,
                         }
@@ -341,6 +342,7 @@ def _run_spec_persistent_device(
                                 "committed_tokens": committed,
                                 "bonus_token": bonus,
                                 "target_parent_rows": list(map(int, target_batch.parent_rows)),
+                                "verify_graph": verify.graph,
                                 "proposer_cache_len_before_update": int(proposer.cache_len),
                             }
                         )

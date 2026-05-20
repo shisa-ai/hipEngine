@@ -59,6 +59,7 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_gemv_out_fp16,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
+    qwen35_linear_attn_chain_conv_decode_fp16_tloop,
     qwen35_linear_attn_conv_decode_bf16,
     qwen35_linear_attn_conv_decode_fp16,
     qwen35_linear_attn_conv_prefill_f32,
@@ -74,6 +75,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
+    qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16,
     qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     qwen35_linear_attn_prefill_prepare_f32_fp16,
@@ -4295,6 +4297,150 @@ class Qwen35ParoDecodeState:
             recurrent_state.ptr,
             linear_scratch.tree_recurrent_state.ptr,
             parent_rows.ptr,
+            linear_scratch.tree_gdn_acc.ptr,
+            linear_scratch.recurrent_out.ptr,
+            self.config.rms_norm_eps,
+            tokens,
+            self.config.linear_num_key_heads,
+            self.config.linear_num_value_heads,
+            self.config.linear_key_head_dim,
+            self.config.linear_value_head_dim,
+            stream=stream,
+            library=_library_for(library, "linear_gdn"),
+            runtime=self.runtime,
+        )
+        if linear_scratch.recurrent_out.shape[-1] != z_width:
+            raise ValueError("linear-attention recurrent scratch width mismatch")
+        attn_out = self.project_linear_attention_out_fp16(
+            linear_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
+            hidden,
+            attn_out,
+            moe_scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        if dense_mlp:
+            return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if use_grouped_moe:
+            return self.run_moe_grouped_compact_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return self.run_moe_c1_fp16(
+            mlp_input,
+            residual,
+            scratch=moe_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+
+    def run_linear_attention_moe_chain_tloop_layer_fp16(
+        self,
+        hidden: Tensor,
+        *,
+        conv_state: Tensor,
+        recurrent_state: Tensor,
+        chain_conv_state: Tensor,
+        chain_recurrent_state: Tensor,
+        linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Run one linear-attention layer for a single verifier chain.
+
+        For row topology ``[-1, 0, 1, ...]`` this avoids parent-row global
+        state reloads by carrying the Conv/GDN state forward in-kernel, while
+        still materializing every row for exact partial-accept commits.
+        """
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
+        use_grouped_moe = False if dense_mlp else tokens >= _verify_moe_grouped_min_tokens()
+        if dense_mlp:
+            if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
+                moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif use_grouped_moe:
+            if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+                moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+            moe_scratch = self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+
+        self.input_rmsnorm_fp16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
+        self.rotate_linear_attention_inputs_fp16(
+            linear_scratch.attn_input,
+            linear_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        self.project_linear_attention_qkv_z_fp16(
+            linear_scratch,
+            tokens=tokens,
+            group_size=group_size,
+            library=library,
+            stream=stream,
+        )
+        self.project_linear_attention_ab_fp16(
+            linear_scratch.attn_input,
+            linear_scratch,
+            tokens=tokens,
+            library=library,
+            stream=stream,
+        )
+        prefix = f"layers.{self.layer_weights.layer_id}.linear_attn"
+        qkv_width = _linear_qkv_width(self.config)
+        z_width = _linear_value_width(self.config)
+        qwen35_linear_attn_chain_conv_decode_fp16_tloop(
+            linear_scratch.qkv.ptr,
+            conv_state.ptr,
+            chain_conv_state.ptr,
+            self.tensor(f"{prefix}.conv1d.weight").ptr,
+            linear_scratch.conv_out.ptr,
+            tokens,
+            qkv_width,
+            self.config.linear_conv_kernel_dim,
+            stream=stream,
+            library=_library_for(library, "linear_conv"),
+            runtime=self.runtime,
+        )
+        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16(
+            linear_scratch.conv_out.ptr,
+            linear_scratch.z.ptr,
+            linear_scratch.a.ptr,
+            linear_scratch.b.ptr,
+            self.tensor(f"{prefix}.dt_bias").ptr,
+            self.tensor(f"{prefix}.A_log").ptr,
+            self.tensor(f"{prefix}.norm.weight").ptr,
+            recurrent_state.ptr,
+            chain_recurrent_state.ptr,
             linear_scratch.tree_gdn_acc.ptr,
             linear_scratch.recurrent_out.ptr,
             self.config.rms_norm_eps,

@@ -1,0 +1,284 @@
+{
+  "change": "single-chain linear-attention verifier t-loop materializes rows without parent-state global reloads",
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens <stable/code:quicksort_prefix ids> --decode-tokens 8 --candidate-budget 5 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --json /tmp/hipengine-mtp-chain-tloop-b5-d8-final.json",
+  "date": "2026-05-19",
+  "hardware": "gfx1151 (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S default local target)",
+  "metrics": {
+    "ar_decode_seconds": 0.1520027809892781,
+    "ar_decode_tok_s": 52.63061601856021,
+    "mtp_decode_seconds": 0.2414433829835616,
+    "mtp_decode_tok_s": 33.13406191191692,
+    "mtp_vs_ar_decode_ratio": 0.6295586945102862,
+    "proposal_decode_update_seconds": 0.014750436996109784,
+    "verify_seconds": 0.1976717059733346
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "raw": {
+    "ar": {
+      "decode_seconds": 0.1520027809892781,
+      "decode_tok_s": 52.63061601856021,
+      "prefill_seconds": 1.405040533049032,
+      "seconds": 27.892720805946738,
+      "tok_s": 0.2868131816776511
+    },
+    "ar_tokens": [
+      3841,
+      6646,
+      17145,
+      8,
+      478,
+      5956,
+      478,
+      3841
+    ],
+    "candidate_budget": 5,
+    "decision_reason": "Native MTP proposal rows reached verify_chain_bulk_and_commit and exact AR was checked. persistent_device keeps MTP weights/cache resident, but artifacts remain diagnostic until acceptance and speed gates pass.",
+    "decode_tokens": 8,
+    "exact_ar_match": true,
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "mtp": {
+      "acceptance_rate": 1.0,
+      "accepted_lengths": [
+        5,
+        1
+      ],
+      "active_budgets": [
+        5,
+        1
+      ],
+      "chain_attn_mode": "c1_loop",
+      "decode_seconds": 0.2414433829835616,
+      "decode_tok_s": 33.13406191191692,
+      "note": "Persistent native MTP provider: weights/cache resident and target hidden stays on device; selected expert ids are still host-orchestrated.",
+      "proposal_decode_update_seconds": 0.014750436996109784,
+      "proposal_impl": "persistent_device",
+      "proposal_prefill_seconds": 0.63598279398866,
+      "proposal_trace_sample": [
+        {
+          "accepted": 5,
+          "bonus_token": 478,
+          "committed_tokens": [
+            3841,
+            6646,
+            17145,
+            8,
+            478,
+            5956
+          ],
+          "cycle": 1,
+          "draft_candidates": [
+            6646,
+            17145,
+            8,
+            478,
+            5956
+          ],
+          "proposer_cache_len_before_update": 94,
+          "root_position": 90,
+          "root_token": 3841,
+          "target_parent_rows": [
+            -1,
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "target_top1_path": [
+            6646,
+            17145,
+            8,
+            478,
+            5956,
+            478
+          ],
+          "verify_graph": {
+            "chain_attn_mode": "c1_loop",
+            "linear_attn_fallback": false,
+            "linear_attn_mode": "chain_tloop",
+            "mode": "off",
+            "replayed": false,
+            "status": "disabled",
+            "validation_passed": null
+          }
+        },
+        {
+          "accepted": 1,
+          "bonus_token": 6646,
+          "committed_tokens": [
+            478,
+            3841
+          ],
+          "cycle": 2,
+          "draft_candidates": [
+            3841
+          ],
+          "proposer_cache_len_before_update": 96,
+          "root_position": 96,
+          "root_token": 478,
+          "target_parent_rows": [
+            -1,
+            0
+          ],
+          "target_top1_path": [
+            3841,
+            6646
+          ],
+          "verify_graph": {
+            "chain_attn_mode": "c1_loop",
+            "linear_attn_fallback": false,
+            "linear_attn_mode": "chain_tloop",
+            "mode": "off",
+            "replayed": false,
+            "status": "disabled",
+            "validation_passed": null
+          }
+        }
+      ],
+      "seconds": 29.938655678997748,
+      "tok_s": 0.2672130668048691,
+      "verify_seconds": 0.1976717059733346
+    },
+    "mtp_tokens": [
+      3841,
+      6646,
+      17145,
+      8,
+      478,
+      5956,
+      478,
+      3841
+    ],
+    "performance_claim": false,
+    "prompt_tokens": [
+      727,
+      3841,
+      6646,
+      19490,
+      1590,
+      198,
+      262,
+      4071,
+      5423,
+      264,
+      10300,
+      2880,
+      314,
+      2663,
+      71483,
+      198,
+      262,
+      413,
+      2343,
+      19490,
+      8,
+      2564,
+      220,
+      16,
+      25,
+      198,
+      285,
+      460,
+      2663,
+      198,
+      262,
+      25212,
+      283,
+      2663,
+      23915,
+      19490,
+      8,
+      434,
+      220,
+      17,
+      60,
+      198,
+      262,
+      2047,
+      283,
+      498,
+      87,
+      364,
+      830,
+      303,
+      2663,
+      413,
+      830,
+      361,
+      25212,
+      60,
+      198,
+      262,
+      5956,
+      283,
+      498,
+      87,
+      364,
+      830,
+      303,
+      2663,
+      413,
+      830,
+      606,
+      25212,
+      60,
+      198,
+      262,
+      1245,
+      283,
+      498,
+      87,
+      364,
+      830,
+      303,
+      2663,
+      413,
+      830,
+      835,
+      25212,
+      60,
+      198,
+      262,
+      460,
+      220
+    ],
+    "proposal_impl": "persistent_device",
+    "status": "passed"
+  },
+  "result": "blocked_speed_mtp_still_slower_than_ar",
+  "schema_version": 1,
+  "type": "diagnostic",
+  "validation": {
+    "acceptance_rate": 1.0,
+    "accepted_lengths": [
+      5,
+      1
+    ],
+    "active_budgets": [
+      5,
+      1
+    ],
+    "exact_ar_match": true,
+    "verify_graph_modes": [
+      {
+        "chain_attn_mode": "c1_loop",
+        "linear_attn_fallback": false,
+        "linear_attn_mode": "chain_tloop",
+        "mode": "off",
+        "replayed": false,
+        "status": "disabled",
+        "validation_passed": null
+      },
+      {
+        "chain_attn_mode": "c1_loop",
+        "linear_attn_fallback": false,
+        "linear_attn_mode": "chain_tloop",
+        "mode": "off",
+        "replayed": false,
+        "status": "disabled",
+        "validation_passed": null
+      }
+    ]
+  }
+}

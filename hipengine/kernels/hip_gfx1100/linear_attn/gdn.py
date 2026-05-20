@@ -15,6 +15,8 @@ _SYMBOL_LOWP = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16"
 _SYMBOL_LOWP_FP16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16"
 _SYMBOL_TREE_TLOOP_BF16 = "hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_bf16"
 _SYMBOL_TREE_TLOOP_FP16 = "hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16"
+_SYMBOL_CHAIN_TLOOP_BF16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16"
+_SYMBOL_CHAIN_TLOOP_FP16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
 _SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
 _SYMBOL_PREFILL_SEGMENTS_K2 = "hipengine_qwen35_gdn_prefill_recurrent_segments_k2_f32"
@@ -324,6 +326,106 @@ def qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16(
         base_recurrent_state_ptr,
         tree_recurrent_state_ptr,
         parent_ids_ptr,
+        acc_buf_ptr,
+        out_ptr,
+        eps,
+        max_nodes,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    base_recurrent_state_ptr: int,
+    leaf_recurrent_state_ptr: int,
+    acc_buf_ptr: int,
+    out_ptr: int,
+    eps: float,
+    max_nodes: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16-gated single-chain GDN t-loop recurrence+finalize."""
+
+    _launch_gdn_chain_tloop(
+        _SYMBOL_CHAIN_TLOOP_BF16,
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        base_recurrent_state_ptr,
+        leaf_recurrent_state_ptr,
+        acc_buf_ptr,
+        out_ptr,
+        eps,
+        max_nodes,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    base_recurrent_state_ptr: int,
+    leaf_recurrent_state_ptr: int,
+    acc_buf_ptr: int,
+    out_ptr: int,
+    eps: float,
+    max_nodes: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP16-gated single-chain GDN t-loop recurrence+finalize."""
+
+    _launch_gdn_chain_tloop(
+        _SYMBOL_CHAIN_TLOOP_FP16,
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        base_recurrent_state_ptr,
+        leaf_recurrent_state_ptr,
         acc_buf_ptr,
         out_ptr,
         eps,
@@ -939,6 +1041,81 @@ def _launch_gdn_tree_tloop(
         ctypes.c_void_p(base_recurrent_state_ptr),
         ctypes.c_void_p(tree_recurrent_state_ptr),
         ctypes.c_void_p(parent_ids_ptr),
+        ctypes.c_void_p(acc_buf_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(max_nodes),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_gdn_chain_tloop(
+    symbol: str,
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    base_recurrent_state_ptr: int,
+    leaf_recurrent_state_ptr: int,
+    acc_buf_ptr: int,
+    out_ptr: int,
+    eps: float,
+    max_nodes: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(max_nodes, "max_nodes")
+    _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    if head_k_dim > 256 or head_k_dim % 64:
+        raise ValueError("chain GDN t-loop requires head_k_dim divisible by 64 and <= 256")
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(conv_out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(a_ptr),
+        ctypes.c_void_p(b_ptr),
+        ctypes.c_void_p(dt_bias_ptr),
+        ctypes.c_void_p(a_log_ptr),
+        ctypes.c_void_p(norm_weight_ptr),
+        ctypes.c_void_p(base_recurrent_state_ptr),
+        ctypes.c_void_p(leaf_recurrent_state_ptr),
         ctypes.c_void_p(acc_buf_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_float(eps),
