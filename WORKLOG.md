@@ -19972,3 +19972,61 @@ remains the sole blocker.
 Decision: **BLOCK task #50** pending either (a) AWQ quantization of MTP weights
 or (b) a new kernel path for dense BF16 expert dispatch. Neither is justified
 while the verifier dominates.
+
+## 2026-05-19 — Task #52: Batched MoE verifier routing investigation
+
+Investigated multiple approaches to reduce the ~20ms MoE GEMV cost (44% of
+verifier kernel time) and the broader ~45ms verifier GPU kernel time per pass.
+
+### Findings from additional profiling and experiments
+
+1. **Grouped compact MoE for verifier (threshold=2)**
+   - Lowering `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS` from 16 to 2 forces the
+     grouped compact/WMMA MoE path even for 4-token verifier batches.
+   - Result: **incorrect tokens produced**. The grouped scatter-gather path has
+     a correctness bug with small batches (likely in the group-count or
+     scatter-offset computation for < 16 tokens).
+   - Without debugging and fixing that kernel bug, grouped compact is not viable
+     for verifier small-batch use.
+
+2. **CPU/Python overhead measurement**
+   - `verify_chain_bulk_and_commit` wall time per B=2 pass: ~52ms
+   - `device_synchronize` immediately after: 0ms (stream already idle)
+   - ROCm profiler shows kernel-only time: ~45ms
+   - Estimated CPU/Python overhead: ~7ms (~13% of pass time)
+   - Even eliminating all CPU overhead would not close the MTP/AR gap alone.
+
+3. **B=5 quicksort test**
+   - accepted: [5, 4, 0, 2] — 11/16 tokens accepted, but 2 cycles had 0 acceptance
+   - MTP decode: 28.94 tok/s vs AR 62.45 tok/s (0.46x)
+   - Worse than B=3. The verifier per-pass cost grows faster than acceptance
+     benefit at higher B, and zero-acceptance cycles kill throughput.
+
+4. **LM head analysis**
+   - LM head weight shape: (248320, 2048) — large matrix
+   - 7.5ms for 4-token projection is dominated by memory bandwidth
+   - No existing faster small-batch kernel path available
+
+### Conclusion: task #52 blocked on kernel R&D
+
+No pragmatic host-side or existing-kernel-path optimization can close the MTP/AR
+gap from 0.87x to ≥0.95x. The required >14% verifier speedup must come from
+kernel-level changes. Two high-value targets remain unattempted:
+
+1. **Batched selected-expert GEMV across verifier layers**
+   - Instead of 30 × 2 = 60 tiny GEMV launches per pass, a single kernel that
+     iterates over all 30 layers' selected-expert weights.
+   - Requires new HIP kernel with layer-weight array parameterization.
+   - Estimated potential: ~10-20ms saved from reduced launch count + improved
+     occupancy for tiny 8-row batches.
+
+2. **Fused verifier pre-attention sub-path**
+   - RMSNorm → rotate → QKV projection → Conv+GDN → out_proj into fewer kernels
+   - Would save ~30 × 3 = 90 kernel launches per pass.
+   - Requires substantial kernel engineering but avoids the complex MoE fusion.
+
+3. **Parallelized LM head across verifier rows**
+   - The 7.5ms LM head for 4 tokens might be reducible with a row-parallel kernel.
+
+All three require new HIP kernel development and validation. They are
+substantial standalone R&D tasks beyond the scope of a single quick optimization.
