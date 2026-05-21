@@ -392,6 +392,62 @@ def test_p9_d6_dual_split_bf16_bf16_matches_cpu_oracle(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_p10_x1_dual_split_matches_single_kernels_for_qwen35_linear_attention_shape(q8_t16_library) -> None:
+    """Regression for P10.X1: fused Q8T16 attn_qkv+attn_gate must be bit-stable.
+
+    Qwen3.6-35B-A3B linear-attention decode fuses Q8_0 T16 projections with
+    asymmetric outputs (8192 qkv + 4096 gate).  The fused split kernel must use
+    the same reduction geometry as the single-output kernels; otherwise tiny
+    BF16 differences can flip later MoE routing and fail the public smoke.
+    """
+
+    rows, in_features, out_features_a, out_features_b = 1, 2048, 8192, 4096
+    rng = np.random.default_rng(10001)
+    qa = make_q8_0_weight(out_features_a, in_features)
+    qb = make_q8_0_weight(out_features_b, in_features)
+    ta = repack_gguf_q8_0_tile16(qa).tiles
+    tb = repack_gguf_q8_0_tile16(qb).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    actual_a, actual_b = _run_dual_split(
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        ta,
+        tb,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        np.uint16,
+        q8_t16_library,
+    )
+    expected_a = _run_single(
+        gguf_q8_0_t16_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        ta,
+        rows,
+        in_features,
+        out_features_a,
+        np.uint16,
+        q8_t16_library,
+    )
+    expected_b = _run_single(
+        gguf_q8_0_t16_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        tb,
+        rows,
+        in_features,
+        out_features_b,
+        np.uint16,
+        q8_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual_a, expected_a)
+    np.testing.assert_array_equal(actual_b, expected_b)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 @pytest.mark.parametrize(
     "rows,in_features,out_features_a,out_features_b,out_features_c",
     [

@@ -2096,8 +2096,8 @@ IDs are stable for `WORKLOG.md` and commit messages.
 | P10.B3 | Build Q6T16 selected-down WMMA prefill kernel + wire (3 layers, small) | +20 to +40 | ~0 | 0 GiB | S | **✅ landed (`bb0c933`)** | included in B2 row | +0 | `gguf_k_t16_selected_wmma_prefill_compact_kernel<...,6>` runs at 2.3 ms / 3 disp |
 | P10.B4 | Build Q8T16 dense WMMA prefill kernel (shape-aware tiles like P9.C3) + wire dense dispatch | +150 to +250 (Q8 bucket `160→~55 ms`) | ~+5 | 0 GiB | M | **✅ landed (`ed14ed5`)** | **+972 (928→1900)** — includes pair/triple/concat decline-to-singleton fix | +0 | 75 CPU-reference fixtures pass; rocprof shows `gguf_q8_0_t16_prefill_wmma_kernel<...,16,32>` + `<...,64,32>` + `<...,32,32>` active total 59 ms / 250 disp; Q8T16 dual_split_gemv 176 ms bucket eliminated |
 | **Wave 1.5 — acceptance gate after Wave 1** | | | | | | | | | |
-| P10.B5 | P9.E2 KL/top-1 fixture re-run with effective WMMA prefill + GEMV decode (T16 mode) | gate, not perf | gate, not perf | 0 | XS (re-run) | **❌ blocked — T16 path has a pre-P10 LLM.generate regression (see P10.X1)** | n/a | n/a | gate fails KL=5.6 with WMMA+GEMV+REPACK; KL=6.5 with WMMA only; KL=5.7 with no fastpaths but REPACK=1. P9.G1 commit `7ffb4e9` also produces incoherent text. Issue is T16 decode-repack itself, not P10 kernels. |
-| P10.B6 | Retained 512/0 + 512/128 acceptance with rollups | gate | gate | 0 | XS (one bench) | **❌ blocked on P10.X1** | bench: **1900.231** @ 512/0 (throughput gate met) | bench: **98.250** @ 512/128 (throughput gate met) | formal acceptance attempt recorded as blocked diagnostic in `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-b6-acceptance-blocked.json`; Wave-1 throughput diagnostic also in `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-wave1-blocked.json`; cannot retain as accepted until P10.X1 lands |
+| P10.B5 | P9.E2 KL/top-1 fixture re-run with effective WMMA prefill + GEMV decode (T16 mode) | gate, not perf | gate, not perf | 0 | XS (re-run) | **❌ blocked — P10.X1 fixed T16 decode-repack; remaining blocker is P10.X2 bulk WMMA prefill correctness** | n/a | n/a | after P10.X1 fixes, `REPACK=1, WMMA=0, GEMV=0` and `REPACK=1, WMMA=0, GEMV=1` both match reference exactly (`KL=0`, top-1 `100%` on 512/1 probes); full safe-mode with `effective_wmma_prefill=true` still fails (`KL_mean=4.578`, top-1 `0.124`, first mismatch row 0). Artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-x1-correctness-plus-x2-wmma-blocker.json`. |
+| P10.B6 | Retained 512/0 + 512/128 acceptance with rollups | gate | gate | 0 | XS (one bench) | **❌ blocked on P10.X2** | bench: **1900.231** @ 512/0 (throughput gate met) | bench: **98.250** @ 512/128 (throughput gate met) | formal acceptance attempt recorded as blocked diagnostic in `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-b6-acceptance-blocked.json`; Wave-1 throughput diagnostic also in `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-wave1-blocked.json`; cannot retain as accepted until P10.X2 lands |
 | **Wave 2 — push prefill from ~1850 to ≥2500** | | | | | | | | | |
 | P10.C1 | Tile / `__launch_bounds__` sweep for Q4T16 dual WMMA prefill on real 512 routing | +100 to +200 | ~0 | 0 | S | pending | | | extend P9.C15 method, drive by `scripts/qwen35_gguf_rocprof_summary.py` |
 | P10.C2 | Tile sweep for Q5T16 / Q6T16 / Q8T16 WMMA prefill (per-shape decision) | +50 to +150 | ~0 | 0 | S | pending | | | mirror P9.C3/P9.C4 |
@@ -2200,58 +2200,68 @@ Files changed in Wave 1:
 - `tests/test_gguf_q8_0_t16_wmma_prefill.py` — 75 fixtures pass.
 - `tests/test_qwen35_gguf_compact_moe_wmma_resolver.py` — 7 fixtures pass.
 
-### P10.X1 — Pre-P10 T16 decode-repack model correctness regression (blocks B5)
+### P10.X1 — T16 decode-repack model correctness restoration (landed 2026-05-21)
 
-While running the P10.B5 P9.E2 KL gate, the gate failed catastrophically
-(KL `5.6`, top-1 `0.04`) and the candidate generated tails were
-non-deterministic. Bisection isolated the regression to the **T16
-decode-repack path itself**, not to P10 kernels:
+P10.B5 originally failed catastrophically (`KL≈5.6`, top-1 `≈0.04`) and the
+short public smoke produced incoherent text with `HIPENGINE_GGUF_DECODE_REPACK=1`
+even when WMMA prefill and GEMV decode were disabled. That **pre-P10 T16
+layout correctness regression is now fixed**.
 
-- Pre-P10 commit `7ffb4e9` (P9.G1 retained acceptance) with
-  `HIPENGINE_GGUF_DECODE_REPACK=1` and **no other fastpath opt-ins** still
-  produces `'oneka. '` from the `tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json`
-  fixture (expected `'izio.'`). First token argmax is `263` instead of
-  `43482`.
-- Pristine path (`REPACK=0, WMMA=0, GEMV=0`) produces the correct
-  `'izio..吓得'`.
-- Raw + WMMA prefill only (`REPACK=0, WMMA=1, GEMV=0`, with
-  `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1`) produces correct
-  `'izio..吓得'`. So WMMA prefill itself is correct.
+Root causes fixed:
 
-**Root cause hypothesis:** the T16 GEMV decode kernels
-(`gguf_q8_0_t16_*_gemv_*`, `gguf_q*_k_t16_*_gemv_*`) or the T16 tile
-materialization plumbing introduces a per-layer numerical regression at
-decode-shape rows on real Qwen3.6-35B-A3B weights that did not appear in
-the synthetic test fixtures. Repack round-trip is bit-lossless on random
-inputs, so the bug is in the kernel readers (or in the dispatch path).
+1. **Decode-repack changed surrounding math.** Linear-attention `ssm_out` used
+   an F32-input Q8T16 GEMV path only when `gguf_decode_repack_enabled()` was
+   true, whereas the reference path rounds the recurrent output to BF16 before
+   `ssm_out`. Full-attention decode also switched to alternate fused kernels
+   solely because decode-repack was enabled. Decode-repack must select weight
+   layout / kernel implementation, not change the graph semantics.
+2. **Q8T16 dual split GEMV reduction mismatch.** The fused
+   `attn_qkv + attn_gate` path used a 64-thread Q8T16 dual-split launch while
+   the single-output Q8T16 kernels used 128 threads. On the Qwen3.6
+   `8192 + 4096` linear-attention shape this caused BF16 differences that later
+   flipped MoE routing. The dual-split launch now uses the same 128-thread
+   reduction geometry as the single kernels and is covered by a bit-equality
+   regression test.
 
-**Why P9 acceptance passed anyway:** at P9.G1 commit the safety gate was
-the pre-prior-agent version that **blanket-disabled** WMMA prefill /
-GEMV decode for qwen35moe. The P9.E2 fixture had `effective_wmma=false`
-and `effective_gemv=false`, so the candidate ran the pristine row-GEMV
-path, giving KL=0 vs the reference (which was the same path). The 506
-tok/s prefill number was measured with `effective_use_wmma=false` even
-though `--use-wmma-prefill` was requested.
+Green evidence:
 
-**Impact on Wave 1 retention:** Wave 1 kernel throughput numbers are
-valid measurements of kernel performance (all unit tests pass at the
-CPU-oracle level), but the E2E model output is broken because of the
-pre-existing T16 issue. Cannot retain Wave 1 as a benchmark row until
-P10.X1 lands.
+| Check | Command / mode | Result |
+| --- | --- | --- |
+| Public smoke | `HIPENGINE_GGUF_DECODE_REPACK=1`, `WMMA=0`, `GEMV=0`, fixture `qwen36_35b_a3b_q4km_smoke.json` | **pass**: output `izio.`, token IDs `[43482, 13]`, finite logits |
+| P9 512/1 probe | `REPACK=1`, `WMMA=0`, `GEMV=0` | **pass**: `KL=0`, top-1 `100%`, deterministic |
+| P9 512/1 probe | `REPACK=1`, `WMMA=0`, `GEMV=1` | **pass**: `KL=0`, top-1 `100%`, deterministic |
+| Unit regression | `tests/test_qwen35_gguf_decode_repack_semantics.py` + Q8T16 dual-split bit-equality test | **pass** |
 
-**Proposed P10.X1 — T16 model correctness restoration**
+Artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-x1-correctness-plus-x2-wmma-blocker.json`.
+
+### P10.X2 — Bulk WMMA prefill model correctness blocker (active)
+
+After P10.X1, the T16 decode-repack and GEMV decode paths are model-correct, but
+Wave-1 **bulk WMMA prefill** is still not correct enough to retain:
+
+- Formal P9.E2 safe-mode gate with `REPACK=1`, `effective_wmma_prefill=true`,
+  `effective_gemv_decode=true`, 512/128 ×3 still fails: `worst_kl_mean=4.578`,
+  `worst_kl_max=14.482`, `worst_top1_agreement=0.124`; first mismatch is row 0
+  (the prefill sample).
+- 512/1 isolation with `REPACK=1`, `WMMA=1`, `GEMV=0` also fails immediately
+  (`KL_mean=1.429`, top-1 `0.0`, first mismatch row 0).
+- Diagnostic-only local disables showed that turning off both dense Q8T16 WMMA
+  prefill and compact MoE WMMA prefill restores `KL=0` / top-1 `100%` on the
+  same 512/1 fixture. Therefore the remaining blocker is **rows>1 WMMA prefill
+  math / dispatch**, not T16 decode-repack or GEMV decode.
+
+**Impact on Wave 1 retention:** Wave-1 throughput (`512/0=1900.231 tok/s`,
+`512/128 decode=98.250 tok/s`) remains a valid diagnostic measurement of the
+WMMA kernels, but it cannot promote to the benchmark rollup until P10.X2 passes
+P9.E2 with `effective_wmma_prefill=true`.
+
+**Proposed P10.X2 work items**
 
 | Sub | Candidate | Owner notes |
 | --- | --- | --- |
-| P10.X1.a | Reproduce the broken first-token argmax with `LLM.generate` at the smallest possible decoder shape (1 layer? 1 hidden head?) to isolate which T16 kernel diverges. | Use `--max-new-tokens 1`, prompt = `[9419]`, capture intermediate activations layer-by-layer. |
-| P10.X1.b | Compare T16 GEMV decode output vs raw GGUF decode output on real model weights for one layer's projections (Q+K+V+O, gate+up+down, lm_head). The kernel families to suspect first: `gguf_q8_0_t16_gemv_*`, `q8_0_t16_dual_split_gemv_kernel`, `q8_0_t16_triple_split_gemv_kernel`. | Synthetic-fixture unit tests already pass; the issue must be at production weight magnitudes / column counts. |
-| P10.X1.c | Re-run P9.E2 with `REPACK=1 + WMMA=0 + GEMV=0` (i.e. T16 weights but no fastpath kernels at decode shape; the only T16 consumers are the bulk-prefill T16 GEMV path and Q8T16 dense decode). Confirms whether the bug is in the dense Q8T16 path or the selected MoE T16 path. | One bench + smoke. |
-| P10.X1.d | Land a correctness fix and re-run the smoke. Only after this can Wave 1 be retained. | |
-
-Until P10.X1 lands, **the Wave 1 kernel throughput numbers above are
-diagnostic-only** and cannot promote to `benchmarks/README.md` /
-`CHANGELOG.md` per the AGENTS.md "performance claims require correctness"
-rule.
+| P10.X2.a | Add qwen-shape model/fixture tests for dense Q8T16 WMMA prefill vs the T16 GEMV fallback. | Synthetic tests currently stop at small output widths; cover `rows=512`, `in=2048`, `out=4096/8192/2048` or a reduced deterministic slice that reproduces row-0 drift. |
+| P10.X2.b | Add qwen-shape compact MoE WMMA prefill tests vs compact GEMV fallback on captured routing (`selected_rows=4096`, top-k=8). | The diagnostic says compact WMMA also contributes; test selected gate/up/down separately before touching fused combine. |
+| P10.X2.c | Decide keep/fix/reject per WMMA family. | If WMMA f16 operand math cannot meet KL/top-1, gate it behind a separate unsafe/perf flag and pursue other prefill swings. |
 
 ### P10.2 — P10.B1: wire existing Q4T16 WMMA prefill (XS, do first)
 
@@ -2428,10 +2438,11 @@ not the hot path.
 - **No prefill graph capture that hides shape-dependent work.** P10.C3 must
   preserve correctness across prompt-length buckets; ill-defined capture is
   a regression even when wall time improves.
-- **No premature decode microtuning before P10.X1 and the post-fix profile land.**
-  The decode arm already cleared the Wave-1 `>=95 tok/s` throughput floor;
-  chasing P10.D before the T16 model-correctness fix and the R1 launch/kernel
-  census risks optimizing a broken or stale dispatch mix.
+- **No premature decode microtuning before the post-X1 profile lands and P10.X2
+  is understood.** The decode arm already cleared the Wave-1 `>=95 tok/s`
+  throughput floor; chasing P10.D before the R1 launch/kernel census and the
+  rows>1 WMMA prefill correctness diagnosis risks optimizing a broken or stale
+  dispatch mix.
 
 ### P10.8 — Sequencing and acceptance
 
@@ -2520,10 +2531,11 @@ kernel ships with a CPU-reference fixture (extend
 
 Wave 1 has already met the P10.B6 throughput floors (`512/0 = 1900.231 tok/s`,
 `512/128 decode = 98.250 tok/s`) but is blocked from rollup promotion by
-P10.X1. The next plan is deliberately **not** DFlash/MTP/speculative decode,
+P10.X2. The next plan is deliberately **not** DFlash/MTP/speculative decode,
 **not** DMS, and **not** INT8-KV speed work. The target is the deterministic
 GGUF safe-mode row: T16 decode-repack + effective WMMA prefill + effective
-GEMV decode, with P9.E2 correctness green.
+GEMV decode, with P9.E2 correctness green. P10.X1 fixed T16 decode-repack;
+P10.X2 must fix or gate rows>1 WMMA prefill before the speed row can retain.
 
 Competitive floors and stretch targets:
 
@@ -2536,16 +2548,17 @@ Next-step table:
 
 | Order | ID | Track | Work | Why this is next | Expected impact | Gate / evidence |
 | ---: | --- | --- | --- | --- | --- | --- |
-| 0 | P10.R0 | profile | **rocprof now** on current Wave-1 HEAD: 512/0 and 512/128 safe-mode traces, plus a launch census. | We need the post-B6 top-kernel and per-token launch baseline before changing correctness code. `docs/ROOFLINE.md` warns that wall time can hide launch gaps that kernel-duration sums do not capture. | no intended perf change | `rocprofv3 --kernel-trace` CSVs, `scripts/qwen35_gguf_rocprof_summary.py`, launch count by kernel family, and `wall_ms - sum(DurationNs)` residue recorded as diagnostic artifacts / WORKLOG. |
-| 1 | P10.X1 | correctness | **Land T16 decode-repack model correctness restoration.** Isolate raw-vs-T16 divergence on real Qwen3.6-35B-A3B weights, starting with Q8T16 dense/dual/triple GEMV readers, then K-quant T16 readers. | Blocks every retained performance claim. Wave-1 kernels pass CPU-oracle fixtures; the production T16 reader path is still model-wrong. | no intended perf change; unlocks retention | public smoke returns expected first token/text; P9.E2 gate passes (`KL <= 0.05`, top-1 `>= 90%`, deterministic tails) with effective fastpaths true. |
-| 2 | P10.R1 | profile | **Fresh rocprof after P10.X1**, again with launch census and wall-vs-kernel residue. | Avoid optimizing around a broken reader path or stale dispatch mix. Also verifies X1 did not accidentally change the fastpath set. | no intended perf change | before/after table for 512/0 and 512/128: wall tok/s, kernel total ms, launch count/token, top 10 buckets, and hidden residue. |
-| 3 | P10.C6 | prefill | **Full-attention prefill audit / WMMA attention check.** Confirm whether the current `qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel` / AOTriton threshold is still optimal at rows=512. | Wave 1 leaves ~41 ms in full-attention prefill. Even a partial reduction is meaningful when the 2500 tok/s target needs ~60 ms total wall savings from the 1900 tok/s baseline. | +50 to +200 tok/s, bounded by the ~41 ms bucket | per-layer attention correctness fixture + rocprof shows attention bucket shrink; no torch hot-path dependency. |
-| 4 | P10.C7 | prefill | **MoE routing / compact-scheduler / scatter fusion for rows>1.** Revisit `group_count + prefix + scatter/map` fusion for prefill, not the already-rejected decode shape. | The Wave-1 profile killed the giant GEMV buckets; launch-heavy MoE bookkeeping becomes visible again. Prefill rows>1 has different economics from P9.D3 decode. | +30 to +120 tok/s depending on launch census | one merged scheduler/scatter kernel or fewer launches; `other` bucket drops by `>=10 ms` at 512/0; resolver remains registry-keyed. |
-| 5 | P10.C8 | prefill | **Up-gate path audit.** Prove every qwen35moe gate/up rows>1 path in T16 safe-mode routes through WMMA and not a singleton/decode fallback. | B4 found a hidden pair/triple/concat decline-to-singleton issue; the same class of bug may still exist on up-gate or shared-expert paths. | +0 if already correct; +100 to +250 tok/s if a fallback remains | dispatch trace / resolver tests name every dense, selected, shared, pair, and triple projection variant; rocprof has no unexpected `*_gemv*` buckets at rows>1. |
-| 6 | P10.C9 | prefill | **Fused activation / residual / RMSNorm / cast cleanup.** Fold safe BF16<->F32 casts and combine activation/residual surfaces where the unfused chain already exists. | Remaining prefill savings are small-op and intermediate-traffic dominated after Wave 1. | +30 to +150 tok/s aggregate | CPU-reference chain equivalence, KL gate, and rocprof shows fewer cast / combine launches with no new dispatch branches. |
-| 7 | P10.D6 | decode | **HIP graph capture / replay for GGUF safe-mode decode.** Count launches first; then capture the fixed-shape one-token decode graph if hidden launch residue is material. | This is decode Swing #2. ROOFLINE says graph replay removes host dispatch overhead but not per-kernel work; it is only worth doing if R0/R1 show launch residue above ~3% wall time. | +5 to +15 tok/s if launch residue is visible; otherwise reject quickly | graph/eager parity fixture, P9.E2 gate, launch count unchanged but host residue shrinks; 512/128 decode moves toward `>=105`. |
-| 8 | P10.D7 | decode | **T16 decode GEMV bandwidth polish.** Focus on Q4T16 selected dual, Q8T16 dense/shared, then Q5/Q6 selected-down: coalescing, VGPR/occupancy, K-tile width, launch bounds, and `-mcumode` profile. Avoid LDS unless parent R&D proves a win. | This is decode Swing #5 and the direct path from 98 to 120+ once graph residue is known. Current decode is finite/correct only after X1; tune only then. | +8 to +20 tok/s aggregate | rocprof bucket shrink plus occupancy/bandwidth counters when available; no KL/top-1 regression; each kept microtune updates artifact + rollup. |
-| 9 | P10.F0 | acceptance | **Combined safe-mode acceptance.** Re-run P10.B5 + B6 plus the P10.C/D closeout bench. | One row must be correct and fast at the same commit. | target: `>=2500/120`; stretch: `>=2700/130` | retained JSON artifact, `benchmarks/README.md` row + `Last updated`, `benchmarks/CHANGELOG.md` old→new one-liner, WORKLOG command/evidence. |
+| 0 | P10.R0 | profile | **rocprof now** on current Wave-1 HEAD: 512/0 and 512/128 safe-mode traces, plus a launch census. | We need the post-B6 top-kernel and per-token launch baseline before changing correctness code. `docs/ROOFLINE.md` warns that wall time can hide launch gaps that kernel-duration sums do not capture. | no intended perf change | **done**: artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-r0-rocprof-baseline.json`; decode launch census `80262` dispatches / `627.05 per token`. |
+| 1 | P10.X1 | correctness | **Land T16 decode-repack model correctness restoration.** Restore graph semantics under decode-repack and fix Q8T16 dual-split GEMV reduction geometry. | T16 decode-repack alone was model-wrong and hid the next real blocker. | no intended perf change; unlocks clean diagnosis | **done**: public smoke passes; 512/1 probes with `WMMA=0` pass `KL=0`, top-1 `100%` for both `GEMV=0` and `GEMV=1`. |
+| 2 | P10.R1 | profile | **Fresh rocprof after P10.X1**, again with launch census and wall-vs-kernel residue. | Avoid optimizing around a stale dispatch mix. Because P10.X2 is still blocking the full WMMA row, capture the correct `WMMA=0,GEMV=1` row and, if useful, a clearly-marked diagnostic `WMMA=1` row. | no intended perf change | before/after table for 512/0 and 512/128: wall tok/s, kernel total ms, launch count/token, top 10 buckets, and hidden residue. |
+| 3 | P10.X2 | correctness | **Fix bulk WMMA prefill model correctness.** Dense Q8T16 WMMA and compact MoE WMMA rows>1 must pass against the T16 GEMV/reference path before more prefill perf work can retain. | After X1, full safe-mode fails only when `effective_wmma_prefill=true`; first mismatch is the prefill row. | no intended perf change; required before C6-C9 retention | active: formal safe-mode P9.E2 still rejected (`KL_mean=4.578`, top-1 `0.124`); add qwen-shape WMMA-vs-GEMV fixtures and keep/fix/reject per family. |
+| 4 | P10.C6 | prefill | **Full-attention prefill audit / WMMA attention check.** Confirm whether the current `qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel` / AOTriton threshold is still optimal at rows=512. | Wave 1 leaves ~41 ms in full-attention prefill. Even a partial reduction is meaningful when the 2500 tok/s target needs ~60 ms total wall savings from the 1900 tok/s baseline. | +50 to +200 tok/s, bounded by the ~41 ms bucket | per-layer attention correctness fixture + rocprof shows attention bucket shrink; no torch hot-path dependency. |
+| 5 | P10.C7 | prefill | **MoE routing / compact-scheduler / scatter fusion for rows>1.** Revisit `group_count + prefix + scatter/map` fusion for prefill, not the already-rejected decode shape. | The Wave-1 profile killed the giant GEMV buckets; launch-heavy MoE bookkeeping becomes visible again. Prefill rows>1 has different economics from P9.D3 decode. | +30 to +120 tok/s depending on launch census | one merged scheduler/scatter kernel or fewer launches; `other` bucket drops by `>=10 ms` at 512/0; resolver remains registry-keyed. |
+| 6 | P10.C8 | prefill | **Up-gate path audit.** Prove every qwen35moe gate/up rows>1 path in T16 safe-mode routes through WMMA and not a singleton/decode fallback. | B4 found a hidden pair/triple/concat decline-to-singleton issue; the same class of bug may still exist on up-gate or shared-expert paths. | +0 if already correct; +100 to +250 tok/s if a fallback remains | dispatch trace / resolver tests name every dense, selected, shared, pair, and triple projection variant; rocprof has no unexpected `*_gemv*` buckets at rows>1. |
+| 7 | P10.C9 | prefill | **Fused activation / residual / RMSNorm / cast cleanup.** Fold safe BF16<->F32 casts and combine activation/residual surfaces where the unfused chain already exists. | Remaining prefill savings are small-op and intermediate-traffic dominated after Wave 1. | +30 to +150 tok/s aggregate | CPU-reference chain equivalence, KL gate, and rocprof shows fewer cast / combine launches with no new dispatch branches. |
+| 8 | P10.D6 | decode | **HIP graph capture / replay for GGUF safe-mode decode.** Count launches first; then capture the fixed-shape one-token decode graph if hidden launch residue is material. | This is decode Swing #2. ROOFLINE says graph replay removes host dispatch overhead but not per-kernel work; it is only worth doing if R0/R1 show launch residue above ~3% wall time. | +5 to +15 tok/s if launch residue is visible; otherwise reject quickly | graph/eager parity fixture, P9.E2 gate, launch count unchanged but host residue shrinks; 512/128 decode moves toward `>=105`. |
+| 9 | P10.D7 | decode | **T16 decode GEMV bandwidth polish.** Focus on Q4T16 selected dual, Q8T16 dense/shared, then Q5/Q6 selected-down: coalescing, VGPR/occupancy, K-tile width, launch bounds, and `-mcumode` profile. Avoid LDS unless parent R&D proves a win. | This is decode Swing #5 and the direct path from 98 to 120+ once graph residue is known. Current decode is finite/correct after X1 on `WMMA=0` rows; full safe-mode retention still waits on X2. | +8 to +20 tok/s aggregate | rocprof bucket shrink plus occupancy/bandwidth counters when available; no KL/top-1 regression; each kept microtune updates artifact + rollup. |
+| 10 | P10.F0 | acceptance | **Combined safe-mode acceptance.** Re-run P10.B5 + B6 plus the P10.C/D closeout bench. | One row must be correct and fast at the same commit. | target: `>=2500/120`; stretch: `>=2700/130` | retained JSON artifact, `benchmarks/README.md` row + `Last updated`, `benchmarks/CHANGELOG.md` old→new one-liner, WORKLOG command/evidence. |
 
 Operational rule for this wave: every candidate starts with the launch/kernel
 census and stops if the top-bucket math cannot pay back at least `~3%` wall

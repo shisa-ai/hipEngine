@@ -22030,3 +22030,53 @@ No giant rows>1 T16 GEMV fallback remains in prefill. Residual T16 GEMV buckets 
 - Decode D7 is still required: even perfect launch removal does not remove the 231 ms Q8T16 + 132 ms Q4T16 + 98 ms Q5T16 kernel buckets.
 
 Artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-r0-rocprof-baseline.json`.
+
+## 2026-05-21 P10.X1 — T16 decode-repack restored; WMMA prefill split out as P10.X2
+
+Continued task #9 (P10.X1 correctness). Findings and fixes:
+
+- Reproduced the pre-existing T16 decode-repack issue with a layer-limit probe over token `9419` (`Hello`): raw vs T16 hidden states diverged immediately before the fix and grew to severe final drift.
+- Root cause #1: `gguf_decode_repack_enabled()` changed surrounding graph semantics, not just weight layout. In linear-attention decode, `ssm_out` consumed F32 recurrent output directly under decode-repack while the reference path rounds to BF16 before `ssm_out`. Full-attention decode also switched to alternate fused kernels solely under decode-repack. Removed those decode-repack conditionals so T16 repack selects the kernel/layout but preserves the graph math.
+- Root cause #2: Q8T16 fused dual-split GEMV (`attn_qkv + attn_gate`) used a 64-thread launch while the single-output Q8T16 GEMV used 128 threads. With both `attn_qkv` and `attn_gate` T16, layer-6 output drift appeared; disabling either slot caused fallback to single kernels and raw/T16 matched exactly. Changed dual split to 128 threads and added a Qwen3.6-shape bit-equality regression against the two single kernels (`rows=1, in=2048, out=8192+4096`).
+
+Validation:
+
+```bash
+PYTHONPATH=. uv run pytest \
+  tests/test_qwen35_gguf_decode_repack_semantics.py \
+  tests/test_gguf_q8_0_t16_gemv_decode.py::test_p10_x1_dual_split_matches_single_kernels_for_qwen35_linear_attention_shape -q
+# 3 passed
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=0 HIPENGINE_GGUF_GEMV_DECODE=0 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_gguf_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 1 --skip-tokenize-check \
+  --json /tmp/p10_x1_final_t16_smoke.json
+# pass: output 'izio.', token ids [43482, 13], first-token argmax 43482
+
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture /tmp/p10_x1_iso_t16_no_wmma_no_gemv.json \
+  --decode-tokens 1 --repeats 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/p10_x1_final_iso_t16_no_wmma_no_gemv_out.json
+# pass: KL=0, top-1=1.0, deterministic
+
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture /tmp/p10_x1_iso_t16_no_wmma_gemv.json \
+  --decode-tokens 1 --repeats 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/p10_x1_final_iso_t16_no_wmma_gemv_out.json
+# pass: KL=0, top-1=1.0, deterministic
+```
+
+Remaining blocker, now separated as P10.X2:
+
+```bash
+python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
+  --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/p10_x1_p9_e2e_gate.json
+# rejected: worst_kl_mean=4.57762594437766, worst_kl_max=14.482195439994273,
+# worst_top1_agreement=0.12403100775193798, first mismatch row 0.
+```
+
+Isolation shows `REPACK=1, WMMA=0, GEMV=0` and `REPACK=1, WMMA=0, GEMV=1` both match reference exactly; `REPACK=1, WMMA=1, GEMV=0` fails immediately on row 0. Diagnostic-only local edits that disabled both dense Q8T16 WMMA prefill and compact MoE WMMA prefill restored KL=0/top-1=100% on a 512/1 probe. Therefore P10.X1 is fixed, but P10.B5/B6 remain blocked on **P10.X2 bulk WMMA prefill model correctness**.
+
+Artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-x1-correctness-plus-x2-wmma-blocker.json`.
+- Commit-prep validation addendum: `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_gguf_q8_0_t16_gemv_decode.py::test_p10_x1_dual_split_matches_single_kernels_for_qwen35_linear_attention_shape tests/test_qwen35_gguf_fastpath_safety.py -q` -> 10 passed. Included fastpath-safety test expectation update because T16 repack now allows the requested WMMA+GEMV state for P10.X2 isolation, while raw GGUF GEMV remains gated.

@@ -16,7 +16,6 @@ from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_full_attn_gate_mul_bf16,
     qwen35_paged_full_attn_decode_context_bf16_spans,
-    qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
@@ -28,7 +27,6 @@ from hipengine.kernels.hip_gfx1100.fused import (
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_bf16_add,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
-    gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight,
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
     register_paro_combine_kernels,
@@ -1280,36 +1278,23 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        if cfg.is_moe and gguf_decode_repack_enabled():
-            launch_gguf_linear(
-                layer.weight("ssm_out"),
-                scratch.recurrent_out.ptr,
-                attn_out_ptr,
-                rows=1,
-                in_features=cfg.ssm_inner_size,
-                out_features=self.hidden_size,
-                activation_dtype=GGUF_ACTIVATION_F32,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            f32_to_bf16(
-                scratch.recurrent_out.ptr,
-                scratch.recurrent_bf16.ptr,
-                cfg.ssm_inner_size,
-                stream=stream,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                layer.weight("ssm_out"),
-                scratch.recurrent_bf16.ptr,
-                attn_out_ptr,
-                rows=1,
-                in_features=cfg.ssm_inner_size,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
+        f32_to_bf16(
+            scratch.recurrent_out.ptr,
+            scratch.recurrent_bf16.ptr,
+            cfg.ssm_inner_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ssm_out"),
+            scratch.recurrent_bf16.ptr,
+            attn_out_ptr,
+            rows=1,
+            in_features=cfg.ssm_inner_size,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
 
     def _run_native_attention_bulk_ffn_layer_rows(
         self,
@@ -1618,53 +1603,32 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        if cfg.is_moe and gguf_decode_repack_enabled():
-            gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight(
-                scratch.full_query_raw.ptr,
-                scratch.full_k.ptr,
-                layer.weight("attn_q_norm").allocation().tensor.ptr,
-                layer.weight("attn_k_norm").allocation().tensor.ptr,
-                scratch.cos_table.ptr,
-                scratch.sin_table.ptr,
-                scratch.position_tensor.ptr,
-                scratch.full_query.ptr,
-                scratch.full_key.ptr,
-                cfg.rms_norm_eps,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.rope_dimension_count,
-                scratch.max_positions,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            bf16_to_f32(
-                scratch.full_k.ptr,
-                scratch.full_key_raw.ptr,
-                self.kv_width,
-                stream=stream,
-                runtime=runtime,
-            )
-            gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
-                scratch.full_query_raw.ptr,
-                scratch.full_key_raw.ptr,
-                layer.weight("attn_q_norm").allocation().tensor.ptr,
-                layer.weight("attn_k_norm").allocation().tensor.ptr,
-                scratch.cos_table.ptr,
-                scratch.sin_table.ptr,
-                scratch.position_tensor.ptr,
-                scratch.full_query.ptr,
-                scratch.full_key.ptr,
-                cfg.rms_norm_eps,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.rope_dimension_count,
-                scratch.max_positions,
-                stream=stream,
-                runtime=runtime,
-            )
+        bf16_to_f32(
+            scratch.full_k.ptr,
+            scratch.full_key_raw.ptr,
+            self.kv_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
+            scratch.full_query_raw.ptr,
+            scratch.full_key_raw.ptr,
+            layer.weight("attn_q_norm").allocation().tensor.ptr,
+            layer.weight("attn_k_norm").allocation().tensor.ptr,
+            scratch.cos_table.ptr,
+            scratch.sin_table.ptr,
+            scratch.position_tensor.ptr,
+            scratch.full_query.ptr,
+            scratch.full_key.ptr,
+            cfg.rms_norm_eps,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.rope_dimension_count,
+            scratch.max_positions,
+            stream=stream,
+            runtime=runtime,
+        )
         key_cache, value_cache = scratch.full_cache(layer_id)
         qwen35_write_paged_kv_mixed_value_bf16_spans(
             scratch.full_key.ptr,
@@ -1678,53 +1642,29 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        if cfg.is_moe and gguf_decode_repack_enabled():
-            qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
-                scratch.full_query.ptr,
-                key_cache.ptr,
-                value_cache.ptr,
-                scratch.full_gate.ptr,
-                scratch.full_gated.ptr,
-                scratch.full_attn_split_partial.ptr,
-                scratch.full_attn_split_m.ptr,
-                scratch.full_attn_split_l.ptr,
-                scratch.decode_spans,
-                256,
-                scratch.full_attn_split_count,
-                scratch.block_size,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.key_length,
-                1,
-                cfg.key_length ** -0.5,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            qwen35_paged_full_attn_decode_context_bf16_spans(
-                scratch.full_query.ptr,
-                key_cache.ptr,
-                value_cache.ptr,
-                scratch.full_attn_context.ptr,
-                scratch.decode_spans,
-                scratch.max_positions,
-                scratch.block_size,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.key_length ** -0.5,
-                stream=stream,
-                runtime=runtime,
-            )
-            qwen35_full_attn_gate_mul_bf16(
-                scratch.full_attn_context.ptr,
-                scratch.full_gate.ptr,
-                scratch.full_gated.ptr,
-                self.q_width,
-                stream=stream,
-                runtime=runtime,
-            )
+        qwen35_paged_full_attn_decode_context_bf16_spans(
+            scratch.full_query.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            scratch.full_attn_context.ptr,
+            scratch.decode_spans,
+            scratch.max_positions,
+            scratch.block_size,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.key_length ** -0.5,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_full_attn_gate_mul_bf16(
+            scratch.full_attn_context.ptr,
+            scratch.full_gate.ptr,
+            scratch.full_gated.ptr,
+            self.q_width,
+            stream=stream,
+            runtime=runtime,
+        )
         launch_gguf_linear(
             layer.weight("attn_output"),
             scratch.full_gated.ptr,
