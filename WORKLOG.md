@@ -21587,3 +21587,39 @@ Validation after the mask change:
 - Same suite with `HIPENGINE_W4_MULTI_ROW_PACK8=off` → all 9 prompts exact. Artifact: `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-off.json`.
 
 Performance note: the exact-safe subset is nearly neutral on the 9-prompt suite (`cycle_cost 3.798` safe vs `3.794` off, one run) and only marginal on the quicksort prompt (`cycle_cost 3.80` safe vs `3.83` off, one run).  Therefore the earlier all-sites M12.6 +12.9% cumulative throughput claim is retained only as a **risky/all-sites diagnostic**, not as the default exact MTP path.  Exact-preserving W4 speedup likely needs a small-B WMMA/prefill-numerics-compatible kernel rather than the FMA row-loop kernel.
+
+## 2026-05-22 — M12.6 follow-up: prefill-like FP16 dequant recovers one more exact-safe site
+
+Followed up on the M12.6 exactness failure rather than leaving the FMA row-loop kernel purely prompt-masked.  The stock FP16 W4 prefill kernel dequantizes each W4 value into a half value before WMMA f32 accumulation:
+
+```
+scale_h = scales[...]
+zp_h = -half(zp) * scale_h
+w_h = scale_h * half(q) + zp_h
+acc = wmma_f32(..., w_h, x_h, acc)
+```
+
+The original M12.6 row-loop kernel used float dequantization (`float(q - zp) * float(scale)`) and regular FMA.  Changed the M12.6 FP16 row-loop dequantization to half-round the dequantized weight with the same expression shape before f32 accumulation.  BF16 multi-row symbols keep their prior float dequantization semantics because they do not replace the FP16 prefill path.
+
+Effect on the translation exactness probe (`B=3`, decode=48, batched/off):
+
+- `SITES=all`: mismatch moved from generated index 34 to 43, but still fails exact AR.
+- Per-site after prefill-like dequant:
+  - exact: `full_qk`, `linear_qkv_z`, `dense_gate_up`, `single_full_o`, `single_shared_down`, `single_dense_down`
+  - still unsafe: `shared_gate_up` (mismatch 6), `single_full_v` (34), `single_linear_out` (43)
+
+Default safe-site mask now includes `single_full_o` in addition to the previous safe set.
+
+Validation:
+
+- `python3 -m py_compile hipengine/runtime/qwen35_paro.py` → OK.
+- Translation default smoke (`/tmp/hipengine-mtp-translation-prefill-dequant-default.json`) → exact AR match.
+- Quicksort 8-token smoke:
+  - `chain_attn_mode=c1_loop graph=off` → exact AR match.
+  - `chain_attn_mode=batched graph=off` → exact AR match.
+  - `chain_attn_mode=batched graph=validate` → exact AR match.
+- Full llama.cpp-compatible prompt suite, default env, `max_tokens=64`, `runs=1`, `B=3`, batched/off → all 9 prompts exact. Artifact: `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-prefill-dequant-default.json`.
+- Prompt-suite one-run economics: default safe M12.6 `cycle_cost=3.742` vs M12.6 off `3.794` AR-token equivalents (small +1.4% diagnostic improvement, `performance_claim=false`).
+- Quicksort one-run economics: exact, `cycle_cost=3.77`, `mtp/ar=0.629` (still well below break-even).
+
+Conclusion: half-rounded dequant is directionally correct but insufficient for all-sites exactness because the remaining mismatch is likely WMMA accumulation-order/reduction-order sensitivity.  Retain the safe default and treat `HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all` as risky.  Bigger exact W4 wins still need a small-B kernel that preserves the stock prefill/WMMA numeric path, or a verifier-level tolerance/accept strategy we are not willing to introduce for greedy exactness.

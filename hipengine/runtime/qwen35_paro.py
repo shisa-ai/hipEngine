@@ -6874,6 +6874,7 @@ _W4_MULTI_ROW_DEFAULT_SAFE_SITES = frozenset(
         "full_qk",
         "linear_qkv_z",
         "dense_gate_up",
+        "single_full_o",
         "single_shared_down",
         "single_dense_down",
     }

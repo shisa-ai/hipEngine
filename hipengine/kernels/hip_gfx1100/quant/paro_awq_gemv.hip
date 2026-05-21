@@ -55,6 +55,21 @@ __device__ inline int awq_shift_for_pack_lane(int lane) {
   return packed_pos * 4;
 }
 
+__device__ inline float awq_prefill_dequant_weight(half_t scale_h, int q, int z) {
+  // Match the stock FP16 prefill WMMA path's dequantization rounding: scale and
+  // zero-point products are half-rounded before the f32 accumulation consumes
+  // the dequantized weight.
+  const half_t zp_h = -static_cast<half_t>(static_cast<float>(z)) * scale_h;
+  const half_t w_h = scale_h * static_cast<half_t>(static_cast<float>(q)) + zp_h;
+  return static_cast<float>(w_h);
+}
+
+__device__ inline float awq_prefill_dequant_weight(uint16_t scale_bits, int q, int z) {
+  // BF16 pack8 kernels do not use the FP16 prefill WMMA path; keep their prior
+  // float dequantization semantics.
+  return static_cast<float>(q - z) * bf16_bits_to_float(scale_bits);
+}
+
 // RDNA3 HIP defaults to wave32 for this profile; even wave64-oriented
 // shuffle probes only exchanged within 32-lane halves. Reduce each 32-lane
 // wave with __shfl_down, then explicitly sum however many waves the block has.
@@ -657,10 +672,10 @@ __global__ void gemv_awq_pack8_multi_row_kernel(
       z[j] = static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
     }
     const scalar_t* __restrict__ scale_ptr = &scales[group * out_features + out_col];
-    float s[8];
+    scalar_t s[8];
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      s[j] = scalar_to_float(scale_ptr[j]);
+      s[j] = scale_ptr[j];
     }
     uint32_t pw[8];
 #pragma unroll
@@ -684,8 +699,8 @@ __global__ void gemv_awq_pack8_multi_row_kernel(
         const float xv = xs[kk];
 #pragma unroll
         for (int j = 0; j < 8; ++j) {
-          const float wq =
-              static_cast<float>(static_cast<int>((pw[kk] >> awq_shift_for_pack_lane(j)) & 0xF) - z[j]) * s[j];
+          const int q = static_cast<int>((pw[kk] >> awq_shift_for_pack_lane(j)) & 0xF);
+          const float wq = awq_prefill_dequant_weight(s[j], q, z[j]);
           acc[r][j] = fmaf(xv, wq, acc[r][j]);
         }
       }
@@ -704,10 +719,9 @@ __global__ void gemv_awq_pack8_multi_row_kernel(
       const float xv = scalar_to_float(x[static_cast<int64_t>(r) * in_features + in_col]);
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
-        const int wq_int =
-            static_cast<int>((pw >> awq_shift_for_pack_lane(j)) & 0xF) -
-            static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
-        acc[r][j] = fmaf(xv, static_cast<float>(wq_int) * scalar_to_float(scale_ptr[j]), acc[r][j]);
+        const int q = static_cast<int>((pw >> awq_shift_for_pack_lane(j)) & 0xF);
+        const int z = static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
+        acc[r][j] = fmaf(xv, awq_prefill_dequant_weight(scale_ptr[j], q, z), acc[r][j]);
       }
     }
   }
@@ -940,10 +954,10 @@ __global__ void gemv_awq_dual_pack8_multi_row_kernel(
       z[j] = static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
     }
     const scalar_t* __restrict__ scale_ptr = &scales[group * local_out_features + local_out_col];
-    float s[8];
+    scalar_t s[8];
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      s[j] = scalar_to_float(scale_ptr[j]);
+      s[j] = scale_ptr[j];
     }
     uint32_t pw[8];
 #pragma unroll
@@ -967,8 +981,8 @@ __global__ void gemv_awq_dual_pack8_multi_row_kernel(
         const float xv = xs[kk];
 #pragma unroll
         for (int j = 0; j < 8; ++j) {
-          const float wq =
-              static_cast<float>(static_cast<int>((pw[kk] >> awq_shift_for_pack_lane(j)) & 0xF) - z[j]) * s[j];
+          const int q = static_cast<int>((pw[kk] >> awq_shift_for_pack_lane(j)) & 0xF);
+          const float wq = awq_prefill_dequant_weight(s[j], q, z[j]);
           acc[r][j] = fmaf(xv, wq, acc[r][j]);
         }
       }
@@ -989,10 +1003,9 @@ __global__ void gemv_awq_dual_pack8_multi_row_kernel(
       const float xv = scalar_to_float(x[static_cast<int64_t>(r) * in_features + in_col]);
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
-        const int wq_int =
-            static_cast<int>((pw >> awq_shift_for_pack_lane(j)) & 0xF) -
-            static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
-        acc[r][j] = fmaf(xv, static_cast<float>(wq_int) * scalar_to_float(scale_ptr[j]), acc[r][j]);
+        const int q = static_cast<int>((pw >> awq_shift_for_pack_lane(j)) & 0xF);
+        const int z = static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
+        acc[r][j] = fmaf(xv, awq_prefill_dequant_weight(scale_ptr[j], q, z), acc[r][j]);
       }
     }
   }

@@ -19,7 +19,7 @@ Examples:
 
 ## 2026-05-22
 
-- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO-MTP-BF16 / MTP prompt-suite exactness gate for M12.6 W4 safe-site mask on W7900/gfx1100: all-sites M12.6 failed the llama.cpp-compatible `translation` prompt exactness gate (`AR=220`, `MTP=51` at generated index 34), so default M12.6 now enables only `full_qk,linear_qkv_z,dense_gate_up,single_shared_down,single_dense_down`. Safe subset vs M12.6-off on 9 prompts is exact in both cases and performance-neutral (`cycle_cost 3.798 -> 3.794` safe→off, one run); `performance_claim=false`; artifacts `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-safe-sites.json` and `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-off.json`.
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO-MTP-BF16 / MTP prompt-suite exactness gate for M12.6 W4 safe-site mask on W7900/gfx1100: all-sites M12.6 failed the llama.cpp-compatible `translation` prompt exactness gate (`AR=220`, `MTP=51` at generated index 34). The FMA row-loop kernel now half-rounds FP16 dequantized weights to better match WMMA prefill numerics, and default M12.6 enables only exact-suite-safe sites (`full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_shared_down,single_dense_down`). Default vs M12.6-off on 9 prompts is exact in both cases and improves one-run cycle cost `3.794 -> 3.742` AR-token equivalents; `performance_claim=false`; artifacts `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-prefill-dequant-default.json` and `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-off.json`.
 
 ## 2026-05-21
 
