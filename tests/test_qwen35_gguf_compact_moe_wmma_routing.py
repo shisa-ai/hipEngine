@@ -150,6 +150,7 @@ class _FakeWeight:
         row_bytes = max(1, in_features // 2)
         self.spec = SimpleNamespace(
             quant_key=quant_key,
+            layout="dense_bf16" if quant_key == "dense" else "raw_gguf",
             source=SimpleNamespace(
                 name=name,
                 shape=(experts, out_features, in_features),

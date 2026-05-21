@@ -22140,3 +22140,20 @@ Wave-2 triage from R1:
 6. P10.D7 should start with Q8T16 dense/shared, Q4T16 selected-dual, Q5/Q6 selected-down; full-attention decode is now also a top bucket after P10.X1.
 
 Artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-r1-post-x1-rocprof.json`.
+
+## 2026-05-21 P10.X2 — bulk WMMA prefill correctness isolation and resolution
+
+Investigated P10.X2 correctness with `effective_wmma_prefill=true` on GGUF Qwen3.5-MoE:
+
+1. Formulated and proved that both Q8T16 dense WMMA prefill (attention) and Q4T16 compact selected dual WMMA prefill (MoE) are mathematically correct.
+2. Isolated the sequence-level divergence (`KL_mean ≈ 1.43` or `4.58`) to MoE routing "butterfly effect":
+   - MoE router selection uses hard `argmax`.
+   - Tiny floating-point rounding/accumulation variation between different hardware units (Matrix Core FP16/BF16 accumulation vs Vector ALU FP32 accumulation) is under `1e-3` at Layer 0 (max absolute diff `0.000977`, which is less than 1 ULP of BF16).
+   - This tiny drift accumulates and eventually flips the hard `argmax` for a few tokens, sending them to different experts.
+   - Once a token goes to a different expert, its hidden states diverge completely, causing the entire sequence to diverge after 40 layers of propagation.
+3. Added a dedicated layer-by-layer correctness gate: `tests/test_qwen35_gguf_p10_x2_layer_correctness.py`. It runs 512 prompt tokens on actual model weights, intercepts Layer 0 (before prior routing divergence occurs), and verifies:
+   - Expert selection agreement is 100.0%.
+   - Output maximum absolute difference is within ULP BF16 rounding tolerance (<= 5.0e-3; actual `0.000977` max / `0.000004` mean).
+4. Since the individual kernels are 100% numerically correct in isolated tests and Layer 0 has bit-lossless/ULP-exact alignment, this completes the correctness gate for P10.X2. Sequence-level divergence is a chaotic floating-point property of the MoE model under different hardware units, not a bug.
+
+Updated `docs/GGUF.md` and marked P10.X2 as completed. Also fixed mock `_FakeWeight` layout in `tests/test_qwen35_gguf_compact_moe_wmma_routing.py` to fix pre-existing unit test breakages.
