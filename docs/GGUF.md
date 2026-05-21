@@ -2703,16 +2703,42 @@ split-K vs context+gate numerical fixture before it can be considered safe.
 
 #### P10.D10 — After split-K routing: profile before MoE micro-fusion
 
-Do not start Q4/Q8/MoE decode micro-fusion until a post-D8 rocprof trace lands.
-The current suspected order after split-K routing is:
+Status update 2026-05-21: **post-split-K rocprof landed.** Artifact:
+`benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d10-splitk-rocprof.json`.
 
-1. full-attention split-K producer / reduce if 4K remains low;
-2. selected Q4T16 dual GEMV and Q5/Q6 selected down if attention is no longer
-   dominant;
-3. shared-expert Q8T16 path;
-4. router/scatter/lane-sum/combine launch cleanup.
+Method: paired `rocprofv3 --kernel-trace --output-format csv` traces for 4K/0
+and 4K/16, summarized with `scripts/qwen35_gguf_rocprof_summary.py
+--strip-prefill-prefix` so the decode table below reflects the post-prefill
+decode window.
 
-That ordering intentionally supersedes the older P10.D1-first plan for the
-current GGUF state: once 4K prefill was fixed, the 4K decode cliff made
-full-attention split-K routing the bigger and safer first swing than a new MoE
-fusion kernel.
+Top 4K/16 decode buckets after P10.D8:
+
+| Bucket | ms / 16 tokens | ms/token | Share | Dispatches | Interpretation |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `dense_q8_0_t16_gemv_decode_p9` | `55.501` | `3.469` | `35.45%` | 2720 | now the largest decode bucket; includes Q8_0 single/dual/triple T16 GEMV families |
+| `moe_q4_k_selected_dual_t16_gemv_decode_p9` | `19.316` | `1.207` | `12.34%` | 680 | selected gate/up MoE T16 decode |
+| `full_attention_decode` | `15.984` | `0.999` | `10.21%` | 340 | split-K is present and no longer dominant |
+| `moe_q5_k_selected_t16_gemv_decode_p9` | `14.249` | `0.891` | `9.10%` | 629 | selected down MoE T16 decode |
+| `dense_q6_k_t16_gemv_decode_p9` | `10.541` | `0.659` | `6.73%` | 17 | lm-head T16 decode |
+| `rmsnorm` | `10.159` | `0.635` | `6.49%` | 1547 | many small norm/add-norm launches |
+| `router` | `8.689` | `0.543` | `5.55%` | 680 | cooperative router top-k/shared gate |
+| `gdn_decode` | `8.670` | `0.542` | `5.54%` | 510 | linear-attention recurrent decode |
+
+Expected split-K kernels are visible in the trace:
+
+- `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>`
+- `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>`
+
+Updated priority after evidence:
+
+1. **Q8_0 T16 GEMV decode family** (dense single/dual/triple, including shared
+   expert and attention output projections): largest remaining 4K bucket.
+2. **Selected-MoE T16 GEMV families** (`q4_k_t16_selected_dual_*`,
+   `qk_t16_selected_direct_*<5/6>`): next largest combined GEMV bucket.
+3. Full-attention split-K only if future 8K+ traces show it grows again; at 4K
+   it is now third and only ~1.0 ms/token.
+4. RMSNorm/router/GDN launch cleanup after GEMV buckets are exhausted.
+
+This supersedes the pre-profile ordering below and confirms that the next
+optimization pass should be GEMV-family decode, not more attention split-K
+work or MoE metadata fusion.

@@ -22319,3 +22319,22 @@ Results:
 - 4K/128 with grouped+warp disabled / generic split: prefill/decode `2698.904 / 85.905 tok/s`, peak `22.584 GiB`, final tokens `[220, 220]`; `-11.4%` vs retained grouped-GQA row.
 
 Conclusion: keep P10.D8 retained defaults (`threshold=1024`, grouped-GQA at 4K). No benchmark rollup change. Saved exploratory artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d9-splitk-sweep.json`. Next: post-split-K rocprof to identify whether attention, selected GEMV, shared expert, or router/scatter now dominates.
+
+## 2026-05-21 P10.D10 post-split-K rocprof
+
+Captured post-P10.D8/P10.D9 rocprof evidence for 4K decode using cached builds:
+- prefill-only: `rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-p10-d10-gguf-splitk-rocprof/prefill -o trace -- ... --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 ...`
+- decode: `rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-p10-d10-gguf-splitk-rocprof/decode -o trace -- ... --prompt-length 4096 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 ...`
+- summary: `python3 scripts/qwen35_gguf_rocprof_summary.py --prefill-csv .../prefill/trace_kernel_trace.csv --decode-csv .../decode/trace_kernel_trace.csv --strip-prefill-prefix --tokens-prefill 4096 --tokens-decode 16 --top 30 --json /tmp/p10_d10_gguf_splitk_rocprof_summary.json --quiet`.
+
+Also fixed `scripts/qwen35_gguf_rocprof_summary.py` to classify `q8_0_t16_dual_split_gemv_kernel` into `dense_q8_0_t16_gemv_decode_p9` rather than `other`; validation `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_rocprof_summary.py -q` -> 70 passed.
+
+Key decode buckets after stripping prefill prefix (4K/16, kernel time only):
+- `dense_q8_0_t16_gemv_decode_p9`: `55.501 ms / 16 tok`, `35.45%`, `3.469 ms/token`, 2720 dispatches.
+- `moe_q4_k_selected_dual_t16_gemv_decode_p9`: `19.316 ms`, `12.34%`, `1.207 ms/token`, 680 dispatches.
+- `full_attention_decode`: `15.984 ms`, `10.21%`, `0.999 ms/token`, 340 dispatches. Expected split-K kernels visible: `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>` and `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>`.
+- `moe_q5_k_selected_t16_gemv_decode_p9`: `14.249 ms`, `9.10%`, `0.891 ms/token`.
+- `dense_q6_k_t16_gemv_decode_p9`: `10.541 ms`, `6.73%`, `0.659 ms/token`.
+- `rmsnorm`: `10.159 ms`, `6.49%`; `router`: `8.689 ms`, `5.55%`; `gdn_decode`: `8.670 ms`, `5.54%`.
+
+Conclusion: attention split-K is no longer the top 4K decode bottleneck. The next optimization focus should move to Q8_0 T16 GEMV decode families first, then selected-MoE T16 GEMVs, with RMSNorm/router/GDN cleanup later. Saved compact artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d10-splitk-rocprof.json`; raw CSVs stay under `/tmp/hipengine-p10-d10-gguf-splitk-rocprof/`.
