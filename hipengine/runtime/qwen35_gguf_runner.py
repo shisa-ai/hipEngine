@@ -13,15 +13,8 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
-from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
-    qwen35_full_attn_gate_mul_bf16,
-    qwen35_full_attn_gate_mul_bf16_to_bf16,
-    qwen35_paged_full_attn_decode_context_bf16_spans,
-    qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
-)
 from hipengine.kernels.hip_gfx1100.attention import (
     aotriton_attn_fwd_compact_varlen,
-    aotriton_attn_fwd_v3_compact_varlen,
     build_aotriton_wrap,
 )
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
@@ -29,12 +22,18 @@ from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
     tensor2 as aotriton_tensor2,
     tensor4 as aotriton_tensor4,
 )
-from hipengine.core.tensor import DType
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+    build_qwen35_paged_attn_decode,
+    qwen35_full_attn_gate_mul_bf16,
+    qwen35_full_attn_gate_mul_bf16_to_bf16,
+    qwen35_paged_full_attn_decode_context_bf16_spans,
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
+)
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     qwen35_write_paged_kv_mixed_value_bf16_prompt_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
 )
-from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, f32_to_bf16
+from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, build_cast, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused import (
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_bf16_add,
@@ -597,11 +596,53 @@ class Qwen35GGUFFullStackRunner:
 
     model_path: str | Path
     runtime: HipRuntime | None = None
+    compiler_version: str | None = None
+    require_cached_build: bool = False
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
+        self.require_cached_build = bool(self.require_cached_build)
         self.weights = materialize_qwen35_gguf_weights(self.model_path, runtime=self.runtime)
+
+    def _aotriton_prefill_library(self):
+        """Return the cached AOTriton prefill shim handle."""
+
+        library = getattr(self, "_aotriton_library", None)
+        if library is None:
+            library = build_aotriton_wrap(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+            self._aotriton_library = library
+        return library
+
+    def _paged_attn_decode_library(self):
+        """Return the cached native paged-attention/gate shim handle."""
+
+        library = getattr(self, "_paged_attn_decode_library_handle", None)
+        if library is None:
+            library = build_qwen35_paged_attn_decode(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+            self._paged_attn_decode_library_handle = library
+        return library
+
+    def _cast_library(self):
+        """Return the cached dtype-cast shim handle."""
+
+        library = getattr(self, "_cast_library_handle", None)
+        if library is None:
+            library = build_cast(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+            self._cast_library_handle = library
+        return library
 
     def _gdn_prefill_plan(self) -> _GGUFGDNPrefillPlan:
         """Return the cached qwen35 GGUF GDN prefill plan.
@@ -916,8 +957,10 @@ class Qwen35GGUFFullStackRunner:
         This is the layer-level native prefill path used to validate the GGUF
         full-attention prefill wiring before the full-model scheduler is
         promoted. Rows below the threshold use the existing resident one-token
-        path in a loop; rows at/above the threshold use a native causal GQA
-        prefill kernel after GGUF Q/K/V projection and GPU q/k norm+RoPE.
+        path in a loop; rows at/above the threshold use the batched prefill
+        path after GGUF Q/K/V projection and GPU q/k norm+RoPE. The batched
+        path dispatches AOTriton at the retained 512-token crossover and uses
+        the native causal GQA kernel below that crossover.
         """
 
         if self.weights is None:
@@ -946,8 +989,13 @@ class Qwen35GGUFFullStackRunner:
             if use_aotriton:
                 prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(self, rows=rows, runtime=runtime)
                 buffers.extend(prefill_scratch.buffers)
-                self._run_full_attention_prefill_layer_aotriton(layer_id, hidden_buf.ptr, out_buf.ptr, prefill_scratch)
-                mode = "native_gqa_bf16"
+                used_aotriton = self._run_full_attention_prefill_layer_aotriton(
+                    layer_id,
+                    hidden_buf.ptr,
+                    out_buf.ptr,
+                    prefill_scratch,
+                )
+                mode = "aotriton_v2" if used_aotriton else "native_gqa_bf16"
             else:
                 scratch = _FullStackScratch.allocate(self, runtime=runtime)
                 buffers.extend(scratch.buffers)
@@ -971,7 +1019,7 @@ class Qwen35GGUFFullStackRunner:
         return Qwen35GGUFFullAttentionPrefillResult(
             hidden_bits=output,
             mode=mode,
-            used_aotriton=(mode == "aotriton_v3"),
+            used_aotriton=mode.startswith("aotriton"),
         )
 
     def _run_full_attention_prefill_layer_aotriton(
@@ -983,12 +1031,13 @@ class Qwen35GGUFFullStackRunner:
         *,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
-    ) -> None:
+    ) -> bool:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
         runtime = self.runtime or get_hip_runtime()
         rows = scratch.rows
+        cast_library = self._cast_library()
         gguf_rmsnorm_bf16_f32_weight(
             hidden_ptr,
             layer.weight("attn_norm").allocation().tensor.ptr,
@@ -1072,6 +1121,7 @@ class Qwen35GGUFFullStackRunner:
             scratch.full_key_raw.ptr,
             rows * self.kv_width,
             stream=stream,
+            library=cast_library,
             runtime=runtime,
         )
         gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
@@ -1107,15 +1157,12 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans_enabled = True
         threshold = int(PrefillConfig().attn_aotriton_min_tokens)
         use_aotriton = threshold > 0 and rows >= threshold
+        paged_attn_library = self._paged_attn_decode_library()
 
         if use_aotriton:
-            aotriton_library = getattr(self, "_aotriton_library", None)
-            if aotriton_library is None:
-                aotriton_library = build_aotriton_wrap(load=True)
-                self._aotriton_library = aotriton_library
+            aotriton_library = self._aotriton_prefill_library()
 
             # Convert FP32 query and key to BF16 for AOTriton
             f32_to_bf16(
@@ -1123,6 +1170,7 @@ class Qwen35GGUFFullStackRunner:
                 scratch.full_query_bf16.ptr,
                 rows * self.q_width,
                 stream=stream,
+                library=cast_library,
                 runtime=runtime,
             )
             f32_to_bf16(
@@ -1130,6 +1178,7 @@ class Qwen35GGUFFullStackRunner:
                 scratch.full_key_bf16.ptr,
                 rows * self.kv_width,
                 stream=stream,
+                library=cast_library,
                 runtime=runtime,
             )
 
@@ -1156,6 +1205,7 @@ class Qwen35GGUFFullStackRunner:
                 scratch.full_gated.ptr,
                 rows * cfg.head_count * cfg.key_length,
                 stream=stream,
+                library=paged_attn_library,
                 runtime=runtime,
             )
         else:
@@ -1176,8 +1226,10 @@ class Qwen35GGUFFullStackRunner:
                 1,
                 cfg.key_length ** -0.5,
                 stream=stream,
+                library=paged_attn_library,
                 runtime=runtime,
             )
+        used_aotriton = use_aotriton
         launch_gguf_linear(
             layer.weight("attn_output"),
             scratch.full_gated.ptr,
@@ -1198,6 +1250,7 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             expert_sidecar=expert_sidecar,
         )
+        return used_aotriton
 
     def _run_linear_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
         self._run_linear_attention_attn_only(layer_id, hidden_ptr, scratch.attn_out.ptr, scratch, stream=stream)
@@ -1420,6 +1473,7 @@ class Qwen35GGUFFullStackRunner:
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
         runtime = self.runtime or get_hip_runtime()
+        cast_library = self._cast_library()
         conv_state = decode_scratch.layer_conv_states[layer_id]
         recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
         if conv_state is None or recurrent_state is None:
@@ -1517,6 +1571,7 @@ class Qwen35GGUFFullStackRunner:
             scratch.linear_qkv_f32.ptr,
             rows * self.linear_qkv_width,
             stream=stream,
+            library=cast_library,
             runtime=runtime,
         )
         qwen35_linear_attn_conv_prefill_f32(
@@ -1587,6 +1642,7 @@ class Qwen35GGUFFullStackRunner:
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
         runtime = self.runtime or get_hip_runtime()
+        cast_library = self._cast_library()
         if int(scratch.position_host[0]) != int(position):
             scratch.set_full_attention_position(position, runtime)
         gguf_rmsnorm_bf16_f32_weight(
@@ -1672,6 +1728,7 @@ class Qwen35GGUFFullStackRunner:
             scratch.full_key_raw.ptr,
             self.kv_width,
             stream=stream,
+            library=cast_library,
             runtime=runtime,
         )
         gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
@@ -1694,6 +1751,7 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         key_cache, value_cache = scratch.full_cache(layer_id)
+        paged_attn_library = self._paged_attn_decode_library()
         qwen35_write_paged_kv_mixed_value_bf16_spans(
             scratch.full_key.ptr,
             scratch.full_v.ptr,
@@ -1719,6 +1777,7 @@ class Qwen35GGUFFullStackRunner:
             cfg.key_length,
             cfg.key_length ** -0.5,
             stream=stream,
+            library=paged_attn_library,
             runtime=runtime,
         )
         qwen35_full_attn_gate_mul_bf16(
@@ -1727,6 +1786,7 @@ class Qwen35GGUFFullStackRunner:
             scratch.full_gated.ptr,
             self.q_width,
             stream=stream,
+            library=paged_attn_library,
             runtime=runtime,
         )
         launch_gguf_linear(
@@ -2485,7 +2545,12 @@ class Qwen35GGUFResidentSession:
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
-        self.runner = Qwen35GGUFFullStackRunner(self.model_path, runtime=self.runtime)
+        self.runner = Qwen35GGUFFullStackRunner(
+            self.model_path,
+            runtime=self.runtime,
+            compiler_version=self.compiler_version,
+            require_cached_build=self.require_cached_build,
+        )
         if self.runner.weights is None:
             raise RuntimeError("GGUF full-stack runner did not materialize weights")
         self.fastpath_safety = resolve_qwen35moe_fastpath_safety(

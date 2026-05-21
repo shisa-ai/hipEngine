@@ -22194,3 +22194,25 @@ Implemented and successfully benched the prioritized Wave-2 performance swings:
    - **4K / 128:** Prefill throughput skyrocketed from `498.22` to **`2696.90 tok/s`** (**+441.3% / 5.4x speedup**), completely matching/exceeding PARO's prefill speeds! Decode is stable at **`47.17 tok/s`**.
 
 All 117 unit and E2E correctness tests pass perfectly. Staged explicitly and committed.
+
+## 2026-05-21 Wave-2 review: correctness hygiene and low-risk launch-handle tuning
+
+Reviewed the recent GGUF AOTriton prefill/T16 decode work for correctness and leftover low-risk tuning opportunities.
+
+Findings and fixes:
+- Fixed stale layer-level AOTriton metadata: `run_full_attention_prefill_layer()` now reports `mode="aotriton_v2"` and `used_aotriton=True` when the batched helper actually dispatches AOTriton. The existing native-GQA fallback metadata is preserved for rows below the 512 retained AOTriton crossover.
+- Removed the unused AOTriton V3 import and the leftover no-op `qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans_enabled` flag.
+- Threaded `compiler_version` and `require_cached_build` from `Qwen35GGUFResidentSession` into `Qwen35GGUFFullStackRunner`, then cached three hot CDLL handles on the runner:
+  - AOTriton prefill shim,
+  - native paged-attention/gate shim,
+  - dtype-cast shim.
+- Passed cached handles into the AOTriton prefill, native gate/context, and BF16/F32 cast wrappers. This avoids repeated compiler-version resolution and `ctypes.CDLL` work in prefill/decode setup without changing math.
+
+Validation:
+- `python3 -m compileall hipengine/runtime/qwen35_gguf_runner.py hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py` -> pass.
+- `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_full_attention_gpu.py -q -s` -> 2 pass.
+- `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_gguf_q8_0_t16_wmma_prefill.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py tests/test_gguf_k_t16_selected_wmma_prefill.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_compact_moe_wmma_resolver.py -q` -> 119 pass.
+- 512/128 review rerun (not promoted to rollup yet): median prefill/decode `2121.421/89.696 tok/s`, finite logits, same generated token stream as retained run. Command:
+  `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_review_512_128.json`.
+
+Tuning note: the remaining real copy overhead is still the FP32->BF16 Q/K staging before AOTriton. The next safe way to remove it is a dedicated AOTriton-prefill head-RMSNorm/RoPE variant that writes BF16 Q/K for AOTriton while still preserving the FP32 K needed by the current KV cache writer. That is a larger math-kernel change and should get its own CPU/reference fixture before landing.
