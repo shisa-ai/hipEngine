@@ -447,10 +447,14 @@ def _run_spec_persistent_device(
                         )
                     update_started = time.perf_counter()
                     if len(generated) < int(decode_tokens):
-                        if accepted < active_budget:
+                        if accepted < active_budget - 1:
                             proposer.restore_state(snapshots[accepted])
-                        else:
-                            proposer.restore_state(snapshots[active_budget - 1])
+                        elif accepted >= active_budget:
+                            # After candidate generation, the live proposer state is
+                            # already equivalent to snapshots[active_budget - 1].
+                            # Reuse it and consume the final accepted candidate before
+                            # the target bonus token instead of doing a redundant
+                            # synchronous D2D restore.
                             proposer.advance_with_previous_hidden(input_token=candidates[-1], position=proposer.position + 1)
                         proposer.advance_with_previous_hidden(input_token=bonus, position=proposer.position + 1)
                     proposal_decode_update_seconds += time.perf_counter() - update_started

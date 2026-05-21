@@ -21190,3 +21190,37 @@ streaming LM-head top1/candidate-check that avoids materializing rows×vocab
 logits. Proposer expert top-k is over experts, not 128K vocab.
 
 Loop target remains C3 <= 2.0.
+
+## 2026-05-21 — m12-batched loop iteration 15 kept: skip redundant proposer restore
+
+Active multiloop: `m12-batched/run-20260521-060831`.
+
+Retained a proposal-update cleanup in `scripts/mtp_chain_e2e_smoke.py`: after
+B candidate generation, the live `NativeMtpChainProposer` state is already the
+snapshot needed when `accepted >= active_budget - 1`.  The update path now skips
+the redundant synchronous `restore_state()` D2D copy for the last-candidate
+reject and full-accept cases; full-accept still consumes the final accepted
+candidate before consuming the target bonus token.
+
+Configured metric command (B=3, batched, graph off, 32 decode tokens):
+
+- Previous kept C3: **3.6425** AR-token equivalents
+- New C3: **2.8259** AR-token equivalents
+- Delta vs previous: **-0.8166** (**-22.4%**)
+- Delta vs loop baseline 5.5444: **-49.0%**
+- exact_ar_match: true
+- accepted lengths: `[3,3,2,0,2,0,0,1,3,0,2,0,2]`
+
+Validation:
+
+- `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_paro.py scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_economics.py`
+- configured guard: exact AR true, mode=batched, finite positive C3
+
+Important caveat: this remains a single-run, low-confidence diagnostic. The
+measured AR baseline denominator was slower in this run, and
+`cycle_wall_ms_per_cycle=90.24` ms is not lower than the prior iter-10 artifact
+(`83.04` ms). Do **not** promote as an MTP speed row; continue the loop toward
+`C3 <= 2.0` and confirm any final result with >=3 runs.
+
+Artifact:
+`benchmarks/results/2026-05-21-hipengine-mtp-m12-batched-skip-current-restore.json`
