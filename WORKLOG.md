@@ -20813,3 +20813,148 @@ smaller than the original projection. The plan-budget for remaining
 phases (M7.B, M9, M10) should be similarly recalibrated — assume
 kernel-time savings of ~30-50% of the family's measured cost, not
 the original "kernel time savings × multiplier" projections.
+
+## 2026-05-21 — M12.0 pivot: verifier economics in AR-token equivalents
+
+User pushed back correctly: llama.cpp gets wins from MTP-2/MTP-3, so the issue is
+not small-B MTP as an algorithm; it is hipEngine's verifier cycle economics.
+Pivoted the active plan from standalone M7/M9 kernel-family work to **M12 true
+batched verifier loop**.
+
+### New diagnostic harness
+
+Added `scripts/mtp_verifier_economics.py`.
+
+It wraps `scripts/mtp_chain_e2e_smoke.py` and reports the llama.cpp-relevant
+metric:
+
+```text
+cycle_cost_ar_tokens = avg_mtp_verify_cycle_wall_ms / ar_decode_ms_per_token
+```
+
+A speculative cycle can beat AR only when:
+
+```text
+avg_visible_tokens_per_verify_cycle > cycle_cost_ar_tokens
+```
+
+and a 1.5x row requires:
+
+```text
+avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens >= 1.5
+```
+
+The script records exact-AR-match, accepted lengths, active budgets, visible
+tokens/cycle, verify ms/cycle, whole-cycle ms/cycle (from `cycle_marker_ns`),
+MTP/AR ratio, perfect-accept ceiling, and the acceptance rate required for 1x.
+It emits `performance_claim=false` diagnostics.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/mtp_verifier_economics.py
+python3 scripts/mtp_verifier_economics.py \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 16 \
+  --candidate-budgets 3 \
+  --runs 1 \
+  --raw-root /tmp/hipengine-mtp-economics-smoke \
+  --out /tmp/hipengine-mtp-economics-smoke.json
+```
+
+Short smoke result: exact AR match, B=3 MTP/AR 0.589, cycle cost 5.17 AR-token
+equivalents, avg emit/cycle 3.00, perfect ceiling 0.77x.
+
+### M12.0 retained diagnostic sweep
+
+Command:
+
+```bash
+python3 scripts/mtp_verifier_economics.py \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 \
+  --candidate-budgets 1,2,3,5 \
+  --runs 1 \
+  --raw-root /tmp/hipengine-mtp-economics-m12-b1-b5 \
+  --out benchmarks/results/2026-05-21-hipengine-mtp-verifier-economics-m12.json
+```
+
+Results (single run per B; diagnostic, not a speed claim):
+
+| B | exact | AR tok/s | MTP tok/s | MTP/AR | avg visible/cycle | cycle ms | cycle cost (AR tok) | verify ms | perfect ceiling | required accept rate for 1x |
+|---:|:---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | true | 64.4 | 31.5 | 0.489 | 1.55 | 49.6 | **3.20** | 38.0 | 0.63x | 220% |
+| 2 | true | 63.9 | 28.8 | 0.451 | 2.21 | 77.6 | **4.96** | 57.5 | 0.61x | 198% |
+| 3 | true | 50.7 | 28.2 | 0.557 | 2.38 | 85.5 | **4.33** | 62.1 | 0.92x | 111% |
+| 5 | true | 51.8 | 21.6 | 0.416 | 2.82 | 132.6 | **6.87** | 96.8 | 0.87x | 124% |
+
+Accepted lengths:
+- B=1: `[1,1,1,1,1,0,0,1,0,0,0,1,1,1,0,1,0,0,1,0]`
+- B=2: `[2,2,2,1,0,2,0,0,1,2,1,2,0,2]`
+- B=3: `[3,3,2,0,2,0,0,1,3,0,2,0,2]`
+- B=5: `[5,4,0,2,0,0,1,4,2,0,2]`
+
+### Interpretation
+
+This answers the llama.cpp pushback. llama.cpp can win with MTP-2/MTP-3 because
+its verifier cycle is close to ~2 AR-token equivalents. hipEngine is:
+
+- B=1: 3.20 AR-token equivalents
+- B=2: 4.96 AR-token equivalents
+- B=3: 4.33 AR-token equivalents
+- B=5: 6.87 AR-token equivalents
+
+The current loop is not sublinear in verifier rows. B=5 accepts more tokens but
+cycle cost grows faster than useful output. Trying B=7 before reshaping the loop
+is unlikely to help.
+
+### Current loop map / serial work
+
+Code read:
+- `scripts/mtp_chain_e2e_smoke.py::_run_spec_persistent_device`
+- `hipengine/runtime/qwen35_paro_runner.py::verify_chain_bulk_and_commit`
+- `_launch_verify_chain_forward_accept`
+- `_run_full_attention_chain_c1_loop`
+- `Qwen35ParoDecodeState.run_linear_attention_moe_chain_tloop_layer_fp16`
+- `_sample_verify_rows_from_hidden`
+
+Key findings:
+
+1. Smoke cycle still has host-side orchestration: save proposer snapshots,
+   advance MTP head `active_budget` times, build `TargetVerifyBatch`, verify,
+   restore/advance proposer state after accept. This is not the main cost but
+   contributes to cycle wall.
+2. `verify_chain_bulk_and_commit` writes metadata, calls the target forward,
+   reads accept/top1 payload, commits linear state, sets slot position, and
+   synchronizes. GPU-fast accept already showed this host side is tiny vs the
+   forward pass.
+3. `_launch_verify_chain_forward_accept` loops all 30 target layers. Full-attn
+   layers default to `_run_full_attention_chain_c1_loop`, which explicitly loops
+   over verifier rows and invokes the decode layer per row. The existing
+   `chain_attn_mode=batched` path was correct but not faster because it reused
+   prefill-style kernels with bad small-B fixed overhead.
+4. Linear-attn layers have a good chain-tloop for Conv/GDN recurrence, but the
+   surrounding projections/MoE/shared/residual path still launches many small
+   row-batch kernels. M7.C.6 fixed the worst small-batch dispatch alias but did
+   not make a layer-level verifier primitive.
+5. `_sample_verify_rows_from_hidden` materializes full `rows x vocab` logits via
+   `w8a16_linear_bf16_f32_out` and then runs a separate row-wise argmax. For
+   verifier accept we only need target top1 / next-token provenance, not a
+   reusable full logits slab. This is an M12.3 target.
+
+### Plan update
+
+Updated `docs/MTP.md`:
+- top status and priority now point to M12 true-batched verifier economics;
+- added M12 section with the economics formulas, M12.0 table, current loop map,
+  and M12.1-M12.5 implementation track;
+- marked the old "Closing the gap with llama.cpp MTP — kernel roadmap" as a
+  historical cost catalog superseded by M12.
+
+Updated benchmark rollup/changelog with the M12.0 artifact.
+
+Next task: **M12.1 per-cycle timeline split**. Extend instrumentation/runner so
+cycle wall decomposes into proposer-build, target-forward, lm-head/top1,
+accept/commit, and sync. Acceptance gate: component sums reconcile with
+`cycle_marker_ns`, exact AR remains true. Then target M12.2/M12.3 based on the
+largest measured component, not guesses.

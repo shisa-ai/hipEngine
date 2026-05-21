@@ -1,19 +1,20 @@
 # hipEngine MTP Native Implementation Plan
 
 > Status (2026-05-21): shared ABI + metadata/loading scaffold landed; a local
-> PARO+MTP-BF16 artifact is assembled for bring-up. A single-step native
-> proposal smoke matches the torch-reference top-1. E2E correctness is exact at
-> B=2/3/5 on the stable quicksort prompt. **Speed is blocked at 0.87× AR (B=3,
-> chain_tloop, gfx1151)**; closing the gap to llama.cpp’s 1.5–2× wins requires
-> new HIP kernels (Tasks #45–#52, see WORKLOG.md 2026-05-19/2026-05-20).
+> PARO+MTP-BF16 artifact is assembled for bring-up. Native MTP proposal and
+> shared target verification are exact at B=1/2/3/5 on the stable quicksort
+> prompt. M7.C.6 fixed the row-stride-aliased small-batch dispatch path and
+> improved B=3 MTP wall throughput by +15.8%, but the M12.0 economics sweep
+> shows the verifier cycle still costs **3.2–6.9 AR-token equivalents** across
+> B=1/2/3/5. llama.cpp-style MTP benefits require ~2 AR-token equivalents.
 > This is the sister document to [`DFLASH.md`](DFLASH.md). MTP must reuse the
 > shared native verifier/commit infrastructure from DFlash, not fork a separate
 > c=1 native-loop tuning lane.
 
-> **Top priority for the next push:** batched selected-expert MoE GEMV with an
-> ids-tensor ABI (see ["Closing the gap with llama.cpp MTP"](#closing-the-gap-with-llamacpp-mtp--kernel-roadmap-2026-05-21)).
-> Expected savings ~10–20 ms of the ~45 ms verifier kernel time, which is
-> enough to clear the >14% break-even bar at B=3 perfect-accept.
+> **Top priority for the next push:** M12 true-batched verifier economics. Stop
+> optimizing isolated kernel families until the loop is measured and shaped as a
+> llama.cpp-style verifier cycle: `cycle_cost_ar_tokens <= ~2.0` for small B,
+> with exact AR equality preserved. See ["M12 — true batched verifier loop pivot"](#m12--true-batched-verifier-loop-pivot-2026-05-21).
 
 ## Thesis
 
@@ -464,11 +465,114 @@ If MTP does not beat AR after the shared verifier is fast, run a fresh split
 before optimizing: proposal cost may dominate, or acceptance may be insufficient
 for the measured prompt class.
 
+## M12 — true batched verifier loop pivot (2026-05-21)
+
+M7.C.6 answered the pushback question: llama.cpp can get benefits from MTP-2
+and MTP-3 because its target-verifier cycle is cheap in **AR-token-equivalent**
+units. hipEngine's current verifier is exact but too expensive per cycle. The
+new primary metric is therefore not an isolated kernel family millisecond; it is
+
+```text
+cycle_cost_ar_tokens = avg_mtp_verify_cycle_wall_ms / ar_decode_ms_per_token
+```
+
+A fixed-depth chain with candidate budget `B` can beat AR only when
+
+```text
+avg_visible_tokens_per_verify_cycle > cycle_cost_ar_tokens
+```
+
+where `avg_visible_tokens_per_verify_cycle = 1 + avg_accepted_drafts`. A 1.5×
+row requires `avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens >= 1.5`.
+llama.cpp's MTP-2/3 wins imply a cycle cost around **~2 AR-token equivalents**;
+our first M12 sweep is far above that.
+
+### M12.0 economics baseline (single-run diagnostic)
+
+Artifact: `benchmarks/results/2026-05-21-hipengine-mtp-verifier-economics-m12.json`.
+Command:
+
+```bash
+python3 scripts/mtp_verifier_economics.py \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 \
+  --candidate-budgets 1,2,3,5 \
+  --runs 1 \
+  --raw-root /tmp/hipengine-mtp-economics-m12-b1-b5 \
+  --out benchmarks/results/2026-05-21-hipengine-mtp-verifier-economics-m12.json
+```
+
+`performance_claim=false`; this is a planning diagnostic. Exact-AR-match passed
+for every row.
+
+| B | AR tok/s | MTP tok/s | MTP/AR | avg visible tokens/cycle | cycle wall ms | cycle cost (AR tok) | verify ms/cycle | perfect-accept ceiling | required accept rate for 1× |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 64.4 | 31.5 | 0.489 | 1.55 | 49.6 | **3.20** | 38.0 | 0.63× | 220% |
+| 2 | 63.9 | 28.8 | 0.451 | 2.21 | 77.6 | **4.96** | 57.5 | 0.61× | 198% |
+| 3 | 50.7 | 28.2 | 0.557 | 2.38 | 85.5 | **4.33** | 62.1 | 0.92× | 111% |
+| 5 | 51.8 | 21.6 | 0.416 | 2.82 | 132.6 | **6.87** | 96.8 | 0.87× | 124% |
+
+Interpretation:
+
+- B=1/B=2 are structurally impossible to beat AR with the current loop: even
+  impossible acceptance rates would be needed for 1×.
+- B=3 is close only in the **perfect acceptance** ceiling (4 visible tokens /
+  4.33 AR-token cost = 0.92×). With observed acceptance it is 0.56×.
+- B=5 currently gets more accepted tokens, but the cycle cost scales upward
+  faster than useful output (6.87 AR-token cost for 2.82 visible tokens/cycle).
+- Therefore the next target is not “try B=7” or “shave 1 ms from LM head”; it is
+  to make the verifier cycle cost **sublinear in rows**. The M12 success gate is
+  `cycle_cost_ar_tokens <= 2.5` as the first milestone and `<= 2.0` for
+  llama.cpp parity.
+
+### Current loop map — where the cycle is not llama.cpp-shaped
+
+1. `scripts/mtp_chain_e2e_smoke.py::_run_spec_persistent_device` still builds a
+   speculative cycle on the host: save proposer snapshots, advance the MTP head
+   `active_budget` times, build `TargetVerifyBatch`, call the target verifier,
+   then restore/advance proposer state after accept.
+2. `Qwen35ParoResidentSession.verify_chain_bulk_and_commit` writes verifier
+   metadata, calls `_launch_verify_chain_forward_accept`, reads the small accept
+   payload (or top1 in validation mode), commits linear state, sets slot
+   position, and synchronizes. GPU-fast accept proved this host side is not the
+   main cost.
+3. `_launch_verify_chain_forward_accept` embeds `[root, d1, ...]` once and loops
+   over all 30 target layers. Linear-attention layers use
+   `run_linear_attention_moe_chain_tloop_layer_fp16`; full-attention layers
+   default to `_run_full_attention_chain_c1_loop`, which explicitly loops over
+   verifier rows and runs the decode layer per row.
+4. `run_linear_attention_moe_chain_tloop_layer_fp16` has a good chain-tloop for
+   the Conv/GDN recurrence, but the surrounding QKV/Z projections, MoE, shared
+   expert, residual, and final projection still launch many small row-batch
+   kernels. M7.C.6 fixed the worst small-batch dispatch alias, but did not make
+   the whole layer a single batched verifier primitive.
+5. `_sample_verify_rows_from_hidden` computes final norm, materializes full
+   `rows × vocab` logits with `w8a16_linear_bf16_f32_out`, then launches a
+   separate row-wise argmax. This is exact but not verifier-specialized: accept
+   needs target top-1 / next-token provenance, not a reusable full logits slab.
+
+### M12 implementation track
+
+| # | Sub-task | Goal / acceptance gate | Status |
+|---|---|---|---|
+| M12.0 | **Economics harness** | `scripts/mtp_verifier_economics.py` reports AR-token-equivalent cycle cost, avg visible tokens/cycle, perfect-accept ceiling, and exact-AR-match by B. | ✅ Landed in current session; artifact above. |
+| M12.1 | Per-cycle timeline split | Extend instrumentation so every cycle reports proposer-build, target-forward, lm-head/top1, accept/commit, and sync wall. Use GPU events where possible. Gate: sums reconcile with `cycle_marker_ns`. | Next |
+| M12.2 | Small-B full-attention verifier primitive | Replace `_run_full_attention_chain_c1_loop` row loop with a small-B verifier kernel path that avoids prefill fixed overhead but processes all rows together. Gate: B=3 cycle cost drops materially without exactness loss. | Pending |
+| M12.3 | Fused verifier lm-head + accept | Replace `w8a16_linear_bf16_f32_out` + `argmax_f32_rows_i32` + accept summary with a streaming W8A16 row argmax/candidate-check kernel that does not materialize full logits. Gate: lm-head family <3 ms/pass and GPU accept payload identical. | Pending |
+| M12.4 | Layer-level selected-expert verifier primitive | Reframe the old M7 selected-expert work as a verifier-layer primitive: ids tensor in, all selected gate/up/down rows out, no per-row host orchestration, no row-stride aliasing. Gate: MoE family cost scales sublinearly from B=1→B=5. | Pending |
+| M12.5 | Graph replay after kernel reshaping | Re-enable graph capture only after M12.2–M12.4 reduce kernel time. Gate: graph replay improves cycle cost instead of adding overhead. | Pending |
+
+Promotion rule: no MTP speed row is accepted until the economics artifact shows
+`avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens > 1.0` on the same
+prompt/workload, with exact AR equality and accepted-token provenance preserved.
+
 ## Closing the gap with llama.cpp MTP — kernel roadmap (2026-05-21)
 
-With Tasks #45–#52 done, the picture is no longer “does MTP work?” but “why is
-llama.cpp MTP 1.5–2× over AR while ours is 0.87×?” This section is the
-focused plan to close that gap. It refines (not replaces) Phase M3/M4 above.
+Historical note: this section captured the pre-M7.C.6 kernel-family roadmap.
+It remains useful as a cost catalog, but M12 supersedes it as the active plan.
+The question is now sharper: why is llama.cpp's verifier cycle close to ~2
+AR-token equivalents while ours costs 3.2–6.9 AR-token equivalents? Treat M7/M8/M9/M10
+items below as candidate M12 sub-primitives, not as the primary roadmap.
 
 ### Architectural lessons from llama.cpp (`/home/lhl/llama.cpp/llama.cpp-hip`)
 
@@ -556,11 +660,13 @@ run on 2026-05-19 with 8-token decode hit 100%). The M7.0 measured ceiling
 is 56 ms vs Task #52’s 45 ms, plus ~9 ms host — i.e. “45 ms kernel + 7 ms
 host” understates today’s actual cost by ~10 ms. The post-M7…M10 ceiling
 range (1.65–1.88×) and measured target (1.0–1.4×) are correspondingly more
-conservative than the original 2.06–2.36× / 1.3–1.7× projection. A 1.5×
-measured row is now contingent on landing M7.C (memset) and M9 (LM head) in
-addition to M7 itself.
+conservative than the original 2.06–2.36× / 1.3–1.7× projection. This paragraph
+is now superseded by M12.0: M7.C.6 landed and improved wall throughput, but the
+B=3 cycle still costs 4.33 AR-token equivalents on the 32-token quicksort
+sweep, so a 1.5× measured row is contingent on reshaping the verifier loop, not
+just landing M7/M9 as standalone kernel-family optimizations.
 
-### Phase M7 — batched selected-expert GEMV (HIGHEST PRIORITY)
+### Phase M7 — batched selected-expert GEMV (superseded by M12.4 as top-level priority)
 
 Goal: replace the 60 tiny per-pass MoE GEMV launches with O(layer) launches.
 

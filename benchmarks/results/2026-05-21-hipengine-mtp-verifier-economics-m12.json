@@ -1,0 +1,2792 @@
+{
+  "backend": "hip_gfx1151",
+  "by_budget": {
+    "1": {
+      "aggregate": {
+        "acceptance_rate_mean": 0.55,
+        "acceptance_rate_std": 0.0,
+        "accepted_lengths_by_run": [
+          [
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0
+          ]
+        ],
+        "active_budgets_by_run": [
+          [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ],
+        "actual_decode_speedup_vs_ar_mean": 0.48920105701543853,
+        "actual_decode_speedup_vs_ar_std": 0.0,
+        "all_exact_ar_match": true,
+        "ar_decode_ms_per_token_mean": 15.52827084378805,
+        "ar_decode_ms_per_token_std": 0.0,
+        "ar_decode_tok_s_mean": 64.39867066074787,
+        "ar_decode_tok_s_std": 0.0,
+        "avg_accepted_per_cycle_mean": 0.55,
+        "avg_accepted_per_cycle_std": 0.0,
+        "avg_active_budget_mean": 1.0,
+        "avg_active_budget_std": 0.0,
+        "avg_visible_tokens_per_cycle_mean": 1.55,
+        "avg_visible_tokens_per_cycle_std": 0.0,
+        "cycle_cost_ar_tokens_mean": 3.197073878954144,
+        "cycle_cost_ar_tokens_std": 0.0,
+        "cycle_wall_ms_per_cycle_mean": 49.6450291,
+        "cycle_wall_ms_per_cycle_std": 0.0,
+        "llama_like_gap_multiplier_mean": 1.598536939477072,
+        "llama_like_gap_multiplier_std": 0.0,
+        "mtp_decode_tok_s_mean": 31.503897757626966,
+        "mtp_decode_tok_s_std": 0.0,
+        "observed_cycle_speedup_vs_ar_mean": 0.484818324094234,
+        "observed_cycle_speedup_vs_ar_std": 0.0,
+        "perfect_accept_speedup_ceiling_vs_ar_mean": 0.6255720310893341,
+        "perfect_accept_speedup_ceiling_vs_ar_std": 0.0,
+        "proposal_update_cost_ar_tokens_mean": 0.7427850896153919,
+        "proposal_update_cost_ar_tokens_std": 0.0,
+        "proposal_update_ms_per_cycle_mean": 11.534168050275184,
+        "proposal_update_ms_per_cycle_std": 0.0,
+        "required_acceptance_rate_for_1x_mean": 2.197073878954144,
+        "required_acceptance_rate_for_1x_std": 0.0,
+        "required_avg_accepted_for_1x_mean": 2.197073878954144,
+        "required_avg_accepted_for_1x_std": 0.0,
+        "required_avg_visible_tokens_for_1x_mean": 3.197073878954144,
+        "required_avg_visible_tokens_for_1x_std": 0.0,
+        "runs": 1,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_mean": 1.0333333333333334,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_std": 0.0,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_mean": 1.55,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_std": 0.0,
+        "verify_cost_ar_tokens_mean": 2.4468878749796596,
+        "verify_cost_ar_tokens_std": 0.0,
+        "verify_ms_per_cycle_mean": 37.99593764706515,
+        "verify_ms_per_cycle_std": 0.0
+      },
+      "budget": 1,
+      "runs": [
+        {
+          "acceptance_rate": 0.55,
+          "accepted_lengths": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0
+          ],
+          "active_budgets": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "actual_decode_speedup_vs_ar": 0.48920105701543853,
+          "ar_decode_ms_per_token": 15.52827084378805,
+          "ar_decode_tok_s": 64.39867066074787,
+          "avg_accepted_per_cycle": 0.55,
+          "avg_active_budget": 1.0,
+          "avg_visible_tokens_per_cycle": 1.55,
+          "candidate_budget": 1,
+          "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 1 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --graph-mode off --json /tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B1-run1.json",
+          "cycle_cost_ar_tokens": 3.197073878954144,
+          "cycle_wall_ms_per_cycle": 49.6450291,
+          "cycle_wall_ms_per_cycle_values": [
+            75.456068,
+            49.846236000000005,
+            50.574645000000004,
+            61.382252,
+            51.070071,
+            42.881118,
+            43.346047999999996,
+            52.485490000000006,
+            42.713190999999995,
+            43.155708000000004,
+            42.706719,
+            54.453292,
+            51.064752,
+            51.289858,
+            43.486594000000004,
+            53.038326,
+            46.050385,
+            44.281999,
+            50.375528,
+            43.242302
+          ],
+          "cycles": 20,
+          "decode_tokens": 32,
+          "exact_ar_match": true,
+          "llama_like_cycle_cost_target_ar_tokens": 2.0,
+          "llama_like_gap_multiplier": 1.598536939477072,
+          "mtp_decode_ms_per_token": 31.742104030854534,
+          "mtp_decode_tok_s": 31.503897757626966,
+          "observed_cycle_speedup_vs_ar": 0.484818324094234,
+          "perfect_accept_speedup_ceiling_vs_ar": 0.6255720310893341,
+          "proposal_prefill_seconds": 0.6441191780031659,
+          "proposal_trace_sample": [
+            {
+              "accepted": 1,
+              "bonus_token": 17145,
+              "committed_tokens": [
+                3841,
+                6646
+              ],
+              "cycle": 1,
+              "draft_candidates": [
+                6646
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 90,
+              "root_position": 90,
+              "root_token": 3841,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                6646,
+                17145
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 478,
+              "committed_tokens": [
+                17145,
+                8
+              ],
+              "cycle": 2,
+              "draft_candidates": [
+                8
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 92,
+              "root_position": 92,
+              "root_token": 17145,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                8,
+                478
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 478,
+              "committed_tokens": [
+                478,
+                5956
+              ],
+              "cycle": 3,
+              "draft_candidates": [
+                5956
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 94,
+              "root_position": 94,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                5956,
+                478
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 6646,
+              "committed_tokens": [
+                478,
+                3841
+              ],
+              "cycle": 4,
+              "draft_candidates": [
+                3841
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 96,
+              "root_position": 96,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                3841,
+                6646
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 8,
+              "committed_tokens": [
+                6646,
+                26806
+              ],
+              "cycle": 5,
+              "draft_candidates": [
+                26806
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 98,
+              "root_position": 98,
+              "root_token": 6646,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                26806,
+                8
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 271,
+              "committed_tokens": [
+                8
+              ],
+              "cycle": 6,
+              "draft_candidates": [
+                198
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 100,
+              "root_position": 100,
+              "root_token": 8,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                271,
+                1031
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 3535,
+              "committed_tokens": [
+                271
+              ],
+              "cycle": 7,
+              "draft_candidates": [
+                262
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 101,
+              "root_position": 101,
+              "root_token": 271,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                3535,
+                653
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 498,
+              "committed_tokens": [
+                3535,
+                283
+              ],
+              "cycle": 8,
+              "draft_candidates": [
+                283
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 102,
+              "root_position": 102,
+              "root_token": 3535,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                283,
+                498
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 19,
+              "committed_tokens": [
+                498
+              ],
+              "cycle": 9,
+              "draft_candidates": [
+                87
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 104,
+              "root_position": 104,
+              "root_token": 498,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                19,
+                364
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 22,
+              "committed_tokens": [
+                19
+              ],
+              "cycle": 10,
+              "draft_candidates": [
+                348
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 105,
+              "root_position": 105,
+              "root_token": 19,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                22,
+                220
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 11,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 11,
+              "draft_candidates": [
+                20
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 106,
+              "root_position": 106,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                11,
+                11
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 24,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 12,
+              "draft_candidates": [
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 107,
+              "root_position": 107,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                220,
+                24
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 11,
+              "committed_tokens": [
+                24,
+                20
+              ],
+              "cycle": 13,
+              "draft_candidates": [
+                20
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 109,
+              "root_position": 109,
+              "root_token": 24,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                20,
+                11
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 23,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 14,
+              "draft_candidates": [
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 111,
+              "root_position": 111,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                220,
+                23
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 23,
+              "committed_tokens": [
+                23
+              ],
+              "cycle": 15,
+              "draft_candidates": [
+                11
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 113,
+              "root_position": 113,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                23,
+                220
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 220,
+              "committed_tokens": [
+                23,
+                11
+              ],
+              "cycle": 16,
+              "draft_candidates": [
+                11
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 114,
+              "root_position": 114,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0
+              ],
+              "target_top1_path": [
+                11,
+                220
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            }
+          ],
+          "proposal_update_cost_ar_tokens": 0.7427850896153919,
+          "proposal_update_ms_per_cycle": 11.534168050275184,
+          "required_acceptance_rate_for_1x": 2.197073878954144,
+          "required_avg_accepted_for_1x": 2.197073878954144,
+          "required_avg_visible_tokens_for_1x": 3.197073878954144,
+          "run_idx": 1,
+          "smoke_json": "/tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B1-run1.json",
+          "smoke_log": "/tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B1-run1.log",
+          "status": "passed",
+          "subprocess_wall_seconds": 61.70900440600235,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1p5x": 1.0333333333333334,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1x": 1.55,
+          "terminal_or_clipped_tokens": 1,
+          "verify_cost_ar_tokens": 2.4468878749796596,
+          "verify_ms_per_cycle": 37.99593764706515,
+          "visible_tokens_from_verify_cycles": 31
+        }
+      ]
+    },
+    "2": {
+      "aggregate": {
+        "acceptance_rate_mean": 0.6071428571428571,
+        "acceptance_rate_std": 0.0,
+        "accepted_lengths_by_run": [
+          [
+            2,
+            2,
+            2,
+            1,
+            0,
+            2,
+            0,
+            0,
+            1,
+            2,
+            1,
+            2,
+            0,
+            2
+          ]
+        ],
+        "active_budgets_by_run": [
+          [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        ],
+        "actual_decode_speedup_vs_ar_mean": 0.45141119766250737,
+        "actual_decode_speedup_vs_ar_std": 0.0,
+        "all_exact_ar_match": true,
+        "ar_decode_ms_per_token_mean": 15.659467157092877,
+        "ar_decode_ms_per_token_std": 0.0,
+        "ar_decode_tok_s_mean": 63.859133262210335,
+        "ar_decode_tok_s_std": 0.0,
+        "avg_accepted_per_cycle_mean": 1.2142857142857142,
+        "avg_accepted_per_cycle_std": 0.0,
+        "avg_active_budget_mean": 2.0,
+        "avg_active_budget_std": 0.0,
+        "avg_visible_tokens_per_cycle_mean": 2.2142857142857144,
+        "avg_visible_tokens_per_cycle_std": 0.0,
+        "cycle_cost_ar_tokens_mean": 4.9574948819731315,
+        "cycle_cost_ar_tokens_std": 0.0,
+        "cycle_wall_ms_per_cycle_mean": 77.63172828571429,
+        "cycle_wall_ms_per_cycle_std": 0.0,
+        "llama_like_gap_multiplier_mean": 2.4787474409865657,
+        "llama_like_gap_multiplier_std": 0.0,
+        "mtp_decode_tok_s_mean": 28.82672782758403,
+        "mtp_decode_tok_s_std": 0.0,
+        "observed_cycle_speedup_vs_ar_mean": 0.4466541604182972,
+        "observed_cycle_speedup_vs_ar_std": 0.0,
+        "perfect_accept_speedup_ceiling_vs_ar_mean": 0.6051443463731768,
+        "perfect_accept_speedup_ceiling_vs_ar_std": 0.0,
+        "proposal_update_cost_ar_tokens_mean": 0.7441174653903069,
+        "proposal_update_cost_ar_tokens_std": 0.0,
+        "proposal_update_ms_per_cycle_mean": 11.652483010298706,
+        "proposal_update_ms_per_cycle_std": 0.0,
+        "required_acceptance_rate_for_1x_mean": 1.9787474409865657,
+        "required_acceptance_rate_for_1x_std": 0.0,
+        "required_avg_accepted_for_1x_mean": 3.9574948819731315,
+        "required_avg_accepted_for_1x_std": 0.0,
+        "required_avg_visible_tokens_for_1x_mean": 4.9574948819731315,
+        "required_avg_visible_tokens_for_1x_std": 0.0,
+        "runs": 1,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_mean": 1.4761904761904763,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_std": 0.0,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_mean": 2.2142857142857144,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_std": 0.0,
+        "verify_cost_ar_tokens_mean": 3.6715507119382926,
+        "verify_cost_ar_tokens_std": 0.0,
+        "verify_ms_per_cycle_mean": 57.49452778919866,
+        "verify_ms_per_cycle_std": 0.0
+      },
+      "budget": 2,
+      "runs": [
+        {
+          "acceptance_rate": 0.6071428571428571,
+          "accepted_lengths": [
+            2,
+            2,
+            2,
+            1,
+            0,
+            2,
+            0,
+            0,
+            1,
+            2,
+            1,
+            2,
+            0,
+            2
+          ],
+          "active_budgets": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "actual_decode_speedup_vs_ar": 0.45141119766250737,
+          "ar_decode_ms_per_token": 15.659467157092877,
+          "ar_decode_tok_s": 63.859133262210335,
+          "avg_accepted_per_cycle": 1.2142857142857142,
+          "avg_active_budget": 2.0,
+          "avg_visible_tokens_per_cycle": 2.2142857142857144,
+          "candidate_budget": 2,
+          "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 2 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --graph-mode off --json /tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B2-run1.json",
+          "cycle_cost_ar_tokens": 4.9574948819731315,
+          "cycle_wall_ms_per_cycle": 77.63172828571429,
+          "cycle_wall_ms_per_cycle_values": [
+            114.868314,
+            69.335218,
+            88.69158,
+            62.032692,
+            63.940853000000004,
+            71.15963,
+            61.981014,
+            61.869313000000005,
+            66.78344999999999,
+            69.08352199999999,
+            67.066866,
+            91.358144,
+            92.934748,
+            105.738852
+          ],
+          "cycles": 14,
+          "decode_tokens": 32,
+          "exact_ar_match": true,
+          "llama_like_cycle_cost_target_ar_tokens": 2.0,
+          "llama_like_gap_multiplier": 2.4787474409865657,
+          "mtp_decode_ms_per_token": 34.69002815654676,
+          "mtp_decode_tok_s": 28.82672782758403,
+          "observed_cycle_speedup_vs_ar": 0.4466541604182972,
+          "perfect_accept_speedup_ceiling_vs_ar": 0.6051443463731768,
+          "proposal_prefill_seconds": 0.6614725189865567,
+          "proposal_trace_sample": [
+            {
+              "accepted": 2,
+              "bonus_token": 8,
+              "committed_tokens": [
+                3841,
+                6646,
+                17145
+              ],
+              "cycle": 1,
+              "draft_candidates": [
+                6646,
+                17145
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 91,
+              "root_position": 90,
+              "root_token": 3841,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                6646,
+                17145,
+                8
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 478,
+              "committed_tokens": [
+                8,
+                478,
+                5956
+              ],
+              "cycle": 2,
+              "draft_candidates": [
+                478,
+                5956
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 94,
+              "root_position": 93,
+              "root_token": 8,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                478,
+                5956,
+                478
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 26806,
+              "committed_tokens": [
+                478,
+                3841,
+                6646
+              ],
+              "cycle": 3,
+              "draft_candidates": [
+                3841,
+                6646
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 97,
+              "root_position": 96,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                3841,
+                6646,
+                26806
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 271,
+              "committed_tokens": [
+                26806,
+                8
+              ],
+              "cycle": 4,
+              "draft_candidates": [
+                8,
+                198
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 100,
+              "root_position": 99,
+              "root_token": 26806,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                8,
+                271,
+                1031
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 3535,
+              "committed_tokens": [
+                271
+              ],
+              "cycle": 5,
+              "draft_candidates": [
+                262,
+                460
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 102,
+              "root_position": 101,
+              "root_token": 271,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                3535,
+                653,
+                2663
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 19,
+              "committed_tokens": [
+                3535,
+                283,
+                498
+              ],
+              "cycle": 6,
+              "draft_candidates": [
+                283,
+                498
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 103,
+              "root_position": 102,
+              "root_token": 3535,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                283,
+                498,
+                19
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 22,
+              "committed_tokens": [
+                19
+              ],
+              "cycle": 7,
+              "draft_candidates": [
+                348,
+                830
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 106,
+              "root_position": 105,
+              "root_token": 19,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                22,
+                220,
+                364
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 11,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 8,
+              "draft_candidates": [
+                20,
+                25
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 107,
+              "root_position": 106,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                11,
+                11,
+                220
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 24,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 9,
+              "draft_candidates": [
+                220,
+                19
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 108,
+              "root_position": 107,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                220,
+                24,
+                11
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 220,
+              "committed_tokens": [
+                24,
+                20,
+                11
+              ],
+              "cycle": 10,
+              "draft_candidates": [
+                20,
+                11
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 110,
+              "root_position": 109,
+              "root_token": 24,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                20,
+                11,
+                220
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 23,
+              "committed_tokens": [
+                220,
+                23
+              ],
+              "cycle": 11,
+              "draft_candidates": [
+                23,
+                11
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 113,
+              "root_position": 112,
+              "root_token": 220,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                23,
+                23,
+                220
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 22,
+              "committed_tokens": [
+                23,
+                11,
+                220
+              ],
+              "cycle": 12,
+              "draft_candidates": [
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 115,
+              "root_position": 114,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                11,
+                220,
+                22
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 18,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 13,
+              "draft_candidates": [
+                17,
+                11
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 118,
+              "root_position": 117,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                18,
+                11,
+                220
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 17,
+              "committed_tokens": [
+                18,
+                11,
+                220
+              ],
+              "cycle": 14,
+              "draft_candidates": [
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 119,
+              "root_position": 118,
+              "root_token": 18,
+              "target_parent_rows": [
+                -1,
+                0,
+                1
+              ],
+              "target_top1_path": [
+                11,
+                220,
+                17
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            }
+          ],
+          "proposal_update_cost_ar_tokens": 0.7441174653903069,
+          "proposal_update_ms_per_cycle": 11.652483010298706,
+          "required_acceptance_rate_for_1x": 1.9787474409865657,
+          "required_avg_accepted_for_1x": 3.9574948819731315,
+          "required_avg_visible_tokens_for_1x": 4.9574948819731315,
+          "run_idx": 1,
+          "smoke_json": "/tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B2-run1.json",
+          "smoke_log": "/tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B2-run1.log",
+          "status": "passed",
+          "subprocess_wall_seconds": 60.14818541897694,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1p5x": 1.4761904761904763,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1x": 2.2142857142857144,
+          "terminal_or_clipped_tokens": 1,
+          "verify_cost_ar_tokens": 3.6715507119382926,
+          "verify_ms_per_cycle": 57.49452778919866,
+          "visible_tokens_from_verify_cycles": 31
+        }
+      ]
+    },
+    "3": {
+      "aggregate": {
+        "acceptance_rate_mean": 0.46153846153846156,
+        "acceptance_rate_std": 0.0,
+        "accepted_lengths_by_run": [
+          [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ]
+        ],
+        "active_budgets_by_run": [
+          [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ]
+        ],
+        "actual_decode_speedup_vs_ar_mean": 0.5573391892398339,
+        "actual_decode_speedup_vs_ar_std": 0.0,
+        "all_exact_ar_match": true,
+        "ar_decode_ms_per_token_mean": 19.743258750168025,
+        "ar_decode_ms_per_token_std": 0.0,
+        "ar_decode_tok_s_mean": 50.65019977978506,
+        "ar_decode_tok_s_std": 0.0,
+        "avg_accepted_per_cycle_mean": 1.3846153846153846,
+        "avg_accepted_per_cycle_std": 0.0,
+        "avg_active_budget_mean": 3.0,
+        "avg_active_budget_std": 0.0,
+        "avg_visible_tokens_per_cycle_mean": 2.3846153846153846,
+        "avg_visible_tokens_per_cycle_std": 0.0,
+        "cycle_cost_ar_tokens_mean": 4.328096635440366,
+        "cycle_cost_ar_tokens_std": 0.0,
+        "cycle_wall_ms_per_cycle_mean": 85.45073176923079,
+        "cycle_wall_ms_per_cycle_std": 0.0,
+        "llama_like_gap_multiplier_mean": 2.164048317720183,
+        "llama_like_gap_multiplier_std": 0.0,
+        "mtp_decode_tok_s_mean": 28.229341280101025,
+        "mtp_decode_tok_s_std": 0.0,
+        "observed_cycle_speedup_vs_ar_mean": 0.5509616779554092,
+        "observed_cycle_speedup_vs_ar_std": 0.0,
+        "perfect_accept_speedup_ceiling_vs_ar_mean": 0.9241937823768154,
+        "perfect_accept_speedup_ceiling_vs_ar_std": 0.0,
+        "proposal_update_cost_ar_tokens_mean": 0.45402539117243595,
+        "proposal_update_cost_ar_tokens_std": 0.0,
+        "proposal_update_ms_per_cycle_mean": 8.963940777063657,
+        "proposal_update_ms_per_cycle_std": 0.0,
+        "required_acceptance_rate_for_1x_mean": 1.1093655451467885,
+        "required_acceptance_rate_for_1x_std": 0.0,
+        "required_avg_accepted_for_1x_mean": 3.3280966354403656,
+        "required_avg_accepted_for_1x_std": 0.0,
+        "required_avg_visible_tokens_for_1x_mean": 4.328096635440366,
+        "required_avg_visible_tokens_for_1x_std": 0.0,
+        "runs": 1,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_mean": 1.5897435897435896,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_std": 0.0,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_mean": 2.3846153846153846,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_std": 0.0,
+        "verify_cost_ar_tokens_mean": 3.1445641237390203,
+        "verify_cost_ar_tokens_std": 0.0,
+        "verify_ms_per_cycle_mean": 62.083943151474855,
+        "verify_ms_per_cycle_std": 0.0
+      },
+      "budget": 3,
+      "runs": [
+        {
+          "acceptance_rate": 0.46153846153846156,
+          "accepted_lengths": [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          "active_budgets": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "actual_decode_speedup_vs_ar": 0.5573391892398339,
+          "ar_decode_ms_per_token": 19.743258750168025,
+          "ar_decode_tok_s": 50.65019977978506,
+          "avg_accepted_per_cycle": 1.3846153846153846,
+          "avg_active_budget": 3.0,
+          "avg_visible_tokens_per_cycle": 2.3846153846153846,
+          "candidate_budget": 3,
+          "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --graph-mode off --json /tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B3-run1.json",
+          "cycle_cost_ar_tokens": 4.328096635440366,
+          "cycle_wall_ms_per_cycle": 85.45073176923079,
+          "cycle_wall_ms_per_cycle_values": [
+            116.609319,
+            89.463009,
+            81.299444,
+            79.238715,
+            78.039236,
+            84.255887,
+            78.235948,
+            83.824591,
+            91.51930899999999,
+            85.317215,
+            82.563636,
+            79.845823,
+            80.64738100000001
+          ],
+          "cycles": 13,
+          "decode_tokens": 32,
+          "exact_ar_match": true,
+          "llama_like_cycle_cost_target_ar_tokens": 2.0,
+          "llama_like_gap_multiplier": 2.164048317720183,
+          "mtp_decode_ms_per_token": 35.42413512514031,
+          "mtp_decode_tok_s": 28.229341280101025,
+          "observed_cycle_speedup_vs_ar": 0.5509616779554092,
+          "perfect_accept_speedup_ceiling_vs_ar": 0.9241937823768154,
+          "proposal_prefill_seconds": 0.6353452370385639,
+          "proposal_trace_sample": [
+            {
+              "accepted": 3,
+              "bonus_token": 478,
+              "committed_tokens": [
+                3841,
+                6646,
+                17145,
+                8
+              ],
+              "cycle": 1,
+              "draft_candidates": [
+                6646,
+                17145,
+                8
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 92,
+              "root_position": 90,
+              "root_token": 3841,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                6646,
+                17145,
+                8,
+                478
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 6646,
+              "committed_tokens": [
+                478,
+                5956,
+                478,
+                3841
+              ],
+              "cycle": 2,
+              "draft_candidates": [
+                5956,
+                478,
+                3841
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 96,
+              "root_position": 94,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                5956,
+                478,
+                3841,
+                6646
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 271,
+              "committed_tokens": [
+                6646,
+                26806,
+                8
+              ],
+              "cycle": 3,
+              "draft_candidates": [
+                26806,
+                8,
+                198
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 100,
+              "root_position": 98,
+              "root_token": 6646,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                26806,
+                8,
+                271,
+                1031
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 3535,
+              "committed_tokens": [
+                271
+              ],
+              "cycle": 4,
+              "draft_candidates": [
+                262,
+                460,
+                2047
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 103,
+              "root_position": 101,
+              "root_token": 271,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                3535,
+                653,
+                2663,
+                478
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 19,
+              "committed_tokens": [
+                3535,
+                283,
+                498
+              ],
+              "cycle": 5,
+              "draft_candidates": [
+                283,
+                498,
+                87
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 104,
+              "root_position": 102,
+              "root_token": 3535,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                283,
+                498,
+                19,
+                364
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 22,
+              "committed_tokens": [
+                19
+              ],
+              "cycle": 6,
+              "draft_candidates": [
+                348,
+                830,
+                364
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 107,
+              "root_position": 105,
+              "root_token": 19,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                22,
+                220,
+                364,
+                830
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 11,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 7,
+              "draft_candidates": [
+                20,
+                25,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 108,
+              "root_position": 106,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                11,
+                11,
+                220,
+                19
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 24,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 8,
+              "draft_candidates": [
+                220,
+                19,
+                22
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 109,
+              "root_position": 107,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                220,
+                24,
+                11,
+                11
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 23,
+              "committed_tokens": [
+                24,
+                20,
+                11,
+                220
+              ],
+              "cycle": 9,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 111,
+              "root_position": 109,
+              "root_token": 24,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                20,
+                11,
+                220,
+                23
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 23,
+              "committed_tokens": [
+                23
+              ],
+              "cycle": 10,
+              "draft_candidates": [
+                11,
+                220,
+                16
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 115,
+              "root_position": 113,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                23,
+                220,
+                19,
+                20
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 22,
+              "committed_tokens": [
+                23,
+                11,
+                220
+              ],
+              "cycle": 11,
+              "draft_candidates": [
+                11,
+                220,
+                17
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 116,
+              "root_position": 114,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                11,
+                220,
+                22,
+                18
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 18,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 12,
+              "draft_candidates": [
+                17,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 119,
+              "root_position": 117,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                18,
+                11,
+                220,
+                17
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 17,
+              "committed_tokens": [
+                18,
+                11,
+                220
+              ],
+              "cycle": 13,
+              "draft_candidates": [
+                11,
+                220,
+                23
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 120,
+              "root_position": 118,
+              "root_token": 18,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                11,
+                220,
+                17,
+                20
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            }
+          ],
+          "proposal_update_cost_ar_tokens": 0.45402539117243595,
+          "proposal_update_ms_per_cycle": 8.963940777063657,
+          "required_acceptance_rate_for_1x": 1.1093655451467885,
+          "required_avg_accepted_for_1x": 3.3280966354403656,
+          "required_avg_visible_tokens_for_1x": 4.328096635440366,
+          "run_idx": 1,
+          "smoke_json": "/tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B3-run1.json",
+          "smoke_log": "/tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B3-run1.log",
+          "status": "passed",
+          "subprocess_wall_seconds": 59.2274363610195,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1p5x": 1.5897435897435896,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1x": 2.3846153846153846,
+          "terminal_or_clipped_tokens": 1,
+          "verify_cost_ar_tokens": 3.1445641237390203,
+          "verify_ms_per_cycle": 62.083943151474855,
+          "visible_tokens_from_verify_cycles": 31
+        }
+      ]
+    },
+    "5": {
+      "aggregate": {
+        "acceptance_rate_mean": 0.38461538461538464,
+        "acceptance_rate_std": 0.0,
+        "accepted_lengths_by_run": [
+          [
+            5,
+            4,
+            0,
+            2,
+            0,
+            0,
+            1,
+            4,
+            2,
+            0,
+            2
+          ]
+        ],
+        "active_budgets_by_run": [
+          [
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            4,
+            3
+          ]
+        ],
+        "actual_decode_speedup_vs_ar_mean": 0.4161376159573293,
+        "actual_decode_speedup_vs_ar_std": 0.0,
+        "all_exact_ar_match": true,
+        "ar_decode_ms_per_token_mean": 19.297520093459752,
+        "ar_decode_ms_per_token_std": 0.0,
+        "ar_decode_tok_s_mean": 51.820130004109515,
+        "ar_decode_tok_s_std": 0.0,
+        "avg_accepted_per_cycle_mean": 1.8181818181818181,
+        "avg_accepted_per_cycle_std": 0.0,
+        "avg_active_budget_mean": 4.7272727272727275,
+        "avg_active_budget_std": 0.0,
+        "avg_visible_tokens_per_cycle_mean": 2.8181818181818183,
+        "avg_visible_tokens_per_cycle_std": 0.0,
+        "cycle_cost_ar_tokens_mean": 6.873625517841007,
+        "cycle_cost_ar_tokens_std": 0.0,
+        "cycle_wall_ms_per_cycle_mean": 132.64392654545455,
+        "cycle_wall_ms_per_cycle_std": 0.0,
+        "llama_like_gap_multiplier_mean": 3.4368127589205035,
+        "llama_like_gap_multiplier_std": 0.0,
+        "mtp_decode_tok_s_mean": 21.564305358509003,
+        "mtp_decode_tok_s_std": 0.0,
+        "observed_cycle_speedup_vs_ar_mean": 0.40999932435466807,
+        "observed_cycle_speedup_vs_ar_std": 0.0,
+        "perfect_accept_speedup_ceiling_vs_ar_mean": 0.8729017873357449,
+        "perfect_accept_speedup_ceiling_vs_ar_std": 0.0,
+        "proposal_update_cost_ar_tokens_mean": 0.43202180943954166,
+        "proposal_update_cost_ar_tokens_std": 0.0,
+        "proposal_update_ms_per_cycle_mean": 8.336949548472395,
+        "proposal_update_ms_per_cycle_std": 0.0,
+        "required_acceptance_rate_for_1x_mean": 1.242497705697136,
+        "required_acceptance_rate_for_1x_std": 0.0,
+        "required_avg_accepted_for_1x_mean": 5.873625517841007,
+        "required_avg_accepted_for_1x_std": 0.0,
+        "required_avg_visible_tokens_for_1x_mean": 6.873625517841007,
+        "required_avg_visible_tokens_for_1x_std": 0.0,
+        "runs": 1,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_mean": 1.878787878787879,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_std": 0.0,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_mean": 2.8181818181818183,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_std": 0.0,
+        "verify_cost_ar_tokens_mean": 5.015951695629832,
+        "verify_cost_ar_tokens_std": 0.0,
+        "verify_ms_per_cycle_mean": 96.79542863424021,
+        "verify_ms_per_cycle_std": 0.0
+      },
+      "budget": 5,
+      "runs": [
+        {
+          "acceptance_rate": 0.38461538461538464,
+          "accepted_lengths": [
+            5,
+            4,
+            0,
+            2,
+            0,
+            0,
+            1,
+            4,
+            2,
+            0,
+            2
+          ],
+          "active_budgets": [
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            4,
+            3
+          ],
+          "actual_decode_speedup_vs_ar": 0.4161376159573293,
+          "ar_decode_ms_per_token": 19.297520093459752,
+          "ar_decode_tok_s": 51.820130004109515,
+          "avg_accepted_per_cycle": 1.8181818181818181,
+          "avg_active_budget": 4.7272727272727275,
+          "avg_visible_tokens_per_cycle": 2.8181818181818183,
+          "candidate_budget": 5,
+          "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 5 --proposal-impl persistent_device --backend hip_gfx1151 --chain-attn-mode c1_loop --graph-mode off --json /tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B5-run1.json",
+          "cycle_cost_ar_tokens": 6.873625517841007,
+          "cycle_wall_ms_per_cycle": 132.64392654545455,
+          "cycle_wall_ms_per_cycle_values": [
+            164.987247,
+            121.146272,
+            117.105417,
+            122.124272,
+            120.225059,
+            121.069277,
+            216.917916,
+            119.1317,
+            121.587667,
+            122.52517999999999,
+            112.26318500000001
+          ],
+          "cycles": 11,
+          "decode_tokens": 32,
+          "exact_ar_match": true,
+          "llama_like_cycle_cost_target_ar_tokens": 2.0,
+          "llama_like_gap_multiplier": 3.4368127589205035,
+          "mtp_decode_ms_per_token": 46.372928938581026,
+          "mtp_decode_tok_s": 21.564305358509003,
+          "observed_cycle_speedup_vs_ar": 0.40999932435466807,
+          "perfect_accept_speedup_ceiling_vs_ar": 0.8729017873357449,
+          "proposal_prefill_seconds": 0.6671754370327108,
+          "proposal_trace_sample": [
+            {
+              "accepted": 5,
+              "bonus_token": 478,
+              "committed_tokens": [
+                3841,
+                6646,
+                17145,
+                8,
+                478,
+                5956
+              ],
+              "cycle": 1,
+              "draft_candidates": [
+                6646,
+                17145,
+                8,
+                478,
+                5956
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 94,
+              "root_position": 90,
+              "root_token": 3841,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "target_top1_path": [
+                6646,
+                17145,
+                8,
+                478,
+                5956,
+                478
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 4,
+              "bonus_token": 271,
+              "committed_tokens": [
+                478,
+                3841,
+                6646,
+                26806,
+                8
+              ],
+              "cycle": 2,
+              "draft_candidates": [
+                3841,
+                6646,
+                26806,
+                8,
+                198
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 100,
+              "root_position": 96,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "target_top1_path": [
+                3841,
+                6646,
+                26806,
+                8,
+                271,
+                1031
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 3535,
+              "committed_tokens": [
+                271
+              ],
+              "cycle": 3,
+              "draft_candidates": [
+                262,
+                460,
+                2047,
+                11,
+                1245
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 105,
+              "root_position": 101,
+              "root_token": 271,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "target_top1_path": [
+                3535,
+                653,
+                2663,
+                478,
+                5956,
+                271
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 19,
+              "committed_tokens": [
+                3535,
+                283,
+                498
+              ],
+              "cycle": 4,
+              "draft_candidates": [
+                283,
+                498,
+                87,
+                364,
+                830
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 106,
+              "root_position": 102,
+              "root_token": 3535,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "target_top1_path": [
+                283,
+                498,
+                19,
+                364,
+                830,
+                303
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 22,
+              "committed_tokens": [
+                19
+              ],
+              "cycle": 5,
+              "draft_candidates": [
+                348,
+                830,
+                364,
+                830,
+                303
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 109,
+              "root_position": 105,
+              "root_token": 19,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "target_top1_path": [
+                22,
+                220,
+                364,
+                830,
+                303,
+                2020
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 11,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 6,
+              "draft_candidates": [
+                20,
+                25,
+                220,
+                19,
+                22
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 110,
+              "root_position": 106,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "target_top1_path": [
+                11,
+                11,
+                220,
+                19,
+                19,
+                11
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 24,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 7,
+              "draft_candidates": [
+                220,
+                19,
+                22,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 111,
+              "root_position": 107,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "target_top1_path": [
+                220,
+                24,
+                11,
+                11,
+                220,
+                19
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 4,
+              "bonus_token": 23,
+              "committed_tokens": [
+                24,
+                20,
+                11,
+                220,
+                23
+              ],
+              "cycle": 8,
+              "draft_candidates": [
+                20,
+                11,
+                220,
+                23,
+                11
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 113,
+              "root_position": 109,
+              "root_token": 24,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "target_top1_path": [
+                20,
+                11,
+                220,
+                23,
+                23,
+                220
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 22,
+              "committed_tokens": [
+                23,
+                11,
+                220
+              ],
+              "cycle": 9,
+              "draft_candidates": [
+                11,
+                220,
+                17,
+                23,
+                11
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 118,
+              "root_position": 114,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "target_top1_path": [
+                11,
+                220,
+                22,
+                18,
+                11,
+                220
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 18,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 10,
+              "draft_candidates": [
+                17,
+                11,
+                220,
+                23
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 120,
+              "root_position": 117,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "target_top1_path": [
+                18,
+                11,
+                220,
+                17,
+                15
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "tree_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 17,
+              "committed_tokens": [
+                18,
+                11,
+                220
+              ],
+              "cycle": 11,
+              "draft_candidates": [
+                11,
+                220,
+                23
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 120,
+              "root_position": 118,
+              "root_token": 18,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [
+                11,
+                220,
+                17,
+                20
+              ],
+              "verify_graph": {
+                "chain_attn_mode": "c1_loop",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            }
+          ],
+          "proposal_update_cost_ar_tokens": 0.43202180943954166,
+          "proposal_update_ms_per_cycle": 8.336949548472395,
+          "required_acceptance_rate_for_1x": 1.242497705697136,
+          "required_avg_accepted_for_1x": 5.873625517841007,
+          "required_avg_visible_tokens_for_1x": 6.873625517841007,
+          "run_idx": 1,
+          "smoke_json": "/tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B5-run1.json",
+          "smoke_log": "/tmp/hipengine-mtp-economics-m12-b1-b5/mtp-economics-B5-run1.log",
+          "status": "passed",
+          "subprocess_wall_seconds": 61.356433836976066,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1p5x": 1.878787878787879,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1x": 2.8181818181818183,
+          "terminal_or_clipped_tokens": 1,
+          "verify_cost_ar_tokens": 5.015951695629832,
+          "verify_ms_per_cycle": 96.79542863424021,
+          "visible_tokens_from_verify_cycles": 31
+        }
+      ]
+    }
+  },
+  "candidate_budgets": [
+    1,
+    2,
+    3,
+    5
+  ],
+  "chain_attn_mode": "c1_loop",
+  "date": "2026-05-21",
+  "decode_tokens": 32,
+  "go_no_go_rule": {
+    "beats_ar": "avg_visible_tokens_per_verify_cycle > cycle_cost_ar_tokens",
+    "hits_1p5x": "avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens >= 1.5",
+    "llama_like_ratio": "cycle_cost_ar_tokens <= ~2.0 for B=2/3-class small-depth MTP"
+  },
+  "graph_mode": "off",
+  "hip_arch": "gfx1151",
+  "llama_target_cycle_cost_ar_tokens": 2.0,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "phase": "M12.0",
+  "prompt_tokens": "727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220",
+  "proposal_impl": "persistent_device",
+  "purpose": "M12 verifier-loop economics: measure speculative cycle cost in AR-token-equivalent units by candidate budget.",
+  "runs_per_budget": 1,
+  "schema": 1,
+  "small_batch_decode_threshold": 7,
+  "status": "diagnostic_retained",
+  "verify_gpu_accept": null
+}
