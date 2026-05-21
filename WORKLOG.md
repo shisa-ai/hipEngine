@@ -22080,3 +22080,63 @@ Isolation shows `REPACK=1, WMMA=0, GEMV=0` and `REPACK=1, WMMA=0, GEMV=1` both m
 
 Artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-x1-correctness-plus-x2-wmma-blocker.json`.
 - Commit-prep validation addendum: `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_gguf_q8_0_t16_gemv_decode.py::test_p10_x1_dual_split_matches_single_kernels_for_qwen35_linear_attention_shape tests/test_qwen35_gguf_fastpath_safety.py -q` -> 10 passed. Included fastpath-safety test expectation update because T16 repack now allows the requested WMMA+GEMV state for P10.X2 isolation, while raw GGUF GEMV remains gated.
+
+## 2026-05-21 P10.R1 — post-X1 rocprof launch census and Wave-2 triage
+
+Continued task #10 after P10.X1 (`cc2fb5a`). Scope was explicitly prefill/decode only; no DFlash/speculative decode and no DMS/KV-cache compression work.
+
+Commands used the safe-mode fastpath knobs (`HIPENGINE_GGUF_DECODE_REPACK=1`, `HIPENGINE_GGUF_WMMA_PREFILL=1`, `HIPENGINE_GGUF_GEMV_DECODE=1`) plus `--use-wmma-prefill --use-gemv-decode`, cached HIP build, model `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, quant `gguf_q4_k_m`:
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/hipengine-p10-r1-safe-512x0-prof \
+  --output-file p10_r1_safe_512x0 -- \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+    --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+    --json /tmp/p10_r1_safe_512x0_bench.json
+
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/hipengine-p10-r1-safe-512x128-graph8-prof \
+  --output-file p10_r1_safe_512x128_graph8 -- \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 0 --measured-runs 1 \
+    --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-steps-per-replay 8 \
+    --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --require-cached-build --json /tmp/p10_r1_safe_512x128_graph8_bench.json
+
+python3 scripts/qwen35_gguf_rocprof_summary.py \
+  --prefill-csv /tmp/hipengine-p10-r1-safe-512x0-prof/p10_r1_safe_512x0_kernel_trace.csv \
+  --decode-csv /tmp/hipengine-p10-r1-safe-512x128-graph8-prof/p10_r1_safe_512x128_graph8_kernel_trace.csv \
+  --strip-prefill-prefix --tokens-prefill 512 --tokens-decode 128 --top 40 \
+  --json /tmp/p10_r1_safe_rocprof_summary_512x0_512x128_graph8.json
+```
+
+Important profiler caveat: default graph replay (`--graph-steps-per-replay 1`) for 512/128 under `rocprofv3 --kernel-trace` timed out twice before writing a CSV (1200s and 1800s). The same graph1 512/128 command without rocprof completed (`decode_tok_s=89.588`), and graph1 512/16 under rocprof completed (`decode_tok_s=78.535`, `10678` stripped decode dispatches), so this appears to be rocprof trace-scale behavior rather than a runtime hang. The committed R1 artifact therefore uses a completed 512/128 graph8 trace plus graph1 512/16 and eager 512/128 cross-checks.
+
+R1 diagnostic results (not retained: full safe-mode still blocked on P10.X2 bulk WMMA prefill correctness):
+
+- 512/0 prefill: `262.802 ms` kernel time, `2346` dispatches (`4.582/token`), profiler wall `304.156 ms` (`1683.35 tok/s`). Versus R0: `+1.948 ms`, `+40` dispatches.
+- 512/128 graph8 decode after stripping the prefill prefix: `1184.018 ms` kernel time, `85382` dispatches (`667.05/token`), profiler decode wall excluding graph capture `1575.211 ms` (`81.259 tok/s`), graph capture `851.499 ms`.
+- Cross-checks: graph1 512/16 profile `155.554 ms / 10678 dispatches` (`667.38/token`); eager 512/128 profile `1581.632 ms / 85505 dispatches` (`668.01/token`); unprofiled graph1 512/128 `decode_tok_s=89.588`.
+- Compared with pre-X1 R0 graph1 (`1059.185 ms`, `80262` dispatches, `627.05/token`), the correctness-preserving post-X1 decode path has about `+40 dispatches/token`. This is expected from undoing the decode-repack-only full-attention graph-semantic shortcut; R0 was model-wrong, so this is diagnostic, not a retained regression claim.
+
+Top R1 buckets:
+
+Prefill 512/0: Q8T16 dense WMMA `59.625 ms`, GDN recurrent `50.201 ms`, full-attention prefill `41.108 ms`, Q4T16 selected-dual WMMA `37.103 ms`, Q5T16 selected-down WMMA `25.926 ms`, router `15.336 ms`.
+
+Decode 512/128 graph8: Q8T16 dense/shared GEMV `229.132 ms`, full-attention decode `214.719 ms`, other `183.659 ms`, Q4T16 selected-dual GEMV `132.044 ms`, Q5T16 selected-down GEMV `96.838 ms`, Q6T16 lm-head `72.837 ms`, RMSNorm `71.050 ms`, router `59.536 ms`, GDN decode `58.434 ms`.
+
+Wave-2 triage from R1:
+
+1. P10.X2 still gates retained WMMA-prefill perf rows because `effective_wmma_prefill=true` is model-wrong.
+2. P10.C6 is still a direct prefill target: full-attention prefill is `41.1 ms / 10 dispatches`.
+3. P10.C8 audit should verify no rows>1 up-gate/shared fallback remains; residual prefill T16 GEMV buckets are only ~`8.3 ms` combined, not the old giant fallback.
+4. P10.C7/C9 are cleanup swings: router is `15.3 ms`, scheduler `1.7 ms`, and copy/rmsnorm/combine/silu are small but numerous.
+5. P10.D6 remains justified by ~`667` launches/token and ~`1.9 ms/token` unprofiled graph1 wall-vs-profiled-kernel residue.
+6. P10.D7 should start with Q8T16 dense/shared, Q4T16 selected-dual, Q5/Q6 selected-down; full-attention decode is now also a top bucket after P10.X1.
+
+Artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-r1-post-x1-rocprof.json`.
