@@ -21941,3 +21941,16 @@ But per AGENTS.md "Every performance claim carries ... correctness gate. No exce
 ### Status
 
 **P10.B6 stays BLOCKED on P10.X1.** The Wave 1 throughput gate is comfortably met; correctness is the blocker. Suggested next move: P10.X1.a-d in `docs/GGUF.md` — bisect which T16 GEMV decode kernel reader corrupts production-shape outputs, fix it, then re-run P10.B5 + P10.B6 together. Once both pass, this artifact promotes to the retained row and replaces the current 506.363/98.837 entry in `benchmarks/README.md`.
+
+## 2026-05-20 P10.9 — documented next critical swings after Wave 1
+
+Updated `docs/GGUF.md` with the agreed Wave-1-aftercare / Wave-2 plan:
+
+- Added P10.9 next-step table with the sequence: P10.R0 rocprof now (512/0 + 512/128 safe-mode traces + launch census), P10.X1 correctness restoration, P10.R1 fresh post-fix rocprof + launch census, then deterministic prefill/decode swings.
+- Explicitly scoped out MTP/DFlash/speculative decode, DMS, and INT8-KV speed work for this P10 spike. INT8 KV remains memory-positive but speed-neutral/slightly negative; DMS is a separate KV-policy / compact-attention spike; active MTP/DFlash work has not netted gains because verification cost dominates.
+- Captured the competitive targets: P10 promotion floor `>=2500/120`, stretch / comfortably-above-all tracked rows `>=2700/130`.
+- Added the accepted prefill swings as P10.C6-C9: full-attention prefill audit / WMMA attention check, MoE routing/scatter fusion for rows>1, up-gate path audit for hidden decode fallbacks, and fused activation/residual/RMSNorm/cast cleanup.
+- Added the decode swings the lead wants to pursue as P10.D6-D7 only: HIP graph capture/replay if R0/R1 show hidden launch residue, and T16 decode GEMV bandwidth polish. DFlash/DMS are intentionally absent from the active table.
+- Updated the P10.B6 roadmap row with the formal blocked artifact and exact throughput samples (`512/0=1900.231`, `512/128 decode=98.250`), and checked off B1-B4 in the P10 acceptance checklist.
+
+No code changed in this unit. Validation: re-read the updated P10.7 / P10.9 sections end-to-end. Next unit: Task #8 / P10.R0 rocprof now, preserving unrelated local changes (`tests/test_qwen35_gguf_fastpath_safety.py`, `uv.lock`).

@@ -2097,7 +2097,7 @@ IDs are stable for `WORKLOG.md` and commit messages.
 | P10.B4 | Build Q8T16 dense WMMA prefill kernel (shape-aware tiles like P9.C3) + wire dense dispatch | +150 to +250 (Q8 bucket `160→~55 ms`) | ~+5 | 0 GiB | M | **✅ landed (`ed14ed5`)** | **+972 (928→1900)** — includes pair/triple/concat decline-to-singleton fix | +0 | 75 CPU-reference fixtures pass; rocprof shows `gguf_q8_0_t16_prefill_wmma_kernel<...,16,32>` + `<...,64,32>` + `<...,32,32>` active total 59 ms / 250 disp; Q8T16 dual_split_gemv 176 ms bucket eliminated |
 | **Wave 1.5 — acceptance gate after Wave 1** | | | | | | | | | |
 | P10.B5 | P9.E2 KL/top-1 fixture re-run with effective WMMA prefill + GEMV decode (T16 mode) | gate, not perf | gate, not perf | 0 | XS (re-run) | **❌ blocked — T16 path has a pre-P10 LLM.generate regression (see P10.X1)** | n/a | n/a | gate fails KL=5.6 with WMMA+GEMV+REPACK; KL=6.5 with WMMA only; KL=5.7 with no fastpaths but REPACK=1. P9.G1 commit `7ffb4e9` also produces incoherent text. Issue is T16 decode-repack itself, not P10 kernels. |
-| P10.B6 | Retained 512/0 + 512/128 acceptance with rollups | gate | gate | 0 | XS (one bench) | **❌ blocked on P10.X1** | bench: 1900 / 98 (kernel throughput, valid measurement) | bench: 98 | benchmarks recorded in `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-wave1-blocked.json`; cannot retain as accepted until P10.X1 lands |
+| P10.B6 | Retained 512/0 + 512/128 acceptance with rollups | gate | gate | 0 | XS (one bench) | **❌ blocked on P10.X1** | bench: **1900.231** @ 512/0 (throughput gate met) | bench: **98.250** @ 512/128 (throughput gate met) | formal acceptance attempt recorded as blocked diagnostic in `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-b6-acceptance-blocked.json`; Wave-1 throughput diagnostic also in `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-wave1-blocked.json`; cannot retain as accepted until P10.X1 lands |
 | **Wave 2 — push prefill from ~1850 to ≥2500** | | | | | | | | | |
 | P10.C1 | Tile / `__launch_bounds__` sweep for Q4T16 dual WMMA prefill on real 512 routing | +100 to +200 | ~0 | 0 | S | pending | | | extend P9.C15 method, drive by `scripts/qwen35_gguf_rocprof_summary.py` |
 | P10.C2 | Tile sweep for Q5T16 / Q6T16 / Q8T16 WMMA prefill (per-shape decision) | +50 to +150 | ~0 | 0 | S | pending | | | mirror P9.C3/P9.C4 |
@@ -2410,6 +2410,16 @@ not the hot path.
   and moves to parent workspace R&D first (per P9.C17 conclusion).
 - **No revival of raw-GGUF + WMMA prefill + GEMV decode unsafe combo.** The
   fix path is to make T16 prefill fast, not to relax the P9.E2 gate.
+- **No speculative decode in this P10 spike.** MTP/DFlash remain valuable
+  research, but the active branch has not converted hundreds of verification
+  iterations into a net decode win because target verification cost dominates.
+  P10's decode push is graph/dispatch overhead plus T16 GEMV bandwidth polish.
+- **No DMS in this P10 spike.** DMS is still a separate KV-policy / compact
+  attention spike. It should not block the deterministic GGUF safe-mode row.
+- **No INT8-KV speed claim in this P10 spike.** The INT8 KV-cache path exists
+  and is memory-positive, but current measurements are speed-neutral to
+  slightly negative; keep it out of the 98→120 decode plan unless a fresh
+  artifact proves otherwise.
 - **No `import torch` on the `LLM.generate()` path.** P10.E3 rocBLAS, if it
   lands, sits behind an optional extra and does not touch the default path.
 - **No `if quant == ...` / `if backend == ...` branches.** All new variants
@@ -2418,10 +2428,10 @@ not the hot path.
 - **No prefill graph capture that hides shape-dependent work.** P10.C3 must
   preserve correctness across prompt-length buckets; ill-defined capture is
   a regression even when wall time improves.
-- **No premature decode microtuning before Wave 1 lands.** The decode arm is
-  already at target (`≥95`) and the small-op residue lever is sub-1ms in
-  every direction; chasing P10.D before fast prefill exists wastes the
-  acceptance-gate budget.
+- **No premature decode microtuning before P10.X1 and the post-fix profile land.**
+  The decode arm already cleared the Wave-1 `>=95 tok/s` throughput floor;
+  chasing P10.D before the T16 model-correctness fix and the R1 launch/kernel
+  census risks optimizing a broken or stale dispatch mix.
 
 ### P10.8 — Sequencing and acceptance
 
@@ -2481,13 +2491,14 @@ kernel ships with a CPU-reference fixture (extend
 
 ### Acceptance checklist for closing P10
 
-- [ ] **P10.B1** Q4T16 WMMA prefill wired into `_COMPACT_MOE_Q4_DUAL_KEYS`;
-  dispatch test added; rocprof confirms.
-- [ ] **P10.B2** Q5T16 selected-down WMMA prefill kernel landed + wired;
-  CPU-reference fixture + rocprof + KL gate passed.
-- [ ] **P10.B3** Q6T16 selected-down WMMA prefill kernel landed + wired.
-- [ ] **P10.B4** Q8T16 dense WMMA prefill kernel landed + wired with
-  shape-aware tiles.
+- [x] **P10.B1** Q4T16 WMMA prefill wired into `_COMPACT_MOE_Q4_DUAL_KEYS`;
+  dispatch test added; rocprof confirms (`731241a`).
+- [x] **P10.B2** Q5T16 selected-down WMMA prefill kernel landed + wired;
+  CPU-reference fixture + rocprof smoke passed (`bb0c933`).
+- [x] **P10.B3** Q6T16 selected-down WMMA prefill kernel landed + wired
+  (`bb0c933`).
+- [x] **P10.B4** Q8T16 dense WMMA prefill kernel landed + wired with
+  shape-aware tiles (`ed14ed5`).
 - [ ] **P10.B5** P9.E2 full 512/128×3 gate passes with
   `effective_wmma_prefill=true` + `effective_gemv_decode=true` +
   decode-repack on.
@@ -2504,3 +2515,39 @@ kernel ships with a CPU-reference fixture (extend
 - [ ] No `import torch` on the `LLM.generate()` path; no
   `if quant == ...` / `if backend == ...` added to dispatch; T16 layout
   family unchanged; raw-GGUF unsafe combo still gated.
+
+### P10.9 — Agreed next critical swings after Wave 1 (2026-05-20)
+
+Wave 1 has already met the P10.B6 throughput floors (`512/0 = 1900.231 tok/s`,
+`512/128 decode = 98.250 tok/s`) but is blocked from rollup promotion by
+P10.X1. The next plan is deliberately **not** DFlash/MTP/speculative decode,
+**not** DMS, and **not** INT8-KV speed work. The target is the deterministic
+GGUF safe-mode row: T16 decode-repack + effective WMMA prefill + effective
+GEMV decode, with P9.E2 correctness green.
+
+Competitive floors and stretch targets:
+
+| Goal | Prefill 512/0 | Decode 512/128 | Why |
+| --- | ---: | ---: | --- |
+| P10 promotion floor | `>= 2500 tok/s` | `>= 120 tok/s` | Beats llama.cpp HIP decode and is near/above PARO decode; closes most of the PARO prefill gap. |
+| Comfortably above all tracked rows | `>= 2700 tok/s` | `>= 130 tok/s` | Clears PARO `2696/116`, llama.cpp HIP `2436/85`, and llama.cpp Vulkan `1817/128` with margin. |
+
+Next-step table:
+
+| Order | ID | Track | Work | Why this is next | Expected impact | Gate / evidence |
+| ---: | --- | --- | --- | --- | --- | --- |
+| 0 | P10.R0 | profile | **rocprof now** on current Wave-1 HEAD: 512/0 and 512/128 safe-mode traces, plus a launch census. | We need the post-B6 top-kernel and per-token launch baseline before changing correctness code. `docs/ROOFLINE.md` warns that wall time can hide launch gaps that kernel-duration sums do not capture. | no intended perf change | `rocprofv3 --kernel-trace` CSVs, `scripts/qwen35_gguf_rocprof_summary.py`, launch count by kernel family, and `wall_ms - sum(DurationNs)` residue recorded as diagnostic artifacts / WORKLOG. |
+| 1 | P10.X1 | correctness | **Land T16 decode-repack model correctness restoration.** Isolate raw-vs-T16 divergence on real Qwen3.6-35B-A3B weights, starting with Q8T16 dense/dual/triple GEMV readers, then K-quant T16 readers. | Blocks every retained performance claim. Wave-1 kernels pass CPU-oracle fixtures; the production T16 reader path is still model-wrong. | no intended perf change; unlocks retention | public smoke returns expected first token/text; P9.E2 gate passes (`KL <= 0.05`, top-1 `>= 90%`, deterministic tails) with effective fastpaths true. |
+| 2 | P10.R1 | profile | **Fresh rocprof after P10.X1**, again with launch census and wall-vs-kernel residue. | Avoid optimizing around a broken reader path or stale dispatch mix. Also verifies X1 did not accidentally change the fastpath set. | no intended perf change | before/after table for 512/0 and 512/128: wall tok/s, kernel total ms, launch count/token, top 10 buckets, and hidden residue. |
+| 3 | P10.C6 | prefill | **Full-attention prefill audit / WMMA attention check.** Confirm whether the current `qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel` / AOTriton threshold is still optimal at rows=512. | Wave 1 leaves ~41 ms in full-attention prefill. Even a partial reduction is meaningful when the 2500 tok/s target needs ~60 ms total wall savings from the 1900 tok/s baseline. | +50 to +200 tok/s, bounded by the ~41 ms bucket | per-layer attention correctness fixture + rocprof shows attention bucket shrink; no torch hot-path dependency. |
+| 4 | P10.C7 | prefill | **MoE routing / compact-scheduler / scatter fusion for rows>1.** Revisit `group_count + prefix + scatter/map` fusion for prefill, not the already-rejected decode shape. | The Wave-1 profile killed the giant GEMV buckets; launch-heavy MoE bookkeeping becomes visible again. Prefill rows>1 has different economics from P9.D3 decode. | +30 to +120 tok/s depending on launch census | one merged scheduler/scatter kernel or fewer launches; `other` bucket drops by `>=10 ms` at 512/0; resolver remains registry-keyed. |
+| 5 | P10.C8 | prefill | **Up-gate path audit.** Prove every qwen35moe gate/up rows>1 path in T16 safe-mode routes through WMMA and not a singleton/decode fallback. | B4 found a hidden pair/triple/concat decline-to-singleton issue; the same class of bug may still exist on up-gate or shared-expert paths. | +0 if already correct; +100 to +250 tok/s if a fallback remains | dispatch trace / resolver tests name every dense, selected, shared, pair, and triple projection variant; rocprof has no unexpected `*_gemv*` buckets at rows>1. |
+| 6 | P10.C9 | prefill | **Fused activation / residual / RMSNorm / cast cleanup.** Fold safe BF16<->F32 casts and combine activation/residual surfaces where the unfused chain already exists. | Remaining prefill savings are small-op and intermediate-traffic dominated after Wave 1. | +30 to +150 tok/s aggregate | CPU-reference chain equivalence, KL gate, and rocprof shows fewer cast / combine launches with no new dispatch branches. |
+| 7 | P10.D6 | decode | **HIP graph capture / replay for GGUF safe-mode decode.** Count launches first; then capture the fixed-shape one-token decode graph if hidden launch residue is material. | This is decode Swing #2. ROOFLINE says graph replay removes host dispatch overhead but not per-kernel work; it is only worth doing if R0/R1 show launch residue above ~3% wall time. | +5 to +15 tok/s if launch residue is visible; otherwise reject quickly | graph/eager parity fixture, P9.E2 gate, launch count unchanged but host residue shrinks; 512/128 decode moves toward `>=105`. |
+| 8 | P10.D7 | decode | **T16 decode GEMV bandwidth polish.** Focus on Q4T16 selected dual, Q8T16 dense/shared, then Q5/Q6 selected-down: coalescing, VGPR/occupancy, K-tile width, launch bounds, and `-mcumode` profile. Avoid LDS unless parent R&D proves a win. | This is decode Swing #5 and the direct path from 98 to 120+ once graph residue is known. Current decode is finite/correct only after X1; tune only then. | +8 to +20 tok/s aggregate | rocprof bucket shrink plus occupancy/bandwidth counters when available; no KL/top-1 regression; each kept microtune updates artifact + rollup. |
+| 9 | P10.F0 | acceptance | **Combined safe-mode acceptance.** Re-run P10.B5 + B6 plus the P10.C/D closeout bench. | One row must be correct and fast at the same commit. | target: `>=2500/120`; stretch: `>=2700/130` | retained JSON artifact, `benchmarks/README.md` row + `Last updated`, `benchmarks/CHANGELOG.md` old→new one-liner, WORKLOG command/evidence. |
+
+Operational rule for this wave: every candidate starts with the launch/kernel
+census and stops if the top-bucket math cannot pay back at least `~3%` wall
+for its effort class. Decode work is restricted to P10.D6 and P10.D7 until
+those measurements prove there is room for more.
