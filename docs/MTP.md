@@ -527,29 +527,66 @@ Interpretation:
 
 ### Current loop map — where the cycle is not llama.cpp-shaped
 
-1. `scripts/mtp_chain_e2e_smoke.py::_run_spec_persistent_device` still builds a
-   speculative cycle on the host: save proposer snapshots, advance the MTP head
-   `active_budget` times, build `TargetVerifyBatch`, call the target verifier,
-   then restore/advance proposer state after accept.
-2. `Qwen35ParoResidentSession.verify_chain_bulk_and_commit` writes verifier
-   metadata, calls `_launch_verify_chain_forward_accept`, reads the small accept
-   payload (or top1 in validation mode), commits linear state, sets slot
-   position, and synchronizes. GPU-fast accept proved this host side is not the
-   main cost.
-3. `_launch_verify_chain_forward_accept` embeds `[root, d1, ...]` once and loops
-   over all 30 target layers. Linear-attention layers use
-   `run_linear_attention_moe_chain_tloop_layer_fp16`; full-attention layers
-   default to `_run_full_attention_chain_c1_loop`, which explicitly loops over
-   verifier rows and runs the decode layer per row.
-4. `run_linear_attention_moe_chain_tloop_layer_fp16` has a good chain-tloop for
-   the Conv/GDN recurrence, but the surrounding QKV/Z projections, MoE, shared
-   expert, residual, and final projection still launch many small row-batch
-   kernels. M7.C.6 fixed the worst small-batch dispatch alias, but did not make
-   the whole layer a single batched verifier primitive.
-5. `_sample_verify_rows_from_hidden` computes final norm, materializes full
-   `rows × vocab` logits with `w8a16_linear_bf16_f32_out`, then launches a
-   separate row-wise argmax. This is exact but not verifier-specialized: accept
-   needs target top-1 / next-token provenance, not a reusable full logits slab.
+Code audit (2026-05-21, task #2 / M12 map): the local model has 40 target
+layers: 30 `linear_attention` layers and 10 `full_attention` layers (`config.json`
+`text_config.layer_types`, full attention every 4th layer). In chain mode the
+verifier rows are `[root, d1, d2, ...]` with parent rows `[-1, 0, 1, ...]`.
+Default benchmark mode is `chain_attn_mode=c1_loop`, `graph_mode=off`,
+`HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP=on`, and GPU accept disabled unless
+`HIPENGINE_VERIFY_GPU_ACCEPT` is set.
+
+#### Host / proposer side
+
+| Stage | Code | B handling today | Serial work / sync |
+|---|---|---|---|
+| Prompt handoff | `scripts/mtp_chain_e2e_smoke.py:349-369`, `NativeMtpChainProposer.prefill_from_target_hidden_rows` | Prompt hidden taps are captured from the target into one BF16 buffer, but proposer prefill advances one prompt token at a time. | `prefill_from_target_hidden_rows` loops over prompt tokens and calls `advance` per row. Outside steady-state cycle, but it proves the proposer is not a graph/batch API yet. |
+| Draft construction | `scripts/mtp_chain_e2e_smoke.py:404-412` | Candidate list is built on the host. | One `save_state(0)`, then `for draft_idx in range(1, active_budget): proposer.advance_with_previous_hidden(...); save_state(draft_idx)`. This is serial in draft depth. Each `NativeMtpChainProposer.advance` is a full c=1 MTP block and ends with host copies for top-k / argmax plus `device_synchronize` (`mtp_native.py:398-451`). |
+| Target batch metadata | `_target_batch` / `TargetVerifyBatch.from_draft` (`scripts/...:150-159`, `interfaces.py:159-196`) | The metadata object is row-batched: one root row plus B candidate rows, parent chain encoded as row indices. | Pure host construction. No per-row target forward here, but row topology is fixed before kernels run. |
+| Proposer repair after accept | `scripts/mtp_chain_e2e_smoke.py:448-456` | Uses the accepted count to restore a saved proposer snapshot, optionally advance through the last accepted draft, then advance once on the bonus/correction token. | Serial and synchronized: `restore_state` does D2D memcpy; `advance_with_previous_hidden` is again one c=1 MTP block with host top-k/argmax copies and `device_synchronize`. This contributes to cycle wall but not `verify_seconds`. |
+
+#### Target verifier entry / metadata / commit
+
+| Stage | Code | B handling today | Serial work / sync |
+|---|---|---|---|
+| Metadata copies | `verify_chain_bulk_and_commit` → `_write_verify_chain_metadata` (`qwen35_paro_runner.py:2394`, `3498-3569`) | True row metadata: tokens, positions, parent rows, depths, active mask, context counts, and a tiled block table are copied as `[rows]` / `[rows, blocks]` arrays. | Several small host→device copies per cycle. Not the main cost, but it prevents the whole cycle from being purely GPU-resident. |
+| Target forward launch | `_launch_verify_chain_forward_accept` (`qwen35_paro_runner.py:2833-2937`) | Embedding lookup is truly batched over `rows`; then the code loops through all 40 layers once. Layer loop is required by model topology. | The question is inside each layer: linear layers are partly row-batched; full-attention layers are row-serial by default. |
+| Accept payload read | `_launch_verify_accept_summary` + `_read_verify_accept_payload` (`3571-3684`) | GPU accept summary kernel is row-aware and request-aware. | `_read_verify_accept_payload` always synchronizes and copies 7 tiny fields D2H. If `HIPENGINE_VERIFY_GPU_ACCEPT` is unset, `verify_chain_bulk_and_commit` also reads all row top-1 values and runs the CPU accept oracle (`2434-2458`). GPU-fast accept removes the CPU oracle/top1 read but not the forward cost. |
+| State commit | `_commit_bulk_linear_states`, `_set_slot_position`, final sync (`2467-2469`, `3862-3880`, `4631-4639`) | Commits the selected row's linear states into the resident slot; full-attention K/V rows are left in cache and the slot position selects the accepted prefix. | Host loop over 30 linear-attention layers, with 2 D2D copies per layer (conv + recurrent state), then one position kernel and final stream sync. This is small compared with target forward but is explicitly serial by layer. |
+
+#### Target forward: true batched vs serial by component
+
+| Component | Code | B handling today | Verdict |
+|---|---|---|---|
+| Row embedding | `embedding_lookup_batch_fp16_i64` (`qwen35_paro_runner.py:2833-2844`) | One launch over `rows`. | **True batched**. |
+| Linear-attention layer wrapper | `run_linear_attention_moe_chain_tloop_layer_fp16` (`qwen35_paro.py:4453-4588`) | Called once per linear layer with `tokens=rows`. | **Partly batched**: no host row loop; many small per-layer kernels. |
+| Linear Conv/GDN recurrence | `qwen35_linear_attn_chain_conv_decode_fp16_tloop`, `qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16` (`4515-4549`) | One Conv t-loop launch and one GDN t-loop launch per linear layer. The chain dependency is carried inside the kernel using `chain_conv_state` / `chain_recurrent_state`. | **Correct batched-chain shape** for the recurrence. It is still serial in depth logically, but not a host/per-row launch loop. This is the best-shaped part of the current verifier. |
+| Linear-attention projections / output / norms | `input_rmsnorm_fp16`, `rotate_linear_attention_inputs_fp16`, `project_linear_attention_qkv_z_fp16`, `project_linear_attention_ab_fp16`, `project_linear_attention_out_fp16`, `post_attention_add_rmsnorm_fp16` (`4489-4566`) | One call per primitive with `tokens=rows`. M7.C.6 fixed the QKV/Z small-batch dispatch alias by splitting dual GEMV into two single GEMVs for `rows <= threshold`. | **Row-batched but launch-fragmented**. Good enough for correctness; not a llama.cpp-like fused graph. |
+| Target MoE selected experts | `run_moe_c1_fp16` → `route_moe_topk_shared_fp16`, `selected_moe_gate_up_pack8_fp16`, `activate_rotate_moe_down_fp16`, `selected_moe_down_pack8_fp16`, shared expert, combine (`5723-5747`) | Runs once per layer with `tokens=rows`. Selected-expert GEMV kernels consume device `selected_experts` and `rows = tokens * num_experts_per_tok`; no host loop over experts in the target verifier. | **Row-batched but not layer-fused**. The old M7 work belongs here as M12.4: one verifier-layer selected-expert primitive should reduce launch count and improve B scaling. |
+| Shared expert W4 path | `shared_expert_paro_w4_fp16` (`4999-5204`) | At `tokens>1`, uses prefill-style W4 kernels for gate/up and down; M7.C.6 did not alter this safe-but-noisy site. | **Batched, but not small-B optimal**. Potential sub-primitive, secondary to full-attn serial row loop and LM head. |
+| Full-attention default path | `_run_full_attention_chain_c1_loop` (`qwen35_paro_runner.py:2939-2987`) | Explicit `for row, position in enumerate(positions)` over verifier rows. Each row calls `run_full_attention_moe_c1_layer_fp16(tokens=1)` and then copies the row output. | **Serial by verifier row**. For B=3 this is 10 full-attn layers × 4 row-layer invocations = 40 c=1 layer runs per cycle. This is the clearest non-llama.cpp shape and the M12.2 target. |
+| Full-attention batched alternative | `_run_full_attention_chain_batched` (`2988-3127`) | One pass over `rows`: batched RMSNorm, rotate, QKV, batch K/V append, prefill GQA gate with per-row causal limit, O projection, post-norm, and `run_moe_c1_fp16(tokens=rows)`. | **True row-batched**, but historical diagnostics found it slower at small B because it reuses prefill-style kernels with high fixed overhead. M12.2 should not simply flip this default; it needs a small-B full-attn verifier primitive. |
+| LM head + top1 | `_sample_verify_rows_from_hidden` (`3571-3618`) | Final norm and cast are row-batched; `w8a16_linear_bf16_f32_out` materializes full `rows × vocab` logits; `argmax_f32_rows_i32` reduces each row. | **True row-batched but verifier-inefficient**. It scales with `rows * vocab` and writes a logits slab even though accept only needs top-1 / next-token provenance. This is M12.3. |
+| Accept summary | `dflash_accept_chain_i32` (`3627-3651`) | One GPU kernel over rows/requests. | **True batched and likely tiny**. Not a priority except to keep GPU-fast accept enabled after M12.3. |
+
+#### Immediate ordering from the map
+
+1. **M12.1 timeline split** should instrument the existing boundaries exactly as
+   above: draft build, target forward, LM-head/top1, accept read/CPU oracle,
+   linear-state commit, proposer repair, and final sync. The sums must reconcile
+   with `cycle_marker_ns`.
+2. **M12.2 first implementation target:** replace `_run_full_attention_chain_c1_loop`
+   with a small-B row-batched full-attention verifier primitive. The existing
+   `_run_full_attention_chain_batched` proves the ABI/topology, but the kernel
+   shape must avoid prefill fixed overhead.
+3. **M12.3 second implementation target:** fuse verifier LM head + top1/accept so
+   the verifier does not materialize `rows × vocab` logits.
+4. **M12.4 third target:** convert the target MoE path from “row-batched but many
+   small primitive launches” into a verifier-layer primitive. This is where the
+   earlier M7 selected-expert work belongs.
+5. **Proposer handoff is not free:** the persistent proposer is resident, but
+   draft build and repair are serial c=1 MTP advances with host top-k/top1 copies
+   and `device_synchronize`. It should be measured in M12.1 before assuming the
+   target verifier alone explains the 3.2–6.9 AR-token-equivalent cycle cost.
 
 ### M12 implementation track
 

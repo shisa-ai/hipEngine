@@ -20958,3 +20958,77 @@ cycle wall decomposes into proposer-build, target-forward, lm-head/top1,
 accept/commit, and sync. Acceptance gate: component sums reconcile with
 `cycle_marker_ns`, exact AR remains true. Then target M12.2/M12.3 based on the
 largest measured component, not guesses.
+
+## 2026-05-21 — M12 task #2: verifier loop map / serial-vs-batched ledger
+
+Completed the requested code trace for M12 task #2 (the task store was empty in
+this resumed session, so recreated it as local task #5 and marked it in
+progress/completed).
+
+Files/functions audited:
+
+- `scripts/mtp_chain_e2e_smoke.py::_run_spec_persistent_device` lines 295-508
+- `hipengine/speculative/mtp.py::compile_mtp_chain` lines 117-130
+- `hipengine/speculative/interfaces.py::TargetVerifyBatch.from_draft` lines 159-196
+- `hipengine/speculative/mtp_native.py::NativeMtpChainProposer` lines 265-460
+- `hipengine/runtime/qwen35_paro_runner.py::verify_chain_bulk_and_commit` lines 2327-2472
+- `_run_verify_graph_or_direct` lines 2671-2817
+- `_launch_verify_chain_forward_accept` lines 2818-2937
+- `_run_full_attention_chain_c1_loop` lines 2939-2987
+- `_run_full_attention_chain_batched` lines 2988-3127
+- `_write_verify_chain_metadata` lines 3498-3569
+- `_sample_verify_rows_from_hidden` / accept summary lines 3571-3684
+- `_commit_bulk_linear_states` lines 3862-3880
+- `hipengine/runtime/qwen35_paro.py::run_linear_attention_moe_chain_tloop_layer_fp16` lines 4453-4588
+- target MoE helpers around lines 4691-4804, 4999-5204, 5723-5747
+
+Main findings recorded into `docs/MTP.md` under the M12 "Current loop map" section:
+
+1. The local model has 40 target layers: 30 `linear_attention` and 10
+   `full_attention` (full attention every 4th layer). In chain verify, rows are
+   `[root, d1, d2, ...]` with parent rows `[-1, 0, 1, ...]`.
+2. Host/proposer side is serial in draft depth. `scripts/mtp_chain_e2e_smoke.py`
+   builds candidates on the host. Each `proposer.advance_with_previous_hidden`
+   is a c=1 MTP block and `NativeMtpChainProposer.advance` does host copies for
+   top-k ids/values + argmax and then `device_synchronize`. Proposer repair after
+   accept is another serial restore/advance path. This is outside
+   `verify_seconds` but inside `cycle_marker_ns`.
+3. Metadata is row-batched but host-originated: `_write_verify_chain_metadata`
+   copies `[rows]` token/position/parent/depth/active arrays and a tiled block
+   table to device each cycle.
+4. Target forward embeds all verifier rows in one `embedding_lookup_batch_fp16_i64`
+   launch, then loops all 40 layers once.
+5. Linear-attention layers are the best-shaped part today: called once per layer
+   with `tokens=rows`, and the Conv/GDN recurrence is a true chain-tloop
+   in-kernel (`qwen35_linear_attn_chain_conv_decode_fp16_tloop` +
+   `qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16`). The surrounding
+   projection/MoE/residual pieces are row-batched but launch-fragmented.
+6. Full-attention default path is the clearest serial leak:
+   `_run_full_attention_chain_c1_loop` explicitly loops verifier rows and calls
+   `run_full_attention_moe_c1_layer_fp16(tokens=1)` per row. At B=3 this is
+   10 full-attn layers × 4 rows = 40 c=1 full-attn layer invocations per cycle.
+7. `_run_full_attention_chain_batched` proves a row-batched ABI exists, but it
+   uses prefill-style kernels with high fixed overhead; M12.2 should be a
+   small-B verifier primitive, not just flipping `chain_attn_mode=batched`.
+8. LM head/top1 is row-batched but verifier-inefficient: final norm/cast over
+   rows, full `rows × vocab` W8A16 logits materialization, then row-wise argmax.
+   Accept only needs target top1/next-token provenance, so M12.3 should fuse
+   LM head + top1/accept and avoid writing the logits slab.
+9. Accept summary kernel is true batched and likely tiny. With GPU accept disabled
+   (default for the economics sweep), the runner also reads all top1 rows and
+   runs a CPU oracle. GPU-fast accept removes that oracle/read but not target
+   forward.
+10. Commit is serial by layer but small: `_commit_bulk_linear_states` loops over
+    30 linear layers and does two D2D copies per layer, then `_set_slot_position`
+    and a final stream sync.
+
+Ordering from the map:
+
+- M12.1: instrument the exact boundaries from the ledger — draft build,
+  metadata, target forward, LM-head/top1, accept read/CPU oracle, linear-state
+  commit, proposer repair, final sync — and reconcile sums with `cycle_marker_ns`.
+- M12.2: first implementation target is a small-B full-attention verifier
+  primitive replacing `_run_full_attention_chain_c1_loop` row loop.
+- M12.3: fused verifier LM head + top1/accept.
+- M12.4: layer-level selected-expert verifier primitive for row-batched but
+  launch-fragmented target MoE.
