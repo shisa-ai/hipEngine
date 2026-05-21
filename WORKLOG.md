@@ -21032,3 +21032,54 @@ Ordering from the map:
 - M12.3: fused verifier LM head + top1/accept.
 - M12.4: layer-level selected-expert verifier primitive for row-batched but
   launch-fragmented target MoE.
+
+## 2026-05-21 — M12 task #3: concrete true-batched verifier plan
+
+Completed the requested M12 design-plan update in `docs/MTP.md` (task store did
+not contain task #3 in this resumed session, so recreated it as local task #6).
+
+Added a new **"M12 design contract — make verifier cycles llama.cpp-shaped"**
+section with:
+
+- Formal metrics used by every M12 decision:
+  - `C_B = cycle_cost_ar_tokens`
+  - `A_B = avg accepted draft tokens/cycle`
+  - `E_B = 1 + A_B`
+  - `observed_speedup_vs_ar = E_B / C_B`
+  - `perfect_accept_ceiling = (B + 1) / C_B`
+- Target ratio milestones:
+  - **M12-alpha:** `C_3 <= 3.0`, `C_5 <= 4.0`, B=3→5 slope <=0.5 AR-token per extra row.
+  - **M12-beta:** `C_3 <= 2.5`, `C_5 <= 3.5`, first exact B=7 economics row.
+  - **llama.cpp parity:** `C_3 <= 2.0`, `C_5 <= 2.5`, B=7 `C_7 <= 4.0` with sublinear scaling.
+  - **speed-row promotion:** `E_B/C_B > 1.0` over >=3 runs, exact AR equality; 1.5x row requires `E_B/C_B >= 1.5`.
+- Explicit go/no-go math for B=3/B=5/B=7:
+  - B=3 current `E=2.38`, `C=4.33`, `E/C=0.55x`; 1x at observed acceptance needs `C<=2.38`, 1.5x needs `C<=1.59`, perfect 1.5x ceiling requires `C<=2.67`. No standalone B=3 speed claim while `C_3>4.0` because even perfect acceptance cannot beat AR.
+  - B=5 current `E=2.82`, `C=6.87`, `E/C=0.41x`; 1x at observed acceptance needs `C<=2.82`, 1.5x needs `C<=1.88`, perfect 1.5x ceiling requires `C<=4.0`. No-go if `C_5>6.0` after M12.2 because perfect acceptance cannot beat AR.
+  - B=7 not yet measured; must be added by M12.1/M12.2. Perfect 1.5x requires `C_7<=5.33`. At `C_7=2.5`, 1.5x needs `A_7>=2.75` (39% draft acceptance); at `C_7=4.0`, 1.5x needs `A_7>=5.0` (71%). No-go if first exact B=7 row has `C_7>8.0` or B=5→7 scaling stays >0.5 AR-token/extra row.
+- Required measurements for every M12 retained subtask:
+  - economics artifact for B=3/B=5 (and B=7 once supported), >=3 runs for promoted rows;
+  - per-cycle timeline split reconciled with `cycle_marker_ns`;
+  - GPU-event sub-splits for full-attn, linear-attn chain-tloop, target MoE/shared, LM head/top1;
+  - rocprofv3 kernel-family rollup for retained kernel/layout changes;
+  - acceptance provenance and exact AR output tokens.
+- Architectural changes required:
+  - GPU-resident verifier control plane;
+  - small-B full-attention verifier primitive replacing c1 row loop;
+  - streaming W8A16 LM-head + top1/accept fusion;
+  - layer-level target MoE primitive with ids-tensor ABI;
+  - proposer handoff cleanup after target forward is no longer dominant;
+  - graph replay only after kernel reshaping.
+- Correctness gates:
+  - exact AR token equality as primary gate;
+  - accepted lengths/top1 rows preserved for behavior-preserving rewrites;
+  - new HIP kernels require fixture path + exact MTP smoke + rocprof kernel trace;
+  - final verifier top1 rows identical to baseline row-wise argmax;
+  - every risky M12 path behind env/mode fallback until retained artifact exists.
+
+Also expanded the M12 implementation track to M12.0-M12.7 with concrete gates:
+M12.1 timeline split, M12.2 small-B full-attn primitive, M12.3 fused LM-head +
+accept, M12.4 selected-expert verifier primitive, M12.5 GPU-resident proposer
+handoff, M12.6 graph replay, M12.7 adaptive B/fallback policy.
+
+No code or benchmark rerun required for this doc/process task; validation was
+re-reading the M12 section and `git diff --check`.

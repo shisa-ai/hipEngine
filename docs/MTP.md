@@ -525,6 +525,140 @@ Interpretation:
   `cycle_cost_ar_tokens <= 2.5` as the first milestone and `<= 2.0` for
   llama.cpp parity.
 
+### M12 design contract — make verifier cycles llama.cpp-shaped
+
+M12 is a verifier-loop rebuild, not another isolated kernel-family cleanup. The
+contract is: one speculative cycle should look like a small batched target decode
+with GPU-resident control metadata, not `B+1` decode rows glued together by host
+bookkeeping.
+
+Definitions used by every M12 decision:
+
+```text
+B                         = candidate draft budget
+rows                      = B + 1 verifier rows (root + candidates)
+C_B                       = cycle_cost_ar_tokens for budget B
+A_B                       = avg accepted draft tokens/cycle
+E_B                       = avg visible tokens/cycle = 1 + A_B
+observed_speedup_vs_ar    = E_B / C_B
+perfect_accept_ceiling    = (B + 1) / C_B
+break_even_gate           = E_B > C_B
+1.5x_gate                 = E_B / C_B >= 1.5
+```
+
+**Target ratios:**
+
+| Milestone | Required verifier shape | Promotion meaning |
+|---|---|---|
+| M12-alpha | `C_3 <= 3.0` and `C_5 <= 4.0`; B-scaling slope from B=3→5 <= 0.5 AR-token/extra row | Current loop is no longer structurally impossible at B=3/B=5 under high acceptance. |
+| M12-beta | `C_3 <= 2.5`, `C_5 <= 3.5`, and first exact B=7 economics row | Small-B verifier cost is close enough that adaptive B and acceptance quality can determine wins. |
+| llama.cpp parity | `C_3 <= 2.0` and `C_5 <= 2.5`; any B=7 row must have `C_7 <= 4.0` and sublinear scaling | Verifier cycle cost is in the same regime as llama.cpp MTP-2/3. |
+| speed-row promotion | `E_B / C_B > 1.0` over >=3 runs with exact AR equality; 1.5× row needs `E_B / C_B >= 1.5` | May be promoted to a benchmark rollup speed claim. |
+
+#### Explicit go/no-go math for B=3/B=5/B=7
+
+Use this table before spending implementation time on a budget-specific path.
+`C target @ observed E` is the cycle-cost ceiling if acceptance does not improve;
+`C target @ perfect 1.5×` is the absolute ceiling for a 1.5× row even with perfect
+acceptance. B=7 is not yet measured; it must be added by M12.1/M12.2 before any
+B=7 optimization is retained.
+
+| Budget | Current measured `E_B` | Current `C_B` | Current `E_B/C_B` | `C_B` target for 1× at observed `E_B` | `C_B` target for 1.5× at observed `E_B` | `C_B` target for 1.5× at perfect accept | Go / no-go rule |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| B=3 | 2.38 | 4.33 | 0.55× | <= 2.38 | <= 1.59 | <= 2.67 | **Go** only after M12.2/M12.3 can drive `C_3 <= 2.5` or acceptance improves to `A_3 >= C_3 - 1`. **No-go** for standalone B=3 speed claims while `C_3 > 4.0` because even perfect acceptance cannot beat AR. |
+| B=5 | 2.82 | 6.87 | 0.41× | <= 2.82 | <= 1.88 | <= 4.00 | **Go** if reshaped verifier shows `C_5 <= 4.0` (perfect 1.5× becomes possible) and observed `E_5/C_5` is trending upward. **No-go** if `C_5 > 6.0` after M12.2 because even perfect acceptance cannot beat AR. |
+| B=7 | TBD | TBD | TBD | `<= E_7` | `<= E_7/1.5` | <= 5.33 | **Measure first.** For `C_7=2.5`, 1.5× needs `A_7 >= 2.75` (39% draft acceptance). For `C_7=4.0`, 1.5× needs `A_7 >= 5.0` (71%). **No-go** if first exact B=7 row has `C_7 > 8.0` (perfect cannot beat AR) or if B=5→7 scaling remains >0.5 AR-token per extra row. |
+
+The B=7 row is deliberately conditional. It is the likely budget that can win if
+acceptance is decent, but trying it before M12 lowers the cycle-cost slope just
+repeats the B=5 failure mode: more accepted tokens with even more verifier cost.
+
+#### Required measurements for every M12 implementation step
+
+Every M12 subtask must produce or update an economics artifact with these fields:
+
+1. `C_B`, `E_B`, `E_B/C_B`, perfect-accept ceiling, and required acceptance for
+   1×/1.5× for B=3 and B=5; B=7 once M12.1 supports the row count reliably.
+2. Per-cycle timeline split that reconciles with `cycle_marker_ns`:
+   draft build, metadata writes, target forward, LM-head/top1, accept read/CPU
+   oracle, linear-state commit, proposer repair, final stream sync.
+3. GPU-event sub-splits for target forward once available: full-attn layers,
+   linear-attn chain-tloop layers, target MoE/shared expert, LM head/top1.
+4. Kernel-family rollup from `scripts/mtp_verifier_rocprof.py` for any retained
+   kernel/layout change, tied to the same B/prompt/decode workload.
+5. Acceptance provenance: accepted lengths, active budgets, target top1 rows (or
+   fused top1 payload), correction/bonus token, and exact AR output tokens.
+
+Minimum command set for retained diagnostics:
+
+```bash
+python3 scripts/mtp_verifier_economics.py \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 \
+  --candidate-budgets 3,5 \
+  --runs 3 \
+  --out benchmarks/results/<date>-hipengine-mtp-m12-<subtask>-economics.json
+
+# Add B=7 once the specific subtask claims B=7 support:
+python3 scripts/mtp_verifier_economics.py \
+  --prompt-tokens-file /tmp/quicksort-prompt-tokens.txt \
+  --decode-tokens 32 \
+  --candidate-budgets 7 \
+  --runs 3 \
+  --out benchmarks/results/<date>-hipengine-mtp-m12-<subtask>-b7-economics.json
+```
+
+A performance row is not promoted unless exact AR equality passes on every run
+and `E_B/C_B > 1.0`. Single-run rows remain `performance_claim=false` planning
+diagnostics.
+
+#### Architectural changes required by M12
+
+1. **Verifier control plane:** keep chain metadata, candidate tokens, parent rows,
+   active masks, top1/correction payload, and commit selection GPU-resident across
+   a cycle. Host can launch the cycle and read one compact result, but it should
+   not build/repair per-row decisions with synchronous D2H top1 reads.
+2. **Small-B full-attention verifier primitive:** replace the default
+   `_run_full_attention_chain_c1_loop` row loop with a verifier-specific small-B
+   path. The existing `_run_full_attention_chain_batched` proves the ABI, but its
+   prefill-style kernels have too much fixed overhead. M12.2 needs decode-shaped
+   row batching: Q/K/V projection, K/V append, attention, output projection, MoE,
+   and residual for all rows in one layer pass.
+3. **Verifier LM-head + accept fusion:** replace full `rows × vocab` logits
+   materialization with a streaming W8A16 row top1 / candidate-check kernel. The
+   kernel should output the exact top1 token per verifier row (debug/validation),
+   accepted length, correction token, bonus token, and matched-mask payload.
+4. **Layer-level target MoE primitive:** turn the current row-batched but
+   launch-fragmented `run_moe_c1_fp16(tokens=rows)` chain into a verifier-layer
+   primitive with an ids-tensor ABI. This is the M12 version of the old M7
+   selected-expert work.
+5. **Proposer handoff cleanup:** after target forward is no longer dominant,
+   remove serial c=1 proposer repair from the critical path: GPU top1 for draft
+   tokens, snapshot ring/copy elision where possible, and optional graph replay
+   for the draft MTP block.
+6. **Graph replay only after reshaping:** graph capture/replay is an amplifier,
+   not the fix. Re-enable it per `(B+1, kv_bucket)` only after M12.2–M12.4 reduce
+   kernel time and launch count enough that graph replay improves `C_B`.
+
+#### Correctness gates
+
+- **Primary gate:** exact AR token equality for the full decode, same prompt and
+  same decode length, with accepted-token provenance recorded.
+- **Behavior-preserving rewrites:** accepted lengths and top1 rows must match the
+  previous implementation at the same B unless the subtask intentionally changes
+  policy (for example adaptive B). If policy changes, output tokens must still
+  match AR and the artifact must explain accepted-length differences.
+- **Kernel gates:** any new HIP verifier kernel must pass fixture tests against
+  the CPU reference / existing runtime path, then an MTP exact-AR smoke, then a
+  `rocprofv3 --kernel-trace` smoke showing the expected kernel names.
+- **Numerical gate:** final verifier top1 rows must be identical to the baseline
+  row-wise argmax for fixture prompts. KL/top-1 aggregate gates are acceptable for
+  intermediate math tests, but a retained verifier-loop change must preserve final
+  greedy top1 provenance exactly on the smoke fixture.
+- **Fallback gate:** every risky M12 path ships behind an env flag or existing
+  mode switch until it has a retained economics artifact. The legacy c1 loop / LM
+  head path must remain available for bisection.
+
 ### Current loop map — where the cycle is not llama.cpp-shaped
 
 Code audit (2026-05-21, task #2 / M12 map): the local model has 40 target
@@ -592,12 +726,14 @@ Default benchmark mode is `chain_attn_mode=c1_loop`, `graph_mode=off`,
 
 | # | Sub-task | Goal / acceptance gate | Status |
 |---|---|---|---|
-| M12.0 | **Economics harness** | `scripts/mtp_verifier_economics.py` reports AR-token-equivalent cycle cost, avg visible tokens/cycle, perfect-accept ceiling, and exact-AR-match by B. | ✅ Landed in current session; artifact above. |
-| M12.1 | Per-cycle timeline split | Extend instrumentation so every cycle reports proposer-build, target-forward, lm-head/top1, accept/commit, and sync wall. Use GPU events where possible. Gate: sums reconcile with `cycle_marker_ns`. | Next |
-| M12.2 | Small-B full-attention verifier primitive | Replace `_run_full_attention_chain_c1_loop` row loop with a small-B verifier kernel path that avoids prefill fixed overhead but processes all rows together. Gate: B=3 cycle cost drops materially without exactness loss. | Pending |
-| M12.3 | Fused verifier lm-head + accept | Replace `w8a16_linear_bf16_f32_out` + `argmax_f32_rows_i32` + accept summary with a streaming W8A16 row argmax/candidate-check kernel that does not materialize full logits. Gate: lm-head family <3 ms/pass and GPU accept payload identical. | Pending |
-| M12.4 | Layer-level selected-expert verifier primitive | Reframe the old M7 selected-expert work as a verifier-layer primitive: ids tensor in, all selected gate/up/down rows out, no per-row host orchestration, no row-stride aliasing. Gate: MoE family cost scales sublinearly from B=1→B=5. | Pending |
-| M12.5 | Graph replay after kernel reshaping | Re-enable graph capture only after M12.2–M12.4 reduce kernel time. Gate: graph replay improves cycle cost instead of adding overhead. | Pending |
+| M12.0 | **Economics harness** | `scripts/mtp_verifier_economics.py` reports AR-token-equivalent cycle cost, avg visible tokens/cycle, perfect-accept ceiling, and exact-AR-match by B. | ✅ Landed; artifact above. |
+| M12.1 | **Per-cycle timeline split** | Extend instrumentation so every cycle reports draft-build, metadata, target-forward, LM-head/top1, accept read/CPU oracle, commit, proposer repair, and final sync wall. Use GPU events where possible. Gate: sums reconcile with `cycle_marker_ns` within 5% or 1 ms and exact AR still passes. | Next |
+| M12.2 | **Small-B full-attention verifier primitive** | Replace `_run_full_attention_chain_c1_loop` row loop with a verifier-specific small-B row-batched full-attn layer path. Gate: exact AR, B=3 `C_3 <= 3.5` or >=15% reduction from M12.0, and B=5 scaling slope improves. | Pending |
+| M12.3 | **Fused verifier LM-head + accept** | Replace `w8a16_linear_bf16_f32_out` + `argmax_f32_rows_i32` + accept summary with a streaming W8A16 row top1/candidate-check kernel that avoids logits slab materialization. Gate: final top1 rows identical, LM-head/top1 timeline component reduced >=50%, GPU accept payload identical. | Pending |
+| M12.4 | **Layer-level selected-expert verifier primitive** | Reframe the old M7 selected-expert work as a verifier-layer primitive: ids tensor in, all selected gate/up/down rows out, no per-row host orchestration, no row-stride aliasing. Gate: target MoE component scales sublinearly from B=3→B=5 and `C_5 <= 4.0`. | Pending |
+| M12.5 | **GPU-resident proposer handoff** | Remove serial host top1/top-k copies and c=1 repair syncs from the critical cycle where possible. Gate: proposer-build+repair timeline component drops >=50% and exact accepted-token provenance is unchanged. | Pending |
+| M12.6 | **Graph replay after kernel reshaping** | Re-enable graph capture only after M12.2–M12.5 reduce kernel time/launch count. Gate: graph replay improves `C_B` for B=3/B=5 instead of adding overhead. | Pending |
+| M12.7 | **Adaptive B / fallback policy** | Only after fixed-B economics can beat AR in principle, add a policy that chooses B or AR fallback from proposer confidence / recent acceptance. Gate: exact AR equality, `E_B/C_B > 1.0` over >=3 runs, and no low-confidence round is slower than AR by policy. | Pending |
 
 Promotion rule: no MTP speed row is accepted until the economics artifact shows
 `avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens > 1.0` on the same
