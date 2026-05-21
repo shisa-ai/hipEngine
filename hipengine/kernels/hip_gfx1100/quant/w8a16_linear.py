@@ -12,6 +12,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("w8a16_linear.hip")
 _OUTPUT_NAME = "w8a16_linear.so"
 _SYMBOL_BF16_F32 = "hipengine_w8a16_linear_bf16_f32_out"
+_SYMBOL_BF16_F32_MULTI_ROW = "hipengine_w8a16_linear_bf16_f32_multi_row"
 _SYMBOL_BF16_LOWP = "hipengine_w8a16_linear_bf16_lowp_out"
 _SYMBOL_FP16_LOWP = "hipengine_w8a16_linear_fp16_lowp_out"
 _SYMBOL_SHARED_GATE_UP_SILU_FP16 = "hipengine_w8a16_shared_gate_up_silu_fp16"
@@ -81,6 +82,41 @@ def w8a16_linear_bf16_f32_out(
 
     _launch(
         _SYMBOL_BF16_F32,
+        hidden_ptr,
+        weight_ptr,
+        weight_scale_ptr,
+        out_ptr,
+        tokens,
+        hidden_size,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def w8a16_linear_bf16_f32_multi_row(
+    hidden_ptr: int,
+    weight_ptr: int,
+    weight_scale_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    out_features: int,
+    *,
+    threads: int = 64,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """M12.2: weight-sharing W8A16 GEMV.  Same output as ``bf16_f32_out`` but
+    each block processes one vocab row across all ``tokens`` so the weight
+    matrix streams from HBM once instead of ``tokens`` times.
+    """
+
+    _launch(
+        _SYMBOL_BF16_F32_MULTI_ROW,
         hidden_ptr,
         weight_ptr,
         weight_scale_ptr,
@@ -384,6 +420,11 @@ def register_w8a16_linear_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey("hip_gfx1100", "w8a16_linear", quant, "bf16_f32_out"),
             w8a16_linear_bf16_f32_out,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "w8a16_linear", quant, "bf16_f32_multi_row"),
+            w8a16_linear_bf16_f32_multi_row,
             replace=replace,
         )
         register(

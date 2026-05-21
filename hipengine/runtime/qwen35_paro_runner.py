@@ -45,7 +45,10 @@ from hipengine.kernels.hip_gfx1100.speculative import (
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
 from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16, fp16_to_bf16_strided_rows
 from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16, paro_rmsnorm_out_fp16
-from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
+from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
+    w8a16_linear_bf16_f32_multi_row,
+    w8a16_linear_bf16_f32_out,
+)
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     embedding_lookup_batch_bf16_i64,
@@ -3677,19 +3680,40 @@ class Qwen35ParoResidentSession:
             library=self.libraries["cast"],
             runtime=self.runtime,
         )
-        w8a16_linear_bf16_f32_out(
-            norm_out_bf16.ptr,
-            self.lm_head_weight.tensor.ptr,
-            self.lm_head_scale.tensor.ptr,
-            self.verify_lm_logits.ptr,
-            rows,
-            self.config.hidden_size,
-            self.vocab_size,
-            threads=self.lm_head_threads,
-            stream=stream,
-            library=self.libraries["w8a16"],
-            runtime=self.runtime,
-        )
+        # M12.2: when the verifier processes more than one row, the weight-
+        # sharing kernel reads the W8 LM-head weights from HBM once per block
+        # and amortizes them across all verifier rows.  For ``rows == 1`` the
+        # stock kernel is already optimal and we keep it.  Env override
+        # ``HIPENGINE_W8A16_LM_HEAD_MULTI_ROW`` ("0"/"off" to disable) lets us
+        # bisect this path.
+        if rows > 1 and self._w8a16_lm_head_multi_row_enabled():
+            w8a16_linear_bf16_f32_multi_row(
+                norm_out_bf16.ptr,
+                self.lm_head_weight.tensor.ptr,
+                self.lm_head_scale.tensor.ptr,
+                self.verify_lm_logits.ptr,
+                rows,
+                self.config.hidden_size,
+                self.vocab_size,
+                threads=self.lm_head_threads,
+                stream=stream,
+                library=self.libraries["w8a16"],
+                runtime=self.runtime,
+            )
+        else:
+            w8a16_linear_bf16_f32_out(
+                norm_out_bf16.ptr,
+                self.lm_head_weight.tensor.ptr,
+                self.lm_head_scale.tensor.ptr,
+                self.verify_lm_logits.ptr,
+                rows,
+                self.config.hidden_size,
+                self.vocab_size,
+                threads=self.lm_head_threads,
+                stream=stream,
+                library=self.libraries["w8a16"],
+                runtime=self.runtime,
+            )
         argmax_f32_rows_i32(
             self.verify_lm_logits.ptr,
             self.verify_lm_block_values.ptr,
@@ -4698,6 +4722,12 @@ class Qwen35ParoResidentSession:
 
     def _fused_linear_state_commit_enabled(self) -> bool:
         value = os.environ.get("HIPENGINE_FUSED_LINEAR_STATE_COMMIT")
+        if value is None or value.strip() == "":
+            return True
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+
+    def _w8a16_lm_head_multi_row_enabled(self) -> bool:
+        value = os.environ.get("HIPENGINE_W8A16_LM_HEAD_MULTI_ROW")
         if value is None or value.strip() == "":
             return True
         return value.strip().lower() not in {"0", "false", "no", "off"}

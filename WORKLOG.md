@@ -21405,3 +21405,40 @@ MTP throughput is very stable (64.46–66.38 across all 9 measured runs); cycle 
 ``performance_claim=true`` for the cumulative M12.4+M12.5 +2.0% MTP delta on the stable quicksort prompt.  Still 0.61–0.67× AR (not promoted to "MTP beats AR").  Artifact: ``benchmarks/results/2026-05-22-hipengine-mtp-m12.5-w7900-b3-batched-3run.json``.
 
 Architectural value: per-cycle host H2D launch count goes from 11 → 5 for the chain verifier metadata.  Combined with M12.4 (60 → 1 commit ``hipMemcpyAsync``) this is the largest realistic reduction in per-cycle host launch overhead without restructuring the forward pass itself; from here, the path forward is per-layer kernel fusion (M12.6+) to shrink the ~1840-launch forward.
+
+## 2026-05-22 — W7900 M12.2: weight-sharing W8A16 LM-head GEMV
+
+The stock ``w8a16_linear_kernel`` runs grid ``(vocab_size, tokens)`` with one block per ``(vocab_row, verifier_row)`` pair, so the 780 MB W8 LM-head weight matrix streams from HBM ``rows`` times (B+1 = 4 streams at B=3).  W7900 L2 is 4 MB and cannot retain the matrix across verifier-row streams.  The new ``w8a16_linear_multi_row_kernel`` runs grid ``(vocab_size,)`` with each block looping over all verifier rows so the weight row streams from HBM exactly once and stays L1-resident for the remaining rows.
+
+Files:
+
+- ``hipengine/kernels/hip_gfx1100/quant/w8a16_linear.hip``: new ``w8a16_linear_multi_row_kernel`` and ``hipengine_w8a16_linear_bf16_f32_multi_row`` entry; output layout identical to ``hipengine_w8a16_linear_bf16_f32_out`` so the existing ``argmax_f32_rows_i32`` stage runs unchanged.
+- ``hipengine/kernels/hip_gfx1100/quant/w8a16_linear.py`` + ``__init__.py``: Python wrapper + registry entry under ``("hip_gfx1100", "w8a16_linear", quant, "bf16_f32_multi_row")``.
+- ``hipengine/runtime/qwen35_paro_runner.py``: ``_sample_verify_rows_from_hidden`` dispatches to the multi-row kernel for ``rows > 1`` (verifier path), keeps the stock kernel for ``rows == 1`` (AR decode).  Env override ``HIPENGINE_W8A16_LM_HEAD_MULTI_ROW=0`` falls back to the stock kernel.
+
+Validation (gfx1100/W7900, MTP B=3 chain, 8 decode tokens):
+
+- ``chain_attn_mode=c1_loop graph=off`` → exact AR match.
+- ``chain_attn_mode=batched graph=off`` → exact AR match.
+- ``chain_attn_mode=batched graph=validate`` → exact AR match.
+
+Cumulative M12.x economics (3 runs, stable quicksort prompt, 32 decode tokens, B=3, batched + graph=off):
+
+| Config | MTP tok/s | Cycle wall ms | Verify ms/cycle | MTP/AR | Δ MTP vs baseline |
+|---|---|---|---|---|---|
+| baseline (no M12.x) | 65.01 | 36.48 | 27.03 | 0.594 | — |
+| M12.4 | 65.70 | 36.22 | 26.76 | 0.607 | +1.1% |
+| M12.4 + M12.5 | 66.33 | 35.88 | 26.45 | 0.648 | +2.0% |
+| M12.4 + M12.5 + M12.2 | 68.77 | 34.56 | 25.17 | 0.648 | **+5.8%** |
+
+M12.2 alone: +3.7% MTP throughput, -1.32 ms cycle wall, -1.28 ms verify time.  Matches the predicted ~1.5 ms savings from collapsing 4 weight-matrix streams (4 × 780 MB ≈ 3.1 GB) to one.
+
+``performance_claim=true`` for the cumulative +5.8% MTP delta.  *Not* promoted to "MTP beats AR" — we are still 0.65× AR.  Accepted lengths on this prompt are ``[3, 3, 2, 0, 2, 0, 0, 1, 3, 0, 2, 0, 2]`` (avg 1.38/cycle, avg_visible 2.38).  Cycle cost is now ~3.8 AR-tok; we need <2.38 to break even.
+
+Artifact: ``benchmarks/results/2026-05-22-hipengine-mtp-m12.2-w7900-b3-batched-3run.json``.
+
+### M12.x summary and what's next
+
+M12.1 (graph capture, no perf win), M12.4 (commit fusion, +1.1%), M12.5 (metadata cache, +0.9%), M12.2 (LM-head weight share, +3.7%) — cumulative +5.8% MTP throughput; verify time per cycle 27.03 → 25.17 ms.  These were the M12.x sub-tasks that fit cleanly without restructuring the forward pass.
+
+The remaining gap to MTP beats AR (cycle cost 3.8 → <2.4 AR-tok) cannot be closed by more host-side launch reductions.  The forward pass still issues ~1,840 GPU kernel calls per pass (from the rocprof artifact) and that is what dominates both kernel-launch overhead and the GPU kernel execution itself for small-batch workloads.  Per-layer kernel fusion (M12.6+) — combining adjacent RMSNorm + rotate + projection chains into single kernels per layer, multi-row mul_mat_id consolidation on remaining MoE sub-ops — is the next concrete lever.  Each layer-internal fusion saves ~10-50 launches and tracks toward the llama.cpp shape of ~100-200 launches per pass for the same model.

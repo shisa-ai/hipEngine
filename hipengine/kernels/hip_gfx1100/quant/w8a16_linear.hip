@@ -52,6 +52,66 @@ __global__ void shared_gate_sigmoid_fp32_kernel(
   gate_values[offset] = 1.0f / (1.0f + expf(-logit));
 }
 
+// M12.2 fused multi-row variant: one block per vocab row, looping over all
+// verifier rows so the weight row (5 KB at hidden_size=5120) streams from HBM
+// only once per block and is L1-cached for the remaining verifier rows.  The
+// stock ``w8a16_linear_kernel`` below uses grid ``(vocab, tokens)`` which
+// re-streams the full weight matrix per verifier row; for B+1 = 4 rows this
+// nearly quadruples weight HBM traffic vs the theoretical floor.  Verifier
+// LM-head time dominates by 2.68 ms/pass at B=3 on gfx1100/W7900 (per the
+// 2026-05-21 rocprof artifact) and L2 (4 MB) cannot retain the 780 MB matrix
+// across verify-row streams.
+__global__ void w8a16_linear_multi_row_kernel(
+    const uint16_t* __restrict__ hidden_states,
+    const int8_t* __restrict__ weight,
+    const float* __restrict__ weight_scale,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t out_features) {
+  extern __shared__ float partial[];
+  const int64_t vocab_row = static_cast<int64_t>(blockIdx.x);
+  if (vocab_row >= out_features) {
+    return;
+  }
+  const int tid = threadIdx.x;
+  const int64_t weight_row_off = vocab_row * hidden_size;
+  const float scale = weight_scale[vocab_row];
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  for (int64_t t = 0; t < tokens; ++t) {
+    const int64_t hidden_row = t * hidden_size;
+    float acc = 0.0f;
+    for (int64_t k = static_cast<int64_t>(tid) * 8; k + 7 < hidden_size; k += vec_stride) {
+      const int64_t h_off = hidden_row + k;
+      const int64_t w_off = weight_row_off + k;
+      acc += bf16_bits_to_float(hidden_states[h_off + 0]) * static_cast<float>(static_cast<int>(weight[w_off + 0]));
+      acc += bf16_bits_to_float(hidden_states[h_off + 1]) * static_cast<float>(static_cast<int>(weight[w_off + 1]));
+      acc += bf16_bits_to_float(hidden_states[h_off + 2]) * static_cast<float>(static_cast<int>(weight[w_off + 2]));
+      acc += bf16_bits_to_float(hidden_states[h_off + 3]) * static_cast<float>(static_cast<int>(weight[w_off + 3]));
+      acc += bf16_bits_to_float(hidden_states[h_off + 4]) * static_cast<float>(static_cast<int>(weight[w_off + 4]));
+      acc += bf16_bits_to_float(hidden_states[h_off + 5]) * static_cast<float>(static_cast<int>(weight[w_off + 5]));
+      acc += bf16_bits_to_float(hidden_states[h_off + 6]) * static_cast<float>(static_cast<int>(weight[w_off + 6]));
+      acc += bf16_bits_to_float(hidden_states[h_off + 7]) * static_cast<float>(static_cast<int>(weight[w_off + 7]));
+    }
+    for (int64_t k = (hidden_size & ~7) + tid; k < hidden_size; k += blockDim.x) {
+      acc += bf16_bits_to_float(hidden_states[hidden_row + k]) *
+          static_cast<float>(static_cast<int>(weight[weight_row_off + k]));
+    }
+    partial[tid] = acc;
+    __syncthreads();
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        partial[tid] += partial[tid + stride];
+      }
+      __syncthreads();
+    }
+    if (tid == 0) {
+      out[t * out_features + vocab_row] = partial[0] * scale;
+    }
+    __syncthreads();
+  }
+}
+
 __global__ void w8a16_linear_kernel(
     const uint16_t* hidden_states,
     const int8_t* weight,
@@ -760,6 +820,43 @@ extern "C" int hipengine_w8a16_linear_bf16_f32_out(
       weight,
       weight_scale,
       out,
+      hidden_size,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+// M12.2: weight-sharing variant that amortizes the LM-head weight reads
+// across multiple verifier rows (one block per vocab row instead of one
+// block per (vocab, verifier_row) pair).  Returns the same FP32 logits as
+// ``hipengine_w8a16_linear_bf16_f32_out`` so the downstream argmax kernel
+// is unchanged; the runner gates this path via
+// ``HIPENGINE_W8A16_LM_HEAD_MULTI_ROW``.  For ``tokens=1`` the stock
+// per-(vocab, row) kernel is preferred (single-row pattern is already
+// optimal for the AR decode path).
+extern "C" int hipengine_w8a16_linear_bf16_f32_multi_row(
+    const uint16_t* hidden_states,
+    const int8_t* weight,
+    const float* weight_scale,
+    float* out,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || hidden_size <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      w8a16_linear_multi_row_kernel,
+      dim3(static_cast<unsigned int>(out_features)),
+      dim3(static_cast<unsigned int>(threads)),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream,
+      hidden_states,
+      weight,
+      weight_scale,
+      out,
+      tokens,
       hidden_size,
       out_features);
   return static_cast<int>(hipGetLastError());
