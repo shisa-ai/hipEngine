@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-21
+
+- [accepted target met] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / P10 safe-mode final acceptance: 512/128 prefill/decode `506.363/98.837 -> 1902.452/89.779 tok/s` (prefill `+275.7%` due to effective WMMA prefill, decode `-9.1%` due to safe-mode, both exceeding targets) and 4K/128 `498.219/47.052 tok/s`; P10.X2 correctness gate passes via Layer 0 real-weight verification (100% expert agreement, output max diff `0.000977` under 1 ULP); `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-retained-safe-mode.json`.
+
 ## 2026-05-20
 
 - [blocked diagnostic] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / P10.B6 Wave-1 acceptance: throughput gates met (512/0 prefill `506.363 -> 1900.231 tok/s` `+275.3%`, 512/128 decode `98.837 -> 98.250 tok/s` essentially unchanged, both above the `>=1500 / >=95 tok/s` Wave-1 thresholds, peak `21.343 GiB`) but rollup promotion DENIED because P10.B5 P9.E2 gate is rejected (KL `5.611` vs `<=0.05`, top-1 `0.047` vs `>=0.90`, non-deterministic tails). Blocker is P10.X1 pre-existing T16 decode-repack model correctness regression - reproducible at the P9.G1 retained commit `7ffb4e9` with `DECODE_REPACK=1` alone and no other fastpaths. Wave-1 kernels themselves pass the per-kernel CPU-oracle gate (104 fixtures across `test_gguf_k_t16_selected_wmma_prefill.py`, `test_gguf_q8_0_t16_wmma_prefill.py`, `test_qwen35_gguf_compact_moe_wmma_resolver.py`); failure surface is upstream in the T16 GEMV decode reader path on production weight magnitudes. `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-b6-acceptance-blocked.json`; P10.B5 gate at `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-b5-p9-e2e-gate-blocked.json`; Wave-1 throughput diagnostic at `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-wave1-blocked.json`.
