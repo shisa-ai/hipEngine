@@ -508,7 +508,7 @@ class Qwen35ParoDecodeState:
             if (
                 rows > 1
                 and rows <= 8
-                and _w4_multi_row_pack8_enabled()
+                and _w4_multi_row_single_site_enabled(prefix)
                 and group_size % 16 == 0
                 and width % group_size == 0
             ):
@@ -570,7 +570,7 @@ class Qwen35ParoDecodeState:
             if (
                 rows > 1
                 and rows <= 8
-                and _w4_multi_row_pack8_enabled()
+                and _w4_multi_row_single_site_enabled(prefix)
                 and group_size % 16 == 0
                 and width % group_size == 0
             ):
@@ -2193,7 +2193,7 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
-        elif _w4_multi_row_pack8_enabled() and 1 < tokens <= 8 and scratch.q_rot.shape[-1] % group_size == 0:
+        elif _w4_multi_row_dual_site_eligible("full_qk", tokens, scratch.q_rot.shape[-1], group_size):
             # M12.6: weight-sharing multi-row dual W4 GEMV for small verifier batches.
             gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
                 scratch.q_rot.ptr,
@@ -3559,7 +3559,7 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         else:
-            if _w4_multi_row_pack8_enabled() and 1 < tokens <= 8 and scratch.qkv_rot.shape[-1] % group_size == 0:
+            if _w4_multi_row_dual_site_eligible("linear_qkv_z", tokens, scratch.qkv_rot.shape[-1], group_size):
                 # M12.6: multi-row dual W4 GEMV for the linear-attn QKV+Z projection.
                 gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
                     scratch.qkv_rot.ptr,
@@ -5222,7 +5222,7 @@ class Qwen35ParoDecodeState:
                 library=_library_for(library, "silu"),
                 runtime=self.runtime,
             )
-        elif _w4_multi_row_dual_eligible(tokens, cfg.hidden_size, group_size):
+        elif _w4_multi_row_dual_site_eligible("shared_gate_up", tokens, cfg.hidden_size, group_size):
             # M12.6: shared-expert gate/up multi-row dual W4 GEMV.
             gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
                 scratch.shared_gate_input.ptr,
@@ -5450,7 +5450,7 @@ class Qwen35ParoDecodeState:
                 library=_library_for(library, "silu"),
                 runtime=self.runtime,
             )
-        elif _w4_multi_row_dual_eligible(tokens, cfg.hidden_size, group_size):
+        elif _w4_multi_row_dual_site_eligible("dense_gate_up", tokens, cfg.hidden_size, group_size):
             # M12.6: dense MLP gate/up multi-row dual W4 GEMV.
             gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
                 scratch.shared_gate_input.ptr,
@@ -6835,28 +6835,101 @@ def _verify_moe_grouped_min_tokens() -> int:
     return max(2, int(value))
 
 
-def _w4_multi_row_pack8_enabled() -> bool:
-    """M12.6: gate the multi-row pack8 W4 GEMV path for 1 < rows <= 8.
-
-    Defaults to ``on``.  Disable via ``HIPENGINE_W4_MULTI_ROW_PACK8={0,off,no,false}``
-    to bisect against the stock WMMA prefill kernel.
-    """
-
-    value = os.environ.get("HIPENGINE_W4_MULTI_ROW_PACK8")
+def _env_enabled(name: str, *, default: bool) -> bool:
+    value = os.environ.get(name)
     if value is None or value.strip() == "":
-        return True
+        return default
     return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
-def _w4_multi_row_dual_eligible(tokens: int, in_features: int, group_size: int) -> bool:
-    """M12.6: shared eligibility check for multi-row dual W4 GEMV.
+def _w4_multi_row_pack8_enabled() -> bool:
+    """M12.6 umbrella gate for multi-row pack8 W4 GEMV.
 
-    Routes through the new multi-row dual kernel when the verifier batch fits
-    its 1 < tokens <= 8 sweet spot and the in_features is group-aligned.
+    Defaults to ``on``.  Disable via ``HIPENGINE_W4_MULTI_ROW_PACK8={0,off,no,false}``.
+    More specific gates can override single-output or dual-output dispatch:
+    ``HIPENGINE_W4_MULTI_ROW_PACK8_SINGLE`` and
+    ``HIPENGINE_W4_MULTI_ROW_PACK8_DUAL``.
     """
 
+    return _env_enabled("HIPENGINE_W4_MULTI_ROW_PACK8", default=True)
+
+
+def _w4_multi_row_single_enabled() -> bool:
+    return _env_enabled(
+        "HIPENGINE_W4_MULTI_ROW_PACK8_SINGLE",
+        default=_w4_multi_row_pack8_enabled(),
+    )
+
+
+def _w4_multi_row_dual_enabled() -> bool:
+    return _env_enabled(
+        "HIPENGINE_W4_MULTI_ROW_PACK8_DUAL",
+        default=_w4_multi_row_pack8_enabled(),
+    )
+
+
+_W4_MULTI_ROW_DEFAULT_SAFE_SITES = frozenset(
+    {
+        # Passed the llama.cpp-compatible 9-prompt exactness suite on 2026-05-22.
+        "full_qk",
+        "linear_qkv_z",
+        "dense_gate_up",
+        "single_shared_down",
+        "single_dense_down",
+    }
+)
+
+
+def _w4_multi_row_site_enabled(site: str) -> bool:
+    """M12.6 per-callsite correctness mask.
+
+    Full M12.6 (all sites enabled) improves the stable quicksort prompt but the
+    new prompt suite found exact-AR mismatches in numerically fragile sites.
+    With ``HIPENGINE_W4_MULTI_ROW_PACK8_SITES`` unset, only the exact-suite-safe
+    subset in ``_W4_MULTI_ROW_DEFAULT_SAFE_SITES`` is enabled.  Override values:
+    comma-separated site names, ``all`` for risky/full M12.6, or ``none`` to
+    disable every multi-row W4 site while leaving the umbrella env gate on.
+    """
+
+    raw = os.environ.get("HIPENGINE_W4_MULTI_ROW_PACK8_SITES")
+    if raw is None or raw.strip() == "":
+        return site.lower() in _W4_MULTI_ROW_DEFAULT_SAFE_SITES
+    sites = {part.strip().lower() for part in raw.split(",") if part.strip()}
+    if not sites:
+        return site.lower() in _W4_MULTI_ROW_DEFAULT_SAFE_SITES
+    if "all" in sites:
+        return True
+    if "none" in sites:
+        return False
+    return site.lower() in sites
+
+
+def _w4_multi_row_single_site(prefix: str) -> str:
+    if prefix.endswith(".self_attn.v_proj"):
+        return "single_full_v"
+    if prefix.endswith(".self_attn.o_proj"):
+        return "single_full_o"
+    if prefix.endswith(".linear_attn.out_proj"):
+        return "single_linear_out"
+    if prefix.endswith(".mlp.shared_expert.down_proj"):
+        return "single_shared_down"
+    if prefix.endswith(".mlp.down_proj"):
+        return "single_dense_down"
+    return "single_other"
+
+
+def _w4_multi_row_single_site_enabled(prefix: str) -> bool:
+    return _w4_multi_row_single_enabled() and _w4_multi_row_site_enabled(
+        _w4_multi_row_single_site(prefix)
+    )
+
+
+def _w4_multi_row_dual_site_eligible(site: str, tokens: int, in_features: int, group_size: int) -> bool:
+    """M12.6: shared eligibility check for multi-row dual W4 GEMV."""
+
     return (
-        _w4_multi_row_pack8_enabled()
+        _w4_multi_row_dual_enabled()
+        and _w4_multi_row_site_enabled(site)
         and 1 < int(tokens) <= 8
         and int(in_features) % int(group_size) == 0
     )

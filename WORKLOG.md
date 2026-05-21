@@ -21537,3 +21537,53 @@ To break even on the observed acceptance pattern (avg_visible=2.38 tok/cycle), c
 1. **Selected-expert MoE multi-row variant** (`moe_gate_up_dual_gemv` + `moe_down_gemv` = ~3.8 ms/pass).  These are already mul_mat_id-shaped but read each expert's weight tile once per (token, expert_slot) row.  For B=3 with 8 experts/token there can be some expert overlap across tokens; grouping rows by expert before the GEMV would amortize those reads.  Needs a small "expert sort" pre-pass; not yet implemented.
 2. **`linear_attention_gdn_decode`** at 2.6 ms is sequential by construction (recurrent t-loop) — limited internal headroom.
 3. **`moe_paro_rotate_in`** (190 launches/pass × 4.9 µs = 0.94 ms) — many small kernels.  Per-launch overhead reduction via more aggressive in-layer fusion is the lever, but each fusion is single-digit launches.
+
+## 2026-05-22 — M12.6 correction: prompt-suite exactness gate and safe-site mask
+
+The new llama.cpp-compatible `scripts/mtp-bench.py --mode hipengine-current` prompt suite exposed a correctness issue in the all-sites M12.6 W4 multi-row path.  Full M12.6 (`HIPENGINE_W4_MULTI_ROW_PACK8=on`, implicit all sites in the original commit) failed exact AR on the `translation` prompt:
+
+- Prompt: `Translate to French: 'The quick brown fox jumps over the lazy dog.'`
+- Token ids: `26583,310,8323,25,359,760,3841,13477,37550,33075,888,279,15217,5388,3058`
+- `decode_tokens=48`, `B=3`, `chain_attn_mode=batched`, `graph_mode=off`
+- `HIPENGINE_W4_MULTI_ROW_PACK8=on` → `exact_ar_mismatch`, first mismatch at generated index 34 (`AR=220`, `MTP=51`).
+- `HIPENGINE_W4_MULTI_ROW_PACK8=off` → exact AR match.
+
+Added finer gates:
+
+- `HIPENGINE_W4_MULTI_ROW_PACK8_SINGLE`
+- `HIPENGINE_W4_MULTI_ROW_PACK8_DUAL`
+- `HIPENGINE_W4_MULTI_ROW_PACK8_SITES`
+
+Per-site exactness isolation on the translation prompt:
+
+| Site | Translation exact? | First mismatch |
+|---|---:|---:|
+| `full_qk` | yes | — |
+| `linear_qkv_z` | yes | — |
+| `shared_gate_up` | no | 6 |
+| `dense_gate_up` | yes | — |
+| `single_full_v` | no | 6 |
+| `single_full_o` | no | 24 |
+| `single_linear_out` | no | 36 |
+| `single_shared_down` | yes | — |
+| `single_dense_down` | yes | — |
+
+Default M12.6 site mask is now the exact-suite-safe subset:
+
+```
+full_qk,linear_qkv_z,dense_gate_up,single_shared_down,single_dense_down
+```
+
+`HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all` still enables the original full/all-site M12.6 path for risky experiments, and `SITES=none` disables all M12.6 multi-row W4 sites while leaving the umbrella env on.
+
+Validation after the mask change:
+
+- Translation smoke with default env → exact AR match (`/tmp/hipengine-mtp-translation-default-safe.json`).
+- Quicksort 8-token smoke:
+  - `chain_attn_mode=c1_loop graph=off` → exact AR match.
+  - `chain_attn_mode=batched graph=off` → exact AR match.
+  - `chain_attn_mode=batched graph=validate` → exact AR match.
+- Full llama.cpp-compatible prompt suite with the safe site mask, `max_tokens=64`, `runs=1`, `B=3`, batched/off → all 9 prompts exact. Artifact: `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-safe-sites.json`.
+- Same suite with `HIPENGINE_W4_MULTI_ROW_PACK8=off` → all 9 prompts exact. Artifact: `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-off.json`.
+
+Performance note: the exact-safe subset is nearly neutral on the 9-prompt suite (`cycle_cost 3.798` safe vs `3.794` off, one run) and only marginal on the quicksort prompt (`cycle_cost 3.80` safe vs `3.83` off, one run).  Therefore the earlier all-sites M12.6 +12.9% cumulative throughput claim is retained only as a **risky/all-sites diagnostic**, not as the default exact MTP path.  Exact-preserving W4 speedup likely needs a small-B WMMA/prefill-numerics-compatible kernel rather than the FMA row-loop kernel.

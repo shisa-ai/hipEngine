@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-22
+
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO-MTP-BF16 / MTP prompt-suite exactness gate for M12.6 W4 safe-site mask on W7900/gfx1100: all-sites M12.6 failed the llama.cpp-compatible `translation` prompt exactness gate (`AR=220`, `MTP=51` at generated index 34), so default M12.6 now enables only `full_qk,linear_qkv_z,dense_gate_up,single_shared_down,single_dense_down`. Safe subset vs M12.6-off on 9 prompts is exact in both cases and performance-neutral (`cycle_cost 3.798 -> 3.794` safe→off, one run); `performance_claim=false`; artifacts `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-safe-sites.json` and `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-off.json`.
+
 ## 2026-05-21
 
 - [diagnostic retained] hipEngine / shisa-ai Qwen3.6-35B-A3B-PARO-MTP-BF16 / MTP batched verifier skip-current proposer restore (M12 loop iter 15) on gfx1151: skipped redundant `NativeMtpChainProposer.restore_state()` in the proposal-update harness when the current proposer state already equals the needed snapshot (`accepted >= active_budget - 1`). Multiloop verify command, B=3, `chain_attn_mode=batched`, 32 decode tokens: cycle cost **3.643 → 2.826 AR-token equivalents** (−22.4%) vs previous kept iter and **5.544 → 2.826** (−49.0%) vs loop baseline, exact-AR-match preserved. `performance_claim=false`; low-confidence single run because cycle wall was not lower than iter 10; target remains `C_3 <= 2.0`; `benchmarks/results/2026-05-21-hipengine-mtp-m12-batched-skip-current-restore.json`.
