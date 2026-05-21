@@ -22216,3 +22216,20 @@ Validation:
   `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_review_512_128.json`.
 
 Tuning note: the remaining real copy overhead is still the FP32->BF16 Q/K staging before AOTriton. The next safe way to remove it is a dedicated AOTriton-prefill head-RMSNorm/RoPE variant that writes BF16 Q/K for AOTriton while still preserving the FP32 K needed by the current KV cache writer. That is a larger math-kernel change and should get its own CPU/reference fixture before landing.
+
+## 2026-05-21 Long-context preflight: 32K/128 and 128K/128 blocked by current GGUF memory plan
+
+Before launching 32K/128 or 128K/128 runs, built a static allocation estimate from the current `Qwen35GGUFResidentSession`, `_FullStackScratch`, and `_GGUFFullAttentionPrefillScratch` allocation formulas, calibrated against measured resident allocation from the accepted/review runs:
+
+- 512/128 observed resident allocation: `21.343853 GiB`; estimate matches at `21.343853 GiB`.
+- 4K/128 observed resident allocation: `22.584311 GiB`; estimate is `22.582602 GiB`.
+
+Preflight estimates for the accepted safe-mode command shape on the local 24 GiB gfx1100 card:
+
+- **32K/128** (`rounded_max_positions=33024`): estimated resident allocation **`32.506 GiB`**, which is **`+8.522 GiB` over** the 23.984 GiB device total. Primary blocker is unchunked `_GGUFFullAttentionPrefillScratch`, which scales all transient row buffers to max sequence length and is estimated at `10.536 GiB` by itself.
+- **128K/128** (`rounded_max_positions=131328`): estimated resident allocation **`66.711 GiB`**, **`+42.727 GiB` over** device total. Even with chunked prefill, dense resident full-attention KV/state plus scratch is likely too tight for W7900 without KV compression/eviction and/or much more aggressive scratch lifetime reduction.
+
+Did not launch the real benchmark commands because they would OOM after weight materialization and risk disturbing the shared GPU. Saved blocked preflight artifact:
+`benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-preflight-blocked.json`.
+
+Next implication: 32K/128 needs GGUF chunked bulk prefill before a real run. 128K/128 likely needs chunked prefill plus KV compression/eviction or a larger-memory card. Decode work can proceed after either accepting this long-context memory blocker or prioritizing the chunked-prefill memory fix.
