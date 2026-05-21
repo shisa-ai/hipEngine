@@ -22233,3 +22233,19 @@ Did not launch the real benchmark commands because they would OOM after weight m
 `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-preflight-blocked.json`.
 
 Next implication: 32K/128 needs GGUF chunked bulk prefill before a real run. 128K/128 likely needs chunked prefill plus KV compression/eviction or a larger-memory card. Decode work can proceed after either accepting this long-context memory blocker or prioritizing the chunked-prefill memory fix.
+
+## 2026-05-21 Task #15 follow-up: paged-KV write launch-handle audit
+
+Re-opened the GGUF prefill copy/launch-overhead audit and found one additional safe near-term cleanup missed in the first pass: the paged-KV write wrapper still resolved/loaded `qwen35_paged_kv_write.so` implicitly on hot full-attention prefill/decode calls, while AOTriton, paged-attn/gate, and cast libraries were already cached on the runner.
+
+Change:
+- Added `Qwen35GGUFFullStackRunner._paged_kv_write_library()` and threaded `compiler_version`/`require_cached_build` into `build_qwen35_paged_kv_write`.
+- Passed the cached handle into `qwen35_write_paged_kv_mixed_value_bf16_prompt_spans` (bulk full-attention prefill) and `qwen35_write_paged_kv_mixed_value_bf16_spans` (decode KV append).
+- No math/data-layout change: this only removes repeated wrapper-level build/cache lookup and `ctypes.CDLL` work.
+
+Validation:
+- `python3 -m compileall hipengine/runtime/qwen35_gguf_runner.py` -> pass.
+- `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_full_attention_gpu.py -q -s` -> 2 pass.
+- `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_full_attention_gpu.py -q` -> 3 pass.
+
+Remaining copy opportunities are unchanged from the prior audit: the FP32->BF16 Q/K staging and BF16 attention gate launch are real work. Removing either safely requires a dedicated math-kernel change (head-RMSNorm/RoPE writing AOTriton-ready BF16 Q/K while preserving FP32/BF16 KV-cache semantics, or a deeper AOTriton+gate fusion) and should get a targeted correctness fixture before performance acceptance.

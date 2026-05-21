@@ -30,6 +30,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
+    build_qwen35_paged_kv_write,
     qwen35_write_paged_kv_mixed_value_bf16_prompt_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
 )
@@ -644,6 +645,19 @@ class Qwen35GGUFFullStackRunner:
             self._cast_library_handle = library
         return library
 
+    def _paged_kv_write_library(self):
+        """Return the cached paged-KV write shim handle."""
+
+        library = getattr(self, "_paged_kv_write_library_handle", None)
+        if library is None:
+            library = build_qwen35_paged_kv_write(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+            self._paged_kv_write_library_handle = library
+        return library
+
     def _gdn_prefill_plan(self) -> _GGUFGDNPrefillPlan:
         """Return the cached qwen35 GGUF GDN prefill plan.
 
@@ -1038,6 +1052,7 @@ class Qwen35GGUFFullStackRunner:
         runtime = self.runtime or get_hip_runtime()
         rows = scratch.rows
         cast_library = self._cast_library()
+        kv_write_library = self._paged_kv_write_library()
         gguf_rmsnorm_bf16_f32_weight(
             hidden_ptr,
             layer.weight("attn_norm").allocation().tensor.ptr,
@@ -1155,6 +1170,7 @@ class Qwen35GGUFFullStackRunner:
             cfg.head_count_kv,
             cfg.key_length,
             stream=stream,
+            library=kv_write_library,
             runtime=runtime,
         )
         threshold = int(PrefillConfig().attn_aotriton_min_tokens)
@@ -1643,6 +1659,7 @@ class Qwen35GGUFFullStackRunner:
         cfg = self.weights.config
         runtime = self.runtime or get_hip_runtime()
         cast_library = self._cast_library()
+        kv_write_library = self._paged_kv_write_library()
         if int(scratch.position_host[0]) != int(position):
             scratch.set_full_attention_position(position, runtime)
         gguf_rmsnorm_bf16_f32_weight(
@@ -1762,6 +1779,7 @@ class Qwen35GGUFFullStackRunner:
             cfg.head_count_kv,
             cfg.key_length,
             stream=stream,
+            library=kv_write_library,
             runtime=runtime,
         )
         qwen35_paged_full_attn_decode_context_bf16_spans(
