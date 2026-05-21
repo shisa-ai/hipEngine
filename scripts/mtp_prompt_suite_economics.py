@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+"""Run hipEngine MTP verifier economics over the llama.cpp MTP prompt suite.
+
+The prompt texts are adapted from am17an's ad-hoc ``mtp-bench.py`` gist used
+in llama.cpp MTP PR discussions.  Unlike the original OpenAI-compatible server
+bench, this wrapper tokenizes each prompt for the local hipEngine model and
+invokes ``scripts/mtp_verifier_economics.py`` per prompt so we can compare MTP
+verifier economics across a broader prompt mix.
+
+This is a diagnostic harness only: it does not touch runtime hot paths and its
+JSON output always carries ``performance_claim=false``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import statistics
+import subprocess
+import sys
+import time
+from datetime import date
+from pathlib import Path
+from typing import Any, Iterable
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_MODEL = Path("/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16")
+DEFAULT_PROMPTS = REPO_ROOT / "benchmarks" / "fixtures" / "llamacpp_mtp_bench_prompts.json"
+DEFAULT_RAW_ROOT = Path("/tmp/hipengine-mtp-llamacpp-prompt-suite-economics")
+
+SUMMARY_FIELDS = (
+    "cycle_cost_ar_tokens_mean",
+    "observed_cycle_speedup_vs_ar_mean",
+    "actual_decode_speedup_vs_ar_mean",
+    "avg_visible_tokens_per_cycle_mean",
+    "avg_accepted_per_cycle_mean",
+    "acceptance_rate_mean",
+    "cycle_wall_ms_per_cycle_mean",
+    "verify_ms_per_cycle_mean",
+    "proposal_update_ms_per_cycle_mean",
+    "ar_decode_ms_per_token_mean",
+)
+
+
+def _mean(values: Iterable[float]) -> float | None:
+    vals = [float(v) for v in values]
+    return statistics.fmean(vals) if vals else None
+
+
+def _std(values: Iterable[float]) -> float | None:
+    vals = [float(v) for v in values]
+    if len(vals) < 2:
+        return 0.0 if vals else None
+    return statistics.stdev(vals)
+
+
+def _split_csv(value: str | None) -> list[str]:
+    if value is None:
+        return []
+    return [part.strip() for part in str(value).split(",") if part.strip()]
+
+
+def _safe_name(name: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in name)
+
+
+def _load_prompt_suite(path: Path) -> dict[str, Any]:
+    suite = json.loads(path.read_text(encoding="utf-8"))
+    prompts = suite.get("prompts") or []
+    if not isinstance(prompts, list) or not prompts:
+        raise ValueError(f"{path} contains no prompts")
+    names: set[str] = set()
+    for prompt in prompts:
+        name = str(prompt.get("name") or "")
+        text = str(prompt.get("prompt") or "")
+        if not name or not text:
+            raise ValueError(f"invalid prompt entry in {path}: {prompt!r}")
+        if name in names:
+            raise ValueError(f"duplicate prompt name in {path}: {name}")
+        names.add(name)
+    return suite
+
+
+def _select_prompts(suite: dict[str, Any], *, names_csv: str | None, limit: int | None) -> list[dict[str, str]]:
+    prompts = [{"name": str(p["name"]), "prompt": str(p["prompt"])} for p in suite["prompts"]]
+    names = _split_csv(names_csv)
+    if names:
+        by_name = {p["name"]: p for p in prompts}
+        missing = [name for name in names if name not in by_name]
+        if missing:
+            raise ValueError(f"unknown prompt name(s): {', '.join(missing)}")
+        prompts = [by_name[name] for name in names]
+    if limit is not None:
+        prompts = prompts[: max(0, int(limit))]
+    if not prompts:
+        raise ValueError("prompt selection is empty")
+    return prompts
+
+
+def _load_tokenizer(model: Path) -> Any:
+    try:
+        from tokenizers import Tokenizer
+    except Exception as exc:  # pragma: no cover - optional dependency guard
+        raise RuntimeError("tokenizers is required to encode the prompt suite") from exc
+    tokenizer_path = model / "tokenizer.json"
+    if not tokenizer_path.exists():
+        raise FileNotFoundError(f"tokenizer not found: {tokenizer_path}")
+    return Tokenizer.from_file(str(tokenizer_path))
+
+
+def _encode_prompt(tokenizer: Any, text: str) -> list[int]:
+    ids = [int(x) for x in tokenizer.encode(text).ids]
+    if not ids:
+        raise ValueError("prompt encoded to no tokens")
+    return ids
+
+
+def _economics_command(args: argparse.Namespace, *, prompt_tokens_file: Path, prompt_raw_root: Path, out_path: Path) -> list[str]:
+    cmd = [
+        sys.executable,
+        "scripts/mtp_verifier_economics.py",
+        "--model",
+        str(args.model),
+        "--prompt-tokens-file",
+        str(prompt_tokens_file),
+        "--decode-tokens",
+        str(args.decode_tokens),
+        "--candidate-budgets",
+        str(args.candidate_budgets),
+        "--runs",
+        str(args.runs),
+        "--proposal-impl",
+        str(args.proposal_impl),
+        "--backend",
+        str(args.backend),
+        "--hip-arch",
+        str(args.hip_arch),
+        "--chain-attn-mode",
+        str(args.chain_attn_mode),
+        "--graph-mode",
+        str(args.graph_mode),
+        "--raw-root",
+        str(prompt_raw_root),
+        "--out",
+        str(out_path),
+    ]
+    if args.small_batch_decode_threshold is not None:
+        cmd += ["--small-batch-decode-threshold", str(args.small_batch_decode_threshold)]
+    if args.verify_gpu_accept is not None:
+        cmd += ["--verify-gpu-accept", str(args.verify_gpu_accept)]
+    if args.llama_target_cycle_cost is not None:
+        cmd += ["--llama-target-cycle-cost", str(args.llama_target_cycle_cost)]
+    return cmd
+
+
+def _summary_for_economics(economics: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for budget, payload in sorted((economics.get("by_budget") or {}).items(), key=lambda item: int(item[0])):
+        aggregate = payload.get("aggregate") or {}
+        out[str(budget)] = {
+            "all_exact_ar_match": bool(aggregate.get("all_exact_ar_match")),
+            **{field: aggregate.get(field) for field in SUMMARY_FIELDS},
+            "accepted_lengths_by_run": aggregate.get("accepted_lengths_by_run"),
+            "active_budgets_by_run": aggregate.get("active_budgets_by_run"),
+        }
+    return out
+
+
+def _aggregate_across_prompts(results: list[dict[str, Any]]) -> dict[str, Any]:
+    budgets = sorted({budget for result in results for budget in result["by_budget"].keys()}, key=int)
+    by_budget: dict[str, Any] = {}
+    for budget in budgets:
+        rows = [result["by_budget"][budget] for result in results if budget in result["by_budget"]]
+        summary: dict[str, Any] = {
+            "prompts": len(rows),
+            "all_exact_ar_match": all(bool(row.get("all_exact_ar_match")) for row in rows),
+        }
+        for field in SUMMARY_FIELDS:
+            vals = [row[field] for row in rows if row.get(field) is not None]
+            summary[f"{field}_across_prompts_mean"] = _mean(vals)
+            summary[f"{field}_across_prompts_std"] = _std(vals)
+        by_budget[budget] = summary
+    return by_budget
+
+
+def _run_prompt(args: argparse.Namespace, *, prompt: dict[str, str], tokenizer: Any) -> dict[str, Any]:
+    prompt_name = str(prompt["name"])
+    prompt_dir = args.raw_root / _safe_name(prompt_name)
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    token_ids = _encode_prompt(tokenizer, prompt["prompt"])
+    prompt_tokens_file = prompt_dir / "prompt-tokens.txt"
+    prompt_tokens_file.write_text(",".join(str(token) for token in token_ids), encoding="utf-8")
+    prompt_text_file = prompt_dir / "prompt.txt"
+    prompt_text_file.write_text(prompt["prompt"], encoding="utf-8")
+    economics_out = prompt_dir / "economics.json"
+    economics_log = prompt_dir / "economics.log"
+    cmd = _economics_command(args, prompt_tokens_file=prompt_tokens_file, prompt_raw_root=prompt_dir / "raw", out_path=economics_out)
+
+    result: dict[str, Any] = {
+        "name": prompt_name,
+        "prompt_chars": len(prompt["prompt"]),
+        "prompt_tokens": len(token_ids),
+        "prompt_tokens_file": str(prompt_tokens_file),
+        "prompt_text_file": str(prompt_text_file),
+        "economics_json": str(economics_out),
+        "economics_log": str(economics_log),
+        "command": " ".join(cmd),
+    }
+    if args.dry_run:
+        result["dry_run"] = True
+        result["by_budget"] = {}
+        print(f"[dry-run] {prompt_name}: prompt_tokens={len(token_ids)}")
+        return result
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REPO_ROOT}:{env.get('PYTHONPATH', '')}"
+    started = time.perf_counter()
+    with economics_log.open("w", encoding="utf-8") as log_file:
+        completed = subprocess.run(cmd, cwd=REPO_ROOT, env=env, text=True, stdout=log_file, stderr=subprocess.STDOUT)
+    result["subprocess_wall_seconds"] = time.perf_counter() - started
+    if completed.returncode != 0:
+        tail = economics_log.read_text(encoding="utf-8", errors="replace").splitlines()[-80:]
+        raise RuntimeError(
+            f"economics failed for prompt={prompt_name!r} with exit {completed.returncode}; tail of {economics_log}:\n"
+            + "\n".join(tail)
+        )
+    economics = json.loads(economics_out.read_text(encoding="utf-8"))
+    result["by_budget"] = _summary_for_economics(economics)
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--prompts-file", type=Path, default=DEFAULT_PROMPTS)
+    parser.add_argument("--prompt-names", help="Comma-separated prompt names to run; default runs the full suite")
+    parser.add_argument("--limit", type=int, help="Run only the first N selected prompts")
+    parser.add_argument("--list-prompts", action="store_true", help="List prompt names and exit")
+    parser.add_argument("--decode-tokens", type=int, default=192)
+    parser.add_argument("--candidate-budgets", default="3")
+    parser.add_argument("--runs", type=int, default=1)
+    parser.add_argument("--proposal-impl", choices=("persistent_device", "persistent_device_b1", "reload_d2h"), default="persistent_device")
+    parser.add_argument("--backend", default="hip_gfx1151")
+    parser.add_argument("--hip-arch", default="gfx1151")
+    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched"), default="batched")
+    parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
+    parser.add_argument("--small-batch-decode-threshold", type=int, default=7)
+    parser.add_argument("--verify-gpu-accept", default=None)
+    parser.add_argument("--llama-target-cycle-cost", type=float, default=2.0)
+    parser.add_argument("--raw-root", type=Path, default=DEFAULT_RAW_ROOT)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=REPO_ROOT / "benchmarks" / "results" / f"{date.today().isoformat()}-hipengine-mtp-llamacpp-prompt-suite-economics.json",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Tokenize prompts and print commands without running GPU economics")
+    args = parser.parse_args()
+
+    suite = _load_prompt_suite(args.prompts_file)
+    prompts = _select_prompts(suite, names_csv=args.prompt_names, limit=args.limit)
+    if args.list_prompts:
+        for prompt in prompts:
+            print(f"{prompt['name']}\t{len(prompt['prompt'])} chars")
+        return 0
+
+    args.raw_root.mkdir(parents=True, exist_ok=True)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    tokenizer = _load_tokenizer(args.model)
+
+    results: list[dict[str, Any]] = []
+    for idx, prompt in enumerate(prompts, 1):
+        print(f"[prompt-suite] {idx}/{len(prompts)} {prompt['name']}", flush=True)
+        result = _run_prompt(args, prompt=prompt, tokenizer=tokenizer)
+        results.append(result)
+        for budget, summary in (result.get("by_budget") or {}).items():
+            c3 = summary.get("cycle_cost_ar_tokens_mean")
+            visible = summary.get("avg_visible_tokens_per_cycle_mean")
+            exact = summary.get("all_exact_ar_match")
+            print(f"  B={budget} exact={exact} C={c3:.3f} visible/cycle={visible:.3f}", flush=True)
+
+    artifact = {
+        "schema": 1,
+        "status": "diagnostic",
+        "performance_claim": False,
+        "date": date.today().isoformat(),
+        "purpose": "hipEngine MTP verifier economics over the llama.cpp mtp-bench prompt suite.",
+        "source_prompt_suite": suite.get("source"),
+        "prompts_file": str(args.prompts_file),
+        "model": str(args.model),
+        "tokenization": "raw prompt text encoded with model tokenizer.json",
+        "decode_tokens": int(args.decode_tokens),
+        "candidate_budgets": [int(x) for x in _split_csv(args.candidate_budgets)],
+        "runs_per_prompt": int(args.runs),
+        "proposal_impl": str(args.proposal_impl),
+        "backend": str(args.backend),
+        "hip_arch": str(args.hip_arch),
+        "chain_attn_mode": str(args.chain_attn_mode),
+        "graph_mode": str(args.graph_mode),
+        "small_batch_decode_threshold": int(args.small_batch_decode_threshold) if args.small_batch_decode_threshold is not None else None,
+        "verify_gpu_accept": args.verify_gpu_accept,
+        "dry_run": bool(args.dry_run),
+        "results": results,
+        "aggregate_by_budget": {} if args.dry_run else _aggregate_across_prompts(results),
+        "go_no_go_rule": {
+            "beats_ar": "avg_visible_tokens_per_verify_cycle > cycle_cost_ar_tokens",
+            "hits_1p5x": "avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens >= 1.5",
+            "final_confirmation": "Use >=3 runs per prompt/budget before promoting any performance claim.",
+        },
+    }
+    args.out.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+    print(f"Wrote {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

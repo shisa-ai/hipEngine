@@ -21224,3 +21224,34 @@ measured AR baseline denominator was slower in this run, and
 
 Artifact:
 `benchmarks/results/2026-05-21-hipengine-mtp-m12-batched-skip-current-restore.json`
+
+## 2026-05-21 — Adopt llama.cpp MTP prompt-suite economics harness
+
+Added a diagnostic prompt-suite harness so MTP verifier economics can be tested
+on the same prompt mix used by llama.cpp MTP PR discussions instead of only the
+single quicksort fixture.
+
+Source/evidence:
+
+- Prompt bench gist: `https://gist.github.com/am17an/228edfb84ed082aa88e3865d6fa27090`
+- Raw script revision: `https://gist.githubusercontent.com/am17an/228edfb84ed082aa88e3865d6fa27090/raw/0bee1e2b88904e62670d0df1cf0991883b0815d7/mtp-bench.py`
+- llama.cpp PR evidence: `https://github.com/ggml-org/llama.cpp/pull/22673#issuecomment-4380579942`
+
+Files added:
+
+- `benchmarks/fixtures/llamacpp_mtp_bench_prompts.json`: the 9 prompt texts
+  from the ad-hoc llama.cpp `mtp-bench.py` suite plus provenance metadata.
+- `scripts/mtp_prompt_suite_economics.py`: tokenizes each prompt with the local
+  model tokenizer, runs `scripts/mtp_verifier_economics.py` per prompt, stores
+  per-prompt raw outputs/logs, and writes an aggregate diagnostic artifact with
+  `performance_claim=false`.
+
+Validation commands:
+
+- `python3 -m json.tool benchmarks/fixtures/llamacpp_mtp_bench_prompts.json`
+- `python3 -m py_compile scripts/mtp_prompt_suite_economics.py`
+- `python3 scripts/mtp_prompt_suite_economics.py --list-prompts`
+- `python3 scripts/mtp_prompt_suite_economics.py --dry-run --out /tmp/hipengine-mtp-prompt-suite-validate.json --raw-root /tmp/hipengine-mtp-prompt-suite-validate`
+- JSON guard on `/tmp/hipengine-mtp-prompt-suite-validate.json`: `performance_claim=false`, `dry_run=true`, 9 prompts, all prompt token counts positive (`[20,30,17,52,14,15,11,50,721]`).
+
+This is instrumentation only; no runtime hot path or kernel changed.
