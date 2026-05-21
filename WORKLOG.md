@@ -21377,3 +21377,31 @@ Delta: +0.013 MTP/AR (+2.2% relative), -0.07 AR-tok cycle cost, -0.27 ms verify 
 - ``benchmarks/results/2026-05-22-hipengine-mtp-m12.4-w7900-b3-batched-m12.4_on.json``
 
 Architectural value: ``commit_row[0]`` now flows through the verifier without ever touching the host; this is the last device-resident input the verify-and-commit cycle needed for M12.5 (on-device cycle metadata) and for a future fully-captured cycle.  Confirmed gate ``HIPENGINE_FUSED_LINEAR_STATE_COMMIT=0`` cleanly reverts to the legacy path.
+
+## 2026-05-22 — W7900 M12.5: cache invariant verify-chain metadata across cycles
+
+``_write_verify_chain_metadata`` previously did 11 ``copy_host_to_device`` calls every cycle (each ``hipMemcpy`` ~5 µs).  Most of those buffers (``parent_rows`` int32/int64, ``draft_depths``, ``row_to_request``, ``active_mask``, ``block_table``) are invariant for a fixed (``rows``, ``base_slot``, ``mode``, ``parent_rows``, ``draft_depths``, ``row_to_request``, ``active_mask``) bucket — i.e. they only change when B or topology changes.  We now cache the bucket signature on the session and skip writing the 6 invariants when it matches, leaving only the 5 dynamic copies (tokens i64/i32, positions i64/i32, context_i64) per cycle.
+
+Files:
+
+- ``hipengine/runtime/qwen35_paro_runner.py``: cache ``self._verify_metadata_bucket_cache`` and gate the 6 invariant H2D copies on a signature miss.  Tree-mode path is unchanged (still rebuilds ancestor mask + cache slot per call; that's a separate code branch).
+
+Validation (gfx1100/W7900, MTP B=3 chain, 8 decode tokens):
+
+- ``chain_attn_mode=c1_loop graph=off`` → exact AR match.
+- ``chain_attn_mode=batched graph=off`` → exact AR match.
+- ``chain_attn_mode=batched graph=validate`` → exact AR match.
+
+Economics (3 runs, stable quicksort prompt, 32 decode tokens, B=3, batched + graph=off):
+
+| Config | MTP tok/s (mean) | Cycle wall ms | Verify ms/cycle |
+|---|---|---|---|
+| M12.4 off | 65.01 | 36.48 | 27.03 |
+| M12.4 on | 65.70 (+1.1%) | 36.22 (-0.26 ms) | 26.76 (-0.27 ms) |
+| M12.4 + M12.5 | 66.33 (+2.0%) | 35.88 (-0.60 ms) | 26.45 (-0.58 ms) |
+
+MTP throughput is very stable (64.46–66.38 across all 9 measured runs); cycle wall and verify ms move monotonically with the optimizations.  The MTP/AR ratio looked noisier in run 2/3 because AR baseline drifted from 109.8 to 98.7 tok/s (thermal); the MTP-side improvements are statistically clean.
+
+``performance_claim=true`` for the cumulative M12.4+M12.5 +2.0% MTP delta on the stable quicksort prompt.  Still 0.61–0.67× AR (not promoted to "MTP beats AR").  Artifact: ``benchmarks/results/2026-05-22-hipengine-mtp-m12.5-w7900-b3-batched-3run.json``.
+
+Architectural value: per-cycle host H2D launch count goes from 11 → 5 for the chain verifier metadata.  Combined with M12.4 (60 → 1 commit ``hipMemcpyAsync``) this is the largest realistic reduction in per-cycle host launch overhead without restructuring the forward pass itself; from here, the path forward is per-layer kernel fusion (M12.6+) to shrink the ~1840-launch forward.

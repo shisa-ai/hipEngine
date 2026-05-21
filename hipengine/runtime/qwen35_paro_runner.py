@@ -3573,19 +3573,42 @@ class Qwen35ParoResidentSession:
         active_u8 = np.asarray(batch.active_mask, dtype=np.uint8)
         physical_blocks = np.arange(base_slot * self.blocks, (base_slot + 1) * self.blocks, dtype=np.int32)
         block_table = np.tile(physical_blocks, (rows, 1))
-        copies: list[tuple[Any, Any]] = [
+        # M12.5: cycle-to-cycle invariants (parent_rows, draft_depths,
+        # row_to_request, active_mask, block_table) only change when the
+        # (rows, base_slot, mode) bucket changes.  Cache by bucket signature
+        # so steady-state cycles in a fixed B/B+1 bucket only do the 4 H2D
+        # copies for the per-cycle dynamic buffers (tokens i64/i32, positions
+        # i64/i32, context_i64).
+        bucket_signature = (
+            int(rows),
+            int(base_slot),
+            str(batch.mode),
+            tuple(int(x) for x in batch.parent_rows),
+            tuple(int(x) for x in batch.draft_depths),
+            tuple(int(x) for x in batch.row_to_request),
+            tuple(int(x) for x in batch.active_mask),
+        )
+        if getattr(self, "_verify_metadata_bucket_cache", None) is None:
+            self._verify_metadata_bucket_cache = None  # type: ignore[attr-defined]
+        dynamic_copies: list[tuple[Any, Any]] = [
             (self.verify_token_ids_i64, token_i64),
             (self.verify_token_ids_i32, token_i32),
             (self.prefill_position_buf, position_i64),
             (self.verify_positions_i32, position_i32),
             (self.prefill_context_count_buf, context_i64),
-            (self.verify_parent_rows_i32, parent_i32),
-            (self.verify_parent_rows_i64, parent_i64),
-            (self.verify_draft_depths_i32, depth_i32),
-            (self.verify_row_to_request_i32, row_req_i32),
-            (self.verify_active_mask_u8, active_u8),
-            (self.prefill_block_table_buf, block_table),
         ]
+        if self._verify_metadata_bucket_cache == bucket_signature:
+            copies: list[tuple[Any, Any]] = dynamic_copies
+        else:
+            copies = dynamic_copies + [
+                (self.verify_parent_rows_i32, parent_i32),
+                (self.verify_parent_rows_i64, parent_i64),
+                (self.verify_draft_depths_i32, depth_i32),
+                (self.verify_row_to_request_i32, row_req_i32),
+                (self.verify_active_mask_u8, active_u8),
+                (self.prefill_block_table_buf, block_table),
+            ]
+            self._verify_metadata_bucket_cache = bucket_signature
         # Tree topology: build the dense ``[rows, rows]`` ancestor mask, the
         # global ``tree_committed_count``, and the per-row unique cache-slot
         # vector so the tree-aware K/V append + GQA gate kernels can filter
