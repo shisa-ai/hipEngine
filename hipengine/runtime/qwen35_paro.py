@@ -5080,13 +5080,14 @@ class Qwen35ParoDecodeState:
 
         gate_qweight = self.tensor(f"{gate_base}.qweight_pack8_decode")
         up_qweight = self.tensor(f"{up_base}.qweight_pack8_decode")
-        # M7.C investigation (2026-05-21): this site is safe to bump to the
-        # small-batch threshold (``shared_up`` is its own (tokens, 2*intermediate)
-        # buffer with no view aliasing), but the BF16 verifier path doesn't exercise
-        # this fp16 helper, so the change is a no-op for the current model and
-        # introduces cache-pressure noise on the downstream MoE kernels.  Kept the
-        # legacy ``tokens == 1`` gate; tracked under M7.C.6.
-        if tokens == 1:
+        layer_type = self.config.layer_types[self.layer_weights.layer_id]
+        # M12: the all-layer threshold bump regressed because it perturbed the
+        # 30 linear-attention layers.  Batched verifier mode adds shared-expert
+        # prefill overhead mainly in the 10 full-attention layers that c1_loop
+        # used to run as tokens=1.  This site has no view aliasing, so use GEMV
+        # only for tokens==1 or small full-attention verifier batches.
+        small_batch = tokens == 1 or (layer_type == "full_attention" and tokens <= _small_batch_decode_threshold())
+        if small_batch:
             gemv_awq_dual_pack8_transposed_fp16(
                 scratch.shared_gate_input.ptr,
                 scratch.shared_up_input.ptr,
@@ -5153,7 +5154,7 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
 
-        if tokens != 1:
+        if not small_batch:
             paro_rotate1_fp16(
                 scratch.shared_intermediate.ptr,
                 scratch.shared_down_input.ptr,
@@ -5169,7 +5170,7 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
-        if tokens == 1:
+        if small_batch:
             gemv_awq_pack8_transposed_fp16(
                 scratch.shared_down_input.ptr,
                 down_qweight.ptr,

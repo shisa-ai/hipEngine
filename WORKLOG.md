@@ -21118,3 +21118,42 @@ Rejected before this kept iteration:
 
 The loop target remains C3 <= 2.0. Next work should attack target-forward kernel
 cost directly (GDN/LM-head/MoE/full-attn), not CPU accept control-plane overhead.
+
+## 2026-05-21 — m12-batched loop iteration 8 kept: full-attn shared-expert GEMV
+
+Active multiloop: `m12-batched/run-20260521-060831`.
+
+Retained a batched-mode-specific W4 shared-expert routing improvement. The prior
+all-layer small-batch GEMV bump regressed because it perturbed the 30
+linear-attention layers. This kept version gates the safe GEMV path to only:
+
+- `tokens == 1`, or
+- `layer_type == "full_attention" and tokens <= _small_batch_decode_threshold()`
+
+Linear-attention layers keep the legacy shared-expert prefill path.
+
+Metric command (B=3, batched, graph off, 32 decode tokens):
+
+- Previous kept C3: **4.0828** AR-token equivalents
+- New C3: **3.7774** AR-token equivalents
+- Delta vs previous: **-0.3054** (**-7.5%**)
+- Delta vs loop baseline 5.5444: **-31.9%**
+- exact_ar_match: true
+
+Validation:
+
+- `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_paro.py scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_economics.py`
+- configured guard: exact AR true, mode=batched, finite positive C3
+
+Artifact:
+`benchmarks/results/2026-05-21-hipengine-mtp-m12-batched-fullattn-shared-gemv.json`
+
+Rejected between kept iterations:
+
+- Resident FP16 lm-head argmax: failed exact AR because the AR baseline uses the
+  quantized W8A16 lm-head path; unquantized FP16 changes top1.
+- LM-head thread default 128→256: exact but regressed C3 to 6.0845.
+- Proposer diagnostic D2H elision: exact but no metric improvement / regressed
+  to 5.5212.
+
+Loop target remains C3 <= 2.0.

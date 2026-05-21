@@ -1,0 +1,30 @@
+{
+  "avg_visible_tokens_per_cycle": 2.3846153846153846,
+  "candidate_budget": 3,
+  "chain_attn_mode": "batched",
+  "change": "Use shared_expert_paro_w4_fp16 small-batch GEMV only for full_attention layers at tokens<=HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD; keep linear_attention layers on legacy prefill path.",
+  "cycle_wall_ms_per_cycle": 82.61132346153846,
+  "date": "2026-05-21",
+  "decode_tokens": 32,
+  "delta_cycle_cost_ar_tokens": -0.30541819663295255,
+  "delta_pct": -7.480613835335193,
+  "direction": "lower",
+  "exact_ar_match": true,
+  "lane": "m12-batched/run-20260521-060831",
+  "metric": "B3 batched cycle_cost_ar_tokens",
+  "mtp_over_ar": 0.637742066130605,
+  "new_cycle_cost_ar_tokens": 3.7773777256787784,
+  "overall_baseline_cycle_cost_ar_tokens": 5.544363636485812,
+  "overall_delta_pct": -31.869949856445633,
+  "performance_claim": false,
+  "phase": "M12 optimize iteration 8",
+  "previous_cycle_cost_ar_tokens": 4.082795922311731,
+  "raw_artifact": "/tmp/hipengine-multiloop-m12-batched-c3.json",
+  "runs": 1,
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "validation": {
+    "guard": "py_compile passed; exact_ar_match=true for B=3 batched configured metric"
+  },
+  "verify_ms_per_cycle": 59.25167253455864
+}
