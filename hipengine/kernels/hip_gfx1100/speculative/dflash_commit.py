@@ -14,6 +14,7 @@ from hipengine.speculative.interfaces import TargetStateCommitBuffers
 _SOURCE = Path(__file__).with_name("dflash_commit.hip")
 _OUTPUT_NAME = "dflash_commit.so"
 _SYMBOL_CHAIN_I32 = "hipengine_dflash_commit_chain_i32"
+_SYMBOL_LINEAR_PAIR_COMMIT_I32 = "hipengine_linear_state_pair_commit_i32"
 
 
 def plan_dflash_commit_build(
@@ -161,10 +162,75 @@ def dflash_commit_chain_i32(
         runtime.check(int(err))
 
 
+def linear_state_pair_commit_i32(
+    src_conv_table: int,
+    dst_conv_table: int,
+    conv_row_nbytes: int,
+    src_recurrent_table: int,
+    dst_recurrent_table: int,
+    recurrent_row_nbytes: int,
+    commit_row: int,
+    n_layers: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """M12.4: commit selected linear-attention state rows for all layers in one launch.
+
+    Replaces the ``2*n_layers`` ``hipMemcpyAsync`` calls in
+    ``Qwen35ParoResidentSession._commit_bulk_linear_states``.  Both source and
+    destination per-layer pointer tables live on the device (each is a
+    contiguous ``uint64[n_layers]`` array of base addresses).  Each linear-
+    attention layer owns its own workspace, so source bases are not uniform
+    across layers; the host refreshes the source table before each launch.
+    ``commit_row`` is the device pointer to ``verify_commit_rows[0]`` written
+    by ``dflash_accept_chain_i32``.
+    """
+
+    if n_layers <= 0:
+        raise ValueError("n_layers must be positive")
+    if conv_row_nbytes <= 0 and recurrent_row_nbytes <= 0:
+        raise ValueError("at least one of conv_row_nbytes / recurrent_row_nbytes must be positive")
+    library = library or build_dflash_commit(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_LINEAR_PAIR_COMMIT_I32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(src_conv_table),
+        ctypes.c_void_p(dst_conv_table),
+        ctypes.c_int64(conv_row_nbytes),
+        ctypes.c_void_p(src_recurrent_table),
+        ctypes.c_void_p(dst_recurrent_table),
+        ctypes.c_int64(recurrent_row_nbytes),
+        ctypes.c_void_p(commit_row),
+        ctypes.c_int64(n_layers),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def register_dflash_commit_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dflash_commit_chain", "w4_paro", "i32"),
         dflash_commit_chain_i32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_state_pair_commit", "w4_paro", "i32"),
+        linear_state_pair_commit_i32,
         replace=replace,
     )
 

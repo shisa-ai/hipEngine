@@ -9,6 +9,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
 from hipengine.kernels.hip_gfx1100.speculative.dflash_commit import (
     build_dflash_commit,
     dflash_commit_chain_i32,
+    linear_state_pair_commit_i32,
     plan_dflash_commit_build,
     register_dflash_commit_kernels,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "dflash_concat_rows_bf16",
     "dflash_concat_rows_f32",
     "dflash_commit_chain_i32",
+    "linear_state_pair_commit_i32",
     "dflash_dense_bf16_to_bf16",
     "dflash_dense_bf16_to_f32",
     "dflash_gqa_attention_f32_bf16",

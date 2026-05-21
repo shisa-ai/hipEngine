@@ -1,0 +1,1776 @@
+{
+  "backend": "hip_gfx1100",
+  "by_budget": {
+    "3": {
+      "aggregate": {
+        "acceptance_rate_mean": 0.4615384615384615,
+        "acceptance_rate_std": 0.0,
+        "accepted_lengths_by_run": [
+          [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ]
+        ],
+        "active_budgets_by_run": [
+          [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ]
+        ],
+        "actual_decode_speedup_vs_ar_mean": 0.6066583663151471,
+        "actual_decode_speedup_vs_ar_std": 0.015002777423013954,
+        "all_exact_ar_match": true,
+        "ar_decode_ms_per_token_mean": 9.232652375051961,
+        "ar_decode_ms_per_token_std": 0.1764030081299542,
+        "ar_decode_tok_s_mean": 108.33747375496496,
+        "ar_decode_tok_s_std": 2.0598812228074435,
+        "avg_accepted_per_cycle_mean": 1.3846153846153844,
+        "avg_accepted_per_cycle_std": 0.0,
+        "avg_active_budget_mean": 3.0,
+        "avg_active_budget_std": 0.0,
+        "avg_visible_tokens_per_cycle_mean": 2.3846153846153846,
+        "avg_visible_tokens_per_cycle_std": 0.0,
+        "cycle_cost_ar_tokens_mean": 3.924628667512685,
+        "cycle_cost_ar_tokens_std": 0.09938995056684914,
+        "cycle_wall_ms_per_cycle_mean": 36.22330176923077,
+        "cycle_wall_ms_per_cycle_std": 0.2761348672427166,
+        "llama_like_gap_multiplier_mean": 1.9623143337563425,
+        "llama_like_gap_multiplier_std": 0.04969497528342457,
+        "mtp_decode_tok_s_mean": 65.70353915211943,
+        "mtp_decode_tok_s_std": 0.4563492971956444,
+        "observed_cycle_speedup_vs_ar_mean": 0.607862158933569,
+        "observed_cycle_speedup_vs_ar_std": 0.01536337649525064,
+        "perfect_accept_speedup_ceiling_vs_ar_mean": 1.0196397504692125,
+        "perfect_accept_speedup_ceiling_vs_ar_std": 0.025770825088807632,
+        "proposal_update_cost_ar_tokens_mean": 0.3923760489066899,
+        "proposal_update_cost_ar_tokens_std": 0.0063611103795247976,
+        "proposal_update_ms_per_cycle_mean": 3.6219236922662303,
+        "proposal_update_ms_per_cycle_std": 0.010312598534993151,
+        "required_acceptance_rate_for_1x_mean": 0.9748762225042283,
+        "required_acceptance_rate_for_1x_std": 0.03312998352228301,
+        "required_avg_accepted_for_1x_mean": 2.924628667512685,
+        "required_avg_accepted_for_1x_std": 0.09938995056684914,
+        "required_avg_visible_tokens_for_1x_mean": 3.924628667512685,
+        "required_avg_visible_tokens_for_1x_std": 0.09938995056684914,
+        "runs": 3,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_mean": 1.5897435897435896,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1p5x_std": 0.0,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_mean": 2.3846153846153846,
+        "target_cycle_cost_ar_tokens_for_observed_accept_1x_std": 0.0,
+        "verify_cost_ar_tokens_mean": 2.8997419570693985,
+        "verify_cost_ar_tokens_std": 0.07998917280579602,
+        "verify_ms_per_cycle_mean": 26.763161896945885,
+        "verify_ms_per_cycle_std": 0.2654909762931165
+      },
+      "budget": 3,
+      "runs": [
+        {
+          "acceptance_rate": 0.46153846153846156,
+          "accepted_lengths": [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          "active_budgets": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "actual_decode_speedup_vs_ar": 0.6214410932088293,
+          "ar_decode_ms_per_token": 9.422870281241558,
+          "ar_decode_tok_s": 106.12477622564066,
+          "avg_accepted_per_cycle": 1.3846153846153846,
+          "avg_active_budget": 3.0,
+          "avg_visible_tokens_per_cycle": 2.3846153846153846,
+          "candidate_budget": 3,
+          "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off --json /tmp/hipengine-mtp-economics-m12.4_on-batched-3run/mtp-economics-B3-run1.json",
+          "cycle_cost_ar_tokens": 3.8283986154703133,
+          "cycle_wall_ms_per_cycle": 36.07450353846154,
+          "cycle_wall_ms_per_cycle_values": [
+            65.000453,
+            36.096509999999995,
+            33.08125,
+            33.180901,
+            33.001859,
+            33.303443,
+            33.306303,
+            33.028319,
+            35.956679,
+            33.182731,
+            33.216832000000004,
+            33.219291999999996,
+            33.393974
+          ],
+          "cycles": 13,
+          "decode_tokens": 32,
+          "exact_ar_match": true,
+          "llama_like_cycle_cost_target_ar_tokens": 2.0,
+          "llama_like_gap_multiplier": 1.9141993077351567,
+          "mtp_decode_ms_per_token": 15.162934000045427,
+          "mtp_decode_tok_s": 65.95029695420452,
+          "observed_cycle_speedup_vs_ar": 0.6228754171468213,
+          "perfect_accept_speedup_ceiling_vs_ar": 1.0448232803753132,
+          "proposal_prefill_seconds": 0.25065646800067043,
+          "proposal_trace_sample": [
+            {
+              "accepted": 3,
+              "bonus_token": 478,
+              "committed_tokens": [
+                3841,
+                6646,
+                17145,
+                8
+              ],
+              "cycle": 1,
+              "draft_candidates": [
+                6646,
+                17145,
+                8
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 92,
+              "root_position": 90,
+              "root_token": 3841,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 6646,
+              "committed_tokens": [
+                478,
+                5956,
+                478,
+                3841
+              ],
+              "cycle": 2,
+              "draft_candidates": [
+                5956,
+                478,
+                3841
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 96,
+              "root_position": 94,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 271,
+              "committed_tokens": [
+                6646,
+                26806,
+                8
+              ],
+              "cycle": 3,
+              "draft_candidates": [
+                26806,
+                8,
+                198
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 100,
+              "root_position": 98,
+              "root_token": 6646,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 3535,
+              "committed_tokens": [
+                271
+              ],
+              "cycle": 4,
+              "draft_candidates": [
+                262,
+                460,
+                2047
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 103,
+              "root_position": 101,
+              "root_token": 271,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 19,
+              "committed_tokens": [
+                3535,
+                283,
+                498
+              ],
+              "cycle": 5,
+              "draft_candidates": [
+                283,
+                498,
+                87
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 104,
+              "root_position": 102,
+              "root_token": 3535,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 22,
+              "committed_tokens": [
+                19
+              ],
+              "cycle": 6,
+              "draft_candidates": [
+                348,
+                830,
+                364
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 107,
+              "root_position": 105,
+              "root_token": 19,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 11,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 7,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 108,
+              "root_position": 106,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 24,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 8,
+              "draft_candidates": [
+                220,
+                19,
+                22
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 109,
+              "root_position": 107,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 23,
+              "committed_tokens": [
+                24,
+                20,
+                11,
+                220
+              ],
+              "cycle": 9,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 111,
+              "root_position": 109,
+              "root_token": 24,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 23,
+              "committed_tokens": [
+                23
+              ],
+              "cycle": 10,
+              "draft_candidates": [
+                11,
+                220,
+                16
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 115,
+              "root_position": 113,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 22,
+              "committed_tokens": [
+                23,
+                11,
+                220
+              ],
+              "cycle": 11,
+              "draft_candidates": [
+                11,
+                220,
+                17
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 116,
+              "root_position": 114,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 18,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 12,
+              "draft_candidates": [
+                17,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 119,
+              "root_position": 117,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 17,
+              "committed_tokens": [
+                18,
+                11,
+                220
+              ],
+              "cycle": 13,
+              "draft_candidates": [
+                11,
+                220,
+                23
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 120,
+              "root_position": 118,
+              "root_token": 18,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            }
+          ],
+          "proposal_update_cost_ar_tokens": 0.38547238798303174,
+          "proposal_update_ms_per_cycle": 3.6322563089645254,
+          "required_acceptance_rate_for_1x": 0.9427995384901044,
+          "required_avg_accepted_for_1x": 2.8283986154703133,
+          "required_avg_visible_tokens_for_1x": 3.8283986154703133,
+          "run_idx": 1,
+          "smoke_json": "/tmp/hipengine-mtp-economics-m12.4_on-batched-3run/mtp-economics-B3-run1.json",
+          "smoke_log": "/tmp/hipengine-mtp-economics-m12.4_on-batched-3run/mtp-economics-B3-run1.log",
+          "status": "passed",
+          "subprocess_wall_seconds": 48.58000839000306,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1p5x": 1.5897435897435896,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1x": 2.3846153846153846,
+          "terminal_or_clipped_tokens": 1,
+          "verify_cost_ar_tokens": 2.82356952709505,
+          "verify_ms_per_cycle": 26.60612938388322,
+          "visible_tokens_from_verify_cycles": 31
+        },
+        {
+          "acceptance_rate": 0.46153846153846156,
+          "accepted_lengths": [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          "active_budgets": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "actual_decode_speedup_vs_ar": 0.60708918731989,
+          "ar_decode_ms_per_token": 9.200637656249455,
+          "ar_decode_tok_s": 108.68811895018585,
+          "avg_accepted_per_cycle": 1.3846153846153846,
+          "avg_active_budget": 3.0,
+          "avg_visible_tokens_per_cycle": 2.3846153846153846,
+          "candidate_budget": 3,
+          "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off --json /tmp/hipengine-mtp-economics-m12.4_on-batched-3run/mtp-economics-B3-run2.json",
+          "cycle_cost_ar_tokens": 3.9185847137925336,
+          "cycle_wall_ms_per_cycle": 36.05347807692308,
+          "cycle_wall_ms_per_cycle_values": [
+            65.190572,
+            36.426023,
+            33.25371,
+            32.981727,
+            32.933656,
+            32.97381600000001,
+            33.005447000000004,
+            33.031647,
+            36.17952,
+            33.152569,
+            33.146899,
+            33.166729,
+            33.252900000000004
+          ],
+          "cycles": 13,
+          "decode_tokens": 32,
+          "exact_ar_match": true,
+          "llama_like_cycle_cost_target_ar_tokens": 2.0,
+          "llama_like_gap_multiplier": 1.9592923568962668,
+          "mtp_decode_ms_per_token": 15.155331125015435,
+          "mtp_decode_tok_s": 65.98338180479587,
+          "observed_cycle_speedup_vs_ar": 0.6085399599049311,
+          "perfect_accept_speedup_ceiling_vs_ar": 1.020776706937304,
+          "proposal_prefill_seconds": 0.24965672100370284,
+          "proposal_trace_sample": [
+            {
+              "accepted": 3,
+              "bonus_token": 478,
+              "committed_tokens": [
+                3841,
+                6646,
+                17145,
+                8
+              ],
+              "cycle": 1,
+              "draft_candidates": [
+                6646,
+                17145,
+                8
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 92,
+              "root_position": 90,
+              "root_token": 3841,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 6646,
+              "committed_tokens": [
+                478,
+                5956,
+                478,
+                3841
+              ],
+              "cycle": 2,
+              "draft_candidates": [
+                5956,
+                478,
+                3841
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 96,
+              "root_position": 94,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 271,
+              "committed_tokens": [
+                6646,
+                26806,
+                8
+              ],
+              "cycle": 3,
+              "draft_candidates": [
+                26806,
+                8,
+                198
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 100,
+              "root_position": 98,
+              "root_token": 6646,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 3535,
+              "committed_tokens": [
+                271
+              ],
+              "cycle": 4,
+              "draft_candidates": [
+                262,
+                460,
+                2047
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 103,
+              "root_position": 101,
+              "root_token": 271,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 19,
+              "committed_tokens": [
+                3535,
+                283,
+                498
+              ],
+              "cycle": 5,
+              "draft_candidates": [
+                283,
+                498,
+                87
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 104,
+              "root_position": 102,
+              "root_token": 3535,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 22,
+              "committed_tokens": [
+                19
+              ],
+              "cycle": 6,
+              "draft_candidates": [
+                348,
+                830,
+                364
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 107,
+              "root_position": 105,
+              "root_token": 19,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 11,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 7,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 108,
+              "root_position": 106,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 24,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 8,
+              "draft_candidates": [
+                220,
+                19,
+                22
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 109,
+              "root_position": 107,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 23,
+              "committed_tokens": [
+                24,
+                20,
+                11,
+                220
+              ],
+              "cycle": 9,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 111,
+              "root_position": 109,
+              "root_token": 24,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 23,
+              "committed_tokens": [
+                23
+              ],
+              "cycle": 10,
+              "draft_candidates": [
+                11,
+                220,
+                16
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 115,
+              "root_position": 113,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 22,
+              "committed_tokens": [
+                23,
+                11,
+                220
+              ],
+              "cycle": 11,
+              "draft_candidates": [
+                11,
+                220,
+                17
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 116,
+              "root_position": 114,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 18,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 12,
+              "draft_candidates": [
+                17,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 119,
+              "root_position": 117,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 17,
+              "committed_tokens": [
+                18,
+                11,
+                220
+              ],
+              "cycle": 13,
+              "draft_candidates": [
+                11,
+                220,
+                23
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 120,
+              "root_position": 118,
+              "root_token": 18,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            }
+          ],
+          "proposal_update_cost_ar_tokens": 0.3936557088759324,
+          "proposal_update_ms_per_cycle": 3.6218835386814763,
+          "required_acceptance_rate_for_1x": 0.9728615712641778,
+          "required_avg_accepted_for_1x": 2.9185847137925336,
+          "required_avg_visible_tokens_for_1x": 3.9185847137925336,
+          "run_idx": 2,
+          "smoke_json": "/tmp/hipengine-mtp-economics-m12.4_on-batched-3run/mtp-economics-B3-run2.json",
+          "smoke_log": "/tmp/hipengine-mtp-economics-m12.4_on-batched-3run/mtp-economics-B3-run2.log",
+          "status": "passed",
+          "subprocess_wall_seconds": 48.628995915001724,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1p5x": 1.5897435897435896,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1x": 2.3846153846153846,
+          "terminal_or_clipped_tokens": 1,
+          "verify_cost_ar_tokens": 2.8925889363202373,
+          "verify_ms_per_cycle": 26.61366269155853,
+          "visible_tokens_from_verify_cycles": 31
+        },
+        {
+          "acceptance_rate": 0.46153846153846156,
+          "accepted_lengths": [
+            3,
+            3,
+            2,
+            0,
+            2,
+            0,
+            0,
+            1,
+            3,
+            0,
+            2,
+            0,
+            2
+          ],
+          "active_budgets": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "actual_decode_speedup_vs_ar": 0.5914448184167221,
+          "ar_decode_ms_per_token": 9.074449187664868,
+          "ar_decode_tok_s": 110.19952608906839,
+          "avg_accepted_per_cycle": 1.3846153846153846,
+          "avg_active_budget": 3.0,
+          "avg_visible_tokens_per_cycle": 2.3846153846153846,
+          "candidate_budget": 3,
+          "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-tokens 727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220 --decode-tokens 32 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off --json /tmp/hipengine-mtp-economics-m12.4_on-batched-3run/mtp-economics-B3-run3.json",
+          "cycle_cost_ar_tokens": 4.026902673275208,
+          "cycle_wall_ms_per_cycle": 36.54192369230769,
+          "cycle_wall_ms_per_cycle_values": [
+            69.79139099999999,
+            36.35429,
+            33.693695000000005,
+            32.901264,
+            33.015045,
+            33.014165999999996,
+            33.143677000000004,
+            33.450281,
+            36.294949,
+            33.072236999999994,
+            33.304669000000004,
+            33.669633999999995,
+            33.339710000000004
+          ],
+          "cycles": 13,
+          "decode_tokens": 32,
+          "exact_ar_match": true,
+          "llama_like_cycle_cost_target_ar_tokens": 2.0,
+          "llama_like_gap_multiplier": 2.013451336637604,
+          "mtp_decode_ms_per_token": 15.342850093702507,
+          "mtp_decode_tok_s": 65.17693869735788,
+          "observed_cycle_speedup_vs_ar": 0.5921710997489545,
+          "perfect_accept_speedup_ceiling_vs_ar": 0.9933192640950205,
+          "proposal_prefill_seconds": 0.2510669159964891,
+          "proposal_trace_sample": [
+            {
+              "accepted": 3,
+              "bonus_token": 478,
+              "committed_tokens": [
+                3841,
+                6646,
+                17145,
+                8
+              ],
+              "cycle": 1,
+              "draft_candidates": [
+                6646,
+                17145,
+                8
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 92,
+              "root_position": 90,
+              "root_token": 3841,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 6646,
+              "committed_tokens": [
+                478,
+                5956,
+                478,
+                3841
+              ],
+              "cycle": 2,
+              "draft_candidates": [
+                5956,
+                478,
+                3841
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 96,
+              "root_position": 94,
+              "root_token": 478,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 271,
+              "committed_tokens": [
+                6646,
+                26806,
+                8
+              ],
+              "cycle": 3,
+              "draft_candidates": [
+                26806,
+                8,
+                198
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 100,
+              "root_position": 98,
+              "root_token": 6646,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 3535,
+              "committed_tokens": [
+                271
+              ],
+              "cycle": 4,
+              "draft_candidates": [
+                262,
+                460,
+                2047
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 103,
+              "root_position": 101,
+              "root_token": 271,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 19,
+              "committed_tokens": [
+                3535,
+                283,
+                498
+              ],
+              "cycle": 5,
+              "draft_candidates": [
+                283,
+                498,
+                87
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 104,
+              "root_position": 102,
+              "root_token": 3535,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 22,
+              "committed_tokens": [
+                19
+              ],
+              "cycle": 6,
+              "draft_candidates": [
+                348,
+                830,
+                364
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 107,
+              "root_position": 105,
+              "root_token": 19,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 11,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 7,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 108,
+              "root_position": 106,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 1,
+              "bonus_token": 24,
+              "committed_tokens": [
+                11,
+                220
+              ],
+              "cycle": 8,
+              "draft_candidates": [
+                220,
+                19,
+                22
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 109,
+              "root_position": 107,
+              "root_token": 11,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 3,
+              "bonus_token": 23,
+              "committed_tokens": [
+                24,
+                20,
+                11,
+                220
+              ],
+              "cycle": 9,
+              "draft_candidates": [
+                20,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 111,
+              "root_position": 109,
+              "root_token": 24,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 23,
+              "committed_tokens": [
+                23
+              ],
+              "cycle": 10,
+              "draft_candidates": [
+                11,
+                220,
+                16
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 115,
+              "root_position": 113,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 22,
+              "committed_tokens": [
+                23,
+                11,
+                220
+              ],
+              "cycle": 11,
+              "draft_candidates": [
+                11,
+                220,
+                17
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 116,
+              "root_position": 114,
+              "root_token": 23,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 0,
+              "bonus_token": 18,
+              "committed_tokens": [
+                22
+              ],
+              "cycle": 12,
+              "draft_candidates": [
+                17,
+                11,
+                220
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 119,
+              "root_position": 117,
+              "root_token": 22,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            },
+            {
+              "accepted": 2,
+              "bonus_token": 17,
+              "committed_tokens": [
+                18,
+                11,
+                220
+              ],
+              "cycle": 13,
+              "draft_candidates": [
+                11,
+                220,
+                23
+              ],
+              "gpu_accept_match_cpu": true,
+              "proposer_cache_len_before_update": 120,
+              "root_position": 118,
+              "root_token": 18,
+              "target_parent_rows": [
+                -1,
+                0,
+                1,
+                2
+              ],
+              "target_top1_path": [],
+              "verify_graph": {
+                "chain_attn_mode": "batched",
+                "linear_attn_fallback": false,
+                "linear_attn_mode": "chain_tloop",
+                "mode": "off",
+                "replayed": false,
+                "status": "disabled",
+                "validation_passed": null
+              }
+            }
+          ],
+          "proposal_update_cost_ar_tokens": 0.3980000498611057,
+          "proposal_update_ms_per_cycle": 3.611631229152688,
+          "required_acceptance_rate_for_1x": 1.0089675577584025,
+          "required_avg_accepted_for_1x": 3.026902673275208,
+          "required_avg_visible_tokens_for_1x": 4.026902673275208,
+          "run_idx": 3,
+          "smoke_json": "/tmp/hipengine-mtp-economics-m12.4_on-batched-3run/mtp-economics-B3-run3.json",
+          "smoke_log": "/tmp/hipengine-mtp-economics-m12.4_on-batched-3run/mtp-economics-B3-run3.log",
+          "status": "passed",
+          "subprocess_wall_seconds": 48.50451142699603,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1p5x": 1.5897435897435896,
+          "target_cycle_cost_ar_tokens_for_observed_accept_1x": 2.3846153846153846,
+          "terminal_or_clipped_tokens": 1,
+          "verify_cost_ar_tokens": 2.983067407792908,
+          "verify_ms_per_cycle": 27.0696936153959,
+          "visible_tokens_from_verify_cycles": 31
+        }
+      ]
+    }
+  },
+  "candidate_budgets": [
+    3
+  ],
+  "chain_attn_mode": "batched",
+  "date": "2026-05-22",
+  "decode_tokens": 32,
+  "go_no_go_rule": {
+    "beats_ar": "avg_visible_tokens_per_verify_cycle > cycle_cost_ar_tokens",
+    "hits_1p5x": "avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens >= 1.5",
+    "llama_like_ratio": "cycle_cost_ar_tokens <= ~2.0 for B=2/3-class small-depth MTP"
+  },
+  "graph_mode": "off",
+  "hip_arch": "gfx1100",
+  "llama_target_cycle_cost_ar_tokens": 2.0,
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "performance_claim": false,
+  "phase": "M12.0",
+  "prompt_tokens": "727,3841,6646,19490,1590,198,262,4071,5423,264,10300,2880,314,2663,71483,198,262,413,2343,19490,8,2564,220,16,25,198,285,460,2663,198,262,25212,283,2663,23915,19490,8,434,220,17,60,198,262,2047,283,498,87,364,830,303,2663,413,830,361,25212,60,198,262,5956,283,498,87,364,830,303,2663,413,830,606,25212,60,198,262,1245,283,498,87,364,830,303,2663,413,830,835,25212,60,198,262,460,220",
+  "proposal_impl": "persistent_device",
+  "purpose": "M12 verifier-loop economics: measure speculative cycle cost in AR-token-equivalent units by candidate budget.",
+  "runs_per_budget": 3,
+  "schema": 1,
+  "small_batch_decode_threshold": 7,
+  "status": "diagnostic_retained",
+  "verify_gpu_accept": null
+}

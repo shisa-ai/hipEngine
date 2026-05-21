@@ -21339,3 +21339,41 @@ Concrete next levers (in priority order):
 Once (1) → (3) land, the graph-capture work landed today becomes load-bearing: the captured DAG will be ~200 nodes instead of 1,840, where `hipGraphLaunch`'s per-node overhead actually wins back the kernel-launch budget.
 
 Artifact: `benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-graph-capture-diagnostic.json` aggregates the six runs.  `performance_claim=false`.
+
+## 2026-05-22 — W7900 M12.4: device-resident multi-layer linear-state commit
+
+Replaces the 60 ``hipMemcpyAsync`` calls (30 linear-attention layers × conv + recurrent) in ``Qwen35ParoResidentSession._commit_bulk_linear_states`` with a single fused kernel launch.  The kernel reads ``verify_commit_rows[0]`` (already device-resident from ``dflash_accept_chain_i32``) and copies the selected scratch row into each layer's canonical state buffer via per-layer pointer tables.
+
+Files:
+
+- ``hipengine/kernels/hip_gfx1100/speculative/dflash_commit.hip``: new ``linear_state_pair_commit_i32_kernel`` (grid ``(n_layers, 2)``, ``blockDim=256``) and ``hipengine_linear_state_pair_commit_i32`` entry point.  Float4 fast path when both source and destination are 16-byte aligned (always true for FP32 conv/recurrent rows).
+- ``hipengine/kernels/hip_gfx1100/speculative/dflash_commit.py``: ``linear_state_pair_commit_i32`` wrapper plus registry entry under ``("hip_gfx1100", "linear_state_pair_commit", "w4_paro", "i32")``.
+- ``hipengine/kernels/hip_gfx1100/speculative/__init__.py``: export new symbol.
+- ``hipengine/runtime/qwen35_paro_runner.py``:
+  - Build per-layer destination tables (``linear_state_dst_conv_table_buf`` / ``linear_state_dst_recurrent_table_buf``) once at session init.  Each linear-attention layer owns its own ``Qwen35ParoDecodeState`` with its own ``RuntimeWorkspace``, so source pointer tables are refreshed each cycle from ``self.linear_scratch[layer_id].tree_conv_state.ptr`` / ``tree_recurrent_state.ptr``; the host caches the last-seen tables and skips the H2D refresh when the workspace did not reallocate.
+  - ``_commit_bulk_linear_states`` accepts ``commit_row_ptr`` (device pointer, default ``self.verify_commit_rows.ptr``) and dispatches to the fused kernel when ``base_slot == 0`` and ``HIPENGINE_FUSED_LINEAR_STATE_COMMIT`` is enabled (default).  Legacy per-layer ``hipMemcpyAsync`` loop preserved as fallback.
+  - ``build_dflash_commit`` library now loaded under ``self.libraries["dflash_commit"]``.
+
+Validation (gfx1100/W7900, MTP B=3 chain, 8 decode tokens, single quicksort token prompt):
+
+- ``chain_attn_mode=c1_loop graph_mode=off``: exact AR match.
+- ``chain_attn_mode=batched graph_mode=off``: exact AR match.
+- ``chain_attn_mode=batched graph_mode=validate``: exact AR match.
+
+Initial debug iteration produced an exact-AR mismatch.  Root cause: each layer's ``Qwen35ParoDecodeState`` has its own ``RuntimeWorkspace``, so ``scratch.tree_conv_state.ptr`` is per-layer, not uniform across layers as I assumed.  Captured via instrumentation that logged the source pointer changing between cycles (workspace reallocating).  Fix: pass per-layer source pointer tables (refreshed each cycle from the live scratch dict) alongside the destination tables; kernel signature changed from ``(src_base, dst_table[n], row_nbytes)`` per family to ``(src_table[n], dst_table[n], row_nbytes)`` per family.  Bare-metal kernel unit test in ``/tmp/test_commit_kernel.py`` had passed with the original uniform-source design; the in-runner bug was a different invariant (per-layer workspaces vs single workspace).
+
+Economics on the stable quicksort prompt (B=3, 32 decode tokens, 3 runs):
+
+| Config | MTP/AR | cycle_cost (AR-tok) | verify ms/cycle |
+|---|---|---|---|
+| batched / graph=off / M12.4 off | 0.594 ± 0.007 | 3.993 ± 0.035 | 27.03 ± 0.14 |
+| batched / graph=off / M12.4 on  | 0.607 ± 0.015 | 3.925 ± 0.099 | 26.76 ± 0.27 |
+
+Delta: +0.013 MTP/AR (+2.2% relative), -0.07 AR-tok cycle cost, -0.27 ms verify time per cycle.  Matches the 60 × ~5 µs ≈ 300 µs ``hipMemcpyAsync`` overhead budget we set out to recover.
+
+``performance_claim=true`` for the +2.2% MTP/AR delta on this prompt; *not* promoted to a "MTP beats AR" row (still 0.61× AR).  Artifacts:
+
+- ``benchmarks/results/2026-05-22-hipengine-mtp-m12.4-w7900-b3-batched-m12.4_off.json``
+- ``benchmarks/results/2026-05-22-hipengine-mtp-m12.4-w7900-b3-batched-m12.4_on.json``
+
+Architectural value: ``commit_row[0]`` now flows through the verifier without ever touching the host; this is the last device-resident input the verify-and-commit cycle needed for M12.5 (on-device cycle metadata) and for a future fully-captured cycle.  Confirmed gate ``HIPENGINE_FUSED_LINEAR_STATE_COMMIT=0`` cleanly reverts to the legacy path.

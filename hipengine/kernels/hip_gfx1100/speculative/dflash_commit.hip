@@ -234,3 +234,119 @@ extern "C" int hipengine_dflash_commit_chain_i32(
       request_count);
   return static_cast<int>(hipGetLastError());
 }
+
+// M12.4: multi-layer linear-attention state commit.
+//
+// One launch replaces the per-layer ``for layer_id in linear_layers:
+// hipMemcpyAsync(conv) + hipMemcpyAsync(recurrent)`` sequence in
+// ``Qwen35ParoResidentSession._commit_bulk_linear_states``.  All linear-
+// attention layers share the same workspace-named scratch buffers, so the
+// source row base is uniform across layers per buffer family; only the
+// per-layer canonical destination differs.  The commit row index comes from
+// ``verify_commit_rows[0]`` (device-resident, produced by
+// ``dflash_accept_chain_i32`` in the same cycle).  Two families (conv,
+// recurrent) are handled by one launch with ``blockIdx.y in {0, 1}``.
+//
+// Layout:
+//   grid  : (n_layers, 2)
+//   block : (threads,) one block copies one (layer, family) row
+//   smem  : 0
+//
+// dst tables are device-resident arrays of n_layers pointers each, built once
+// by the host at session init (canonical layer-state buffers do not move).
+namespace {
+
+__device__ inline void copy_bytes_strided_f4(
+    const uint8_t* __restrict__ src,
+    uint8_t* __restrict__ dst,
+    int64_t bytes,
+    int64_t tid,
+    int64_t threads) {
+  // float4-aligned fast path when bytes and pointers are 16-byte aligned.
+  const uintptr_t src_addr = reinterpret_cast<uintptr_t>(src);
+  const uintptr_t dst_addr = reinterpret_cast<uintptr_t>(dst);
+  if ((bytes & 15) == 0 && (src_addr & 15) == 0 && (dst_addr & 15) == 0) {
+    const int64_t n_f4 = bytes >> 4;  // bytes / 16
+    const float4* sp = reinterpret_cast<const float4*>(src);
+    float4* dp = reinterpret_cast<float4*>(dst);
+    for (int64_t i = tid; i < n_f4; i += threads) {
+      dp[i] = sp[i];
+    }
+    return;
+  }
+  for (int64_t i = tid; i < bytes; i += threads) {
+    dst[i] = src[i];
+  }
+}
+
+__global__ void linear_state_pair_commit_i32_kernel(
+    const uint64_t* __restrict__ src_conv_table,
+    const uint64_t* __restrict__ dst_conv_table,
+    int64_t conv_row_nbytes,
+    const uint64_t* __restrict__ src_recurrent_table,
+    const uint64_t* __restrict__ dst_recurrent_table,
+    int64_t recurrent_row_nbytes,
+    const int32_t* __restrict__ commit_row,
+    int64_t n_layers) {
+  const int64_t layer = static_cast<int64_t>(blockIdx.x);
+  const int family = static_cast<int>(blockIdx.y);
+  if (layer >= n_layers) {
+    return;
+  }
+  const int32_t row = commit_row[0];
+  const uint8_t* src_base;
+  uint8_t* dst;
+  int64_t row_nbytes;
+  if (family == 0) {
+    src_base = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(src_conv_table[layer]));
+    dst = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(dst_conv_table[layer]));
+    row_nbytes = conv_row_nbytes;
+  } else {
+    src_base = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(src_recurrent_table[layer]));
+    dst = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(dst_recurrent_table[layer]));
+    row_nbytes = recurrent_row_nbytes;
+  }
+  if (src_base == nullptr || dst == nullptr || row_nbytes <= 0) {
+    return;
+  }
+  const uint8_t* src = src_base + static_cast<int64_t>(row) * row_nbytes;
+  const int64_t tid = static_cast<int64_t>(threadIdx.x);
+  const int64_t threads = static_cast<int64_t>(blockDim.x);
+  copy_bytes_strided_f4(src, dst, row_nbytes, tid, threads);
+}
+
+}  // namespace
+
+extern "C" int hipengine_linear_state_pair_commit_i32(
+    const void* src_conv_table,
+    const void* dst_conv_table,
+    int64_t conv_row_nbytes,
+    const void* src_recurrent_table,
+    const void* dst_recurrent_table,
+    int64_t recurrent_row_nbytes,
+    const void* commit_row,
+    int64_t n_layers,
+    hipStream_t stream) {
+  if (n_layers <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (conv_row_nbytes <= 0 && recurrent_row_nbytes <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  hipLaunchKernelGGL(
+      linear_state_pair_commit_i32_kernel,
+      dim3(static_cast<unsigned int>(n_layers), 2u),
+      dim3(threads),
+      0,
+      stream,
+      static_cast<const uint64_t*>(src_conv_table),
+      static_cast<const uint64_t*>(dst_conv_table),
+      conv_row_nbytes,
+      static_cast<const uint64_t*>(src_recurrent_table),
+      static_cast<const uint64_t*>(dst_recurrent_table),
+      recurrent_row_nbytes,
+      static_cast<const int32_t*>(commit_row),
+      n_layers);
+  return static_cast<int>(hipGetLastError());
+}

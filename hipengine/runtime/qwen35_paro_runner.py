@@ -35,7 +35,13 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16,
 )
-from hipengine.kernels.hip_gfx1100.speculative import build_dflash_accept, dflash_accept_chain_i32, dflash_commit_chain_i32
+from hipengine.kernels.hip_gfx1100.speculative import (
+    build_dflash_accept,
+    build_dflash_commit,
+    dflash_accept_chain_i32,
+    dflash_commit_chain_i32,
+    linear_state_pair_commit_i32,
+)
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
 from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16, fp16_to_bf16_strided_rows
 from hipengine.kernels.hip_gfx1100.norm import paro_rmsnorm_out_bf16, paro_rmsnorm_out_fp16
@@ -2468,7 +2474,12 @@ class Qwen35ParoResidentSession:
                     rows=int(summary.accepted_counts[0]) + 1,
                     stream=stream,
                 )
-            self._commit_bulk_linear_states(selected_row, base_slot=base_slot, stream=stream)
+            self._commit_bulk_linear_states(
+                selected_row,
+                base_slot=base_slot,
+                stream=stream,
+                commit_row_ptr=int(self.verify_commit_rows.ptr),
+            )
             self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
             self.runtime.stream_synchronize(stream)
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
@@ -2618,7 +2629,12 @@ class Qwen35ParoResidentSession:
         # Linear-attention recurrent state commit follows the chain path:
         # the tree t-loop already produced the exact leaf state and
         # ``_commit_bulk_linear_states`` picks it via selected_row.
-        self._commit_bulk_linear_states(selected_row, base_slot=base_slot, stream=stream)
+        self._commit_bulk_linear_states(
+            selected_row,
+            base_slot=base_slot,
+            stream=stream,
+            commit_row_ptr=int(self.verify_commit_rows.ptr),
+        )
         self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
         self.runtime.stream_synchronize(stream)
         next_token = None if summary.next_tokens is None else summary.next_tokens[0]
@@ -3907,7 +3923,77 @@ class Qwen35ParoResidentSession:
             # warn about the dict-iteration variable.
             _ = key_cache
 
-    def _commit_bulk_linear_states(self, selected_row: int, *, base_slot: int, stream: int = 0) -> None:
+    def _commit_bulk_linear_states(
+        self,
+        selected_row: int,
+        *,
+        base_slot: int,
+        stream: int = 0,
+        commit_row_ptr: int | None = None,
+    ) -> None:
+        """Commit accepted linear-attention conv+recurrent state for all layers.
+
+        Fast path (M12.4, default): one kernel launch reads ``commit_row`` from
+        device-resident ``commit_row_ptr`` and copies the selected row of
+        ``scratch.tree_conv_state`` / ``tree_recurrent_state`` into every
+        linear-attention layer's canonical slot.  Replaces ``2 * n_layers``
+        ``hipMemcpyAsync`` calls (~5 µs each at the Python/ctypes boundary).
+
+        Fallback path: legacy per-layer ``hipMemcpyAsync`` loop, used when the
+        device-resident commit row is unavailable (``commit_row_ptr is None``),
+        when ``base_slot != 0`` (commit tables are built for slot 0), or when
+        ``HIPENGINE_FUSED_LINEAR_STATE_COMMIT`` is explicitly disabled.
+        """
+
+        if (
+            commit_row_ptr is not None
+            and base_slot == 0
+            and self._fused_linear_state_commit_enabled()
+            and getattr(self, "linear_state_dst_conv_table_buf", None) is not None
+            and self.linear_scratch
+            and len(self.linear_scratch) == len(self.linear_layer_ids)
+        ):
+            # Refresh per-layer source pointer tables (per-layer workspaces do
+            # not share buffers).  Host-stage current pointers in cached
+            # ndarrays and only H2D-copy when at least one pointer changed.
+            conv_host = self.linear_state_src_conv_host
+            rec_host = self.linear_state_src_recurrent_host
+            conv_cached = self.linear_state_src_conv_cached
+            rec_cached = self.linear_state_src_recurrent_cached
+            for idx, layer_id in enumerate(self.linear_layer_ids):
+                scratch = self.linear_scratch[layer_id]
+                conv_host[idx] = np.uint64(scratch.tree_conv_state.ptr)
+                rec_host[idx] = np.uint64(scratch.tree_recurrent_state.ptr)
+            if not np.array_equal(conv_host, conv_cached):
+                copy_host_to_device(
+                    self.linear_state_src_conv_table_buf,
+                    host_array_ptr(conv_host),
+                    conv_host.nbytes,
+                    runtime=self.runtime,
+                )
+                np.copyto(conv_cached, conv_host)
+            if not np.array_equal(rec_host, rec_cached):
+                copy_host_to_device(
+                    self.linear_state_src_recurrent_table_buf,
+                    host_array_ptr(rec_host),
+                    rec_host.nbytes,
+                    runtime=self.runtime,
+                )
+                np.copyto(rec_cached, rec_host)
+            linear_state_pair_commit_i32(
+                self.linear_state_src_conv_table_buf.ptr,
+                self.linear_state_dst_conv_table_buf.ptr,
+                self.linear_state_conv_row_nbytes,
+                self.linear_state_src_recurrent_table_buf.ptr,
+                self.linear_state_dst_recurrent_table_buf.ptr,
+                self.linear_state_recurrent_row_nbytes,
+                int(commit_row_ptr),
+                len(self.linear_layer_ids),
+                stream=stream,
+                library=self.libraries["dflash_commit"],
+                runtime=self.runtime,
+            )
+            return
         for layer_id, scratch in self.linear_scratch.items():
             conv_state, recurrent_state = self._slot_linear_state(layer_id, base_slot)
             conv_row_nbytes = int(np.prod(conv_state.shape)) * conv_state.dtype.itemsize
@@ -4177,6 +4263,7 @@ class Qwen35ParoResidentSession:
                 "combine": build_paro_combine(**build_kwargs),
                 "dense": build_dense_gemv(**build_kwargs),
                 "dflash_accept": build_dflash_accept(**build_kwargs),
+                "dflash_commit": build_dflash_commit(**build_kwargs),
                 "group_scatter": build_qwen35_moe_group_scatter(**build_kwargs),
                 "kv": build_qwen35_paged_kv_write(**build_kwargs),
                 "linear_conv": build_qwen35_linear_attn_conv(**build_kwargs),
@@ -4518,6 +4605,79 @@ class Qwen35ParoResidentSession:
                 )
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
+        self._build_linear_state_commit_tables(qkv_width=qkv_width)
+
+    def _build_linear_state_commit_tables(self, *, qkv_width: int) -> None:
+        """Build device-resident destination pointer tables for the M12.4
+        single-launch linear-state commit path.
+
+        ``linear_state_pair_commit_i32`` consumes two ``uint64[n_layers]``
+        device tables: one of conv destination row pointers, one of recurrent
+        destination row pointers, both for ``base_slot=0`` (per-row offset
+        within each layer's canonical buffer).  We populate these once after
+        ``_materialize_layers`` allocates the canonical layer-state buffers
+        and record per-row byte sizes for the launch.
+        """
+
+        linear_layer_ids = tuple(
+            layer_id
+            for layer_id, layer_type in enumerate(self.config.layer_types[: self.layer_limit])
+            if layer_type == "linear_attention"
+        )
+        self.linear_layer_ids: tuple[int, ...] = linear_layer_ids
+        if not linear_layer_ids:
+            self.linear_state_dst_conv_table_buf = None
+            self.linear_state_dst_recurrent_table_buf = None
+            self.linear_state_conv_row_nbytes = 0
+            self.linear_state_recurrent_row_nbytes = 0
+            return
+        conv_row_nbytes = (
+            int(qkv_width)
+            * int(self.config.linear_conv_kernel_dim)
+            * DType.FP32.itemsize
+        )
+        recurrent_row_nbytes = (
+            int(self.config.linear_num_value_heads)
+            * int(self.config.linear_key_head_dim)
+            * int(self.config.linear_value_head_dim)
+            * DType.FP32.itemsize
+        )
+        dst_conv_table = np.empty((len(linear_layer_ids),), dtype=np.uint64)
+        dst_recurrent_table = np.empty((len(linear_layer_ids),), dtype=np.uint64)
+        for idx, layer_id in enumerate(linear_layer_ids):
+            _conv_state, _recurrent_state, conv_buf, recurrent_buf, _, _ = self.linear_states[layer_id]
+            # Slot 0 destination: offset 0 within each layer's canonical buffer.
+            dst_conv_table[idx] = np.uint64(conv_buf.ptr)
+            dst_recurrent_table[idx] = np.uint64(recurrent_buf.ptr)
+        # ``_dev`` already registers each new device buffer with ``self.buffers``
+        # so the resident session's close path frees them; do not re-append.
+        self.linear_state_dst_conv_table_buf = self._dev(dst_conv_table)
+        self.linear_state_dst_recurrent_table_buf = self._dev(dst_recurrent_table)
+        # Source pointer tables are refreshed each commit because each layer's
+        # Qwen35ParoDecodeState owns its own RuntimeWorkspace; per-layer
+        # ``tree_conv_state`` / ``tree_recurrent_state`` allocations therefore
+        # do NOT share a base address.  We pre-allocate the device-side table
+        # buffers once and host-stage the current pointers each cycle.
+        zero_table = np.zeros((len(linear_layer_ids),), dtype=np.uint64)
+        self.linear_state_src_conv_table_buf = self._dev(zero_table)
+        self.linear_state_src_recurrent_table_buf = self._dev(zero_table.copy())
+        # Cached src pointer arrays for cycle-to-cycle refresh; lazily filled
+        # by ``_commit_bulk_linear_states`` from the live per-layer scratch.
+        self.linear_state_src_conv_host = np.zeros((len(linear_layer_ids),), dtype=np.uint64)
+        self.linear_state_src_recurrent_host = np.zeros((len(linear_layer_ids),), dtype=np.uint64)
+        # Track the previous-cycle src pointers so we can skip the H2D refresh
+        # when the workspace did not reallocate (the common case once a stable
+        # ``rows`` bucket warms up).
+        self.linear_state_src_conv_cached = np.zeros((len(linear_layer_ids),), dtype=np.uint64)
+        self.linear_state_src_recurrent_cached = np.zeros((len(linear_layer_ids),), dtype=np.uint64)
+        self.linear_state_conv_row_nbytes = conv_row_nbytes
+        self.linear_state_recurrent_row_nbytes = recurrent_row_nbytes
+
+    def _fused_linear_state_commit_enabled(self) -> bool:
+        value = os.environ.get("HIPENGINE_FUSED_LINEAR_STATE_COMMIT")
+        if value is None or value.strip() == "":
+            return True
+        return value.strip().lower() not in {"0", "false", "no", "off"}
 
     def _set_token_embedding(self, token_id: int, *, stream: int = 0) -> None:
         if token_id < 0 or token_id >= self.vocab_size:
