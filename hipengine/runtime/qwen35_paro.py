@@ -303,6 +303,14 @@ class Qwen35ParoDecodeState:
         self.runtime = runtime
         self.workspace = workspace or RuntimeWorkspace(runtime=runtime)
         self._rotate_fuse_ready: set[int] = set()
+        shared_prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
+        tensors = self.layer_weights.weights.tensors
+        if normalize_qwen35_weight_name(f"{shared_prefix}.gate_up_weight_w8a16") in tensors:
+            self._shared_expert_kind = "legacy_w8a16"
+        elif normalize_qwen35_weight_name(f"{shared_prefix}.gate_proj.qweight_pack8_decode") in tensors:
+            self._shared_expert_kind = "packed_paro_w4"
+        else:
+            self._shared_expert_kind = None
 
     @property
     def config(self):
@@ -315,12 +323,10 @@ class Qwen35ParoDecodeState:
         return normalize_qwen35_weight_name(name) in self.layer_weights.weights.tensors
 
     def _shared_expert_is_legacy_w8a16(self) -> bool:
-        prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
-        return self.has_tensor(f"{prefix}.gate_up_weight_w8a16")
+        return self._shared_expert_kind == "legacy_w8a16"
 
     def _shared_expert_is_packed_paro_w4(self) -> bool:
-        prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
-        return self.has_tensor(f"{prefix}.gate_proj.qweight_pack8_decode")
+        return self._shared_expert_kind == "packed_paro_w4"
 
     def reserve_full_attention_scratch(
         self,

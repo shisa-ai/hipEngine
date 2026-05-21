@@ -21157,3 +21157,36 @@ Rejected between kept iterations:
   to 5.5212.
 
 Loop target remains C3 <= 2.0.
+
+## 2026-05-21 — m12-batched loop iteration 10 kept: shared-expert kind cache
+
+Active multiloop: `m12-batched/run-20260521-060831`.
+
+Retained a small host/orchestration optimization: cache the per-layer
+shared-expert implementation kind (`legacy_w8a16` vs `packed_paro_w4`) in
+`Qwen35ParoDecodeState.__init__`, and make `_shared_expert_is_*` return cached
+booleans instead of re-normalizing tensor names and probing the weights dict on
+every verifier MoE invocation.
+
+Metric command (B=3, batched, graph off, 32 decode tokens):
+
+- Previous kept C3: **3.7774** AR-token equivalents
+- New C3: **3.6425** AR-token equivalents
+- Delta vs previous: **-0.1349** (**-3.6%**)
+- Delta vs loop baseline 5.5444: **-34.3%**
+- exact_ar_match: true
+
+Validation:
+
+- `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_paro.py scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_economics.py`
+- configured guard: exact AR true, mode=batched, finite positive C3
+
+Artifact:
+`benchmarks/results/2026-05-21-hipengine-mtp-m12-batched-shared-kind-cache.json`
+
+User suggested llama.cpp bucket-sort top-k. Noted for M12.3: the verifier needs
+exact greedy top-1, not sampling top-k; the analogous improvement is fused
+streaming LM-head top1/candidate-check that avoids materializing rows×vocab
+logits. Proposer expert top-k is over experts, not 128K vocab.
+
+Loop target remains C3 <= 2.0.
