@@ -22306,3 +22306,16 @@ Benchmarks (local gfx1100, `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `gguf_
 - 4K/128 target: median prefill/decode `2700.015 / 97.008 tok/s`, peak `22.584 GiB`, finite logits. Decode improves from `47.171 -> 97.008 tok/s` (`+105.6%`), exceeding the initial `>=60 tok/s` target.
 
 Saved retained artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d8-splitk-decode.json` and updated benchmark README/changelog. Next optimization pass should be P10.D9 threshold/split-count sweep (512/768/1024/1536/2048/4096, grouped/warp/generic toggles), then rocprof before returning to MoE micro-fusion.
+
+## 2026-05-21 P10.D9 exploratory split-K threshold/mode sweep
+
+Ran the planned P10.D9 exploratory sweep at current retained split-K decode code (`5afb46f`), using the accepted safe-mode command shape with cached builds and 2 measured runs per candidate.
+
+Results:
+- 512/128 with threshold forced down to `512`: prefill/decode `2112.803 / 95.090 tok/s`, peak `21.344 GiB`, final tokens `[318, 318]`. This is faster than retained 512 decode, but changes the generated token stream from the retained row; do **not** lower default threshold until a split-K-vs-context short-context numeric fixture exists.
+- 2K/128 with default threshold `1024`: prefill/decode `2638.561 / 95.223 tok/s`, peak `21.875 GiB`, final tokens `[87209, 87209]`.
+- 2K/128 with split disabled (`threshold=999999`): prefill/decode `2639.942 / 64.611 tok/s`, peak `21.875 GiB`, final tokens `[98732, 98732]`. Default split route is `+47.4%` faster than no-split at 2K.
+- 4K/128 with grouped-GQA disabled / warp split: prefill/decode `2695.189 / 94.862 tok/s`, peak `22.584 GiB`, final tokens `[220, 220]`; `-2.2%` vs retained grouped-GQA row.
+- 4K/128 with grouped+warp disabled / generic split: prefill/decode `2698.904 / 85.905 tok/s`, peak `22.584 GiB`, final tokens `[220, 220]`; `-11.4%` vs retained grouped-GQA row.
+
+Conclusion: keep P10.D8 retained defaults (`threshold=1024`, grouped-GQA at 4K). No benchmark rollup change. Saved exploratory artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d9-splitk-sweep.json`. Next: post-split-K rocprof to identify whether attention, selected GEMV, shared expert, or router/scatter now dominates.

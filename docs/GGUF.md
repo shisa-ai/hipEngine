@@ -2662,7 +2662,9 @@ Measured impact:
 
 #### P10.D9 — Decode split-K threshold and split-count sweep
 
-Start after P10.D8 (now correct and retained).
+Start after P10.D8 (now correct and retained). Status update 2026-05-21:
+**exploratory sweep complete; keep the P10.D8 default**. Artifact:
+`benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d9-splitk-sweep.json`.
 
 Sweep knobs:
 
@@ -2684,6 +2686,20 @@ Acceptance:
   within measurement noise of the current row.
 - Update `benchmarks/results/`, `benchmarks/README.md`, and
   `benchmarks/CHANGELOG.md` for any retained row.
+
+Exploratory result summary (2 measured runs each; no rollup change):
+
+| Case | Decode tok/s median | Decision |
+| --- | ---: | --- |
+| 512/128, threshold=512 | `95.090` | not retained; faster but changes generated token stream vs retained short-context row, needs split-vs-context numeric fixture before lowering threshold |
+| 2K/128, threshold=1024 | `95.223` | supports current threshold; split-K is already beneficial at 2K |
+| 2K/128, split disabled | `64.611` | rejected; `-32.1%` vs split route |
+| 4K/128, grouped disabled / warp split | `94.862` | rejected; `-2.2%` vs retained grouped-GQA row |
+| 4K/128, grouped+warp disabled / generic split | `85.905` | rejected; `-11.4%` vs retained grouped-GQA row |
+
+Conclusion: keep default threshold `1024` and grouped-GQA-at-4K selection. The
+only promising threshold change is `512`, but it needs a dedicated short-context
+split-K vs context+gate numerical fixture before it can be considered safe.
 
 #### P10.D10 — After split-K routing: profile before MoE micro-fusion
 
