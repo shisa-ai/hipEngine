@@ -18,11 +18,18 @@ _SYMBOL_DUAL_PACK8_TRANSPOSED = "hipengine_gemv_awq_dual_pack8_transposed_bf16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED_ROTATE_STAGED = "hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_bf16"
 _SYMBOL_PACK8_STRIDED_FP16 = "hipengine_gemv_awq_pack8_strided_fp16"
 _SYMBOL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_transposed_fp16"
+_SYMBOL_PACK8_MULTI_ROW_STRIDED_FP16 = "hipengine_gemv_awq_pack8_multi_row_strided_fp16"
+_SYMBOL_PACK8_MULTI_ROW_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_multi_row_transposed_fp16"
+_SYMBOL_PACK8_MULTI_ROW_STRIDED_BF16 = "hipengine_gemv_awq_pack8_multi_row_strided_bf16"
+_SYMBOL_PACK8_MULTI_ROW_TRANSPOSED_BF16 = "hipengine_gemv_awq_pack8_multi_row_transposed_bf16"
 _SYMBOL_FUSEDW4_PREFILL_FP16 = "hipengine_awq_fusedw4_prefill_fp16"
 _SYMBOL_FUSEDW4_PREFILL_DUAL_FP16 = "hipengine_awq_fusedw4_prefill_dual_fp16"
 _SYMBOL_FUSEDW4_PREFILL_STRIDED_FP16 = "hipengine_awq_fusedw4_prefill_strided_fp16"
 _SYMBOL_DUAL_PACK8_STRIDED_FP16 = "hipengine_gemv_awq_dual_pack8_strided_fp16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_transposed_fp16"
+_SYMBOL_DUAL_PACK8_MULTI_ROW_STRIDED_FP16 = "hipengine_gemv_awq_dual_pack8_multi_row_strided_fp16"
+_SYMBOL_DUAL_PACK8_MULTI_ROW_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_multi_row_transposed_fp16"
+_SYMBOL_DUAL_PACK8_MULTI_ROW_SPLIT_TRANSPOSED_FP16 = "hipengine_gemv_awq_dual_pack8_multi_row_split_transposed_fp16"
 _SYMBOL_DUAL_PACK8_TRANSPOSED_ROTATE_STAGED_FP16 = "hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_fp16"
 _SYMBOL_SELECTED_DUAL_ROTATE_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_bf16"
 _SYMBOL_SELECTED_DUAL_STRIDED = "hipengine_gemv_awq_selected_dual_pack8_strided_bf16"
@@ -374,6 +381,81 @@ def gemv_awq_pack8_transposed_fp16(
     )
 
 
+def gemv_awq_pack8_multi_row_transposed_fp16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """M12.6: pack8 W4 GEMV that loops over rows internally so the weight tile
+    streams from HBM once per block (no row-grid replication).  Supports
+    ``rows <= 8``; callers above that bound use the stock prefill kernel.
+    Same I/O semantics as ``gemv_awq_pack8_transposed_fp16``."""
+
+    _launch_pack8_single(
+        _SYMBOL_PACK8_MULTI_ROW_TRANSPOSED_FP16,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_pack8_multi_row_strided_fp16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Strided/non-transposed variant of ``gemv_awq_pack8_multi_row_transposed_fp16``."""
+
+    _launch_pack8_single(
+        _SYMBOL_PACK8_MULTI_ROW_STRIDED_FP16,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 
 def awq_fusedw4_prefill_fp16(
     x_ptr: int,
@@ -570,6 +652,96 @@ def gemv_awq_dual_pack8_transposed_fp16(
 
     _launch_pack8_dual(
         _SYMBOL_DUAL_PACK8_TRANSPOSED_FP16,
+        (x_a_ptr, x_b_ptr),
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_dual_pack8_multi_row_strided_fp16(
+    x_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """M12.6: weight-sharing multi-row dual pack8 W4 GEMV for ``rows <= 8``.
+    Same I/O as ``gemv_awq_dual_pack8_strided_fp16``."""
+
+    _launch_pack8_dual(
+        _SYMBOL_DUAL_PACK8_MULTI_ROW_STRIDED_FP16,
+        (x_ptr,),
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_dual_pack8_multi_row_transposed_fp16(
+    x_a_ptr: int,
+    x_b_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Transposed-weight variant of ``gemv_awq_dual_pack8_multi_row_strided_fp16``."""
+
+    _launch_pack8_dual(
+        _SYMBOL_DUAL_PACK8_MULTI_ROW_TRANSPOSED_FP16,
         (x_a_ptr, x_b_ptr),
         qweight_a_ptr,
         qzeros_a_ptr,
@@ -1293,6 +1465,81 @@ def _launch_pack8_single(
         ctypes.c_int64(rows),
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_packed),
+        ctypes.c_int64(group_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
+    x_a_ptr: int,
+    x_b_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """M12.6: split-output multi-row dual W4 pack8 GEMV.
+
+    Matches the ``awq_fusedw4_prefill_dual_fp16`` ABI (two separate output
+    buffers ``out_a`` and ``out_b``) but uses the per-block row-loop weight-
+    sharing of the new multi-row kernel.  ``rows`` must be in [1, 8].
+    """
+
+    _check_pack8_dual_shape(rows, in_features, out_packed_a, out_packed_b, group_size, threads)
+    library = library or build_paro_awq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DUAL_PACK8_MULTI_ROW_SPLIT_TRANSPOSED_FP16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_a_ptr),
+        ctypes.c_void_p(x_b_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qzeros_a_ptr),
+        ctypes.c_void_p(scales_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(qzeros_b_ptr),
+        ctypes.c_void_p(scales_b_ptr),
+        ctypes.c_void_p(out_a_ptr),
+        ctypes.c_void_p(out_b_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_packed_a),
+        ctypes.c_int64(out_packed_b),
         ctypes.c_int64(group_size),
         ctypes.c_int64(threads),
         ctypes.c_void_p(stream),

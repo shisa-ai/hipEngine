@@ -113,6 +113,9 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     awq_fusedw4_prefill_dual_fp16,
     awq_fusedw4_prefill_fp16,
     awq_fusedw4_prefill_strided_fp16,
+    gemv_awq_dual_pack8_multi_row_split_transposed_fp16,
+    gemv_awq_pack8_multi_row_strided_fp16,
+    gemv_awq_pack8_multi_row_transposed_fp16,
     gemv_awq_dual_pack8_transposed_bf16,
     gemv_awq_dual_pack8_transposed_fp16,
     gemv_awq_dual_pack8_transposed_rotate_staged_bf16,
@@ -502,7 +505,31 @@ class Qwen35ParoDecodeState:
             # kernels by ~+3 ms per pass, wiping out the local -0.44 ms saving.
             # Re-enable once M7.C.6 lands the safe path for sites #1/#2 below so the
             # net reach justifies the secondary kernel-cache cost.
-            if rows > 1 and group_size % 16 == 0 and width % group_size == 0:
+            if (
+                rows > 1
+                and rows <= 8
+                and _w4_multi_row_pack8_enabled()
+                and group_size % 16 == 0
+                and width % group_size == 0
+            ):
+                # M12.6: weight-sharing multi-row pack8 for B+1 <= 8 verifier rows.
+                # See gemv_awq_pack8_multi_row_kernel in paro_awq_gemv.hip.
+                gemv_awq_pack8_multi_row_strided_fp16(
+                    x.ptr,
+                    qweight.ptr,
+                    qzeros.ptr,
+                    scales.ptr,
+                    out.ptr,
+                    rows,
+                    width,
+                    out_packed,
+                    group_size,
+                    threads=threads,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+            elif rows > 1 and group_size % 16 == 0 and width % group_size == 0:
                 awq_fusedw4_prefill_strided_fp16(
                     x.ptr,
                     qweight.ptr,
@@ -540,7 +567,29 @@ class Qwen35ParoDecodeState:
             # ``rows > _small_batch_decode_threshold()`` is functionally correct in
             # isolation but the resulting cache shift adds ~+3 ms in downstream
             # MoE/GDN kernels.  Re-enable once M7.C.6 unlocks the dual-GEMV reach.
-            if rows > 1 and group_size % 16 == 0 and width % group_size == 0:
+            if (
+                rows > 1
+                and rows <= 8
+                and _w4_multi_row_pack8_enabled()
+                and group_size % 16 == 0
+                and width % group_size == 0
+            ):
+                gemv_awq_pack8_multi_row_transposed_fp16(
+                    x.ptr,
+                    qweight.ptr,
+                    qzeros.ptr,
+                    scales.ptr,
+                    out.ptr,
+                    rows,
+                    width,
+                    out_packed,
+                    group_size,
+                    threads=threads,
+                    stream=stream,
+                    library=awq_library,
+                    runtime=self.runtime,
+                )
+            elif rows > 1 and group_size % 16 == 0 and width % group_size == 0:
                 awq_fusedw4_prefill_fp16(
                     x.ptr,
                     qweight.ptr,
@@ -2144,6 +2193,28 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
+        elif _w4_multi_row_pack8_enabled() and 1 < tokens <= 8 and scratch.q_rot.shape[-1] % group_size == 0:
+            # M12.6: weight-sharing multi-row dual W4 GEMV for small verifier batches.
+            gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
+                scratch.q_rot.ptr,
+                scratch.k_rot.ptr,
+                q_qweight.ptr,
+                self.tensor(f"{q}.qzeros").ptr,
+                self.tensor(f"{q}.scales").ptr,
+                k_qweight.ptr,
+                self.tensor(f"{k}.qzeros").ptr,
+                self.tensor(f"{k}.scales").ptr,
+                scratch.q_proj.ptr,
+                scratch.key_bf16.ptr,
+                tokens,
+                scratch.q_rot.shape[-1],
+                q_out_packed,
+                k_out_packed,
+                group_size,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         else:
             awq_fusedw4_prefill_dual_fp16(
                 scratch.q_rot.ptr,
@@ -3488,26 +3559,49 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         else:
-            awq_fusedw4_prefill_dual_fp16(
-                scratch.qkv_rot.ptr,
-                scratch.z_rot.ptr,
-                qkv_qweight.ptr,
-                self.tensor(f"{qkv}.qzeros").ptr,
-                self.tensor(f"{qkv}.scales").ptr,
-                z_qweight.ptr,
-                self.tensor(f"{z}.qzeros").ptr,
-                self.tensor(f"{z}.scales").ptr,
-                scratch.qkv.ptr,
-                scratch.z.ptr,
-                tokens,
-                scratch.qkv_rot.shape[-1],
-                qkv_out_packed,
-                z_out_packed,
-                group_size,
-                stream=stream,
-                library=_library_for(library, "awq"),
-                runtime=self.runtime,
-            )
+            if _w4_multi_row_pack8_enabled() and 1 < tokens <= 8 and scratch.qkv_rot.shape[-1] % group_size == 0:
+                # M12.6: multi-row dual W4 GEMV for the linear-attn QKV+Z projection.
+                gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
+                    scratch.qkv_rot.ptr,
+                    scratch.z_rot.ptr,
+                    qkv_qweight.ptr,
+                    self.tensor(f"{qkv}.qzeros").ptr,
+                    self.tensor(f"{qkv}.scales").ptr,
+                    z_qweight.ptr,
+                    self.tensor(f"{z}.qzeros").ptr,
+                    self.tensor(f"{z}.scales").ptr,
+                    scratch.qkv.ptr,
+                    scratch.z.ptr,
+                    tokens,
+                    scratch.qkv_rot.shape[-1],
+                    qkv_out_packed,
+                    z_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=_library_for(library, "awq"),
+                    runtime=self.runtime,
+                )
+            else:
+                awq_fusedw4_prefill_dual_fp16(
+                    scratch.qkv_rot.ptr,
+                    scratch.z_rot.ptr,
+                    qkv_qweight.ptr,
+                    self.tensor(f"{qkv}.qzeros").ptr,
+                    self.tensor(f"{qkv}.scales").ptr,
+                    z_qweight.ptr,
+                    self.tensor(f"{z}.qzeros").ptr,
+                    self.tensor(f"{z}.scales").ptr,
+                    scratch.qkv.ptr,
+                    scratch.z.ptr,
+                    tokens,
+                    scratch.qkv_rot.shape[-1],
+                    qkv_out_packed,
+                    z_out_packed,
+                    group_size,
+                    stream=stream,
+                    library=_library_for(library, "awq"),
+                    runtime=self.runtime,
+                )
         return scratch.qkv, scratch.z
 
     def project_linear_attention_ab_fp16(
@@ -5128,6 +5222,38 @@ class Qwen35ParoDecodeState:
                 library=_library_for(library, "silu"),
                 runtime=self.runtime,
             )
+        elif _w4_multi_row_dual_eligible(tokens, cfg.hidden_size, group_size):
+            # M12.6: shared-expert gate/up multi-row dual W4 GEMV.
+            gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_qweight.ptr,
+                self.tensor(f"{gate_base}.qzeros").ptr,
+                self.tensor(f"{gate_base}.scales").ptr,
+                up_qweight.ptr,
+                self.tensor(f"{up_base}.qzeros").ptr,
+                self.tensor(f"{up_base}.scales").ptr,
+                scratch.shared_gate_out.ptr,
+                scratch.shared_up_out.ptr,
+                tokens,
+                cfg.hidden_size,
+                _out_packed_from_generic_transposed_qweight(gate_qweight),
+                _out_packed_from_generic_transposed_qweight(up_qweight),
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+            silu_mul_separate_out_fp16(
+                scratch.shared_gate_out.ptr,
+                scratch.shared_up_out.ptr,
+                scratch.shared_intermediate.ptr,
+                tokens,
+                cfg.shared_expert_intermediate_size,
+                stream=stream,
+                library=_library_for(library, "silu"),
+                runtime=self.runtime,
+            )
         else:
             awq_fusedw4_prefill_dual_fp16(
                 scratch.shared_gate_input.ptr,
@@ -5324,6 +5450,38 @@ class Qwen35ParoDecodeState:
                 library=_library_for(library, "silu"),
                 runtime=self.runtime,
             )
+        elif _w4_multi_row_dual_eligible(tokens, cfg.hidden_size, group_size):
+            # M12.6: dense MLP gate/up multi-row dual W4 GEMV.
+            gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_qweight.ptr,
+                self.tensor(f"{gate_base}.qzeros").ptr,
+                self.tensor(f"{gate_base}.scales").ptr,
+                up_qweight.ptr,
+                self.tensor(f"{up_base}.qzeros").ptr,
+                self.tensor(f"{up_base}.scales").ptr,
+                scratch.shared_gate_out.ptr,
+                scratch.shared_up_out.ptr,
+                tokens,
+                cfg.hidden_size,
+                _out_packed_from_generic_transposed_qweight(gate_qweight),
+                _out_packed_from_generic_transposed_qweight(up_qweight),
+                group_size,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+            silu_mul_separate_out_fp16(
+                scratch.shared_gate_out.ptr,
+                scratch.shared_up_out.ptr,
+                scratch.shared_intermediate.ptr,
+                tokens,
+                intermediate,
+                stream=stream,
+                library=_library_for(library, "silu"),
+                runtime=self.runtime,
+            )
         else:
             awq_fusedw4_prefill_dual_fp16(
                 scratch.shared_gate_input.ptr,
@@ -5411,11 +5569,16 @@ class Qwen35ParoDecodeState:
         residual: Tensor,
         *,
         scratch: Qwen35ParoDenseMlpScratch | None = None,
+        out: Tensor | None = None,
         tokens: int = 1,
         group_size: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        """Same write-through semantics as ``run_moe_c1_fp16`` for the dense MLP
+        variant.  When ``out`` is provided the residual combine writes directly
+        into it (M12.6 layer-output write-through)."""
+
         scratch = scratch or self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
         dense_out = self.dense_mlp_paro_w4_fp16(
             hidden,
@@ -5428,12 +5591,13 @@ class Qwen35ParoDecodeState:
         runtime = self.runtime or get_hip_runtime()
         self._memset_tensor(scratch.shared_zero, stream=stream, runtime=runtime)
         self._memset_tensor(scratch.gate_logits, stream=stream, runtime=runtime)
+        target = out if out is not None else scratch.moe_out
         shared_gate_combine_residual_batch_out_fp16(
             dense_out.ptr,
             scratch.shared_zero.ptr,
             scratch.gate_logits.ptr,
             residual.ptr,
-            scratch.moe_out.ptr,
+            target.ptr,
             tokens,
             self.config.hidden_size,
             1,
@@ -5441,7 +5605,7 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "combine"),
             runtime=self.runtime,
         )
-        return scratch.moe_out
+        return target
 
     def shared_expert_fp16(
         self,
@@ -5733,11 +5897,17 @@ class Qwen35ParoDecodeState:
         residual: Tensor,
         *,
         scratch: Qwen35ParoMoeScratch | None = None,
+        out: Tensor | None = None,
         tokens: int = 1,
         group_size: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        """Run the per-layer MoE pipeline.  When ``out`` is provided the final
+        combine writes directly into it, avoiding the per-layer
+        ``next_hidden = scratch.moe_out`` D2D copy in the verifier orchestrator
+        (M12.6 layer-output write-through)."""
+
         scratch = scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         self.route_moe_topk_shared_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         self.selected_moe_gate_up_pack8_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
@@ -5748,6 +5918,7 @@ class Qwen35ParoDecodeState:
             scratch,
             shared=shared,
             residual=residual,
+            out=out,
             tokens=tokens,
             library=library,
             stream=stream,
@@ -6662,6 +6833,33 @@ def _verify_moe_grouped_min_tokens() -> int:
     if value is None or value.strip() == "":
         return 16
     return max(2, int(value))
+
+
+def _w4_multi_row_pack8_enabled() -> bool:
+    """M12.6: gate the multi-row pack8 W4 GEMV path for 1 < rows <= 8.
+
+    Defaults to ``on``.  Disable via ``HIPENGINE_W4_MULTI_ROW_PACK8={0,off,no,false}``
+    to bisect against the stock WMMA prefill kernel.
+    """
+
+    value = os.environ.get("HIPENGINE_W4_MULTI_ROW_PACK8")
+    if value is None or value.strip() == "":
+        return True
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _w4_multi_row_dual_eligible(tokens: int, in_features: int, group_size: int) -> bool:
+    """M12.6: shared eligibility check for multi-row dual W4 GEMV.
+
+    Routes through the new multi-row dual kernel when the verifier batch fits
+    its 1 < tokens <= 8 sweet spot and the in_features is group-aligned.
+    """
+
+    return (
+        _w4_multi_row_pack8_enabled()
+        and 1 < int(tokens) <= 8
+        and int(in_features) % int(group_size) == 0
+    )
 
 
 def _small_batch_decode_threshold() -> int:

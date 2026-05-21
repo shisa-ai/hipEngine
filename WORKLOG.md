@@ -21464,3 +21464,76 @@ Validation:
 - ``uv run pytest tests/test_mtp_bench_tool.py -q`` → 4 passed
 
 No performance claim; this is benchmark tooling only.  Left unrelated worktree changes/artifacts unstaged.
+
+## 2026-05-22 — W7900 M12.6: multi-row W4 pack8 GEMV kernels (small-batch verifier)
+
+The W4 prefill kernels were running with WMMA TILE_N=16 (smallest supported) for our 4 verifier rows, wasting 12/16 of every WMMA row tile and underutilizing the GPU (~17% of W7900 wave capacity).  Wrote two new kernels (in `~/hipEngine/hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip`, M12.6 family):
+
+- `gemv_awq_pack8_multi_row_kernel<scalar, qweight_transposed, MAX_ROWS>` — grid `(out_packed,)`, block 128 threads, K-outer-loop with all `rows` accumulated per block using regular FMA.  Weight tile streams from HBM once per block, x is read row-by-row inside the K iteration.
+- `gemv_awq_dual_pack8_multi_row_kernel<..., OUT_LAYOUT>` — dual (gate+up) variant; supports both concatenated single-output and split two-output ABIs.
+
+Unit-test speedups on the QKV-projection shape (hidden=5120, out=4096, group=128):
+
+| rows | stock kernel (gold) | multi-row (M12.6) | speedup |
+|---|---|---|---|
+| 1 | 128.8 µs (prefill) | 17.9 µs | **7.20×** |
+| 2 | 123.6 µs | 20.6 µs | **5.99×** |
+| 3 | 117.9 µs | 23.6 µs | **4.99×** |
+| 4 | 114.3 µs | 25.1 µs | **4.56×** |
+
+Dual variant (gate+up, two outputs):
+
+| rows | prefill_dual (gold) | multi-row split (M12.6) | speedup |
+|---|---|---|---|
+| 1 | 115.9 µs | 27.3 µs | **4.24×** |
+| 4 | 99.6 µs | 37.2 µs | **2.68×** |
+| 8 | 89.4 µs | 45.9 µs | **1.95×** |
+
+Numerical agreement: max abs diff ≤ 0.002 FP16 on random fixtures (FP16 noise floor).  Wired into 5 callers behind env gate `HIPENGINE_W4_MULTI_ROW_PACK8` (default on):
+
+- `project_pack8_fp16` (single-output projections: V/K/O/Z/MoE-down feeds, dense MLP intermediate stage).
+- `project_full_attention_qkv_fp16` (Q+K dual).
+- `project_linear_attention_qkv_z_fp16` (QKV+Z dual).
+- `shared_expert_paro_w4_fp16` (gate+up dual).
+- `dense_mlp_paro_w4_fp16` (gate+up dual).
+
+Validation (gfx1100/W7900, MTP B=3 chain, 8 decode tokens):
+
+- `chain_attn_mode=c1_loop graph=off` → exact AR match.
+- `chain_attn_mode=batched graph=off` → exact AR match.
+- `chain_attn_mode=batched graph=validate` → exact AR match.
+
+Cumulative M12.x economics (3 runs, stable quicksort prompt, 32 decode tokens, B=3, batched + graph=off):
+
+| Config | MTP tok/s | AR tok/s | Cycle ms | Verify ms | MTP/AR | cycle_cost |
+|---|---|---|---|---|---|---|
+| baseline (no M12.x) | 65.01 | 109.45 | 36.48 | 27.03 | 0.594 | 3.993 |
+| M12.2+M12.4+M12.5 | 68.77 | 106.45 | 34.56 | 25.17 | 0.648 | 3.678 |
+| + M12.6 single multi-row | 72.37 | 100.82 | 32.53 | 23.09 | 0.720 | 3.281 |
+| + M12.6 dual multi-row | 73.39 | 109.09 | 32.04 | 22.61 | 0.673 | 3.496 |
+
+Cumulative wins vs baseline: **+12.9% MTP throughput** (65.01 → 73.39 tok/s), **-4.44 ms cycle wall** (-12.2%), **-4.42 ms verify time** (-16.4%).  MTP/AR moved from 0.594 → 0.67–0.72 (the variance is AR baseline thermal drift, not MTP variance; MTP itself is stable to ~1%).
+
+Cumulative rocprof per-pass: 1840 → 1052 kernel launches (-43%), 21.45 → 15.29 ms kernel time (-29%).  The remaining 15.3 ms / 1052 launches is dominated by:
+
+| Family | calls/pass | µs/call | ms/pass |
+|---|---|---|---|
+| w4_single_gemv (incl. M12.6 multi-row pack8) | 140.0 | 22.31 | 3.12 |
+| linear_attention_gdn_decode | 30.0 | 86.79 | 2.60 |
+| moe_gate_up_dual_gemv (selected, mul_mat_id) | 40.0 | 48.67 | 1.95 |
+| moe_down_gemv (selected, mul_mat_id) | 40.0 | 46.44 | 1.86 |
+| w8a16_linear (LM head, M12.2-optimized) | 1.0 | 1430.92 | 1.43 |
+| moe_paro_rotate_in | 190.0 | 4.92 | 0.94 |
+
+Artifacts:
+- ``benchmarks/results/2026-05-22-hipengine-mtp-m12.6-w7900-b3-batched-3run.json`` (single multi-row only)
+- ``benchmarks/results/2026-05-22-hipengine-mtp-m12.6b-w7900-b3-batched-3run.json`` (single + dual)
+- ``benchmarks/results/2026-05-22-hipengine-mtp-verifier-rocprof-w7900-post-m12.6b.json``
+
+`performance_claim=true` for the cumulative +12.9% MTP delta on this prompt.  Still 0.67×–0.72× AR (not yet promoted to "MTP beats AR").
+
+To break even on the observed acceptance pattern (avg_visible=2.38 tok/cycle), cycle_cost must drop from 3.5 to <2.4 AR-tok.  That requires another ~30% reduction in cycle wall.  Remaining concentrated targets:
+
+1. **Selected-expert MoE multi-row variant** (`moe_gate_up_dual_gemv` + `moe_down_gemv` = ~3.8 ms/pass).  These are already mul_mat_id-shaped but read each expert's weight tile once per (token, expert_slot) row.  For B=3 with 8 experts/token there can be some expert overlap across tokens; grouping rows by expert before the GEMV would amortize those reads.  Needs a small "expert sort" pre-pass; not yet implemented.
+2. **`linear_attention_gdn_decode`** at 2.6 ms is sequential by construction (recurrent t-loop) — limited internal headroom.
+3. **`moe_paro_rotate_in`** (190 launches/pass × 4.9 µs = 0.94 ms) — many small kernels.  Per-launch overhead reduction via more aggressive in-layer fusion is the lever, but each fusion is single-digit launches.

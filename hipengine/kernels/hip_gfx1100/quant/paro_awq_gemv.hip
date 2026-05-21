@@ -608,6 +608,153 @@ __global__ void gemv_awq_pack8_kernel(
   }
 }
 
+// M12.6: multi-row W4 pack8 GEMV.  The stock ``awq_fusedw4_prefill_fp16_kernel``
+// runs with WMMA TILE_N=16 (smallest supported) even for our 4 verifier rows,
+// wasting 12/16 of every WMMA tile and only filling ~17% of the W7900's wave
+// capacity.  This variant collapses the per-(out_pack, row) grid into a
+// single ``out_pack`` grid and loops over all ``rows`` per block, so each W4
+// weight tile streams from HBM exactly once and feeds all verifier rows.  No
+// WMMA: regular FMA gives full per-thread accumulation across all real rows
+// without wasted slots.  ``MAX_ROWS`` templates the per-thread accumulator
+// matrix; we instantiate the variant inside ``launch_gemv_awq_pack8_multi_row``.
+template <typename scalar_t, bool qweight_transposed, int MAX_ROWS>
+__launch_bounds__(128, 4)
+__global__ void gemv_awq_pack8_multi_row_kernel(
+    const scalar_t* __restrict__ x,
+    const int32_t* __restrict__ qweight,
+    const int32_t* __restrict__ qzeros,
+    const scalar_t* __restrict__ scales,
+    const scalar_t* __restrict__ bias,
+    scalar_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t out_packed,
+    int group_size,
+    bool has_bias) {
+  const int64_t out_pack = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t out_col = out_pack << 3;
+  const int64_t qw_base = qweight_transposed ? out_pack * in_features : out_pack;
+
+  float acc[MAX_ROWS][8];
+#pragma unroll
+  for (int r = 0; r < MAX_ROWS; ++r) {
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      acc[r][j] = 0.0f;
+    }
+  }
+
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const int64_t group = k_base / group_size;
+    const uint32_t pz = static_cast<uint32_t>(qzeros[group * out_packed + out_pack]);
+    int z[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      z[j] = static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
+    }
+    const scalar_t* __restrict__ scale_ptr = &scales[group * out_features + out_col];
+    float s[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      s[j] = scalar_to_float(scale_ptr[j]);
+    }
+    uint32_t pw[8];
+#pragma unroll
+    for (int kk = 0; kk < 8; ++kk) {
+      const int64_t qw_idx = qweight_transposed
+          ? (qw_base + k_base + kk)
+          : ((k_base + kk) * out_packed + out_pack);
+      pw[kk] = static_cast<uint32_t>(qweight[qw_idx]);
+    }
+#pragma unroll
+    for (int r = 0; r < MAX_ROWS; ++r) {
+      if (r >= rows) break;
+      const int64_t x_base = static_cast<int64_t>(r) * in_features;
+      float xs[8];
+#pragma unroll
+      for (int kk = 0; kk < 8; ++kk) {
+        xs[kk] = scalar_to_float(x[x_base + k_base + kk]);
+      }
+#pragma unroll
+      for (int kk = 0; kk < 8; ++kk) {
+        const float xv = xs[kk];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const float wq =
+              static_cast<float>(static_cast<int>((pw[kk] >> awq_shift_for_pack_lane(j)) & 0xF) - z[j]) * s[j];
+          acc[r][j] = fmaf(xv, wq, acc[r][j]);
+        }
+      }
+    }
+  }
+
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    const int64_t group = in_col / group_size;
+    const uint32_t pz = static_cast<uint32_t>(qzeros[group * out_packed + out_pack]);
+    const int64_t qw_idx = qweight_transposed ? (qw_base + in_col) : (in_col * out_packed + out_pack);
+    const uint32_t pw = static_cast<uint32_t>(qweight[qw_idx]);
+    const scalar_t* __restrict__ scale_ptr = &scales[group * out_features + out_col];
+#pragma unroll
+    for (int r = 0; r < MAX_ROWS; ++r) {
+      if (r >= rows) break;
+      const float xv = scalar_to_float(x[static_cast<int64_t>(r) * in_features + in_col]);
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int wq_int =
+            static_cast<int>((pw >> awq_shift_for_pack_lane(j)) & 0xF) -
+            static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
+        acc[r][j] = fmaf(xv, static_cast<float>(wq_int) * scalar_to_float(scale_ptr[j]), acc[r][j]);
+      }
+    }
+  }
+
+  // Per-row block-wide reduction.  Reuse the PARO_PACK8 reduction macro by
+  // copying the row's accumulators into the standard acc0..7 names; the macro
+  // uses a shared ``xchg`` slab so we must serialize the rows.
+#pragma unroll
+  for (int r = 0; r < MAX_ROWS; ++r) {
+    if (r >= rows) {
+      break;
+    }
+    float acc0 = acc[r][0];
+    float acc1 = acc[r][1];
+    float acc2 = acc[r][2];
+    float acc3 = acc[r][3];
+    float acc4 = acc[r][4];
+    float acc5 = acc[r][5];
+    float acc6 = acc[r][6];
+    float acc7 = acc[r][7];
+    PARO_PACK8_SHFL_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7, r0, r1, r2, r3, r4, r5, r6, r7);
+    if (tid == 0) {
+      scalar_t* __restrict__ out_ptr = &out[static_cast<int64_t>(r) * out_features + out_col];
+      if (has_bias) {
+        out_ptr[0] = float_to_scalar<scalar_t>(r0 + scalar_to_float(bias[out_col + 0]));
+        out_ptr[1] = float_to_scalar<scalar_t>(r1 + scalar_to_float(bias[out_col + 1]));
+        out_ptr[2] = float_to_scalar<scalar_t>(r2 + scalar_to_float(bias[out_col + 2]));
+        out_ptr[3] = float_to_scalar<scalar_t>(r3 + scalar_to_float(bias[out_col + 3]));
+        out_ptr[4] = float_to_scalar<scalar_t>(r4 + scalar_to_float(bias[out_col + 4]));
+        out_ptr[5] = float_to_scalar<scalar_t>(r5 + scalar_to_float(bias[out_col + 5]));
+        out_ptr[6] = float_to_scalar<scalar_t>(r6 + scalar_to_float(bias[out_col + 6]));
+        out_ptr[7] = float_to_scalar<scalar_t>(r7 + scalar_to_float(bias[out_col + 7]));
+      } else {
+        out_ptr[0] = float_to_scalar<scalar_t>(r0);
+        out_ptr[1] = float_to_scalar<scalar_t>(r1);
+        out_ptr[2] = float_to_scalar<scalar_t>(r2);
+        out_ptr[3] = float_to_scalar<scalar_t>(r3);
+        out_ptr[4] = float_to_scalar<scalar_t>(r4);
+        out_ptr[5] = float_to_scalar<scalar_t>(r5);
+        out_ptr[6] = float_to_scalar<scalar_t>(r6);
+        out_ptr[7] = float_to_scalar<scalar_t>(r7);
+      }
+    }
+    __syncthreads();
+  }
+}
+
 template <typename scalar_t, bool qweight_transposed, bool separate_inputs>
 __launch_bounds__(128, 4)
 __global__ void gemv_awq_dual_pack8_kernel(
@@ -723,6 +870,157 @@ __global__ void gemv_awq_dual_pack8_kernel(
     out_ptr[5] = float_to_scalar<scalar_t>(r5);
     out_ptr[6] = float_to_scalar<scalar_t>(r6);
     out_ptr[7] = float_to_scalar<scalar_t>(r7);
+  }
+}
+
+// M12.6: multi-row dual pack8 W4 GEMV.  Same fusion idea as
+// ``gemv_awq_pack8_multi_row_kernel`` but for the dual (gate+up) variant used
+// by the linear-attention QKV+Z and full-attention QKV/O projections.  Each
+// block reads its weight tile (either gate or up depending on out_pack range)
+// exactly once and loops over all ``rows`` verifier rows.
+// ``out_layout``: 0 = concatenated single output buffer (existing
+// ``gemv_awq_dual_pack8_kernel`` ABI: ``out[row * (out_features_a + out_features_b) + out_col]``),
+// 1 = separate ``out_a`` and ``out_b`` buffers (existing
+// ``awq_fusedw4_prefill_dual_fp16_kernel`` ABI).
+template <typename scalar_t, bool qweight_transposed, bool separate_inputs, int OUT_LAYOUT, int MAX_ROWS>
+__launch_bounds__(128, 4)
+__global__ void gemv_awq_dual_pack8_multi_row_kernel(
+    const scalar_t* __restrict__ x_a,
+    const scalar_t* __restrict__ x_b,
+    const int32_t* __restrict__ qweight_a,
+    const int32_t* __restrict__ qzeros_a,
+    const scalar_t* __restrict__ scales_a,
+    const int32_t* __restrict__ qweight_b,
+    const int32_t* __restrict__ qzeros_b,
+    const scalar_t* __restrict__ scales_b,
+    scalar_t* __restrict__ out_a,
+    scalar_t* __restrict__ out_b,  // ignored when OUT_LAYOUT == 0
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int group_size) {
+  const int64_t global_pack = blockIdx.x;
+  const int tid = threadIdx.x;
+  const bool use_b = global_pack >= out_packed_a;
+  const int64_t local_pack = use_b ? (global_pack - out_packed_a) : global_pack;
+  const int64_t local_out_packed = use_b ? out_packed_b : out_packed_a;
+  const int64_t local_out_features = local_out_packed << 3;
+  const int64_t out_features_a = out_packed_a << 3;
+  const int64_t out_features_b = out_packed_b << 3;
+  const int64_t out_features_concat = out_features_a + out_features_b;
+  const int64_t out_col_concat = global_pack << 3;
+  const int64_t local_out_col = local_pack << 3;
+  const scalar_t* __restrict__ x = (separate_inputs && use_b) ? x_b : x_a;
+  const int32_t* __restrict__ qweight = use_b ? qweight_b : qweight_a;
+  const int32_t* __restrict__ qzeros = use_b ? qzeros_b : qzeros_a;
+  const scalar_t* __restrict__ scales = use_b ? scales_b : scales_a;
+  scalar_t* __restrict__ out_buf = (OUT_LAYOUT == 0 || !use_b) ? out_a : out_b;
+  const int64_t out_buf_stride = (OUT_LAYOUT == 0) ? out_features_concat : (use_b ? out_features_b : out_features_a);
+  const int64_t out_col_local = (OUT_LAYOUT == 0) ? out_col_concat : local_out_col;
+  const int64_t qweight_base = qweight_transposed ? (local_pack * in_features) : local_pack;
+
+  float acc[MAX_ROWS][8];
+#pragma unroll
+  for (int r = 0; r < MAX_ROWS; ++r) {
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      acc[r][j] = 0.0f;
+    }
+  }
+
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const int64_t group = k_base / group_size;
+    const uint32_t pz = static_cast<uint32_t>(qzeros[group * local_out_packed + local_pack]);
+    int z[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      z[j] = static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
+    }
+    const scalar_t* __restrict__ scale_ptr = &scales[group * local_out_features + local_out_col];
+    float s[8];
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      s[j] = scalar_to_float(scale_ptr[j]);
+    }
+    uint32_t pw[8];
+#pragma unroll
+    for (int kk = 0; kk < 8; ++kk) {
+      const int64_t qw_idx = qweight_transposed
+          ? (qweight_base + k_base + kk)
+          : ((k_base + kk) * local_out_packed + local_pack);
+      pw[kk] = static_cast<uint32_t>(qweight[qw_idx]);
+    }
+#pragma unroll
+    for (int r = 0; r < MAX_ROWS; ++r) {
+      if (r >= rows) break;
+      const int64_t x_base = static_cast<int64_t>(r) * in_features;
+      float xs[8];
+#pragma unroll
+      for (int kk = 0; kk < 8; ++kk) {
+        xs[kk] = scalar_to_float(x[x_base + k_base + kk]);
+      }
+#pragma unroll
+      for (int kk = 0; kk < 8; ++kk) {
+        const float xv = xs[kk];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const float wq =
+              static_cast<float>(static_cast<int>((pw[kk] >> awq_shift_for_pack_lane(j)) & 0xF) - z[j]) * s[j];
+          acc[r][j] = fmaf(xv, wq, acc[r][j]);
+        }
+      }
+    }
+  }
+
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    const int64_t group = in_col / group_size;
+    const uint32_t pz = static_cast<uint32_t>(qzeros[group * local_out_packed + local_pack]);
+    const int64_t qw_idx = qweight_transposed
+        ? (qweight_base + in_col)
+        : (in_col * local_out_packed + local_pack);
+    const uint32_t pw = static_cast<uint32_t>(qweight[qw_idx]);
+    const scalar_t* __restrict__ scale_ptr = &scales[group * local_out_features + local_out_col];
+#pragma unroll
+    for (int r = 0; r < MAX_ROWS; ++r) {
+      if (r >= rows) break;
+      const float xv = scalar_to_float(x[static_cast<int64_t>(r) * in_features + in_col]);
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int wq_int =
+            static_cast<int>((pw >> awq_shift_for_pack_lane(j)) & 0xF) -
+            static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
+        acc[r][j] = fmaf(xv, static_cast<float>(wq_int) * scalar_to_float(scale_ptr[j]), acc[r][j]);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int r = 0; r < MAX_ROWS; ++r) {
+    if (r >= rows) break;
+    float acc0 = acc[r][0];
+    float acc1 = acc[r][1];
+    float acc2 = acc[r][2];
+    float acc3 = acc[r][3];
+    float acc4 = acc[r][4];
+    float acc5 = acc[r][5];
+    float acc6 = acc[r][6];
+    float acc7 = acc[r][7];
+    PARO_PACK8_SHFL_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7, r0, r1, r2, r3, r4, r5, r6, r7);
+    if (tid == 0) {
+      scalar_t* __restrict__ out_ptr = &out_buf[static_cast<int64_t>(r) * out_buf_stride + out_col_local];
+      out_ptr[0] = float_to_scalar<scalar_t>(r0);
+      out_ptr[1] = float_to_scalar<scalar_t>(r1);
+      out_ptr[2] = float_to_scalar<scalar_t>(r2);
+      out_ptr[3] = float_to_scalar<scalar_t>(r3);
+      out_ptr[4] = float_to_scalar<scalar_t>(r4);
+      out_ptr[5] = float_to_scalar<scalar_t>(r5);
+      out_ptr[6] = float_to_scalar<scalar_t>(r6);
+      out_ptr[7] = float_to_scalar<scalar_t>(r7);
+    }
+    __syncthreads();
   }
 }
 
@@ -1857,6 +2155,119 @@ extern "C" int hipengine_gemv_awq_pack8_transposed_fp16(
       x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
 }
 
+// M12.6: multi-row pack8 launcher.  Picks the smallest template instantiation
+// that fits ``rows`` so each block stores no more accumulator slots than
+// needed.  Only rows 1..8 are supported; callers above that fall back to the
+// stock prefill (WMMA) kernel.
+template <typename scalar_t, bool qweight_transposed>
+static int launch_pack8_multi_row(
+    const scalar_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const scalar_t* scales,
+    scalar_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || rows > 8 || in_features <= 0 || out_packed <= 0 || group_size <= 0 ||
+      (in_features % group_size) != 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_features = out_packed << 3;
+#define HIPENGINE_LAUNCH_PACK8_MULTI_ROW(MAX_ROWS) \
+  hipLaunchKernelGGL( \
+      (gemv_awq_pack8_multi_row_kernel<scalar_t, qweight_transposed, MAX_ROWS>), \
+      dim3(static_cast<unsigned int>(out_packed)), \
+      dim3(static_cast<unsigned int>(threads)), \
+      0, \
+      stream, \
+      x, \
+      qweight, \
+      qzeros, \
+      scales, \
+      nullptr, \
+      out, \
+      rows, \
+      in_features, \
+      out_features, \
+      out_packed, \
+      static_cast<int>(group_size), \
+      false); \
+  return static_cast<int>(hipGetLastError())
+
+  if (rows <= 2) { HIPENGINE_LAUNCH_PACK8_MULTI_ROW(2); }
+  if (rows <= 4) { HIPENGINE_LAUNCH_PACK8_MULTI_ROW(4); }
+  HIPENGINE_LAUNCH_PACK8_MULTI_ROW(8);
+#undef HIPENGINE_LAUNCH_PACK8_MULTI_ROW
+}
+
+extern "C" int hipengine_gemv_awq_pack8_multi_row_strided_fp16(
+    const half_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8_multi_row<half_t, false>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_pack8_multi_row_transposed_fp16(
+    const half_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8_multi_row<half_t, true>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_pack8_multi_row_strided_bf16(
+    const uint16_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const uint16_t* scales,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8_multi_row<uint16_t, false>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_pack8_multi_row_transposed_bf16(
+    const uint16_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const uint16_t* scales,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8_multi_row<uint16_t, true>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
 
 extern "C" int hipengine_gemv_awq_dual_pack8_transposed_rotate_staged_fp16(
     const half_t* x,
@@ -2055,6 +2466,132 @@ extern "C" int hipengine_gemv_awq_dual_pack8_transposed_fp16(
       group_size,
       threads,
       stream);
+}
+
+// M12.6: multi-row dual pack8 launcher.  Same pattern as
+// ``launch_pack8_multi_row`` but for two-projection (gate+up) GEMVs.
+// ``OUT_LAYOUT`` picks between concatenated single-buffer output (matches
+// the existing single-row ``gemv_awq_dual_pack8_*`` ABI) and split output
+// buffers (matches the existing ``awq_fusedw4_prefill_dual_fp16`` ABI).
+template <typename scalar_t, bool qweight_transposed, bool separate_inputs, int OUT_LAYOUT>
+static int launch_dual_pack8_multi_row(
+    const scalar_t* x_a,
+    const scalar_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const scalar_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const scalar_t* scales_b,
+    scalar_t* out_a,
+    scalar_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || rows > 8 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 ||
+      group_size <= 0 || (in_features % group_size) != 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+#define HIPENGINE_LAUNCH_DUAL_PACK8_MULTI_ROW(MAX_ROWS) \
+  hipLaunchKernelGGL( \
+      (gemv_awq_dual_pack8_multi_row_kernel<scalar_t, qweight_transposed, separate_inputs, OUT_LAYOUT, MAX_ROWS>), \
+      dim3(static_cast<unsigned int>(out_packed_a + out_packed_b)), \
+      dim3(static_cast<unsigned int>(threads)), \
+      0, \
+      stream, \
+      x_a, \
+      x_b, \
+      qweight_a, \
+      qzeros_a, \
+      scales_a, \
+      qweight_b, \
+      qzeros_b, \
+      scales_b, \
+      out_a, \
+      out_b, \
+      rows, \
+      in_features, \
+      out_packed_a, \
+      out_packed_b, \
+      static_cast<int>(group_size)); \
+  return static_cast<int>(hipGetLastError())
+
+  if (rows <= 2) { HIPENGINE_LAUNCH_DUAL_PACK8_MULTI_ROW(2); }
+  if (rows <= 4) { HIPENGINE_LAUNCH_DUAL_PACK8_MULTI_ROW(4); }
+  HIPENGINE_LAUNCH_DUAL_PACK8_MULTI_ROW(8);
+#undef HIPENGINE_LAUNCH_DUAL_PACK8_MULTI_ROW
+}
+
+extern "C" int hipengine_gemv_awq_dual_pack8_multi_row_strided_fp16(
+    const half_t* x_a,
+    const half_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8_multi_row<half_t, false, false, 0>(
+      x_a, nullptr, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
+      out, nullptr, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_dual_pack8_multi_row_transposed_fp16(
+    const half_t* x_a,
+    const half_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8_multi_row<half_t, true, true, 0>(
+      x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
+      out, nullptr, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
+}
+
+// Split-output variants matching the ``awq_fusedw4_prefill_dual_fp16`` ABI.
+extern "C" int hipengine_gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
+    const half_t* x_a,
+    const half_t* x_b,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out_a,
+    half_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_dual_pack8_multi_row<half_t, true, true, 1>(
+      x_a, x_b, qweight_a, qzeros_a, scales_a, qweight_b, qzeros_b, scales_b,
+      out_a, out_b, rows, in_features, out_packed_a, out_packed_b, group_size, threads, stream);
 }
 
 extern "C" int hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_fp16(
