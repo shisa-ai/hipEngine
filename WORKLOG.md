@@ -21083,3 +21083,38 @@ handoff, M12.6 graph replay, M12.7 adaptive B/fallback policy.
 
 No code or benchmark rerun required for this doc/process task; validation was
 re-reading the M12 section and `git diff --check`.
+
+## 2026-05-21 — m12-batched loop iteration 4 kept: GPU accept default
+
+Active multiloop: `m12-batched/run-20260521-060831`.
+
+Retained the first improving iteration for the batched verifier loop: default
+`HIPENGINE_VERIFY_GPU_ACCEPT` to enabled. The old CPU-oracle/top1-read path is
+still available with `HIPENGINE_VERIFY_GPU_ACCEPT=0`; `=validate` still reads the
+CPU oracle and cross-checks the GPU payload.
+
+Metric command (B=3, batched, graph off, 32 decode tokens) improved:
+
+- Baseline C3: **5.5444** AR-token equivalents
+- New C3: **4.0828** AR-token equivalents
+- Delta: **-1.4616** (**-26.4%**)
+- exact_ar_match: true
+
+Validation:
+
+- `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_paro.py scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_economics.py`
+- configured guard: exact AR true, mode=batched, finite positive C3
+- `HIPENGINE_VERIFY_GPU_ACCEPT=validate` B=3 batched 16-token smoke exact AR true, accepted `[3,3,2,0,2]`
+
+Artifact:
+`benchmarks/results/2026-05-21-hipengine-mtp-m12-batched-gpu-accept-default.json`
+
+Rejected before this kept iteration:
+
+1. Safe shared/dense W4 small-batch GEMV switch: exact but regressed C3 to
+   6.0956; reverted.
+2. Hybrid batched projections + row decode attention inside full-attn layers:
+   exact but regressed C3 to 5.9313; reverted.
+
+The loop target remains C3 <= 2.0. Next work should attack target-forward kernel
+cost directly (GDN/LM-head/MoE/full-attn), not CPU accept control-plane overhead.

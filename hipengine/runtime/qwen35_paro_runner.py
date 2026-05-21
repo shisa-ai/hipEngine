@@ -1777,7 +1777,10 @@ class Qwen35ParoResidentSession:
     def _verify_gpu_accept_enabled(self) -> bool:
         value = os.environ.get("HIPENGINE_VERIFY_GPU_ACCEPT")
         if value is None or value.strip() == "":
-            return False
+            # M12 verifier cycles need the GPU-resident accept path by default;
+            # set HIPENGINE_VERIFY_GPU_ACCEPT=0 for the legacy CPU-oracle read
+            # path, or =validate to cross-check the GPU payload.
+            return True
         return value.strip().lower() not in {"0", "false", "no", "off"}
 
     def _should_use_chain_tloop_linear_verify(self, batch: TargetVerifyBatch, *, rows: int, graph_mode: str) -> bool:

@@ -1,0 +1,29 @@
+{
+  "avg_visible_tokens_per_cycle": 2.3846153846153846,
+  "baseline_cycle_cost_ar_tokens": 5.544363636485812,
+  "candidate_budget": 3,
+  "chain_attn_mode": "batched",
+  "change": "Default HIPENGINE_VERIFY_GPU_ACCEPT to enabled, with HIPENGINE_VERIFY_GPU_ACCEPT=0/off preserving legacy CPU-oracle path and =validate preserving cross-check mode.",
+  "cycle_wall_ms_per_cycle": 81.63203676923077,
+  "date": "2026-05-21",
+  "decode_tokens": 32,
+  "delta_cycle_cost_ar_tokens": -1.4615677141740813,
+  "delta_pct": -26.36132494189122,
+  "direction": "lower",
+  "exact_ar_match": true,
+  "lane": "m12-batched/run-20260521-060831",
+  "metric": "B3 batched cycle_cost_ar_tokens",
+  "mtp_over_ar": 0.5898711592623065,
+  "new_cycle_cost_ar_tokens": 4.082795922311731,
+  "performance_claim": false,
+  "phase": "M12 optimize iteration 4",
+  "raw_artifact": "/tmp/hipengine-multiloop-m12-batched-c3.json",
+  "runs": 1,
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "validation": {
+    "guard": "py_compile passed; exact_ar_match=true for default GPU accept path",
+    "validate_mode_smoke": "HIPENGINE_VERIFY_GPU_ACCEPT=validate exact_ar_match=true for B=3 batched decode_tokens=16; accepted=[3,3,2,0,2]"
+  },
+  "verify_ms_per_cycle": 59.69997631081451
+}
