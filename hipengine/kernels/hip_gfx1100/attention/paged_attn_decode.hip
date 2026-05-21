@@ -318,6 +318,19 @@ __global__ void qwen35_full_attn_gate_mul_bf16_kernel(
   }
 }
 
+__global__ void qwen35_full_attn_gate_mul_bf16_to_bf16_kernel(
+    const uint16_t* attn,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t total) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const float gated = bf16_bits_to_float(attn[idx]) * sigmoid_f32(bf16_bits_to_float(gate[idx]));
+    out[idx] = float_to_bf16_bits(gated);
+  }
+}
+
 __global__ void qwen35_full_attn_gate_mul_fp16_kernel(
     const float* attn,
     const half_t* gate,
@@ -1632,6 +1645,31 @@ extern "C" int hipengine_qwen35_full_attn_gate_mul_bf16(
   const int blocks = static_cast<int>((total + threads - 1) / threads);
   hipLaunchKernelGGL(
       qwen35_full_attn_gate_mul_bf16_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      attn,
+      gate,
+      out,
+      total);
+  return static_cast<int>(hipGetLastError());
+}
+
+
+extern "C" int hipengine_qwen35_full_attn_gate_mul_bf16_to_bf16(
+    const uint16_t* attn,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t total,
+    hipStream_t stream) {
+  if (total <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      qwen35_full_attn_gate_mul_bf16_to_bf16_kernel,
       dim3(static_cast<unsigned int>(blocks)),
       dim3(threads),
       0,

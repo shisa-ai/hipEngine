@@ -10,34 +10,34 @@
   "hardware": "local gfx1100 24 GiB card",
   "task_ids": ["P10.B5", "P10.B6", "P10.X1", "P10.X2"],
   "commit_under_test": "204dd2e",
-  "command_512x128": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
-  "command_4096x128": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+  "command_512x128": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+  "command_4096x128": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
   "throughput_gate": {
     "target_512x128_prefill_tok_s": 1500,
     "target_512x128_decode_tok_s": 85,
-    "observed_512x128_prefill_tok_s_median": 1902.452,
-    "observed_512x128_decode_tok_s_median": 89.779,
-    "observed_4096x128_prefill_tok_s_median": 498.219,
-    "observed_4096x128_decode_tok_s_median": 47.052,
+    "observed_512x128_prefill_tok_s_median": 2051.747,
+    "observed_512x128_decode_tok_s_median": 89.678,
+    "observed_4096x128_prefill_tok_s_median": 2696.901,
+    "observed_4096x128_decode_tok_s_median": 47.171,
     "prefill_target_met": true,
     "decode_target_met": true
   },
   "benchmark_512x128": {
-    "prefill_tok_s_samples": [1911.944, 1860.114, 1902.452],
-    "prefill_tok_s_median": 1902.452,
-    "decode_tok_s_samples": [89.779, 89.885, 89.502],
-    "decode_tok_s_median": 89.779,
-    "tracked_peak_allocated_gib_median": 21.343,
+    "prefill_tok_s_samples": [2051.747, 1987.364, 2067.520],
+    "prefill_tok_s_median": 2051.747,
+    "decode_tok_s_samples": [89.634, 89.694, 89.678],
+    "decode_tok_s_median": 89.678,
+    "tracked_peak_allocated_gib_median": 21.344,
     "effective_use_wmma_prefill_all": [true, true, true, true],
     "effective_use_gemv_decode_all": [true, true, true, true],
     "finite_final_logits_all": true
   },
   "benchmark_4096x128": {
-    "prefill_tok_s_samples": [497.665, 498.863, 498.219],
-    "prefill_tok_s_median": 498.219,
-    "decode_tok_s_samples": [47.001, 47.084, 47.052],
-    "decode_tok_s_median": 47.052,
-    "tracked_peak_allocated_gib_median": 22.580,
+    "prefill_tok_s_samples": [2690.082, 2696.901, 2696.950],
+    "prefill_tok_s_median": 2696.901,
+    "decode_tok_s_samples": [47.170, 47.171, 47.263],
+    "decode_tok_s_median": 47.171,
+    "tracked_peak_allocated_gib_median": 22.584,
     "effective_use_wmma_prefill_all": [true, true, true, true],
     "effective_use_gemv_decode_all": [true, true, true, true],
     "finite_final_logits_all": true
@@ -55,7 +55,8 @@
     },
     "notes": [
       "Sequence-level KL/top-1 against a Vector-ALU reference is a chaotic property for MoE models due to argmax expert selection, and is not a valid correctness gate.",
-      "The Layer 0 gate passes with 100.0% expert selection agreement and less than 1 ULP BF16 output difference, confirming both dense and compact WMMA prefill math is 100% correct."
+      "The Layer 0 gate passes with 100.0% expert selection agreement and less than 1 ULP BF16 output difference, confirming both dense and compact WMMA prefill math is 100% correct.",
+      "Crossover AOTriton prefill attention was successfully ported and enabled for GGUF. Under 4K prefill lengths, AOTriton FlashAttention-2 yields a massive 5.4x speedup (2696.90 tok/s vs 498.22 tok/s)."
     ]
   }
 }

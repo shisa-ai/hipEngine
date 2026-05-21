@@ -107,10 +107,14 @@ __global__ __launch_bounds__(128, 4) void q8_0_t16_gemv_kernel(
         tiles + (static_cast<int64_t>(out_tile) * blocks_per_row + block_idx) * T16_BLOCK_BYTES;
     const int8_t* __restrict__ q = reinterpret_cast<const int8_t*>(tile + T16_D_BYTES + lane * T16_COLS);
     const float xv = scalar_to_float<scalar_t>(x_row[k]);
+    float d[T16_COLS];
 #pragma unroll
     for (int col = 0; col < T16_COLS; ++col) {
-      const float d = fp16_bytes_to_float(tile + col * 2);
-      acc[col] += xv * (d * static_cast<float>(q[col]));
+      d[col] = fp16_bytes_to_float(tile + col * 2);
+    }
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      acc[col] += xv * (d[col] * static_cast<float>(q[col]));
     }
   }
 
@@ -178,10 +182,14 @@ __global__ __launch_bounds__(128, 4) void q8_0_t16_dual_gemv_kernel(
         tiles + (static_cast<int64_t>(local_tile) * blocks_per_row + block_idx) * T16_BLOCK_BYTES;
     const int8_t* __restrict__ q = reinterpret_cast<const int8_t*>(tile + T16_D_BYTES + lane * T16_COLS);
     const float xv = scalar_to_float<scalar_t>(x_row[k]);
+    float d[T16_COLS];
 #pragma unroll
     for (int col = 0; col < T16_COLS; ++col) {
-      const float d = fp16_bytes_to_float(tile + col * 2);
-      acc[col] += xv * (d * static_cast<float>(q[col]));
+      d[col] = fp16_bytes_to_float(tile + col * 2);
+    }
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      acc[col] += xv * (d[col] * static_cast<float>(q[col]));
     }
   }
 
@@ -250,10 +258,14 @@ __global__ __launch_bounds__(128, 4) void q8_0_t16_dual_split_gemv_kernel(
         tiles + (static_cast<int64_t>(local_tile) * blocks_per_row + block_idx) * T16_BLOCK_BYTES;
     const int8_t* __restrict__ q = reinterpret_cast<const int8_t*>(tile + T16_D_BYTES + lane * T16_COLS);
     const float xv = scalar_to_float<scalar_t>(x_row[k]);
+    float d[T16_COLS];
 #pragma unroll
     for (int col = 0; col < T16_COLS; ++col) {
-      const float d = fp16_bytes_to_float(tile + col * 2);
-      acc[col] += xv * (d * static_cast<float>(q[col]));
+      d[col] = fp16_bytes_to_float(tile + col * 2);
+    }
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      acc[col] += xv * (d[col] * static_cast<float>(q[col]));
     }
   }
 
@@ -328,10 +340,14 @@ __global__ __launch_bounds__(128, 4) void q8_0_t16_triple_split_gemv_kernel(
         tiles + (static_cast<int64_t>(local_tile) * blocks_per_row + block_idx) * T16_BLOCK_BYTES;
     const int8_t* __restrict__ q = reinterpret_cast<const int8_t*>(tile + T16_D_BYTES + lane * T16_COLS);
     const float xv = scalar_to_float<scalar_t>(x_row[k]);
+    float d[T16_COLS];
 #pragma unroll
     for (int col = 0; col < T16_COLS; ++col) {
-      const float d = fp16_bytes_to_float(tile + col * 2);
-      acc[col] += xv * (d * static_cast<float>(q[col]));
+      d[col] = fp16_bytes_to_float(tile + col * 2);
+    }
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      acc[col] += xv * (d[col] * static_cast<float>(q[col]));
     }
   }
 

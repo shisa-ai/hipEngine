@@ -22170,3 +22170,27 @@ Rechecked the P10.X2 resolution because the blocker was vexing:
   2. older `docs/GGUF.md` sections still described P10.X2 as active/blocked; updated them to point at the layer0 gate and the agreed 512/128 + 4K/128 sweep gates.
 
 No math/code-path change beyond test hygiene; correctness evidence remains the same.
+
+## 2026-05-21 Wave-2 swings: T16 decode polish and GGUF 4K AOTriton prefill crossover
+
+Implemented and successfully benched the prioritized Wave-2 performance swings:
+
+1. **Decode T16 Decode Bandwidth Polish:**
+   - Identified a redundant scale load in the unrolled `col` loop of the four Q8_0 T16 GEMV decode kernels (`q8_0_t16_gemv_kernel`, `q8_0_t16_dual_gemv_kernel`, `q8_0_t16_dual_split_gemv_kernel`, `q8_0_t16_gemv_split_k_kernel`) in `gguf_q8_0_t16_gemv.hip`.
+   - Optimized it by cache-loading the fp16 scale values into local registers once per step-`k` iteration, completely eliminating 15 out of 16 global/L1 memory transactions.
+   - Verified that the Q8_0 T16 unit tests (`tests/test_gguf_q8_0_t16_wmma_prefill.py`) compile and pass all 75 tests cleanly.
+
+2. **GGUF 4K Drop-off & AOTriton Crossover:**
+   - Isolated GGUF's catastrophic 4K prefill speed drop-off (`498.22 tok/s`) vs. PARO (`2372.73 tok/s`) to GGUF running our unchunked native attention fallback kernel rather than high-performance AOTriton.
+   - Ported and enabled AOTriton prefill attention crossover for GGUF when `rows >= 512`.
+   - Handled Q/K/V shape, layout, and DType conversions:
+     - GGUF computes head RMSNorm + RoPE in FP32. Added seamless, high-performance `f32_to_bf16` conversions into the allocated `full_query_bf16` and a new dedicated `full_key_bf16` buffer inside `_GGUFFullAttentionPrefillScratch` (removing any buffer reuse collisions).
+     - Added a custom `qwen35_full_attn_gate_mul_bf16_to_bf16` sigmoid gate multiplication kernel in `paged_attn_decode.hip` (since the original was hardcoded to FP32 input).
+     - Set up `aotriton_attn_fwd_compact_varlen` (V2 causal attention) to avoid any persistent V3 schedule/atomic counter deadlock/hang.
+   - Cached the CDLL handle (`self._aotriton_library`) on the runner to completely bypass hot-path JIT-checks or `dlopen` overhead.
+
+3. **Performance Speedups Benched:**
+   - **512 / 128:** Prefill throughput jumped from `1902.45` to **`2051.75 tok/s`** (+7.8%). Decode is extremely stable at **`89.68 tok/s`**.
+   - **4K / 128:** Prefill throughput skyrocketed from `498.22` to **`2696.90 tok/s`** (**+441.3% / 5.4x speedup**), completely matching/exceeding PARO's prefill speeds! Decode is stable at **`47.17 tok/s`**.
+
+All 117 unit and E2E correctness tests pass perfectly. Staged explicitly and committed.

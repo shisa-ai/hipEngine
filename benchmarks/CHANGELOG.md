@@ -19,7 +19,7 @@ Examples:
 
 ## 2026-05-21
 
-- [accepted target met] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / P10 safe-mode final acceptance: 512/128 prefill/decode `506.363/98.837 -> 1902.452/89.779 tok/s` (prefill `+275.7%` due to effective WMMA prefill, decode `-9.1%` due to safe-mode, both exceeding targets) and 4K/128 `498.219/47.052 tok/s`; P10.X2 correctness gate passes via Layer 0 real-weight verification (100% expert agreement, output max diff `0.000977` under 1 ULP); `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-retained-safe-mode.json`.
+- [accepted target met] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / P10 safe-mode final acceptance: 512/128 prefill/decode `506.363/98.837 -> 2051.747/89.678 tok/s` (prefill `+305.2%` due to effective WMMA prefill, decode `-9.3%` due to safe-mode, both exceeding targets) and 4K/128 `498.219/47.052 -> 2696.901/47.171 tok/s` (prefill `+441.3%` (5.4x) due to AOTriton prefill attention crossover); P10.X2 correctness gate passes via Layer 0 real-weight verification (100% expert agreement, output max diff `0.000977` under 1 ULP); `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-retained-safe-mode.json`.
 
 ## 2026-05-20
 

@@ -15,9 +15,21 @@ from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_t
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_full_attn_gate_mul_bf16,
+    qwen35_full_attn_gate_mul_bf16_to_bf16,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
 )
+from hipengine.kernels.hip_gfx1100.attention import (
+    aotriton_attn_fwd_compact_varlen,
+    aotriton_attn_fwd_v3_compact_varlen,
+    build_aotriton_wrap,
+)
+from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
+    tensor1 as aotriton_tensor1,
+    tensor2 as aotriton_tensor2,
+    tensor4 as aotriton_tensor4,
+)
+from hipengine.core.tensor import DType
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     qwen35_write_paged_kv_mixed_value_bf16_prompt_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
@@ -1095,25 +1107,77 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
-            scratch.full_query.ptr,
-            scratch.key_cache.ptr,
-            scratch.value_cache.ptr,
-            scratch.full_gate.ptr,
-            scratch.full_gated.ptr,
-            scratch.prefill_spans,
-            rows,
-            rows,
-            scratch.block_size,
-            cfg.head_count,
-            cfg.head_count_kv,
-            cfg.key_length,
-            cfg.key_length,
-            1,
-            cfg.key_length ** -0.5,
-            stream=stream,
-            runtime=runtime,
-        )
+        qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans_enabled = True
+        threshold = int(PrefillConfig().attn_aotriton_min_tokens)
+        use_aotriton = threshold > 0 and rows >= threshold
+
+        if use_aotriton:
+            aotriton_library = getattr(self, "_aotriton_library", None)
+            if aotriton_library is None:
+                aotriton_library = build_aotriton_wrap(load=True)
+                self._aotriton_library = aotriton_library
+
+            # Convert FP32 query and key to BF16 for AOTriton
+            f32_to_bf16(
+                scratch.full_query.ptr,
+                scratch.full_query_bf16.ptr,
+                rows * self.q_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            f32_to_bf16(
+                scratch.full_key.ptr,
+                scratch.full_key_bf16.ptr,
+                rows * self.kv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+
+            aotriton_attn_fwd_compact_varlen(
+                aotriton_tensor4(scratch.full_query_bf16.ptr, (1, cfg.head_count, rows, cfg.key_length), (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1), DType.BF16),
+                aotriton_tensor4(scratch.full_key_bf16.ptr, (1, cfg.head_count_kv, rows, cfg.key_length), (cfg.head_count_kv * cfg.key_length * rows, cfg.key_length, cfg.head_count_kv * cfg.key_length, 1), DType.BF16),
+                aotriton_tensor4(scratch.full_v.ptr, (1, cfg.head_count_kv, rows, cfg.key_length), (cfg.head_count_kv * cfg.key_length * rows, cfg.key_length, cfg.head_count_kv * cfg.key_length, 1), DType.BF16),
+                aotriton_tensor1(scratch.cu_q.ptr, (2,), (1,), DType.INT32),
+                aotriton_tensor1(scratch.cu_k.ptr, (2,), (1,), DType.INT32),
+                aotriton_tensor2(scratch.softmax_lse.ptr, (cfg.head_count, rows), (rows, 1), DType.FP32),
+                aotriton_tensor4(scratch.full_attn_bf16.ptr, (1, cfg.head_count, rows, cfg.key_length), (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1), DType.BF16),
+                max_seqlen_q=rows,
+                max_seqlen_k=rows,
+                sm_scale=cfg.key_length ** -0.5,
+                is_causal=True,
+                stream=stream,
+                library=aotriton_library,
+                runtime=runtime,
+            )
+
+            qwen35_full_attn_gate_mul_bf16_to_bf16(
+                scratch.full_attn_bf16.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                rows * cfg.head_count * cfg.key_length,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
+                scratch.full_query.ptr,
+                scratch.key_cache.ptr,
+                scratch.value_cache.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                scratch.prefill_spans,
+                rows,
+                rows,
+                scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length,
+                1,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                runtime=runtime,
+            )
         launch_gguf_linear(
             layer.weight("attn_output"),
             scratch.full_gated.ptr,
@@ -3175,6 +3239,7 @@ class _GGUFFullAttentionPrefillScratch:
     full_query: object
     full_key: object
     full_query_bf16: object
+    full_key_bf16: object
     full_gate: object
     full_attn_bf16: object
     full_gated: object
@@ -3305,6 +3370,7 @@ class _GGUFFullAttentionPrefillScratch:
             "full_query": buf(q_f32_bytes),
             "full_key": buf(kv_f32_bytes),
             "full_query_bf16": buf(rows * runner.q_width * 2),
+            "full_key_bf16": buf(rows * runner.kv_width * 2),
             "full_gate": buf(rows * runner.q_width * 2),
             "full_attn_bf16": buf(rows * runner.q_width * 2),
             "full_gated": buf(rows * runner.q_width * 2),
