@@ -9,8 +9,9 @@ from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
 
 
 class _Tensor:
-    def __init__(self, ptr: int) -> None:
+    def __init__(self, ptr: int, *, numel: int = 1) -> None:
         self.ptr = ptr
+        self.numel = numel
 
 
 class _Weight:
@@ -55,12 +56,18 @@ def _runner(*, is_moe: bool = True) -> Qwen35GGUFFullStackRunner:
     layer = _Layer()
     runner.weights = SimpleNamespace(config=cfg, layer=lambda layer_id: layer)
     runner.runtime = object()
+    runner.compiler_version = None
+    runner.require_cached_build = False
+    runner._cast_library = lambda: "cast-lib"
+    runner._paged_kv_write_library = lambda: "kv-write-lib"
+    runner._paged_attn_decode_library = lambda: "paged-attn-lib"
     return runner
 
 
-def _scratch() -> SimpleNamespace:
+def _scratch(*, position: int, max_positions: int) -> SimpleNamespace:
+    block_size = 256
     scratch = SimpleNamespace(
-        position_host=np.array([7], dtype=np.int64),
+        position_host=np.array([position], dtype=np.int64),
         set_full_attention_position=lambda position, runtime: None,
         norm=_Tensor(0x2000),
         full_q=_Tensor(0x2010),
@@ -76,13 +83,13 @@ def _scratch() -> SimpleNamespace:
         full_key=_Tensor(0x20B0),
         append_spans=object(),
         decode_spans=object(),
-        block_size=256,
-        max_positions=768,
+        block_size=block_size,
+        max_positions=max_positions,
         full_attn_context=_Tensor(0x20C0),
         full_attn_split_partial=_Tensor(0x20D0),
         full_attn_split_m=_Tensor(0x20E0),
         full_attn_split_l=_Tensor(0x20F0),
-        full_attn_split_count=3,
+        full_attn_split_count=(max_positions + block_size - 1) // block_size,
         full_gated=_Tensor(0x2100),
     )
     key_cache = _Tensor(0x2110)
@@ -109,11 +116,6 @@ def _patch_full_attention_primitives(monkeypatch):
     monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("bf16_to_f32"))
     monkeypatch.setattr(
         qwen_runtime,
-        "gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight",
-        record("rope_key_bf16"),
-    )
-    monkeypatch.setattr(
-        qwen_runtime,
         "gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight",
         record("rope_key_f32"),
     )
@@ -125,6 +127,16 @@ def _patch_full_attention_primitives(monkeypatch):
     )
     monkeypatch.setattr(
         qwen_runtime,
+        "qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans",
+        record("split_k_warp_gate"),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_paged_full_attn_decode_split_k_gate_bf16_spans",
+        record("split_k_gate"),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
         "qwen35_paged_full_attn_decode_context_bf16_spans",
         record("attention_context"),
     )
@@ -132,18 +144,21 @@ def _patch_full_attention_primitives(monkeypatch):
     return calls
 
 
-def test_qwen35moe_decode_repack_routes_full_attention_through_split_k_gqa_gate(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+def test_long_context_routes_full_attention_through_split_k_gqa_gate(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
     runner = _runner(is_moe=True)
-    scratch = _scratch()
+    scratch = _scratch(position=4095, max_positions=4096)
     calls = _patch_full_attention_primitives(monkeypatch)
 
-    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=7, stream=5)
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=4095, stream=5)
 
     names = [name for name, _, _ in calls]
-    assert "rope_key_bf16" in names
-    assert "bf16_to_f32" not in names
+    assert "rope_key_f32" in names
+    assert "bf16_to_f32" in names
     assert "split_k_gqa_gate" in names
+    assert "split_k_warp_gate" not in names
+    assert "split_k_gate" not in names
     assert "attention_context" not in names
     assert "attention_gate" not in names
 
@@ -161,13 +176,14 @@ def test_qwen35moe_decode_repack_routes_full_attention_through_split_k_gqa_gate(
     assert split_args[9:18] == (256, scratch.full_attn_split_count, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
 
 
-def test_qwen35moe_without_decode_repack_keeps_unfused_full_attention_gate(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
+def test_short_context_keeps_unfused_full_attention_gate(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
     runner = _runner(is_moe=True)
-    scratch = _scratch()
+    scratch = _scratch(position=511, max_positions=768)
     calls = _patch_full_attention_primitives(monkeypatch)
 
-    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=7, stream=5)
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=511, stream=5)
 
     names = [name for name, _, _ in calls]
     assert "rope_key_f32" in names
@@ -175,9 +191,31 @@ def test_qwen35moe_without_decode_repack_keeps_unfused_full_attention_gate(monke
     assert "attention_context" in names
     assert "attention_gate" in names
     assert "split_k_gqa_gate" not in names
+    assert "split_k_warp_gate" not in names
+    assert "split_k_gate" not in names
 
     context_args = next(args for name, args, _ in calls if name == "attention_context")
     gate_args = next(args for name, args, _ in calls if name == "attention_gate")
     assert context_args[:5] == (scratch.full_query.ptr, 0x2110, 0x2120, scratch.full_attn_context.ptr, scratch.decode_spans)
     assert context_args[5:11] == (scratch.max_positions, scratch.block_size, 16, 2, 256, 256 ** -0.5)
     assert gate_args[:4] == (scratch.full_attn_context.ptr, scratch.full_gate.ptr, scratch.full_gated.ptr, runner.q_width)
+
+
+def test_decode_repack_flag_does_not_change_split_k_routing(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    decisions: list[bool] = []
+
+    for decode_repack in ("0", "1"):
+        monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", decode_repack)
+        runner = _runner(is_moe=True)
+        scratch = _scratch(position=4095, max_positions=4096)
+        calls = _patch_full_attention_primitives(monkeypatch)
+
+        runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=4095, stream=5)
+
+        names = [name for name, _, _ in calls]
+        decisions.append("split_k_gqa_gate" in names)
+        assert "attention_context" not in names
+        assert "attention_gate" not in names
+
+    assert decisions == [True, True]

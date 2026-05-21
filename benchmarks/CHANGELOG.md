@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-05-21
 
+- [accepted target met] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / P10.D8 context-threshold split-K decode: 4K/128 prefill/decode `2696.901/47.171 -> 2700.015/97.008 tok/s` (decode `+105.6%`) by routing GGUF full-attention decode through split-K gated GQA at context `>=1024`; 512/128 guarded path stays within noise at `2140.225/89.322 tok/s`; targeted GGUF bundle passes (`127 passed`), layer0 max diff `0.000977`; `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d8-splitk-decode.json`.
+
 - [blocked preflight] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / P10 long-context 32K/128 and 128K/128: real runs skipped because calibrated allocation estimates exceed local 24 GiB capacity (`32.506 GiB` and `66.711 GiB` respectively); blocker is unchunked resident bulk-prefill scratch for 32K and dense KV+scratch for 128K; `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-preflight-blocked.json`.
 
 - [accepted target met] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / P10 safe-mode final acceptance: 512/128 prefill/decode `506.363/98.837 -> 2051.747/89.678 tok/s` (prefill `+305.2%` due to effective WMMA prefill, decode `-9.3%` due to safe-mode, both exceeding targets) and 4K/128 `498.219/47.052 -> 2696.901/47.171 tok/s` (prefill `+441.3%` (5.4x) due to AOTriton prefill attention crossover); P10.X2 correctness gate passes via Layer 0 real-weight verification (100% expert agreement, output max diff `0.000977` under 1 ULP); `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-retained-safe-mode.json`.

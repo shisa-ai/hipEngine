@@ -2569,25 +2569,30 @@ those measurements prove there is room for more.
 
 Date added: 2026-05-21
 
+Status update 2026-05-21: **P10.D8 landed and was retained.** 4K/128 decode improved
+`47.171 -> 97.008 tok/s` (+105.6%) via context-threshold split-K gated GQA
+full-attention decode, while 512/128 stayed within noise at `89.322 tok/s`.
+Artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d8-splitk-decode.json`.
+
 Current retained/reviewed GGUF safe-mode rows after the AOTriton prefill port:
 
 | Shape | Prefill tok/s | Decode tok/s | Interpretation |
 | --- | ---: | ---: | --- |
-| 512/128 | `2051.747` retained (`2121.421` review rerun) | `89.678` retained (`89.696` review rerun) | short-context decode stable, still below P10 `>=120` stretch |
-| 4K/128 | `2696.901` retained | `47.171` retained | prefill drop-off fixed; decode now exposes the long-context attention bottleneck |
+| 512/128 | `2140.225` retained | `89.322` retained | short-context decode stable; below split-K threshold |
+| 4K/128 | `2700.015` retained | `97.008` retained | prefill drop-off fixed; decode cliff resolved by split-K gated GQA |
 
-The 512→4K decode drop (`~89.7 → ~47.2 tok/s`) is the next highest-leverage
-area. It is **not** a prefill issue anymore. The GGUF full-attention decode path
-still launches the single-context paged context kernel followed by a separate
-BF16 gate multiply:
+Before P10.D8, the 512→4K decode drop (`~89.7 → ~47.2 tok/s`) was the next
+highest-leverage area. It was **not** a prefill issue anymore. The pre-D8 GGUF
+full-attention decode path launched the single-context paged context kernel
+followed by a separate BF16 gate multiply:
 
 ```
 qwen35_paged_full_attn_decode_context_bf16_spans
   → qwen35_full_attn_gate_mul_bf16
 ```
 
-Meanwhile, the split-K/GQA gated decode kernels already exist in the tree and
-are used by the PARO path at the retained long-context threshold:
+The split-K/GQA gated decode kernels already existed in the tree and were used
+by the PARO path at the retained long-context threshold:
 
 ```
 qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
@@ -2596,19 +2601,20 @@ qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
 ```
 
 `_FullStackScratch` also already allocates `full_attn_split_partial`,
-`full_attn_split_m`, `full_attn_split_l`, and `full_attn_split_count`, but GGUF
-currently leaves them unused in `_run_full_attention_attn_only`. That makes the
-next pass a **routing/orchestration port**, not a new kernel-first project.
+`full_attn_split_m`, `full_attn_split_l`, and `full_attn_split_count`. P10.D8
+now consumes those buffers from `_run_full_attention_attn_only` when the active
+context meets the split-K threshold.
 
 #### P10.D8 — Route GGUF full-attention decode through split-K gated attention
 
-Priority: **P0 for decode**.
+Priority: **P0 for decode**. Status: **done / retained 2026-05-21**.
 
-Planned behavior:
+Implemented behavior:
 
 - Add a GGUF decode split threshold matching PARO's retained default:
   `HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=1024`.
-- Dispatch split-K gated attention when `decode_spans.max_live_count >= 1024`.
+- Dispatch split-K gated attention when active decode context
+  `position + 1 >= 1024`.
 - Keep the current unfused context+gate path below the threshold so 512/128 does
   not pay split-K overhead.
 - Do **not** gate this on `HIPENGINE_GGUF_DECODE_REPACK`. P10.X1 established
@@ -2622,11 +2628,11 @@ Planned behavior:
   - warp-specialized split-K otherwise when enabled,
   - generic split-K gated reduce as fallback.
 - Compute the active split count from live context, not just max allocation:
-  `num_splits = ceil(max_live_count / chunk_size)` bounded by
+  `num_splits = ceil((position + 1) / chunk_size)` bounded by
   `scratch.full_attn_split_count`. Start with `chunk_size=256` to match the
   existing kernel ABI and block size.
 
-Correctness plan:
+Correctness plan / completed checks:
 
 1. Update `tests/test_qwen35_gguf_decode_repack_semantics.py` so it keeps the
    P10.X1 invariant (`gguf_decode_repack_enabled()` must not appear in
@@ -2642,18 +2648,21 @@ Correctness plan:
    short-context row is not regressed.
 5. Run 4K/128 retained-shape bench and compare decode against `47.171 tok/s`.
 
-Expected impact:
+Measured impact:
 
-- 512/128: neutral to slightly positive if threshold keeps the old path.
-- 4K/128: first target is `>=60 tok/s` (about `+27%`) because this removes the
-  serial/undersubscribed context kernel and fuses the gate into the split reduce.
-- Longer context after memory work: this is mandatory because the contiguous
-  context kernel cannot scale to 32K+ and `docs/KERNELS.md` already records that
-  long decode must use paged/split-K over the dense cache viewed as pages.
+- 512/128: `89.678 -> 89.322 tok/s` (`-0.4%`, within noise) because the default
+  threshold keeps the old context+gate path for this shape.
+- 4K/128: `47.171 -> 97.008 tok/s` (`+105.6%`), well above the initial
+  `>=60 tok/s` target, because the long-context full-attention decode now uses
+  split-K gated GQA and removes the separate gate launch.
+- Longer context after memory work: this remains mandatory because the
+  contiguous context kernel cannot scale to 32K+ and `docs/KERNELS.md` already
+  records that long decode must use paged/split-K over the dense cache viewed as
+  pages.
 
 #### P10.D9 — Decode split-K threshold and split-count sweep
 
-Start only after P10.D8 is correct.
+Start after P10.D8 (now correct and retained).
 
 Sweep knobs:
 

@@ -22278,3 +22278,31 @@ Plan outcome:
 - Expected first target: 4K/128 decode `>=60 tok/s` while keeping 512/128 within noise.
 
 Next implementation task should be P10.D8: wire the context-threshold split-K gated decode route in GGUF, then run the correctness/bench plan before moving to threshold sweeps or MoE decode micro-fusion.
+
+## 2026-05-21 P10.D8 implementation: GGUF context-threshold split-K gated full-attention decode
+
+Implemented the planned GGUF full-attention decode split-K route.
+
+Change:
+- Added default split threshold `HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=1024`.
+- `_run_full_attention_attn_only` now computes active decode context as `position + 1` and dispatches split-K gated attention when the active context meets the threshold.
+- Below threshold, the existing `qwen35_paged_full_attn_decode_context_bf16_spans -> qwen35_full_attn_gate_mul_bf16` path remains unchanged so 512/128 does not pay split-K overhead.
+- Routing is explicitly context-based and does not consult `HIPENGINE_GGUF_DECODE_REPACK`, preserving the P10.X1 semantic invariant.
+- Added PARO-style split wrapper selection for GGUF:
+  - grouped-GQA specialization when Qwen3.5 shape and context `>=4096` or `num_splits>=64`,
+  - warp split when enabled,
+  - generic split-K gated reduce fallback.
+- Repaired decode-repack dispatch/semantics tests to verify split-K routing by context and decode-repack independence.
+
+Validation:
+- `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py -q -s` -> 5 passed.
+- `PYTHONPATH=. uv run pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py -q` -> 8 passed.
+- `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py -q -s` -> 3 passed; layer0 max diff `0.000977`, mean diff `0.000004`.
+- `PYTHONPATH=. uv run pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_gguf_q8_0_t16_wmma_prefill.py tests/test_gguf_q4_k_t16_selected_wmma_prefill.py tests/test_gguf_k_t16_selected_wmma_prefill.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_compact_moe_wmma_resolver.py -q` -> 127 passed.
+- `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_decode_graph_policy.py -q` -> 5 passed.
+
+Benchmarks (local gfx1100, `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `gguf_q4_k_m`, safe-mode command shape with T16 decode-repack, WMMA prefill, GEMV decode, cached builds):
+- 512/128 guard: median prefill/decode `2140.225 / 89.322 tok/s`, peak `21.344 GiB`, finite logits. Decode is `-0.4%` vs previous retained `89.678` and within measurement noise; this shape remains below the split threshold.
+- 4K/128 target: median prefill/decode `2700.015 / 97.008 tok/s`, peak `22.584 GiB`, finite logits. Decode improves from `47.171 -> 97.008 tok/s` (`+105.6%`), exceeding the initial `>=60 tok/s` target.
+
+Saved retained artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d8-splitk-decode.json` and updated benchmark README/changelog. Next optimization pass should be P10.D9 threshold/split-count sweep (512/768/1024/1536/2048/4096, grouped/warp/generic toggles), then rocprof before returning to MoE micro-fusion.

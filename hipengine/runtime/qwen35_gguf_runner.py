@@ -27,6 +27,9 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_bf16_to_bf16,
     qwen35_paged_full_attn_decode_context_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
@@ -1782,31 +1785,68 @@ class Qwen35GGUFFullStackRunner:
             library=kv_write_library,
             runtime=runtime,
         )
-        qwen35_paged_full_attn_decode_context_bf16_spans(
-            scratch.full_query.ptr,
-            key_cache.ptr,
-            value_cache.ptr,
-            scratch.full_attn_context.ptr,
-            scratch.decode_spans,
-            scratch.max_positions,
-            scratch.block_size,
-            cfg.head_count,
-            cfg.head_count_kv,
-            cfg.key_length,
-            cfg.key_length ** -0.5,
-            stream=stream,
-            library=paged_attn_library,
-            runtime=runtime,
-        )
-        qwen35_full_attn_gate_mul_bf16(
-            scratch.full_attn_context.ptr,
-            scratch.full_gate.ptr,
-            scratch.full_gated.ptr,
-            self.q_width,
-            stream=stream,
-            library=paged_attn_library,
-            runtime=runtime,
-        )
+        active_context = int(position) + 1
+        if _use_gguf_full_attention_split_decode(active_context):
+            chunk_size = int(scratch.block_size)
+            num_splits = min(
+                int(scratch.full_attn_split_count),
+                max(1, (active_context + chunk_size - 1) // chunk_size),
+            )
+            split_gate_fn = _gguf_full_attention_split_gate_bf16_fn(
+                cfg,
+                block_size=scratch.block_size,
+                num_splits=num_splits,
+                active_context=active_context,
+            )
+            split_gate_fn(
+                scratch.full_query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                scratch.full_attn_split_partial.ptr,
+                scratch.full_attn_split_m.ptr,
+                scratch.full_attn_split_l.ptr,
+                scratch.decode_spans,
+                chunk_size,
+                num_splits,
+                scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length,
+                1,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+        else:
+            qwen35_paged_full_attn_decode_context_bf16_spans(
+                scratch.full_query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                scratch.full_attn_context.ptr,
+                scratch.decode_spans,
+                scratch.max_positions,
+                scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+            qwen35_full_attn_gate_mul_bf16(
+                scratch.full_attn_context.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                self.q_width,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
         launch_gguf_linear(
             layer.weight("attn_output"),
             scratch.full_gated.ptr,
@@ -2440,6 +2480,8 @@ class Qwen35GGUFFullStackRunner:
 
 
 _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS"
+_GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
+_GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 
 
 @dataclass(frozen=True)
@@ -2460,9 +2502,34 @@ class Qwen35GGUFFastPathSafety:
         return asdict(self)
 
 
+def _env_value(name: str, *aliases: str) -> str | None:
+    for key in (name, *aliases):
+        raw = os.environ.get(key)
+        if raw is not None and raw.strip() != "":
+            return raw.strip()
+    return None
+
+
 def _env_truthy(name: str) -> bool:
     raw = os.environ.get(name, "")
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_flag(name: str, default: bool, *aliases: str) -> bool:
+    raw = _env_value(name, *aliases)
+    if raw is None:
+        return default
+    return raw.lower() not in {"0", "false", "off", "no"}
+
+
+def _env_int(name: str, default: int, *aliases: str) -> int:
+    raw = _env_value(name, *aliases)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
 
 
 def resolve_qwen35moe_fastpath_safety(
@@ -4119,6 +4186,78 @@ def _gguf_gdn_prefill_segment_threshold() -> int:
     except ValueError:
         return _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT
     return max(1, value)
+
+
+def _gguf_full_attention_split_decode_min_context() -> int:
+    return max(
+        0,
+        _env_int(
+            _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV,
+            _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT,
+            "NANOVLLM_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT",
+        ),
+    )
+
+
+def _use_gguf_full_attention_split_decode(active_context: int) -> bool:
+    threshold = _gguf_full_attention_split_decode_min_context()
+    return threshold > 0 and int(active_context) >= threshold
+
+
+def _gguf_paged_attn_gqa_grouped_min_splits() -> int:
+    return max(1, _env_int("HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_SPLITS", 64))
+
+
+def _gguf_paged_attn_gqa_grouped_min_context() -> int:
+    return max(0, _env_int("HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_CONTEXT", 4096))
+
+
+def _gguf_paged_attn_gqa_grouped_enabled() -> bool:
+    return _env_flag(
+        "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX",
+        True,
+        "NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX",
+    )
+
+
+def _gguf_paged_attn_warp_split_enabled() -> bool:
+    return _env_flag(
+        "HIPENGINE_PAGED_ATTN_WARP_SPLIT_CTX",
+        True,
+        "NANOVLLM_AMD_PAGED_ATTN_WARP_SPLIT_CTX",
+    )
+
+
+def _gguf_qwen35_gqa_decode_shape(config, *, block_size: int) -> bool:
+    return (
+        int(block_size) == 256
+        and int(config.head_count) == 16
+        and int(config.head_count_kv) == 2
+        and int(config.key_length) == 256
+    )
+
+
+def _use_gguf_paged_attn_gqa_grouped(active_context: int, num_splits: int) -> bool:
+    if not _gguf_paged_attn_gqa_grouped_enabled():
+        return False
+    return int(num_splits) >= _gguf_paged_attn_gqa_grouped_min_splits() or int(
+        active_context
+    ) >= _gguf_paged_attn_gqa_grouped_min_context()
+
+
+def _gguf_full_attention_split_gate_bf16_fn(
+    config,
+    *,
+    block_size: int,
+    num_splits: int,
+    active_context: int,
+):
+    if _gguf_qwen35_gqa_decode_shape(config, block_size=block_size):
+        if _use_gguf_paged_attn_gqa_grouped(active_context, num_splits):
+            return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
+        if _gguf_paged_attn_warp_split_enabled():
+            return qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans
+    return qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
 
 
 def _resolve_gguf_gdn_prefill_plan() -> _GGUFGDNPrefillPlan:
