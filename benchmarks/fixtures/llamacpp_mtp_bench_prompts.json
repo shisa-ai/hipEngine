@@ -6,6 +6,7 @@
     "gist": "https://gist.github.com/am17an/228edfb84ed082aa88e3865d6fa27090",
     "raw": "https://gist.githubusercontent.com/am17an/228edfb84ed082aa88e3865d6fa27090/raw/0bee1e2b88904e62670d0df1cf0991883b0815d7/mtp-bench.py",
     "llama_cpp_evidence": "https://github.com/ggml-org/llama.cpp/pull/22673#issuecomment-4380579942",
+    "llama_cpp_pr_23287": "https://github.com/ggml-org/llama.cpp/pull/23287",
     "note": "The original script sends these prompts as single user chat messages to an OpenAI-compatible llama.cpp server. hipEngine encodes the raw prompt text unless a future tokenizer/template option is added."
   },
   "prompts": [

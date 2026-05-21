@@ -21442,3 +21442,25 @@ Artifact: ``benchmarks/results/2026-05-22-hipengine-mtp-m12.2-w7900-b3-batched-3
 M12.1 (graph capture, no perf win), M12.4 (commit fusion, +1.1%), M12.5 (metadata cache, +0.9%), M12.2 (LM-head weight share, +3.7%) — cumulative +5.8% MTP throughput; verify time per cycle 27.03 → 25.17 ms.  These were the M12.x sub-tasks that fit cleanly without restructuring the forward pass.
 
 The remaining gap to MTP beats AR (cycle cost 3.8 → <2.4 AR-tok) cannot be closed by more host-side launch reductions.  The forward pass still issues ~1,840 GPU kernel calls per pass (from the rocprof artifact) and that is what dominates both kernel-launch overhead and the GPU kernel execution itself for small-batch workloads.  Per-layer kernel fusion (M12.6+) — combining adjacent RMSNorm + rotate + projection chains into single kernels per layer, multi-row mul_mat_id consolidation on remaining MoE sub-ops — is the next concrete lever.  Each layer-internal fusion saves ~10-50 launches and tracks toward the llama.cpp shape of ~100-200 launches per pass for the same model.
+
+## 2026-05-22 — llama.cpp PR #23287 MTP bench harness
+
+Looked up ggml-org/llama.cpp PR #23287 ("Move to backend sampling for MTP draft path").  The PR's benchmark command is the ad-hoc ``python3 mtp-bench.py`` script from am17an's public gist:
+
+- gist: https://gist.github.com/am17an/228edfb84ed082aa88e3865d6fa27090
+- raw revision used here: https://gist.githubusercontent.com/am17an/228edfb84ed082aa88e3865d6fa27090/raw/0bee1e2b88904e62670d0df1cf0991883b0815d7/mtp-bench.py
+- PR context: https://github.com/ggml-org/llama.cpp/pull/23287
+
+Added ``tools/mtp-bench.py`` as a protocol-compatible entry point over the existing ``benchmarks/fixtures/llamacpp_mtp_bench_prompts.json`` prompt suite.  Default ``--mode server`` preserves the upstream request shape (``/v1/chat/completions``, model ``llama``, one user message, ``max_tokens=192``, ``seed=42``) and prints the same columns used in the llama.cpp PR: ``pred``, ``draft``, ``acc``, acceptance rate, and tok/s.  Added ``--diff`` for two server-mode JSON outputs.
+
+Per follow-up, the same tool now also supports ``--mode hipengine-current``.  That mode wraps our existing ``scripts/mtp_prompt_suite_economics.py`` workflow instead of reimplementing it, so the JSON remains compatible with our current MTP verifier-economics artifacts while using the same prompt suite and command entry point.  Defaults target the current W7900/gfx1100 M12 path (``--backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --candidate-budgets 3``).  ``--print-command`` shows the exact existing-harness command without running GPU work.
+
+Validation:
+
+- ``python3 -m py_compile tools/mtp-bench.py tests/test_mtp_bench_tool.py``
+- ``python3 tools/mtp-bench.py --list-prompts``
+- ``python3 tools/mtp-bench.py --prompt-names translation --print-payload``
+- ``python3 tools/mtp-bench.py --mode hipengine-current --prompt-names translation --max-tokens 64 --candidate-budgets 2,3 --runs 2 --out /tmp/hipengine-current.json --print-command``
+- ``uv run pytest tests/test_mtp_bench_tool.py -q`` → 4 passed
+
+No performance claim; this is benchmark tooling only.  Left unrelated worktree changes/artifacts unstaged.
