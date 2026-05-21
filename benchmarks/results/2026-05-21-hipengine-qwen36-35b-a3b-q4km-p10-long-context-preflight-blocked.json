@@ -8,10 +8,16 @@
   "quant": "gguf_q4_k_m",
   "backend": "hip_gfx1100",
   "hardware": "local gfx1100 24 GiB card",
-  "commit_under_test": "5e4cfeb",
+  "commit_under_test": "8ab3070",
   "requested_shapes": [
-    {"prompt_length": 32768, "decode_tokens": 128},
-    {"prompt_length": 131072, "decode_tokens": 128}
+    {
+      "prompt_length": 32768,
+      "decode_tokens": 128
+    },
+    {
+      "prompt_length": 131072,
+      "decode_tokens": 128
+    }
   ],
   "accepted_command_shape": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length <PROMPT> --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json <OUT>.json",
   "preflight_method": "Static allocation model from Qwen35GGUFResidentSession/_FullStackScratch/_GGUFFullAttentionPrefillScratch, calibrated against measured tracked_current_allocated_gib_before_close for 512/128 and 4K/128 retained/review runs.",
@@ -47,5 +53,13 @@
     "Implement GGUF chunked bulk prefill so transient _GGUFFullAttentionPrefillScratch is sized by chunk rows (e.g. 4096) rather than max_sequence_length; this should make 32K/128 fit because the calibrated estimate drops near the 4K transient footprint plus the longer resident KV cache.",
     "For 128K/128, dense resident KV plus even chunked prefill remains very tight or over 24 GiB; likely requires KV compression/eviction policy or more aggressive scratch lifetime reduction before a real run on W7900.",
     "After long-context memory is resolved, turn to decode: 4K decode remains ~47 tok/s while 512 decode is ~90 tok/s, consistent with full-attention decode being memory/parallelism limited at longer contexts."
-  ]
+  ],
+  "revalidation": {
+    "date": "2026-05-21",
+    "commit": "8ab3070",
+    "hipMemGetInfo_total_gib": 23.984375,
+    "hipMemGetInfo_free_gib_at_preflight": 23.949,
+    "decision": "real benchmark launches skipped to avoid deterministic OOM on shared local 24 GiB gfx1100",
+    "rollup_update": "not retained; no benchmarks/README.md row added"
+  }
 }

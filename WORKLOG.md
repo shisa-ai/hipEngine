@@ -22249,3 +22249,15 @@ Validation:
 - `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_full_attention_gpu.py -q` -> 3 pass.
 
 Remaining copy opportunities are unchanged from the prior audit: the FP32->BF16 Q/K staging and BF16 attention gate launch are real work. Removing either safely requires a dedicated math-kernel change (head-RMSNorm/RoPE writing AOTriton-ready BF16 Q/K while preserving FP32/BF16 KV-cache semantics, or a deeper AOTriton+gate fusion) and should get a targeted correctness fixture before performance acceptance.
+
+## 2026-05-21 Task #16 follow-up: long-context blocker revalidated at current HEAD
+
+Task tool state did not contain the original Task #16, so created replacement tracking task #18 and revalidated the long-context decision at current HEAD `8ab3070`.
+
+Checks:
+- `hipMemGetInfo`: free `23.949 GiB`, total `23.984 GiB` on local gfx1100.
+- Existing blocked artifact still applies after the paged-KV launch-handle cleanup; the cleanup did not change allocation sizes.
+- 32K/128 remains blocked by calibrated accepted-path allocation estimate `32.506 GiB` (`+8.522 GiB` over device total).
+- 128K/128 remains blocked by calibrated accepted-path allocation estimate `66.711 GiB` (`+42.727 GiB` over device total).
+
+Updated `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-preflight-blocked.json` to set `commit_under_test=8ab3070` and record the revalidation. No `benchmarks/README.md` rollup row was added because no result is retained; this is a blocked preflight, not a performance claim.
