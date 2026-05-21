@@ -193,7 +193,10 @@ def classify_kernel(name: str) -> str:
     lower = name.lower()
     base = _normalise_kernel_name(lower)
     # ------------------------------------------------------ GGUF Q4_K MoE
-    if "gguf_q4_k_selected_dual_wmma_prefill_compact" in base:
+    if (
+        "gguf_q4_k_selected_dual_wmma_prefill_compact" in base
+        or "gguf_q4_k_t16_selected_dual_wmma_prefill_compact" in base
+    ):
         return "moe_q4_k_selected_dual_wmma_prefill"
     if "gguf_q4_k_selected_dual_pack8_gemv_decode_compact" in base:
         return "moe_q4_k_selected_dual_pack8_gemv_decode_p9"
@@ -202,7 +205,10 @@ def classify_kernel(name: str) -> str:
     if "gguf_q4_k_selected_dual_prefill_out" in base or "gguf_q4_k_selected_pack8_prefill_out" in base:
         return "moe_q4_k_selected_legacy_decode"
     # ------------------------------------------------- GGUF Q5_K / Q6_K MoE
-    if "gguf_k_selected_wmma_prefill_compact" in base:
+    if (
+        "gguf_k_selected_wmma_prefill_compact" in base
+        or "gguf_k_t16_selected_wmma_prefill_compact" in base
+    ):
         if ", 5" in name or ",5" in name:
             return "moe_q5_k_selected_wmma_prefill"
         if ", 6" in name or ",6" in name:
@@ -223,7 +229,11 @@ def classify_kernel(name: str) -> str:
         if ", 6" in name or ",6" in name:
             return "moe_q6_k_selected_legacy_decode"
     # ---------------------------------------------- Dense Q8_0 / Q4_K / Q6_K
-    if "gguf_q8_0_prefill_wmma" in base or "gguf_q8_0_prefill_dual_wmma" in base:
+    if (
+        "gguf_q8_0_prefill_wmma" in base
+        or "gguf_q8_0_prefill_dual_wmma" in base
+        or "gguf_q8_0_t16_prefill_wmma" in base
+    ):
         return "dense_q8_0_wmma_prefill"
     if "gguf_q8_0_pack8_gemv_decode" in base or "gguf_q8_0_pack8_dual_gate_up_gemv_decode" in base:
         return "dense_q8_0_pack8_gemv_decode_p9"
@@ -282,7 +292,13 @@ def classify_kernel(name: str) -> str:
     if "write_paged_kv" in base or "paged_kv" in base:
         return "kv_write"
     # --------------------------------------------------------------- Runtime
-    if "copybuffer" in base or base.startswith("hipmemcpy") or "memset" in base or "fill" in base:
+    if (
+        "copybuffer" in base
+        or "fillbuffer" in base
+        or base.startswith("hipmemcpy")
+        or base.startswith("hipmemset")
+        or "memset" in base
+    ):
         return "copy"
     return "other"
 

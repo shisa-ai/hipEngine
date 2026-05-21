@@ -21954,3 +21954,79 @@ Updated `docs/GGUF.md` with the agreed Wave-1-aftercare / Wave-2 plan:
 - Updated the P10.B6 roadmap row with the formal blocked artifact and exact throughput samples (`512/0=1900.231`, `512/128 decode=98.250`), and checked off B1-B4 in the P10 acceptance checklist.
 
 No code changed in this unit. Validation: re-read the updated P10.7 / P10.9 sections end-to-end. Next unit: Task #8 / P10.R0 rocprof now, preserving unrelated local changes (`tests/test_qwen35_gguf_fastpath_safety.py`, `uv.lock`).
+
+## 2026-05-21 P10.R0 — current Wave-1 rocprof + launch census before P10.X1
+
+Ran P10.R0 on HEAD after the docs plan (`c30ec59`; no runtime/kernel changes since Wave-1 B6) with safe-mode requested: `HIPENGINE_GGUF_DECODE_REPACK=1`, `--use-wmma-prefill`, `--use-gemv-decode`, `--force-bulk-prefill --bulk-prefill-attention-mode bulk`, `--require-cached-build`.
+
+Commands (raw CSVs are local only, not committed):
+
+```bash
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-p10-r0-512x0-prof --output-file p10_r0_512x0 -- \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+    --prompt-length 512 --decode-tokens 0 --warmup-runs 0 --measured-runs 1 \
+    --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_r0_512x0_bench.json
+
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-p10-r0-512x128-prof --output-file p10_r0_512x128 -- \
+  python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+    --prompt-length 512 --decode-tokens 128 --warmup-runs 0 --measured-runs 1 \
+    --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p10_r0_512x128_bench.json
+```
+
+The existing `scripts/qwen35_gguf_rocprof_summary.py` classifier was stale for the new P10 T16 WMMA symbols and was also treating unclassified `*prefill*` symbols as `copy` because it matched the substring `"fill"`. Fixed the classifier to recognize:
+
+- `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel` → `moe_q4_k_selected_dual_wmma_prefill`
+- `gguf_k_t16_selected_wmma_prefill_compact_kernel<...,5/6>` → Q5/Q6 selected WMMA prefill buckets
+- `gguf_q8_0_t16_prefill_wmma_kernel` → dense Q8_0 WMMA prefill
+- runtime fills only as `fillBuffer`/`hipMemset`, not arbitrary `prefill` text
+
+Validation for tooling fix: `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_rocprof_summary.py -q` → 69 passed.
+
+### Kernel / launch census
+
+| Phase | Kernel total | Dispatches | Dispatches/token | Wall reference | Hidden residue |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/0 prefill | **260.855 ms** | **2306** | 4.50 / prompt token | P10.B6 unprofiled wall 269.44 ms | ~8.6 ms (~3.2%) |
+| 512/128 decode (prefill prefix stripped) | **1059.185 ms** | **80262** | **627.05 / generated token** | P10.B6 unprofiled wall 1302.80 ms | **~243.6 ms = 1.90 ms/token (~18.7%)** |
+
+Profiler wall throughput is lower (`1682 tok/s` prefill, `88.45 tok/s` decode) because rocprof overhead is included; use kernel totals + launch counts, and compare hidden residue to the unprofiled P10.B6 wall medians.
+
+### Top prefill buckets (512/0)
+
+| Bucket | ms | Dispatches | Share |
+| --- | ---: | ---: | ---: |
+| dense Q8T16 WMMA prefill | 59.072 | 250 | 22.7% |
+| GDN recurrent | 50.421 | 30 | 19.3% |
+| full-attention prefill | 41.040 | 10 | 15.7% |
+| Q4T16 selected-dual WMMA prefill | 36.944 | 40 | 14.2% |
+| Q5T16 selected-down WMMA prefill | 25.882 | 37 | 9.9% |
+| router | 15.314 | 160 | 5.9% |
+
+No giant rows>1 T16 GEMV fallback remains in prefill. Residual T16 GEMV buckets are small (~8.3 ms combined) and likely singleton / final-logit surfaces, not the former P10 bottleneck.
+
+### Top decode buckets (512/128, prefix stripped)
+
+| Bucket | ms | Dispatches | Share |
+| --- | ---: | ---: | ---: |
+| dense Q8T16 GEMV decode | 231.248 | 16640 | 21.8% |
+| other | 164.536 | 9601 | 15.5% |
+| Q4T16 selected-dual GEMV decode | 132.012 | 5120 | 12.5% |
+| full-attention decode | 104.641 | 2560 | 9.9% |
+| Q5T16 selected-down GEMV decode | 97.900 | 4736 | 9.2% |
+| Q6T16 lm-head GEMV | 72.865 | 128 | 6.9% |
+| RMSNorm | 71.066 | 11648 | 6.7% |
+| router | 59.842 | 5120 | 5.7% |
+| GDN decode | 59.188 | 3840 | 5.6% |
+
+### Implications
+
+- P10.X1 is still first; this profile is diagnostic-only until model correctness is restored.
+- Prefill next swings are data-backed: Q8 WMMA tile/shape sweep, GDN/attention audit, Q4/Q5 WMMA tile sweep, router/scatter fusion. Need ~64 ms wall saved to reach 2500 from 1900; the top six buckets contain ~228 ms, so the target is plausible.
+- Decode D6 is justified: ~627 launches/token and ~1.9 ms/token hidden residue against unprofiled wall means HIP graph capture can plausibly recover part of the 98→120 gap after X1.
+- Decode D7 is still required: even perfect launch removal does not remove the 231 ms Q8T16 + 132 ms Q4T16 + 98 ms Q5T16 kernel buckets.
+
+Artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-r0-rocprof-baseline.json`.
