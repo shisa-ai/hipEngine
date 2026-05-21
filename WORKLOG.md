@@ -22338,3 +22338,24 @@ Key decode buckets after stripping prefill prefix (4K/16, kernel time only):
 - `rmsnorm`: `10.159 ms`, `6.49%`; `router`: `8.689 ms`, `5.55%`; `gdn_decode`: `8.670 ms`, `5.54%`.
 
 Conclusion: attention split-K is no longer the top 4K decode bottleneck. The next optimization focus should move to Q8_0 T16 GEMV decode families first, then selected-MoE T16 GEMVs, with RMSNorm/router/GDN cleanup later. Saved compact artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d10-splitk-rocprof.json`; raw CSVs stay under `/tmp/hipengine-p10-d10-gguf-splitk-rocprof/`.
+
+## 2026-05-21 P10.D11 re-review vs PARO and llama.cpp
+
+Completed the requested post-split-K comparison review. Sources:
+- hipENGINE retained P10.D8 GGUF rows: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d8-splitk-decode.json`.
+- PARO source-lineage target rows: `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json`, `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json`, and `benchmarks/README.md` source-lineage table.
+- llama.cpp HIP/Vulkan external baselines: `benchmarks/README.md` tok/s rows, plus peak artifacts `benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json` and `benchmarks/results/2026-05-17-llamacpp-vulkan-qwen36-peak.json`.
+
+Caveats: PARO is Qwen3.5-35B-A3B-PARO w4a16 AWQ/PARO on W7900, not same-model GGUF. hipENGINE retained rows are Qwen3.6-35B-A3B UD-Q4_K_M GGUF on the local gfx1100 24 GiB card; W7900 rerun remains unverified. llama.cpp tok/s uses the benchmark README source-of-truth rows; total-time deltas are derived from independent prefill/decode rates.
+
+Comparison snapshot:
+- 512/128 vs PARO target: prefill `-20.6%`, decode `-23.0%`, derived total time `+29.3%`, peak `+2.544 GiB`. Short-context still meaningfully behind the parent target.
+- 512/128 vs llama.cpp HIP: prefill `-12.1%`, decode `+4.5%`, derived total time `-2.1%`, peak `+0.219 GiB`. Decode now slightly ahead; total roughly tied despite lower prefill.
+- 512/128 vs llama.cpp Vulkan: prefill `+17.8%`, decode `-30.0%`, derived total time `+30.1%`, peak `+0.500 GiB`. Prefill ahead, decode far behind, total behind.
+- 4K/128 vs PARO target: prefill `-1.5%`, decode `-14.2%`, derived total time `+8.0%`, peak `+0.944 GiB`. Prefill is near target; remaining gap is mostly decode/memory.
+- 4K/128 vs llama.cpp HIP: prefill `+24.0%`, decode `+11.0%`, derived total time `-15.2%`, peak `+1.387 GiB`. hipENGINE is ahead on both throughput metrics at 4K.
+- 4K/128 vs llama.cpp Vulkan: prefill `+58.4%`, decode `-19.3%`, derived total time `-18.2%`, peak `+1.615 GiB`. Vulkan decode is faster, but hipENGINE's prefill advantage wins the 4K derived total.
+
+Decision: do not keep spending the next pass on attention split-K. Post-D10 rocprof shows `full_attention_decode` at only `10.21%` / `~0.999 ms/token` of 4K decode. The next performance focus should be Q8_0 T16 GEMV decode polish, specifically the redundant per-lane T16 scale load/broadcast opportunity in `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip`, targeting the `dense_q8_0_t16_gemv_decode_p9` bucket (`35.45%` / `3.469 ms/token`). Selected-MoE T16 GEMVs are next (`~21.44%` combined for Q4/Q5 selected), then RMSNorm/router/GDN launch cleanup. Keep a separate long-context/memory lane because external baselines have 32K/128 and 128K/128 rows while hipENGINE accepted rollup currently stops at 4K and 128K preflight is blocked.
+
+Saved compact review artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d11-comparison-review.json` and added the P10.D11 summary to `docs/GGUF.md`.
