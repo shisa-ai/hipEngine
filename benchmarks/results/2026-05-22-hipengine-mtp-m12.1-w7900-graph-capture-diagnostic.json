@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "phase": "M12.1",
+  "date": "2026-05-22",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+  "purpose": "M12.1 enables HIP-graph capture for chain_attn_mode='batched'. Diagnostic only: cycle-2+ wall is unchanged vs graph_mode='off' on this 1,840-kernel-per-pass DAG; the host overhead removed from the Python/ctypes path during replay is replaced by equivalent per-node overhead inside hipGraphLaunch on ROCm 7.x. Real win requires kernel fusion (M12.2+M12.3).",
+  "prompt": "code:quicksort_prefix (90 tokens)",
+  "decode_tokens": 32,
+  "candidate_budget": 3,
+  "configs": [
+    {"label": "c1_loop / graph=off",       "cycle1_ms": 70.13, "cycle2plus_median_ms": 35.43, "verify_ms_per_cycle": 29.14, "mtp_over_ar": 0.603, "cycle_cost_ar_tokens": 3.96, "artifact": "benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-c1loop-graphoff.json"},
+    {"label": "c1_loop / graph=auto rev2", "cycle1_ms": 89.52, "cycle2plus_median_ms": 35.32, "verify_ms_per_cycle": 30.54, "mtp_over_ar": 0.552, "cycle_cost_ar_tokens": 4.33, "artifact": "benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-c1loop-graphauto-rev2.json"},
+    {"label": "batched / graph=off",       "cycle1_ms": 63.81, "cycle2plus_median_ms": 33.40, "verify_ms_per_cycle": 26.77, "mtp_over_ar": 0.616, "cycle_cost_ar_tokens": 3.87, "artifact": "benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphoff.json"},
+    {"label": "batched / graph=auto rev3", "cycle1_ms": 80.85, "cycle2plus_median_ms": 33.26, "verify_ms_per_cycle": 27.98, "mtp_over_ar": 0.581, "cycle_cost_ar_tokens": 4.09, "artifact": "benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto-rev3.json"},
+    {"label": "batched / graph=off gpuacc",  "cycle1_ms": 73.20, "cycle2plus_median_ms": 33.51, "verify_ms_per_cycle": 27.65, "mtp_over_ar": 0.586, "cycle_cost_ar_tokens": 4.07, "artifact": "benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphoff-gpuaccept.json"},
+    {"label": "batched / graph=auto gpuacc", "cycle1_ms": 80.85, "cycle2plus_median_ms": 33.26, "verify_ms_per_cycle": 27.98, "mtp_over_ar": 0.578, "cycle_cost_ar_tokens": 4.10, "artifact": "benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto-gpuaccept.json"}
+  ],
+  "interpretation": {
+    "graph_capture_steady_state_savings_ms": 0.0,
+    "graph_capture_cycle1_capture_overhead_ms_estimate": "+17 to +25 ms (capture + instantiate + validation launch on second stream)",
+    "batched_over_c1_loop_steady_savings_ms": 2.0,
+    "batched_over_c1_loop_steady_savings_pct": 5.7,
+    "kernel_calls_per_pass": 1840,
+    "kernel_time_ms_per_pass": 21.45,
+    "host_overhead_ms_per_cycle": 12.0,
+    "why_graph_doesnt_win": "ROCm 7.x hipGraphLaunch walks all 1,840 nodes during replay; per-node overhead is comparable to per-launch ctypes overhead in the direct path. The Python ctypes per-call cost is removed but immediately re-paid inside HIP graph's executor. Wins require reducing kernel count via fusion."
+  },
+  "next_levers": [
+    "Kernel fusion: w8a16_linear+argmax (streams top-1 token+value, eliminates rows*vocab logits materialization).",
+    "Selected-expert mul_mat_id consolidation: replace 138 MoE GEMV launches per pass with one ids-tensor GEMV per layer (~2 launches per layer).",
+    "Device-resident accept summary -> device-resident linear-state commit: replace 60 D2D hipMemcpy commits with one indexed copy kernel reading commit_rows[0] from device.",
+    "Build cycle metadata on device from previous cycle's accept output, eliminating 11 H2D copies per cycle."
+  ]
+}

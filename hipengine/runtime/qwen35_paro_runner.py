@@ -2368,8 +2368,9 @@ class Qwen35ParoResidentSession:
             raise ValueError("bulk verifier E2E path currently supports one request")
         if chain_attn_mode not in {"c1_loop", "batched"}:
             raise ValueError("chain_attn_mode must be 'c1_loop' or 'batched'")
-        if chain_attn_mode == "batched" and graph_mode != "off":
-            raise ValueError("chain_attn_mode='batched' currently requires graph_mode='off'")
+        # NOTE: chain_attn_mode='batched' is now allowed with graph_mode!='off';
+        # the verifier graph cache key includes chain_attn_mode/linear_attn_mode
+        # so batched and c1_loop captures do not alias.  See `docs/MTP.md` M12.1.
         rows = int(batch.rows)
         if rows <= 1:
             raise ValueError("bulk verifier requires root plus at least one candidate row")
@@ -2685,21 +2686,42 @@ class Qwen35ParoResidentSession:
         linear_attn_mode: str = "tree_tloop",
         stream: int = 0,
     ) -> dict[str, Any]:
-        key = (int(rows), int(capture_hidden_concat.shape[1]), int(base_slot))
+        key = (
+            int(rows),
+            int(capture_hidden_concat.shape[1]),
+            int(base_slot),
+            str(chain_attn_mode),
+            str(linear_attn_mode),
+        )
         entry = self._verify_graph_cache.get(key)
         if graph_mode == "auto" and entry is not None:
-            self.runtime.graph_launch(entry.graph_exec, entry.stream)
-            self.runtime.stream_synchronize(entry.stream)
+            # Launch on the caller's stream so the subsequent accept-payload
+            # read serializes naturally; avoids the extra cross-stream sync we
+            # would pay if we launched on the (separate) capture stream.
+            self.runtime.graph_launch(entry.graph_exec, stream)
             entry.replay_count += 1
             return {
                 "mode": graph_mode,
                 "status": "replayed",
                 "replayed": True,
                 "validation_passed": entry.validation_passed,
-                "bucket_key": {"rows": rows, "capture_width": int(capture_hidden_concat.shape[1]), "base_slot": base_slot},
+                "bucket_key": {
+                    "rows": rows,
+                    "capture_width": int(capture_hidden_concat.shape[1]),
+                    "base_slot": base_slot,
+                    "chain_attn_mode": str(chain_attn_mode),
+                    "linear_attn_mode": str(linear_attn_mode),
+                },
                 "replay_count": entry.replay_count,
             }
 
+        # Cycle 1 (cache miss): run the direct pass first so all lazily-
+        # allocated workspace tensors (linear/full-attention/MoE scratch)
+        # exist before we open the capture stream.  HIP does not allow
+        # hipMalloc while a stream is in capture mode, so allocating during
+        # capture would either skip the recording or fault at replay.  The
+        # direct pass also doubles as the cycle-1 forward; capture then
+        # records a second (replayable) instance of the same kernel sequence.
         self._launch_verify_chain_forward_accept(
             batch,
             base_slot=base_slot,
@@ -2739,34 +2761,45 @@ class Qwen35ParoResidentSession:
                     pass
                 raise
             graph_exec = self.runtime.graph_instantiate(graph)
-            self.runtime.graph_launch(graph_exec, graph_stream)
-            self.runtime.stream_synchronize(graph_stream)
-            graph_top1, _ = self._read_verify_top1(rows)
-            graph_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=graph_stream)
-            validation_passed = tuple(graph_top1) == tuple(direct_top1) and graph_payload == direct_payload
-            if not validation_passed:
-                self.runtime.graph_exec_destroy(graph_exec)
-                self.runtime.graph_destroy(graph)
-                self.runtime.stream_destroy(graph_stream)
-                # Restore direct outputs for the caller.
-                self._launch_verify_chain_forward_accept(
-                    batch,
-                    base_slot=base_slot,
-                    capture_ids=capture_ids,
-                    capture_hidden_concat=capture_hidden_concat,
-                    capture_row_start=capture_row_start,
-                    rows=rows,
-                    stream=stream,
-                    chain_attn_mode=chain_attn_mode,
-                    linear_attn_mode=linear_attn_mode,
-                )
-                return {
-                    "mode": graph_mode,
-                    "status": "validation_failed_fallback",
-                    "replayed": False,
-                    "validation_passed": False,
-                    "bucket_key": {"rows": rows, "capture_width": int(capture_hidden_concat.shape[1]), "base_slot": base_slot},
-                }
+            if graph_mode == "validate":
+                # Validation pass: run the captured graph and compare with the
+                # direct pass we already executed above.  Launch on a separate
+                # stream so the direct outputs (already written into the
+                # caller-stream buffers) are not clobbered before we read them.
+                self.runtime.graph_launch(graph_exec, graph_stream)
+                self.runtime.stream_synchronize(graph_stream)
+                graph_top1, _ = self._read_verify_top1(rows)
+                graph_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=graph_stream)
+                validation_passed = tuple(graph_top1) == tuple(direct_top1) and graph_payload == direct_payload
+                if not validation_passed:
+                    self.runtime.graph_exec_destroy(graph_exec)
+                    self.runtime.graph_destroy(graph)
+                    self.runtime.stream_destroy(graph_stream)
+                    # Restore direct outputs for the caller.
+                    self._launch_verify_chain_forward_accept(
+                        batch,
+                        base_slot=base_slot,
+                        capture_ids=capture_ids,
+                        capture_hidden_concat=capture_hidden_concat,
+                        capture_row_start=capture_row_start,
+                        rows=rows,
+                        stream=stream,
+                        chain_attn_mode=chain_attn_mode,
+                        linear_attn_mode=linear_attn_mode,
+                    )
+                    return {
+                        "mode": graph_mode,
+                        "status": "validation_failed_fallback",
+                        "replayed": False,
+                        "validation_passed": False,
+                        "bucket_key": {
+                            "rows": rows,
+                            "capture_width": int(capture_hidden_concat.shape[1]),
+                            "base_slot": base_slot,
+                            "chain_attn_mode": str(chain_attn_mode),
+                            "linear_attn_mode": str(linear_attn_mode),
+                        },
+                    }
             entry = Qwen35ParoVerifierGraphEntry(
                 rows=rows,
                 capture_width=int(capture_hidden_concat.shape[1]),
@@ -2783,7 +2816,13 @@ class Qwen35ParoResidentSession:
                 "status": "captured_validated" if graph_mode == "validate" else "captured_validated_miss",
                 "replayed": graph_mode == "auto",
                 "validation_passed": True,
-                "bucket_key": {"rows": rows, "capture_width": int(capture_hidden_concat.shape[1]), "base_slot": base_slot},
+                "bucket_key": {
+                    "rows": rows,
+                    "capture_width": int(capture_hidden_concat.shape[1]),
+                    "base_slot": base_slot,
+                    "chain_attn_mode": str(chain_attn_mode),
+                    "linear_attn_mode": str(linear_attn_mode),
+                },
                 "replay_count": entry.replay_count,
             }
         except Exception as exc:
@@ -2815,7 +2854,13 @@ class Qwen35ParoResidentSession:
                 "replayed": False,
                 "validation_passed": None,
                 "fallback_reason": str(exc),
-                "bucket_key": {"rows": rows, "capture_width": int(capture_hidden_concat.shape[1]), "base_slot": base_slot},
+                "bucket_key": {
+                    "rows": rows,
+                    "capture_width": int(capture_hidden_concat.shape[1]),
+                    "base_slot": base_slot,
+                    "chain_attn_mode": str(chain_attn_mode),
+                    "linear_attn_mode": str(linear_attn_mode),
+                },
             }
 
     def _launch_verify_chain_forward_accept(
@@ -4384,7 +4429,7 @@ class Qwen35ParoResidentSession:
             verify_rows * len(self.config.layer_types) * self.config.hidden_size * DType.BF16.itemsize,
             runtime=self.runtime,
         )
-        self._verify_graph_cache: dict[tuple[int, int, int], Qwen35ParoVerifierGraphEntry] = {}
+        self._verify_graph_cache: dict[tuple[int, int, int, str, str], Qwen35ParoVerifierGraphEntry] = {}
         self.buffers.extend(
             (
                 self.verify_token_ids_i64,

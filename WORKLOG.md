@@ -21255,3 +21255,87 @@ Validation commands:
 - JSON guard on `/tmp/hipengine-mtp-prompt-suite-validate.json`: `performance_claim=false`, `dry_run=true`, 9 prompts, all prompt token counts positive (`[20,30,17,52,14,15,11,50,721]`).
 
 This is instrumentation only; no runtime hot path or kernel changed.
+
+## 2026-05-21 — W7900 MTP rocprof baseline refresh
+
+Reviewed `docs/MTP.md` active M12 plan before optimization. The local model drive was not mounted (`/models` had no HF cache); `~/.cache/huggingface` was a stale symlink to `/models/huggingface`. Recreated a local HF cache, downloaded/cached `shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed` snapshot `501ef8635e5cfb5a7497d232358ca8d1afc0c66e` plus `Qwen/Qwen3.6-35B-A3B-FP8` `mtp.safetensors`, and reassembled `/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16` (`present_count=19`, `validation_passed=true`).
+
+ROCm check confirmed W7900/gfx1100:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -n 30
+```
+
+Prebuild/correctness smoke outside rocprof:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --prompt-tokens 151646 --decode-tokens 4 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode c1_loop \
+  --json /tmp/hipengine-mtp-w7900-smoke.json
+```
+
+Result: exact AR match passed; cold timings are non-performance (`ar_tok_s=0.0756`, `mtp_tok_s_diagnostic=0.158`) due to build/load.
+
+W7900 rocprof refresh:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --decode-tokens 32 \
+  --out benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-w7900-current.json \
+  --raw-root /tmp/hipengine-rocprof-mtp-verifier-w7900-current
+```
+
+Result artifact: `benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-w7900-current.json`, `performance_claim=false`, exact AR match passed. Smoke summary: AR `93.86 tok/s`, MTP `24.02 tok/s`, acceptance rate `0.0` on the single-token prompt continuation. Trace summary: 53,364 kernel calls, 622.1 ms kernel time, 29 verifier passes, 1,840 kernel calls/pass, 21.45 ms kernel time/pass. Top per-pass families: `w8a16_linear` 2.68 ms, `w4_single_prefill_smallbatch` 2.63 ms, `linear_attention_gdn_decode` 2.54 ms, selected MoE gate/up 1.97 ms, selected MoE down 1.92 ms. This supports the M12 roadmap: graph capture is needed for launch count, but kernel time remains dominated by LM-head/W4/GDN/MoE families.
+
+## 2026-05-22 — W7900 M12.1 graph-capture for batched verifier (diagnostic, no perf win)
+
+Enabled HIP-graph capture for `chain_attn_mode="batched"` and extended the verifier graph cache key to include `chain_attn_mode` and `linear_attn_mode` so batched and c1_loop captures do not alias.
+
+Files:
+
+- `hipengine/runtime/qwen35_paro_runner.py`: removed the `chain_attn_mode='batched' + graph_mode!='off'` ValueError guard; added `chain_attn_mode`/`linear_attn_mode` to the cache key (`tuple[int,int,int,str,str]`); the cache-hit replay launches on the caller's stream rather than the capture stream so the subsequent accept-payload read serializes naturally instead of forcing a cross-stream sync.  Documented in the inline comments that the cycle-1 direct execution is needed to warm lazily-allocated workspace tensors before `hipStreamBeginCapture` (HIP forbids `hipMalloc` while a stream is in capture mode).
+
+Validation:
+
+- `python3 scripts/mtp_chain_e2e_smoke.py ... --chain-attn-mode batched --graph-mode validate --decode-tokens 8 --candidate-budget 3` → exact AR match.
+- `python3 scripts/mtp_verifier_economics.py ... --chain-attn-mode batched --graph-mode auto --candidate-budgets 3 --decode-tokens 32` → exact AR match.
+
+Economics on the stable quicksort prompt (B=3, 32 decode tokens, gfx1100 W7900):
+
+| config | cycle1 ms | cycle2+ median ms | verify ms/cycle | MTP/AR | cycle_cost AR-tok |
+|---|---|---|---|---|---|
+| c1_loop / graph=off | 70.13 | 35.43 | 29.14 | 0.603 | 3.96 |
+| c1_loop / graph=auto | 89.52 | 35.32 | 30.54 | 0.552 | 4.33 |
+| batched / graph=off | 63.81 | 33.40 | 26.77 | 0.616 | 3.87 |
+| batched / graph=auto | 80.85 | 33.26 | 27.98 | 0.581 | 4.09 |
+| batched / graph=off + verify-gpu-accept | 73.20 | 33.51 | 27.65 | 0.586 | 4.07 |
+| batched / graph=auto + verify-gpu-accept | 80.85 | 33.26 | 27.98 | 0.578 | 4.10 |
+
+Interpretation:
+
+- Cycle 2+ wall is statistically unchanged between graph=off and graph=auto in both batched and c1_loop modes.  HIP-graph replay removes the Python ctypes overhead per kernel call, but on ROCm 7.x the per-node overhead inside `hipGraphLaunch` for our 1,840-node DAG appears comparable to the per-launch overhead of direct ctypes calls.  Net steady-state savings ≈ 0 ms.
+- Cycle 1 has ~+17–25 ms overhead for capture + `hipGraphInstantiate` + the validation launch (still on a separate capture stream so we can compare against the direct cycle-1 output).
+- `chain_attn_mode="batched"` is itself ~2 ms / 5.7% faster than `c1_loop` at B=3 — modest but consistent.
+- `HIPENGINE_VERIFY_GPU_ACCEPT=1` is within run-to-run noise; the CPU oracle top1 read is <0.5 ms/cycle so this lever is not material on its own.
+
+Why graph capture didn't win, and what comes next:
+
+- Per-pass kernel time from `benchmarks/results/2026-05-21-hipengine-mtp-verifier-rocprof-w7900-current.json`: 21.45 ms GPU + ~12 ms host = ~33 ms cycle wall.  The 12 ms host overhead is dominated by the kernel-launch path (1,840 launches per pass × ~6 µs each = ~11 ms).
+- HIP-graph capture turns those 1,840 ctypes calls into one `graph_launch`, but ROCm 7.x's graph executor still iterates each node internally with similar overhead.  The real lever is **reducing the kernel count**.
+- llama.cpp reaches ~2 AR-token-equivalent cycle cost by collapsing MoE into one `mul_mat_id` per op (rows × experts × tokens in one launch) and fusing LM-head + sampling.  Our 1,840-call/pass is structurally far from that.
+
+Concrete next levers (in priority order):
+
+1. **Fused W8A16 LM-head + argmax** (M12.3): one streaming GEMV that maintains row-wise top-1 in registers and writes only `(token_id, value)` instead of materializing `rows × vocab × FP32` to HBM.  Saves ~3.5 MB HBM traffic per pass plus one launch; *crucially*, it lets the commit row stay resident on device and unblocks (3) below.
+2. **Selected-expert mul_mat_id** (M12.4): replace 138 per-expert GEMV launches per pass with one ids-tensor GEMV per MoE op.  This is the single largest kernel-count reduction available — likely brings 1,840 calls/pass down to a few hundred.
+3. **Device-resident linear-state commit**: replace 60 D2D `hipMemcpy` calls in `_commit_bulk_linear_states` with one indexed-copy kernel keyed off `commit_rows[0]` (device-side).  Enabled by (1).
+4. **On-device cycle metadata**: derive token ids / positions / parent rows / depths / mask from the previous cycle's accept output via one kernel, eliminating 11 H2D copies per cycle.  Enabled by (1) + (3); folds the bookkeeping into the captured graph.
+
+Once (1) → (3) land, the graph-capture work landed today becomes load-bearing: the captured DAG will be ~200 nodes instead of 1,840, where `hipGraphLaunch`'s per-node overhead actually wins back the kernel-launch budget.
+
+Artifact: `benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-graph-capture-diagnostic.json` aggregates the six runs.  `performance_claim=false`.
