@@ -20,7 +20,6 @@ This proves the mathematical correctness of both Q8T16 dense WMMA prefill
 
 from __future__ import annotations
 
-import os
 import ctypes
 import numpy as np
 import pytest
@@ -44,10 +43,10 @@ def _hip_available() -> bool:
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.skipif(not DEFAULT_MODEL.exists(), reason=f"Model fixture {DEFAULT_MODEL} is missing")
-def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness() -> None:
+def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness(monkeypatch: pytest.MonkeyPatch) -> None:
     # Force ALLOW_UNSAFE so the safety gate does not bypass our test request.
-    os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
-    os.environ["HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS"] = "1"
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS", "1")
 
     prompt_tokens = [9707] * 512
     rows = len(prompt_tokens)
@@ -81,9 +80,8 @@ def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness() -> None:
         self.runtime.memcpy(host_array_ptr(ref_out), out_ptr, ref_out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
 
     # 1. Run Layer 0 with WMMA disabled (Reference)
-    original_enabled = qgr.gguf_wmma_prefill_enabled
-    qgr.gguf_wmma_prefill_enabled = lambda enabled=None: False
-    Qwen35GGUFFullStackRunner._run_post_attention_moe_rows = intercept_ref
+    monkeypatch.setattr(qgr, "gguf_wmma_prefill_enabled", lambda enabled=None: False)
+    monkeypatch.setattr(Qwen35GGUFFullStackRunner, "_run_post_attention_moe_rows", intercept_ref)
 
     session.reset()
     # We only need to run Layer 0; intercept_ref will populate the nonlocal variables
@@ -100,7 +98,7 @@ def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness() -> None:
         else:
             original_run_post_attention_moe_rows(self, layer_id, out_ptr, scratch, rows=rows, stream=stream, expert_sidecar=expert_sidecar)
 
-    Qwen35GGUFFullStackRunner._run_post_attention_moe_rows = intercept_layer0_only
+    monkeypatch.setattr(Qwen35GGUFFullStackRunner, "_run_post_attention_moe_rows", intercept_layer0_only)
 
     try:
         session.prefill(prompt_tokens)
@@ -132,18 +130,14 @@ def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness() -> None:
             original_run_post_attention_moe_rows(self, layer_id, out_ptr, scratch, rows=rows, stream=stream, expert_sidecar=expert_sidecar)
 
     # 2. Run Layer 0 with WMMA enabled (Candidate)
-    qgr.gguf_wmma_prefill_enabled = lambda enabled=None: True
-    Qwen35GGUFFullStackRunner._run_post_attention_moe_rows = intercept_cand
+    monkeypatch.setattr(qgr, "gguf_wmma_prefill_enabled", lambda enabled=None: True)
+    monkeypatch.setattr(Qwen35GGUFFullStackRunner, "_run_post_attention_moe_rows", intercept_cand)
 
     session.reset()
     try:
         session.prefill(prompt_tokens)
     except Layer0DoneException:
         pass
-
-    # Restore original function to avoid messing up other tests
-    Qwen35GGUFFullStackRunner._run_post_attention_moe_rows = original_run_post_attention_moe_rows
-    qgr.gguf_wmma_prefill_enabled = original_enabled
 
     assert cand_experts is not None
     assert cand_out is not None

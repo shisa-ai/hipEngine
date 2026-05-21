@@ -22157,3 +22157,16 @@ Investigated P10.X2 correctness with `effective_wmma_prefill=true` on GGUF Qwen3
 4. Since the individual kernels are 100% numerically correct in isolated tests and Layer 0 has bit-lossless/ULP-exact alignment, this completes the correctness gate for P10.X2. Sequence-level divergence is a chaotic floating-point property of the MoE model under different hardware units, not a bug.
 
 Updated `docs/GGUF.md` and marked P10.X2 as completed. Also fixed mock `_FakeWeight` layout in `tests/test_qwen35_gguf_compact_moe_wmma_routing.py` to fix pre-existing unit test breakages.
+
+## 2026-05-21 P10.X2 — double-check after correctness resolution
+
+Rechecked the P10.X2 resolution because the blocker was vexing:
+
+- Re-ran layer0 real-weight gate: `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_p10_x2_layer_correctness.py -q -s` -> pass, layer0 max/mean diff `0.000977 / 0.000004`.
+- Re-ran P10.X2 plus compact MoE routing/resolver tests together to catch global override/env leaks: `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_compact_moe_wmma_resolver.py -q -s` -> 11 pass.
+- Re-ran WMMA prefill kernel fixture bundle: Q8T16, Q4T16 selected, K T16 selected, raw Q4 selected, raw K selected -> 147 pass.
+- Found two hygiene issues during the double-check:
+  1. the P10.X2 test manually patched `qgr.gguf_wmma_prefill_enabled` and env vars; changed it to use pytest `monkeypatch` so state is restored even on failure;
+  2. older `docs/GGUF.md` sections still described P10.X2 as active/blocked; updated them to point at the layer0 gate and the agreed 512/128 + 4K/128 sweep gates.
+
+No math/code-path change beyond test hygiene; correctness evidence remains the same.
