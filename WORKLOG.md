@@ -22261,3 +22261,20 @@ Checks:
 - 128K/128 remains blocked by calibrated accepted-path allocation estimate `66.711 GiB` (`+42.727 GiB` over device total).
 
 Updated `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-preflight-blocked.json` to set `commit_under_test=8ab3070` and record the revalidation. No `benchmarks/README.md` rollup row was added because no result is retained; this is a blocked preflight, not a performance claim.
+
+## 2026-05-21 Task #17 replacement: next decode-focused optimization plan
+
+Original Task #17 was missing from task tool state, so created replacement task #19 and planned the next decode pass after the AOTriton prefill review and long-context preflight.
+
+Plan outcome:
+- Highest-leverage next decode swing is **not** new MoE fusion first; it is routing GGUF full-attention decode through the existing split-K gated GQA path at long contexts.
+- Evidence: 512/128 decode is stable at ~`89.7 tok/s`, while 4K/128 decode is only `47.17 tok/s` after prefill is fixed. GGUF currently still uses `qwen35_paged_full_attn_decode_context_bf16_spans` + `qwen35_full_attn_gate_mul_bf16`; split-K/GQA gated wrappers and scratch buffers already exist but are unused by `_run_full_attention_attn_only`.
+- Added `docs/GGUF.md` P10.10 with the implementation plan:
+  - `HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=1024` default.
+  - context-based routing, not `HIPENGINE_GGUF_DECODE_REPACK`-based routing, preserving the P10.X1 semantic invariant.
+  - use grouped-GQA specialization for Qwen3.5 shape, with PARO-style grouped/warp/generic fallback rules.
+  - add/repair dispatch tests and update the semantics test so it forbids decode-repack gating but no longer forbids split-K by name.
+  - validate with wrapper tests, layer0 gate, 512/128 guard bench, then 4K/128 retained-shape bench.
+- Expected first target: 4K/128 decode `>=60 tok/s` while keeping 512/128 within noise.
+
+Next implementation task should be P10.D8: wire the context-threshold split-K gated decode route in GGUF, then run the correctness/bench plan before moving to threshold sweeps or MoE decode micro-fusion.

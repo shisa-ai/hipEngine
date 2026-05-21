@@ -2564,3 +2564,130 @@ Operational rule for this wave: every candidate starts with the launch/kernel
 census and stops if the top-bucket math cannot pay back at least `~3%` wall
 for its effort class. Decode work is restricted to P10.D6 and P10.D7 until
 those measurements prove there is room for more.
+
+### P10.10 — Next decode-focused optimization pass (post-AOTriton / long-context preflight)
+
+Date added: 2026-05-21
+
+Current retained/reviewed GGUF safe-mode rows after the AOTriton prefill port:
+
+| Shape | Prefill tok/s | Decode tok/s | Interpretation |
+| --- | ---: | ---: | --- |
+| 512/128 | `2051.747` retained (`2121.421` review rerun) | `89.678` retained (`89.696` review rerun) | short-context decode stable, still below P10 `>=120` stretch |
+| 4K/128 | `2696.901` retained | `47.171` retained | prefill drop-off fixed; decode now exposes the long-context attention bottleneck |
+
+The 512→4K decode drop (`~89.7 → ~47.2 tok/s`) is the next highest-leverage
+area. It is **not** a prefill issue anymore. The GGUF full-attention decode path
+still launches the single-context paged context kernel followed by a separate
+BF16 gate multiply:
+
+```
+qwen35_paged_full_attn_decode_context_bf16_spans
+  → qwen35_full_attn_gate_mul_bf16
+```
+
+Meanwhile, the split-K/GQA gated decode kernels already exist in the tree and
+are used by the PARO path at the retained long-context threshold:
+
+```
+qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
+qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans
+qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
+```
+
+`_FullStackScratch` also already allocates `full_attn_split_partial`,
+`full_attn_split_m`, `full_attn_split_l`, and `full_attn_split_count`, but GGUF
+currently leaves them unused in `_run_full_attention_attn_only`. That makes the
+next pass a **routing/orchestration port**, not a new kernel-first project.
+
+#### P10.D8 — Route GGUF full-attention decode through split-K gated attention
+
+Priority: **P0 for decode**.
+
+Planned behavior:
+
+- Add a GGUF decode split threshold matching PARO's retained default:
+  `HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=1024`.
+- Dispatch split-K gated attention when `decode_spans.max_live_count >= 1024`.
+- Keep the current unfused context+gate path below the threshold so 512/128 does
+  not pay split-K overhead.
+- Do **not** gate this on `HIPENGINE_GGUF_DECODE_REPACK`. P10.X1 established
+  that decode-repack must select weight layout/kernel implementation, not change
+  graph semantics by itself. The new policy is context-based and applies to GGUF
+  full-attention decode regardless of raw-vs-T16 materialization mode.
+- Use the Qwen3.5 grouped-GQA specialization for the local model shape
+  `(block_size=256, q_heads=16, kv_heads=2, head_dim=256)`, with the same
+  grouped/warp/generic selection rules as PARO:
+  - grouped-GQA when context `>=4096` or `num_splits >=64`,
+  - warp-specialized split-K otherwise when enabled,
+  - generic split-K gated reduce as fallback.
+- Compute the active split count from live context, not just max allocation:
+  `num_splits = ceil(max_live_count / chunk_size)` bounded by
+  `scratch.full_attn_split_count`. Start with `chunk_size=256` to match the
+  existing kernel ABI and block size.
+
+Correctness plan:
+
+1. Update `tests/test_qwen35_gguf_decode_repack_semantics.py` so it keeps the
+   P10.X1 invariant (`gguf_decode_repack_enabled()` must not appear in
+   `_run_full_attention_attn_only`) but no longer forbids split-K by name.
+2. Add/repair a dispatch test proving:
+   - context `<1024` calls `qwen35_paged_full_attn_decode_context_bf16_spans`
+     + `qwen35_full_attn_gate_mul_bf16`,
+   - context `>=1024` calls the split-K gated wrapper,
+   - decode-repack on/off does not change that routing decision.
+3. Run existing paged-attention wrapper/unit coverage:
+   `PYTHONPATH=. uv run pytest tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py -q`.
+4. Run the real-weight layer0 gate and a short 512/128 bench to ensure the
+   short-context row is not regressed.
+5. Run 4K/128 retained-shape bench and compare decode against `47.171 tok/s`.
+
+Expected impact:
+
+- 512/128: neutral to slightly positive if threshold keeps the old path.
+- 4K/128: first target is `>=60 tok/s` (about `+27%`) because this removes the
+  serial/undersubscribed context kernel and fuses the gate into the split reduce.
+- Longer context after memory work: this is mandatory because the contiguous
+  context kernel cannot scale to 32K+ and `docs/KERNELS.md` already records that
+  long decode must use paged/split-K over the dense cache viewed as pages.
+
+#### P10.D9 — Decode split-K threshold and split-count sweep
+
+Start only after P10.D8 is correct.
+
+Sweep knobs:
+
+- threshold: `512`, `768`, `1024`, `1536`, `2048`, `4096`;
+- chunk size: `128`, `256`, `512` if kernel ABI/perf permits;
+- grouped-GQA enable/disable and grouped minimum context;
+- split cap, mirroring the PARO long-context cap-retune notes.
+
+Bench shapes:
+
+- 512/128: guard against short-context regression;
+- 2K/128 and 4K/128: find the real crossover;
+- 8K/128 if memory permits after the same preflight estimate method used for
+  32K/128.
+
+Acceptance:
+
+- Retain only if 4K/128 decode improves by at least `+5%` and 512/128 decode is
+  within measurement noise of the current row.
+- Update `benchmarks/results/`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md` for any retained row.
+
+#### P10.D10 — After split-K routing: profile before MoE micro-fusion
+
+Do not start Q4/Q8/MoE decode micro-fusion until a post-D8 rocprof trace lands.
+The current suspected order after split-K routing is:
+
+1. full-attention split-K producer / reduce if 4K remains low;
+2. selected Q4T16 dual GEMV and Q5/Q6 selected down if attention is no longer
+   dominant;
+3. shared-expert Q8T16 path;
+4. router/scatter/lane-sum/combine launch cleanup.
+
+That ordering intentionally supersedes the older P10.D1-first plan for the
+current GGUF state: once 4K prefill was fixed, the 4K decode cliff made
+full-attention split-K routing the bigger and safer first swing than a new MoE
+fusion kernel.
