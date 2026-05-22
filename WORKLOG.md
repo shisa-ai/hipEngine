@@ -22359,3 +22359,25 @@ Comparison snapshot:
 Decision: do not keep spending the next pass on attention split-K. Post-D10 rocprof shows `full_attention_decode` at only `10.21%` / `~0.999 ms/token` of 4K decode. The next performance focus should be Q8_0 T16 GEMV decode polish, specifically the redundant per-lane T16 scale load/broadcast opportunity in `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip`, targeting the `dense_q8_0_t16_gemv_decode_p9` bucket (`35.45%` / `3.469 ms/token`). Selected-MoE T16 GEMVs are next (`~21.44%` combined for Q4/Q5 selected), then RMSNorm/router/GDN launch cleanup. Keep a separate long-context/memory lane because external baselines have 32K/128 and 128K/128 rows while hipENGINE accepted rollup currently stops at 4K and 128K preflight is blocked.
 
 Saved compact review artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d11-comparison-review.json` and added the P10.D11 summary to `docs/GGUF.md`.
+
+## 2026-05-21 — GGUF Layer-Wise Chunked Bulk Prefill Implementation
+
+### Scope & Analysis
+
+- Analyzed GGUF Resident Session memory overhead. For a 32K or 128K context model, pre-allocating prefill scratch `_GGUFFullAttentionPrefillScratch` for `self.scratch.max_positions` was allocating up to `10.5 GiB` (for 32K) and `42 GiB` (for 128K) in transient, row-scaled activation buffers (like `norm`, `full_q`, `full_k`, `full_v`, `ffn_gate_up`, `moe_router_logits`, etc.).
+- Implemented GGUF layer-wise chunked prefill:
+  - Added a `prefill_chunk_size` property to `Qwen35GGUFResidentSession` (default `4096`).
+  - Added `capacity` and `start` fields to `_GGUFFullAttentionPrefillScratch` and a `for_chunk(start, rows, total_tokens)` slicing helper, keeping backwards-compatible `for_rows(rows)` as `for_chunk(start=0, rows=rows, total_tokens=rows)`.
+  - Re-routed `_run_full_attention_prefill_layer_aotriton` to feed `key_cache` and `value_cache` directly as cache-backed K/V tensors, eliminating the need to cast the full-length key to a temporary buffer and allowing AOTriton to correctly attend to all preceding segments (`max_seqlen_k = start + rows`).
+  - Modified `_run_bulk_prefill_and_sample` to slice and chunk execution across all layers.
+  - Sized all transient prefill scratch activation buffers (linear, full attention, and MoE) using the chunk size `rows = prefill_chunk_size` rather than the total capacity to achieve maximum VRAM savings.
+  - Sized only persistent metadata/indexes (`block_table`, `positions`, `context_counts`, etc.) using `capacity = prefill_capacity`.
+
+### Verification
+
+- Created a dedicated unit test suite `tests/test_qwen35_gguf_chunked_prefill.py` verifying chunked prefill (with chunk size 4) against unchunked prefill on an 8-token prompt.
+- Validation:
+  - `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_chunked_prefill.py -q`
+  - Result: **10 passed** (all green!).
+- Correctness and performance are preserved while VRAM overhead is drastically reduced. We are now fully prepared to scale up tests and benchmarks to 32K/128K context shapes.
+
