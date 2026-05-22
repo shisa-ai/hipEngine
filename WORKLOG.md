@@ -21629,3 +21629,32 @@ Conclusion: half-rounded dequant is directionally correct but insufficient for a
 Issue found while preparing next MTP optimization pass: wrapping the prompt-suite parent harness in `rocprofv3` is unsafe. The command used `rocprofv3 --kernel-trace -- python3 scripts/mtp_prompt_suite_economics.py ...`; that parent shells out to `mtp_verifier_economics.py`, which shells out again to `mtp_chain_e2e_smoke.py`. The child logs showed rocprof tool initialization inside both nested Python children. If any JIT artifact is missing/stale, `hipcc`/clang can also run under rocprof and the run can look like a long hang instead of a verifier profile.
 
 Docs updated: `AGENTS.md`, `docs/MTP.md`, and `docs/BENCHMARK.md` now say to profile the MTP leaf workload only: use `scripts/mtp_verifier_rocprof.py`, or pre-warm and profile the final `mtp_chain_e2e_smoke.py` child directly. Do not wrap `scripts/mtp-bench.py --mode hipengine-current` or `scripts/mtp_prompt_suite_economics.py` in rocprofv3.
+
+## 2026-05-22 MTP current rocprof + prompt-suite status after M12.6c
+
+Safe leaf rocprof command (no parent-harness wrapper):
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp_verifier_rocprof.py \
+  --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 32 \
+  --candidate-budget 3 \
+  --raw-root /tmp/hipengine-rocprof-mtp-verifier-w7900-20260522-current \
+  --out /tmp/hipengine-mtp-verifier-rocprof-current.json
+```
+
+Result: completed in 51.24 s, exact AR smoke, 29 steady verifier passes. Artifact copied to `benchmarks/results/2026-05-22-hipengine-mtp-verifier-rocprof-w7900-current-m12.6c.json`.
+
+Current profiler per verifier pass: host window 25.08 ms/pass, kernel 17.70 ms/pass, ~1052 kernel calls/pass. Top families: `w4_single_prefill_smallbatch` 3.00 ms/pass (70 calls), `linear_attention_gdn_decode` 2.54 ms/pass (30), `w4_single_gemv` 2.42 ms/pass (100), `moe_gate_up_dual_gemv` 1.85 ms/pass (40), `moe_down_gemv` 1.82 ms/pass (40), `w8a16_linear` 1.40 ms/pass (1), `w4_dual_prefill_smallbatch` 1.12 ms/pass (30). Versus post-M12.6b, current safe prefill-numerics W4 shifted 40 single-GEMV calls/pass into prefill-smallbatch kernels but increased measured kernel ms/pass from 15.29 to 17.70 in this diagnostic; exactness remains the priority, but the new W4 prefill-smallbatch path needs audit before treating it as a speed win.
+
+Prompt-suite status via the new llama.cpp-compatible wrapper:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp-bench.py \
+  --mode hipengine-current --candidate-budgets 3 --runs 1 --max-tokens 64 \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-current-bench-20260522 \
+  --out /tmp/hipengine-mtp-current-bench-20260522.json
+```
+
+Result: all 9 prompts exact. Aggregate B=3 `cycle_cost=3.756` AR-token equivalents, visible/cycle 1.895, accepted/cycle 0.895, acceptance 0.303, actual MTP/AR 0.510x. Artifact copied to `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-current-m12.6c.json`. Still far from the <2 cycle-cost target; next bottleneck work should focus on reducing verifier cycle cost, not acceptance policy changes.
