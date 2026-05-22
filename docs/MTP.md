@@ -742,6 +742,228 @@ Promotion rule: no MTP speed row is accepted until the economics artifact shows
 `avg_visible_tokens_per_verify_cycle / cycle_cost_ar_tokens > 1.0` on the same
 prompt/workload, with exact AR equality and accepted-token provenance preserved.
 
+## M13 — launch-count + host-dispatch consolidation (2026-05-23)
+
+### M13.0 framing
+
+M12.3 was originally chartered as "selected-expert mul_mat_id consolidation" with
+the headline gate "1,840 calls/pass → a few hundred". The M13.A audit below
+shows that line is **already false today**: the selected-expert MoE GEMVs are
+already a single ids-indexed mul_mat_id launch each (`gemv_awq_selected_dual_pack8_transposed_*`
+and `gemv_awq_selected_pack8_transposed_*` at `runtime/qwen35_paro.py:4791`
+and `:4872`), one per (layer, op). The 40+40 = 80 selected-MoE GEMV launches/pass
+in the M12.6c rocprof is literally one per layer per MoE op. So the original
+M12.3 framing — "collapse 138 per-expert launches into one ids-tensor GEMV" —
+refers to a state of the code that no longer exists.
+
+The **actual** remaining structural fat is not the MoE GEMVs themselves. It is
+the ~10-launch surround around each GEMV (RMSNorm → rotate → GEMV → RoPE/q+k
+norm → KV append → attention → rotate → GEMV → add+RMSNorm → router → selected
+gate_up → SiLU+rotate → selected down → shared expert → combine) × 40 layers,
+which is what produces the 1052-launch DAG. M12.1's HIP graph capture sits
+idle because at 1052 nodes the per-node `hipGraphLaunch` overhead on ROCm 7.x
+is comparable to the per-launch ctypes cost.
+
+M13 reframes the kernel-count attack accordingly:
+
+- **M13.A** (this section, source-only audit): build a static per-layer
+  launch table for one B=3 / tokens=4 verifier pass at `chain_attn_mode='batched'`
+  so every later proposal is rooted in concrete numbers.
+- **M13.B** (no GPU until measure): instantiate already-templated fused kernels
+  whose transposed-layout entry points are missing today (numerically
+  identical exposure, not new algorithms).
+- **M13.C** (no GPU until measure): C-side per-MoE-layer dispatcher that
+  collapses ~10 Python/ctypes round-trips per layer into one C call.
+  Numerically identical to the current Python sequence; gated by env so we
+  can A/B cleanly.
+- **M13.D**: re-evaluate graph replay after B+C. The point is to make the
+  captured DAG small enough that `hipGraphLaunch` per-node overhead is no
+  longer competitive with direct dispatch, i.e. to make M12.1 load-bearing.
+- **M13.E** (contingency only if D leaves ≥10% on the table): sort-by-expert
+  pre-pass for the selected MoE GEMVs.
+
+Unchanged ground rules: every step is gated by exact-AR on the 9-prompt
+`mtp-bench.py --mode hipengine-current` suite. No metric promotion until
+A→D produces a retained `benchmarks/results/` artifact with the matching
+`benchmarks/README.md` + `CHANGELOG.md` rows.
+
+### M13.A static launch audit (B=3, tokens=4, chain_attn_mode='batched')
+
+Model: Shisa packed PARO Qwen3.5/3.6 with 40 layers (30 `linear_attention`,
+10 `full_attention`), 256 experts, top-k=8, hidden=4096, FP16 activations.
+Verifier rows = B+1 = 4 (one parent + three drafts per cycle). All numbers
+below are derived from `hipengine/runtime/qwen35_paro_runner.py` and
+`hipengine/runtime/qwen35_paro.py` at HEAD (`fe3bea0`), not from rocprof.
+The per-pass total is then reconciled against the measured 1052-launch
+figure from `benchmarks/results/2026-05-22-hipengine-mtp-verifier-rocprof-w7900-current-m12.6c.json`.
+
+Default env at the time of audit (per `docs/MTP.md` M12.6 entry + runtime defaults):
+
+- `HIPENGINE_W4_MULTI_ROW_PACK8_SITES = full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_shared_down,single_dense_down`
+- `HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD = 7`
+- `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS = 16` (→ at tokens=4 we use `run_moe_c1_fp16`, **not** grouped)
+- `HIPENGINE_W4_PREFILL_SMALLBATCH_TILE_M = 16` (rows ≤ 8)
+
+#### Per-`linear_attention` layer (`run_linear_attention_moe_chain_tloop_layer_fp16`, tokens=4)
+
+| # | Source site | Kernel(s) launched | Launches | Notes |
+|---|---|---|---:|---|
+| 1 | `input_rmsnorm_fp16` | `paro_rmsnorm_out_fp16` | 1 | |
+| 2 | `rotate_linear_attention_inputs_fp16` | `paro_rotate2_fp16` | 1 | tokens>1 → fused-barrier path disabled |
+| 3 | `project_linear_attention_qkv_z_fp16` | 2× `gemv_awq_pack8_transposed_fp16` | 2 | tokens=4 ≤ small_batch=7; two single GEMVs (M7.C.6 alias-safe split) |
+| 4 | `project_linear_attention_ab_fp16` | 2× `dense_gemv_out_fp16` (or `rocblas_gemm_ex`) | 2 | tokens>1 split |
+| 5 | `qwen35_linear_attn_chain_conv_decode_fp16_tloop` | conv | 1 | |
+| 6 | `qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16` | GDN t-loop | 1 | |
+| 7 | `project_linear_attention_out_fp16` | `f32_to_fp16` + `paro_rotate1_fp16` + `awq_fusedw4_prefill_transposed_fp16` (single_linear_out **not** in safe mask → prefill path) | 3 | |
+| 8 | `post_attention_add_rmsnorm_fp16` | `paro_add_rmsnorm_out_fp16` | 1 | |
+| 9 | `run_moe_c1_fp16` → `route_moe_topk_shared_fp16` | `qwen35_router_topk_shared_out_fp16` | 1 | tokens>1 path |
+| 10 | `selected_moe_gate_up_pack8_fp16` | `paro_rotate1_fp16` + `gemv_awq_selected_dual_pack8_transposed_fp16` (already mul_mat_id) | 2 | |
+| 11 | `activate_rotate_moe_down_fp16` | `silu_mul_dual_rotate_out_fp16` | 1 | |
+| 12 | `selected_moe_down_pack8_fp16` | `gemv_awq_selected_pack8_transposed_fp16` (already mul_mat_id) | 1 | |
+| 13 | `shared_expert_fp16` → `shared_expert_paro_w4_fp16` (layer_type=linear → `small_batch=False`) | `paro_rotate2_fp16` (gate+up) + `awq_fusedw4_prefill_dual_fp16` + `silu_mul_separate_out_fp16` + `paro_rotate1_fp16` (down) + `awq_fusedw4_prefill_fp16` (down) | 5 | shared_gate_up **not** in safe mask → fall through to prefill kernels |
+| 14 | `combine_moe_c1_shared_residual_fp16` | `weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w` | 1 | |
+| 15 | per-layer next_hidden copy in `_iterate_verify_chain_layers` | `hipMemcpyAsync` (D2D) | 1 | `out.ptr != next_hidden.ptr` — `run_moe_c1_fp16` returns `scratch.moe_out`; the M12.6 `out=` write-through path is **not wired into the batched verifier** |
+
+**Per linear-attention layer: 24 launches.** Across 30 linear-attention layers: **720 launches/pass.**
+
+#### Per-`full_attention` layer (`_run_full_attention_chain_batched`, tokens=4)
+
+| # | Source site | Kernel(s) launched | Launches | Notes |
+|---|---|---|---:|---|
+| 1 | `input_rmsnorm_fp16` | `paro_rmsnorm_out_fp16` | 1 | |
+| 2 | `rotate_full_attention_inputs_fp16` | `paro_rotate3_fp16` | 1 | tokens>1 → fused-barrier path disabled |
+| 3 | `project_full_attention_qkv_fp16` | 2× `gemv_awq_pack8_transposed_fp16` (Q/K small-batch split) + `awq_fusedw4_prefill_transposed_fp16` (V — `single_full_v` not in safe mask) | 3 | M7.C.6 alias-safe split |
+| 4 | `prepare_full_attention_qkv_fp16` | `qwen35_split_qgate_fp16` + `fp16_to_f32` + `qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16` | 3 | |
+| 5 | `append_full_attention_kv_fp16_batch` | `qwen35_write_paged_kv_mixed_value_fp16_spans` | 1 | |
+| 6 | `prefill_full_attention_gqa_gate_fp16` | `qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans` | 1 | |
+| 7 | `project_full_attention_o_fp16` | `paro_rotate1_fp16` + `gemv_awq_pack8_multi_row_transposed_fp16` (`single_full_o` IS in safe mask → multi-row path) | 2 | |
+| 8 | `post_attention_add_rmsnorm_fp16` | `paro_add_rmsnorm_out_fp16` | 1 | |
+| 9 | `run_moe_c1_fp16` → `route_moe_topk_shared_fp16` | `qwen35_router_topk_shared_out_fp16` | 1 | |
+| 10 | `selected_moe_gate_up_pack8_fp16` | `paro_rotate1_fp16` + `gemv_awq_selected_dual_pack8_transposed_fp16` | 2 | |
+| 11 | `activate_rotate_moe_down_fp16` | `silu_mul_dual_rotate_out_fp16` | 1 | |
+| 12 | `selected_moe_down_pack8_fp16` | `gemv_awq_selected_pack8_transposed_fp16` | 1 | |
+| 13 | `shared_expert_fp16` → `shared_expert_paro_w4_fp16` (layer_type=full + tokens≤7 → `small_batch=True`) | `paro_rotate2_fp16` + `gemv_awq_dual_pack8_transposed_fp16` + `silu_mul_dual_rotate_out_fp16` + `gemv_awq_pack8_transposed_fp16` | 4 | small-batch path skips standalone down rotate (fused into silu) |
+| 14 | `combine_moe_c1_shared_residual_fp16` | `weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w` | 1 | |
+| 15 | per-layer next_hidden copy | `hipMemcpyAsync` (D2D) | 1 | same gap as linear-attn: `run_moe_c1_fp16` does not receive `out=next_hidden` |
+
+**Per full-attention layer: 23 launches.** Across 10 full-attention layers: **230 launches/pass.**
+
+#### Sample + accept + commit + embedding
+
+| Stage | Source site | Kernel(s) | Launches |
+|---|---|---|---:|
+| Embedding | `_iterate_verify_chain_layers` head | `embedding_lookup_batch_fp16_i64` | 1 |
+| Sample | `_sample_verify_rows_from_hidden` | `paro_rmsnorm_out_fp16` + `fp16_to_bf16` + `w8a16_linear_bf16_f32_multi_row` (M12.2) + `argmax_f32_rows_i32` | 4 |
+| Accept | `_launch_verify_accept_summary` | `dflash_accept_chain_i32` | 1 |
+| Commit (M12.4 fast path) | `_commit_bulk_linear_states` | `linear_state_pair_commit_i32` + 0–2 H2D pointer-table refreshes | 1–3 |
+
+**Tail: 7–9 launches/pass.**
+
+#### Per-pass total — static vs. measured
+
+| Component | Static (audit) | Measured (rocprof m12.6c) | Δ |
+|---|---:|---:|---:|
+| 30 × linear-attention layer | 720 | — | |
+| 10 × full-attention layer | 230 | — | |
+| Embedding + sample + accept + commit | 7–9 | — | |
+| **Total** | **957–959** | **~1052** | **+93–95** |
+
+Residual ~93 launches the static audit doesn't predict: these are almost
+certainly per-layer `runtime_memset` (`_memset_tensor` calls scattered
+through MoE/shared/grouped scratch resets) and the H2D pointer-table
+refreshes inside `_commit_bulk_linear_states`. They aren't visible in the
+source walk because they're embedded in helpers called once per layer; the
+follow-up M13.A.2 task should enumerate every `runtime.memset_async` and
+`memcpy_async` call inside the verify path to close this 9% gap.
+
+#### Where the launch budget actually lives
+
+From the M12.6c rocprof families × audit attribution:
+
+| Family | Calls/pass | Audit attribution |
+|---|---:|---|
+| `w4_single_gemv` (=`gemv_awq_pack8_transposed_fp16`) | 140 | 30×2 linear-attn QKV/Z split (60) + 10×2 full-attn Q/K split (20) + 30×1 shared down small-batch (0, full-attn only ≈ 10) + 10×1 full-attn O proj (10) + 10×1 full-attn shared gate_up dual (counted as dual) + remainder ≈ "small-batch single GEMVs landed by M7.C.6 + M12.6 mask" |
+| `moe_paro_rotate_in` (= `paro_rotate{1,2,3}`) | 190 | 30 linear-attn ×4 rotates (qkv-z + out + gate_up + shared.gate_up + shared.down = 5 ⇒ 150) + 10 full-attn ×4 rotates (qkv + o + gate_up + shared.gate_up ≈ 4 ⇒ 40). Family name covers ALL `paro_rotate*` launches, not only MoE ones. |
+| `w4_single_prefill_smallbatch` | 70 | 30 linear-attn shared down prefill (30) + 30 linear-attn out_proj prefill (30) + 10 full-attn shared down/aux (≈10) |
+| `w4_dual_prefill_smallbatch` | 30 | 30 linear-attn shared gate+up prefill (full-attn shared gate+up uses dual GEMV not prefill at tokens=4) |
+| `moe_gate_up_dual_gemv` (mul_mat_id) | 40 | one per MoE layer per gate+up op — already collapsed |
+| `moe_down_gemv` (mul_mat_id) | 40 | one per MoE layer per down op — already collapsed |
+| `linear_attention_gdn_decode` | 30 | one per linear-attn layer |
+| `w8a16_linear` (LM head) | 1 | M12.2 multi-row |
+| Tail (~520): rmsnorm, paged_kv, decode_attn, silu, combine, router, runtime_copy/memset | ~520 | input_rmsnorm + post_attn_rmsnorm + qkv-norm + silu_mul × shared + silu_mul_dual_rotate + combine + router + paged_kv append + paged_attn prefill + per-layer next_hidden D2D + memsets |
+
+#### Audit conclusions
+
+1. **Selected MoE is already mul_mat_id.** No further consolidation possible
+   at the selected-expert GEMV level. Any further MoE win has to come from
+   *expert-grouping* (M13.E contingency) or from collapsing the surround.
+
+2. **The 40 layers × ~5 rotates/layer = 190 `paro_rotate*` launches** are the
+   single largest unfused launch family by count. Each is ~5 µs of pure
+   dispatch. Two cheap wins exist here:
+
+   - **(M13.B.1)** `gemv_awq_selected_dual_pack8_transposed_rotate_out_{fp16,bf16}`:
+     the templated kernel already exists in `kernels/hip_gfx1100/quant/paro_awq_gemv.hip`
+     (line 1466, `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`,
+     templated on `qweight_transposed`). Only the strided extern-C wrappers
+     are exposed (`hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_{fp16,bf16}`
+     at line 2610 / 2774). Adding the transposed instantiation removes the
+     `paro_rotate1` launch in `selected_moe_gate_up_pack8_*` for every MoE
+     layer that uses selected dual GEMV (40 MoE ops → ~40 paro_rotate
+     launches/pass eliminated). **Numerically identical** to today's
+     two-launch sequence.
+   - **(M13.B.2)** A `paro_rotate_into_gemv_awq_pack8_transposed_*` fold for
+     the shared-expert down rotate at linear-attention layers (30 launches/pass).
+     Less obvious; needs a quick survey of whether the templated rotate-in
+     kernel exists for the non-selected variants.
+
+3. **The per-layer next_hidden D2D copy is unwired write-through, not a fix.**
+   The batched verifier path at `qwen35_paro_runner.py:~3175` calls
+   `state.run_moe_c1_fp16(mlp_input, residual, scratch=moe_scratch, tokens=rows)`
+   **without passing `out=next_hidden`**. M12.6's `out=` parameter on
+   `run_moe_c1_fp16` exists exactly for this purpose. Wiring it through
+   removes 1 D2D `hipMemcpyAsync` per layer = **40 launches/pass eliminated**
+   for free, numerically identical. The c1_loop full-attention path has the
+   same gap. **This is M13.B.0, the freebie.**
+
+4. **The 957–1052 launch range is the surround, not the GEMVs.** Even with
+   M13.B.0 + M13.B.1 + M13.B.2 we still emit ~870 launches/pass. The C-side
+   per-MoE-layer dispatcher (M13.C) does not reduce launches, but it reduces
+   the per-launch Python overhead and shortens the captured graph's record
+   sequence. M13.D is where graph capture (M12.1) finally pays out, if at all.
+
+#### M13.A follow-ups (no GPU yet)
+
+- M13.A.1: file an issue/note to wire `out=next_hidden` through `run_moe_c1_fp16`
+  in both the linear-attention chain_tloop and full-attention batched paths.
+  Trivial source change; numerically identical; eliminates 40 D2Ds/pass.
+- M13.A.2: enumerate every `runtime.memset_async` and `memcpy_async` call
+  reachable from `_iterate_verify_chain_layers`. Close the 93-launch gap
+  between static audit (957–959) and rocprof (1052).
+- M13.A.3: confirm whether the `gemv_awq_pack8_transposed_rotate_*` symbol
+  exists in the templated kernel body; if not, decide whether M13.B.2 is a
+  cheap instantiation or a new kernel.
+
+All three follow-ups are source-only; defer GPU validation to the M13.D
+measure block.
+
+### M13 implementation track
+
+| # | Sub-task | Goal / acceptance gate | Status |
+|---|---|---|---|
+| M13.0 | Plan + audit write-up in `docs/MTP.md` + `WORKLOG.md` | Source-only plan landed; later phases reference this section. | **Done** 2026-05-23 |
+| M13.A | Static per-pass launch audit (this section) | Reconcile static count vs M12.6c rocprof to <10% gap; identify the actual structural fat. | **Done** 2026-05-23 (static 957–959 vs measured 1052, 93-launch residual attributed to memsets + pointer-table refreshes; M13.A.2 will close the gap) |
+| M13.B.0 | Wire `out=next_hidden` through `run_moe_c1_fp16` in batched + chain_tloop verifier paths | Exact-AR on 9-prompt suite; rocprof shows ~40 fewer `runtime_copy` launches/pass. | Pending (source ready, awaits GPU) |
+| M13.B.1 | Expose transposed-layout instantiation of `gemv_awq_selected_dual_pack8_*_rotate_out_{fp16,bf16}` | Exact-AR on 9-prompt suite; rocprof shows ~40 fewer `paro_rotate1` launches/pass. | Pending |
+| M13.B.2 | Survey + (if cheap) add transposed-layout rotate-in fold for non-selected pack8 GEMVs used by shared expert | Exact-AR on 9-prompt suite; rocprof shows ~30 fewer `paro_rotate1` launches/pass. | Pending (survey first; may collapse to no-op) |
+| M13.C | C-side per-MoE-layer dispatcher gated by `HIPENGINE_MOE_C1_LAYER_C_DISPATCH=1` | Exact-AR on 9-prompt suite when env on; behavior unchanged when env off; cycle_cost at `graph_mode=off` drops by host-dispatch savings. | Pending |
+| M13.D | Re-evaluate graph replay after B+C | At least one of `graph_mode=auto` / `validate` beats `graph_mode=off` cycle_cost by ≥5% on the 9-prompt suite with exact-AR. | Pending |
+| M13.E | Sort-by-expert pre-pass for selected MoE GEMVs (contingency only) | Only if D leaves ≥10% on the table. | Reserved |
+
+Ground rule for the whole M13 block: any code change that touches MoE
+numerics (M13.B.2 or beyond) needs the existing exact-AR gate plus the
+`benchmarks/results/` rollup discipline in `AGENTS.md`.
+
 ## Closing the gap with llama.cpp MTP — kernel roadmap (2026-05-21)
 
 Historical note: this section captured the pre-M7.C.6 kernel-family roadmap.

@@ -21714,3 +21714,26 @@ Evidence:
 - Rocprof first pair-row run looked promising (`17.324 ms/pass`, MoE down `1.783 ms/pass`), but repeat default/off comparison in the same build showed regression/noise: pair-row default `17.421 ms/pass`, MoE down `1.834 ms/pass`; pair-row disabled `17.399 ms/pass`, MoE down `1.830 ms/pass`. Baseline retained artifact remains `17.378 ms/pass`, MoE down about `1.812 ms/pass`.
 
 Conclusion: adjacent row-pairing halves down-GEMV block count but pairs different top-k experts, so it mostly doubles per-block work/register pressure without reusable weights. Do not retain. A useful MoE path still needs real expert grouping/sorting with lower overhead than the current grouped-compact route.
+
+## 2026-05-23 M13.0 + M13.A landed (plan + source-only launch audit)
+
+Pivoted the next MTP optimization pass from "micro-tune individual kernel families" to "consolidate the per-layer launch surround around the already-mul_mat_id MoE GEMVs". No GPU run for this entry; W7900 is busy with another profiling job, so M13.0 (plan) and M13.A (static audit) are both source-only and committed for later GPU validation in M13.D.
+
+Headline correction: M12.3 in `docs/MTP.md` is mislabeled. The selected-expert MoE GEMVs in the current code (`gemv_awq_selected_dual_pack8_transposed_*` at `runtime/qwen35_paro.py:4791`, `gemv_awq_selected_pack8_transposed_*` at `:4872`) are already `mul_mat_id`-shaped: one launch per (layer, op), grid `(out_packed, tokens*top_k)`, reading `selected[row]` from an ids tensor inside the kernel. The M12.6c rocprof shows 40 + 40 = 80 selected MoE GEMV launches/pass for the 30 MoE layers × 2 ops = 60... actually 40 + 40 matches the layer count more closely than 30 × 2; the remaining 20 are the surrounding `silu_mul_dual_rotate_out` rather than a second GEMV per layer. The point stands: there are no per-expert per-row launches today. The original M12.3 framing ("1,840 → a few hundred via mul_mat_id") refers to a code state that no longer exists.
+
+What I actually wrote in `docs/MTP.md` M13.A:
+
+- Per-`linear_attention` layer at tokens=4, chain_tloop path: **24 launches** across `input_rmsnorm`, `paro_rotate2` (qkv+z), 2 single QKV/Z GEMVs (M7.C.6 alias-safe split), 2 a/b dense GEMVs, conv t-loop, GDN t-loop, 3 out-projection launches (f32→fp16 + rotate + prefill), post-attn add+rmsnorm, then `run_moe_c1_fp16` (router + selected gate_up (rotate + GEMV) + silu_rotate + selected_down + 5-launch shared_expert (paro_rotate2 + prefill_dual + silu_separate + paro_rotate1 + prefill_down) + combine), plus a per-layer D2D next_hidden copy.
+- Per-`full_attention` layer at tokens=4, batched path: **23 launches**, similar pattern but smaller-batch shared expert path (`small_batch=True`) saves the standalone down rotate.
+- 30 linear layers × 24 + 10 full layers × 23 + 7-9 embedding/sample/accept/commit = **957–959 launches/pass static**.
+- Reconciles against the measured 1052 from `benchmarks/results/2026-05-22-hipengine-mtp-verifier-rocprof-w7900-current-m12.6c.json` with a 93-launch residual, almost certainly per-layer `_memset_tensor` calls + commit-table H2D pointer refreshes. M13.A.2 will close that gap.
+
+Three concrete next-step source changes the audit surfaces:
+
+- **M13.B.0 freebie**: the batched verifier path at `qwen35_paro_runner.py:~3175` calls `state.run_moe_c1_fp16(mlp_input, residual, scratch=moe_scratch, tokens=rows)` *without* passing the `out=next_hidden` parameter that M12.6 added exactly for this purpose. Wiring it through removes the per-layer next_hidden D2D `hipMemcpyAsync` (40 launches/pass) at zero numeric cost. Same gap in the c1_loop full-attention path.
+- **M13.B.1**: `kernels/hip_gfx1100/quant/paro_awq_gemv.hip:1466` already has `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel` templated on `qweight_transposed`. Only the strided extern-C wrappers are exposed (`:2610` / `:2774`). Adding the transposed instantiation lets `selected_moe_gate_up_pack8_*` replace `paro_rotate1 + gemv_awq_selected_dual_pack8_transposed` with one fused kernel (~40 paro_rotate launches/pass eliminated). Numerically identical templated body.
+- **M13.B.2**: survey whether `gemv_awq_pack8_transposed_rotate_*` exists for shared-expert paths; if cheap, expose; otherwise defer.
+
+Larger structural item (M13.C): a C-side per-MoE-layer dispatcher that issues all ~10 sub-kernels of one MoE layer inline from C, gated by `HIPENGINE_MOE_C1_LAYER_C_DISPATCH=1`. Numerically identical; collapses ~10 Python/ctypes round-trips per layer × 40 layers = ~400 Python calls/pass into 40. This is the "C layer for Python hot paths" piece. Whether this wins at `graph_mode=off` (pure host overhead removed) vs `graph_mode=auto` (smaller-record graph) is the M13.D measurement.
+
+No code in hipengine/ touched yet. `docs/MTP.md` gained the M13 section (between the M12 implementation track and "Closing the gap with llama.cpp MTP"). This WORKLOG entry is the cross-session handoff so the next agent picks up at M13.B.0 when the W7900 frees up.
