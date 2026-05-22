@@ -2807,7 +2807,8 @@ RX 7900 XTX / gfx1100 24 GiB card, but the models/quants differ
 (Qwen3.5-35B-A3B-PARO `w4_paro` vs Qwen3.6-35B-A3B `UD-Q4_K_M` GGUF).
 Use these tables for footprint direction and next-work triage only. The
 commands and raw JSON outputs are preserved in the artifact and WORKLOG entry.
-The table shape intentionally leaves room for the next `Q4_K_S` GGUF column.
+This section is the 2026-05-21 `Q4_K_M` snapshot. The 2026-05-22 rerun fills
+in the `Q4_K_S` column in P10.D14 below.
 
 Size distribution below is container/runtime-source payload, not full allocator
 state. PARO values are from the safetensors header; GGUF values are from the
@@ -2914,9 +2915,9 @@ a diagnostic mixed-model/mixed-quant comparison, not a retained benchmark row.
 
 Next actions after this pass:
 
-1. Add the `Q4_K_S` GGUF column first; `Q4_K_M` contains `9.257 GiB` of
-   Q5/Q6/Q8 payload, so a smaller GGUF quant is the most plausible memory
-   lever.
+1. 2026-05-22 update: the `Q4_K_S` GGUF column is now measured in P10.D14.
+   It removes the `Q4_K_M` `Q5_K` expert-down payload and is the better local
+   memory column in this diagnostic set.
 2. Treat no-repack/T16 residency reduction as an explicit emergency
    long-context mode only after quant choice is measured, because current raw
    paths sacrifice too much speed.
@@ -2924,3 +2925,95 @@ Next actions after this pass:
    are structural: grouped/tiled selected-MoE decode to reduce dispatch/work
    composition, and a redesigned Q8_0 dense/shared GEMV mapping guided by
    profiler/SASS evidence.
+
+#### P10.D14 — Latest Q4_K_M vs Q4_K_S after memory/decode passes
+
+Status update 2026-05-22: after the memory/decode pass and the `Q4_K_S`
+selected-Q4 down-kernel enablement (`d92977a`), reran local RX 7900 XTX / gfx1100
+single-run diagnostics for both GGUF quants. Compact artifact:
+`benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-after-memory-decode-pass-review.json`.
+These are still diagnostic rows only: local RX 7900 XTX, single run per shape,
+and PARO values are the prior 2026-05-21 local comparison rows, not rerun.
+
+Accepted/rejected state after this pass:
+
+| Change | Decision | Evidence |
+| --- | --- | --- |
+| Resident prefill scratch K/V cleanup | Accepted | `68.5 MiB` tracked saving at 32K/1; targeted GGUF tests passed. |
+| `Q4_K_S` selected Q4 down T16 kernels | Accepted | Added Q4 single-output selected GEMV/WMMA paths; `118` selected T16 tests + `10` resolver/chunk tests passed. |
+| No-repack/T16 residency mode | Deferred | Saves `~468 MiB` but current safe raw path loses fast prefill/decode. |
+| Q8_0 T16 scale broadcast | Rejected | 4K/128 decode regressed `-26.7%`; reverted. |
+| Selected-MoE Q4 launch-bounds tweak | Rejected | 4K/128 decode `96.746 -> 96.651 tok/s`; reverted. |
+
+Size distribution / payload source:
+
+| Size bucket (GiB) | PARO `w4_paro` | GGUF `Q4_K_M` | GGUF `Q4_K_S` | Notes |
+| --- | ---: | ---: | ---: | --- |
+| Model file size | `19.237` | `20.614` | `19.458` | Local files on disk. |
+| Tensor payload | `19.225` | `20.604` | `19.448` | `Q4_K_S` saves `1.156 GiB` payload vs `Q4_K_M`. |
+| MoE / FFN payload | `15.862` | `18.428` | `17.271` | `Q4_K_S` changes expert-down tensors from `Q5_K` to `Q4_K`. |
+| Attention payload | `0.402` | `1.017` | `1.017` | Same GGUF attention payload for M/S. |
+| Linear-attention / SSM payload | `0.502` | `0.267` | `0.267` | Same GGUF SSM payload for M/S. |
+| Embedding / LM-head / norm payload | `1.895` | `0.892` | `0.892` | Same GGUF embedding/lm/norm payload for M/S. |
+
+Encoding/layout distribution:
+
+| Encoding bucket (GiB) | PARO `w4_paro` | GGUF `Q4_K_M` | GGUF `Q4_K_S` | Notes |
+| --- | ---: | ---: | ---: | --- |
+| Main 4-bit payload | `15.596` `qweight` | `11.250` `Q4_K` | `16.453` `Q4_K` | `Q4_K_S` has no `Q5_K` tensors. |
+| Higher-bit quant payload | n/a | `9.257` (`Q5_K` + `Q6_K` + `Q8_0`) | `2.898` (`Q6_K` + `Q8_0`) | Main source of the M→S saving. |
+| Scale/zero side metadata | `0.609` | embedded | embedded | GGUF scale/min bytes are inside quant blocks. |
+| Dense standalone weights | `3.009` | `0.097` `F32` | `0.097` `F32` | Different checkpoint layouts. |
+
+Prefill throughput (tok/s):
+
+| Workload | PARO `w4_paro` | GGUF `Q4_K_M` latest | GGUF `Q4_K_S` latest | `Q4_K_S` vs `Q4_K_M` |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | `2101.158` | `1544.572` | `1557.299` | `+0.8%` |
+| 4K/128 | `2710.869` | `2552.043` | `2637.148` | `+3.3%` |
+| 32K/128 | `2082.012` | `1861.893` | `1944.065` | `+4.4%` |
+| 65K/128 | not rerun | not run | `1481.459` | n/a |
+| 128K/128 | `1023.868` | does not fit locally | not probed | n/a |
+
+Decode throughput (tok/s):
+
+| Workload | PARO `w4_paro` | GGUF `Q4_K_M` latest | GGUF `Q4_K_S` latest | `Q4_K_S` vs `Q4_K_M` |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | `107.314` | `89.494` | `90.499` | `+1.1%` |
+| 4K/128 | `106.637` | `96.264` | `97.121` | `+0.9%` |
+| 32K/128 | `92.908` | `85.017` | `85.815` | `+0.9%` |
+| 65K/128 | not rerun | not run | `74.035` | n/a |
+| 128K/128 | `61.800` | does not fit locally | not probed | n/a |
+
+Tracked peak memory (GiB):
+
+| Workload | PARO `w4_paro` | GGUF `Q4_K_M` latest | GGUF `Q4_K_S` latest | `Q4_K_S` saving vs `Q4_K_M` |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | `18.176` | `21.342` | `20.185` | `1.156 GiB` |
+| 4K/128 | `20.047` | `22.572` | `21.416` | `1.156 GiB` |
+| 32K/128 | `20.320` | `23.302` | `22.146` | `1.156 GiB` |
+| 65K/128 | not rerun | not run | `23.102` | n/a |
+| 128K/128 | `23.288` | does not fit locally | not probed | n/a |
+
+Current local long-context floor/ceiling:
+
+| Probe | PARO `w4_paro` | GGUF `Q4_K_M` latest | GGUF `Q4_K_S` latest |
+| --- | --- | --- | --- |
+| Safe comparison point | `32K/128` fits (`20.320 GiB`) | `32K/128` fits (`23.302 GiB`) | `32K/128` fits (`22.146 GiB`) |
+| Largest successful probe here | `128K/128` fits (`23.288 GiB`) | prior `35070/1` fit (`23.432 GiB` tracked, `23.911 GiB` sampled HIP) | `65K/128` fits (`23.102 GiB` tracked, `23.627 GiB` sampled HIP) |
+| First observed fail / ceiling | not probed above 128K | prior `36864/1` failed during prefill; `40960/1` failed allocation | not probed higher in this pass |
+
+Interpretation:
+
+- `Q4_K_S` is **not** slower in the latest fastpath runs. It is slightly faster
+  than latest `Q4_K_M` at the comparable 512/4K/32K shapes and saves a stable
+  `~1.156 GiB` tracked memory.
+- `Q4_K_S` narrows the local 4K/128 PARO memory gap from `+2.525 GiB` for latest
+  `Q4_K_M` to `+1.369 GiB`, while staying within `-2.7%` PARO prefill and
+  `-8.9%` PARO decode in this diagnostic.
+- The Q4_K_S kernel support was required for a fair run: before the Q4 selected
+  down WMMA route, the 512/1 smoke fell back to a much slower path; after
+  `d92977a`, `Q4_K_S` uses the fast selected T16 down path.
+- Next memory work should re-probe the `Q4_K_S` max-fit boundary above 65K and
+  only consider no-T16/emergency residency if long-context headroom is worth the
+  current speed tradeoff.

@@ -22878,3 +22878,24 @@ uv run python scripts/qwen35_gguf_bench.py \
 ```
 
 Result: finite logits, prefill `1584.116 tok/s`, decode `55.134 tok/s`, tracked peak `20.185406 GiB`. The pre-WMMA fallback smoke was only `724.811 tok/s`, confirming the Q4 down WMMA route is needed before recording Q4_K_S comparison rows.
+
+## 2026-05-22 — GGUF post-pass re-review with Q4_K_S
+
+Task #65 was missing from the active task store, so replacement task #71 tracked the re-review. Updated `docs/GGUF.md` with P10.D14 and wrote compact artifact `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-after-memory-decode-pass-review.json`.
+
+Scope: latest local RX 7900 XTX/gfx1100 single-run diagnostics after the memory/decode pass and Q4_K_S selected-Q4 down-kernel support (`d92977a`). PARO numbers are the prior 2026-05-21 local rows, not rerun. No retained rollup update.
+
+Latest comparable GGUF rows:
+
+| Workload | Q4_K_M prefill | Q4_K_S prefill | Q4_K_M decode | Q4_K_S decode | Q4_K_M tracked GiB | Q4_K_S tracked GiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | `1544.572` | `1557.299` | `89.494` | `90.499` | `21.342` | `20.185` |
+| 4K/128 | `2552.043` | `2637.148` | `96.264` | `97.121` | `22.572` | `21.416` |
+| 32K/128 | `1861.893` | `1944.065` | `85.017` | `85.815` | `23.302` | `22.146` |
+| 65K/128 | not run | `1481.459` | not run | `74.035` | not run | `23.102` |
+
+Q4_K_S is not slower in these fastpath runs: vs Q4_K_M it is `+0.8%/+3.3%/+4.4%` prefill and `+1.1%/+0.9%/+0.9%` decode at 512/4K/32K, while saving a stable `1.156 GiB` tracked memory. The model-file/payload source is the expected Q4_K_S change: tensor payload `20.604 -> 19.448 GiB`; Q5_K payload in Q4_K_M (`6.359 GiB`) is gone, replaced by more Q4_K payload (`11.250 -> 16.453 GiB`), leaving only `Q6_K + Q8_0 = 2.898 GiB` higher-bit quant payload.
+
+Against the prior local PARO 4K/128 row, latest Q4_K_S is `2637.148` prefill vs `2710.869` (`-2.7%`), `97.121` decode vs `106.637` (`-8.9%`), and `21.416 GiB` tracked vs `20.047 GiB` (`+1.369 GiB`). Q4_K_S now fits at least `65K/128` locally (`23.102 GiB` tracked, `23.627 GiB` sampled HIP); higher contexts were not probed in this pass. Prior Q4_K_M ceiling remains around `35K` (`35070/1` fit, `36864/1` fail during prefill, `40960/1` allocation fail).
+
+Decision: Q4_K_S is the better local GGUF column after this pass. Next work should probe Q4_K_S max-fit above 65K and only revisit no-T16/emergency residency if long-context headroom outweighs the measured speed loss.

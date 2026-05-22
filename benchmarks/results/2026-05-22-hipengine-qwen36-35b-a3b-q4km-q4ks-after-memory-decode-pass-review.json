@@ -1,0 +1,453 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "review_recorded",
+  "performance_claim": false,
+  "label": "p10_latest_q4km_q4ks_after_memory_decode_passes",
+  "date": "2026-05-22",
+  "git_commit_under_test": "d92977a",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local RX 7900 XTX/gfx1100 single-run diagnostics; W7900 not rerun"
+  },
+  "scope": "Latest GGUF Q4_K_M vs Q4_K_S diagnostics after memory/decode passes and Q4_K_S selected Q4_K T16 down support. PARO numbers are prior local comparison rows from 2026-05-21, not rerun here.",
+  "model_paths": {
+    "gguf_q4_k_m": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "gguf_q4_k_s": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+    "paro": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
+  },
+  "commands": {
+    "gguf_common": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model <model> --quant <gguf_q4_k_m|gguf_q4_k_s> --prompt-length <512|4096|32768|65536> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-latest-<quant>-<prompt>-128.json"
+  },
+  "size_distribution": {
+    "paro_w4_paro": {
+      "file_size_gib": 19.237309731543064,
+      "tensor_payload_gib": 19.225,
+      "rough_groups_gib": {
+        "moe_ffn": 15.862,
+        "attention": 0.402,
+        "linear_attention": 0.502,
+        "embedding_lm_norm": 1.895,
+        "other": 0.564
+      },
+      "encoding_buckets_gib": {
+        "qweight_main_4bit": 15.596,
+        "scales_plus_qzeros": 0.609,
+        "dense_standalone_weight_tensors": 3.009,
+        "other_bias_index": 0.012
+      },
+      "source": "Prior local PARO safetensors/header analysis from docs/GGUF.md P10.D12 and 2026-05-21 comparison artifact."
+    },
+    "gguf_q4_k_m": {
+      "file_size_gib": 20.614386528730392,
+      "tensor_payload_gib": 20.604151248931885,
+      "rough_groups_gib": {
+        "attention": 1.0171699523925781,
+        "embedding_lm_norm": 0.8917694091796875,
+        "linear_attention": 0.26735544204711914,
+        "moe_ffn": 18.42755126953125,
+        "other": 0.00030517578125
+      },
+      "payload_by_quant_type_gib": {
+        "Q4_K": 11.25,
+        "Q5_K": 6.359375,
+        "Q8_0": 1.89361572265625,
+        "Q6_K": 1.0037612915039062,
+        "F32": 0.09739923477172852
+      },
+      "tensor_counts_by_type": {
+        "F32": 361,
+        "Q4_K": 80,
+        "Q5_K": 37,
+        "Q6_K": 4,
+        "Q8_0": 251
+      }
+    },
+    "gguf_q4_k_s": {
+      "file_size_gib": 19.458136528730392,
+      "tensor_payload_gib": 19.447901248931885,
+      "rough_groups_gib": {
+        "attention": 1.0171699523925781,
+        "embedding_lm_norm": 0.8917694091796875,
+        "linear_attention": 0.26735544204711914,
+        "moe_ffn": 17.27130126953125,
+        "other": 0.00030517578125
+      },
+      "payload_by_quant_type_gib": {
+        "Q4_K": 16.453125,
+        "Q8_0": 1.89361572265625,
+        "Q6_K": 1.0037612915039062,
+        "F32": 0.09739923477172852
+      },
+      "tensor_counts_by_type": {
+        "F32": 361,
+        "Q4_K": 117,
+        "Q6_K": 4,
+        "Q8_0": 251
+      }
+    },
+    "q4ks_vs_q4km_file_size_delta_gib": -1.15625,
+    "q4ks_vs_q4km_tensor_payload_delta_gib": -1.15625,
+    "q4ks_vs_q4km_higher_bit_quant_payload_saved_gib": 6.359375
+  },
+  "accepted_changes_since_initial_comparison": [
+    {
+      "commit": "4024a1a",
+      "summary": "Removed resident prefill scratch K/V and unused full_key_bf16; 32K/1 tracked peak saved 68.5 MiB."
+    },
+    {
+      "commit": "d92977a",
+      "summary": "Added Q4_K T16 selected single-output GEMV/WMMA down kernels so Q4_K_S ffn_down_exps uses fast compact selected paths."
+    }
+  ],
+  "rejected_or_deferred_decode_changes": [
+    {
+      "commit": "08222f6",
+      "summary": "No-repack residency deferred: saves ~468 MiB but safe raw path loses fast prefill/decode."
+    },
+    {
+      "commit": "eb888e5",
+      "summary": "Q8_0 T16 lane0 scale-broadcast rejected: 4K/128 decode regressed -26.7%."
+    },
+    {
+      "commit": "cf6a779",
+      "summary": "Selected-MoE Q4 launch-bounds tweak rejected: neutral/slightly negative at 4K/128."
+    }
+  ],
+  "gguf_q4_k_m_results": [
+    {
+      "label": "512/128",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "prefill_tok_s": 1544.5715259571737,
+      "decode_tok_s": 89.49423929822129,
+      "tracked_peak_allocated_gib": 21.34165693819523,
+      "owned_session_peak_gib": 21.34165597707033,
+      "hip_used_peak_sampled_gib": 21.81092071533203,
+      "finite_final_logits": true,
+      "final_token_id": 3561,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true,
+      "json": "/tmp/hipengine-latest-q4km-512-128.json"
+    },
+    {
+      "label": "4K/128",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "prefill_tok_s": 2552.0429915633204,
+      "decode_tok_s": 96.26374663160384,
+      "tracked_peak_allocated_gib": 22.571860380470753,
+      "owned_session_peak_gib": 22.571859419345856,
+      "hip_used_peak_sampled_gib": 23.107177734375,
+      "finite_final_logits": true,
+      "final_token_id": 220,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true,
+      "json": "/tmp/hipengine-latest-q4km-4096-128.json"
+    },
+    {
+      "label": "32K/128",
+      "prompt_length": 32768,
+      "decode_tokens": 128,
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "prefill_tok_s": 1861.8933805259503,
+      "decode_tok_s": 85.01676817905391,
+      "tracked_peak_allocated_gib": 23.302035816013813,
+      "owned_session_peak_gib": 23.302034854888916,
+      "hip_used_peak_sampled_gib": 23.80126953125,
+      "finite_final_logits": true,
+      "final_token_id": 220,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true,
+      "json": "/tmp/hipengine-latest-q4km-32768-128.json"
+    }
+  ],
+  "gguf_q4_k_s_results": [
+    {
+      "label": "512/128",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+      "quant": "gguf_q4_k_s",
+      "prefill_tok_s": 1557.2991918493349,
+      "decode_tok_s": 90.4986875178352,
+      "tracked_peak_allocated_gib": 20.18540693819523,
+      "owned_session_peak_gib": 20.18540597707033,
+      "hip_used_peak_sampled_gib": 20.65467071533203,
+      "finite_final_logits": true,
+      "final_token_id": 51515,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true,
+      "json": "/tmp/hipengine-latest-q4ks-512-128.json"
+    },
+    {
+      "label": "4K/128",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+      "quant": "gguf_q4_k_s",
+      "prefill_tok_s": 2637.147627613572,
+      "decode_tok_s": 97.12117731314792,
+      "tracked_peak_allocated_gib": 21.415610380470753,
+      "owned_session_peak_gib": 21.415609419345856,
+      "hip_used_peak_sampled_gib": 21.950927734375,
+      "finite_final_logits": true,
+      "final_token_id": 85,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true,
+      "json": "/tmp/hipengine-latest-q4ks-4096-128.json"
+    },
+    {
+      "label": "32K/128",
+      "prompt_length": 32768,
+      "decode_tokens": 128,
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+      "quant": "gguf_q4_k_s",
+      "prefill_tok_s": 1944.0645913959995,
+      "decode_tok_s": 85.8151451521531,
+      "tracked_peak_allocated_gib": 22.145785816013813,
+      "owned_session_peak_gib": 22.145784854888916,
+      "hip_used_peak_sampled_gib": 22.671630859375,
+      "finite_final_logits": true,
+      "final_token_id": 13883,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true,
+      "json": "/tmp/hipengine-latest-q4ks-32768-128.json"
+    },
+    {
+      "label": "65K/128",
+      "prompt_length": 65536,
+      "decode_tokens": 128,
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+      "quant": "gguf_q4_k_s",
+      "prefill_tok_s": 1481.459440529624,
+      "decode_tok_s": 74.03510033837065,
+      "tracked_peak_allocated_gib": 23.101856239140034,
+      "owned_session_peak_gib": 23.101855278015137,
+      "hip_used_peak_sampled_gib": 23.626708984375,
+      "finite_final_logits": true,
+      "final_token_id": 220,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true,
+      "json": "/tmp/hipengine-latest-q4ks-65536-128.json"
+    }
+  ],
+  "paro_prior_results": [
+    {
+      "label": "512/128",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "prefill_tok_s": 2101.1580298238678,
+      "decode_tok_s": 107.31386837993547,
+      "tracked_peak_allocated_gib": 18.175600168295205,
+      "hip_used_peak_sampled_gib": 18.19178009033203,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.13083839416504
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.213092803955078
+        }
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "below_min_tokens",
+        "max_sequence_length": 642,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0
+      },
+      "json": "/tmp/hipengine-local-compare-paro-512-128.json"
+    },
+    {
+      "label": "4K/128",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "prefill_tok_s": 2710.86881040786,
+      "decode_tok_s": 106.63671890443203,
+      "tracked_peak_allocated_gib": 20.047108446247876,
+      "hip_used_peak_sampled_gib": 18.601318359375,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.092187881469727
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.152114868164062
+        }
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "below_min_tokens",
+        "max_sequence_length": 4226,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0
+      },
+      "json": "/tmp/hipengine-local-compare-paro-4096-128.json"
+    },
+    {
+      "label": "32K/128",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "prompt_length": 32768,
+      "decode_tokens": 128,
+      "prefill_tok_s": 2082.01159224912,
+      "decode_tok_s": 92.90770880483292,
+      "tracked_peak_allocated_gib": 20.319650744087994,
+      "hip_used_peak_sampled_gib": 19.441162109375,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 26.700969696044922
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.093154907226562
+        }
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": true,
+        "reason": "long_context_static_budget",
+        "max_sequence_length": 32898,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 13.191406250000002,
+        "estimated_peak_gib": 23.3,
+        "chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        }
+      },
+      "json": "/tmp/hipengine-local-compare-paro-32768-128.json"
+    },
+    {
+      "label": "128K/128 static4096",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "prompt_length": 131072,
+      "decode_tokens": 128,
+      "prefill_tok_s": 1023.8676823561992,
+      "decode_tok_s": 61.80006188407829,
+      "tracked_peak_allocated_gib": 23.287703131325543,
+      "hip_used_peak_sampled_gib": 22.407958984375,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.599626541137695
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.63132095336914
+        }
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024
+      },
+      "prefill_chunk_tuning": {
+        "enabled": false,
+        "applied": false,
+        "reason": "disabled",
+        "max_sequence_length": 131202,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0
+      },
+      "json": "/tmp/hipengine-local-compare-paro-131072-128-static4096.json"
+    }
+  ],
+  "paired_deltas": [
+    {
+      "label": "512/128",
+      "q4ks_vs_q4km_prefill_pct": 0.8240256717327421,
+      "q4ks_vs_q4km_decode_pct": 1.122360754714924,
+      "q4ks_vs_q4km_tracked_peak_gib": -1.15625,
+      "q4ks_vs_q4km_tracked_peak_saved_gib": 1.15625,
+      "q4ks_vs_paro_prefill_pct": -25.8837664875746,
+      "q4ks_vs_paro_decode_pct": -15.669159183198566,
+      "q4ks_vs_paro_tracked_peak_extra_gib": 2.009806769900024,
+      "q4km_latest_vs_prior_tracked_peak_gib": -0.002197265625
+    },
+    {
+      "label": "4K/128",
+      "q4ks_vs_q4km_prefill_pct": 3.3347649836462434,
+      "q4ks_vs_q4km_decode_pct": 0.8907098586401707,
+      "q4ks_vs_q4km_tracked_peak_gib": -1.15625,
+      "q4ks_vs_q4km_tracked_peak_saved_gib": 1.15625,
+      "q4ks_vs_paro_prefill_pct": -2.7194670030231682,
+      "q4ks_vs_paro_decode_pct": -8.923325557130045,
+      "q4ks_vs_paro_tracked_peak_extra_gib": 1.368501934222877,
+      "q4km_latest_vs_prior_tracked_peak_gib": -0.012451171875
+    },
+    {
+      "label": "32K/128",
+      "q4ks_vs_q4km_prefill_pct": 4.413314517871991,
+      "q4ks_vs_q4km_decode_pct": 0.939081771983763,
+      "q4ks_vs_q4km_tracked_peak_gib": -1.15625,
+      "q4ks_vs_q4km_tracked_peak_saved_gib": 1.15625,
+      "q4ks_vs_paro_prefill_pct": -6.625659596068889,
+      "q4ks_vs_paro_decode_pct": -7.633988335218622,
+      "q4ks_vs_paro_tracked_peak_extra_gib": 1.826135071925819,
+      "q4km_latest_vs_prior_tracked_peak_gib": -0.06689453125
+    }
+  ],
+  "max_fit_findings": {
+    "q4_k_m": "Latest 32K/128 fits at 23.302036 GiB tracked after scratch cleanup. Prior 35070/1 fit probe reached 23.431675 GiB tracked / 23.911133 GiB sampled HIP peak; 36864/1 failed during prefill and 40960/1 failed at allocation.",
+    "q4_k_s": "Latest 65K/128 fits at 23.101856 GiB tracked / 23.626709 GiB sampled HIP peak. Higher contexts not probed in this pass.",
+    "paro": "Prior local 128K/128 static4096 run fits at 23.287703 GiB tracked / 22.407959 GiB sampled HIP peak."
+  },
+  "validation": {
+    "q4ks_kernel_tests": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_k_t16_selected_wmma_prefill.py tests/test_gguf_t16_selected_gemv_decode.py -q -> 118 passed",
+    "resolver_chunk_tests": "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_compact_moe_wmma_resolver.py tests/test_qwen35_gguf_chunked_prefill.py -q -> 10 passed",
+    "benchmark_sanity": "All latest Q4_K_M/Q4_K_S diagnostic runs reported finite final logits and fastpath flags effective_use_wmma_prefill=True/effective_use_gemv_decode=True."
+  },
+  "decision": "Q4_K_S is the better local GGUF column after the memory/decode passes: it saves ~1.156 GiB tracked at comparable shapes and is slightly faster in these single-run diagnostics. No retained rollup update because these are local RX 7900 XTX single-run mixed-model/mixed-quant diagnostics, not W7900 retained evidence."
+}
