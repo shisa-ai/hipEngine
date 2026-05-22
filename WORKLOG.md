@@ -23097,3 +23097,27 @@ PYTHONPATH=. uv run pytest tests/test_gguf_linear_dispatch.py -q
 ```
 
 Compact diagnostic artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-small-kernel-second-pass-rejected.json`. No source change retained in this pass; the current retained small-kernel win remains router256 from `f066856`, plus direct-selected-MoE from `eabf3ae`.
+
+## 2026-05-22 — Small-kernel third pass rejected after direct-selected baseline
+
+Reopened Task #4 again per request. Avoided the already rejected RMSNorm128/router128/router64/GDN `ssm_out` f32 shortcut/graph2-default probes and focused on remaining GDN/linear-attention small launches plus a larger graph replay bucket. Current comparison baseline remains `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-direct-selected-moe-c1-4k128-accepted.json`: Q4_K_M 4K/128 median decode `99.226 tok/s`, Q4_K_S median decode `100.255 tok/s`.
+
+Third-pass probes, all rejected and reverted/no source retained:
+
+1. **GDN recurrent lowp BF16 64 threads.** Temporarily changed `hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16` from 128 to 64 threads. Targeted graph/semantic tests passed (`7 passed`). 3-run decode medians were slightly positive (Q4_K_M `99.425 tok/s`, `+0.20%`; Q4_K_S `100.363 tok/s`, `+0.11%`), but final token IDs changed versus baseline (`Q4_K_M [220,220,220] -> [1510,1510,1510]`, `Q4_K_S [85,85,85] -> [240126,240126,240126]`). Rejected as a math-contract change: the reduced reduction width changes recurrent GDN floating-point order enough to alter generation for a tiny speed gain.
+2. **Linear-attention conv decode BF16 128 threads.** Temporarily changed `hipengine_qwen35_linear_attn_conv_decode_bf16` from 256 to 128 threads. Targeted conv/graph tests passed (`8 passed`) and final token IDs stayed stable. Q4_K_S improved to `100.580 tok/s` (`+0.32%`), but Q4_K_M regressed to `98.804 tok/s` (`-0.42%`). Rejected under the Q4_K_M+Q4_K_S dual-column gate.
+3. **Graph `--graph-steps-per-replay 4`.** No source change. Q4_K_S 3-run median decode was `100.064 tok/s` (`-0.19%` vs current one-step graph baseline), so Q4_K_M was not run. Capture overhead also rose to ~0.42s for four recorded steps. Rejected; graph2 remains an optional diagnostic knob but default stays one-step replay.
+
+Post-revert validation:
+
+```bash
+PYTHONPATH=. uv run pytest \
+  tests/test_qwen35_linear_attn_conv_plan.py \
+  tests/test_qwen35_gguf_decode_graph_policy.py \
+  tests/test_qwen35_gguf_decode_repack_semantics.py \
+  tests/test_qwen35_gguf_compact_moe_gemv_routing.py \
+  tests/test_qwen35_router_plan.py -q
+# 21 passed
+```
+
+Compact diagnostic artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-small-kernel-third-pass-rejected.json`. No source change retained in this pass.
