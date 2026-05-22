@@ -2797,3 +2797,90 @@ Recommended focus order after this review:
 4. **Keep a separate memory/long-context lane.** The external baselines still
    cover 32K/128 and 128K/128; hipENGINE needs an accepted 32K/128 path and a
    fix for the 128K allocation blocker before claiming long-context parity.
+
+#### P10.D12 — Local RX 7900 XTX PARO vs GGUF footprint table
+
+Status update 2026-05-21: diagnostic local comparison recorded in
+`benchmarks/results/2026-05-21-local-rx7900xtx-gguf-vs-paro-memory-comparison.json`.
+This is **not** a retained rollup row: both columns ran on the same local
+RX 7900 XTX / gfx1100 24 GiB card, but the models/quants differ
+(Qwen3.5-35B-A3B-PARO `w4_paro` vs Qwen3.6-35B-A3B `UD-Q4_K_M` GGUF).
+Use these tables for footprint direction and next-work triage only. The
+commands and raw JSON outputs are preserved in the artifact and WORKLOG entry.
+The table shape intentionally leaves room for the next `Q4_K_S` GGUF column.
+
+Size distribution below is container/runtime-source payload, not full allocator
+state. PARO values are from the safetensors header; GGUF values are from the
+GGUF scanner/materialization analysis. Groups are approximate semantic buckets
+because PARO stores AWQ/PARO `qweight/qzeros/scales` tensors while GGUF stores
+single GGML block tensors whose scale/min metadata is embedded in the quant
+blocks.
+
+| Size bucket (GiB) | PARO `w4_paro` | GGUF `Q4_K_M` | GGUF `Q4_K_S` (next) | Notes |
+| --- | ---: | ---: | ---: | --- |
+| Model file size | `19.237` | `20.614` | TBD | Local files on disk. |
+| Tensor payload | `19.225` | `20.604` | TBD | Excludes container/header overhead. |
+| MoE / FFN payload | `15.862` | `18.428` | TBD | Dominant footprint in both paths. |
+| Attention payload | `0.402` | `1.017` | TBD | GGUF Qwen3.6 attention tensors are heavier in this quant. |
+| Linear-attention / SSM payload | `0.502` | `0.267` | TBD | PARO stores separate AWQ/PARO tensors. |
+| Embedding / LM-head / norm payload | `1.895` | `0.892` | TBD | Different model/tokenizer/lm-head layout. |
+| Other payload | `0.564` | `~0.000` | TBD | PARO header grouping residue; GGUF rough buckets cover payload. |
+
+Encoding/layout distribution explains most of the base-footprint gap:
+
+| Encoding/layout bucket (GiB) | PARO `w4_paro` | GGUF `Q4_K_M` | GGUF `Q4_K_S` (next) | Notes |
+| --- | ---: | ---: | ---: | --- |
+| Main 4-bit payload | `15.596` `qweight` | `11.250` `Q4_K` | TBD | PARO qweights are separate from zero/scale tensors. |
+| Higher-bit quant payload | n/a | `9.257` (`Q5_K` + `Q6_K` + `Q8_0`) | TBD | `Q4_K_M` is mixed quant, not pure 4-bit. |
+| Scale/zero side metadata | `0.609` (`scales` + `qzeros`) | embedded in GGML block rows | TBD | GGUF scale/min bytes are counted inside each quant tensor. |
+| Dense standalone weights | `3.009` `weight` tensors | `0.097` `F32` tensors | TBD | Not model-equivalent; reflects different checkpoint layouts. |
+| Other/bias/index tensors | `0.012` | included above | TBD | Small. |
+
+Prefill throughput (tok/s), single-run diagnostic:
+
+| Workload | PARO `w4_paro` | GGUF `Q4_K_M` | GGUF `Q4_K_S` (next) | `Q4_K_M` vs PARO |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | `2101.158` | `1546.099` | TBD | `-26.4%` |
+| 4K/128 | `2710.869` | `2557.865` | TBD | `-5.6%` |
+| 32K/128 | `2082.012` | `1868.782` | TBD | `-10.2%` |
+| 128K/128 | `1023.868` | does not fit | TBD | n/a |
+
+Decode throughput (tok/s), same diagnostic runs:
+
+| Workload | PARO `w4_paro` | GGUF `Q4_K_M` | GGUF `Q4_K_S` (next) | `Q4_K_M` vs PARO |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | `107.314` | `89.783` | TBD | `-16.3%` |
+| 4K/128 | `106.637` | `96.527` | TBD | `-9.5%` |
+| 32K/128 | `92.908` | `84.778` | TBD | `-8.8%` |
+| 128K/128 | `61.800` | does not fit | TBD | n/a |
+
+Tracked peak memory (GiB), same diagnostic runs:
+
+| Workload | PARO `w4_paro` | GGUF `Q4_K_M` | GGUF `Q4_K_S` (next) | `Q4_K_M` extra vs PARO |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | `18.176` | `21.344` | TBD | `+3.168 GiB` |
+| 4K/128 | `20.047` | `22.584` | TBD | `+2.537 GiB` |
+| 32K/128 | `20.320` | `23.369` | TBD | `+3.049 GiB` |
+| 128K/128 | `23.288` | does not fit | TBD | n/a |
+
+Current long-context limit on the local 24 GiB RX 7900 XTX:
+
+| Probe | PARO `w4_paro` | GGUF `Q4_K_M` | GGUF `Q4_K_S` (next) |
+| --- | --- | --- | --- |
+| Safe long-context comparison point | `32K/128` fits (`20.320 GiB` tracked) | `32K/128` fits (`23.369 GiB` tracked) | TBD |
+| Largest successful probe run here | `128K/128` fits with static 4096-query chunks (`23.288 GiB` tracked) | `35070/1` fits (`23.432 GiB` tracked, `23.911 GiB` sampled HIP peak) | TBD |
+| First observed fail / ceiling | Not probed above 128K in this pass | `36864/1` fails during prefill with HSA out-of-resources; `40960/1` fails during session allocation with HIP OOM | TBD |
+
+Interpretation:
+
+- GGUF starts roughly `2.5-3.2 GiB` higher than PARO at comparable local
+  shapes. With the same 10 full-attention-layer BF16 KV-cache slope, that
+  higher base is enough to cap current GGUF near `35K` on this 24 GiB card,
+  while PARO still fits `128K/128` with conservative chunks.
+- The largest structural source is not prefill scratch anymore; chunked prefill
+  fixed that. The remaining gap is the larger mixed-quant GGUF payload plus
+  resident T16 decode-repack layouts kept for speed.
+- Low-risk cleanup remains worth doing but will not close 128K alone: the GGUF
+  prefill scratch still allocates one-layer `key_cache` / `value_cache` buffers
+  even though full-attention prefill replaces them with the resident KV cache
+  tensors. Expected saving is only about `64 MiB` at 32K and `256 MiB` at 128K.

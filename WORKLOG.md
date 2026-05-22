@@ -22674,3 +22674,18 @@ Structural VRAM diagnosis:
 - Low-hanging GGUF cleanup: `_GGUFFullAttentionPrefillScratch` still allocates one-layer `key_cache`/`value_cache` buffers even though full-attention prefill replaces them with resident KV cache tensors. That is only ~64 MiB at 32K and ~256 MiB at 128K, so useful but not enough alone.
 
 Compact artifact: `benchmarks/results/2026-05-21-local-rx7900xtx-gguf-vs-paro-memory-comparison.json`. No benchmark README/CHANGELOG update because this is diagnostic and cross-model.
+
+## 2026-05-21 — Documented local PARO vs GGUF footprint/perf tables
+
+Updated `docs/GGUF.md` with a P10.D12 diagnostic section sourced from `benchmarks/results/2026-05-21-local-rx7900xtx-gguf-vs-paro-memory-comparison.json` and the local PARO safetensors header. The section uses separate tables for:
+
+- source/container size distribution,
+- encoding/layout distribution,
+- prefill throughput,
+- decode throughput,
+- tracked peak memory,
+- current long-context limits / max-fit probes.
+
+The table columns are structured as `PARO w4_paro`, `GGUF Q4_K_M`, and a placeholder `GGUF Q4_K_S (next)` column for the next local GGUF quant comparison. The section explicitly labels the evidence as single-run diagnostic on local RX 7900 XTX/gfx1100, not a retained rollup row or same-model quality/perf claim.
+
+Validation: re-read the inserted docs section and ran `git diff --check` (clean).
