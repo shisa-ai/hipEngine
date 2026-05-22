@@ -21685,3 +21685,20 @@ Validation/evidence:
 - Leaf rocprof: `HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 32 --candidate-budget 3 --raw-root /tmp/hipengine-rocprof-mtp-verifier-w4tile16-default --out /tmp/hipengine-mtp-verifier-w4tile16-default.json` => exact, 29 passes, kernel `17.3776 ms/pass` vs `17.6970` current baseline. W4 single-prefill `2.9965 -> 2.8380 ms/pass`, W4 dual-prefill `1.1172 -> 0.9132 ms/pass`; VGPR max on both prefill families drops `80 -> 48`.
 
 Artifacts retained under `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-w4-prefill-tilem16.json` and `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-w4-prefill-tilem16.json`; `benchmarks/README.md` and `benchmarks/CHANGELOG.md` updated. This is a small diagnostic win, not close to the <2 target; next target remains a larger verifier-cost reduction in GDN or MoE.
+
+## 2026-05-23 MTP GDN and selected-MoE first probes rejected
+
+After the W4 tileM=16 diagnostic, audited the two next profiler bottlenecks (`linear_attention_gdn_decode` and selected-expert MoE). No new code retained from this pass.
+
+GDN probes:
+
+- Changed chain GDN t-loop from 64 threads to 128 threads (`BLOCK=128`, same algorithm otherwise). Command: `HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp-bench.py --mode hipengine-current --prompt-names translation --candidate-budgets 3 --runs 1 --max-tokens 64 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-mtp-gdn128-translation --out /tmp/hipengine-mtp-gdn128-translation.json`. Result: rejected; exact-AR mismatch on `translation`. Reason: different reduction partition changes logits enough for MTP exactness.
+- Added `__launch_bounds__(64,4)` to the existing chain GDN t-loop without changing arithmetic. Translation stayed exact (`C=3.361`), but leaf rocprof showed no win: kernel `17.378 ms/pass` and `linear_attention_gdn_decode=2.562 ms/pass`, worse than the tileM=16 baseline (`17.378`/`2.550` within noise). Rejected.
+- Prototyped a chain-GDN q/k norm precompute kernel to remove two reductions from each `(v_head,dv)` block while preserving the original 64-thread reduction order. Translation stayed exact (`C=3.384`) and the GDN family improved slightly in rocprof (`2.550 -> 2.494 ms/pass`), but it added 30 kernel launches/pass and total kernel time regressed to `17.455 ms/pass`; selected-MoE GEMV timings also shifted worse. Rejected. A retained version would need to fuse the precompute into another existing linear-attention launch or otherwise avoid the extra launch tax.
+
+Selected-expert MoE probes:
+
+- Changed selected gate/up and down kernels from `__launch_bounds__(128,4)` to `(128,8)`. Translation exact (`C=3.275`) and full prompt-suite exact (`C=3.712`, barely better than `3.716`), but leaf rocprof regressed total kernel time (`17.422 ms/pass`) and MoE families (`gate/up 1.860`, `down 1.826` ms/pass) vs tileM=16 baseline (`1.861`, `1.812` with lower total). Rejected as noise/regression.
+- Earlier `threads=64` selected-MoE probe remains rejected (logged above): exact/perf not robust.
+
+Conclusion: easy codegen/threading tweaks do not move the needle. The next plausible GDN win is exact q/k norm reuse without extra launches (e.g. fold q/k-scale precompute into linear-conv or QKV/Z projection), while the next MoE win likely needs a real selected-expert row-grouped/mul_mat_id-style kernel rather than launch-bound tuning.
