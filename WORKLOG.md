@@ -21702,3 +21702,15 @@ Selected-expert MoE probes:
 - Earlier `threads=64` selected-MoE probe remains rejected (logged above): exact/perf not robust.
 
 Conclusion: easy codegen/threading tweaks do not move the needle. The next plausible GDN win is exact q/k norm reuse without extra launches (e.g. fold q/k-scale precompute into linear-conv or QKV/Z projection), while the next MoE win likely needs a real selected-expert row-grouped/mul_mat_id-style kernel rather than launch-bound tuning.
+
+## 2026-05-23 MTP selected-MoE down pair-row probe rejected
+
+Tried a minimal selected-expert MoE down microkernel that computes two selected rows per block for the FP16 transposed W4 down GEMV (guarded locally by `HIPENGINE_VERIFY_MOE_DOWN_PAIRROW`). This preserves each row's reduction order and passed exactness, but did not produce stable verifier-cost improvement, so no code retained.
+
+Evidence:
+
+- Translation quick check with the env-guarded pair-row kernel: `HIPENGINE_VERIFY_MOE_DOWN_PAIRROW=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp-bench.py --mode hipengine-current --prompt-names translation --candidate-budgets 3 --runs 1 --max-tokens 64 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-mtp-moe-down-pairrow-translation --out /tmp/hipengine-mtp-moe-down-pairrow-translation.json` => exact, `C=3.308`.
+- Full prompt suite with the pair-row path enabled by default for `tokens <= 8`: exact, aggregate `C=3.708` vs retained W4-tile baseline `3.716`, but the gain was too small and not backed by profiler stability.
+- Rocprof first pair-row run looked promising (`17.324 ms/pass`, MoE down `1.783 ms/pass`), but repeat default/off comparison in the same build showed regression/noise: pair-row default `17.421 ms/pass`, MoE down `1.834 ms/pass`; pair-row disabled `17.399 ms/pass`, MoE down `1.830 ms/pass`. Baseline retained artifact remains `17.378 ms/pass`, MoE down about `1.812 ms/pass`.
+
+Conclusion: adjacent row-pairing halves down-GEMV block count but pairs different top-k experts, so it mostly doubles per-block work/register pressure without reusable weights. Do not retain. A useful MoE path still needs real expert grouping/sorting with lower overhead than the current grouped-compact route.
