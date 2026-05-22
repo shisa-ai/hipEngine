@@ -2044,17 +2044,20 @@ class Qwen35GGUFFullStackRunner:
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
         down_weight = layer.weight("ffn_down_exps")
-        if _try_run_post_attention_moe_c1_compact_gemv(
-            self,
-            layer,
-            gate_weight,
-            up_weight,
-            down_weight,
-            out_ptr,
-            scratch,
-            top_k=top_k,
-            stream=stream,
-            runtime=runtime,
+        if (
+            _env_flag(_GGUF_COMPACT_MOE_C1_ENV, False)
+            and _try_run_post_attention_moe_c1_compact_gemv(
+                self,
+                layer,
+                gate_weight,
+                up_weight,
+                down_weight,
+                out_ptr,
+                scratch,
+                top_k=top_k,
+                stream=stream,
+                runtime=runtime,
+            )
         ):
             return
         selected_rows = top_k
@@ -2532,6 +2535,7 @@ _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATH
 _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
+_GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
 
 
 @dataclass(frozen=True)

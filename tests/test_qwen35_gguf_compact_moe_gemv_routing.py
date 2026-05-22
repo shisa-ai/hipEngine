@@ -95,6 +95,7 @@ def test_c1_decode_uses_split_router_coop_launch(monkeypatch: pytest.MonkeyPatch
 
 
 def test_compact_gemv_opt_in_routes_grouped_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_MOE_C1", "1")
     runner, scratch = _fake_runner_and_scratch()
     calls: list[tuple[str, object]] = []
     _patch_common_moe_kernels(monkeypatch, calls)

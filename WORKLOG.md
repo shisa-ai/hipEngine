@@ -23025,3 +23025,47 @@ uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dis
 ```
 
 Compact diagnostic artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-q8-t16-second-pass-rejected.json`. Conclusion unchanged but now stronger: hipENGINE-local Q8_0 T16 launch-shape and obvious shared-gate fusion tweaks fail the Q4_K_S gate. Further Q8 progress likely needs parent-workspace kernel R&D or a new packed/layout strategy rather than more local scalar/launch tweaks.
+
+## 2026-05-22 — Retained direct selected-MoE c=1 decode over compact scheduler
+
+Reopened Task #3 per request, avoiding the previously rejected selected-down qk256 launch-shape probe. The useful launch-reduction lever was not a new device kernel: for rows=1/top_k=2 decode, the existing direct selected T16 path is faster than the compact grouped selected-MoE scheduler. The compact path adds group-count/prefix/scatter setup to feed compact selected GEMVs; at c=1 that setup is not offset by better grouping. The direct path still uses the selected-MoE T16 kernels (`Q4_K` gate/up+SiLU and `Q4_K`/`Q5_K`/`Q6_K` selected down) and avoids the compact scheduler launches.
+
+Source change:
+
+- `hipengine/runtime/qwen35_gguf_runner.py`: default c=1 MoE decode to direct selected kernels by gating `_try_run_post_attention_moe_c1_compact_gemv(...)` behind `HIPENGINE_GGUF_COMPACT_MOE_C1=1`.
+- `tests/test_qwen35_gguf_compact_moe_gemv_routing.py`: compact grouped scheduler test now opts into the diagnostic env flag. Existing direct T16 selected allocation test covers the default c=1 route.
+
+Validation:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py \
+  tests/test_qwen35_gguf_decode_graph_policy.py \
+  tests/test_gguf_t16_selected_gemv_decode.py -q
+# 97 passed
+```
+
+Benchmark command shape for both Q4_K_M and Q4_K_S:
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model <Qwen3.6-35B-A3B-UD-Q4_K_M|Q4_K_S.gguf> --quant <gguf_q4_k_m|gguf_q4_k_s> \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 1 --measured-runs 3 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-<quant>-direct-selected-fallback-candidate-4096-128-3run.json
+```
+
+4K/128 local RX 7900 XTX/gfx1100 results vs router256 baseline (`benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-router256-4k128-accepted.json`):
+
+| Quant | Router256 decode | Direct selected decode samples | Direct selected median | Delta | Prefill median | Tracked peak |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Q4_K_M | `98.924 tok/s` | `99.264`, `99.226`, `99.150` | `99.226 tok/s` | `+0.31%` | `2639.282 tok/s` | `22.572 GiB` |
+| Q4_K_S | `99.759 tok/s` | `100.042`, `100.657`, `100.255` | `100.255 tok/s` | `+0.50%` | `2709.876 tok/s` | `21.416 GiB` |
+
+Both runs reported finite final logits and stable final token IDs (`[220,220,220]` for Q4_K_M; `[85,85,85]` for Q4_K_S). This brings Q4_K_S above `100 tok/s` and narrows the prior local PARO 4K/128 decode gap (`106.637 tok/s`, not rerun here) to ~`6.0%` for Q4_K_S and ~`7.0%` for Q4_K_M.
+
+Retained artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-direct-selected-moe-c1-4k128-accepted.json`. Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md`. W7900 remains unverified for this pass.
