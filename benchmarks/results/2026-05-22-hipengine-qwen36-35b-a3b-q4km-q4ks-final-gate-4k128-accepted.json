@@ -1,0 +1,134 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "status": "accepted_final_gate",
+  "performance_claim": true,
+  "label": "qwen36_35b_a3b_gguf_q4km_q4ks_final_gate_after_decode_optimizations_4k128",
+  "date": "2026-05-22",
+  "git_commit_under_test": "2d74585",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local RX 7900 XTX/gfx1100 final repeated-run gate; W7900 not rerun"
+  },
+  "retained_changes": [
+    {
+      "commit": "f066856",
+      "summary": "GGUF c=1 split-shared cooperative router uses threads=256."
+    },
+    {
+      "commit": "eabf3ae",
+      "summary": "GGUF c=1 selected-MoE decode defaults to direct selected T16 kernels; compact c=1 scheduler remains opt-in via HIPENGINE_GGUF_COMPACT_MOE_C1=1."
+    }
+  ],
+  "rejected_followup_probe_commits": [
+    "6b68c80",
+    "2115bfb",
+    "2d74585"
+  ],
+  "baseline_before_final_optimizations_from": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-after-memory-decode-pass-review.json",
+  "baseline_before_final_optimizations_4k_128": {
+    "gguf_q4_k_m": {
+      "prefill_tok_s": 2552.0429915633204,
+      "decode_tok_s": 96.26374663160384,
+      "tracked_peak_gib": 22.571860380470753
+    },
+    "gguf_q4_k_s": {
+      "prefill_tok_s": 2637.147627613572,
+      "decode_tok_s": 97.12117731314792,
+      "tracked_peak_gib": 21.415610380470753
+    }
+  },
+  "previous_retained_from": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-direct-selected-moe-c1-4k128-accepted.json",
+  "correctness_and_dispatch_gate": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_decode_graph_policy.py tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_qwen35_router_plan.py tests/test_qwen35_linear_attn_conv_plan.py -q",
+    "result": "167 passed",
+    "coverage_note": "Covers dense Q8_0 T16 decode wrappers/dispatch, selected Q4/Q5/Q6 T16 decode kernels, direct/compact MoE routing policy, decode graph policy, decode-repack semantics, router launch plans, and linear-attention conv plan checks."
+  },
+  "benchmark_command_common": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model <model> --quant <gguf_q4_k_m|gguf_q4_k_s> --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json <tmp-json>",
+  "results_4k_128": {
+    "gguf_q4_k_m": {
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "raw_json": "/tmp/hipengine-q4km-final-gate-4096-128-3run.json",
+      "prefill_tok_s_samples": [
+        2640.8404624597006,
+        2605.4362565723295,
+        2641.847048502719
+      ],
+      "prefill_tok_s_median": 2640.8404624597006,
+      "decode_tok_s_samples": [
+        99.27845850994125,
+        99.38312220391006,
+        99.29237528612408
+      ],
+      "decode_tok_s_median": 99.29237528612408,
+      "decode_delta_vs_pre_final_optimization_baseline_pct": 3.146177829656523,
+      "decode_delta_vs_previous_retained_direct_selected_artifact_pct": 0.0673809716632209,
+      "tracked_peak_gib_median": 22.571860380470753,
+      "hip_used_peak_sampled_gib_median": 23.111083984375,
+      "finite_final_logits_all": true,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "effective_use_wmma_prefill_all": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "effective_use_gemv_decode_all": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "gap_vs_prior_local_paro_decode_pct": -6.88750125554537
+    },
+    "gguf_q4_k_s": {
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+      "raw_json": "/tmp/hipengine-q4ks-final-gate-4096-128-3run.json",
+      "prefill_tok_s_samples": [
+        2719.886255982687,
+        2722.5078930411396,
+        2734.046357972589
+      ],
+      "prefill_tok_s_median": 2722.5078930411396,
+      "decode_tok_s_samples": [
+        100.36421931275554,
+        100.24990381640882,
+        100.25740752656847
+      ],
+      "decode_tok_s_median": 100.25740752656847,
+      "decode_delta_vs_pre_final_optimization_baseline_pct": 3.2291929527464394,
+      "decode_delta_vs_previous_retained_direct_selected_artifact_pct": 0.002494609526228493,
+      "tracked_peak_gib_median": 21.415610380470753,
+      "hip_used_peak_sampled_gib_median": 21.954833984375,
+      "finite_final_logits_all": true,
+      "final_token_ids": [
+        85,
+        85,
+        85
+      ],
+      "effective_use_wmma_prefill_all": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "effective_use_gemv_decode_all": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "gap_vs_prior_local_paro_decode_pct": -5.9825318355088095
+    }
+  },
+  "comparison": {
+    "prior_local_paro_4k_128_decode_tok_s": 106.637,
+    "note": "PARO comparison is the prior local row, not rerun in this artifact."
+  },
+  "decision": "Final task #5 gate accepts the current retained GGUF decode state. Q4_K_M and Q4_K_S both pass targeted correctness/dispatch gates, report finite deterministic final logits, keep tracked peak memory unchanged, and improve decode over the pre-router/direct-selected baseline by roughly 3.1-3.2%."
+}

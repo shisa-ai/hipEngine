@@ -23121,3 +23121,53 @@ PYTHONPATH=. uv run pytest \
 ```
 
 Compact diagnostic artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-small-kernel-third-pass-rejected.json`. No source change retained in this pass.
+
+## 2026-05-22 — Final Q4_K_M/Q4_K_S GGUF decode gates after optimization sweep
+
+Task #5 final gate run on current retained source (`2d74585` before this final artifact commit). Retained source changes from this sweep are:
+
+- `f066856` router256: c=1 split-shared cooperative router uses `threads=256`.
+- `eabf3ae` direct-selected-MoE: c=1 selected-MoE decode defaults to direct selected T16 kernels; compact c=1 scheduler remains opt-in via `HIPENGINE_GGUF_COMPACT_MOE_C1=1`.
+
+Rejected follow-up probes remain documented in `6b68c80`, `2115bfb`, and `2d74585` and are not present in the final source.
+
+Final targeted correctness/dispatch gate:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest \
+  tests/test_gguf_q8_0_t16_gemv_decode.py \
+  tests/test_gguf_linear_dispatch.py \
+  tests/test_gguf_t16_selected_gemv_decode.py \
+  tests/test_qwen35_gguf_compact_moe_gemv_routing.py \
+  tests/test_qwen35_gguf_decode_graph_policy.py \
+  tests/test_qwen35_gguf_decode_repack_semantics.py \
+  tests/test_qwen35_router_plan.py \
+  tests/test_qwen35_linear_attn_conv_plan.py \
+  -q
+# 167 passed
+```
+
+Final 4K/128 benchmark command shape for both Q4_K_M and Q4_K_S:
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model <Qwen3.6-35B-A3B-UD-Q4_K_M|Q4_K_S.gguf> --quant <gguf_q4_k_m|gguf_q4_k_s> \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 1 --measured-runs 3 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-<quant>-final-gate-4096-128-3run.json
+```
+
+Final 4K/128 local RX 7900 XTX/gfx1100 medians vs the pre-final-optimization dual-column baseline (`benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-after-memory-decode-pass-review.json`):
+
+| Quant | Baseline decode | Final decode samples | Final median | Delta | Prefill median | Tracked peak | Final IDs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Q4_K_M | `96.264 tok/s` | `99.278`, `99.383`, `99.292` | `99.292 tok/s` | `+3.15%` | `2640.840 tok/s` | `22.572 GiB` | `[220,220,220]` |
+| Q4_K_S | `97.121 tok/s` | `100.364`, `100.250`, `100.257` | `100.257 tok/s` | `+3.23%` | `2722.508 tok/s` | `21.416 GiB` | `[85,85,85]` |
+
+Both final runs report `effective_use_wmma_prefill=true`, `effective_use_gemv_decode=true`, finite final logits, stable final token IDs, and unchanged tracked peak memory. The prior local PARO comparison (`106.637 tok/s`, not rerun) leaves the final GGUF 4K/128 decode gap at ~`6.89%` for Q4_K_M and ~`5.98%` for Q4_K_S.
+
+Final accepted artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-final-gate-4k128-accepted.json`. Updated `benchmarks/README.md` rows and `benchmarks/CHANGELOG.md` final-gate entry.

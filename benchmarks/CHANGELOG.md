@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-05-22
 
+- [final gate accepted] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M+Q4_K_S / 4K/128 final retained decode: Q4_K_M decode `96.264 -> 99.292 tok/s` (`+3.15%`) and Q4_K_S decode `97.121 -> 100.257 tok/s` (`+3.23%`) after retaining router256 plus direct selected c=1 MoE and rejecting later Q8/small-kernel probes; final targeted dense/selected/router/graph/semantic bundle passes (`167 passed`), finite deterministic final logits, tracked peaks unchanged; `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-final-gate-4k128-accepted.json`.
+
 - [accepted selected-MoE retained] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M+Q4_K_S / 4K/128 direct-selected c=1 MoE decode: Q4_K_M decode `98.924 -> 99.226 tok/s` (`+0.31%`) and Q4_K_S decode `99.759 -> 100.255 tok/s` (`+0.50%`) by defaulting c=1 selected-MoE decode to direct selected T16 kernels instead of the compact grouped scheduler; targeted selected/routing/graph tests pass (`97 passed`), finite deterministic final logits, tracked peaks unchanged; `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-direct-selected-moe-c1-4k128-accepted.json`.
 
 - [accepted small-op retained] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M+Q4_K_S / 4K/128 router256 decode: Q4_K_M decode `96.264 -> 98.924 tok/s` (`+2.76%`) and Q4_K_S decode `97.121 -> 99.759 tok/s` (`+2.72%`) by passing `threads=256` to the c=1 split-shared cooperative router instead of the wrapper-default 512-thread launch; targeted router/routing/graph tests pass (`16 passed`), finite deterministic final logits, tracked peaks unchanged; `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-router256-4k128-accepted.json`.
