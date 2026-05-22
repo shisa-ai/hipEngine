@@ -22537,3 +22537,70 @@ Diagnosis / next focus:
 3. If rocprof still matches P10.R0, the first kernel surface to optimize is dense Q8_0 WMMA prefill / linear-attention GDN, not full attention alone.
 
 Compact diagnostic artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-task40-prefill-vs-paro-diagnosis.json`. No `benchmarks/README.md`/CHANGELOG update: diagnostic only, no retained performance claim.
+
+## 2026-05-21 — GGUF AOTriton V2/V3 investigation
+
+Investigated whether GGUF should standardize on AOTriton V3 or conditionally use V2 for unchunked prefill. Findings:
+
+- AOTriton V3 is the PARO-standard wrapper and is required for chunked query windows (`q_len < k_len`) because the wrapper sets bottom-right causal window semantics.
+- AOTriton V2 is safe only for full-context causal prefill where `start == 0` and `rows == key_rows`; otherwise it would apply the wrong causal mask. The V2 wrapper also allocates/frees its causal atomic buffer per call, while V3 uses caller-owned persistent atomic scratch.
+- Implemented diagnostic env control `HIPENGINE_GGUF_AOTRITON_PREFILL`:
+  - default/`v3`: always use V3 (standard path)
+  - `auto` / `v2-if-safe`: use V2 only for full-context `start=0 && rows==key_rows`, V3 for chunked windows
+  - `v2`: force V2 only for full-context shapes and raise on chunked shapes
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_chunked_prefill.py
+PYTHONPATH=. uv run pytest tests/test_aotriton_discovery.py tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_chunked_prefill.py -q
+# 23 passed
+```
+
+A/B benchmark on local **RX 7900 XTX / gfx1100** (W7900 not rerun), Qwen3.6-35B-A3B UD-Q4_K_M, T16 decode-repack, WMMA prefill, GEMV decode:
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 1 --measured-runs 3 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-gguf-aotriton-v3-4k-128.json
+
+HIPENGINE_GGUF_AOTRITON_PREFILL=auto HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 1 --measured-runs 3 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-gguf-aotriton-auto-4k-128.json
+```
+
+Results:
+
+- V3 4K/128: prefill median `2654.252 tok/s` (samples `2654.252`, `2649.210`, `2665.686`), decode median `96.755 tok/s`, tracked peak `22.584312 GiB`, finite logits, final ids `[220, 220, 220]`.
+- Auto/V2-if-safe 4K/128: prefill median `2652.866 tok/s` (samples `2651.702`, `2652.866`, `2658.879`), decode median `97.130 tok/s`, tracked peak `22.584312 GiB`, finite logits, final ids `[220, 220, 220]`.
+- Delta: auto/V2-if-safe was `-0.052%` prefill vs V3, i.e. no measurable prefill win.
+
+Also smoked 32K/1 with `HIPENGINE_GGUF_AOTRITON_PREFILL=auto` to exercise V2 on the first full-context chunk and V3 on later chunks:
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=auto HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-length 32768 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 1 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-gguf-aotriton-auto-32k-1.json
+```
+
+Result: prefill `1857.491 tok/s`, tracked peak `23.368929 GiB`, HIP sampled peak `23.874512 GiB`, finite logits, final token id `256`.
+
+Decision: keep **V3 as the default/standard**. V2 is retained only as a diagnostic env path for full-context A/B. AOTriton V2/V3 is not the next prefill bottleneck unless rocprof later shows full-attention prefill dominating. Compact diagnostic artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-aotriton-v2-v3-diagnostic.json`.

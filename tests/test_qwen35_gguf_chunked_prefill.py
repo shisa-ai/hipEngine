@@ -6,7 +6,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession, _chunk_ranges
+from hipengine.runtime.qwen35_gguf_runner import (
+    Qwen35GGUFResidentSession,
+    _chunk_ranges,
+    _gguf_aotriton_prefill_mode,
+)
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
@@ -15,6 +19,21 @@ pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture 
 def test_gguf_chunk_ranges_merge_tiny_tail() -> None:
     assert _chunk_ranges(4097, 4096, min_chunk_size=4) == ((0, 4097),)
     assert _chunk_ranges(8193, 4096, min_chunk_size=4) == ((0, 4096), (4096, 8193))
+
+
+def test_gguf_aotriton_prefill_mode_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_AOTRITON_PREFILL", raising=False)
+    assert _gguf_aotriton_prefill_mode(0, 4096, 4096) == "v3"
+    assert _gguf_aotriton_prefill_mode(4096, 4096, 8192) == "v3"
+
+    monkeypatch.setenv("HIPENGINE_GGUF_AOTRITON_PREFILL", "auto")
+    assert _gguf_aotriton_prefill_mode(0, 4096, 4096) == "v2"
+    assert _gguf_aotriton_prefill_mode(4096, 4096, 8192) == "v3"
+
+    monkeypatch.setenv("HIPENGINE_GGUF_AOTRITON_PREFILL", "v2")
+    assert _gguf_aotriton_prefill_mode(0, 4096, 4096) == "v2"
+    with pytest.raises(ValueError, match="only valid for full-context prefill"):
+        _gguf_aotriton_prefill_mode(4096, 4096, 8192)
 
 
 def test_qwen35_gguf_chunked_prefill_matches_unchunked() -> None:

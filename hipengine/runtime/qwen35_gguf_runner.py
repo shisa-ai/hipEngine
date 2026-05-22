@@ -14,6 +14,7 @@ from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
+    aotriton_attn_fwd_compact_varlen,
     aotriton_attn_fwd_v3_compact_varlen,
     build_aotriton_wrap,
 )
@@ -1012,7 +1013,7 @@ class Qwen35GGUFFullStackRunner:
                     out_buf.ptr,
                     prefill_scratch,
                 )
-                mode = "aotriton_v2" if used_aotriton else "native_gqa_bf16"
+                mode = f"aotriton_{_gguf_aotriton_prefill_mode(0, rows, rows)}" if used_aotriton else "native_gqa_bf16"
             else:
                 scratch = _FullStackScratch.allocate(self, runtime=runtime)
                 buffers.extend(scratch.buffers)
@@ -1207,23 +1208,57 @@ class Qwen35GGUFFullStackRunner:
                 DType.BF16,
             )
 
-            aotriton_attn_fwd_v3_compact_varlen(
-                aotriton_tensor4(scratch.full_query_bf16.ptr, (1, cfg.head_count, rows, cfg.key_length), (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1), DType.BF16),
-                k_tensor,
-                v_tensor,
-                aotriton_tensor1(scratch.cu_q.ptr, (2,), (1,), DType.INT32),
-                aotriton_tensor1(scratch.cu_k.ptr, (2,), (1,), DType.INT32),
-                aotriton_tensor2(scratch.softmax_lse.ptr, (cfg.head_count, rows), (rows, 1), DType.FP32),
-                aotriton_tensor4(scratch.full_attn_bf16.ptr, (1, cfg.head_count, rows, cfg.key_length), (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1), DType.BF16),
-                persistent_atomic_counter_ptr=scratch.atomic.ptr,
-                max_seqlen_q=rows,
-                max_seqlen_k=end,
-                sm_scale=cfg.key_length ** -0.5,
-                is_causal=True,
-                stream=stream,
-                library=aotriton_library,
-                runtime=runtime,
+            q_tensor = aotriton_tensor4(
+                scratch.full_query_bf16.ptr,
+                (1, cfg.head_count, rows, cfg.key_length),
+                (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1),
+                DType.BF16,
             )
+            cu_q_tensor = aotriton_tensor1(scratch.cu_q.ptr, (2,), (1,), DType.INT32)
+            cu_k_tensor = aotriton_tensor1(scratch.cu_k.ptr, (2,), (1,), DType.INT32)
+            lse_tensor = aotriton_tensor2(scratch.softmax_lse.ptr, (cfg.head_count, rows), (rows, 1), DType.FP32)
+            out_tensor = aotriton_tensor4(
+                scratch.full_attn_bf16.ptr,
+                (1, cfg.head_count, rows, cfg.key_length),
+                (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1),
+                DType.BF16,
+            )
+            aotriton_mode = _gguf_aotriton_prefill_mode(scratch.start, rows, end)
+            if aotriton_mode == "v2":
+                aotriton_attn_fwd_compact_varlen(
+                    q_tensor,
+                    k_tensor,
+                    v_tensor,
+                    cu_q_tensor,
+                    cu_k_tensor,
+                    lse_tensor,
+                    out_tensor,
+                    max_seqlen_q=rows,
+                    max_seqlen_k=end,
+                    sm_scale=cfg.key_length ** -0.5,
+                    is_causal=True,
+                    stream=stream,
+                    library=aotriton_library,
+                    runtime=runtime,
+                )
+            else:
+                aotriton_attn_fwd_v3_compact_varlen(
+                    q_tensor,
+                    k_tensor,
+                    v_tensor,
+                    cu_q_tensor,
+                    cu_k_tensor,
+                    lse_tensor,
+                    out_tensor,
+                    persistent_atomic_counter_ptr=scratch.atomic.ptr,
+                    max_seqlen_q=rows,
+                    max_seqlen_k=end,
+                    sm_scale=cfg.key_length ** -0.5,
+                    is_causal=True,
+                    stream=stream,
+                    library=aotriton_library,
+                    runtime=runtime,
+                )
 
             qwen35_full_attn_gate_mul_bf16_to_bf16(
                 scratch.full_attn_bf16.ptr,
@@ -2487,6 +2522,7 @@ class Qwen35GGUFFullStackRunner:
 
 
 _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS"
+_GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 
@@ -2537,6 +2573,47 @@ def _env_int(name: str, default: int, *aliases: str) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _gguf_aotriton_prefill_mode(start: int, rows: int, key_rows: int) -> str:
+    """Resolve the GGUF AOTriton prefill wrapper for the current query window.
+
+    V3 is the standardized default and is required whenever the query rows are
+    only a suffix of the key rows.  That case needs AOTriton's bottom-right
+    causal window semantics.  The legacy V2 wrapper is still useful as a
+    diagnostic for full-context prefill where ``start == 0`` and
+    ``rows == key_rows``; forcing V2 outside that shape would apply the wrong
+    causal mask, so reject it rather than silently producing bad logits.
+    """
+
+    start = int(start)
+    rows = int(rows)
+    key_rows = int(key_rows)
+    full_context = start == 0 and rows == key_rows
+    raw = (_env_value(_GGUF_AOTRITON_PREFILL_ENV) or "v3").strip().lower().replace("_", "-")
+    aliases = {
+        "default": "v3",
+        "standard": "v3",
+        "v3": "v3",
+        "legacy": "v2",
+        "v2": "v2",
+        "auto": "auto",
+        "v2-if-safe": "auto",
+        "safe-v2": "auto",
+    }
+    mode = aliases.get(raw)
+    if mode is None:
+        raise ValueError(
+            f"{_GGUF_AOTRITON_PREFILL_ENV} must be one of v3, v2, or auto/v2-if-safe; got {raw!r}"
+        )
+    if mode == "auto":
+        return "v2" if full_context else "v3"
+    if mode == "v2" and not full_context:
+        raise ValueError(
+            f"{_GGUF_AOTRITON_PREFILL_ENV}=v2 is only valid for full-context prefill; "
+            f"got start={start}, rows={rows}, key_rows={key_rows}. Use v3 or auto for chunked prefill."
+        )
+    return mode
 
 
 def resolve_qwen35moe_fastpath_safety(
