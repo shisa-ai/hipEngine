@@ -6,8 +6,42 @@ import ctypes
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
+
+# Cached argtypes tuples for the combine launchers used by the verifier.
+_ARGTYPES_WEIGHTED_LANES = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+# shared / shared_batch input ptr counts: 3 (no-residual combines) or 4 (residual
+# variants).  Verifier hot path is the 4-ptr residual variant.
+_ARGTYPES_SHARED_3 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p,                                    # out
+    ctypes.c_int64, ctypes.c_int64,                      # features, threads
+    ctypes.c_void_p,                                    # stream
+)
+_ARGTYPES_SHARED_4 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_ARGTYPES_SHARED_BATCH_3 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p,                                    # out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # tokens, features, gate_stride, threads
+    ctypes.c_void_p,                                    # stream
+)
+_ARGTYPES_SHARED_BATCH_4 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
 
 _SOURCE = Path(__file__).with_name("paro_combine.hip")
 _OUTPUT_NAME = "paro_combine.so"
@@ -715,32 +749,9 @@ def _launch_weighted_lanes(
     _check_vector_shape(features, threads)
     library = library or build_paro_combine(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(values_ptr),
-        ctypes.c_void_p(weights_ptr),
-        ctypes.c_void_p(sorted_lanes_ptr),
-        ctypes.c_void_p(lane_to_row_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(top_k),
-        ctypes.c_int64(features),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, symbol, _ARGTYPES_WEIGHTED_LANES, ctypes.c_int)
+    err = fn(values_ptr, weights_ptr, sorted_lanes_ptr, lane_to_row_ptr, out_ptr,
+             tokens, top_k, features, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -757,21 +768,9 @@ def _launch_shared(
     _check_vector_shape(features, threads)
     library = library or build_paro_combine(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [*(ctypes.c_void_p for _ in input_ptrs)] + [
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        *(ctypes.c_void_p(ptr) for ptr in input_ptrs),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(features),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    argtypes = _ARGTYPES_SHARED_3 if len(input_ptrs) == 3 else _ARGTYPES_SHARED_4
+    fn = signed_kernel_fn(library, symbol, argtypes, ctypes.c_int)
+    err = fn(*input_ptrs, out_ptr, features, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -792,25 +791,9 @@ def _launch_shared_batch(
     _check_positive(gate_stride, "gate_stride")
     library = library or build_paro_combine(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [*(ctypes.c_void_p for _ in input_ptrs)] + [
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        *(ctypes.c_void_p(ptr) for ptr in input_ptrs),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(features),
-        ctypes.c_int64(gate_stride),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    argtypes = _ARGTYPES_SHARED_BATCH_3 if len(input_ptrs) == 3 else _ARGTYPES_SHARED_BATCH_4
+    fn = signed_kernel_fn(library, symbol, argtypes, ctypes.c_int)
+    err = fn(*input_ptrs, out_ptr, tokens, features, gate_stride, threads, stream)
     _check_launch(runtime, err)
 
 

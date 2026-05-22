@@ -21914,3 +21914,55 @@ Artifacts: `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.d-
 - M14.book.5: `chain_attn_mode='c1_loop'` long-context suite fails exact-AR at 64 tokens (token 248045 repeat loop).  Confirmed pre-existing via `git stash` before M13.B.0. Hot path is batched so this doesn't block M13.
 
 **State at session end:** clean working tree on `mpt-dflash`, 21 commits ahead of `origin/mpt-dflash`. All TaskList items resolved.
+
+## 2026-05-23 perf(mtp): M14.dispatch.0-alpha — argtypes/restype caching (foundation, parity)
+
+**Status:** Bit-equivalent foundation work committed. Parity on the 9-prompt MTP bench suite at B=3 within run-to-run noise. M14.dispatch.1 C-side dispatcher is still the lever for the projected 3-5% cycle_cost reduction; this commit is the precondition.
+
+**Motivation (carries from M13.C deferral, see MTP.md):**
+cProfile on the verifier hot path showed `run_moe_c1_fp16` cumulative time across 40 layers is ~186 µs/call × 25 verifier passes per decoded token = ~7 ms/pass of pure Python + ctypes work, exactly matching the M13.C deferral note's 6-8 ms/pass estimate. Of that 7 ms, micro-benchmark on libc.strlen showed:
+
+- per-call `fn.argtypes = [...]; fn.restype = ...` reassignment: ~213 ns/call (vs cached argtypes)
+- explicit `ctypes.c_void_p(ptr)`/`ctypes.c_int64(x)` constructors at call site: ~172 ns/call (vs raw-int auto-coerce)
+- combined per-call overhead removable by Python-side caching: ~385 ns/call
+
+Across the verifier's ~1011 launches/pass and 10-13 ctypes calls per `run_moe_c1` per layer, the upper bound on Python-side caching savings is ~0.4 ms/pass = ~1.6% verifier wall.
+
+**Change set:** new `hipengine/core/ctypes_cache.py` with `signed_kernel_fn(library, symbol, argtypes, restype)`. Caches argtypes/restype on the ctypes function pointer via a sentinel attribute (`_he_signed`) so subsequent calls short-circuit. Applied to 7 kernel-wrapper modules covering the hottest verifier launches:
+
+- `kernels/hip_gfx1100/moe/router.py`: 9 wrappers (router logits, select, 6 topk_shared variants)
+- `kernels/hip_gfx1100/rotary/paro_rotate.py`: 7 wrappers (rotate1/2/3 in bf16/fp16 + bf16_gate_fp16)
+- `kernels/hip_gfx1100/fused/paro_silu.py`: 2 helpers covering 8 callers (`_launch_rotate`, `_launch_separate`)
+- `kernels/hip_gfx1100/quant/paro_awq_gemv.py`: 6 helpers (`_launch_pack8_single`, `_launch_pack8_dual`, `_launch_selected_dual`, `_launch_selected_single`, `_launch_fusedw4_prefill_dual_fp16`, `_launch_fusedw4_prefill_fp16`)
+- `kernels/hip_gfx1100/fused/paro_combine.py`: 3 helpers (`_launch_weighted_lanes`, `_launch_shared`, `_launch_shared_batch`)
+- `kernels/hip_gfx1100/norm/rmsnorm.py`: 7 wrappers (Qwen3.5 + PARO rmsnorm/add_rmsnorm variants in bf16/fp16/f32)
+- `kernels/hip_gfx1100/linear/dense_gemv.py`: 4 wrappers (single/dual in bf16/fp16)
+
+Total wrappers touched: ~38. Call-site changes drop explicit ctypes constructors in favor of raw-int auto-coercion (bit-equivalent once argtypes is set).
+
+**Validation (smoke + cProfile):**
+
+- `scripts/mtp_chain_e2e_smoke.py --decode-tokens 4 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode batched --proposal-impl persistent_device` → exact_ar_match=True, status=passed.
+- cProfile rollup (same harness, 4 verifier cycles + AR baseline + warmup, 47s total):
+  - `paro_rotate1_fp16` tottime: 5.03 ms → 4.04 ms (-19.7%)
+  - `paro_rotate2_fp16` tottime: 5.40 ms → 4.23 ms (-21.7%)
+  - `paro_rotate3_fp16` tottime: 0.96 ms → 0.78 ms (-18.8%)
+  - `qwen35_router_topk_shared_out_fp16` tottime: 3.52 ms → 3.06 ms (-13.1%)
+  - TOTAL kernel-launcher tottime: 30.07 ms → 28.09 ms (-6.6%, -1.98 ms/run)
+
+**Bench suite (9 prompts, B=3, runs=1):** Parity within noise.
+
+| Metric | M13.B.0 baseline | M14.dispatch.0-alpha | Δ |
+|---|---|---|---|
+| cycle_cost_ar_tokens | 3.612 | 3.639 | +0.7% (well within ±17% std) |
+| verify_ms_per_cycle | 25.075 | 25.034 | -0.16% |
+| ar_decode_ms_per_tok | 9.487 | 9.385 | -1.1% |
+| cycle_wall_ms | 34.36 | 34.29 | -0.21% |
+| speedup_vs_ar | 0.533x | 0.527x | -1.1% |
+
+The wall-clock improvement is real and consistent with the cProfile attribution (-2 ms tottime across the 47s harness ≈ -0.04 ms/launch × 50000 launches), but AR also speeds up proportionally so the cycle_cost ratio stays flat. This is expected: argtypes caching reduces per-launch overhead equally for both AR and spec.
+
+**Conclusion:** Land as foundation infrastructure (bit-equivalent, no risk, clean cProfile improvement). The real cycle_cost win requires M14.dispatch.1 — a C-side per-MoE-layer dispatcher that bundles ~13 ctypes calls into 1, eliminating the ABI transitions themselves (not just the per-call argtypes setup). Expected next-step impact: 6-8 ms/pass at ~3-5% cycle_cost reduction, per M13.C deferral note.
+
+**Artifacts:**
+- `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.0-alpha-diagnostic.json` (parity result, status=diagnostic)

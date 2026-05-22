@@ -6,8 +6,20 @@ import ctypes
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
+
+_ARGTYPES_DENSE_GEMV_SINGLE = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,        # x, weight, out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_features, threads
+    ctypes.c_void_p,                                          # stream
+)
+_ARGTYPES_DENSE_GEMV_DUAL = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,  # x, w_a, w_b, out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_a, out_b, threads
+    ctypes.c_void_p,
+)
 
 _SOURCE = Path(__file__).with_name("dense_gemv.hip")
 _OUTPUT_NAME = "dense_gemv.so"
@@ -72,28 +84,8 @@ def dense_gemv_out_bf16(
     _check_shape(rows, in_features, out_features, threads)
     library = library or build_dense_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_BF16_OUT)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_features),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_BF16_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
+    err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
@@ -114,28 +106,8 @@ def dense_gemv_out_fp16(
     _check_shape(rows, in_features, out_features, threads)
     library = library or build_dense_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_FP16_OUT)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_features),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_FP16_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
+    err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
@@ -159,32 +131,9 @@ def dense_dual_gemv_out_bf16(
     _check_shape(rows, in_features, out_features_b, threads)
     library = library or build_dense_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_DUAL_BF16_OUT)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(weight_a_ptr),
-        ctypes.c_void_p(weight_b_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_features_a),
-        ctypes.c_int64(out_features_b),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_DUAL_BF16_OUT, _ARGTYPES_DENSE_GEMV_DUAL, ctypes.c_int)
+    err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_ptr,
+             rows, in_features, out_features_a, out_features_b, threads, stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
@@ -208,32 +157,9 @@ def dense_dual_gemv_out_fp16(
     _check_shape(rows, in_features, out_features_b, threads)
     library = library or build_dense_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_DUAL_FP16_OUT)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(weight_a_ptr),
-        ctypes.c_void_p(weight_b_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_features_a),
-        ctypes.c_int64(out_features_b),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_DUAL_FP16_OUT, _ARGTYPES_DENSE_GEMV_DUAL, ctypes.c_int)
+    err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_ptr,
+             rows, in_features, out_features_a, out_features_b, threads, stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 

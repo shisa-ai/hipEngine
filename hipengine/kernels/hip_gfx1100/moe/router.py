@@ -6,6 +6,7 @@ import ctypes
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
 
@@ -21,6 +22,46 @@ _SYMBOL_TOPK_SHARED_SIGMOID_OUT_FP16 = "hipengine_qwen35_router_topk_shared_sigm
 _SYMBOL_TOPK_SHARED_COOP_OUT = "hipengine_qwen35_router_topk_shared_coop_out_bf16"
 _SYMBOL_TOPK_SHARED_COOP_OUT_FP16 = "hipengine_qwen35_router_topk_shared_coop_out_fp16"
 _ALLOWED_THREADS = {64, 128, 256, 512}
+
+# All six topk_shared variants (out_{bf16,fp16}, sigmoid_out_{bf16,fp16},
+# coop_out_{bf16,fp16}) share this argtypes signature.  Cached once per
+# library handle by signed_kernel_fn so repeated launches skip the per-call
+# argtypes/restype assignment (~213 ns/call microbench).
+_ARGTYPES_TOPK_SHARED = (
+    ctypes.c_void_p,  # hidden
+    ctypes.c_void_p,  # combined_weight
+    ctypes.c_void_p,  # logits
+    ctypes.c_void_p,  # selected
+    ctypes.c_void_p,  # routing
+    ctypes.c_int64,   # tokens
+    ctypes.c_int64,   # hidden_size
+    ctypes.c_int64,   # num_rows
+    ctypes.c_int64,   # num_experts
+    ctypes.c_int64,   # top_k
+    ctypes.c_int64,   # threads
+    ctypes.c_void_p,  # stream
+)
+_ARGTYPES_ROUTER_LOGITS = (
+    ctypes.c_void_p,  # hidden
+    ctypes.c_void_p,  # weight
+    ctypes.c_void_p,  # logits
+    ctypes.c_int64,   # tokens
+    ctypes.c_int64,   # hidden_size
+    ctypes.c_int64,   # num_rows
+    ctypes.c_int64,   # threads
+    ctypes.c_void_p,  # stream
+)
+_ARGTYPES_ROUTER_SELECT = (
+    ctypes.c_void_p,  # logits
+    ctypes.c_void_p,  # selected
+    ctypes.c_void_p,  # routing
+    ctypes.c_int64,   # tokens
+    ctypes.c_int64,   # logits_stride
+    ctypes.c_int64,   # num_experts
+    ctypes.c_int64,   # top_k
+    ctypes.c_int64,   # threads
+    ctypes.c_void_p,  # stream
+)
 
 
 def plan_qwen35_router_build(
@@ -82,28 +123,8 @@ def qwen35_router_logits_bf16(
     _check_threads(threads)
     library = library or build_qwen35_router(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_LOGITS)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(logits_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_int64(num_rows),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_LOGITS, _ARGTYPES_ROUTER_LOGITS, ctypes.c_int)
+    err = fn(hidden_ptr, weight_ptr, logits_ptr, tokens, hidden_size, num_rows, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -128,28 +149,8 @@ def qwen35_router_logits_fp16(
     _check_threads(threads)
     library = library or build_qwen35_router(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_LOGITS_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(logits_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_int64(num_rows),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_LOGITS_FP16, _ARGTYPES_ROUTER_LOGITS, ctypes.c_int)
+    err = fn(hidden_ptr, weight_ptr, logits_ptr, tokens, hidden_size, num_rows, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -173,30 +174,8 @@ def qwen35_router_select(
     _check_threads(threads)
     library = library or build_qwen35_router(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_SELECT)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(logits_ptr),
-        ctypes.c_void_p(selected_ptr),
-        ctypes.c_void_p(routing_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(logits_stride),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(top_k),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_SELECT, _ARGTYPES_ROUTER_SELECT, ctypes.c_int)
+    err = fn(logits_ptr, selected_ptr, routing_ptr, tokens, logits_stride, num_experts, top_k, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -232,36 +211,9 @@ def qwen35_router_topk_shared_out_bf16(
     _check_threads(threads)
     library = library or build_qwen35_router(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_TOPK_SHARED_OUT)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_ptr),
-        ctypes.c_void_p(combined_weight_ptr),
-        ctypes.c_void_p(logits_ptr),
-        ctypes.c_void_p(selected_ptr),
-        ctypes.c_void_p(routing_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_int64(num_rows),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(top_k),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_OUT, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
+    err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
+             tokens, hidden_size, num_rows, num_experts, top_k, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -293,36 +245,9 @@ def qwen35_router_topk_shared_out_fp16(
     _check_threads(threads)
     library = library or build_qwen35_router(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_TOPK_SHARED_OUT_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_ptr),
-        ctypes.c_void_p(combined_weight_ptr),
-        ctypes.c_void_p(logits_ptr),
-        ctypes.c_void_p(selected_ptr),
-        ctypes.c_void_p(routing_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_int64(num_rows),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(top_k),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_OUT_FP16, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
+    err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
+             tokens, hidden_size, num_rows, num_experts, top_k, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -349,36 +274,9 @@ def qwen35_router_topk_shared_sigmoid_out_bf16(
     _check_threads(threads)
     library = library or build_qwen35_router(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_TOPK_SHARED_SIGMOID_OUT)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_ptr),
-        ctypes.c_void_p(combined_weight_ptr),
-        ctypes.c_void_p(logits_ptr),
-        ctypes.c_void_p(selected_ptr),
-        ctypes.c_void_p(routing_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_int64(num_rows),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(top_k),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_SIGMOID_OUT, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
+    err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
+             tokens, hidden_size, num_rows, num_experts, top_k, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -405,36 +303,9 @@ def qwen35_router_topk_shared_sigmoid_out_fp16(
     _check_threads(threads)
     library = library or build_qwen35_router(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_TOPK_SHARED_SIGMOID_OUT_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_ptr),
-        ctypes.c_void_p(combined_weight_ptr),
-        ctypes.c_void_p(logits_ptr),
-        ctypes.c_void_p(selected_ptr),
-        ctypes.c_void_p(routing_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_int64(num_rows),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(top_k),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_SIGMOID_OUT_FP16, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
+    err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
+             tokens, hidden_size, num_rows, num_experts, top_k, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -460,36 +331,9 @@ def qwen35_router_topk_shared_coop_out_bf16(
     _check_decode_coop_shape(tokens, hidden_size, num_rows, num_experts, top_k, threads)
     library = library or build_qwen35_router(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_TOPK_SHARED_COOP_OUT)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_ptr),
-        ctypes.c_void_p(combined_weight_ptr),
-        ctypes.c_void_p(logits_ptr),
-        ctypes.c_void_p(selected_ptr),
-        ctypes.c_void_p(routing_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_int64(num_rows),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(top_k),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_COOP_OUT, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
+    err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
+             tokens, hidden_size, num_rows, num_experts, top_k, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -515,36 +359,9 @@ def qwen35_router_topk_shared_coop_out_fp16(
     _check_decode_coop_shape(tokens, hidden_size, num_rows, num_experts, top_k, threads)
     library = library or build_qwen35_router(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_TOPK_SHARED_COOP_OUT_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_ptr),
-        ctypes.c_void_p(combined_weight_ptr),
-        ctypes.c_void_p(logits_ptr),
-        ctypes.c_void_p(selected_ptr),
-        ctypes.c_void_p(routing_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_int64(num_rows),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(top_k),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_COOP_OUT_FP16, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
+    err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
+             tokens, hidden_size, num_rows, num_experts, top_k, threads, stream)
     _check_launch(runtime, err)
 
 

@@ -6,8 +6,29 @@ import ctypes
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
+
+# rotate_out argtypes vary by number of input ptrs (1 for dual rotate gate_up,
+# 2 for pair rotate gate+up); tail is the same.
+_ARGTYPES_SILU_ROTATE_1 = (
+    ctypes.c_void_p,                                                  # input(s)
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,  # pairs, theta, scales, out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,    # rows, features, group_size, krot
+    ctypes.c_void_p,                                                  # stream
+)
+_ARGTYPES_SILU_ROTATE_2 = (
+    ctypes.c_void_p, ctypes.c_void_p,                                  # gate, up
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,  # pairs, theta, scales, out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_ARGTYPES_SILU_SEPARATE = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,  # gate, up, out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,      # rows, features, threads
+    ctypes.c_void_p,                                    # stream
+)
 
 _SOURCE = Path(__file__).with_name("paro_silu.hip")
 _OUTPUT_NAME = "paro_silu.so"
@@ -413,31 +434,10 @@ def _launch_rotate(
     _check_rotate_shape(rows, features, group_size, krot)
     library = library or build_paro_silu(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [*(ctypes.c_void_p for _ in input_ptrs)] + [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        *(ctypes.c_void_p(ptr) for ptr in input_ptrs),
-        ctypes.c_void_p(pairs_ptr),
-        ctypes.c_void_p(theta_ptr),
-        ctypes.c_void_p(scales_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(features),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(krot),
-        ctypes.c_void_p(stream),
-    )
+    argtypes = _ARGTYPES_SILU_ROTATE_1 if len(input_ptrs) == 1 else _ARGTYPES_SILU_ROTATE_2
+    fn = signed_kernel_fn(library, symbol, argtypes, ctypes.c_int)
+    err = fn(*input_ptrs, pairs_ptr, theta_ptr, scales_ptr, out_ptr,
+             rows, features, group_size, krot, stream)
     _check_launch(runtime, err)
 
 
@@ -458,26 +458,8 @@ def _launch_separate(
     _check_threads(threads)
     library = library or build_paro_silu(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(gate_ptr),
-        ctypes.c_void_p(up_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(features),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, symbol, _ARGTYPES_SILU_SEPARATE, ctypes.c_int)
+    err = fn(gate_ptr, up_ptr, out_ptr, rows, features, threads, stream)
     _check_launch(runtime, err)
 
 

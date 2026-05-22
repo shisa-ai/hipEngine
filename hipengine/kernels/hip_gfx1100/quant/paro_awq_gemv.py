@@ -7,8 +7,65 @@ import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
+
+# Cached argtypes tuples for the hot AWQ pack8 launchers used by the verifier.
+# See hipengine/core/ctypes_cache.py for the caching rationale.
+_ARGTYPES_PACK8_SINGLE = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,  # 5 ptrs
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,        # rows, in_features, out_packed, group_size, threads
+    ctypes.c_void_p,                                                                       # stream
+)
+_ARGTYPES_PACK8_DUAL_1 = (
+    ctypes.c_void_p,                                                                       # input ptr
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight_a, qzeros_a, scales_a
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight_b, qzeros_b, scales_b
+    ctypes.c_void_p,                                                                       # out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_packed_a, out_packed_b, group_size, threads
+    ctypes.c_void_p,                                                                       # stream
+)
+_ARGTYPES_PACK8_DUAL_2 = (
+    ctypes.c_void_p, ctypes.c_void_p,                                                      # input_a, input_b
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_ARGTYPES_SELECTED_DUAL = (
+    ctypes.c_void_p, ctypes.c_void_p,                                                      # x, selected
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight_a, qzeros_a, scales_a
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight_b, qzeros_b, scales_b
+    ctypes.c_void_p,                                                                       # out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    # x_rows, rows, in_features, out_packed_a, out_packed_b, num_experts, group_size, threads
+    ctypes.c_void_p,                                                                       # stream
+)
+_ARGTYPES_SELECTED_SINGLE = (
+    ctypes.c_void_p, ctypes.c_void_p,                                                      # x, selected
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,                                     # qweight, qzeros, scales
+    ctypes.c_void_p,                                                                       # out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    # rows, in_features, out_packed, num_experts, group_size, threads
+    ctypes.c_void_p,                                                                       # stream
+)
+_ARGTYPES_FUSEDW4_PREFILL_SINGLE = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    # rows, in_features, out_packed, group_size, tile_m, tile_n
+    ctypes.c_void_p,
+)
+_ARGTYPES_FUSEDW4_PREFILL_DUAL = (
+    ctypes.c_void_p, ctypes.c_void_p,                                                      # x_a, x_b
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p,                                                      # out_a, out_b
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    # rows, in_features, out_packed_a, out_packed_b, group_size, tile_m, tile_n
+    ctypes.c_void_p,
+)
 
 _SOURCE = Path(__file__).with_name("paro_awq_gemv.hip")
 _OUTPUT_NAME = "paro_awq_gemv.so"
@@ -1520,34 +1577,9 @@ def _launch_pack8_single(
     _check_pack8_single_shape(rows, in_features, out_packed, group_size, threads)
     library = library or build_paro_awq_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(qweight_ptr),
-        ctypes.c_void_p(qzeros_ptr),
-        ctypes.c_void_p(scales_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_packed),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, symbol, _ARGTYPES_PACK8_SINGLE, ctypes.c_int)
+    err = fn(x_ptr, qweight_ptr, qzeros_ptr, scales_ptr, out_ptr,
+             rows, in_features, out_packed, group_size, threads, stream)
     _check_launch(runtime, err)
 
 
@@ -1652,41 +1684,14 @@ def _launch_pack8_dual(
     _check_pack8_dual_shape(rows, in_features, out_packed_a, out_packed_b, group_size, threads)
     library = library or build_paro_awq_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [*(ctypes.c_void_p for _ in input_ptrs)] + [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        *(ctypes.c_void_p(ptr) for ptr in input_ptrs),
-        ctypes.c_void_p(qweight_a_ptr),
-        ctypes.c_void_p(qzeros_a_ptr),
-        ctypes.c_void_p(scales_a_ptr),
-        ctypes.c_void_p(qweight_b_ptr),
-        ctypes.c_void_p(qzeros_b_ptr),
-        ctypes.c_void_p(scales_b_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_packed_a),
-        ctypes.c_int64(out_packed_b),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    argtypes = _ARGTYPES_PACK8_DUAL_1 if len(input_ptrs) == 1 else _ARGTYPES_PACK8_DUAL_2
+    fn = signed_kernel_fn(library, symbol, argtypes, ctypes.c_int)
+    err = fn(*input_ptrs,
+             qweight_a_ptr, qzeros_a_ptr, scales_a_ptr,
+             qweight_b_ptr, qzeros_b_ptr, scales_b_ptr,
+             out_ptr,
+             rows, in_features, out_packed_a, out_packed_b, group_size, threads,
+             stream)
     _check_launch(runtime, err)
 
 
@@ -1913,48 +1918,13 @@ def _launch_selected_dual(
     )
     library = library or build_paro_awq_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(selected_ptr),
-        ctypes.c_void_p(qweight_a_ptr),
-        ctypes.c_void_p(qzeros_a_ptr),
-        ctypes.c_void_p(scales_a_ptr),
-        ctypes.c_void_p(qweight_b_ptr),
-        ctypes.c_void_p(qzeros_b_ptr),
-        ctypes.c_void_p(scales_b_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(x_rows),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_packed_a),
-        ctypes.c_int64(out_packed_b),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, symbol, _ARGTYPES_SELECTED_DUAL, ctypes.c_int)
+    err = fn(x_ptr, selected_ptr,
+             qweight_a_ptr, qzeros_a_ptr, scales_a_ptr,
+             qweight_b_ptr, qzeros_b_ptr, scales_b_ptr,
+             out_ptr,
+             x_rows, rows, in_features, out_packed_a, out_packed_b, num_experts, group_size, threads,
+             stream)
     _check_launch(runtime, err)
 
 
@@ -1980,38 +1950,10 @@ def _launch_selected_single(
     _check_selected_single_shape(rows, in_features, out_packed, num_experts, group_size, threads)
     library = library or build_paro_awq_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(selected_ptr),
-        ctypes.c_void_p(qweight_ptr),
-        ctypes.c_void_p(qzeros_ptr),
-        ctypes.c_void_p(scales_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_packed),
-        ctypes.c_int64(num_experts),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, symbol, _ARGTYPES_SELECTED_SINGLE, ctypes.c_int)
+    err = fn(x_ptr, selected_ptr, qweight_ptr, qzeros_ptr, scales_ptr, out_ptr,
+             rows, in_features, out_packed, num_experts, group_size, threads,
+             stream)
     _check_launch(runtime, err)
 
 
@@ -2049,48 +1991,13 @@ def _launch_fusedw4_prefill_dual_fp16(
         tile_n = 32 if rows >= 32 else 16
     library = library or build_paro_awq_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_a_ptr),
-        ctypes.c_void_p(x_b_ptr),
-        ctypes.c_void_p(qweight_a_ptr),
-        ctypes.c_void_p(qzeros_a_ptr),
-        ctypes.c_void_p(scales_a_ptr),
-        ctypes.c_void_p(qweight_b_ptr),
-        ctypes.c_void_p(qzeros_b_ptr),
-        ctypes.c_void_p(scales_b_ptr),
-        ctypes.c_void_p(out_a_ptr),
-        ctypes.c_void_p(out_b_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_packed_a),
-        ctypes.c_int64(out_packed_b),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(tile_m),
-        ctypes.c_int64(tile_n),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, symbol, _ARGTYPES_FUSEDW4_PREFILL_DUAL, ctypes.c_int)
+    err = fn(x_a_ptr, x_b_ptr,
+             qweight_a_ptr, qzeros_a_ptr, scales_a_ptr,
+             qweight_b_ptr, qzeros_b_ptr, scales_b_ptr,
+             out_a_ptr, out_b_ptr,
+             rows, in_features, out_packed_a, out_packed_b, group_size, tile_m, tile_n,
+             stream)
     _check_launch(runtime, err)
 
 
@@ -2119,36 +2026,10 @@ def _launch_fusedw4_prefill_fp16(
         tile_n = 32 if rows >= 32 else 16
     library = library or build_paro_awq_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(qweight_ptr),
-        ctypes.c_void_p(qzeros_ptr),
-        ctypes.c_void_p(scales_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_packed),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(tile_m),
-        ctypes.c_int64(tile_n),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, symbol, _ARGTYPES_FUSEDW4_PREFILL_SINGLE, ctypes.c_int)
+    err = fn(x_ptr, qweight_ptr, qzeros_ptr, scales_ptr, out_ptr,
+             rows, in_features, out_packed, group_size, tile_m, tile_n,
+             stream)
     _check_launch(runtime, err)
 
 

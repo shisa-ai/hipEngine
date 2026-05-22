@@ -12,8 +12,24 @@ import ctypes
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
+
+# Cached argtypes tuples for the RMSNorm launchers used by the verifier.
+# Shape: ptr(s) + rows/hidden_size + eps (float!) + stream.
+_ARGTYPES_RMSNORM_3PTR = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
+_ARGTYPES_RMSNORM_5PTR = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
 
 _SOURCE = Path(__file__).with_name("rmsnorm.hip")
 _OUTPUT_NAME = "qwen35_rmsnorm.so"
@@ -82,26 +98,9 @@ def qwen35_rmsnorm_bf16(
     _check_positive_shape(rows, hidden_size, "rows", "hidden_size")
     library = library or build_qwen35_rmsnorm(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_RMSNORM)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_states_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_float(float(eps)),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_RMSNORM, _ARGTYPES_RMSNORM_3PTR, ctypes.c_int)
+    err = fn(hidden_states_ptr, weight_ptr, out_ptr,
+             rows, hidden_size, float(eps), stream)
     _check_launch(runtime, err)
 
 
@@ -124,30 +123,9 @@ def qwen35_add_rmsnorm_bf16(
     _check_positive_shape(rows, hidden_size, "rows", "hidden_size")
     library = library or build_qwen35_rmsnorm(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_ADD_RMSNORM)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_states_ptr),
-        ctypes.c_void_p(residual_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_void_p(residual_out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_float(float(eps)),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_ADD_RMSNORM, _ARGTYPES_RMSNORM_5PTR, ctypes.c_int)
+    err = fn(hidden_states_ptr, residual_ptr, weight_ptr, out_ptr, residual_out_ptr,
+             rows, hidden_size, float(eps), stream)
     _check_launch(runtime, err)
 
 
@@ -170,30 +148,9 @@ def qwen35_add_rmsnorm_f32_bf16(
     _check_positive_shape(rows, hidden_size, "rows", "hidden_size")
     library = library or build_qwen35_rmsnorm(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_ADD_RMSNORM_F32)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_states_ptr),
-        ctypes.c_void_p(residual_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_void_p(residual_out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_float(float(eps)),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_ADD_RMSNORM_F32, _ARGTYPES_RMSNORM_5PTR, ctypes.c_int)
+    err = fn(hidden_states_ptr, residual_ptr, weight_ptr, out_ptr, residual_out_ptr,
+             rows, hidden_size, float(eps), stream)
     _check_launch(runtime, err)
 
 
@@ -214,26 +171,8 @@ def qwen35_head_rmsnorm_f32_bf16(
     _check_positive_shape(heads, head_dim, "heads", "head_dim")
     library = library or build_qwen35_rmsnorm(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_HEAD_RMSNORM)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_states_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(heads),
-        ctypes.c_int64(head_dim),
-        ctypes.c_float(float(eps)),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_HEAD_RMSNORM, _ARGTYPES_RMSNORM_3PTR, ctypes.c_int)
+    err = fn(hidden_states_ptr, weight_ptr, out_ptr, heads, head_dim, float(eps), stream)
     _check_launch(runtime, err)
 
 
@@ -257,26 +196,8 @@ def paro_rmsnorm_out_bf16(
     _check_positive_shape(rows, hidden_size, "rows", "hidden_size")
     library = library or build_qwen35_rmsnorm(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_PARO_RMSNORM_OUT)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_float(float(eps)),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_PARO_RMSNORM_OUT, _ARGTYPES_RMSNORM_3PTR, ctypes.c_int)
+    err = fn(x_ptr, weight_ptr, out_ptr, rows, hidden_size, float(eps), stream)
     _check_launch(runtime, err)
 
 
@@ -299,30 +220,9 @@ def paro_add_rmsnorm_out_bf16(
     _check_positive_shape(rows, hidden_size, "rows", "hidden_size")
     library = library or build_qwen35_rmsnorm(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_PARO_ADD_RMSNORM_OUT)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(add_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(norm_out_ptr),
-        ctypes.c_void_p(residual_out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_float(float(eps)),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_PARO_ADD_RMSNORM_OUT, _ARGTYPES_RMSNORM_5PTR, ctypes.c_int)
+    err = fn(x_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr,
+             rows, hidden_size, float(eps), stream)
     _check_launch(runtime, err)
 
 
@@ -343,26 +243,8 @@ def paro_rmsnorm_out_fp16(
     _check_positive_shape(rows, hidden_size, "rows", "hidden_size")
     library = library or build_qwen35_rmsnorm(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_PARO_RMSNORM_OUT_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_float(float(eps)),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_PARO_RMSNORM_OUT_FP16, _ARGTYPES_RMSNORM_3PTR, ctypes.c_int)
+    err = fn(x_ptr, weight_ptr, out_ptr, rows, hidden_size, float(eps), stream)
     _check_launch(runtime, err)
 
 
@@ -385,30 +267,9 @@ def paro_add_rmsnorm_out_fp16(
     _check_positive_shape(rows, hidden_size, "rows", "hidden_size")
     library = library or build_qwen35_rmsnorm(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_PARO_ADD_RMSNORM_OUT_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(add_ptr),
-        ctypes.c_void_p(weight_ptr),
-        ctypes.c_void_p(norm_out_ptr),
-        ctypes.c_void_p(residual_out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(hidden_size),
-        ctypes.c_float(float(eps)),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_PARO_ADD_RMSNORM_OUT_FP16, _ARGTYPES_RMSNORM_5PTR, ctypes.c_int)
+    err = fn(x_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr,
+             rows, hidden_size, float(eps), stream)
     _check_launch(runtime, err)
 
 

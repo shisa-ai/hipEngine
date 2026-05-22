@@ -6,6 +6,7 @@ import ctypes
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
 
@@ -18,6 +19,35 @@ _SYMBOL_ROTATE1_FP16 = "hipengine_paro_rotate1_fp16"
 _SYMBOL_ROTATE2_FP16 = "hipengine_paro_rotate2_fp16"
 _SYMBOL_ROTATE3_FP16 = "hipengine_paro_rotate3_fp16"
 _SYMBOL_ROTATE1_BF16_GATE_FP16 = "hipengine_paro_rotate1_bf16_gate_fp16"
+
+# rotate1: x, out, pairs, theta, scales + tokens, hidden, group_size, krot, stream
+_ARGTYPES_ROTATE1 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+# rotate2: x, out0, out1, pairs0, pairs1, theta0, theta1, scales0, scales1 + tokens, hidden, group_size, krot, stream
+_ARGTYPES_ROTATE2 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+# rotate3: x, out0, out1, out2, pairs0, pairs1, pairs2, theta0, theta1, theta2, scales0, scales1, scales2 + tokens, hidden, group_size, krot, stream
+_ARGTYPES_ROTATE3 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+# rotate1_gate: x, gate, out, pairs, theta, scales + tokens, hidden, group_size, krot, stream
+_ARGTYPES_ROTATE1_GATE = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
 
 
 def plan_paro_rotate_build(
@@ -78,32 +108,9 @@ def paro_rotate1_bf16(
     _check_rotate_shape(tokens, hidden, group_size, krot)
     library = library or build_paro_rotate(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_ROTATE1)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_void_p(pairs_ptr),
-        ctypes.c_void_p(theta_ptr),
-        ctypes.c_void_p(scales_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(krot),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_ROTATE1, _ARGTYPES_ROTATE1, ctypes.c_int)
+    err = fn(x_ptr, out_ptr, pairs_ptr, theta_ptr, scales_ptr,
+             tokens, hidden, group_size, krot, stream)
     _check_launch(runtime, err)
 
 
@@ -131,40 +138,10 @@ def paro_rotate2_bf16(
     _check_rotate_shape(tokens, hidden, group_size, krot)
     library = library or build_paro_rotate(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_ROTATE2)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(out0_ptr),
-        ctypes.c_void_p(out1_ptr),
-        ctypes.c_void_p(pairs0_ptr),
-        ctypes.c_void_p(pairs1_ptr),
-        ctypes.c_void_p(theta0_ptr),
-        ctypes.c_void_p(theta1_ptr),
-        ctypes.c_void_p(scales0_ptr),
-        ctypes.c_void_p(scales1_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(krot),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_ROTATE2, _ARGTYPES_ROTATE2, ctypes.c_int)
+    err = fn(x_ptr, out0_ptr, out1_ptr, pairs0_ptr, pairs1_ptr,
+             theta0_ptr, theta1_ptr, scales0_ptr, scales1_ptr,
+             tokens, hidden, group_size, krot, stream)
     _check_launch(runtime, err)
 
 
@@ -196,48 +173,12 @@ def paro_rotate3_bf16(
     _check_rotate_shape(tokens, hidden, group_size, krot)
     library = library or build_paro_rotate(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_ROTATE3)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(out0_ptr),
-        ctypes.c_void_p(out1_ptr),
-        ctypes.c_void_p(out2_ptr),
-        ctypes.c_void_p(pairs0_ptr),
-        ctypes.c_void_p(pairs1_ptr),
-        ctypes.c_void_p(pairs2_ptr),
-        ctypes.c_void_p(theta0_ptr),
-        ctypes.c_void_p(theta1_ptr),
-        ctypes.c_void_p(theta2_ptr),
-        ctypes.c_void_p(scales0_ptr),
-        ctypes.c_void_p(scales1_ptr),
-        ctypes.c_void_p(scales2_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(krot),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_ROTATE3, _ARGTYPES_ROTATE3, ctypes.c_int)
+    err = fn(x_ptr, out0_ptr, out1_ptr, out2_ptr,
+             pairs0_ptr, pairs1_ptr, pairs2_ptr,
+             theta0_ptr, theta1_ptr, theta2_ptr,
+             scales0_ptr, scales1_ptr, scales2_ptr,
+             tokens, hidden, group_size, krot, stream)
     _check_launch(runtime, err)
 
 
@@ -261,32 +202,9 @@ def paro_rotate1_fp16(
     _check_rotate_shape(tokens, hidden, group_size, krot)
     library = library or build_paro_rotate(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_ROTATE1_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_void_p(pairs_ptr),
-        ctypes.c_void_p(theta_ptr),
-        ctypes.c_void_p(scales_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(krot),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_ROTATE1_FP16, _ARGTYPES_ROTATE1, ctypes.c_int)
+    err = fn(x_ptr, out_ptr, pairs_ptr, theta_ptr, scales_ptr,
+             tokens, hidden, group_size, krot, stream)
     _check_launch(runtime, err)
 
 
@@ -311,34 +229,9 @@ def paro_rotate1_bf16_gate_fp16(
     _check_rotate_shape(tokens, hidden, group_size, krot)
     library = library or build_paro_rotate(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_ROTATE1_BF16_GATE_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(gate_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_void_p(pairs_ptr),
-        ctypes.c_void_p(theta_ptr),
-        ctypes.c_void_p(scales_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(krot),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_ROTATE1_BF16_GATE_FP16, _ARGTYPES_ROTATE1_GATE, ctypes.c_int)
+    err = fn(x_ptr, gate_ptr, out_ptr, pairs_ptr, theta_ptr, scales_ptr,
+             tokens, hidden, group_size, krot, stream)
     _check_launch(runtime, err)
 
 
@@ -366,40 +259,10 @@ def paro_rotate2_fp16(
     _check_rotate_shape(tokens, hidden, group_size, krot)
     library = library or build_paro_rotate(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_ROTATE2_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(out0_ptr),
-        ctypes.c_void_p(out1_ptr),
-        ctypes.c_void_p(pairs0_ptr),
-        ctypes.c_void_p(pairs1_ptr),
-        ctypes.c_void_p(theta0_ptr),
-        ctypes.c_void_p(theta1_ptr),
-        ctypes.c_void_p(scales0_ptr),
-        ctypes.c_void_p(scales1_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(krot),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_ROTATE2_FP16, _ARGTYPES_ROTATE2, ctypes.c_int)
+    err = fn(x_ptr, out0_ptr, out1_ptr, pairs0_ptr, pairs1_ptr,
+             theta0_ptr, theta1_ptr, scales0_ptr, scales1_ptr,
+             tokens, hidden, group_size, krot, stream)
     _check_launch(runtime, err)
 
 
@@ -431,48 +294,12 @@ def paro_rotate3_fp16(
     _check_rotate_shape(tokens, hidden, group_size, krot)
     library = library or build_paro_rotate(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_ROTATE3_FP16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(out0_ptr),
-        ctypes.c_void_p(out1_ptr),
-        ctypes.c_void_p(out2_ptr),
-        ctypes.c_void_p(pairs0_ptr),
-        ctypes.c_void_p(pairs1_ptr),
-        ctypes.c_void_p(pairs2_ptr),
-        ctypes.c_void_p(theta0_ptr),
-        ctypes.c_void_p(theta1_ptr),
-        ctypes.c_void_p(theta2_ptr),
-        ctypes.c_void_p(scales0_ptr),
-        ctypes.c_void_p(scales1_ptr),
-        ctypes.c_void_p(scales2_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(hidden),
-        ctypes.c_int64(group_size),
-        ctypes.c_int64(krot),
-        ctypes.c_void_p(stream),
-    )
+    fn = signed_kernel_fn(library, _SYMBOL_ROTATE3_FP16, _ARGTYPES_ROTATE3, ctypes.c_int)
+    err = fn(x_ptr, out0_ptr, out1_ptr, out2_ptr,
+             pairs0_ptr, pairs1_ptr, pairs2_ptr,
+             theta0_ptr, theta1_ptr, theta2_ptr,
+             scales0_ptr, scales1_ptr, scales2_ptr,
+             tokens, hidden, group_size, krot, stream)
     _check_launch(runtime, err)
 
 
