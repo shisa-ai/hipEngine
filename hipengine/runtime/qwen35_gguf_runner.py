@@ -2036,6 +2036,7 @@ class Qwen35GGUFFullStackRunner:
             self.hidden_size,
             cfg.expert_count,
             top_k,
+            threads=256,
             stream=stream,
             runtime=runtime,
         )

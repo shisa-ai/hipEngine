@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-22
+
+- [accepted small-op retained] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M+Q4_K_S / 4K/128 router256 decode: Q4_K_M decode `96.264 -> 98.924 tok/s` (`+2.76%`) and Q4_K_S decode `97.121 -> 99.759 tok/s` (`+2.72%`) by passing `threads=256` to the c=1 split-shared cooperative router instead of the wrapper-default 512-thread launch; targeted router/routing/graph tests pass (`16 passed`), finite deterministic final logits, tracked peaks unchanged; `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-router256-4k128-accepted.json`.
+
 ## 2026-05-21
 
 - [accepted target met] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M / P10.D8 context-threshold split-K decode: 4K/128 prefill/decode `2696.901/47.171 -> 2700.015/97.008 tok/s` (decode `+105.6%`) by routing GGUF full-attention decode through split-K gated GQA at context `>=1024`; 512/128 guarded path stays within noise at `2140.225/89.322 tok/s`; targeted GGUF bundle passes (`127 passed`), layer0 max diff `0.000977`; `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d8-splitk-decode.json`.

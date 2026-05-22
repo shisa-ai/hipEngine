@@ -22961,3 +22961,47 @@ uv run python scripts/qwen35_gguf_bench.py \
 Result: rejected. Q4_K_S decode dropped to `92.699 tok/s` vs the current `97.121 tok/s` baseline (`-4.55%`). Reverted before running Q4_K_M because the dual-column gate had already failed. Post-revert validation passed with the same `97 passed` bundle and the source diff is empty. Compact artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-selected-moe-t16-qk256-rejected.json`.
 
 Decision: selected-MoE gap will not close through simple launch-width tuning. The next useful MoE lever is a larger fused design (selected gate/up+SiLU+down or selected-down+combine with preserved BF16 rounding), not another tweak to the existing row-GEMV shape.
+
+## 2026-05-22 — Retained GGUF c=1 router256 small-kernel decode win
+
+Task #4 found a low-risk small-kernel win in the GGUF c=1 decode MoE router. The active path already uses `qwen35_router_topk_split_shared_coop_out_bf16` to fuse expert logits, shared-gate logit, and top-k selection into one decode-only cooperative launch; the wrapper default was still 512 threads. For the single-row Qwen3.6/Qwen3.5 MoE router (`hidden=2048`, `experts=128`, `top_k=2`), passing `threads=256` from `_run_post_attention_moe_c1` is faster on local gfx1100.
+
+Source change:
+
+- `hipengine/runtime/qwen35_gguf_runner.py`: pass `threads=256` to `qwen35_router_topk_split_shared_coop_out_bf16(...)` in the c=1 post-attention MoE path.
+- `tests/test_qwen35_gguf_compact_moe_gemv_routing.py`: assert the c=1 runtime path uses the split cooperative router with `threads=256`.
+
+Validation:
+
+```bash
+PYTHONPATH=. uv run pytest \
+  tests/test_qwen35_gguf_compact_moe_gemv_routing.py \
+  tests/test_qwen35_gguf_decode_graph_policy.py \
+  tests/test_qwen35_router_plan.py -q
+# 16 passed
+```
+
+Bench command shape for both Q4_K_M and Q4_K_S:
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model <Qwen3.6-35B-A3B-UD-Q4_K_M|Q4_K_S.gguf> --quant <gguf_q4_k_m|gguf_q4_k_s> \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 1 --measured-runs 3 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-<quant>-router256-candidate-4096-128-3run.json
+```
+
+4K/128 local RX 7900 XTX/gfx1100 results vs `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-after-memory-decode-pass-review.json` baseline:
+
+| Quant | Baseline decode | Router256 decode samples | Router256 median | Delta | Prefill median | Tracked peak |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Q4_K_M | `96.264 tok/s` | `98.924`, `98.861`, `99.161` | `98.924 tok/s` | `+2.76%` | `2647.601 tok/s` | `22.572 GiB` |
+| Q4_K_S | `97.121 tok/s` | `100.402`, `99.713`, `99.759` | `99.759 tok/s` | `+2.72%` | `2732.187 tok/s` | `21.416 GiB` |
+
+Both runs reported finite final logits and stable final token IDs (`[220,220,220]` for Q4_K_M; `[85,85,85]` for Q4_K_S). This narrows the prior local PARO 4K/128 decode gap (`106.637 tok/s`, not rerun here) to ~`7.2%` for Q4_K_M and ~`6.5%` for Q4_K_S.
+
+Retained artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-router256-4k128-accepted.json`. Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the dual-column retained row. W7900 remains unverified for this pass.

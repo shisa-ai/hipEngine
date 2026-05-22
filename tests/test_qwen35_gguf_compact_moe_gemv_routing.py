@@ -90,6 +90,7 @@ def test_c1_decode_uses_split_router_coop_launch(monkeypatch: pytest.MonkeyPatch
     assert "router" not in names
     assert "router_select" not in names
     assert ("router_split_coop", (10, 11, 110, 1, 256, 4, 2)) in calls
+    assert ("router_split_coop_threads", 256) in calls
 
 
 
@@ -360,7 +361,10 @@ def _patch_common_moe_kernels(monkeypatch: pytest.MonkeyPatch, calls: list[tuple
     monkeypatch.setattr(
         qgr,
         "qwen35_router_topk_split_shared_coop_out_bf16",
-        lambda *args, **kwargs: calls.append(("router_split_coop", args[1:4] + args[6:10])),
+        lambda *args, **kwargs: (
+            calls.append(("router_split_coop", args[1:4] + args[6:10])),
+            calls.append(("router_split_coop_threads", kwargs.get("threads"))),
+        ),
     )
     monkeypatch.setattr(qgr, "copy_host_to_device", lambda *args, **kwargs: calls.append(("zero", None)))
     monkeypatch.setattr(qgr, "silu_mul_separate_out_bf16", lambda *args, **kwargs: calls.append(("silu_separate", None)))

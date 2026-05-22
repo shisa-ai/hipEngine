@@ -1,0 +1,69 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "status": "accepted",
+  "performance_claim": true,
+  "label": "qwen36_35b_a3b_gguf_q4km_q4ks_router256_4k128",
+  "date": "2026-05-22",
+  "git_commit_under_test": "working-tree pre-commit: qwen35 GGUF c=1 router split-shared coop threads=256",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local RX 7900 XTX/gfx1100 repeated-run diagnostic; W7900 not rerun"
+  },
+  "change": {
+    "file": "hipengine/runtime/qwen35_gguf_runner.py",
+    "summary": "Pass threads=256 to qwen35_router_topk_split_shared_coop_out_bf16 in the c=1 GGUF decode MoE path instead of using the wrapper default 512-thread launch.",
+    "rationale": "The cooperative split-shared router processes hidden=2048 and 128 experts for a single decode row. The 512-thread default over-parallelizes this small c=1 launch; 256 threads preserves correctness and reduces router small-kernel overhead."
+  },
+  "baseline_from": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-after-memory-decode-pass-review.json",
+  "baseline_4k_128": {
+    "gguf_q4_k_m": {"prefill_tok_s": 2552.0429915633204, "decode_tok_s": 96.26374663160384, "tracked_peak_gib": 22.571860380470753},
+    "gguf_q4_k_s": {"prefill_tok_s": 2637.147627613572, "decode_tok_s": 97.12117731314792, "tracked_peak_gib": 21.415610380470753}
+  },
+  "correctness_and_dispatch_gate": {
+    "command": "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_decode_graph_policy.py tests/test_qwen35_router_plan.py -q",
+    "result": "16 passed",
+    "coverage_note": "Updated fake runtime routing test asserts the c=1 split-shared cooperative router is called with threads=256. Router plan tests cover accepted wrapper thread values; benchmark sanity checks finite final logits and stable final token IDs."
+  },
+  "benchmark_command_common": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model <model> --quant <gguf_q4_k_m|gguf_q4_k_s> --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json <tmp-json>",
+  "results_4k_128": {
+    "gguf_q4_k_m": {
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "raw_json": "/tmp/hipengine-q4km-router256-candidate-4096-128-3run.json",
+      "prefill_tok_s_samples": [2646.0252220108778, 2653.216515465944, 2647.600668398051],
+      "prefill_tok_s_median": 2647.600668398051,
+      "decode_tok_s_samples": [98.92369589113835, 98.86116579500397, 99.16064849049665],
+      "decode_tok_s_median": 98.92369589113835,
+      "decode_delta_vs_baseline_pct": 2.763189001685127,
+      "tracked_peak_gib_median": 22.571860380470753,
+      "hip_used_peak_sampled_gib_median": 23.111083984375,
+      "finite_final_logits_all": true,
+      "final_token_ids": [220, 220, 220],
+      "effective_use_wmma_prefill_all": [true, true, true, true],
+      "effective_use_gemv_decode_all": [true, true, true, true]
+    },
+    "gguf_q4_k_s": {
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+      "raw_json": "/tmp/hipengine-q4ks-router256-candidate-4096-128-3run.json",
+      "prefill_tok_s_samples": [2732.1867333518435, 2721.3524875396915, 2732.861077498717],
+      "prefill_tok_s_median": 2732.1867333518435,
+      "decode_tok_s_samples": [100.40164446113448, 99.71265671615613, 99.75882828165028],
+      "decode_tok_s_median": 99.75882828165028,
+      "decode_delta_vs_baseline_pct": 2.7158350438831436,
+      "tracked_peak_gib_median": 21.415610380470753,
+      "hip_used_peak_sampled_gib_median": 21.954833984375,
+      "finite_final_logits_all": true,
+      "final_token_ids": [85, 85, 85],
+      "effective_use_wmma_prefill_all": [true, true, true, true],
+      "effective_use_gemv_decode_all": [true, true, true, true]
+    }
+  },
+  "comparison": {
+    "prior_local_paro_4k_128_decode_tok_s": 106.637,
+    "gguf_q4_k_m_gap_vs_prior_paro_pct": -7.2332343453601,
+    "gguf_q4_k_s_gap_vs_prior_paro_pct": -6.450079914429062,
+    "note": "PARO comparison is the prior local 2026-05-21 row, not rerun in this artifact."
+  },
+  "decision": "Retain router threads=256 for GGUF c=1 decode. It improves both required GGUF columns at 4K/128: Q4_K_M +2.76% decode and Q4_K_S +2.72% decode, with unchanged tracked peak memory and finite deterministic final logits."
+}
