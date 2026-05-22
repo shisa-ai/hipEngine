@@ -21845,3 +21845,41 @@ Files touched:
 - `docs/DFLASH.md`: appended one new section (no changes elsewhere).
 
 Validation: re-read appended section end-to-end; verified all artifact paths cited resolve under `benchmarks/results/`; section count went 13 → 14 with existing 13 unchanged.
+
+## 2026-05-23 M13.C deferred + M13.D rejected — closing the M13 phase
+
+**M13.C verdict (deferred to M14.dispatch.1):** cProfile of the verifier hot path showed `run_moe_c1_fp16` own-time is 3 µs/call.  40 layers × 25 passes/decoded-token × 3 µs = 3 ms total Python overhead per token, not the 30+ ms the M13.A audit speculated.  The dominant per-launch cost is the ctypes argument marshaling + HIP runtime dispatch (`hipLaunchKernelGGL`) itself, both of which a Python-level dispatcher cannot remove.  A real C-side dispatcher (one new `.hip` translation unit per dispatcher, all kernel launchers JIT-built as a single library with one ctypes entry point) would save ~6–8 ms/pass but is a ~300–500 LoC change touching the build system.  Outside the scope of M13's launch-count attack; documented as M14.dispatch.1.
+
+**M13.D rejected — graph replay still does not help.** Same conclusion as M12.1 even after M13.B.0 dropped launches/pass from 1052 → 1011.55 (-3.8%):
+
+| `graph_mode` | suite cycle_cost (B=3, batched, 9 prompts) | Δ vs off |
+|---|---:|---:|
+| `off` | 3.639 | baseline |
+| `auto` | 3.782 | +3.9% (worse) |
+| `validate` | 7.727 | +112% (validate overhead) |
+
+Acceptance gate was "auto or validate beats off by ≥5%".  Failed — auto is 3.9% **worse** than off.  Per the M13.0 framing, graph capture needs the launch count to drop substantially further (M14.dispatch.1 → M14.fuse.*) before it can compete with direct dispatch on ROCm 7.x.
+
+**M13.E deferred to M14.fuse.5:** sort-by-expert was reserved as "only if D leaves ≥10% on the table". M13.D didn't leave anything actionable — graph replay's 3.9% penalty does not point at MoE GEMV weight-bandwidth waste, it points at dispatch overhead, which is the wrong lever for sort-by-expert. Tracked as M14.fuse.5.
+
+**Pre-existing c1_loop drift surfaced incidentally:** `chain_attn_mode='c1_loop'` 9-prompt suite at `max-tokens=64` fails exact-AR on the long-context prompt: MTP gets stuck in a `token 248045` repeat loop after ~56 generated tokens.  Confirmed via `git stash` to predate M13.B.0 — it is a pre-existing long-context numeric-drift bug specific to c1_loop. Short-prompt smokes pass identically in c1_loop and batched. Tracked as M14.book.5; not a blocker for M13 closure since the hot path is batched.
+
+**M13 phase summary (close of session):**
+
+| # | Outcome | Cycle-cost delta |
+|---|---|---:|
+| M13.0 | Plan + audit landed | 0 |
+| M13.A | Static audit reconciled to 9% of measured 1052 launches/pass | 0 |
+| M13.B.0 | Verifier `out=next_hidden` write-through retained | -2.8% |
+| M13.B.1 | Fused rotate+selected_dual: kernel infra retained, default-off (LDS-only design loses cost-model check) | 0 |
+| M13.B.2 | Shared-expert fused rotate+dual: kernel infra retained, default-off (barrier memset cancels dispatch saving) | 0 |
+| M13.C | Deferred to M14.dispatch.1 (cProfile shows ctypes+HIP dominate; needs C-side dispatcher) | 0 |
+| M13.D | Graph replay re-eval rejected (auto is +3.9% worse than off) | 0 |
+| M13.E | Deferred to M14.fuse.5 (wrong lever for a dispatch-overhead bottleneck) | 0 |
+
+**Net M13 outcome:** -2.8% cycle_cost from M13.B.0, plus a 15-item M14 catalog with explicit lineage tags and gating conditions.  Three lessons codified in MTP.md:
+1. Don't fuse rotate+GEMV when `out_packs × row_replication` is large unless the design is HBM-staged (M13.B.1).
+2. Any keyless barrier reset cancels the dispatch saving 1:1 (M13.B.2).
+3. Graph capture is parked until launch count drops further OR dispatch overhead is reduced via a real C-side dispatcher (M13.D).
+
+Artifacts: `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.d-{graphoff,graphauto-rejected,graphvalidate-rejected}.json`.
