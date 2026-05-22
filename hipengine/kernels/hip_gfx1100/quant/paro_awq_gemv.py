@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -1965,7 +1966,7 @@ def _launch_fusedw4_prefill_dual_fp16(
     _check_fusedw4_shape(rows, in_features, out_packed_a, group_size, tile_m, tile_n)
     _check_positive(out_packed_b, "out_packed_b")
     if tile_m is None:
-        tile_m = 32 if max(out_packed_a, out_packed_b) * 8 >= 32 else 16
+        tile_m = _default_fusedw4_tile_m(rows, max(out_packed_a, out_packed_b))
     if tile_n is None:
         tile_n = 32 if rows >= 32 else 16
     library = library or build_paro_awq_gemv(load=True)
@@ -2035,7 +2036,7 @@ def _launch_fusedw4_prefill_fp16(
 ) -> None:
     _check_fusedw4_shape(rows, in_features, out_packed, group_size, tile_m, tile_n)
     if tile_m is None:
-        tile_m = 32 if out_packed * 8 >= 32 else 16
+        tile_m = _default_fusedw4_tile_m(rows, out_packed)
     if tile_n is None:
         tile_n = 32 if rows >= 32 else 16
     library = library or build_paro_awq_gemv(load=True)
@@ -2071,6 +2072,23 @@ def _launch_fusedw4_prefill_fp16(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def _default_fusedw4_tile_m(rows: int, out_packed: int) -> int:
+    base = 32 if int(out_packed) * 8 >= 32 else 16
+    if int(rows) > 8:
+        return base
+    # B+1 verifier prefill paths are launch-bound and waste the 16-row WMMA
+    # token tile.  Keeping the output tile at 16 improves the small-B MTP prompt
+    # suite while preserving the exact prefill-numerics kernel.
+    base = 16
+    value = os.environ.get("HIPENGINE_W4_PREFILL_SMALLBATCH_TILE_M")
+    if value is None or value.strip() == "":
+        return base
+    parsed = int(value)
+    if parsed not in {16, 32, 64}:
+        raise ValueError("HIPENGINE_W4_PREFILL_SMALLBATCH_TILE_M must be 16, 32, or 64")
+    return parsed
 
 
 def _check_fusedw4_shape(

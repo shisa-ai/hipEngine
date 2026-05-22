@@ -21673,3 +21673,15 @@ Ablations tried:
 - Selected-expert MoE GEMV `threads=64` probe under env-only local patch. `translation` stayed exact but worse (`C=3.411`); the leaf rocprof smoke then produced exact-AR mismatch. Rejected; do not reduce selected-MoE pack8 threads blindly.
 
 Conclusion: the obvious decode-shaped routing flips are numerically fragile for MTP exactness. Next retained change should either (1) make a prefill-numerics-compatible small-B W4 kernel for the fragile sites, or (2) attack a non-W4 bottleneck (`linear_attention_gdn_decode` or selected-expert MoE) without changing verifier logits.
+
+## 2026-05-23 MTP W4 small-B prefill tileM=16 retained diagnostic
+
+Kept a small exactness-safe W4 verifier tuning after the rejected decode-shaped routes: `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py` now defaults `awq_fusedw4_prefill_*` to `tile_m=16` when `rows <= 8` (override remains `HIPENGINE_W4_PREFILL_SMALLBATCH_TILE_M={16,32,64}`). This keeps the exact WMMA prefill-numerics path and only changes the output tile size for tiny verifier rows.
+
+Validation/evidence:
+
+- Translation quick check: `HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp-bench.py --mode hipengine-current --prompt-names translation --candidate-budgets 3 --runs 1 --max-tokens 64 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-mtp-w4tile16-default-translation --out /tmp/hipengine-mtp-w4tile16-default-translation.json` => exact, `C=3.341`.
+- Full llama.cpp-compatible prompt suite: `HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp-bench.py --mode hipengine-current --candidate-budgets 3 --runs 1 --max-tokens 64 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-mtp-w4tile16-default-suite --out /tmp/hipengine-mtp-w4tile16-default-suite.json` => all 9 exact, aggregate `cycle_cost=3.716` AR-token equivalents, visible/cycle `1.895`, accepted/cycle `0.895`, acceptance `0.303`, actual MTP/AR `0.516x`. Baseline current M12.6c was `3.756`, so delta is -1.1% diagnostic.
+- Leaf rocprof: `HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp_verifier_rocprof.py --backend hip_gfx1100 --chain-attn-mode batched --decode-tokens 32 --candidate-budget 3 --raw-root /tmp/hipengine-rocprof-mtp-verifier-w4tile16-default --out /tmp/hipengine-mtp-verifier-w4tile16-default.json` => exact, 29 passes, kernel `17.3776 ms/pass` vs `17.6970` current baseline. W4 single-prefill `2.9965 -> 2.8380 ms/pass`, W4 dual-prefill `1.1172 -> 0.9132 ms/pass`; VGPR max on both prefill families drops `80 -> 48`.
+
+Artifacts retained under `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-w4-prefill-tilem16.json` and `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-w4-prefill-tilem16.json`; `benchmarks/README.md` and `benchmarks/CHANGELOG.md` updated. This is a small diagnostic win, not close to the <2 target; next target remains a larger verifier-cost reduction in GDN or MoE.

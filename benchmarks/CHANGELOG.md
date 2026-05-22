@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-23
+
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO-MTP-BF16 / MTP W7900/gfx1100 B=3 llama.cpp-compatible prompt suite: cycle cost `3.756 -> 3.716` AR-token equivalents (−1.1%) and verifier rocprof kernel time `17.70 -> 17.38 ms/pass` (−1.8%) by defaulting small-B `awq_fusedw4_prefill_*` output tileM to 16 instead of 32 while keeping exact WMMA prefill numerics; all 9 prompts exact; `performance_claim=false`; artifacts `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-w4-prefill-tilem16.json` and `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-w4-prefill-tilem16.json`.
+
 ## 2026-05-22
 
 - [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO-MTP-BF16 / MTP prompt-suite exactness gate for M12.6 W4 safe-site mask on W7900/gfx1100: all-sites M12.6 failed the llama.cpp-compatible `translation` prompt exactness gate (`AR=220`, `MTP=51` at generated index 34). The FMA row-loop kernel now half-rounds FP16 dequantized weights to better match WMMA prefill numerics, and default M12.6 enables only exact-suite-safe sites (`full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_shared_down,single_dense_down`). Default vs M12.6-off on 9 prompts is exact in both cases and improves one-run cycle cost `3.794 -> 3.742` AR-token equivalents; `performance_claim=false`; artifacts `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-prefill-dequant-default.json` and `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-m12.6-off.json`.
