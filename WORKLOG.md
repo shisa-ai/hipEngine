@@ -17967,3 +17967,34 @@ git diff --check
 ```
 
 Also re-read `docs/RELAXED.md` and `docs/README.md` end-to-end after edits. Updated `docs/README.md` to link the new relaxed precision document.
+
+## 2026-05-23 — relaxed precision doc expansion
+
+Expanded `docs/RELAXED.md` after review. The first cut described the strict/relaxed split but lacked drift gates, RDNA3 instruction-level levers, and per-kernel savings tied to the measured M.4 decode Amdahl shares. The expansion addresses each:
+
+- **Accuracy and drift policy.** Added a five-tier budget table (T0 strict / T1 numerical / T2 layout / T3 quant / T4 discrete) with per-kernel oracle, per-layer hidden-state KL, sequence-logit KL, top-1 floor, generated-ID match window, and nondeterminism rules. The project's `KL ≤ 0.05` / `top-1 ≥ 90%` gate from `docs/TESTING.md` §4 is kept as the outer ceiling; T1/T2/T3 are progressively tighter.
+- **Stacking and shadow-run rules.** Profile-level budget instead of per-kernel; strictest-applicable tier when profiles compose; mandatory strict-vs-relaxed shadow runs; long-context retests at 32K/128K because errors compound.
+- **Tripwires and automatic rollback.** Explicit rollback triggers for max-abs drift, sequence-logit KL, top-1, fixed-seed nondeterminism, long-vs-short context KL ratio, NaN/Inf, and early-token divergence. Rollback disables the relaxed variant; budgets are not silently widened.
+- **Bisection workflow.** Five-step process to isolate the offending kernel before changing the budget. Mirrors the throughput decision tree in `docs/ROOFLINE.md` §10 but driven from correctness.
+- **Known failure modes that are not relaxation.** Nondeterministic prefill softmax, stale JIT cache, W8A8 NaN, output-buffer aliasing, RoPE/position drift — each gets a fix, not a tier.
+- **Named relaxed profiles.** `strict`, `relaxed_fast_math` (T1), `relaxed_layout` (T2), `relaxed_kv_int8` (T3), `relaxed_routing` (T4), `relaxed_all` (composed). Each row lists what it allows, what it forbids, and which models qualify.
+- **RDNA3 instruction-level levers.** Table mapping `v_dot4_i32_iu8`, `v_dot8_i32_iu4`, `v_pk_fma_f16`, `v_rsq_f32`, `__expf`/`__sigmoidf`, VOPD packing, waves-per-EU retune, OOO/atomic combine, and wave64 reductions to the tier that unlocks them, with the theoretical peak vs current FP32 FMA and a realistic-capture column anchored to parent rejection evidence.
+- **Decode time budget anchor.** Added a per-bucket table from M.4 (4K/128 graph replay, 7.23 ms kernel time/token, 877 dispatches/token) so per-kernel ballpark percentages are derived from share × ms/tok, not hand-waved. Sanity checks for 1% E2E ≈ 0.072 ms and dispatch-floor math at 1 µs/dispatch.
+- **Per-kernel rows expanded.** Each kernel family now lists strict constraint, op profile (per-element VALU count where known), relaxed candidates broken out by tier, possible savings classes, ballpark E2E % ceiling (range, not point), cross-link to the `docs/OPTIMIZE.md` row ID (D1.1, D1.2, D2.1, D2.3, D3.x, D5.1, D5.2, P3.x, Q36D-P1, W.x), and the required evidence for that kernel/tier.
+- **Backlog reordered.** Twelve items, priority by ratio of relaxed-mode upside to engineering cost, with dependencies (e.g. Marlin-K + sudot4 requires Q8 activation ABI; chunkwise GDN prefill requires the Qwen3.6 27B oracle Q36D-K.1).
+- **Acceptance checklist updated** to include per-layer KL, top-1, fixed-seed repeat, long-context retest, and the no-tripwire-fired requirement.
+
+No measured perf claim is made in this document; every number is a ceiling derived from existing M.4 / ROOFLINE evidence.
+
+Validation:
+
+```bash
+git diff --check docs/RELAXED.md
+# passed; no output
+grep -n "TODO\|XXX\|FIXME" docs/RELAXED.md
+# no markers
+wc -l docs/RELAXED.md
+# 622
+```
+
+Re-read `docs/RELAXED.md` end-to-end after the rewrite.
