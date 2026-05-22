@@ -21883,3 +21883,34 @@ Acceptance gate was "auto or validate beats off by ≥5%".  Failed — auto is 3
 3. Graph capture is parked until launch count drops further OR dispatch overhead is reduced via a real C-side dispatcher (M13.D).
 
 Artifacts: `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.d-{graphoff,graphauto-rejected,graphvalidate-rejected}.json`.
+
+## 2026-05-23 Session close — M13 complete, M14 catalog seeded
+
+**Commits this session (in order):**
+- `4f09531` docs: land M13 plan + M13.A static launch audit
+- `76da6cb` perf(mtp): M13.B.0 verifier next_hidden write-through (-40 launches/pass, -2.8% cycle cost) **[RETAINED]**
+- `038c249` perf(mtp): M13.B.1 fused rotate+selected_dual GEMV (default-off) + M14 deferral catalog
+- `99bf9c9` perf(mtp): M13.B.2 shared-expert fused rotate+dual_pack8 GEMV (default-off)
+- `e20c132` perf(mtp): M13.C deferred + M13.D rejected — close the M13 phase
+
+**Net session outcome:**
+- **-2.8% cycle_cost** on the 9-prompt batched verifier suite (M13.B.0).
+- Two new opt-in kernel families landed for future use (`HIPENGINE_MOE_FUSED_ROTATE`, `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE`), both default-off after measurement showed they don't pay at current shapes.
+- 15-item M14 catalog with explicit lineage tags and gating conditions.
+- Three lessons codified in `docs/MTP.md`:
+  1. **Cost-model lesson (M13.B.1):** `redundant_per_block_work × block_count vs launches_saved × launch_overhead`.  At verifier shape (`out_packs × top_k × tokens`) LDS-only rotate folds lose by ~30× vs HBM-staged.
+  2. **Barrier-memset lesson (M13.B.2):** Any kernel that needs a per-launch barrier reset (`hipMemsetAsync` etc.) cancels the dispatch saving 1:1 unless the barrier mechanism is keyed (host passes a monotonically-bumped int) or double-buffered.
+  3. **Graph-capture lesson (M13.D):** At ~1011 launches/pass, ROCm 7.x `hipGraphLaunch` per-node overhead is comparable to direct dispatch.  Graph capture stays opt-in until launch count drops further OR a C-side dispatcher reduces per-launch host work.
+
+**M14 candidates ranked by upside (per `docs/MTP.md` M14):**
+
+1. **M14.dispatch.1** (~6–8 ms/pass = ~30–45% host overhead reduction): C-side per-MoE-layer dispatcher.  ~300–500 LoC, build-system change.  Largest single lever, highest implementation cost.
+2. **M14.fuse.barrier** (~10–30 launches/pass, ~0.5–1.5% cycle): keyed/persistent barrier for `gemv_awq_dual_pack8_transposed_rotate_staged_kernel`. Required precondition for re-enabling M13.B.2 and landing M14.fuse.1/M14.fuse.3.
+3. **M14.fuse.1** (-40 launches/pass): proper HBM-staged selected-MoE rotate+GEMV (replaces M13.B.1's LDS-only design). Depends on M14.fuse.barrier.
+4. **M14.fuse.3** (-30 launches/pass): shared-expert non-small-batch rotate+GEMV fold. Depends on M14.fuse.barrier.
+5. **M14.book.1** (no perf delta): close the 93-launch static-vs-measured audit gap for clean accounting.
+
+**Pre-existing issues surfaced (not introduced this session):**
+- M14.book.5: `chain_attn_mode='c1_loop'` long-context suite fails exact-AR at 64 tokens (token 248045 repeat loop).  Confirmed pre-existing via `git stash` before M13.B.0. Hot path is batched so this doesn't block M13.
+
+**State at session end:** clean working tree on `mpt-dflash`, 21 commits ahead of `origin/mpt-dflash`. All TaskList items resolved.
