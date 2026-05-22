@@ -22493,3 +22493,47 @@ uv run python scripts/qwen35_gguf_bench.py \
 Result: **fits**. Single-run diagnostic: prefill `1855.354 tok/s`, decode `50.877 tok/s` for the one-token decode sample, tracked peak `23.368929 GiB`, HIP sampled peak `23.874512 GiB`, finite final logits, final token id `256`. Resolved auto chunk policy: linear `1024`, MoE `1024`, full-attn query `4096`, full-attn post/RoPE `1024`; AOTriton path remains V3 cache-backed K/V.
 
 Compact artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-task39-32k-smoke.json`. Decision: diagnostic evidence only; no benchmark rollup update because this is a single RX 7900 XTX smoke and W7900/repeated correctness-gated runs remain pending.
+
+## 2026-05-21 — Task #40 GGUF prefill vs PARO diagnosis
+
+Task #40 was missing from the active task store, so replacement task #43 was used. Scope: after the chunked-prefill correctness fixes, compare GGUF 4K/32K prefill behavior against retained PARO evidence without overclaiming cross-hardware/model results.
+
+Hardware/correctness caveat:
+
+- GGUF diagnostics here are on the current local **AMD Radeon RX 7900 XTX / gfx1100**, 23.984375 GiB.
+- PARO retained/source-lineage rows are W7900/gfx1100 and Qwen3.5-35B-A3B-PARO/w4_paro, so deltas below are directional only unless rerun on matching hardware/model.
+- Correctness gate already rerun in task #39: `PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_chunked_prefill.py -q` -> `11 passed`.
+
+Current-code 4K/128 repeat command:
+
+```bash
+HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 1 --measured-runs 3 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-gguf-task40-4k-128-repeat.json
+```
+
+Result: prefill median `2651.915 tok/s` (samples `2649.895`, `2651.915`, `2660.980`), decode median `96.417 tok/s`, tracked peak `22.584312 GiB`, HIP sampled peak `23.128662 GiB`, finite final logits, final token id `220`. Auto chunk policy correctly stayed unchunked at 4K (`reason=below_min_tokens`).
+
+Directional comparison:
+
+- 4K GGUF current-code repeat vs P5.2 PARO hipENGINE diagnostic 4K (`2453.793 tok/s`, W7900): `+8.1%` GGUF, but model/hardware differ and P5.2 is diagnostic.
+- 4K GGUF current-code repeat vs source-lineage parent PARO optimal 4K (`2741.489 tok/s`, W7900): `-3.3%` GGUF, directional only.
+- 4K current-code repeat vs retained P10.D8 GGUF 4K (`2700.015 tok/s`, same local RX 7900 XTX artifact family): `-1.8%`. Because 4K remains unchunked, the only suspicious review-era prefill difference is AOTriton V3 vs the earlier V2 path for the full-context `start=0` case.
+- 32K GGUF diagnostic (`1859.328 tok/s`, RX 7900 XTX, artifact `p10-long-context-chunked-smoke`) vs P5.2 PARO 32K (`1950.955 tok/s`, W7900): `-4.7%`, directional only.
+- 32K GGUF diagnostic vs source-lineage PARO target from `benchmarks/README.md` (`1880 tok/s`, W7900): `-1.1%`, directional only.
+
+Known prefill profile hint from P10.R0 512-token GGUF rocprof (pre-review, diagnostic only): dense Q8_0 WMMA prefill `22.6%` of prefill kernel time, GDN recurrent `19.3%`, full-attention prefill `15.7%`, Q4 selected-MoE `14.2%`, Q5 selected-MoE `9.9%`, router `5.9%`.
+
+Diagnosis / next focus:
+
+1. GGUF prefill is no longer obviously the blocker after chunked-prefill corrections; the large remaining gap appears more decode/memory-headroom than prefill, pending W7900 rerun.
+2. Highest-priority prefill-specific investigation: capture current-code 4K and 32K prefill rocprof traces, then A/B AOTriton V2 vs V3. Candidate low-risk fix: dispatch V2 for unchunked `start=0 && max_seqlen_q==max_seqlen_k` full-context prefill, keep V3 for true query chunks requiring bottom-right causal alignment.
+3. If rocprof still matches P10.R0, the first kernel surface to optimize is dense Q8_0 WMMA prefill / linear-attention GDN, not full attention alone.
+
+Compact diagnostic artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-task40-prefill-vs-paro-diagnosis.json`. No `benchmarks/README.md`/CHANGELOG update: diagnostic only, no retained performance claim.
