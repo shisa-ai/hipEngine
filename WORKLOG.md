@@ -22749,3 +22749,36 @@ Findings:
 Commands were captured in compact artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-decode-repack-residency-audit.json`.
 
 Decision: do **not** add a default no-repack/long-context residency mode now. The ~`0.46 GiB` saving is real but far smaller than the PARO-vs-GGUF payload gap and comes with catastrophic prefill loss in current paths. Keep T16 resident for fast GGUF; revisit only as an explicit emergency max-context mode after `Q4_K_S` or granular kernels are available.
+
+## 2026-05-21 — Q8_0 T16 GEMV scale-broadcast probe rejected
+
+Task #63 investigated the obvious dense `Q8_0` T16 GEMV idea: avoid redundant per-lane loads of the 16 per-column Q8_0 fp16 scale values in `gguf_q8_0_t16_gemv.hip` by loading them on wave lane 0 and broadcasting with `__shfl`.
+
+Temporary change tested:
+
+- Applied the wave-lane0 scale broadcast pattern to all four dense Q8T16 decode kernels (`single`, `dual`, `dual_split`, `triple_split`).
+- Unit/dispatch validation passed before measurement:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q
+# 61 passed
+```
+
+Benchmark command on local RX 7900 XTX/gfx1100 (W7900 not rerun):
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 1 --measured-runs 3 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-gguf-q8-scale-broadcast-4k-128.json
+```
+
+Result: rejected. Candidate 4K/128 median decode was `70.879 tok/s` versus the current V3 baseline `96.755 tok/s` (`-26.7%`). Prefill was essentially unchanged (`2647.808 tok/s`, `-0.24%`). The simple broadcast cut scale loads but added enough shuffle/control overhead to badly regress decode. Reverted the source change before commit and reran the kernel/dispatch tests (`61 passed`). Compact rejection artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-q8-t16-scale-broadcast-rejected.json`.
+
+Decision: do not retry this exact scale-broadcast form. Next Q8_0 work should start from current-code rocprof/SASS or alternative work mapping, not from lane0 `__shfl` broadcast.
