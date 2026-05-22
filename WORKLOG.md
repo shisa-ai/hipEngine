@@ -21658,3 +21658,18 @@ HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp-bench.py \
 ```
 
 Result: all 9 prompts exact. Aggregate B=3 `cycle_cost=3.756` AR-token equivalents, visible/cycle 1.895, accepted/cycle 0.895, acceptance 0.303, actual MTP/AR 0.510x. Artifact copied to `benchmarks/results/2026-05-22-hipengine-mtp-bench-suite-w7900-current-m12.6c.json`. Still far from the <2 cycle-cost target; next bottleneck work should focus on reducing verifier cycle cost, not acceptance policy changes.
+
+## 2026-05-22 MTP decode-shaped verifier ablation start
+
+Started the next optimization pass by trying to make the B=3 verifier look more like normal decode and less like small prefill. No code retained yet; exactness rejected the first low-risk-looking routes.
+
+Ablations tried:
+
+- Stock per-row W4 GEMV fallback for `project_pack8_fp16` small verifier batches (`rows <= HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD`) instead of `awq_fusedw4_prefill_*` for sites not enabled under the M12.6 multi-row mask. Command:
+  `HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/mtp-bench.py --mode hipengine-current --prompt-names translation --candidate-budgets 3 --runs 1 --max-tokens 64 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off --raw-root /tmp/hipengine-mtp-decodeshaped-w4-translation --out /tmp/hipengine-mtp-decodeshaped-w4-translation.json`.
+  Result: rejected; `translation` exact-AR mismatch. This confirms the fragile single W4 sites cannot simply use the batched stock decode GEMV even though the shape is closer to target decode.
+- Stock per-row W4 GEMV only for shared-expert down in small verifier batches. Same command passed `translation` (`exact=True`, `C=3.367`) but failed the full 9-prompt suite at `summarize` with exact-AR mismatch. Rejected.
+- Existing grouped-MoE verifier route forced at `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS=4` on `translation`. Exact, but worse (`C=3.734` vs current translation ~3.4), so keep the default `16` threshold.
+- Selected-expert MoE GEMV `threads=64` probe under env-only local patch. `translation` stayed exact but worse (`C=3.411`); the leaf rocprof smoke then produced exact-AR mismatch. Rejected; do not reduce selected-MoE pack8 threads blindly.
+
+Conclusion: the obvious decode-shaped routing flips are numerically fragile for MTP exactness. Next retained change should either (1) make a prefill-numerics-compatible small-B W4 kernel for the fragile sites, or (2) attack a non-W4 bottleneck (`linear_attention_gdn_decode` or selected-expert MoE) without changing verifier logits.
