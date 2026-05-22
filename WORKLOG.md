@@ -23069,3 +23069,31 @@ uv run python scripts/qwen35_gguf_bench.py \
 Both runs reported finite final logits and stable final token IDs (`[220,220,220]` for Q4_K_M; `[85,85,85]` for Q4_K_S). This brings Q4_K_S above `100 tok/s` and narrows the prior local PARO 4K/128 decode gap (`106.637 tok/s`, not rerun here) to ~`6.0%` for Q4_K_S and ~`7.0%` for Q4_K_M.
 
 Retained artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-direct-selected-moe-c1-4k128-accepted.json`. Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md`. W7900 remains unverified for this pass.
+
+## 2026-05-22 — Small-kernel second pass rejected after direct-selected baseline
+
+Reopened Task #4 per request after the retained router256 and direct-selected-MoE changes. Current comparison baseline is `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-direct-selected-moe-c1-4k128-accepted.json`: Q4_K_M 4K/128 median decode `99.226 tok/s`, Q4_K_S median decode `100.255 tok/s`.
+
+Additional RMSNorm/router/GDN/graph probes, all rejected or not retained:
+
+1. **Decode RMSNorm/add_rmsnorm/final norm `threads=128`.** Temporarily passed `threads=128` to rows=1 attention RMSNorm, rows==1 post-attention add_rmsnorm, and final output RMSNorm calls. Targeted tests passed (`15 passed`), but Q4_K_S 4K/128 single-run decode regressed to `97.874 tok/s` (`-2.38%` vs current Q4_K_S baseline). Reverted before Q4_K_M.
+2. **Router 128 threads.** Temporarily changed the retained split-shared cooperative router from 256 to 128 threads. Q4_K_S 4K/128 single-run decode was `99.967 tok/s` (`-0.29%` vs current Q4_K_S baseline). Reverted.
+3. **Router 64 threads.** Q4_K_S 4K/128 single-run decode was `99.139 tok/s` (`-1.11%`). Reverted. Retained router256 remains the best tested router shape.
+4. **GDN `ssm_out` f32-input shortcut.** Considered removing the decode `f32_to_bf16` cast before `ssm_out` by routing Q8T16 through its f32-input GEMV variant. Rejected without perf retention because `tests/test_qwen35_gguf_decode_repack_semantics.py` explicitly guards against this P10.X1 regression: changing linear-attention `ssm_out` to `activation_dtype=GGUF_ACTIVATION_F32` is not equivalent enough for MoE routing. This is a math-contract boundary, not a safe small-kernel cleanup.
+5. **Graph `--graph-steps-per-replay 2`.** No source change. 3-run 4K/128 diagnostics were finite/stable but not enough to change runtime defaults: Q4_K_M median decode `99.226 tok/s` (`+0.0005%` vs current baseline), Q4_K_S median decode `100.367 tok/s` (`+0.11%`). Kept as optional benchmark knob; changing the default replay semantics from one-step to two-step is not justified by a neutral Q4_K_M result.
+
+Post-revert validation:
+
+```bash
+PYTHONPATH=. uv run pytest \
+  tests/test_qwen35_gguf_decode_repack_semantics.py \
+  tests/test_qwen35_gguf_compact_moe_gemv_routing.py \
+  tests/test_qwen35_gguf_decode_graph_policy.py \
+  tests/test_qwen35_router_plan.py -q
+# 18 passed
+
+PYTHONPATH=. uv run pytest tests/test_gguf_linear_dispatch.py -q
+# 37 passed
+```
+
+Compact diagnostic artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-small-kernel-second-pass-rejected.json`. No source change retained in this pass; the current retained small-kernel win remains router256 from `f066856`, plus direct-selected-MoE from `eabf3ae`.
