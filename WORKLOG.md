@@ -23005,3 +23005,23 @@ uv run python scripts/qwen35_gguf_bench.py \
 Both runs reported finite final logits and stable final token IDs (`[220,220,220]` for Q4_K_M; `[85,85,85]` for Q4_K_S). This narrows the prior local PARO 4K/128 decode gap (`106.637 tok/s`, not rerun here) to ~`7.2%` for Q4_K_M and ~`6.5%` for Q4_K_S.
 
 Retained artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-router256-4k128-accepted.json`. Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the dual-column retained row. W7900 remains unverified for this pass.
+
+## 2026-05-22 — Dense Q8_0 T16 second pass rejected after router256 baseline
+
+Reopened Task #2 per request and kept the dual-column rule: Q8_0 T16 decode work must be acceptable for both Q4_K_M and Q4_K_S. Current comparison baseline is now the retained router256 artifact (`benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-router256-4k128-accepted.json`): Q4_K_M 4K/128 median decode `98.924 tok/s`; Q4_K_S 4K/128 median decode `99.759 tok/s`.
+
+Additional dense/shared Q8_0 T16 probes, all rejected and reverted:
+
+1. **All Q8T16 launches block64.** Changed the four Q8_0 T16 launch sites from block 128 to block 64. Targeted correctness passed (`61 passed`), but Q4_K_S 4K/128 single-run decode dropped to `95.232 tok/s` (`-4.54%` vs router256 Q4_K_S), so the probe failed before Q4_K_M.
+2. **All Q8T16 launches block256.** Corrected version used `__launch_bounds__(256,2)`, block 256, and 8-wave exchange scratch; an intermediate block256/4-wave scratch attempt failed correctness with shared exchange overflow, as expected. Corrected version passed targeted tests (`61 passed`) but Q4_K_S 4K/128 single-run decode was only `98.289 tok/s` (`-1.47%` vs router256 Q4_K_S), so rejected before Q4_K_M.
+3. **Q8T16 shared gate/up+SiLU fusion.** Added a temporary BF16 ABI-preserving fused shared-expert gate/up+SiLU Q8_0 T16 kernel, wrapper/registry key, dispatch helper, runtime routing, and tests. The kernel rounded gate/up accumulators to BF16 before applying SiLU to match the unfused `dual_gemv + silu_mul_dual_out` chain. Correctness/routing tests passed (`71 passed`), but Q4_K_S 4K/128 single-run decode was `97.812 tok/s` (`-1.95%` vs router256 Q4_K_S). Rejected; the extra accumulators/register pressure outweighed the saved SiLU launch.
+
+Final source state: all temporary Q8 changes reverted. Post-revert validation:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q
+# 61 passed
+```
+
+Compact diagnostic artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-q8-t16-second-pass-rejected.json`. Conclusion unchanged but now stronger: hipENGINE-local Q8_0 T16 launch-shape and obvious shared-gate fusion tweaks fail the Q4_K_S gate. Further Q8 progress likely needs parent-workspace kernel R&D or a new packed/layout strategy rather than more local scalar/launch tweaks.
