@@ -1,0 +1,94 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "review_recorded",
+  "performance_claim": false,
+  "label": "p10_memory_decode_optimization_pass_review",
+  "date": "2026-05-21",
+  "git_commit": "cf6a779",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "note": "local diagnostics only; W7900 not rerun"
+  },
+  "scope": "Tasks #61-#65 GGUF memory/decode optimization pass after PARO comparison.",
+  "accepted_changes": [
+    {
+      "task": 61,
+      "commit": "4024a1a",
+      "summary": "Removed resident bulk-prefill scratch key/value caches and unused full_key_bf16 allocation.",
+      "evidence": "Targeted GGUF pytest bundle 12 passed; 32K/1 tracked peak 23.368929 -> 23.302035 GiB, saving 68.5 MiB."
+    }
+  ],
+  "rejected_or_deferred": [
+    {
+      "task": 62,
+      "commit": "08222f6",
+      "summary": "No-repack residency mode deferred.",
+      "evidence": "512/1 raw/no-repack saved 468 MiB but dropped prefill 1545 -> 117 tok/s and decode 53 -> 40 tok/s; keep T16 resident."
+    },
+    {
+      "task": 63,
+      "commit": "eb888e5",
+      "summary": "Q8_0 T16 lane0 scale-broadcast rejected.",
+      "evidence": "4K/128 decode regressed 96.755 -> 70.879 tok/s (-26.7%); source change reverted."
+    },
+    {
+      "task": 64,
+      "commit": "cf6a779",
+      "summary": "Selected-MoE Q4 T16 launch-bounds tweak rejected.",
+      "evidence": "4K/128 decode 96.746 -> 96.651 tok/s (-0.10%); source change reverted. Hot path already fuses Q4 gate/up+SiLU; Q5/Q6 direct kernels already use 128-thread launch bounds."
+    }
+  ],
+  "current_4k_128_after_passes": {
+    "source_json": "/tmp/hipengine-gguf-selected-t16-baseline-4k-128.json",
+    "prefill_tok_s_median": 2672.7649662354515,
+    "prefill_tok_s_samples": [
+      2654.951501202349,
+      2672.7649662354515,
+      2681.5444267698863
+    ],
+    "decode_tok_s_median": 96.74621160824445,
+    "decode_tok_s_samples": [
+      96.66517844741455,
+      96.74621160824445,
+      97.04684745096581
+    ],
+    "tracked_peak_allocated_gib_median": 22.571860380470753,
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      220,
+      220,
+      220
+    ]
+  },
+  "comparison_vs_local_paro_4k_128": {
+    "paro_w4_paro_prefill_tok_s": 2710.869,
+    "gguf_q4km_current_prefill_tok_s": 2672.7649662354515,
+    "prefill_delta_pct": -1.4056021801329588,
+    "paro_w4_paro_decode_tok_s": 106.637,
+    "gguf_q4km_current_decode_tok_s": 96.74621160824445,
+    "decode_delta_pct": -9.275193780541036,
+    "paro_w4_paro_tracked_peak_gib": 20.047,
+    "gguf_q4km_current_tracked_peak_gib": 22.571860380470753,
+    "tracked_peak_extra_gib": 2.524860380470752
+  },
+  "comparison_vs_prior_local_gguf_4k_128_diagnostic": {
+    "prior_gguf_prefill_tok_s": 2557.865,
+    "current_prefill_tok_s_median": 2672.7649662354515,
+    "prefill_delta_pct": 4.492026210744182,
+    "prior_gguf_decode_tok_s": 96.527,
+    "current_decode_tok_s_median": 96.74621160824445,
+    "decode_delta_pct": 0.227098747753951,
+    "prior_gguf_tracked_peak_gib": 22.584,
+    "current_tracked_peak_gib_median": 22.571860380470753,
+    "tracked_peak_delta_gib": -0.012139619529246914
+  },
+  "next_actions_ranked": [
+    "Measure/add Q4_K_S GGUF column; this is the largest likely memory lever because Q4_K_M carries 9.257 GiB of Q5/Q6/Q8 payload.",
+    "For memory beyond Q4_K_S, consider a granular/emergency no-T16 residency mode only if long-context is more important than prefill/decode speed.",
+    "For decode speed, avoid simple metadata-load tweaks; use structural selected-MoE grouping/fusion and Q8 dense/shared work mapping changes, ideally guided by rocprof/SASS.",
+    "For max-fit, re-probe GGUF 32K/128 and near-35K after Q4_K_S or any larger memory change; the 68.5 MiB scratch cleanup alone is not enough to move 128K."
+  ],
+  "rollup_update": false,
+  "rollup_reason": "Diagnostic/local-only, mixed model/quant comparison, rejected probes retained only as artifacts, and no full retained evidence bundle for a new benchmark row."
+}

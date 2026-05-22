@@ -22816,3 +22816,26 @@ uv run pytest tests/test_gguf_t16_selected_gemv_decode.py \
 Commands and samples are captured in `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-selected-moe-t16-launchbounds-rejected.json`.
 
 Decision: reverted the temporary source change and reran the selected T16/routing/graph tests (`77 passed`). The obvious local per-kernel cleanup does not improve decode. Next selected-MoE work should be structural (grouped/tiled MoE to reduce the ~120 selected-expert dispatches/token, or a kernel that combines more expert work), not launch-bounds or scalar metadata tweaks in the existing row-GEMV shape.
+
+## 2026-05-21 — GGUF memory/decode pass re-review
+
+Task #65 summarized the #61–#64 memory/decode pass and added a compact review artifact:
+`benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-memory-decode-pass-review.json`.
+
+Accepted:
+
+- `4024a1a` removed resident bulk-prefill scratch K/V and unused `full_key_bf16`, saving `68.5 MiB` tracked peak on the 32K/1 diagnostic (`23.368929 -> 23.302035 GiB`).
+
+Rejected/deferred:
+
+- No-repack/T16 residency mode: saves `~468 MiB` at 512/1 but drops safe prefill from `1545` to `117 tok/s`; keep T16 resident for fast GGUF.
+- Q8_0 T16 lane0 scale-broadcast: rejected/reverted, 4K/128 decode `96.755 -> 70.879 tok/s` (`-26.7%`).
+- Selected-MoE T16 Q4 direct launch-bounds cleanup: rejected/reverted, 4K/128 decode `96.746 -> 96.651 tok/s` (`-0.10%`, no upside).
+
+Current post-pass 4K/128 local RX 7900 XTX diagnostic from `/tmp/hipengine-gguf-selected-t16-baseline-4k-128.json`:
+
+- GGUF `Q4_K_M`: prefill median `2672.765 tok/s`, decode median `96.746 tok/s`, tracked peak median `22.571860 GiB`, finite logits all runs.
+- Local PARO `w4_paro` comparison row from the memory artifact: prefill `2710.869 tok/s`, decode `106.637 tok/s`, tracked peak `20.047 GiB`.
+- Delta: GGUF is `-1.4%` prefill, `-9.3%` decode, `+2.525 GiB` tracked memory at 4K/128.
+
+Decision: no retained rollup update. The comparison remains local RX 7900 XTX, mixed model/quant, and most probes were rejected diagnostics. Next real lever is the `Q4_K_S` GGUF column; after that, consider an explicit emergency no-T16 residency mode only if the long-context goal outweighs speed.

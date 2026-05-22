@@ -2891,3 +2891,36 @@ Interpretation:
   (`1545 -> 117 tok/s` prefill in safe mode). Keep T16 resident for the fast
   path; use `Q4_K_S` or a future granular/emergency long-context mode for larger
   memory movement.
+
+#### P10.D13 — Memory/decode optimization pass review
+
+Status update 2026-05-21: tasks #61–#65 reviewed the obvious GGUF memory/decode
+levers after the PARO comparison. Compact summary artifact:
+`benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-memory-decode-pass-review.json`.
+
+| Lever | Decision | Evidence |
+| --- | --- | --- |
+| Remove resident prefill scratch K/V | Accepted | 32K/1 tracked peak `23.368929 -> 23.302035 GiB` (`68.5 MiB` saved), targeted GGUF tests passed. |
+| Disable T16 decode-repack residency | Deferred | Saves `~468 MiB` on 512/1, but safe raw/no-repack prefill falls `1545 -> 117 tok/s`; keep T16 resident for the fast path. |
+| Q8_0 T16 lane0 scale broadcast | Rejected | 4K/128 decode regressed `96.755 -> 70.879 tok/s` (`-26.7%`); source change reverted. |
+| Selected-MoE T16 launch-bounds cleanup | Rejected | Q4 direct `__launch_bounds__(128,4)` probe was neutral/slightly negative (`96.746 -> 96.651 tok/s`); source change reverted. |
+
+Current post-pass 4K/128 local RX 7900 XTX diagnostic is `2672.765 tok/s`
+prefill, `96.746 tok/s` decode, and `22.571860 GiB` tracked peak. Against the
+local PARO `w4_paro` 4K/128 diagnostic (`2710.869 tok/s` prefill,
+`106.637 tok/s` decode, `20.047 GiB` tracked), current `Q4_K_M` GGUF is about
+`-1.4%` prefill, `-9.3%` decode, and `+2.525 GiB` tracked memory. This remains
+a diagnostic mixed-model/mixed-quant comparison, not a retained benchmark row.
+
+Next actions after this pass:
+
+1. Add the `Q4_K_S` GGUF column first; `Q4_K_M` contains `9.257 GiB` of
+   Q5/Q6/Q8 payload, so a smaller GGUF quant is the most plausible memory
+   lever.
+2. Treat no-repack/T16 residency reduction as an explicit emergency
+   long-context mode only after quant choice is measured, because current raw
+   paths sacrifice too much speed.
+3. For decode speed, skip simple scalar metadata-load tweaks. The likely wins
+   are structural: grouped/tiled selected-MoE decode to reduce dispatch/work
+   composition, and a redesigned Q8_0 dense/shared GEMV mapping guided by
+   profiler/SASS evidence.
