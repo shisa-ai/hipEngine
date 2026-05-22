@@ -22604,3 +22604,73 @@ uv run python scripts/qwen35_gguf_bench.py \
 Result: prefill `1857.491 tok/s`, tracked peak `23.368929 GiB`, HIP sampled peak `23.874512 GiB`, finite logits, final token id `256`.
 
 Decision: keep **V3 as the default/standard**. V2 is retained only as a diagnostic env path for full-context A/B. AOTriton V2/V3 is not the next prefill bottleneck unless rocprof later shows full-attention prefill dominating. Compact diagnostic artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-aotriton-v2-v3-diagnostic.json`.
+
+## 2026-05-21 — Local RX 7900 XTX GGUF vs PARO memory comparison
+
+Ran a single-run diagnostic comparison requested by the user on the current local **AMD Radeon RX 7900 XTX / gfx1100** (23.984375 GiB). This is not a retained rollup because GGUF is Qwen3.6-35B-A3B UD-Q4_K_M while PARO is Qwen3.5-35B-A3B-PARO/w4_paro; benchmark scripts report finite-logit/generated-token sanity only, not a full KL/text-quality gate.
+
+Model paths:
+
+- GGUF: `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
+- PARO: `/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd`
+
+Commands used:
+
+```bash
+# GGUF common, P in {512,4096,32768}
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-length <P> --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-local-compare-gguf-<P>-128.json
+
+# PARO common, P in {512,4096,32768}
+PYTHONPATH=. uv run python scripts/qwen35_paro_bench.py \
+  --model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --prompt-length <P> --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --json /tmp/hipengine-local-compare-paro-<P>-128.json
+
+# PARO 128K lower-memory static chunk policy
+PYTHONPATH=. uv run python scripts/qwen35_paro_bench.py \
+  --model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd \
+  --prompt-length 131072 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 \
+  --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 --no-prefill-chunk-autotune \
+  --json /tmp/hipengine-local-compare-paro-131072-128-static4096.json
+```
+
+Results (single-run diagnostics):
+
+| Workload | Engine/model | Prefill tok/s | Decode tok/s | Tracked peak GiB | HIP sampled peak GiB | Notes |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| 512/128 | GGUF Qwen3.6 UD-Q4_K_M | 1546.099 | 89.783 | 21.344 | 21.811 | finite logits |
+| 512/128 | PARO Qwen3.5 w4_paro | 2101.158 | 107.314 | 18.176 | 18.192 | finite generated preview |
+| 4K/128 | GGUF Qwen3.6 UD-Q4_K_M | 2557.865 | 96.527 | 22.584 | 23.125 | finite logits |
+| 4K/128 | PARO Qwen3.5 w4_paro | 2710.869 | 106.637 | 20.047 | 18.601 | finite generated preview |
+| 32K/128 | GGUF Qwen3.6 UD-Q4_K_M | 1868.782 | 84.778 | 23.369 | 23.875 | finite logits |
+| 32K/128 | PARO Qwen3.5 w4_paro | 2082.012 | 92.908 | 20.320 | 19.441 | finite generated preview |
+| 128K/128 | PARO Qwen3.5 w4_paro | 1023.868 | 61.800 | 23.288 | 22.408 | static 4096-query chunks; fits |
+
+GGUF max-fit probes:
+
+- `35070/1` fit with `max_sequence_length=35072`: prefill `1799.893 tok/s`, tracked peak `23.431675 GiB`, HIP sampled peak `23.911133 GiB`, finite logits.
+- `36864/1` failed during prefill with `HSA_STATUS_ERROR_OUT_OF_RESOURCES` / `HIP error 999` after memory reached 0 MiB free.
+- `40960/1` failed during session allocation with `HIP error 2: out of memory`.
+
+Structural VRAM diagnosis:
+
+- GGUF's raw model payload is larger: GGUF tensor payload `20.604 GiB` / file size `20.614 GiB`; local PARO `model.safetensors` file size `19.237 GiB`.
+- GGUF UD-Q4_K_M is mixed quant: rough payload split is MoE/FFN `18.428 GiB`, attention `1.017 GiB`, embedding/lm/norm `0.892 GiB`, linear-attn `0.267 GiB`; by quant type Q4_K `11.250 GiB`, Q5_K `6.359 GiB`, Q8_0 `1.894 GiB`, Q6_K `1.004 GiB`, F32 `0.097 GiB`.
+- GGUF decode-repack keeps T16 decode-friendly layouts resident for many tensors. This is speed-oriented but structurally leaves less VRAM headroom than PARO's native packed layout.
+- Both models have the same 10 full-attention layers / BF16 KV-cache slope, but GGUF starts ~2.5-3.2 GiB higher at comparable local shapes, so it hits the 24 GiB ceiling around ~35K while PARO can still fit 128K with conservative chunks.
+- Low-hanging GGUF cleanup: `_GGUFFullAttentionPrefillScratch` still allocates one-layer `key_cache`/`value_cache` buffers even though full-attention prefill replaces them with resident KV cache tensors. That is only ~64 MiB at 32K and ~256 MiB at 128K, so useful but not enough alone.
+
+Compact artifact: `benchmarks/results/2026-05-21-local-rx7900xtx-gguf-vs-paro-memory-comparison.json`. No benchmark README/CHANGELOG update because this is diagnostic and cross-model.
