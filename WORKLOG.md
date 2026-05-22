@@ -22923,3 +22923,41 @@ uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dis
 ```
 
 Compact diagnostic artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-q8-t16-decode-probes-rejected.json`. No source change retained. Next decode-gap work should move to structural selected-MoE launch reduction/fusion rather than scalar Q8_0 T16 tweaks.
+
+## 2026-05-22 — Selected-MoE T16 down launch-shape probe rejected
+
+Task #3 started with the narrow selected-MoE decode lever that affects both Q4_K_M and Q4_K_S: the T16 selected single-output down GEMV (`qk_t16_selected_direct_gemv_kernel`) used by Q4_K_S Q4_T16 down and Q4_K_M Q5/Q6_T16 down.
+
+Temporary probe:
+
+- Changed `qk_t16_selected_direct_gemv_kernel` from `__launch_bounds__(128,4)` / block 128 to `__launch_bounds__(256,2)` / block 256.
+- Expanded the wave exchange scratch from 4 to 8 waves.
+- Left Q4 gate/up+SiLU direct GEMV unchanged, since the previous Q4 launch-bounds probe was already rejected.
+
+Correctness/dispatch validation passed:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run pytest tests/test_gguf_t16_selected_gemv_decode.py \
+  tests/test_qwen35_gguf_compact_moe_gemv_routing.py \
+  tests/test_qwen35_gguf_decode_graph_policy.py -q
+# 97 passed
+```
+
+4K/128 Q4_K_S single-run diagnostic with the temporary launch-shape change:
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 0 --measured-runs 1 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-q4ks-selected-t16-qk256-candidate-4096-128.json
+```
+
+Result: rejected. Q4_K_S decode dropped to `92.699 tok/s` vs the current `97.121 tok/s` baseline (`-4.55%`). Reverted before running Q4_K_M because the dual-column gate had already failed. Post-revert validation passed with the same `97 passed` bundle and the source diff is empty. Compact artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-selected-moe-t16-qk256-rejected.json`.
+
+Decision: selected-MoE gap will not close through simple launch-width tuning. The next useful MoE lever is a larger fused design (selected gate/up+SiLU+down or selected-down+combine with preserved BF16 rounding), not another tweak to the existing row-GEMV shape.
