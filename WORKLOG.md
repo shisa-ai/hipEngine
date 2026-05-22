@@ -23171,3 +23171,23 @@ Final 4K/128 local RX 7900 XTX/gfx1100 medians vs the pre-final-optimization dua
 Both final runs report `effective_use_wmma_prefill=true`, `effective_use_gemv_decode=true`, finite final logits, stable final token IDs, and unchanged tracked peak memory. The prior local PARO comparison (`106.637 tok/s`, not rerun) leaves the final GGUF 4K/128 decode gap at ~`6.89%` for Q4_K_M and ~`5.98%` for Q4_K_S.
 
 Final accepted artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-final-gate-4k128-accepted.json`. Updated `benchmarks/README.md` rows and `benchmarks/CHANGELOG.md` final-gate entry.
+
+## 2026-05-22 — Selected-MoE T16 down block64 probes rejected after final gate
+
+Reopened Task #3 again after final gates. Current comparison baseline is `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-final-gate-4k128-accepted.json`: Q4_K_M 4K/128 median decode `99.292 tok/s` with final IDs `[220,220,220]`; Q4_K_S median decode `100.257 tok/s` with final IDs `[85,85,85]`.
+
+New selected-MoE direct-down launch-shape probes, both rejected and reverted:
+
+1. **All selected T16 direct down qtypes block64.** Temporarily changed `launch_qk_direct` for Q4_K/Q5_K/Q6_K selected T16 down from block 128 to block 64. Targeted selected/routing tests passed. 3-run 4K/128 throughput improved for both columns (Q4_K_S `101.270 tok/s`, `+1.01%`; Q4_K_M `100.239 tok/s`, `+0.95%`), but Q4_K_M final IDs changed from `[220,220,220]` to `[158729,158729,158729]`. Rejected as Q5/Q6 selected-down math-contract drift despite the speedup.
+2. **Q4_K selected T16 direct down block64 only.** Narrowed the launch-shape change to qtype 4 so Q4_K_M's Q5/Q6 selected down stayed at block 128. This preserved Q4_K_M final-token sanity on a single run but regressed Q4_K_M decode to `98.940 tok/s` (`-0.36%` vs final gate), so Q4_K_S was not rerun for the narrowed variant. Rejected under the dual-column performance gate.
+
+Post-revert validation:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run pytest tests/test_gguf_t16_selected_gemv_decode.py \
+  tests/test_qwen35_gguf_compact_moe_gemv_routing.py --tb=short
+# 92 passed
+```
+
+Compact diagnostic artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-selected-moe-down64-rejected.json`. No source change retained. Note for future R&D: selected down block64 is genuinely promising for Q4_K_S, but Q5/Q6 reduction-order sensitivity makes it unsafe for Q4_K_M without a stronger correctness strategy.
