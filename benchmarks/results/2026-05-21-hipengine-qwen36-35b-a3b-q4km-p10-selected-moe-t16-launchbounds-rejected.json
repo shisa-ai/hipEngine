@@ -1,0 +1,79 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "rejected_neutral_or_slight_regression",
+  "performance_claim": false,
+  "label": "p10_selected_moe_t16_launch_bounds_probe",
+  "date": "2026-05-21",
+  "git_commit_under_test": "temporary_working_tree_based_on_eb888e5",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local RX 7900 XTX / gfx1100; W7900 not rerun"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "scope": "Selected-MoE T16 decode GEMV family: Q4_K gate/up direct and fused-SiLU direct kernels plus Q5_K/Q6_K down direct kernels. No selected-MoE Q8_0 T16 kernel is present in the current path; Q8_0 T16 is dense/shared and was handled separately.",
+  "code_audit": {
+    "current_decode_dispatch": "Runtime direct decode dispatch uses q4_k_t16_selected_dual_silu_direct_gemv_kernel for Q4 gate/up+SiLU, qk_t16_selected_direct_gemv_kernel<5> for Q5 down, and qk_t16_selected_direct_gemv_kernel<6> for Q6 down.",
+    "already_fused": "Q4 gate/up+SiLU is already fused in the direct decode path, avoiding separate gate/up output buffers and SiLU kernel for the hot path.",
+    "q5_q6_launch_bounds": "Q5/Q6 direct kernels already use __launch_bounds__(128,4) with 128-thread launches."
+  },
+  "change_tested": "Temporary launch-bounds alignment probe: changed q4_k_t16_selected_dual_direct_gemv_kernel and q4_k_t16_selected_dual_silu_direct_gemv_kernel from __launch_bounds__(256,2) to __launch_bounds__(128,4) to match their 128-thread direct launch. Change was reverted before commit because E2E decode did not improve.",
+  "validation": {
+    "pytest_after_change": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_t16_selected_gemv_decode.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_decode_graph_policy.py -q -> 77 passed",
+    "pytest_after_revert": "same command -> 77 passed",
+    "correctness_scope": "Selected T16 synthetic correctness/dispatch tests, routing/graph policy tests, and finite logits in E2E benchmark."
+  },
+  "commands": {
+    "baseline": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-selected-t16-baseline-4k-128.json",
+    "candidate": "same command after temporary launch-bounds change, --json /tmp/hipengine-gguf-selected-t16-launchbounds128-4k-128.json"
+  },
+  "baseline": {
+    "prefill_tok_s_median": 2672.7649662354515,
+    "prefill_tok_s_samples": [
+      2654.951501202349,
+      2672.7649662354515,
+      2681.5444267698863
+    ],
+    "decode_tok_s_median": 96.74621160824445,
+    "decode_tok_s_samples": [
+      96.66517844741455,
+      96.74621160824445,
+      97.04684745096581
+    ],
+    "tracked_peak_allocated_gib_median": 22.571860380470753,
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      220,
+      220,
+      220
+    ]
+  },
+  "candidate": {
+    "prefill_tok_s_median": 2673.04728102209,
+    "prefill_tok_s_samples": [
+      2679.53613859955,
+      2667.693306541305,
+      2673.04728102209
+    ],
+    "decode_tok_s_median": 96.65143689391925,
+    "decode_tok_s_samples": [
+      96.65143689391925,
+      96.0619580415506,
+      96.67989766030624
+    ],
+    "tracked_peak_allocated_gib_median": 22.571860380470753,
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      220,
+      220,
+      220
+    ]
+  },
+  "delta": {
+    "decode_tok_s_delta_pct": -0.09796219691678987,
+    "prefill_tok_s_delta_pct": 0.010562649174339356
+  },
+  "decision": "Rejected/reverted as not a speed win. Current obvious per-kernel launch-bounds cleanup is neutral/slightly negative at 4K/128 (-0.10% median decode, within noise but no upside). Next selected-MoE speed work should be structural: grouped/tiled MoE to reduce the ~120 selected-expert dispatches/token or combine Q4/Q5/Q6 expert work, not scalar metadata tweaks in the existing direct GEMV shape."
+}

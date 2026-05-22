@@ -22782,3 +22782,37 @@ uv run python scripts/qwen35_gguf_bench.py \
 Result: rejected. Candidate 4K/128 median decode was `70.879 tok/s` versus the current V3 baseline `96.755 tok/s` (`-26.7%`). Prefill was essentially unchanged (`2647.808 tok/s`, `-0.24%`). The simple broadcast cut scale loads but added enough shuffle/control overhead to badly regress decode. Reverted the source change before commit and reran the kernel/dispatch tests (`61 passed`). Compact rejection artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-q8-t16-scale-broadcast-rejected.json`.
 
 Decision: do not retry this exact scale-broadcast form. Next Q8_0 work should start from current-code rocprof/SASS or alternative work mapping, not from lane0 `__shfl` broadcast.
+
+## 2026-05-21 — Selected-MoE T16 GEMV launch-bounds probe rejected
+
+Task #64 audited the selected-MoE T16 decode GEMV family after the Q8_0 probe.
+
+Code-path audit:
+
+- The current direct decode path already uses the T16 replacement-layout kernels:
+  - Q4 gate/up: `q4_k_t16_selected_dual_silu_direct_gemv_kernel<unsigned short>` for fused gate/up+SiLU, with `q4_k_t16_selected_dual_direct_gemv_kernel` retained for the unfused fallback/test path.
+  - Q5 down: `qk_t16_selected_direct_gemv_kernel<unsigned short, 5>`.
+  - Q6 down/lm-selected style: `qk_t16_selected_direct_gemv_kernel<unsigned short, 6>`.
+- There is no selected-MoE Q8_0 T16 kernel in the current GGUF path; Q8_0 T16 is the dense/shared family covered by task #63.
+- Q5/Q6 direct kernels already launch 128 threads with `__launch_bounds__(128, 4)`. Q4 direct kernels launch 128 threads but were annotated `__launch_bounds__(256, 2)`, so the obvious probe was to align those annotations to `__launch_bounds__(128, 4)`.
+
+Validation with the temporary Q4 launch-bounds change:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run pytest tests/test_gguf_t16_selected_gemv_decode.py \
+  tests/test_qwen35_gguf_compact_moe_gemv_routing.py \
+  tests/test_qwen35_gguf_decode_graph_policy.py -q
+# 77 passed
+```
+
+4K/128 local RX 7900 XTX/gfx1100 benchmark (single 3-run diagnostic pair, W7900 not rerun):
+
+| Probe | Prefill tok/s median | Decode tok/s median | Tracked peak GiB | Decision |
+| --- | ---: | ---: | ---: | --- |
+| Baseline current T16 selected MoE | `2672.765` | `96.746` | `22.571860` | keep |
+| Q4 direct `__launch_bounds__(128,4)` temporary probe | `2673.047` | `96.651` | `22.571860` | reject (`-0.10%` decode, no upside) |
+
+Commands and samples are captured in `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-selected-moe-t16-launchbounds-rejected.json`.
+
+Decision: reverted the temporary source change and reran the selected T16/routing/graph tests (`77 passed`). The obvious local per-kernel cleanup does not improve decode. Next selected-MoE work should be structural (grouped/tiled MoE to reduce the ~120 selected-expert dispatches/token, or a kernel that combines more expert work), not launch-bounds or scalar metadata tweaks in the existing row-GEMV shape.
