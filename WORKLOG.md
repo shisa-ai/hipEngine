@@ -17998,3 +17998,25 @@ wc -l docs/RELAXED.md
 ```
 
 Re-read `docs/RELAXED.md` end-to-end after the rewrite.
+
+## 2026-05-23 — relaxed-mode speedup expectation band
+
+Added `docs/RELAXED.md` §"Expected relaxed-mode speedup bands" so the relaxed-precision plan has an explicit planning expectation instead of only per-kernel ceilings. The section frames relaxed mode as a single-digit to low-double-digit decode speedup program, not a 2× path:
+
+- T1 fast-math only: expected `0-2%` decode, stretch `~3%`.
+- T2 layout/fusion: expected `5-10%` decode, stretch `~12-15%`.
+- T3 KV quant/dequant: expected `0-3%` at 4K decode and `5-10%` at 32K+, stretch `~15%` at 128K if fused dequant overhead is fixed.
+- Practical retained relaxed profile: expected `8-15%` decode, stretch `~20%`.
+- Aggressive RDNA3 profile with Q8 activation ABI + `v_dot4_i32_iu8`/Marlin-K retry: expected `15-25%` decode if it works, stretch `~30%`.
+- Linear-attention prefill relaxed profile: expected `5-30%` prefill on linear-attention-heavy models, tracked separately from decode.
+
+The section explicitly states that anything near 2× would require a different algorithmic lever such as high-acceptance speculative decoding or a different model/kernel mix; relaxed precision alone is not expected to deliver it.
+
+Validation:
+
+```bash
+git diff --check docs/RELAXED.md
+# passed; no output
+```
+
+Re-read the inserted section and surrounding decode-budget/per-kernel sections.

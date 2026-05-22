@@ -306,6 +306,35 @@ Sanity checks:
   `1 / (1 - S(B))`; 18.3% caps at 1.22× even for infinite kernel speedup. The
   realistic relaxed ceiling stacks several modest wins, not one big one.
 
+## Expected relaxed-mode speedup bands
+
+Relaxed mode should be scoped as a **single-digit to low-double-digit decode
+speedup program**, not a 2× plan. The table below converts the per-bucket
+ceilings into planning bands for implementation work. These are expectations
+for a retained profile that still passes the drift gates above; they are not
+benchmark claims.
+
+| Relaxed scope | Main ingredients | Expected retained uplift | Stretch / ceiling | Why it is not 2× |
+| --- | --- | ---: | ---: | --- |
+| T1 fast-math only | Approximate nonlinear math, FP16/BF16 intermediates in selected elementwise kernels, no layout changes. | 0-2% decode | ~3% | The affected buckets are small or already use fast instructions; most decode time is W4/W8 linear and attention traffic. |
+| T2 layout/fusion | Rotation/RMSNorm/elementwise fusion, fewer glue launches, per-kernel waves/VGPR retune, safe reduction-order changes. | 5-10% decode | ~12-15% | Even eliminating every rotation/RMSNorm/glue inefficiency only touches ~15-20% of the 4K/128 profile; current D1.1/D1.6 prototypes are correct but slightly negative until graph-replay/layout overhead is fixed. |
+| T3 KV quant/dequant | INT8/FP8 KV, fused dequant + attention, better split/merge choices, exact live-span ABI retained. | 0-3% at 4K decode; 5-10% at 32K+ | ~15% at 128K if dequant overhead is fixed | KV bytes dominate only at long context. Parent INT8 decode regressed at 128K when dequant overhead outweighed bandwidth savings, so this requires a better fused path. |
+| Practical retained relaxed profile | T2 launch/layout wins plus a small T3 KV path and selective T1 intrinsics. | 8-15% decode | ~20% | The profile stacks modest wins across several buckets; Amdahl limits any single kernel family. |
+| Aggressive RDNA3 relaxed profile | Practical profile plus Q8 activation ABI and `v_dot4_i32_iu8`/Marlin-K retry for W4 GEMV. | 15-25% decode if it works | ~30% | The largest ALU lever needs a new activation/layout ABI and still only attacks the W4 GEMV share; naive sudot4 on the current layout was much slower. |
+| Linear-attention prefill relaxed profile | Chunkwise/WY-style GDN prefill, GDN RMSNorm+SiLU+rotate fusion, shared-gate sigmoid fusion. | 5-30% prefill on linear-attention-heavy models | model/context dependent | This is a prefill structural lever, not the decode path; it needs separate correctness oracles and long-context drift gates. |
+
+Planning rule of thumb:
+
+- Near-term relaxed work should justify itself at **+5-10% decode** if it is
+  mostly fusion/layout cleanup.
+- A well-executed retained relaxed profile should target **+10-15% decode**.
+- **+20-25% decode** is an aggressive RDNA3 outcome that likely requires the
+  Q8 activation ABI + packed-dot W4 GEMV path, not just turning on fast math.
+- Anything approaching **2×** would require a different algorithmic lever
+  outside this document's scope, such as speculative decoding with high draft
+  acceptance or a fundamentally different model/kernel mix. Relaxed precision
+  alone is not expected to deliver that.
+
 ## Per-kernel relaxed opportunities
 
 Each row below is a relaxed candidate, not an approved change. The "ballpark
