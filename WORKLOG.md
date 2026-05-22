@@ -21737,3 +21737,19 @@ Three concrete next-step source changes the audit surfaces:
 Larger structural item (M13.C): a C-side per-MoE-layer dispatcher that issues all ~10 sub-kernels of one MoE layer inline from C, gated by `HIPENGINE_MOE_C1_LAYER_C_DISPATCH=1`. Numerically identical; collapses ~10 Python/ctypes round-trips per layer × 40 layers = ~400 Python calls/pass into 40. This is the "C layer for Python hot paths" piece. Whether this wins at `graph_mode=off` (pure host overhead removed) vs `graph_mode=auto` (smaller-record graph) is the M13.D measurement.
 
 No code in hipengine/ touched yet. `docs/MTP.md` gained the M13 section (between the M12 implementation track and "Closing the gap with llama.cpp MTP"). This WORKLOG entry is the cross-session handoff so the next agent picks up at M13.B.0 when the W7900 frees up.
+
+## 2026-05-23 M13.B.0 landed (next_hidden write-through; -40 launches/pass)
+
+Wired `out=next_hidden` (and `out=row_out` for c1_loop) through `run_*_moe_*_layer_fp16` and the runner orchestrator so the final MoE combine in every verifier layer writes straight into the trunk `next_hidden` buffer instead of `scratch.moe_out` + a follow-up D2D `hipMemcpyAsync` per layer.
+
+Files touched:
+- `hipengine/runtime/qwen35_paro.py`: added `out: Tensor | None = None` to `run_full_attention_moe_c1_layer_fp16`, `run_linear_attention_moe_tree_tloop_layer_fp16`, `run_linear_attention_moe_chain_tloop_layer_fp16`, `run_moe_grouped_compact_fp16`, `shared_expert_down_combine_residual_fp16` and forwarded `out=out` to the final `run_moe_c1_fp16` / `run_dense_mlp_residual_fp16` / `run_moe_grouped_compact_fp16` calls. `run_moe_c1_fp16` and `run_dense_mlp_residual_fp16` already accepted `out=` (M12.6).
+- `hipengine/runtime/qwen35_paro_runner.py`: `_iterate_verify_chain_layers` passes `out=next_hidden` to chain_tloop / tree_tloop linear-attention calls; `_run_full_attention_chain_batched` and `_run_full_attention_tree_batched` pass `out=next_hidden` to their final MoE call; `_run_full_attention_chain_c1_loop` passes `out=row_out` and guards the trailing memcpy with `if out.ptr != row_out.ptr`.
+
+Validation:
+- `python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py` => OK.
+- Quicksort 8-token smoke at backend=hip_gfx1100, chain_attn_mode in {batched, c1_loop, batched+graph=validate, batched+graph=auto}: all four `exact_ar_match=true`.
+- Full llama.cpp-compatible 9-prompt suite at chain_attn_mode='batched', graph_mode='off', candidate-budget=3, max-tokens=64, runs=1: all 9 prompts `exact=True`. Aggregate `cycle_cost=3.613` AR-token equivalents vs retained tileM=16 baseline `3.716` => **-2.8% diagnostic improvement**. `visible/cycle=1.895`, `actual MTP/AR=0.533x`. Artifact: `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.b0.json`.
+- Leaf rocprof at backend=hip_gfx1100, chain_attn_mode='batched', decode-tokens=32, candidate-budget=3, 29 verifier passes: `kernel_calls/pass=1011.6` vs M12.6c baseline `1052` => **-40.4 launches/pass (-3.8%)**. Kernel-only time `17.32 ms/pass` vs M12.6c `17.38 ms/pass` => within noise as expected (D2D copies are ~5 us each, almost all dispatch overhead). `runtime_copy` family dropped 52 -> 12.6 calls/pass. Artifact: `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b0.json`.
+
+Conclusion: numerically free, exact-AR safe, removes 40 per-layer D2D launches from the captured graph DAG. Modest -2.8% cycle_cost win on the suite; the bigger benefit is that the captured DAG is now ~960 nodes instead of ~1000, which moves M12.1 graph capture one step closer to load-bearing. Next: M13.B.1 (transposed-layout fused rotate+selected_dual GEMV instantiation).

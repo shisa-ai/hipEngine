@@ -2995,6 +2995,7 @@ class Qwen35ParoDecodeState:
         max_positions: int,
         attention_scratch: Qwen35ParoAttentionScratch | None = None,
         moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
+        out: Tensor | None = None,
         tokens: int = 1,
         group_size: int = 128,
         block_size: int = 256,
@@ -3003,6 +3004,9 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        # M13.B.0: ``out`` forwards into the final MoE combine so the per-row
+        # next_hidden D2D copy in ``_run_full_attention_chain_c1_loop`` becomes
+        # a no-op when the caller passes ``out=row_out``.
         if tokens != 1:
             raise ValueError("full-attention+MoE c=1 layer orchestrator currently requires tokens=1")
         attention_scratch = attention_scratch or self.reserve_full_attention_scratch(
@@ -3097,6 +3101,7 @@ class Qwen35ParoDecodeState:
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
+                out=out,
                 tokens=tokens,
                 group_size=group_size,
                 library=library,
@@ -3106,6 +3111,7 @@ class Qwen35ParoDecodeState:
             mlp_input,
             residual,
             scratch=moe_scratch,
+            out=out,
             tokens=tokens,
             group_size=group_size,
             library=library,
@@ -4407,11 +4413,15 @@ class Qwen35ParoDecodeState:
         parent_rows: Tensor,
         linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
         moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
+        out: Tensor | None = None,
         tokens: int,
         group_size: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        # M13.B.0: ``out`` forwards into the final MoE combine so the per-layer
+        # ``next_hidden`` D2D copy in ``_iterate_verify_chain_layers`` becomes a
+        # no-op when the caller passes ``out=next_hidden``.
         """Run one linear-attention layer for a parent-indexed verifier tree.
 
         ``parent_rows`` is a row-major/topological int64 vector where roots use
@@ -4525,6 +4535,7 @@ class Qwen35ParoDecodeState:
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
+                out=out,
                 tokens=tokens,
                 group_size=group_size,
                 library=library,
@@ -4535,6 +4546,7 @@ class Qwen35ParoDecodeState:
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
+                out=out,
                 tokens=tokens,
                 group_size=group_size,
                 library=library,
@@ -4544,6 +4556,7 @@ class Qwen35ParoDecodeState:
             mlp_input,
             residual,
             scratch=moe_scratch,
+            out=out,
             tokens=tokens,
             group_size=group_size,
             library=library,
@@ -4560,11 +4573,15 @@ class Qwen35ParoDecodeState:
         chain_recurrent_state: Tensor,
         linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
         moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
+        out: Tensor | None = None,
         tokens: int,
         group_size: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        # M13.B.0: ``out`` forwards into the final MoE combine so the per-layer
+        # ``next_hidden`` D2D copy in ``_iterate_verify_chain_layers`` becomes a
+        # no-op when the caller passes ``out=next_hidden``.
         """Run one linear-attention layer for a single verifier chain.
 
         For row topology ``[-1, 0, 1, ...]`` this avoids parent-row global
@@ -4669,6 +4686,7 @@ class Qwen35ParoDecodeState:
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
+                out=out,
                 tokens=tokens,
                 group_size=group_size,
                 library=library,
@@ -4679,6 +4697,7 @@ class Qwen35ParoDecodeState:
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
+                out=out,
                 tokens=tokens,
                 group_size=group_size,
                 library=library,
@@ -4688,6 +4707,7 @@ class Qwen35ParoDecodeState:
             mlp_input,
             residual,
             scratch=moe_scratch,
+            out=out,
             tokens=tokens,
             group_size=group_size,
             library=library,
@@ -4951,13 +4971,18 @@ class Qwen35ParoDecodeState:
         scratch: Qwen35ParoGroupedMoeScratch,
         residual: Tensor,
         *,
+        out: Tensor | None = None,
         tokens: int = 1,
         threads: int = 64,
         shared_gate_already_sigmoid: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        # M13.B.0: ``out`` lets the grouped MoE write the combined residual
+        # directly into the caller's ``next_hidden`` buffer instead of
+        # ``scratch.moe_out`` + a follow-up D2D copy.
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
+        target = out if out is not None else scratch.moe_out
         w8a16_library = _library_for(library, "w8a16")
         shared_gate_logits_ptr = scratch.router_logits.ptr + self.config.num_experts * DType.FP32.itemsize
         if not shared_gate_already_sigmoid:
@@ -4984,7 +5009,7 @@ class Qwen35ParoDecodeState:
                 scratch.selected_out.ptr,
                 shared_gate_logits_ptr,
                 residual.ptr,
-                scratch.moe_out.ptr,
+                target.ptr,
                 tokens,
                 self.config.hidden_size,
                 self.config.shared_expert_intermediate_size,
@@ -5003,7 +5028,7 @@ class Qwen35ParoDecodeState:
                 scratch.selected_out.ptr,
                 shared_gate_logits_ptr,
                 residual.ptr,
-                scratch.moe_out.ptr,
+                target.ptr,
                 tokens,
                 self.config.hidden_size,
                 self.config.shared_expert_intermediate_size,
@@ -5013,7 +5038,7 @@ class Qwen35ParoDecodeState:
                 library=w8a16_library,
                 runtime=self.runtime,
             )
-        return scratch.moe_out
+        return target
 
     def shared_expert_w8a16_fp16(
         self,
@@ -5751,11 +5776,16 @@ class Qwen35ParoDecodeState:
         residual: Tensor,
         *,
         scratch: Qwen35ParoGroupedMoeScratch | None = None,
+        out: Tensor | None = None,
         tokens: int = 1,
         group_size: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
+        # M13.B.0: ``out`` writes the final combine into the caller's buffer
+        # instead of ``scratch.moe_out`` + a follow-up D2D copy.  Matches the
+        # ``run_moe_c1_fp16`` contract so the verifier orchestrator can pass
+        # ``out=next_hidden`` through every helper uniformly.
         scratch = scratch or self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         cfg = self.config
         top_k = cfg.num_experts_per_tok
@@ -5861,11 +5891,13 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "combine"),
             runtime=self.runtime,
         )
+        target = out if out is not None else scratch.moe_out
         if self._shared_expert_is_legacy_w8a16():
             self.shared_expert_gate_up_silu_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
             return self.shared_expert_down_combine_residual_fp16(
                 scratch,
                 residual,
+                out=target,
                 tokens=tokens,
                 shared_gate_already_sigmoid=_use_prefill_router_shared_gate_sigmoid_fused(
                     tokens=tokens,
@@ -5881,7 +5913,7 @@ class Qwen35ParoDecodeState:
             shared.ptr,
             shared_gate_logits_ptr,
             residual.ptr,
-            scratch.moe_out.ptr,
+            target.ptr,
             tokens,
             cfg.hidden_size,
             cfg.num_experts + 1,
@@ -5889,7 +5921,7 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "combine"),
             runtime=self.runtime,
         )
-        return scratch.moe_out
+        return target
 
     def run_moe_c1_fp16(
         self,

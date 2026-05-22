@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-05-23
 
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO-MTP-BF16 / MTP W7900/gfx1100 B=3 llama.cpp-compatible prompt suite (M13.B.0 next_hidden write-through): cycle cost `3.716 -> 3.613` AR-token equivalents (−2.8%) and verifier rocprof launches/pass `1052 -> 1011.6` (−40.4, −3.8%) by passing `out=next_hidden`/`out=row_out` through `run_*_moe_*_layer_fp16` helpers so the final MoE combine in every verifier layer writes straight into the trunk buffer instead of `scratch.moe_out` + a follow-up D2D `hipMemcpyAsync` per layer; kernel-only time within noise (`17.38 -> 17.32 ms/pass`); `runtime_copy` family `52 -> 12.6 calls/pass`; all 9 prompts exact at `graph_mode` in {off, auto, validate}; `performance_claim=false`; artifacts `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.b0.json` and `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b0.json`.
 - [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO-MTP-BF16 / MTP W7900/gfx1100 B=3 llama.cpp-compatible prompt suite: cycle cost `3.756 -> 3.716` AR-token equivalents (−1.1%) and verifier rocprof kernel time `17.70 -> 17.38 ms/pass` (−1.8%) by defaulting small-B `awq_fusedw4_prefill_*` output tileM to 16 instead of 32 while keeping exact WMMA prefill numerics; all 9 prompts exact; `performance_claim=false`; artifacts `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-w4-prefill-tilem16.json` and `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-w4-prefill-tilem16.json`.
 
 ## 2026-05-22

@@ -2920,6 +2920,11 @@ class Qwen35ParoResidentSession:
                 self.linear_scratch[layer_id] = linear_scratch
                 moe_scratch = self._reserve_mlp_scratch(state, tokens=rows)
                 self.moe_scratch[layer_id] = moe_scratch
+                # M13.B.0: pass ``out=next_hidden`` so the linear-attention
+                # layer's final MoE combine writes straight into the trunk
+                # ``next_hidden`` buffer.  The orchestrator's trailing
+                # ``if out.ptr != next_hidden.ptr`` memcpy then becomes a
+                # no-op (40 D2D launches/pass eliminated for chain mode).
                 if linear_attn_mode == "chain_tloop":
                     out = state.run_linear_attention_moe_chain_tloop_layer_fp16(
                         hidden,
@@ -2929,6 +2934,7 @@ class Qwen35ParoResidentSession:
                         chain_recurrent_state=linear_scratch.tree_recurrent_state,
                         linear_scratch=linear_scratch,
                         moe_scratch=moe_scratch,
+                        out=next_hidden,
                         tokens=rows,
                         library=self.libraries,
                         stream=stream,
@@ -2941,6 +2947,7 @@ class Qwen35ParoResidentSession:
                         parent_rows=parent_rows,
                         linear_scratch=linear_scratch,
                         moe_scratch=moe_scratch,
+                        out=next_hidden,
                         tokens=rows,
                         library=self.libraries,
                         stream=stream,
@@ -3033,6 +3040,10 @@ class Qwen35ParoResidentSession:
             row_hidden = Tensor.from_handle(hidden.ptr + row * self.hidden_nbytes, (1, self.config.hidden_size), DType.FP16, self.device)
             row_out = Tensor.from_handle(next_hidden.ptr + row * self.hidden_nbytes, (1, self.config.hidden_size), DType.FP16, self.device)
             num_splits = max(1, (int(position) + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
+            # M13.B.0: ``out=row_out`` lands each row's MoE combine result
+            # directly in ``next_hidden``'s row slice; the conditional D2D
+            # below becomes a no-op (one D2D/row/layer eliminated for c1_loop
+            # mode).
             out = state.run_full_attention_moe_c1_layer_fp16(
                 row_hidden,
                 key_cache=key_cache,
@@ -3045,12 +3056,14 @@ class Qwen35ParoResidentSession:
                 max_positions=self.max_sequence_length,
                 attention_scratch=attention_scratch,
                 moe_scratch=moe_scratch,
+                out=row_out,
                 chunk_size=self.decode_chunk_size,
                 num_splits=num_splits,
                 library=self.libraries,
                 stream=stream,
             )
-            self.runtime.memcpy_async(row_out.ptr, out.ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+            if out.ptr != row_out.ptr:
+                self.runtime.memcpy_async(row_out.ptr, out.ptr, self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
 
     def _run_full_attention_chain_batched(
         self,
@@ -3164,12 +3177,17 @@ class Qwen35ParoResidentSession:
             library=self.libraries,
             stream=stream,
         )
+        # M13.B.0: ``out=next_hidden`` lets the MoE combine write straight
+        # into the trunk ``next_hidden`` buffer, so the conditional D2D
+        # below becomes a no-op (10 launches/pass eliminated for the
+        # chain-batched full-attention layers).
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         if dense_mlp:
             out = state.run_dense_mlp_residual_fp16(
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
+                out=next_hidden,
                 tokens=rows,
                 library=self.libraries,
                 stream=stream,
@@ -3179,6 +3197,7 @@ class Qwen35ParoResidentSession:
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
+                out=next_hidden,
                 tokens=rows,
                 library=self.libraries,
                 stream=stream,
@@ -3378,12 +3397,16 @@ class Qwen35ParoResidentSession:
             library=self.libraries,
             stream=stream,
         )
+        # M13.B.0: ``out=next_hidden`` same rationale as the chain-batched
+        # path; the tree orchestrator writes its MoE combine directly into
+        # the trunk buffer.
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         if dense_mlp:
             out = state.run_dense_mlp_residual_fp16(
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
+                out=next_hidden,
                 tokens=rows,
                 library=self.libraries,
                 stream=stream,
@@ -3393,6 +3416,7 @@ class Qwen35ParoResidentSession:
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
+                out=next_hidden,
                 tokens=rows,
                 library=self.libraries,
                 stream=stream,
