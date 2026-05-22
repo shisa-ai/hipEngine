@@ -1,0 +1,55 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "rejected_regression",
+  "performance_claim": false,
+  "label": "p10_q8_t16_scale_broadcast_rejected",
+  "date": "2026-05-21",
+  "git_commit_under_test": "temporary_working_tree_based_on_08222f6",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local RX 7900 XTX / gfx1100; W7900 not rerun"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "change_tested": "Temporary q8_0_t16_gemv.hip change: load the 16 per-column Q8_0 scales only on lane0 of each wave and broadcast with __shfl instead of each lane loading scales directly. Change was reverted before commit.",
+  "validation": {
+    "pytest": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q -> 61 passed before and after revert",
+    "correctness_scope": "kernel unit/dispatch tests plus finite logits in benchmark; performance regressed"
+  },
+  "command": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-q8-scale-broadcast-4k-128.json",
+  "baseline": {
+    "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-aotriton-v2-v3-diagnostic.json",
+    "mode": "V3 4K/128 from AOTriton diagnostic before temporary q8 change",
+    "prefill_tok_s_median": 2654.2524547300845,
+    "decode_tok_s_median": 96.75508385442559,
+    "tracked_peak_allocated_gib_median": 22.584311552345753
+  },
+  "candidate": {
+    "prefill_tok_s_median": 2647.8081940677666,
+    "prefill_tok_s_samples": [
+      2640.089630313569,
+      2647.8081940677666,
+      2656.9387145300757
+    ],
+    "decode_tok_s_median": 70.87921319093805,
+    "decode_tok_s_samples": [
+      70.93767668900053,
+      70.75508825170552,
+      70.87921319093805
+    ],
+    "tracked_peak_allocated_gib_median": 22.571860380470753,
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      220,
+      220,
+      220
+    ]
+  },
+  "delta": {
+    "decode_tok_s_delta_pct": -26.74368067565266,
+    "prefill_tok_s_delta_pct": -0.24279004247820257
+  },
+  "decision": "Rejected and reverted. Wave-level scale broadcast reduced global scale loads but added shuffle/control overhead and dropped 4K/128 decode by ~26.7%. Do not retry this form; next Q8 work should use rocprof/SASS or a separate experimental branch with improved mapping, not a simple __shfl broadcast."
+}

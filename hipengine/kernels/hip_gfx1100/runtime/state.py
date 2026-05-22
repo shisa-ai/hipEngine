@@ -469,6 +469,11 @@ def record_i64_scalar_indexed(
 
 def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
+        KernelKey("hip_gfx1100", "embedding", "bf16", "lookup_bf16_out"),
+        embedding_lookup_bf16_i64,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "token_embedding", "w4_paro", "bf16_i64"),
         embedding_lookup_bf16_i64,
         replace=replace,

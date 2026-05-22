@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "date": "2026-05-16",
+  "status": "accepted_correctness_diagnostic",
+  "performance_claim": false,
+  "scope": "public_api_e2e_correctness",
+  "model": "Qwen3.5-0.8B-Q4_K_M.gguf",
+  "model_path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "model_file_size_bytes": 532517120,
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX / gfx1100 class local ROCm device",
+    "gfx": "gfx1100"
+  },
+  "correctness_gate": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py",
+    "oracle": "llama.cpp llama-simple CPU oracle at /home/lhl/llama.cpp/llama.cpp-hip-therock commit 59778f019",
+    "prompt": "The answer is",
+    "prompt_ids": [760, 4087, 369],
+    "max_new_tokens": 4,
+    "repeat": 2,
+    "passed": true,
+    "outputs": [" 1.\n\n", " 1.\n\n"],
+    "generated_token_ids": [220, 16, 13, 271],
+    "expected_generated_text": " 1.\n\n",
+    "expected_generated_token_ids": [220, 16, 13, 271],
+    "deterministic": true,
+    "expected_text_match": true,
+    "expected_token_ids_match": true,
+    "torch_loaded_by_generate": false,
+    "elapsed_seconds_with_cached_compiler_version": 25.70
+  },
+  "diagnostic_timing": {
+    "notes": [
+      "Timing is diagnostic only and not a throughput claim.",
+      "Without HIPENGINE_COMPILER_VERSION_FILE, repeated hipcc --version probes make fresh Python processes appear to hang; the cached compiler-version file avoids compiler subprocesses in correctness/profile runs."
+    ],
+    "single_token_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY' ... LLM.generate('The answer is', SamplingParams(max_tokens=1)) ... PY",
+    "single_token_generate_seconds": 11.754282870009774,
+    "single_token_output": " "
+  },
+  "rocprof_kernel_trace": {
+    "command": "rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-e2e-rocprof.JGJySh -- env PYTHONPATH=/home/lhl/hipENGINE HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 /tmp/profile_gguf_generate_one.py",
+    "profiled_workload": "public LLM.generate('The answer is', max_tokens=1)",
+    "stdout": "[' ']",
+    "elapsed_seconds": 12.18,
+    "results_db": "/tmp/hipengine-gguf-e2e-rocprof.JGJySh/rocm/3278774_results.db",
+    "total_kernel_dispatches": 1205,
+    "unique_kernel_symbols": 14,
+    "kernel_summary": [
+      {"kernel": "gguf_q4_k_pack8_gemv_out_kernel<unsigned short, unsigned short>", "count": 294, "min_ns": 10280, "max_ns": 64480, "avg_ns": 44899.23},
+      {"kernel": "gguf_k_gemv_out_kernel<unsigned short, unsigned short, 5>", "count": 108, "min_ns": 45761, "max_ns": 116801, "avg_ns": 79937.25},
+      {"kernel": "gguf_k_gemv_out_kernel<unsigned short, unsigned short, 8>", "count": 108, "min_ns": 9480, "max_ns": 10760, "avg_ns": 9804.89},
+      {"kernel": "gguf_rmsnorm_bf16_f32_weight_kernel", "count": 73, "min_ns": 7280, "max_ns": 9120, "avg_ns": 8052.11},
+      {"kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel", "count": 72, "min_ns": 7880, "max_ns": 11840, "avg_ns": 8760.07},
+      {"kernel": "gguf_bf16_add_kernel", "count": 72, "min_ns": 3040, "max_ns": 5361, "avg_ns": 3183.42},
+      {"kernel": "silu_mul_dual_out_kernel<unsigned short>", "count": 72, "min_ns": 3000, "max_ns": 4120, "avg_ns": 3136.69},
+      {"kernel": "f32_to_bf16_kernel", "count": 54, "min_ns": 3040, "max_ns": 4160, "avg_ns": 3131.15},
+      {"kernel": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>", "count": 54, "min_ns": 20560, "max_ns": 41481, "avg_ns": 30459.44},
+      {"kernel": "qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>", "count": 54, "min_ns": 5600, "max_ns": 8240, "avg_ns": 6974.09},
+      {"kernel": "gguf_k_gemv_out_kernel<unsigned short, unsigned short, 6>", "count": 48, "min_ns": 13200, "max_ns": 75281, "avg_ns": 53196.21},
+      {"kernel": "gguf_q6_k_embedding_bf16_out_kernel", "count": 3, "min_ns": 6360, "max_ns": 8480, "avg_ns": 7200.0},
+      {"kernel": "gguf_k_gemv_out_kernel<unsigned short, float, 6>", "count": 1, "min_ns": 3345944, "max_ns": 3345944, "avg_ns": 3345944.0}
+    ]
+  },
+  "notes": [
+    "Correctness-only accepted diagnostic; do not promote as a throughput row.",
+    "Full-attention prompt context currently uses a CPU-hosted small-context attention bridge after native GGUF Q/K/V projections; future work should replace it with all-GPU prefill/KV history before throughput claims."
+  ]
+}

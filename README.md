@@ -46,6 +46,7 @@ single-model tuning targets
 [ParoQuant](https://github.com/shisa-ai/paroquant) format.
 
 - INT8 KV cache support has been added. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
+- Current gfx1100 performance snapshots are summarized in [Performance](#performance) and compared against recent llama.cpp Q4_K_M baselines.
 
 
 ## Hardware targets

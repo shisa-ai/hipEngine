@@ -1,0 +1,70 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "rejected_perf_or_correctness",
+  "performance_claim": false,
+  "label": "selected_moe_t16_down64_rejected_after_final_gate",
+  "date": "2026-05-22",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "note": "local diagnostic; W7900 not rerun"
+  },
+  "scope": "Reopened Task #3 selected-MoE GGUF decode launch-shape pass after final gates. Requirement: retain only if acceptable for both Q4_K_M and Q4_K_S and final-token sanity remains stable.",
+  "baseline_from": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-final-gate-4k128-accepted.json",
+  "baseline_4k_128": {
+    "gguf_q4_k_m": {"prefill_tok_s_median": 2640.840, "decode_tok_s_median": 99.29237528612408, "tracked_peak_gib": 22.571860380470753, "final_token_ids": [220, 220, 220]},
+    "gguf_q4_k_s": {"prefill_tok_s_median": 2722.508, "decode_tok_s_median": 100.25740752656847, "tracked_peak_gib": 21.415610380470753, "final_token_ids": [85, 85, 85]}
+  },
+  "final_source_state": "No source change retained; temporary gguf_t16_selected_gemv.hip launch-shape edits were reverted.",
+  "post_revert_validation": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_t16_selected_gemv_decode.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py --tb=short",
+    "result": "92 passed"
+  },
+  "probes": [
+    {
+      "name": "selected_q4_q5_q6_t16_direct_down_block64",
+      "change": "Temporarily changed launch_qk_direct for all selected T16 down qtypes (Q4_K/Q5_K/Q6_K) from block 128 to block 64. This reduces per-block reduction waves for direct selected down GEMV and affects Q4_K_S Q4_K down plus Q4_K_M Q5_K/Q6_K down.",
+      "validation": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_t16_selected_gemv_decode.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q => passed (92 tests)",
+      "results_4k_128_3run": {
+        "gguf_q4_k_s": {
+          "prefill_tok_s_samples": [2713.72396724297, 2700.3748071409086, 2717.546821638958],
+          "prefill_tok_s_median": 2713.72396724297,
+          "decode_tok_s_samples": [101.01259691585913, 101.26994849932319, 101.48732980440374],
+          "decode_tok_s_median": 101.26994849932319,
+          "decode_delta_vs_final_gate_pct": 1.009941307814482,
+          "tracked_peak_gib": 21.415610380470753,
+          "final_token_ids": [85, 85, 85],
+          "json": "/tmp/hipengine-q4ks-selected-down64-candidate-4096-128-3run.json"
+        },
+        "gguf_q4_k_m": {
+          "prefill_tok_s_samples": [2640.6914961252182, 2608.2646709414807, 2633.283885633639],
+          "prefill_tok_s_median": 2633.283885633639,
+          "decode_tok_s_samples": [100.19011527819909, 100.30121229979878, 100.23856944556574],
+          "decode_tok_s_median": 100.23856944556574,
+          "decode_delta_vs_final_gate_pct": 0.9529373798492349,
+          "tracked_peak_gib": 22.571860380470753,
+          "final_token_ids": [158729, 158729, 158729],
+          "json": "/tmp/hipengine-q4km-selected-down64-candidate-4096-128-3run.json"
+        }
+      },
+      "decision": "rejected_and_reverted",
+      "reason": "Throughput improved, but Q4_K_M final token IDs changed from the final-gate baseline [220,220,220] to [158729,158729,158729]. The Q5/Q6 selected-down reduction-width change is a math-contract drift and fails the correctness/sanity gate."
+    },
+    {
+      "name": "selected_q4_t16_direct_down_block64_only",
+      "change": "Temporary narrowed variant: Q4_K selected down used block 64 while Q5_K/Q6_K selected down stayed at block 128. Intended to keep Q4_K_M's heavier Q5/Q6 down path on the final-gate reduction topology while preserving the Q4_K_S improvement.",
+      "validation": "Same selected/routing tests passed before benchmarking.",
+      "result_q4km_4k_128_single_run": {
+        "prefill_tok_s": 2535.1699778866127,
+        "decode_tok_s": 98.93985833520125,
+        "decode_delta_vs_final_gate_pct": -0.35502922546369675,
+        "tracked_peak_gib": 22.571860380470753,
+        "final_token_id": 220,
+        "json": "/tmp/hipengine-q4km-selected-down-q4only64-candidate-4096-128.json"
+      },
+      "decision": "rejected_and_reverted",
+      "reason": "The narrowed Q4-only variant preserved Q4_K_M final-token sanity but regressed Q4_K_M decode on the first gate run, so Q4_K_S was not rerun for this narrowed variant."
+    }
+  ],
+  "decision": "No additional selected-MoE source change retained. Selected down block64 is promising for Q4_K_S, but all-qtype block64 changes Q4_K_M generation and Q4-only block64 fails the Q4_K_M performance gate. Current accepted final-gate rows remain the source of truth."
+}

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "description": "P9.E2 formal qwen35moe Qwen3.6-35B-A3B-UD-Q4_K_M 512/128 E2E correctness contract for the resident T16 decode-repack GEMV path vs the legacy row-GEMV path.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "architecture": "qwen35moe"
+  },
+  "prompt": {
+    "source": "repeated_token_id",
+    "token_id": 9707,
+    "description": "Matches the retained qwen35moe benchmark prompt shape without committing a 512-token literal list."
+  },
+  "generation": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "repeats": 3,
+    "decode_mode": "eager_with_logits",
+    "logit_rows": "prefill_sample_plus_128_decode_steps"
+  },
+  "reference": {
+    "name": "legacy_row_gemv_reference_path",
+    "env": {
+      "HIPENGINE_GGUF_WMMA_PREFILL": "0",
+      "HIPENGINE_GGUF_GEMV_DECODE": "0"
+    },
+    "use_bulk_prefill": true,
+    "bulk_prefill_attention_mode": "bulk"
+  },
+  "candidate": {
+    "name": "p9_t16_decode_repack_plus_gemv_decode_opt_in",
+    "env": {
+      "HIPENGINE_GGUF_WMMA_PREFILL": "1",
+      "HIPENGINE_GGUF_GEMV_DECODE": "1",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1"
+    },
+    "use_bulk_prefill": true,
+    "bulk_prefill_attention_mode": "bulk"
+  },
+  "acceptance": {
+    "kl_threshold": 0.05,
+    "top1_threshold": 0.9,
+    "finite_final_logits_required": true,
+    "deterministic_tail_required": true,
+    "candidate_repeat_count": 3,
+    "comparison": "candidate logits vs legacy row-GEMV reference logits over 129 rows (prefill sample + 128 decode steps)",
+    "purpose": "Fail loudly if resident T16 decode-repack GEMV drift grows beyond the formal P9 threshold."
+  },
+  "benchmark_gate_usage": {
+    "p9_a3": "Run before accepting GDN/P9.A3 throughput rows when WMMA prefill is enabled.",
+    "p9_b7": "Run before accepting decode-GEMV/P9.B7 throughput rows when HIPENGINE_GGUF_GEMV_DECODE=1 is enabled.",
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json <artifact.json>"
+  }
+}

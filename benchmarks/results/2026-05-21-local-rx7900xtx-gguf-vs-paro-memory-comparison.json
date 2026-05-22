@@ -1,0 +1,403 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "diagnostic_recorded",
+  "performance_claim": false,
+  "label": "local_rx7900xtx_gguf_vs_paro_memory_perf_comparison",
+  "date": "2026-05-21",
+  "git_commit_under_test": "1a1798f",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local 24 GiB gfx1100 card; W7900 not involved in this local comparison"
+  },
+  "scope": "Single-run diagnostic comparison requested by user: GGUF Qwen3.6 UD-Q4_K_M vs PARO Qwen3.5 w4_paro on the same local RX 7900 XTX. Models/quantization differ, so compare runtime footprint directionally, not as model-equivalent quality/perf claim.",
+  "model_paths": {
+    "gguf": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "paro": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
+  },
+  "commands": {
+    "gguf_common": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length <P> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-local-compare-gguf-<P>-128.json",
+    "paro_common": "PYTHONPATH=. uv run python scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length <P> --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/hipengine-local-compare-paro-<P>-128.json",
+    "paro_128k_static4096": "PYTHONPATH=. uv run python scripts/qwen35_paro_bench.py --model $PARO --prompt-length 131072 --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --no-prefill-chunk-autotune --json /tmp/hipengine-local-compare-paro-131072-128-static4096.json",
+    "gguf_fit_probe_35070": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 ... scripts/qwen35_gguf_bench.py --prompt-length 35070 --decode-tokens 1 --warmup-decode-tokens 0 ... --json /tmp/hipengine-local-compare-gguf-35070-1-fitprobe.json",
+    "gguf_fail_probe_36864": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 ... scripts/qwen35_gguf_bench.py --prompt-length 36864 --decode-tokens 1 --warmup-decode-tokens 0 ... -> failed during prefill with HSA_STATUS_ERROR_OUT_OF_RESOURCES / HIP error 999",
+    "gguf_fail_probe_40960": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 ... scripts/qwen35_gguf_bench.py --prompt-length 40960 --decode-tokens 1 --warmup-decode-tokens 0 ... -> failed during session allocation with HIP error 2 out of memory"
+  },
+  "gguf_results": [
+    {
+      "label": "512/128",
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "prefill_tok_s": 1546.098825267658,
+      "decode_tok_s": 89.78272284291751,
+      "tracked_peak_allocated_gib": 21.34385420382023,
+      "hip_used_peak_sampled_gib": 21.81092071533203,
+      "finite_final_logits": true,
+      "final_token_ids": [
+        3561
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 32768
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "below_min_tokens",
+        "max_sequence_length": 768,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0
+      },
+      "json": "/tmp/hipengine-local-compare-gguf-512-128.json"
+    },
+    {
+      "label": "4K/128",
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "prefill_tok_s": 2557.8653334974697,
+      "decode_tok_s": 96.5267824414836,
+      "tracked_peak_allocated_gib": 22.584311552345753,
+      "hip_used_peak_sampled_gib": 23.124755859375,
+      "finite_final_logits": true,
+      "final_token_ids": [
+        220
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 32768
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "below_min_tokens",
+        "max_sequence_length": 4352,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0
+      },
+      "json": "/tmp/hipengine-local-compare-gguf-4096-128.json"
+    },
+    {
+      "label": "32K/128",
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "prompt_length": 32768,
+      "decode_tokens": 128,
+      "prefill_tok_s": 1868.7818261903572,
+      "decode_tok_s": 84.77840177860612,
+      "tracked_peak_allocated_gib": 23.368930347263813,
+      "hip_used_peak_sampled_gib": 23.87451171875,
+      "finite_final_logits": true,
+      "final_token_ids": [
+        220
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 32768
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": true,
+        "reason": "long_context_static_budget",
+        "max_sequence_length": 33024,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 13.191406250000002,
+        "estimated_peak_gib": 23.3,
+        "chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        }
+      },
+      "json": "/tmp/hipengine-local-compare-gguf-32768-128.json"
+    },
+    {
+      "label": "35070/1 fit-probe",
+      "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "prompt_length": 35070,
+      "decode_tokens": 1,
+      "prefill_tok_s": 1799.8931122533677,
+      "decode_tok_s": 50.50703743606592,
+      "tracked_peak_allocated_gib": 23.431674525141716,
+      "hip_used_peak_sampled_gib": 23.9111328125,
+      "finite_final_logits": true,
+      "final_token_ids": [
+        3642
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 32768
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": true,
+        "reason": "long_context_static_budget",
+        "max_sequence_length": 35072,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 13.191406250000002,
+        "estimated_peak_gib": 23.3,
+        "chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        }
+      },
+      "json": "/tmp/hipengine-local-compare-gguf-35070-1-fitprobe.json"
+    }
+  ],
+  "paro_results": [
+    {
+      "label": "512/128",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "prefill_tok_s": 2101.1580298238678,
+      "decode_tok_s": 107.31386837993547,
+      "tracked_peak_allocated_gib": 18.175600168295205,
+      "hip_used_peak_sampled_gib": 18.19178009033203,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.13083839416504
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.213092803955078
+        }
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "below_min_tokens",
+        "max_sequence_length": 642,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0
+      },
+      "json": "/tmp/hipengine-local-compare-paro-512-128.json"
+    },
+    {
+      "label": "4K/128",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "prefill_tok_s": 2710.86881040786,
+      "decode_tok_s": 106.63671890443203,
+      "tracked_peak_allocated_gib": 20.047108446247876,
+      "hip_used_peak_sampled_gib": 18.601318359375,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.092187881469727
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.152114868164062
+        }
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "below_min_tokens",
+        "max_sequence_length": 4226,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0
+      },
+      "json": "/tmp/hipengine-local-compare-paro-4096-128.json"
+    },
+    {
+      "label": "32K/128",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "prompt_length": 32768,
+      "decode_tokens": 128,
+      "prefill_tok_s": 2082.01159224912,
+      "decode_tok_s": 92.90770880483292,
+      "tracked_peak_allocated_gib": 20.319650744087994,
+      "hip_used_peak_sampled_gib": 19.441162109375,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 26.700969696044922
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.093154907226562
+        }
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": true,
+        "reason": "long_context_static_budget",
+        "max_sequence_length": 32898,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 13.191406250000002,
+        "estimated_peak_gib": 23.3,
+        "chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        }
+      },
+      "json": "/tmp/hipengine-local-compare-paro-32768-128.json"
+    },
+    {
+      "label": "128K/128 static4096",
+      "model": "Qwen3.5-35B-A3B-PARO",
+      "quant": "w4_paro",
+      "prompt_length": 131072,
+      "decode_tokens": 128,
+      "prefill_tok_s": 1023.8676823561992,
+      "decode_tok_s": 61.80006188407829,
+      "tracked_peak_allocated_gib": 23.287703131325543,
+      "hip_used_peak_sampled_gib": 22.407958984375,
+      "generated_preview": [
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.599626541137695
+        },
+        {
+          "token_id": 9707,
+          "token_text": ".Q",
+          "logit": 27.63132095336914
+        }
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024
+      },
+      "prefill_chunk_tuning": {
+        "enabled": false,
+        "applied": false,
+        "reason": "disabled",
+        "max_sequence_length": 131202,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0
+      },
+      "json": "/tmp/hipengine-local-compare-paro-131072-128-static4096.json"
+    }
+  ],
+  "paired_deltas": [
+    {
+      "label": "512/128",
+      "gguf_prefill_delta_vs_paro_pct": -26.416823326836504,
+      "gguf_decode_delta_vs_paro_pct": -16.336328008371158,
+      "gguf_tracked_peak_delta_gib": 3.168254035525024,
+      "gguf_hip_sampled_peak_delta_gib": 3.619140625
+    },
+    {
+      "label": "4K/128",
+      "gguf_prefill_delta_vs_paro_pct": -5.644075298773698,
+      "gguf_decode_delta_vs_paro_pct": -9.480727245564413,
+      "gguf_tracked_peak_delta_gib": 2.537203106097877,
+      "gguf_hip_sampled_peak_delta_gib": 4.5234375
+    },
+    {
+      "label": "32K/128",
+      "gguf_prefill_delta_vs_paro_pct": -10.241526360975662,
+      "gguf_decode_delta_vs_paro_pct": -8.749873536655251,
+      "gguf_tracked_peak_delta_gib": 3.049279603175819,
+      "gguf_hip_sampled_peak_delta_gib": 4.433349609375
+    }
+  ],
+  "gguf_structural_memory_notes": {
+    "gguf_file_payload_gib": 20.604151248931885,
+    "gguf_file_size_gib": 20.614386528730392,
+    "paro_safetensors_file_size_gib": 19.237309731543064,
+    "gguf_payload_by_rough_group_gib": {
+      "moe_ffn": 18.428,
+      "attention": 1.017,
+      "embedding_lm_norm": 0.892,
+      "linear_attention": 0.267
+    },
+    "gguf_payload_by_quant_type_gib": {
+      "Q4_K": 11.25,
+      "Q5_K": 6.359,
+      "Q8_0": 1.894,
+      "Q6_K": 1.004,
+      "F32": 0.097
+    },
+    "main_causes": [
+      "GGUF UD-Q4_K_M starts from a larger mixed-quant payload than PARO w4_paro: local files are ~20.61 GiB GGUF vs ~19.24 GiB PARO safetensors.",
+      "GGUF decode-repack keeps T16 decode-friendly layouts resident for many tensors (including selected experts and Q8 dense layers); this is speed-oriented but leaves less VRAM headroom than PARO's native packed layout.",
+      "GGUF resident session keeps monolithic prefill hidden buffers and chunk-sized bulk scratch resident for the whole session; PARO allocates/frees more prefill workspace transiently, so tracked peak can be higher than current but steady-state is lower.",
+      "Both models have the same 10 full-attention layers and BF16 KV-cache slope, but GGUF has a higher base footprint, so it reaches the 24 GiB ceiling around ~35K context while PARO still fits 128K with conservative chunks.",
+      "There is at least one low-hanging GGUF memory cleanup: _GGUFFullAttentionPrefillScratch still allocates one-layer key_cache/value_cache buffers even though full-attention prefill replaces them with the resident KV cache; that costs ~64 MiB at 32K and ~256 MiB at 128K, helpful but not enough alone."
+    ]
+  },
+  "max_fit_findings": {
+    "gguf_known_fit": "35070/1 fit probe, max_sequence_length 35072, tracked peak 23.431675 GiB, HIP sampled peak 23.911133 GiB",
+    "gguf_known_fail_low": "36864/1 failed during prefill with HSA out-of-resources; 40960/1 failed at allocation with HIP OOM",
+    "gguf_current_max_summary": "Current implementation has practical max around 35K tokens on this 24 GiB RX 7900 XTX; 32K/128 is the safe long-context comparison point.",
+    "paro_known_fit": "128K/128 static 4096-query chunk run fits: tracked peak 23.287703 GiB, HIP sampled peak 22.407959 GiB"
+  },
+  "correctness_scope": "Benchmark scripts report finite logits/generated token sanity only. This is diagnostic, not a retained performance/correctness rollup.",
+  "decision": "diagnostic only; no benchmark README/CHANGELOG update"
+}

@@ -1,0 +1,183 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "blocked_prefill_target_not_met",
+  "performance_claim": false,
+  "task_ids": [
+    32,
+    51,
+    52,
+    26,
+    27
+  ],
+  "label": "p9_g1_final_acceptance_blocked_prefill",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "workload": {
+    "prefill_only": "512/0",
+    "decode": "512/128",
+    "warmup_decode_tokens": 1,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk",
+    "requested_wmma_prefill": true,
+    "requested_gemv_decode": true,
+    "decode_repack_env": true
+  },
+  "acceptance": {
+    "prefill_kernel_time_target_ms": 350.0,
+    "prefill_kernel_time_stretch_ms": 250.0,
+    "decode_tok_s_target": 95.0,
+    "decode_tok_s_stretch": 110.0,
+    "prefill_target_met": false,
+    "decode_target_met": true,
+    "overall_passed": false,
+    "blocker": "qwen35moe fast-path safety disables requested WMMA prefill, so 512/0 prefill stays on the non-WMMA/repacked row path: effective_wmma_prefill_all=false and total prefill kernel time is far above the P9.G1 <=350 ms target."
+  },
+  "correctness": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d18_splitk_gqa_gate_e2e.json",
+    "status": "accepted",
+    "worst_kl_mean": 0.0,
+    "worst_kl_max": 0.0,
+    "worst_top1_agreement": 1.0,
+    "candidate_deterministic_tail": true,
+    "finite_final_logits_all": true
+  },
+  "tests": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_gguf_ops.py tests/test_gguf_linear_dispatch.py -q --tb=short",
+    "result": "42 passed"
+  },
+  "prefill_512x0_benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_g1_512x0_bench.json",
+    "prefill_tok_s_samples": [
+      504.20993831231993,
+      505.13162179145957,
+      506.11009966231427
+    ],
+    "prefill_tok_s_median": 505.13162179145957,
+    "prefill_seconds_samples": [
+      1.0154500359785743,
+      1.0135972049902193,
+      1.0116375870420597
+    ],
+    "tracked_peak_allocated_gib_median": 21.34312082082033,
+    "hip_used_peak_sampled_gib_median": 21.80078125,
+    "effective_use_wmma_prefill_all": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "effective_use_gemv_decode_all": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "decode_512x128_benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_g1_512x128_bench.json",
+    "prefill_tok_s_samples": [
+      506.8864539304651,
+      504.80430836664976,
+      506.44739932022344
+    ],
+    "prefill_tok_s_median": 506.44739932022344,
+    "decode_tok_s_samples": [
+      98.14369090988605,
+      98.15305217609216,
+      98.04712336219023
+    ],
+    "decode_tok_s_median": 98.14369090988605,
+    "decode_seconds_samples": [
+      1.3042101719765924,
+      1.3040857840096578,
+      1.3054947010241449
+    ],
+    "tracked_peak_allocated_gib_median": 21.34312178194523,
+    "hip_used_peak_sampled_gib_median": 21.806640625,
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      1510,
+      1510,
+      1510
+    ],
+    "effective_use_wmma_prefill_all": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "effective_use_gemv_decode_all": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "prefill_512x0_rocprof": {
+    "command": "rm -rf /tmp/p9_g1_512x0_rocprof_csv && HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace -d /tmp/p9_g1_512x0_rocprof_csv -f csv -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_g1_512x0_rocprof_bench.json",
+    "summary_command": "python3 scripts/qwen35_gguf_rocprof_summary.py --csv /tmp/p9_g1_512x0_rocprof_csv/rocm/2568754_kernel_trace.csv --json /tmp/p9_g1_512x0_summary.json --quiet",
+    "total_kernel_ms": 1004.493636,
+    "total_dispatches": 1228,
+    "top_buckets": [
+      {
+        "bucket": "moe_q4_k_selected_dual_t16_gemv_decode_p9",
+        "total_ms": 287.661787,
+        "dispatches": 40
+      },
+      {
+        "bucket": "moe_q5_k_selected_t16_gemv_decode_p9",
+        "total_ms": 231.973354,
+        "dispatches": 37
+      },
+      {
+        "bucket": "other",
+        "total_ms": 183.835551,
+        "dispatches": 144
+      },
+      {
+        "bucket": "dense_q8_0_t16_gemv_decode_p9",
+        "total_ms": 160.41838,
+        "dispatches": 130
+      },
+      {
+        "bucket": "gdn_prefill_recurrent",
+        "total_ms": 52.787481,
+        "dispatches": 30
+      },
+      {
+        "bucket": "full_attention_prefill",
+        "total_ms": 40.136397,
+        "dispatches": 10
+      },
+      {
+        "bucket": "moe_q6_k_selected_t16_gemv_decode_p9",
+        "total_ms": 17.939283,
+        "dispatches": 3
+      },
+      {
+        "bucket": "router",
+        "total_ms": 14.821938,
+        "dispatches": 120
+      }
+    ]
+  },
+  "decode_rocprof_reference": {
+    "source": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d18-splitk-gqa-gate.json",
+    "note": "The retained P9.D18 row includes the stripped 512/16 decode rocprof diagnostic: full-attention decode 25.421 -> 13.884 ms and no legacy prefill_out buckets. P9.G1 is blocked by the 512/0 prefill target before a longer eager 512/128 trace is decisive."
+  },
+  "baseline_vs_task16": {
+    "task16_prefill_kernel_ms": 907.813,
+    "task16_decode_tok_s": 62.557,
+    "prefill_kernel_ms_delta": 96.68063600000005,
+    "prefill_kernel_ms_pct": 10.649840440707509,
+    "decode_tok_s_delta": 35.586690909886045,
+    "decode_tok_s_pct": 56.886824671717065
+  },
+  "decision": "Do not close P9.G1 as accepted. Decode target is met by P9.D18/P9.B7, but the final P9 combined acceptance remains blocked because requested WMMA prefill is safety-disabled and the 512/0 prefill kernel time is 1004.494 ms vs the <=350 ms target."
+}

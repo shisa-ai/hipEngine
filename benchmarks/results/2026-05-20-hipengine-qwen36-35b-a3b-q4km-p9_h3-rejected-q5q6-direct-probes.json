@@ -1,0 +1,78 @@
+{
+  "schema": "hipengine_rejected_probe_v1",
+  "status": "rejected_reverted",
+  "performance_claim": false,
+  "task_ids": [
+    51
+  ],
+  "label": "p9_h3_rejected_q5q6_t16_selected_direct_probes",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "baseline": {
+    "label": "P9.D10 retained",
+    "local_512x16_decode_tok_s_single_run": 78.74516104209006,
+    "final_token_id": 38118
+  },
+  "candidate_tests": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_t16_selected_gemv_decode.py -q --tb=short",
+    "result": "65 passed for each candidate while present"
+  },
+  "measurements": [
+    {
+      "label": "qk_direct_block64",
+      "benchmark_json": "/tmp/p9_d13_qkdirect64_512x16_bench.json",
+      "decode_tok_s_512x16": 79.49390010069989,
+      "prefill_tok_s": 533.1583396581755,
+      "final_token_id": 220,
+      "generated_tail_token_ids": [
+        220,
+        271,
+        144775,
+        77525,
+        201,
+        220,
+        220,
+        220,
+        95912,
+        220,
+        220,
+        29020,
+        79994,
+        9609,
+        29545,
+        220
+      ],
+      "finite_final_logits": true
+    },
+    {
+      "label": "qk_direct_preload_d",
+      "benchmark_json": "/tmp/p9_d13_qkdirect_preload_d_512x16_bench.json",
+      "decode_tok_s_512x16": 77.0838118701853,
+      "prefill_tok_s": 503.6140430519213,
+      "final_token_id": 38118,
+      "generated_tail_token_ids": [
+        75,
+        26417,
+        126878,
+        188,
+        50557,
+        11,
+        53213,
+        14405,
+        99969,
+        220,
+        220,
+        220,
+        220,
+        95912,
+        100515,
+        38118
+      ],
+      "finite_final_logits": true
+    }
+  ],
+  "decision": "Reject and revert both Q5/Q6 selected-direct micro-probes. The 64-thread launch improved the local 512/16 wall run to 79.494 tok/s but changed the generated tail/final token (38118 -> 220), so it is not correctness-safe. The d/dmin preload variant preserved the tail but regressed wall throughput to 77.084 tok/s, likely from extra register pressure. Retain the existing 128-thread direct kernel."
+}

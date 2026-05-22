@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "task": 45,
+  "title": "Qwen3.5-0.8B GGUF full-attention GPU prelude and paged KV append",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "architecture": "qwen35",
+    "quant": "gguf_q4_k_m",
+    "file_size_bytes": 532517120
+  },
+  "change": {
+    "summary": "The resident GGUF full-attention path no longer copies Q/K/V to host for q/k RMSNorm, RoPE, attention history, softmax, or gate application.",
+    "implemented": [
+      "GGUF F32-weight Qwen3.5 head RMSNorm + position-indexed partial RoPE kernel",
+      "GPU BF16 q/gate split and BF16->FP32 K conversion",
+      "span-shaped paged K/V append through KVLiveSpans",
+      "paged full-attention decode over BF16 KV cache",
+      "BF16 gate application before the GGUF attention output projection"
+    ],
+    "caveats": [
+      "This is a one-token resident decode/prompt-serial path, not rows>1 prefill.",
+      "AOTriton V3 full-attention prefill remains follow-up work.",
+      "Timing is diagnostic only and is not promoted as a throughput row."
+    ]
+  },
+  "layer_oracle": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_full_attention_gpu.py -q",
+    "result": "1 passed",
+    "fixture": "first Qwen3.5 GGUF full-attention layer (layer 3), prompt tokens [760, 4087]",
+    "checks": {
+      "hidden_allclose": "rtol <= 2.5e-2, atol <= 3.0e-2 vs old CPU bridge",
+      "lm_head_top1": "GPU prelude top-1 equals CPU bridge top-1",
+      "lm_head_kl": "KL(cpu || gpu) <= 0.05"
+    }
+  },
+  "e2e_gate": {
+    "command": "hipcc --version > /tmp/hipengine-hipcc-version.txt && /usr/bin/time -f 'elapsed=%E exit=%x' env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --repeat 2 --max-new-tokens 4 --json /tmp/gguf_task45_e2e_r2.json",
+    "elapsed_wall": "0:23.37",
+    "passed": true,
+    "repeat": 2,
+    "prompt": "The answer is",
+    "prompt_ids": [760, 4087, 369],
+    "expected_generated_text": " 1.\n\n",
+    "outputs": [" 1.\n\n", " 1.\n\n"],
+    "expected_generated_token_ids": [220, 16, 13, 271],
+    "generated_token_ids": [220, 16, 13, 271],
+    "torch_loaded_by_generate": false
+  },
+  "rocprof_kernel_trace": {
+    "command": "env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file gguf_task45 --output-directory /tmp/hipengine-gguf-task45-rocprof.OoG279 -- python3 /tmp/profile_gguf_task45_generate.py",
+    "profile_dir": "/tmp/hipengine-gguf-task45-rocprof.OoG279",
+    "profile_script": "/tmp/profile_gguf_task45_generate.py",
+    "stdout": "[' ']",
+    "total_dispatches": 1254,
+    "expected_kernel_counts": {
+      "qwen35_split_qgate_bf16_kernel": 18,
+      "bf16_to_f32_kernel": 18,
+      "gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel": 18,
+      "qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>": 18,
+      "qwen35_paged_full_attn_decode_context_tensor_kernel": 18,
+      "qwen35_full_attn_gate_mul_bf16_kernel": 18
+    },
+    "production_host_bridge_grep": "No matches for _host_full_attention, _copy_bf16_device_to_f32, full_k_history, full_v_history, or context_bits in hipengine/runtime/qwen35_gguf_runner.py"
+  },
+  "diagnostic_timing": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY' ... Qwen35GGUFResidentSession fixture timing ... PY",
+    "load_s": 10.488824814994587,
+    "close_s": 0.06875959399621934,
+    "rows": [
+      {
+        "phase": "prefill",
+        "tokens_consumed": 3,
+        "seconds": 0.2047719469992444,
+        "tokens_per_second": 14.650450686239342,
+        "position_after": 3,
+        "next_token_id": 220
+      },
+      {
+        "phase": "step_1",
+        "seconds": 0.06349898100597784,
+        "tokens_per_second": 15.74828445903979,
+        "input_token_id": 220,
+        "position_after": 4,
+        "next_token_id": 16
+      },
+      {
+        "phase": "step_2",
+        "seconds": 0.06422477497835644,
+        "tokens_per_second": 15.570312488980843,
+        "input_token_id": 16,
+        "position_after": 5,
+        "next_token_id": 13
+      },
+      {
+        "phase": "step_3",
+        "seconds": 0.06311198801267892,
+        "tokens_per_second": 15.84564191933528,
+        "input_token_id": 13,
+        "position_after": 6,
+        "next_token_id": 271
+      }
+    ]
+  },
+  "memory": {
+    "tracked_after_steps_bytes": 602835292,
+    "tracked_peak_bytes": 602835292,
+    "tracked_peak_gib": 0.5614744834601879,
+    "active_allocations_after_steps": 597,
+    "active_allocations_after_close": 0
+  },
+  "validation": {
+    "targeted_tests_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_gguf_ops.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_runner.py tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_tokenizer.py tests/test_gguf_e2e_acceptance.py tests/test_llm_generate.py tests/test_model_quant_and_imports.py -q",
+    "targeted_tests_result": "23 passed"
+  }
+}

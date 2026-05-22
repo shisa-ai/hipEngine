@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "task": 44,
+  "title": "Qwen3.5-0.8B GGUF resident session replaces public full-context replay",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "architecture": "qwen3moe",
+    "quant": "gguf_q4_k_m",
+    "file_size_bytes": 532517120
+  },
+  "change": {
+    "summary": "Public GGUF generation now uses Qwen35GGUFResidentSession.prefill()/step() instead of Qwen35GGUFFullStackRunner.sample_next_token(context_ids).",
+    "effect": "Weights, scratch, linear-attention conv/recurrent state, and full-attention host KV history persist across generated tokens. Decode no longer recomputes the full prompt/context per token.",
+    "caveats": [
+      "This is still a correctness-first diagnostic path, not a promoted throughput row.",
+      "Full-attention q/k norm, RoPE, softmax, and KV history are still CPU-hosted for the small-context bridge until the follow-up GPU KV/AOTriton task.",
+      "Prefill projections are still token-serial rows==1 GGUF GEMV surfaces."
+    ]
+  },
+  "correctness_gate": {
+    "command": "hipcc --version > /tmp/hipengine-hipcc-version.txt && /usr/bin/time -f 'elapsed=%E exit=%x' env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --repeat 2 --max-new-tokens 4 --json /tmp/gguf_resident_e2e.json",
+    "elapsed_wall": "0:25.52",
+    "passed": true,
+    "repeat": 2,
+    "prompt": "The answer is",
+    "prompt_ids": [760, 4087, 369],
+    "expected_generated_text": " 1.\n\n",
+    "outputs": [" 1.\n\n", " 1.\n\n"],
+    "expected_generated_token_ids": [220, 16, 13, 271],
+    "generated_token_ids": [220, 16, 13, 271],
+    "torch_loaded_by_generate": false
+  },
+  "timing_probe": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY'\nimport json, time\nfrom hipengine.core.memory import memory_stats, reset_memory_stats\nfrom hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession\nmodel='/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf'\nprompt=[760,4087,369]\nreset_memory_stats()\nt0=time.perf_counter(); session=Qwen35GGUFResidentSession(model); load=time.perf_counter()-t0\nmem_after_load=memory_stats()\nrows=[]\nt0=time.perf_counter(); result=session.prefill(prompt); rows.append({'phase':'prefill','position_after':session.position,'token_id':result.token_id,'seconds':time.perf_counter()-t0})\nfor i in range(3):\n    prev=result.token_id\n    t0=time.perf_counter(); result=session.step(result.token_id); rows.append({'phase':f'step_{i+1}','input_token_id':prev,'position_after':session.position,'token_id':result.token_id,'seconds':time.perf_counter()-t0})\nmem_after_steps=memory_stats()\nt0=time.perf_counter(); session.close(); close=time.perf_counter()-t0\nprint(json.dumps({'load_s':load,'close_s':close,'rows':rows,'memory_after_load':mem_after_load,'memory_after_steps':mem_after_steps,'memory_after_close':memory_stats()}, indent=2))\nPY",
+    "load_s": 10.794386773981387,
+    "close_s": 0.06812816500314511,
+    "rows": [
+      {
+        "phase": "prefill",
+        "tokens_consumed": 3,
+        "position_after": 3,
+        "next_token_id": 220,
+        "seconds": 0.19031989100039937,
+        "tokens_per_second": 15.762923506174181
+      },
+      {
+        "phase": "step_1",
+        "input_token_id": 220,
+        "position_after": 4,
+        "next_token_id": 16,
+        "seconds": 0.06029505701735616,
+        "tokens_per_second": 16.58510810936671
+      },
+      {
+        "phase": "step_2",
+        "input_token_id": 16,
+        "position_after": 5,
+        "next_token_id": 13,
+        "seconds": 0.0598593839968089,
+        "tokens_per_second": 16.705811560021183
+      },
+      {
+        "phase": "step_3",
+        "input_token_id": 13,
+        "position_after": 6,
+        "next_token_id": 271,
+        "seconds": 0.0596350530104246,
+        "tokens_per_second": 16.7686628139387
+      }
+    ]
+  },
+  "memory": {
+    "tracked_after_load_bytes": 599525704,
+    "tracked_after_steps_bytes": 599525704,
+    "tracked_peak_bytes": 599525704,
+    "tracked_peak_gib": 0.5583922863006592,
+    "active_allocations_after_load": 574,
+    "active_allocations_after_close": 0
+  },
+  "previous_diagnostic_context": {
+    "artifact": "benchmarks/results/2026-05-16-hipengine-gguf-vs-paro-diagnostic.json",
+    "old_public_path": "sample_next_token(context_ids) full-context replay",
+    "old_decode_tok_s": {
+      "step1_ctx_len3": 5.583,
+      "step2_ctx_len4": 4.217,
+      "step3_ctx_len5": 3.401,
+      "step4_ctx_len6": 2.819
+    },
+    "resident_decode_tok_s": {
+      "step_after_token_220": 16.58510810936671,
+      "step_after_token_16": 16.705811560021183,
+      "step_after_token_13": 16.7686628139387
+    }
+  },
+  "validation": {
+    "targeted_tests_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_gguf_ops.py tests/test_qwen35_gguf_runner.py tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_tokenizer.py tests/test_gguf_e2e_acceptance.py tests/test_llm_generate.py tests/test_model_quant_and_imports.py -q",
+    "targeted_tests_result": "21 passed"
+  }
+}

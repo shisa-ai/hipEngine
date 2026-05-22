@@ -1,0 +1,56 @@
+{
+  "schema": "p9_c8_q6_tile_validation",
+  "status": "retained_legacy",
+  "performance_claim": false,
+  "timestamp": "2026-05-19T08:47:36.196982+00:00",
+  "task": "#39 P9.C8 validate/tune Q6_K selected down hot path",
+  "git_commit": "93d242145cb4eeaab97232cb30a792b4645569b4",
+  "summary": "Q6_K selected down is only ~2.8 ms across 3 layers. Generic tile sweep shows retained legacy 16x16 is fastest; larger tiles regress. Because Q5 decode-hoist did not generalize positively and Q6 bucket is small, no dedicated Q6 hot path is warranted.",
+  "command_template": "HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_M=<tm> HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_N=<tn> PYTHONPATH=. python3 scripts/qwen35_gguf_moe_replay.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --token-id 9707 --warmup-iters 1 --replay-iters 5 --sample-groups 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_c8/moe-replay-q6-<tile>.json",
+  "results": [
+    {
+      "tile": "16x16",
+      "q6_ms": 2.839263598434627,
+      "selected_moe_total_ms": 90.185355336871
+    },
+    {
+      "tile": "32x16",
+      "q6_ms": 3.1375204018938048,
+      "selected_moe_total_ms": 90.20761729528508
+    },
+    {
+      "tile": "16x32",
+      "q6_ms": 3.5759767905498543,
+      "selected_moe_total_ms": 90.51364930734661
+    },
+    {
+      "tile": "32x32",
+      "q6_ms": 3.6081134652098017,
+      "selected_moe_total_ms": 90.83006968333697
+    },
+    {
+      "tile": "64x16",
+      "q6_ms": 3.2476046006195247,
+      "selected_moe_total_ms": 89.82727371233827
+    },
+    {
+      "tile": "64x32",
+      "q6_ms": 4.825816939895351,
+      "selected_moe_total_ms": 92.45539699525885
+    }
+  ],
+  "best": {
+    "tile": "16x16",
+    "q6_ms": 2.839263598434627,
+    "selected_moe_total_ms": 90.185355336871
+  },
+  "decision": {
+    "retain_default": true,
+    "tile": "16x16",
+    "reason": "Lowest q6_ms in replay; Q6 contributes too little to justify custom complexity."
+  },
+  "correctness": {
+    "passed": true,
+    "evidence": "P8.5 Q6 correctness fixtures are covered by tests/test_gguf_k_selected_wmma_prefill.py, which passed in the adjacent P9.C7 validation."
+  }
+}

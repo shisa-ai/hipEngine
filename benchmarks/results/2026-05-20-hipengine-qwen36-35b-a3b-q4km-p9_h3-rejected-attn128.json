@@ -1,0 +1,57 @@
+{
+  "schema": "hipengine_rejected_probe_v1",
+  "status": "rejected_correctness_and_perf_reverted",
+  "performance_claim": false,
+  "task_ids": [
+    51
+  ],
+  "label": "p9_h3_rejected_full_attention_context_128_threads",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "change": "Prototype launched qwen35_paged_full_attn_decode_context_tensor_kernel with 128 threads instead of 256 for the c=1 paged full-attention context path.",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 16,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk"
+  },
+  "baseline": {
+    "label": "P9.D10 retained",
+    "local_512x16_decode_tok_s_single_run": 78.74516104209006,
+    "final_token_id": 38118,
+    "tail_note": "from /tmp/p9_d10_dualsplit64_512x16_bench.json"
+  },
+  "measurement": {
+    "benchmark_json": "/tmp/p9_d12_attn128_512x16_bench.json",
+    "decode_tok_s_512x16": 69.73892462511378,
+    "prefill_tok_s_512": 130.06873794420795,
+    "final_token_id": 220,
+    "generated_tail_token_ids": [
+      360,
+      279,
+      220,
+      220,
+      220,
+      220,
+      220,
+      220,
+      220,
+      754,
+      196798,
+      220,
+      220,
+      220,
+      4682,
+      220
+    ],
+    "finite_final_logits": true
+  },
+  "caveats": [
+    "The exploratory run rebuilt the attention .so under rocprof despite require-cached; use the wall/token drift as reject evidence, not as a retained profiler measurement."
+  ],
+  "decision": "Reject and revert: 128-thread context attention regressed local 512/16 decode 78.745 -> 69.739 tok/s and changed the generated tail/final token (38118 -> 220). Do not retry this launch-width change without a separate correctness oracle and prebuilt profiler run."
+}

@@ -1,0 +1,69 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "status": "accepted",
+  "performance_claim": true,
+  "label": "qwen36_35b_a3b_gguf_q4km_q4ks_direct_selected_moe_c1_4k128",
+  "date": "2026-05-22",
+  "git_commit_under_test": "working-tree pre-commit: c=1 GGUF decode skips compact selected-MoE scheduler by default",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local RX 7900 XTX/gfx1100 repeated-run diagnostic; W7900 not rerun"
+  },
+  "change": {
+    "file": "hipengine/runtime/qwen35_gguf_runner.py",
+    "summary": "For GGUF c=1 MoE decode, prefer the direct selected T16 GEMV path and do not enter the compact grouped selected-MoE scheduler unless HIPENGINE_GGUF_COMPACT_MOE_C1=1 is explicitly set.",
+    "rationale": "At top_k=2 and rows=1, the direct selected path avoids the compact scheduler group-count/prefix/scatter setup while still using fused selected Q4_K gate/up+SiLU and selected Q4_K/Q5_K/Q6_K down GEMV kernels. The compact c=1 path remains available as an opt-in diagnostic via HIPENGINE_GGUF_COMPACT_MOE_C1=1."
+  },
+  "baseline_from": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-router256-4k128-accepted.json",
+  "baseline_4k_128": {
+    "gguf_q4_k_m": {"prefill_tok_s_median": 2647.600668398051, "decode_tok_s_median": 98.92369589113835, "tracked_peak_gib": 22.571860380470753},
+    "gguf_q4_k_s": {"prefill_tok_s_median": 2732.1867333518435, "decode_tok_s_median": 99.75882828165028, "tracked_peak_gib": 21.415610380470753}
+  },
+  "correctness_and_dispatch_gate": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_decode_graph_policy.py tests/test_gguf_t16_selected_gemv_decode.py -q",
+    "result": "97 passed",
+    "coverage_note": "Default c=1 route uses direct selected T16 allocations without compact scheduler; compact grouped scheduler test now opts in with HIPENGINE_GGUF_COMPACT_MOE_C1=1. Selected Q4/Q5/Q6 T16 fixtures validate kernel numerics. Benchmarks report finite final logits and stable final token IDs."
+  },
+  "benchmark_command_common": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model <model> --quant <gguf_q4_k_m|gguf_q4_k_s> --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json <tmp-json>",
+  "results_4k_128": {
+    "gguf_q4_k_m": {
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "raw_json": "/tmp/hipengine-q4km-direct-selected-fallback-candidate-4096-128-3run.json",
+      "prefill_tok_s_samples": [2639.2823493823025, 2621.1149028218397, 2640.694536786243],
+      "prefill_tok_s_median": 2639.2823493823025,
+      "decode_tok_s_samples": [99.26362220654885, 99.22551616919144, 99.1503863017631],
+      "decode_tok_s_median": 99.22551616919144,
+      "decode_delta_vs_router256_baseline_pct": 0.3051041263007673,
+      "tracked_peak_gib_median": 22.571860380470753,
+      "hip_used_peak_sampled_gib_median": 23.111083984375,
+      "finite_final_logits_all": true,
+      "final_token_ids": [220, 220, 220],
+      "effective_use_wmma_prefill_all": [true, true, true, true],
+      "effective_use_gemv_decode_all": [true, true, true, true]
+    },
+    "gguf_q4_k_s": {
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+      "raw_json": "/tmp/hipengine-q4ks-direct-selected-fallback-candidate-4096-128-3run.json",
+      "prefill_tok_s_samples": [2711.644602628987, 2700.225941205899, 2709.8758775162337],
+      "prefill_tok_s_median": 2709.8758775162337,
+      "decode_tok_s_samples": [100.04236458409308, 100.65692950757295, 100.25490655811896],
+      "decode_tok_s_median": 100.25490655811896,
+      "decode_delta_vs_router256_baseline_pct": 0.4972775693275948,
+      "tracked_peak_gib_median": 21.415610380470753,
+      "hip_used_peak_sampled_gib_median": 21.954833984375,
+      "finite_final_logits_all": true,
+      "final_token_ids": [85, 85, 85],
+      "effective_use_wmma_prefill_all": [true, true, true, true],
+      "effective_use_gemv_decode_all": [true, true, true, true]
+    }
+  },
+  "comparison": {
+    "prior_local_paro_4k_128_decode_tok_s": 106.637,
+    "gguf_q4_k_m_gap_vs_prior_paro_pct": -6.950199115512031,
+    "gguf_q4_k_s_gap_vs_prior_paro_pct": -5.9848771457196275,
+    "note": "PARO comparison is the prior local 2026-05-21 row, not rerun in this artifact."
+  },
+  "decision": "Retain direct selected-MoE c=1 decode as the default path. It improves both required columns over the router256 baseline: Q4_K_M +0.31% decode and Q4_K_S +0.50% decode, with unchanged tracked peak memory and deterministic finite logits."
+}

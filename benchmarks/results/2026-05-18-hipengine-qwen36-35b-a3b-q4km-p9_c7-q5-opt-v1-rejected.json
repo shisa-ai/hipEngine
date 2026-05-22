@@ -1,0 +1,40 @@
+{
+  "schema": "p9_c7_q5_opt_decode_hoist_v1_rejected",
+  "status": "rejected_prototype",
+  "performance_claim": false,
+  "timestamp": "2026-05-19T08:45:08.867283+00:00",
+  "task": "#38 P9.C7 prototype hot-expert Q5_K selected down redesign",
+  "git_commit": "7f7042e91c46aa309f62f8558fb5cac28aa65f5b",
+  "git_status": "## gguf-bulk-prefill\n M hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.hip\n M hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.py\n M scripts/qwen35_gguf_moe_replay.py\n M tests/test_gguf_k_selected_wmma_prefill.py\n?? uv.lock",
+  "summary": "P9.C7 Q5_K opt kernel hoists d/dmin and packed scale/min decode once per 32-value subblock and preserves the compact selected ABI. Correctness passes, but replay regresses Q5 selected down from 26.999 ms to 34.086 ms; rocprof trace is 36.65 ms / 37 dispatches, VGPR 64, no scratch. Not retained/default.",
+  "baseline_replay": {
+    "json": "/tmp/p9_c2/moe-replay-512-0-batched.json",
+    "q5_ms": 26.999416520508632,
+    "selected_moe_total_ms": 89.7236940606187
+  },
+  "opt_replay": {
+    "json": "/tmp/p9_c7/moe-replay-q5opt.json",
+    "q5_ms": 34.086399451674275,
+    "q4_ms": 59.990489851528174,
+    "q6_ms": 2.827204468970497,
+    "selected_moe_total_ms": 96.90409377217294,
+    "q5_delta_pct": 26.248652172843823
+  },
+  "rocprof_trace": {
+    "csv": "/tmp/p9_c7/rocprof-q5opt/rocm/495159_kernel_trace.csv",
+    "q5_opt_ms": 36.652435,
+    "dispatches": 37,
+    "avg_ms": 0.9906063513513513,
+    "vgpr": 64,
+    "sgpr": 128,
+    "scratch": 0
+  },
+  "correctness": {
+    "passed": true,
+    "evidence": "tests/test_gguf_k_selected_wmma_prefill.py passed (26 tests), including P9.C7 Q5 opt BF16/FP16 CPU-reference fixtures."
+  },
+  "decision": {
+    "retain_default": false,
+    "reason": "Decode hoisting increases instruction scheduling/register lifetime enough to regress despite same VGPR count. The retained generic 16x16 Q5 kernel remains fastest available raw path."
+  }
+}

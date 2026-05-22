@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "task": "P9.H2",
+  "status": "design_retained",
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "design_doc": "docs/GGUF_DECODE_REPACK.md",
+  "source_evidence": {
+    "p9_b7_artifact": "benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_b7-decode-gemv-rejected.json",
+    "current_decode_tok_s": 63.03335910673056,
+    "target_decode_tok_s": 95.0,
+    "p9_e2_unsafe_rejected": {
+      "kl": 5.993,
+      "top1": 0.0543
+    },
+    "p9_h1_safety_artifact": "benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h1-fastpath-safety-correctness-accepted.json"
+  },
+  "model_inventory_gib": {
+    "total_tensor_bytes_gib": 20.604151248931885,
+    "q4_gate_up_raw_gib": 11.25,
+    "q5_down_raw_gib": 6.359375,
+    "q6_down_raw_gib": 0.615234375,
+    "q8_dense_shared_listed_raw_gib": 1.265869140625,
+    "targeted_raw_total_gib": 19.490478515625
+  },
+  "replacement_memory_gib": {
+    "q4_t16_gate_up_gib": 11.5625,
+    "q5_t16_down_gib_estimate": 6.50390625,
+    "q6_t16_down_gib": 0.615234375,
+    "q8_t16_dense_shared_gib": 1.265869140625,
+    "targeted_replacement_total_gib_estimate": 19.947509765625,
+    "persistent_delta_gib_estimate": 0.45703125,
+    "current_tracked_peak_gib": 20.886,
+    "expected_tracked_peak_after_replacement_gib_estimate": 21.343,
+    "headroom_to_24gib_estimate": 2.657
+  },
+  "chosen_layouts": {
+    "q4": "Q4T16 v1 already prototyped in P9.C13; [expert,out_tile16,k_block,2368], +2.78% vs raw, replacement not sidecar.",
+    "q5": "Q5T16 [expert,out_tile16,k_block,2880], unpack scale/min and tile ql/qh, +2.27% vs raw.",
+    "q6": "Q6T16 [expert,out_tile16,k_block,3360], byte-neutral tile reorder.",
+    "q8": "Q8T16 [out_tile16,k_block32,544], byte-neutral tile reorder for dense/shared projections."
+  },
+  "acceptance": [
+    "P9.E2 512/128x3 passes with effective fast paths true, not safety-disabled.",
+    "512/128 graph replay decode median >=95 tok/s over 3 measured runs.",
+    "rocprof decode trace shows T16 kernels dominate and legacy prefill_out absent except documented Q6_K lm-head fallback.",
+    "tracked peak remains within 24 GiB-class budget without raw+packed duplication."
+  ]
+}

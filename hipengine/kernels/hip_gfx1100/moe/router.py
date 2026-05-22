@@ -20,6 +20,8 @@ _SYMBOL_TOPK_SHARED_SIGMOID_OUT = "hipengine_qwen35_router_topk_shared_sigmoid_o
 _SYMBOL_TOPK_SHARED_SIGMOID_OUT_FP16 = "hipengine_qwen35_router_topk_shared_sigmoid_out_fp16"
 _SYMBOL_TOPK_SHARED_COOP_OUT = "hipengine_qwen35_router_topk_shared_coop_out_bf16"
 _SYMBOL_TOPK_SHARED_COOP_OUT_FP16 = "hipengine_qwen35_router_topk_shared_coop_out_fp16"
+_SYMBOL_TOPK_SPLIT_SHARED_COOP_OUT = "hipengine_qwen35_router_topk_split_shared_coop_out_bf16"
+_SYMBOL_TOPK_SPLIT_SHARED_COOP_OUT_FP16 = "hipengine_qwen35_router_topk_split_shared_coop_out_fp16"
 _ALLOWED_THREADS = {64, 128, 256, 512}
 
 
@@ -548,6 +550,116 @@ def qwen35_router_topk_shared_coop_out_fp16(
     _check_launch(runtime, err)
 
 
+def qwen35_router_topk_split_shared_coop_out_bf16(
+    hidden_ptr: int,
+    expert_weight_ptr: int,
+    shared_weight_ptr: int,
+    logits_ptr: int,
+    selected_ptr: int,
+    routing_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    num_experts: int,
+    top_k: int,
+    *,
+    threads: int = 512,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch decode-only router logits + top-k for split expert/shared weights."""
+
+    _check_split_decode_coop_shape(tokens, hidden_size, num_experts, top_k, threads)
+    library = library or build_qwen35_router(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_TOPK_SPLIT_SHARED_COOP_OUT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_ptr),
+        ctypes.c_void_p(expert_weight_ptr),
+        ctypes.c_void_p(shared_weight_ptr),
+        ctypes.c_void_p(logits_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(routing_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(top_k),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_router_topk_split_shared_coop_out_fp16(
+    hidden_ptr: int,
+    expert_weight_ptr: int,
+    shared_weight_ptr: int,
+    logits_ptr: int,
+    selected_ptr: int,
+    routing_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    num_experts: int,
+    top_k: int,
+    *,
+    threads: int = 512,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch decode-only split-weight router top-k for FP16 hidden."""
+
+    _check_split_decode_coop_shape(tokens, hidden_size, num_experts, top_k, threads)
+    library = library or build_qwen35_router(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_TOPK_SPLIT_SHARED_COOP_OUT_FP16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_ptr),
+        ctypes.c_void_p(expert_weight_ptr),
+        ctypes.c_void_p(shared_weight_ptr),
+        ctypes.c_void_p(logits_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(routing_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(top_k),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_qwen35_router_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "router_logits", "bf16"),
@@ -600,6 +712,16 @@ def register_qwen35_router_kernels(*, replace: bool = True) -> None:
             qwen35_router_topk_shared_coop_out_fp16,
             replace=replace,
         )
+        register(
+            KernelKey("hip_gfx1100", "router_topk_split_shared", quant, "coop_out"),
+            qwen35_router_topk_split_shared_coop_out_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "router_topk_split_shared", quant, "coop_out_fp16_hidden"),
+            qwen35_router_topk_split_shared_coop_out_fp16,
+            replace=replace,
+        )
     register(
         KernelKey("hip_gfx1100", "router_topk_shared", "fp16", "out"),
         qwen35_router_topk_shared_out_fp16,
@@ -613,6 +735,11 @@ def register_qwen35_router_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "router_topk_shared", "fp16", "coop_out"),
         qwen35_router_topk_shared_coop_out_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "router_topk_split_shared", "fp16", "coop_out"),
+        qwen35_router_topk_split_shared_coop_out_fp16,
         replace=replace,
     )
 
@@ -676,6 +803,20 @@ def _check_decode_coop_shape(
     _check_router_select_shape(tokens, num_rows, num_experts, top_k)
     if num_experts >= num_rows:
         raise ValueError("num_experts must be smaller than num_rows for shared-gate routing")
+    _check_threads(threads)
+
+
+def _check_split_decode_coop_shape(
+    tokens: int,
+    hidden_size: int,
+    num_experts: int,
+    top_k: int,
+    threads: int,
+) -> None:
+    if tokens != 1:
+        raise ValueError("split cooperative router is decode-only and requires tokens == 1")
+    _check_positive(hidden_size, "hidden_size")
+    _check_router_select_shape(tokens, num_experts + 1, num_experts, top_k)
     _check_threads(threads)
 
 

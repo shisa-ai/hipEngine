@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "description": "True hipengine.LLM.generate() E2E acceptance fixture for local Qwen3.5-0.8B Q4_K_M GGUF bring-up.",
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "file_size_bytes": 532517120,
+    "architecture": "qwen35",
+    "quant": "gguf_q4_k_m"
+  },
+  "oracle": {
+    "name": "llama.cpp llama-simple CPU oracle",
+    "checkout": "/home/lhl/llama.cpp/llama.cpp-hip-therock",
+    "commit": "59778f019",
+    "command": "/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-simple -m /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf -n 4 -ngl 0 'The answer is'",
+    "tokenize_command": "/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-tokenize -m /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --ids --log-disable -p <text>"
+  },
+  "prompt": "The answer is",
+  "prompt_ids": [760, 4087, 369],
+  "sampling": {
+    "max_new_tokens": 4,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "ignore_eos": false
+  },
+  "expected_generated_text": " 1.\n\n",
+  "expected_generated_token_ids": [220, 16, 13, 271],
+  "expected_full_text": "The answer is 1.\n\n",
+  "acceptance": {
+    "public_api": "hipengine.LLM.generate",
+    "backend": "hip_gfx1100",
+    "quant": "gguf_q4_k_m",
+    "repeat": 2,
+    "finite_logits_required": true,
+    "deterministic_required": true,
+    "expected_text_match_required": true,
+    "expected_token_ids_match_required": true,
+    "torch_hot_path_allowed": false,
+    "required_kernel_families": [
+      "gguf_q4_k",
+      "gguf_q5_k_dense_bf16_fallback",
+      "gguf_q6_k",
+      "gguf_q6_k_dense_bf16_fallback",
+      "gguf_q8_0"
+    ]
+  }
+}

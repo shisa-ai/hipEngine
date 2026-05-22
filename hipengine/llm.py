@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -96,17 +97,31 @@ class LLM:
         if self._weight_index is not None and self._model_plugin is not None:
             return self._weight_index, self._model_plugin
 
-        from hipengine.loading import load_weight_index
+        from hipengine.loading import discover_gguf_files, load_gguf_index, load_weight_index
         from hipengine.models import resolve_model
 
-        index = load_weight_index(self.model)
-        # Store resolved filesystem path so downstream code (tokenizer, runner) gets a
-        # real directory instead of an HF model ID string.
-        self.model = str(index.model_path)
-        plugin = resolve_model(_primary_architecture(index.config))
+        model_path = Path(self.model).expanduser()
+        if _looks_like_gguf_path(model_path):
+            index = load_gguf_index(discover_gguf_files(model_path)[0])
+            self.model = str(index.path)
+            plugin = resolve_model(index.architecture or "")
+        else:
+            index = load_weight_index(self.model)
+            # Store resolved filesystem path so downstream code (tokenizer, runner) gets a
+            # real directory instead of an HF model ID string.
+            self.model = str(index.model_path)
+            plugin = resolve_model(_primary_architecture(index.config))
         self._weight_index = index
         self._model_plugin = plugin
         return index, plugin
+
+
+def _looks_like_gguf_path(path: Path) -> bool:
+    if path.is_file():
+        return path.suffix.lower() == ".gguf"
+    if path.is_dir():
+        return any(path.glob("*.gguf"))
+    return path.suffix.lower() == ".gguf"
 
 
 def _normalize_prompts(prompts: str | Iterable[str]) -> tuple[str, ...]:

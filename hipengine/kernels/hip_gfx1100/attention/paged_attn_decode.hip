@@ -318,6 +318,19 @@ __global__ void qwen35_full_attn_gate_mul_bf16_kernel(
   }
 }
 
+__global__ void qwen35_full_attn_gate_mul_bf16_to_bf16_kernel(
+    const uint16_t* attn,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t total) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const float gated = bf16_bits_to_float(attn[idx]) * sigmoid_f32(bf16_bits_to_float(gate[idx]));
+    out[idx] = float_to_bf16_bits(gated);
+  }
+}
+
 __global__ void qwen35_full_attn_gate_mul_fp16_kernel(
     const float* attn,
     const half_t* gate,
@@ -1438,6 +1451,188 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
   }
 }
 
+template <bool SHORT_BLOCK256>
+__global__ void qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel(
+    const float* __restrict__ query,       // [rows, num_q_heads, head_dim]
+    const uint16_t* __restrict__ key_cache,
+    const uint16_t* __restrict__ value_cache,
+    const uint16_t* __restrict__ gate,     // [rows, num_q_heads, head_dim] BF16 view-compatible
+    uint16_t* __restrict__ out,            // [rows, num_q_heads * head_dim] BF16
+    const int32_t* __restrict__ block_tables,
+    const int64_t* __restrict__ context_counts,
+    const int64_t* __restrict__ row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale) {
+  const int64_t q_head = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (q_head >= num_q_heads || row >= rows) {
+    return;
+  }
+  int64_t context_len = context_counts[row];
+  if (context_len <= 0) {
+    return;
+  }
+  context_len = context_len > max_context_len ? max_context_len : context_len;
+  const int64_t causal_position = row_positions ? row_positions[row] : (context_counts[row] - 1);
+  if (causal_position < 0) {
+    return;
+  }
+  const int64_t causal_len = causal_position + 1;
+  const int64_t visible_len = context_len < causal_len ? context_len : causal_len;
+  if (visible_len <= 0) {
+    return;
+  }
+
+  extern __shared__ float shared[];
+  float* scores = shared;
+  float* warp_buf = scores + visible_len;
+  const int num_warps = blockDim.x / warpSize;
+  float* q_shared = warp_buf + num_warps;
+  const int64_t kv_group = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / kv_group;
+  const float* q = query + (row * num_q_heads + q_head) * head_dim;
+  const int32_t* row_table = block_tables + row * block_table_len;
+  const int lane_id = threadIdx.x % warpSize;
+  const int warp_id = threadIdx.x / warpSize;
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    q_shared[dim] = q[dim];
+  }
+  __syncthreads();
+
+  float local_max = -3.4028234663852886e38f;
+  for (int64_t token = warp_id; token < visible_len; token += num_warps) {
+    int64_t block_offset;
+    int64_t physical_block;
+    if constexpr (SHORT_BLOCK256) {
+      const int64_t logical_block = token >> 8;
+      block_offset = token & 255;
+      physical_block = (logical_block == 0)
+          ? (block_table_len > 0 ? static_cast<int64_t>(row_table[0]) : -1)
+          : (block_table_len > 1 ? static_cast<int64_t>(row_table[1]) : -1);
+    } else {
+      const int64_t logical_block = (block_size == 256) ? (token >> 8) : (token / block_size);
+      if (logical_block >= block_table_len) {
+        if (lane_id == 0) {
+          scores[token] = -3.4028234663852886e38f;
+        }
+        continue;
+      }
+      block_offset = (block_size == 256) ? (token & 255) : (token - logical_block * block_size);
+      physical_block = static_cast<int64_t>(row_table[logical_block]);
+    }
+    if (physical_block < 0) {
+      if (lane_id == 0) {
+        scores[token] = -3.4028234663852886e38f;
+      }
+      continue;
+    }
+    const int64_t k_offset = ((physical_block * block_size + block_offset) * num_kv_heads + kv_head) * head_dim;
+    float acc = 0.0f;
+    for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
+      acc += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset + dim + 0]);
+      acc += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset + dim + 1]);
+      acc += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset + dim + 2]);
+      acc += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset + dim + 3]);
+    }
+    for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+      acc += __shfl_down(acc, offset);
+    }
+    if (lane_id == 0) {
+      const float score = acc * scale;
+      scores[token] = score;
+      local_max = fmaxf(local_max, score);
+    }
+  }
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+    float other = __shfl_down(local_max, offset);
+    local_max = fmaxf(local_max, other);
+  }
+  if (lane_id == 0) {
+    warp_buf[warp_id] = local_max;
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float max_score = warp_buf[0];
+    for (int i = 1; i < num_warps; ++i) {
+      max_score = fmaxf(max_score, warp_buf[i]);
+    }
+    warp_buf[0] = max_score;
+  }
+  __syncthreads();
+  const float max_score = warp_buf[0];
+
+  float local_sum = 0.0f;
+  for (int64_t token = warp_id; token < visible_len; token += num_warps) {
+    if (lane_id == 0) {
+      const float val = expf(scores[token] - max_score);
+      scores[token] = val;
+      local_sum += val;
+    }
+  }
+  for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+    local_sum += __shfl_down(local_sum, offset);
+  }
+  if (lane_id == 0) {
+    warp_buf[warp_id] = local_sum;
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float total_sum = warp_buf[0];
+    for (int i = 1; i < num_warps; ++i) {
+      total_sum += warp_buf[i];
+    }
+    warp_buf[0] = 1.0f / fmaxf(total_sum, 1.0e-20f);
+  }
+  __syncthreads();
+  const float inv_denom = warp_buf[0];
+
+  for (int64_t token = warp_id; token < visible_len; token += num_warps) {
+    if (lane_id == 0) {
+      scores[token] *= inv_denom;
+    }
+  }
+  __syncthreads();
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    float acc = 0.0f;
+    for (int64_t token = 0; token < visible_len; ++token) {
+      int64_t block_offset;
+      int64_t physical_block;
+      if constexpr (SHORT_BLOCK256) {
+        const int64_t logical_block = token >> 8;
+        block_offset = token & 255;
+        physical_block = (logical_block == 0)
+            ? (block_table_len > 0 ? static_cast<int64_t>(row_table[0]) : -1)
+            : (block_table_len > 1 ? static_cast<int64_t>(row_table[1]) : -1);
+      } else {
+        const int64_t logical_block = (block_size == 256) ? (token >> 8) : (token / block_size);
+        if (logical_block >= block_table_len) {
+          continue;
+        }
+        block_offset = (block_size == 256) ? (token & 255) : (token - logical_block * block_size);
+        physical_block = static_cast<int64_t>(row_table[logical_block]);
+      }
+      if (physical_block < 0) {
+        continue;
+      }
+      const int64_t v_offset = ((physical_block * block_size + block_offset) * num_kv_heads + kv_head) * head_dim + dim;
+      acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+    }
+    const int64_t gate_idx = (row * num_q_heads + q_head) * gate_stride1 + dim * gate_stride2;
+    const float gated = acc * sigmoid_f32(bf16_bits_to_float(gate[gate_idx]));
+    out[(row * num_q_heads + q_head) * head_dim + dim] = float_to_bf16_bits(gated);
+  }
+}
+
 __global__ void qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel(
     const float* __restrict__ query,
     const uint16_t* __restrict__ key_cache,
@@ -1758,6 +1953,31 @@ extern "C" int hipengine_qwen35_full_attn_gate_mul_bf16(
   const int blocks = static_cast<int>((total + threads - 1) / threads);
   hipLaunchKernelGGL(
       qwen35_full_attn_gate_mul_bf16_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      attn,
+      gate,
+      out,
+      total);
+  return static_cast<int>(hipGetLastError());
+}
+
+
+extern "C" int hipengine_qwen35_full_attn_gate_mul_bf16_to_bf16(
+    const uint16_t* attn,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t total,
+    hipStream_t stream) {
+  if (total <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((total + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      qwen35_full_attn_gate_mul_bf16_to_bf16_kernel,
       dim3(static_cast<unsigned int>(blocks)),
       dim3(threads),
       0,
@@ -2149,6 +2369,68 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans(
     HIPENGINE_LAUNCH_PREFILL_GQA(false);
   }
 #undef HIPENGINE_LAUNCH_PREFILL_GQA
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    const uint16_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || max_context_len <= 0 || block_size <= 0 || block_table_len <= 0 ||
+      num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 || gate_stride1 <= 0 || gate_stride2 <= 0 ||
+      (num_q_heads % num_kv_heads) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = max_context_len <= 1024 ? 32 : 64;
+  const size_t shared = static_cast<size_t>(max_context_len + threads + head_dim) * sizeof(float);
+  const bool use_short_block256 = block_size == 256 && max_context_len <= 512;
+#define HIPENGINE_LAUNCH_PREFILL_GQA_BF16(SHORT) \
+  hipLaunchKernelGGL( \
+      (qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<SHORT>), \
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)), \
+      dim3(threads), \
+      shared, \
+      stream, \
+      query, \
+      key_cache, \
+      value_cache, \
+      gate, \
+      out, \
+      block_tables, \
+      context_counts, \
+      row_positions, \
+      rows, \
+      max_context_len, \
+      block_size, \
+      block_table_len, \
+      num_q_heads, \
+      num_kv_heads, \
+      head_dim, \
+      gate_stride1, \
+      gate_stride2, \
+      scale)
+  if (use_short_block256) {
+    HIPENGINE_LAUNCH_PREFILL_GQA_BF16(true);
+  } else {
+    HIPENGINE_LAUNCH_PREFILL_GQA_BF16(false);
+  }
+#undef HIPENGINE_LAUNCH_PREFILL_GQA_BF16
   return static_cast<int>(hipGetLastError());
 }
 

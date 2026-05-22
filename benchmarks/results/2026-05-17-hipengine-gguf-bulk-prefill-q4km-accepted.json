@@ -1,0 +1,258 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "date": "2026-05-17",
+  "run_tag": "gguf-bulk-prefill-q4km-512-4k-128",
+  "summary": "Qwen3.5-0.8B GGUF Q4_K_M resident-session bulk-prefill benchmark with public LLM.generate correctness gate; 3-run 512/128 and 4K/128 medians beat the Qwen3.6 packed PARO prefill comparison rows.",
+  "git_head_at_run": "0fb57d40ebd954205c50f21e50896df9b9d34ff0",
+  "working_tree_at_run": "clean after code commit 0fb57d4; benchmark rollup/artifact edits were made after measurement",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX / gfx1100 (rocminfo Marketing Name)",
+    "project_default_note": "Project default is W7900/gfx1100; this run was measured on the attached RX 7900 XTX/gfx1100 reported by rocminfo.",
+    "rocminfo_excerpt": "Name: gfx1100; Marketing Name: AMD Radeon RX 7900 XTX"
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "python": "Python 3.12.13"
+  },
+  "model": {
+    "name": "Qwen3.5-0.8B GGUF",
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "backend": "hip_gfx1100"
+  },
+  "comparison_target": {
+    "name": "Qwen3.6 packed PARO prefill rows",
+    "source": "benchmarks/results/2026-05-17-hipengine-qwen36-packed-shared-decode-fusion-diagnostic.json (prefill rows only)",
+    "prefill_tok_s": {
+      "512/128": 2451.213,
+      "4K/128": 2666.743
+    },
+    "note": "Cross-model prefill threshold requested for the GGUF bulk-prefill multiloop; this artifact does not claim 35B/PARO equivalence."
+  },
+  "change": {
+    "summary": "Public GGUF resident session now uses bulk prefill for long prompts, dense Q5/Q6 layer fallback uses a 32x8x16 unrolled dense BF16 prefill tile, Q4_K gate/up rows>1 path uses a dual pack8 prefill launch, and public generation/benchmarks skip host logits copy during prefill.",
+    "key_commits": [
+      "c9d9b59",
+      "a1f9dda",
+      "fe54d0b",
+      "1720b08",
+      "317609e",
+      "18d4ae1",
+      "0fb57d4"
+    ]
+  },
+  "commands": {
+    "benchmark_512_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-promoted-512-128.json",
+    "benchmark_4k_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-promoted-4k-128.json",
+    "correctness_guard": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --json /tmp/hipengine-gguf-bulk-final-e2e.json && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q"
+  },
+  "validation": {
+    "public_e2e_fixture": {
+      "passed": true,
+      "expected_text_match": true,
+      "expected_token_ids_match": true,
+      "generated_token_ids": [
+        220,
+        16,
+        13,
+        271
+      ],
+      "torch_loaded_by_generate": false
+    },
+    "targeted_tests": "tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_llm_gguf_generate_path.py -q -> 13 passed",
+    "post_run_quality_gates": {
+      "finite_final_logits_all": true,
+      "memory_under_24_gib": true,
+      "generated_token_sequences_stable": true,
+      "variance_prefill_stdev_pct_lt_5": true
+    }
+  },
+  "measurements": [
+    {
+      "workload": "512/128",
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-promoted-512-128.json",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "prefill_tok_s": {
+        "samples": [
+          3277.9183106054516,
+          3286.8893304822263,
+          3279.0296563681386
+        ],
+        "median": 3279.0296563681386,
+        "p95": 3279.0296563681386,
+        "min": 3277.9183106054516,
+        "max": 3286.8893304822263,
+        "stdev": 4.890275456000948,
+        "stdev_pct_of_median": 0.14913788432817743
+      },
+      "decode_tok_s": {
+        "samples": [
+          179.04395148740147,
+          178.38930747255873,
+          179.1289293804622
+        ],
+        "median": 179.04395148740147,
+        "p95": 179.04395148740147,
+        "min": 178.38930747255873,
+        "max": 179.1289293804622,
+        "stdev": 0.40472636746515944,
+        "stdev_pct_of_median": 0.22604861214406244
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          0.9373894408345222,
+          0.9373894408345222,
+          0.9373894408345222
+        ],
+        "median": 0.9373894408345222,
+        "p95": 0.9373894408345222,
+        "min": 0.9373894408345222,
+        "max": 0.9373894408345222,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "samples": [
+          1.1850738525390625,
+          1.1870269775390625,
+          1.1870269775390625
+        ],
+        "median": 1.1870269775390625,
+        "p95": 1.1870269775390625,
+        "min": 1.1850738525390625,
+        "max": 1.1870269775390625,
+        "stdev": 0.0011276372445109878,
+        "stdev_pct_of_median": 0.09499676636236178
+      },
+      "finite_final_logits_all": true,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "generated_preview_token_ids_first_run": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "qwen36_packed_paro_prefill_target_tok_s": 2451.213,
+      "prefill_delta_vs_target_tok_s": 827.8166563681384,
+      "prefill_delta_vs_target_pct": 33.771714509026275
+    },
+    {
+      "workload": "4K/128",
+      "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-promoted-4k-128.json",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "prefill_tok_s": {
+        "samples": [
+          3564.4111680523556,
+          3599.7168379393984,
+          3634.074392086091
+        ],
+        "median": 3599.7168379393984,
+        "p95": 3599.7168379393984,
+        "min": 3564.4111680523556,
+        "max": 3634.074392086091,
+        "stdev": 34.83268732070053,
+        "stdev_pct_of_median": 0.9676507594591789
+      },
+      "decode_tok_s": {
+        "samples": [
+          85.78620540238332,
+          85.64783778904551,
+          85.70228699243238
+        ],
+        "median": 85.70228699243238,
+        "p95": 85.70228699243238,
+        "min": 85.64783778904551,
+        "max": 85.78620540238332,
+        "stdev": 0.06970486795406149,
+        "stdev_pct_of_median": 0.0813337314559838
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          1.6084061861038208,
+          1.6084061861038208,
+          1.6084061861038208
+        ],
+        "median": 1.6084061861038208,
+        "p95": 1.6084061861038208,
+        "min": 1.6084061861038208,
+        "max": 1.6084061861038208,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "samples": [
+          1.88885498046875,
+          1.89080810546875,
+          1.89080810546875
+        ],
+        "median": 1.89080810546875,
+        "p95": 1.89080810546875,
+        "min": 1.88885498046875,
+        "max": 1.89080810546875,
+        "stdev": 0.0011276372445109878,
+        "stdev_pct_of_median": 0.059637846973976
+      },
+      "finite_final_logits_all": true,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "generated_preview_token_ids_first_run": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "qwen36_packed_paro_prefill_target_tok_s": 2666.743,
+      "prefill_delta_vs_target_tok_s": 932.9738379393984,
+      "prefill_delta_vs_target_pct": 34.98551746229008
+    }
+  ],
+  "result": {
+    "accepted": true,
+    "512_128_prefill_median_tok_s": 3279.0296563681386,
+    "4k_128_prefill_median_tok_s": 3599.7168379393984
+  },
+  "notes": [
+    "Decode timing excludes graph capture time; graph replay is enabled with one step per replay.",
+    "scripts/qwen35_gguf_bench.py measures Qwen35GGUFResidentSession directly; the public GGUF generator uses the same resident bulk-prefill path and is covered by the public LLM.generate E2E no-torch correctness gate.",
+    "Warmup run is excluded from summary medians; measured rows share OS/JIT cache state after warmup, as required by the cached-build protocol."
+  ]
+}

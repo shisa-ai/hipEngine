@@ -1,0 +1,118 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "timestamp": "2026-05-17T18:13:03.276768+00:00",
+  "run_tag": "hipengine-qwen36-q4km-full-attn-parity-fixed",
+  "summary": "Task #56: replace fully-bulk full-attention AOTriton BF16 path with native causal GQA BF16 gate prefill; first fast-bulk drift moves from full-attention limit 4 to linear-attention limit 14.",
+  "hardware": {
+    "gpu": "attached RX 7900 XTX / gfx1100",
+    "default_claim_hardware": "W7900/gfx1100 rows remain directional on this card"
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "hipengine_commit_before_commit": "23bbe08",
+    "hipengine_status_at_artifact": "## gguf-bulk-prefill\n M benchmarks/CHANGELOG.md\n M benchmarks/README.md\n M benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-bulk-parity-diagnostic.json\n M benchmarks/results/2026-05-17-hipengine-qwen36-35b-a3b-q4km-native-attention-bulk-moe-diagnostic.json\n M hipengine/kernels/hip_gfx1100/attention/__init__.py\n M hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip\n M hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py\n M hipengine/runtime/qwen35_gguf_runner.py\n M scripts/qwen35_gguf_bulk_parity.py\n M tests/test_qwen35_gguf_full_attention_gpu.py"
+  },
+  "commands": {
+    "parity_probe": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bulk_parity.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task56-final-parity.json",
+    "public_correctness": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --repeat 2 --json /tmp/hipengine-task56-public-correctness.json",
+    "targeted_pytest": "PYTHONPATH=. pytest -q tests/test_qwen35_gguf_full_attention_gpu.py tests/test_llm_gguf_generate_path.py tests/test_gguf_linear_dispatch.py",
+    "fast_bulk_512_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task56-fastbulk-512-128.json",
+    "fast_bulk_4k_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task56-fastbulk-4096-128.json"
+  },
+  "correctness": {
+    "parity_probe_summary": {
+      "serial_token_id": 4469,
+      "default_token_id": 4469,
+      "default_top1_match": true,
+      "default_kl_serial_to_default": 0.0,
+      "default_max_abs_logit": 0.0,
+      "native_attention_bulk_ffn_token_id": 4469,
+      "native_attention_bulk_ffn_top1_match": true,
+      "native_attention_bulk_ffn_kl_serial_to_bulk": 0.0,
+      "native_attention_bulk_ffn_max_abs_logit": 0.0,
+      "fast_bulk_attention_token_id": 11,
+      "fast_bulk_attention_top1_match": false,
+      "fast_bulk_attention_kl_serial_to_bulk": 0.7067434234037477,
+      "fast_bulk_attention_max_abs_logit": 8.324869155883789,
+      "first_fast_bulk_hidden_drift_limit": 14,
+      "first_aotriton_hidden_drift_limit": 14,
+      "first_native_full_attention_hidden_drift_limit": 14
+    },
+    "full_attention_acceptance_met": true,
+    "public_gate_passed": true,
+    "benchmark_shape_final_logits_finite_all": true
+  },
+  "measurements": {
+    "rows": [
+      {
+        "workload": "512/128",
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "mode": "resident_bulk_prefill_bulk_attention_graph_decode",
+        "prefill_tok_s": 115.17659978322739,
+        "decode_tok_s": 49.86899516214406,
+        "prefill_seconds": 4.445347414002754,
+        "decode_seconds": 2.5667250680271536,
+        "tracked_peak_gib": 20.885867577046156,
+        "hip_used_peak_sampled_gib": 21.34375,
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          220
+        ]
+      },
+      {
+        "workload": "4K/128",
+        "prompt_length": 4096,
+        "decode_tokens": 128,
+        "mode": "resident_bulk_prefill_bulk_attention_graph_decode",
+        "prefill_tok_s": 88.27535721380075,
+        "decode_tok_s": 33.205097176273576,
+        "prefill_seconds": 46.40026536601363,
+        "decode_seconds": 3.854829857009463,
+        "tracked_peak_gib": 22.12193063274026,
+        "hip_used_peak_sampled_gib": 22.65234375,
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          220
+        ]
+      }
+    ]
+  },
+  "comparisons": {
+    "512/128": {
+      "vs_paro_parent": {
+        "prefill_delta_pct": -95.72850468093654,
+        "decode_delta_pct": -57.028009338953844,
+        "tracked_peak_delta_gib": 2.085867577046155,
+        "baseline": {
+          "prefill_tok_s": 2696.4,
+          "decode_tok_s": 116.05,
+          "peak_gib": 18.8
+        }
+      }
+    },
+    "4K/128": {
+      "vs_paro_parent": {
+        "prefill_delta_pct": -96.78003438942912,
+        "decode_delta_pct": -70.62795473129273,
+        "tracked_peak_delta_gib": 0.4819306327402586,
+        "baseline": {
+          "prefill_tok_s": 2741.5,
+          "decode_tok_s": 113.05,
+          "peak_gib": 21.64
+        }
+      }
+    }
+  },
+  "decision": {
+    "task56_complete": true,
+    "task55_complete": false,
+    "reason": "Fully-bulk full-attention is no longer the first parity blocker; remaining fast-bulk blocker is linear-attention recurrent drift at limit 14."
+  },
+  "next_blockers": [
+    "Task #57: fix fully-bulk linear-attention recurrent parity (fast-bulk token 11 vs serial 4469, KL 0.7067).",
+    "After parity, implement grouped/packed MoE or GGUF-to-packed sidecar kernels here."
+  ]
+}

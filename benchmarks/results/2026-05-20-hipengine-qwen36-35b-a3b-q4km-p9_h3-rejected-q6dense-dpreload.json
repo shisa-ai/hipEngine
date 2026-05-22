@@ -1,0 +1,50 @@
+{
+  "schema": "hipengine_rejected_probe_v1",
+  "status": "rejected_perf_reverted",
+  "performance_claim": false,
+  "task_ids": [
+    51
+  ],
+  "label": "p9_h3_rejected_q6_t16_dense_d_preload",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "change": "Prototype preloaded Q6T16 dense lm-head per-column d scales into registers once per tile/block.",
+  "validation": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_q6_k_t16_gemv_decode.py -q --tb=short",
+    "result": "6 passed while prototype was present"
+  },
+  "baseline": {
+    "label": "P9.D10 retained",
+    "local_512x16_decode_tok_s_single_run": 78.74516104209006,
+    "final_token_id": 38118
+  },
+  "measurement": {
+    "benchmark_json": "/tmp/p9_d13_q6dense_dpreload_512x16_bench.json",
+    "decode_tok_s_512x16": 77.00358861838302,
+    "prefill_tok_s": 500.43872447175534,
+    "final_token_id": 38118,
+    "generated_tail_token_ids": [
+      75,
+      26417,
+      126878,
+      188,
+      50557,
+      11,
+      53213,
+      14405,
+      99969,
+      220,
+      220,
+      220,
+      220,
+      95912,
+      100515,
+      38118
+    ],
+    "finite_final_logits": true
+  },
+  "decision": "Reject and revert. The generated tail matched D10, but local 512/16 graph decode regressed 78.745 -> 77.004 tok/s, likely from extra register pressure in the already bandwidth/occupancy-sensitive Q6 lm-head kernel."
+}

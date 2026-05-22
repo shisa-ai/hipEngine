@@ -1,0 +1,102 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "rejected_or_not_retained",
+  "performance_claim": false,
+  "label": "small_kernel_third_pass_after_direct_selected_moe",
+  "date": "2026-05-22",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "note": "local diagnostic; W7900 not rerun"
+  },
+  "scope": "Third reopened Task #4 RMSNorm/router/GDN small-kernel decode pass. Avoids previously rejected RMSNorm128/router128/router64/GDN ssm_out f32 shortcut/graph2-default probes. Current comparison baseline is direct-selected-MoE c=1 decode.",
+  "baseline_from": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-direct-selected-moe-c1-4k128-accepted.json",
+  "baseline_4k_128": {
+    "gguf_q4_k_m": {"prefill_tok_s_median": 2639.2823493823025, "decode_tok_s_median": 99.22551616919144, "tracked_peak_gib": 22.571860380470753, "final_token_ids": [220, 220, 220]},
+    "gguf_q4_k_s": {"prefill_tok_s_median": 2709.8758775162337, "decode_tok_s_median": 100.25490655811896, "tracked_peak_gib": 21.415610380470753, "final_token_ids": [85, 85, 85]}
+  },
+  "final_source_state": "No source changes retained in this third small-kernel pass; temporary gdn.hip and conv.hip launch-shape probes were reverted.",
+  "post_revert_validation": {
+    "command": "PYTHONPATH=. uv run pytest tests/test_qwen35_linear_attn_conv_plan.py tests/test_qwen35_gguf_decode_graph_policy.py tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_router_plan.py -q",
+    "result": "21 passed"
+  },
+  "probes": [
+    {
+      "name": "gdn_recurrent_lowp_bf16_threads_64",
+      "change": "Temporarily changed hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16 launch from 128 threads to 64 threads. This reduces reduction participation/shared scratch but changes floating-point reduction order inside the recurrent GDN kernel.",
+      "validation": "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_decode_graph_policy.py tests/test_qwen35_gguf_decode_repack_semantics.py -q => 7 passed",
+      "results_4k_128_3run": {
+        "gguf_q4_k_m": {
+          "prefill_tok_s_samples": [2656.597330846762, 2635.2763087437024, 2649.648863962977],
+          "prefill_tok_s_median": 2649.648863962977,
+          "decode_tok_s_samples": [99.37480136714724, 99.42494344658026, 99.50159603663975],
+          "decode_tok_s_median": 99.42494344658026,
+          "decode_delta_vs_current_baseline_pct": 0.20098386492520107,
+          "tracked_peak_gib": 22.571860380470753,
+          "final_token_ids": [1510, 1510, 1510],
+          "json": "/tmp/hipengine-q4km-gdn64-candidate-4096-128-3run.json"
+        },
+        "gguf_q4_k_s": {
+          "prefill_tok_s_samples": [2734.315130703568, 2724.1865171576383, 2722.2573704574634],
+          "prefill_tok_s_median": 2724.1865171576383,
+          "decode_tok_s_samples": [100.5033374362984, 100.18282975135835, 100.3634466164338],
+          "decode_tok_s_median": 100.3634466164338,
+          "decode_delta_vs_current_baseline_pct": 0.10826408605939121,
+          "tracked_peak_gib": 21.415610380470753,
+          "final_token_ids": [240126, 240126, 240126],
+          "json": "/tmp/hipengine-q4ks-gdn64-candidate-4096-128-3run.json"
+        }
+      },
+      "decision": "rejected_and_reverted",
+      "reason": "Although decode medians were slightly positive, changing GDN reduction width changed generated final token IDs for both Q4_K_M and Q4_K_S versus the current baseline. This is a math-contract change and does not pass the correctness/sanity gate for a tiny small-kernel gain."
+    },
+    {
+      "name": "linear_attn_conv_decode_bf16_threads_128",
+      "change": "Temporarily changed hipengine_qwen35_linear_attn_conv_decode_bf16 launch from 256 threads to 128 threads. Conv decode is per-channel and preserves math order.",
+      "validation": "PYTHONPATH=. uv run pytest tests/test_qwen35_linear_attn_conv_plan.py tests/test_qwen35_gguf_decode_graph_policy.py -q => 8 passed",
+      "results_4k_128_3run": {
+        "gguf_q4_k_m": {
+          "prefill_tok_s_samples": [2647.125869663242, 2640.215565614556, 2639.1404677214996],
+          "prefill_tok_s_median": 2640.215565614556,
+          "decode_tok_s_samples": [98.75127622772153, 98.80443546078148, 98.90146052585544],
+          "decode_tok_s_median": 98.80443546078148,
+          "decode_delta_vs_current_baseline_pct": -0.4243673650353874,
+          "tracked_peak_gib": 22.571860380470753,
+          "final_token_ids": [220, 220, 220],
+          "json": "/tmp/hipengine-q4km-conv128-candidate-4096-128-3run.json"
+        },
+        "gguf_q4_k_s": {
+          "prefill_tok_s_samples": [2720.7248154387876, 2725.825518622771, 2722.047928037132],
+          "prefill_tok_s_median": 2722.047928037132,
+          "decode_tok_s_samples": [100.57971365633952, 100.67665598396731, 100.57153949701126],
+          "decode_tok_s_median": 100.57971365633952,
+          "decode_delta_vs_current_baseline_pct": 0.32398124877036905,
+          "tracked_peak_gib": 21.415610380470753,
+          "final_token_ids": [85, 85, 85],
+          "json": "/tmp/hipengine-q4ks-conv128-candidate-4096-128-3run.json"
+        }
+      },
+      "decision": "rejected_and_reverted",
+      "reason": "Q4_K_S improved, but Q4_K_M regressed by 0.42%; fails the dual-column retention gate."
+    },
+    {
+      "name": "decode_graph_steps_per_replay_4",
+      "change": "No source change: benchmarked --graph-steps-per-replay 4 as an additional graph-replay launch-count probe after graph2 was neutral/sub-threshold.",
+      "results_4k_128_3run": {
+        "gguf_q4_k_s": {
+          "prefill_tok_s_samples": [2712.8535422184127, 2721.0607471096664, 2717.263586577312],
+          "prefill_tok_s_median": 2717.263586577312,
+          "decode_tok_s_samples": [100.06395900269753, 100.42452230632351, 99.86601140983954],
+          "decode_tok_s_median": 100.06395900269753,
+          "decode_delta_vs_current_baseline_pct": -0.19046205515212014,
+          "tracked_peak_gib": 21.415610380470753,
+          "final_token_ids": [85, 85, 85],
+          "json": "/tmp/hipengine-q4ks-graph4-candidate-4096-128-3run.json"
+        }
+      },
+      "decision": "rejected_without_q4km",
+      "reason": "Q4_K_S regressed below the one-step graph replay baseline, so the Q4_K_M gate was not run. Capture overhead also rose as expected for four recorded steps."
+    }
+  ],
+  "decision": "No additional small-kernel source change retained. Best current retained path remains router256 plus direct-selected-MoE: Q4_K_M 99.226 tok/s and Q4_K_S 100.255 tok/s at 4K/128."
+}

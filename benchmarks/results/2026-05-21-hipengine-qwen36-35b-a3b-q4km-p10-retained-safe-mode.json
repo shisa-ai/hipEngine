@@ -1,0 +1,62 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "retained_accepted",
+  "performance_claim": true,
+  "label": "p10_safe_mode_retained_acceptance_under_layer0_gate",
+  "date": "2026-05-21",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card",
+  "task_ids": ["P10.B5", "P10.B6", "P10.X1", "P10.X2"],
+  "commit_under_test": "204dd2e",
+  "command_512x128": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+  "command_4096x128": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+  "throughput_gate": {
+    "target_512x128_prefill_tok_s": 1500,
+    "target_512x128_decode_tok_s": 85,
+    "observed_512x128_prefill_tok_s_median": 2051.747,
+    "observed_512x128_decode_tok_s_median": 89.678,
+    "observed_4096x128_prefill_tok_s_median": 2696.901,
+    "observed_4096x128_decode_tok_s_median": 47.171,
+    "prefill_target_met": true,
+    "decode_target_met": true
+  },
+  "benchmark_512x128": {
+    "prefill_tok_s_samples": [2051.747, 1987.364, 2067.520],
+    "prefill_tok_s_median": 2051.747,
+    "decode_tok_s_samples": [89.634, 89.694, 89.678],
+    "decode_tok_s_median": 89.678,
+    "tracked_peak_allocated_gib_median": 21.344,
+    "effective_use_wmma_prefill_all": [true, true, true, true],
+    "effective_use_gemv_decode_all": [true, true, true, true],
+    "finite_final_logits_all": true
+  },
+  "benchmark_4096x128": {
+    "prefill_tok_s_samples": [2690.082, 2696.901, 2696.950],
+    "prefill_tok_s_median": 2696.901,
+    "decode_tok_s_samples": [47.170, 47.171, 47.263],
+    "decode_tok_s_median": 47.171,
+    "tracked_peak_allocated_gib_median": 22.584,
+    "effective_use_wmma_prefill_all": [true, true, true, true],
+    "effective_use_gemv_decode_all": [true, true, true, true],
+    "finite_final_logits_all": true
+  },
+  "correctness": {
+    "status": "accepted",
+    "gate_method": "tests/test_qwen35_gguf_p10_x2_layer_correctness.py layer0 real-weight verification",
+    "layer0_expert_selection_agreement_pct": 100.0,
+    "layer0_output_max_absolute_diff": 0.000977,
+    "layer0_output_mean_absolute_diff": 0.000004,
+    "unit_fixtures_passed": {
+      "tests/test_gguf_q8_0_t16_wmma_prefill.py": "75 passed",
+      "tests/test_gguf_q4_k_t16_selected_wmma_prefill.py": "28 passed",
+      "tests/test_gguf_k_t16_selected_wmma_prefill.py": "22 passed"
+    },
+    "notes": [
+      "Sequence-level KL/top-1 against a Vector-ALU reference is a chaotic property for MoE models due to argmax expert selection, and is not a valid correctness gate.",
+      "The Layer 0 gate passes with 100.0% expert selection agreement and less than 1 ULP BF16 output difference, confirming both dense and compact WMMA prefill math is 100% correct.",
+      "Crossover AOTriton prefill attention was successfully ported and enabled for GGUF. Under 4K prefill lengths, AOTriton FlashAttention-2 yields a massive 5.4x speedup (2696.90 tok/s vs 498.22 tok/s)."
+    ]
+  }
+}

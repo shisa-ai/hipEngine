@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "task": 46,
+  "title": "Qwen3.5-0.8B GGUF layer-level AOTriton V3 full-attention prefill",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "architecture": "qwen35",
+    "quant": "gguf_q4_k_m",
+    "file_size_bytes": 532517120
+  },
+  "change": {
+    "summary": "Added a GGUF full-attention layer prefill path that selects AOTriton V3 compact-varlen attention when rows meet the PrefillConfig-style attn_aotriton_min_tokens threshold.",
+    "implemented": [
+      "registered KernelKey('hip_gfx1100', 'full_attn_prefill', 'gguf_qwen35', 'aotriton_attn_fwd_v3')",
+      "added GGUF F32-weight multi-position q/k RMSNorm+RoPE kernel",
+      "added BF16 prompt KV append through KVLiveSpans",
+      "added BF16 AOTriton-output gate multiply for GGUF",
+      "added Qwen35GGUFFullStackRunner.run_full_attention_prefill_layer(...) threshold surface"
+    ],
+    "caveats": [
+      "This is a layer-level full-attention prefill path; public LLM.generate still uses resident token-serial prefill until the full GGUF scheduler/linear-attention bulk path lands.",
+      "AOTriton returns BF16 attention; the tiny fixture is correctness/launch evidence only, not a throughput row.",
+      "Rows>1 GGUF projection kernels are still GEMV-style surfaces and need P4 tuning before parity benchmarking."
+    ]
+  },
+  "threshold_sweep": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_aotriton_prefill_sweep.py --lengths 1,2,4 --attn-aotriton-min-tokens 3 --json /tmp/gguf_task46_sweep_script.json",
+    "layer_id": 3,
+    "threshold": 3,
+    "rows": [
+      {
+        "rows": 1,
+        "mode": "native_sequential",
+        "used_aotriton": false,
+        "seconds": 0.013421487994492054
+      },
+      {
+        "rows": 2,
+        "mode": "native_sequential",
+        "used_aotriton": false,
+        "seconds": 0.012717482983134687
+      },
+      {
+        "rows": 4,
+        "mode": "aotriton_v3",
+        "used_aotriton": true,
+        "seconds": 0.044591718004085124
+      }
+    ]
+  },
+  "layer_oracle": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_qwen35_gguf_full_attention_gpu.py -q",
+    "result": "2 passed",
+    "fixture": "first Qwen3.5 GGUF full-attention layer (layer 3), prefix-hidden rows for fixture prompt tokens [760, 4087]",
+    "checks": {
+      "threshold_modes": "rows=2 with threshold=3 uses native_sequential; rows=2 with threshold=2 uses aotriton_v3",
+      "final_hidden_allclose": "AOTriton final row vs CPU bridge: rtol <= 0.20, atol <= 0.15",
+      "lm_head_top1": "AOTriton final-row top-1 equals CPU bridge top-1",
+      "lm_head_kl": "KL(cpu || aotriton) <= 0.05"
+    }
+  },
+  "e2e_gate": {
+    "command": "/usr/bin/time -f 'elapsed=%E exit=%x' env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --repeat 2 --max-new-tokens 4 --json /tmp/gguf_task46_e2e.json",
+    "elapsed_wall": "0:23.95",
+    "passed": true,
+    "repeat": 2,
+    "prompt": "The answer is",
+    "prompt_ids": [760, 4087, 369],
+    "expected_generated_text": " 1.\n\n",
+    "outputs": [" 1.\n\n", " 1.\n\n"],
+    "expected_generated_token_ids": [220, 16, 13, 271],
+    "generated_token_ids": [220, 16, 13, 271],
+    "torch_loaded_by_generate": false
+  },
+  "rocprof_kernel_trace": {
+    "command": "env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file gguf_task46 --output-directory /tmp/hipengine-gguf-task46-rocprof.lNVeqC -- python3 /tmp/profile_gguf_task46_aotriton.py",
+    "profile_dir": "/tmp/hipengine-gguf-task46-rocprof.lNVeqC",
+    "profile_script": "/tmp/profile_gguf_task46_aotriton.py",
+    "stdout": "{'mode': 'aotriton_v3', 'used_aotriton': True, 'shape': (4, 1024)}",
+    "total_dispatches": 142,
+    "expected_kernel_counts": {
+      "bf16_to_f32_kernel": 1,
+      "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel": 1,
+      "qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>": 1,
+      "f32_to_bf16_kernel": 1,
+      "attn_fwd": 1,
+      "gguf_gate_mul_bf16_kernel": 1
+    }
+  },
+  "validation": {
+    "targeted_tests_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_gguf_ops.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_runner.py tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_tokenizer.py tests/test_gguf_e2e_acceptance.py tests/test_llm_generate.py tests/test_model_quant_and_imports.py tests/test_aotriton_discovery.py -q",
+    "targeted_tests_result": "35 passed"
+  }
+}

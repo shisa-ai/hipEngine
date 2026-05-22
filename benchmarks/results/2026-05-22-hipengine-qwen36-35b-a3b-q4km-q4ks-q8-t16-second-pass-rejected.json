@@ -1,0 +1,68 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "rejected_perf",
+  "performance_claim": false,
+  "label": "q8_t16_decode_second_pass_rejected_after_router256",
+  "date": "2026-05-22",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "note": "local diagnostic; W7900 not rerun"
+  },
+  "scope": "Reopened Task #2 dense/shared GGUF Q8_0 T16 decode GEMV after router256. Requirement: retain only if acceptable for both Q4_K_M and Q4_K_S. Current comparison baseline is the accepted router256 artifact.",
+  "baseline_from": "benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-router256-4k128-accepted.json",
+  "baseline_4k_128": {
+    "gguf_q4_k_m": {"prefill_tok_s_median": 2647.600668398051, "decode_tok_s_median": 98.92369589113835, "tracked_peak_gib": 22.571860380470753},
+    "gguf_q4_k_s": {"prefill_tok_s_median": 2732.1867333518435, "decode_tok_s_median": 99.75882828165028, "tracked_peak_gib": 21.415610380470753}
+  },
+  "validation": {
+    "final_source_state": "All temporary Q8_0 T16 changes reverted; retained source is unchanged from the router256 baseline.",
+    "post_revert_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q",
+    "post_revert_result": "61 passed"
+  },
+  "probes": [
+    {
+      "name": "q8_t16_all_launches_block64",
+      "change": "Temporary launch-shape probe: changed all Q8_0 T16 GEMV launches from block 128 to block 64 while leaving the 4-wave scratch allocation intact.",
+      "correctness": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q => 61 passed",
+      "result_q4ks_4k_128_single_run": {
+        "prefill_tok_s": 2613.484497966287,
+        "decode_tok_s": 95.23167213625298,
+        "tracked_peak_gib": 21.415610380470753,
+        "json": "/tmp/hipengine-q4ks-q8t16-block64-candidate-4096-128.json",
+        "decode_delta_vs_router256_q4ks_pct": -4.538103850819695
+      },
+      "decision": "rejected_and_reverted",
+      "reason": "Q4_K_S decode regressed before running the Q4_K_M gate."
+    },
+    {
+      "name": "q8_t16_all_launches_block256",
+      "change": "Temporary launch-shape probe: changed Q8_0 T16 kernels to launch_bounds(256,2), launch block 256, and 8-wave exchange scratch. An intermediate version with only block 256 and 4-wave scratch failed correctness with out-of-bounds shared exchange, then the corrected 8-wave version passed tests.",
+      "correctness": "Corrected 8-wave version: HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q => 61 passed",
+      "result_q4ks_4k_128_single_run": {
+        "prefill_tok_s": 2614.3889202786736,
+        "decode_tok_s": 98.28879733191798,
+        "tracked_peak_gib": 21.415610380470753,
+        "json": "/tmp/hipengine-q4ks-q8t16-block256-candidate-4096-128.json",
+        "decode_delta_vs_router256_q4ks_pct": -1.473584231538212
+      },
+      "decision": "rejected_and_reverted",
+      "reason": "Q4_K_S decode remained below the router256 baseline before running the Q4_K_M gate."
+    },
+    {
+      "name": "q8_t16_shared_gate_up_dual_silu_fusion",
+      "change": "Temporary structural probe: added a BF16 ABI-preserving Q8_0 T16 dual gate/up+SiLU kernel for shared-expert decode, Python wrapper/registry key, dispatch helper, runtime routing, and tests. The fused kernel rounded gate/up accumulators to BF16 before SiLU to match the unfused dual-GEMV + silu_mul_dual_out chain.",
+      "correctness": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q => 71 passed while the probe was applied",
+      "result_q4ks_4k_128_single_run": {
+        "prefill_tok_s": 2605.4559671576308,
+        "decode_tok_s": 97.81211432010885,
+        "tracked_peak_gib": 21.415610380470753,
+        "json": "/tmp/hipengine-q4ks-q8-dual-silu-candidate-4096-128.json",
+        "decode_delta_vs_router256_q4ks_pct": -1.951420760729885
+      },
+      "decision": "rejected_and_reverted",
+      "reason": "The extra accumulators/register pressure outweighed the saved shared-expert SiLU launch; Q4_K_S failed the gate before Q4_K_M measurement."
+    }
+  ],
+  "decision": "No dense/shared Q8_0 T16 decode source change retained in this second pass. Simple launch-shape changes and the natural shared gate/up+SiLU fusion all regress Q4_K_S against the current router256 baseline. Further Q8 work likely needs parent-workspace kernel R&D / new layout rather than additional hipENGINE-local tweaks."
+}

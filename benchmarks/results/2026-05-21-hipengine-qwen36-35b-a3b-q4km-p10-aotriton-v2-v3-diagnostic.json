@@ -1,0 +1,155 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "diagnostic_recorded",
+  "performance_claim": false,
+  "label": "p10_gguf_aotriton_v2_v3_policy_diagnostic",
+  "date": "2026-05-21",
+  "git_commit_under_test": "working_tree_based_on_75629c9",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local RX 7900 XTX / gfx1100 24 GiB; W7900 not rerun"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "code_change": {
+    "env": "HIPENGINE_GGUF_AOTRITON_PREFILL",
+    "default": "v3",
+    "values": {
+      "v3": "standardized V3 compact-varlen, required for chunked query windows",
+      "auto": "diagnostic V2 only for full-context start=0 rows==key_rows; V3 for chunked windows",
+      "v2": "force V2 for full-context only; rejects chunked windows to avoid wrong causal mask"
+    },
+    "rationale": "V2 lacks bottom-right causal alignment for q_len < k_len. V3 matches PARO and uses persistent caller-owned atomic; V2 wrapper allocates/frees a causal atomic per call."
+  },
+  "validation": {
+    "pytest": "PYTHONPATH=. uv run pytest tests/test_aotriton_discovery.py tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_chunked_prefill.py -q -> 23 passed",
+    "correctness_scope": "finite logits / stable token ids in diagnostic benchmarks; existing chunked prefill test covers V3 default and helper policy; no full KL text-quality gate for this diagnostic"
+  },
+  "commands": {
+    "4k_v3": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-aotriton-v3-4k-128.json",
+    "4k_auto": "HIPENGINE_GGUF_AOTRITON_PREFILL=auto HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-aotriton-auto-4k-128.json",
+    "32k_auto_smoke": "HIPENGINE_GGUF_AOTRITON_PREFILL=auto HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 32768 --decode-tokens 1 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-aotriton-auto-32k-1.json"
+  },
+  "results": {
+    "4k_v3": {
+      "prefill_tok_s_median": 2654.2524547300845,
+      "prefill_tok_s_samples": [
+        2654.2524547300845,
+        2649.2099975175656,
+        2665.6857413195135
+      ],
+      "decode_tok_s_median": 96.75508385442559,
+      "tracked_peak_allocated_gib_median": 22.584311552345753,
+      "hip_used_peak_sampled_gib_median": 23.128662109375,
+      "finite_final_logits_all": true,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 32768
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "below_min_tokens",
+        "max_sequence_length": 4352,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0
+      }
+    },
+    "4k_auto_v2_if_safe": {
+      "prefill_tok_s_median": 2652.8662629761448,
+      "prefill_tok_s_samples": [
+        2651.701811563618,
+        2652.8662629761448,
+        2658.879190391287
+      ],
+      "decode_tok_s_median": 97.1295083459481,
+      "tracked_peak_allocated_gib_median": 22.584311552345753,
+      "hip_used_peak_sampled_gib_median": 23.128662109375,
+      "finite_final_logits_all": true,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 0,
+        "moe": 0,
+        "full_attn_query": 0,
+        "full_attn_post": 0,
+        "full_attn_rope": 0,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 32768
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": false,
+        "reason": "below_min_tokens",
+        "max_sequence_length": 4352,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 0.0
+      }
+    },
+    "32k_auto_v2_first_chunk_v3_chunked_smoke": {
+      "prefill_tok_s_median": 1857.4908899852373,
+      "prefill_tok_s_samples": [
+        1857.4908899852373
+      ],
+      "decode_tok_s_median": 51.52045884002201,
+      "tracked_peak_allocated_gib_median": 23.368929401040077,
+      "hip_used_peak_sampled_gib_median": 23.87451171875,
+      "finite_final_logits_all": true,
+      "final_token_ids": [
+        256
+      ],
+      "prefill_chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024,
+        "attn_aotriton_min_tokens": 512,
+        "auto_tune": true,
+        "chunk_tune_min_tokens": 32768
+      },
+      "prefill_chunk_tuning": {
+        "enabled": true,
+        "applied": true,
+        "reason": "long_context_static_budget",
+        "max_sequence_length": 33024,
+        "source": "p5.2_profile_derived",
+        "memory_budget_gib": 13.191406250000002,
+        "estimated_peak_gib": 23.3,
+        "chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        }
+      }
+    },
+    "directional_delta_4k_auto_vs_v3_prefill_pct": -0.05222531682957943,
+    "directional_delta_4k_auto_vs_v3_decode_pct": 0.3869817239638307
+  },
+  "decision": {
+    "default": "keep_v3",
+    "reason": "4K auto/V2-if-safe did not improve prefill versus V3 (-0.05% median, within noise). V3 is semantically required for chunked windows and matches PARO standardization. Keep V2 only as diagnostic env path for full-context A/B.",
+    "rollup_update": false
+  },
+  "next_focus": "Do not spend more on AOTriton V2/V3 unless rocprof shows full_attention_prefill dominating. Current prefill attention policy is correct; next bottleneck likely dense Q8_0 WMMA prefill / GDN surfaces or decode lane."
+}

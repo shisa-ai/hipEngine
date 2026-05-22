@@ -1,0 +1,109 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "diagnostic_smoke_passed",
+  "performance_claim": false,
+  "label": "p10_task39_gguf_chunked_prefill_32k_1_revalidation",
+  "date": "2026-05-21",
+  "git_commit_under_test": "ad2736d",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 not rerun for this diagnostic smoke"
+  },
+  "command": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 32768 --decode-tokens 1 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/hipengine-gguf-task39-32k-1-revalidation.json",
+  "workload": {
+    "prompt_length": 32768,
+    "decode_tokens": 1,
+    "warmup_decode_tokens": 0,
+    "max_sequence_length": 32770,
+    "prompt_source": "repeated_token_id",
+    "token_id": 9707
+  },
+  "prefill_policy": {
+    "requested_prefill_chunk_size": 0,
+    "requested_prefill_chunk_sizes": {
+      "linear": 0,
+      "moe": 0,
+      "full_attn_query": 0,
+      "full_attn_post": 0,
+      "full_attn_rope": 0
+    },
+    "prefill_chunk_autotune": true,
+    "resolved_prefill_chunk_sizes": {
+      "linear": 1024,
+      "moe": 1024,
+      "full_attn_query": 4096,
+      "full_attn_post": 1024,
+      "full_attn_rope": 1024,
+      "attn_aotriton_min_tokens": 512,
+      "auto_tune": true,
+      "chunk_tune_min_tokens": 32768
+    },
+    "prefill_chunk_tuning": {
+      "enabled": true,
+      "applied": true,
+      "reason": "long_context_static_budget",
+      "max_sequence_length": 33024,
+      "source": "p5.2_profile_derived",
+      "memory_budget_gib": 13.191406250000002,
+      "estimated_peak_gib": 23.3,
+      "chunk_sizes": {
+        "linear": 1024,
+        "moe": 1024,
+        "full_attn_query": 4096,
+        "full_attn_post": 1024,
+        "full_attn_rope": 1024
+      }
+    },
+    "aotriton": "V3 compact-varlen bottom-right causal via persistent atomic buffer"
+  },
+  "fastpath": {
+    "allow_unsafe_qwen35moe_fastpaths": true,
+    "decode_repack": true,
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "effective_use_wmma_prefill": true,
+    "effective_use_gemv_decode": true,
+    "fastpath_safety": {
+      "is_qwen35moe": true,
+      "allow_unsafe_qwen35moe_fastpaths": true,
+      "requested_wmma_prefill": true,
+      "requested_gemv_decode": true,
+      "effective_wmma_prefill": true,
+      "effective_gemv_decode": true,
+      "disabled_wmma_prefill": false,
+      "disabled_gemv_decode": false,
+      "reason": null
+    }
+  },
+  "result": {
+    "prefill_tok_s": 1855.3541881262947,
+    "decode_tok_s": 50.87675165281109,
+    "prefill_seconds": 17.661317827994935,
+    "decode_seconds_excluding_graph_capture": 0.01965534291230142,
+    "tracked_peak_allocated_gib": 23.368929401040077,
+    "owned_session_peak_gib": 23.368929386138916,
+    "hip_used_peak_sampled_gib": 23.87451171875,
+    "finite_final_logits": true,
+    "final_token_id": 256,
+    "final_logit": 10.264232635498047
+  },
+  "validation": {
+    "pytest": "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_chunked_prefill.py -q -> 11 passed",
+    "correctness_scope": "finite logits and deterministic smoke only; not a full KL/text-quality gate"
+  },
+  "related_artifacts": {
+    "prior_32k_128_smoke": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-chunked-smoke.json",
+    "previous_blocked_preflight": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-preflight-blocked.json"
+  },
+  "decision": "diagnostic evidence only; no benchmark rollup update because this is a single RX 7900 XTX smoke and W7900 is not rerun",
+  "notes": [
+    "This revalidates that 32K prefill fits after the GGUF chunked-prefill review fixes on the local RX 7900 XTX/gfx1100 card.",
+    "Decode throughput is not meaningful for a one-token decode sample; use the prior 32K/128 smoke or repeated runs for decode comparison.",
+    "Do not compare directly to W7900 PARO rows until W7900 rerun is available."
+  ]
+}

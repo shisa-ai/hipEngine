@@ -1,0 +1,96 @@
+{
+  "schema": "hipengine_diagnostic_review_v1",
+  "status": "diagnostic_recorded",
+  "performance_claim": false,
+  "label": "p10_decode_repack_residency_audit",
+  "date": "2026-05-21",
+  "git_commit_under_test": "4024a1a",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local RX 7900 XTX / gfx1100; W7900 not rerun"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workload": "512/1 single-run diagnostics for residency/speed tradeoff only",
+  "commands": {
+    "t16_fast": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 ... --prompt-length 512 --decode-tokens 1 --use-wmma-prefill --use-gemv-decode --json /tmp/hipengine-gguf-t16-fast-512-1-after-kv-cleanup.json",
+    "raw_safe": "env -u HIPENGINE_GGUF_DECODE_REPACK -u HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS ... --prompt-length 512 --decode-tokens 1 --json /tmp/hipengine-gguf-raw-safe-512-1.json",
+    "raw_wmma_no_gemv": "env -u HIPENGINE_GGUF_DECODE_REPACK ... --prompt-length 512 --decode-tokens 1 --use-wmma-prefill --no-use-gemv-decode --json /tmp/hipengine-gguf-raw-wmma-512-1.json"
+  },
+  "results": [
+    {
+      "label": "decode_repack_t16_fastpaths",
+      "prefill_tok_s": 1545.2793218746858,
+      "decode_tok_s": 53.04722922176856,
+      "tracked_peak_allocated_gib": 21.341655991971493,
+      "hip_used_peak_sampled_gib": 21.81092071533203,
+      "finite_final_logits": true,
+      "final_token_id": 220,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true
+    },
+    {
+      "label": "raw_safe_no_fastpaths",
+      "prefill_tok_s": 117.44704809238267,
+      "decode_tok_s": 40.19528464823421,
+      "tracked_peak_allocated_gib": 20.884624741971493,
+      "hip_used_peak_sampled_gib": 21.34412384033203,
+      "finite_final_logits": true,
+      "final_token_id": 19224,
+      "effective_use_wmma_prefill": false,
+      "effective_use_gemv_decode": false
+    },
+    {
+      "label": "raw_wmma_prefill_no_gemv_decode",
+      "prefill_tok_s": 5.608128069114587,
+      "decode_tok_s": 39.98002264506204,
+      "tracked_peak_allocated_gib": 20.884624741971493,
+      "hip_used_peak_sampled_gib": 21.35193634033203,
+      "finite_final_logits": true,
+      "final_token_id": 220,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": false
+    }
+  ],
+  "deltas_vs_t16": {
+    "raw_safe": {
+      "tracked_peak_delta_gib": -0.45703125,
+      "tracked_peak_saved_mib": 468.0,
+      "prefill_tok_s_delta_pct": -92.39962339301225,
+      "decode_tok_s_delta_pct": -24.227362601363556
+    },
+    "raw_wmma_no_gemv": {
+      "tracked_peak_delta_gib": -0.45703125,
+      "tracked_peak_saved_mib": 468.0,
+      "prefill_tok_s_delta_pct": -99.63707997708072,
+      "decode_tok_s_delta_pct": -24.63315571502882
+    }
+  },
+  "materialization_audit": {
+    "decode_repack_is_replacement_not_sidecar": "T16 specs replace raw selected/dense allocations instead of allocating duplicate raw+tiles for the same tensor.",
+    "source_bytes_by_repack_true_gib": {
+      "q4_k_t16_selected": 11.25,
+      "q5_k_t16_selected": 6.359,
+      "q8_0_t16_dense_layers": 1.39,
+      "q6_k_t16_selected_lm": 1.004,
+      "raw_q8_0_token_embedding": 0.503,
+      "bf16_dense": 0.093,
+      "f32_dense": 0.004
+    },
+    "source_bytes_by_repack_false_gib": {
+      "raw_q4_k": 11.25,
+      "raw_q5_k": 6.359,
+      "raw_q8_0": 1.894,
+      "raw_q6_k": 1.004,
+      "bf16_dense": 0.093,
+      "f32_dense": 0.004
+    }
+  },
+  "decision": {
+    "recommendation": "Do not add a default long-context raw/no-repack mode. It saves about 0.457 GiB tracked at 512/1 but destroys prefill/decode fastpaths in current implementation. Keep decode-repack resident for performance; revisit only as an explicit emergency max-context mode after Q4_K_S or more granular kernels exist.",
+    "next_possible_work": "A granular mode might disable only selected T16 classes, but because T16 mostly replaces raw bytes rather than duplicating them, expected savings are much smaller than the GGUF-vs-PARO payload gap and would require new correctness/perf gates.",
+    "rollup_update": false
+  }
+}

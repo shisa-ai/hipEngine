@@ -1,0 +1,98 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "diagnostic_not_retained",
+  "performance_claim": false,
+  "label": "p10_b6_wave1_acceptance_blocked_on_t16_correctness_regression",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "task_ids": ["P10.B6", "P10.X1"],
+  "commit_under_test": "54acd53",
+  "wave1_commits": [
+    "731241a feat(P10.B1): wire Q4T16 selected dual WMMA prefill into compact MoE dispatch",
+    "bb0c933 feat(P10.B2,P10.B3): Q5_K T16 + Q6_K T16 selected WMMA prefill kernels",
+    "ed14ed5 feat(P10.B4): Q8_0 T16 dense WMMA prefill kernel + dispatch wire",
+    "6362fda docs(P10): record Wave 1 measurements + P10.X1 pre-existing T16 regression",
+    "54acd53 docs(P10.B5): record P9.E2 KL gate run at Wave-1 HEAD as blocked on P10.X1"
+  ],
+  "command_512x0": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 0 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+  "command_512x128": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+  "throughput_gate": {
+    "p10_b6_target_prefill_tok_s": 1500,
+    "p10_b6_target_decode_tok_s": 95,
+    "wave1_observed_prefill_tok_s_512x0_median": 1900.231,
+    "wave1_observed_prefill_tok_s_512x128_median": 1901.353,
+    "wave1_observed_decode_tok_s_512x128_median": 98.250,
+    "prefill_target_met": true,
+    "decode_target_met": true
+  },
+  "prefill_512x0_benchmark": {
+    "prefill_tok_s_samples": [1900.444, 1900.198, 1900.231],
+    "prefill_tok_s_median": 1900.231,
+    "tracked_peak_allocated_gib_median": 21.343,
+    "effective_use_wmma_prefill_all": [true, true, true, true],
+    "effective_use_gemv_decode_all": [true, true, true, true]
+  },
+  "prefill_512x128_benchmark": {
+    "prefill_tok_s_samples": [1901.353, 1844.409, 1903.986],
+    "prefill_tok_s_median": 1901.353,
+    "decode_tok_s_samples": [98.250, 98.351, 98.195],
+    "decode_tok_s_median": 98.250,
+    "tracked_peak_allocated_gib_median": 21.343,
+    "effective_use_wmma_prefill_all": [true, true, true, true],
+    "effective_use_gemv_decode_all": [true, true, true, true],
+    "finite_final_logits_all": true
+  },
+  "kernel_correctness": {
+    "method": "vs kernels/cpu_reference (gguf_quant_gemv) per AGENTS.md kernel-level gate",
+    "fixtures": {
+      "tests/test_gguf_k_t16_selected_wmma_prefill.py": "22 passed (Q5T16 + Q6T16 selected WMMA prefill)",
+      "tests/test_gguf_q8_0_t16_wmma_prefill.py": "75 passed (Q8T16 dense WMMA prefill, full dtype matrix x tile grid)",
+      "tests/test_qwen35_gguf_compact_moe_wmma_resolver.py": "7 passed (compact MoE dispatch resolver routes correctly to T16 quant keys)"
+    },
+    "total_fixtures_passed": 104,
+    "status": "accepted"
+  },
+  "e2e_correctness": {
+    "p9_e2_status": "rejected",
+    "p9_e2_worst_kl_mean": 5.611,
+    "p9_e2_worst_kl_max": 23.583,
+    "p9_e2_worst_top1_agreement": 0.047,
+    "p9_e2_candidate_deterministic_tail": false,
+    "p9_e2_artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-b5-p9-e2e-gate-blocked.json",
+    "smoke_status": "rejected",
+    "smoke_first_token_argmax": 263,
+    "smoke_expected_first_token_argmax": 43482,
+    "blocker": "P10.X1 pre-existing T16 decode-repack model correctness regression",
+    "bisect_evidence_summary": "Reproducible at P9.G1 retained commit 7ffb4e9 with DECODE_REPACK=1 alone (no fastpaths) - the public LLM.generate smoke produces 'oneka. ' instead of 'izio.' on tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json. Pristine path (REPACK=0) and raw+WMMA prefill path (REPACK=0,WMMA=1,GEMV=0,ALLOW_UNSAFE=1) both produce coherent text. The T16 decode-repack path itself has a per-layer numerical bug at decode-shape rows on real Qwen3.6-35B-A3B weights that does not appear in synthetic fixtures."
+  },
+  "comparison_table": {
+    "hipengine_p10_wave1": {"prefill_512_0": 1900.231, "prefill_512_128": 1901.353, "decode_512_128": 98.250, "memory_gib": 21.343, "correctness": "kernel_correct_model_broken_pending_P10.X1"},
+    "hipengine_pre_p10_p9_g1": {"prefill_512_128": 506.363, "decode_512_128": 98.837, "memory_gib": 21.343, "correctness": "kernel_correct_model_broken (same pre-P10 T16 issue, hidden by safety gate disabling effective fastpaths)"},
+    "llama_cpp_hip": {"prefill_512_128": 2436, "decode_512_128": 85, "correctness": "reference baseline"},
+    "llama_cpp_vulkan": {"prefill_512_128": 1817, "decode_512_128": 128, "correctness": "reference baseline"},
+    "paro_w4a16": {"prefill_512_128": 2696, "decode_512_128": 116, "correctness": "reference baseline"}
+  },
+  "acceptance": {
+    "throughput_gates_met": true,
+    "kernel_correctness_gates_met": true,
+    "model_correctness_gates_met": false,
+    "blocking_issue": "P10.X1 pre-existing T16 decode-repack model correctness regression",
+    "rollup_promotion": "DENIED - cannot promote a throughput row that fails the model-level correctness gate. Per AGENTS.md performance claims policy: 'Every performance claim carries model + quant + workload shape + hardware + exact command + result + correctness gate. No exceptions.' Kernel-level CPU-oracle correctness (104 fixtures) is met but model-level E2E correctness is rejected because of P10.X1."
+  },
+  "next_steps": {
+    "owner_block": "P10.X1.a-d",
+    "P10.X1.a": "Reproduce broken first-token argmax with LLM.generate at smallest possible shape; isolate which T16 kernel diverges.",
+    "P10.X1.b": "Compare T16 GEMV decode output vs raw GGUF decode output on real model weights for one layer's projections. Suspect q8_0_t16_dual_split_gemv_kernel and q8_0_t16_triple_split_gemv_kernel first.",
+    "P10.X1.c": "Re-run smoke with REPACK=1 + WMMA=0 + GEMV=0; bisect which kernel family breaks first.",
+    "P10.X1.d": "Land correctness fix and re-run P10.B5 gate + P10.B6 acceptance. Only after this can Wave 1 promote to benchmarks/README.md."
+  },
+  "notes": [
+    "Target hardware is W7900 per docs/PLAN.md; this row was measured on the local RX 7900 XTX / gfx1100 24 GiB card. W7900 rerun is part of the formal acceptance once P10.X1 lands.",
+    "Bench script checks finite_final_logits, not text coherence. finite_final_logits=true for all 3 measured runs, but the argmax tokens are wrong - the kernels do not crash, they produce finite but semantically incorrect values.",
+    "All four Wave 1 kernels (P10.B1 wire + P10.B2 + P10.B3 + P10.B4) are individually correct at the CPU-oracle level. The blocker is upstream of these kernels in the T16 GEMV decode reader path on production weight magnitudes.",
+    "Compare with the prior diagnostic artifact 2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-wave1-blocked.json which captured the same Wave 1 numbers from a different bench session; these P10.B6-specific samples are tighter (1900.444/1900.198/1900.231 vs prior 1909.05/1910.63/1885.06)."
+  ]
+}

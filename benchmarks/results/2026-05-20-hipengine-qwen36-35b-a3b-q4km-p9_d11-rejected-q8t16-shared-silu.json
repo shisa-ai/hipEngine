@@ -1,0 +1,109 @@
+{
+  "schema": "hipengine_rejected_probe_v1",
+  "status": "rejected_regression_reverted",
+  "performance_claim": false,
+  "task_ids": [
+    28,
+    51
+  ],
+  "label": "p9_d11_rejected_q8t16_shared_gate_up_silu",
+  "date": "2026-05-20",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 16,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk",
+    "rocprof_kernel_trace": true
+  },
+  "baseline": {
+    "label": "P9.D10 retained Q8T16 dual-split 64-thread launch",
+    "artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d10-q8t16-dual-split-64.json",
+    "decode_tok_s_512x128_median": 88.80112044965858,
+    "local_512x16_decode_tok_s_single_run": 78.74516104209006,
+    "local_512x16_rocprof_summary": "/tmp/p9_d10_dualsplit64_summary.json"
+  },
+  "candidate_change": "Prototype fused Q8T16 shared-expert gate/up GEMV directly computing SiLU(gate)*up to remove the separate silu_mul kernel and avoid the concatenated gate/up scratch.",
+  "candidate_tests": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q --tb=short",
+    "result": "62 passed while prototype code was present; code was reverted after perf rejection",
+    "scope": "synthetic BF16/FP16 split-contract oracle plus dispatch routing"
+  },
+  "measurements": [
+    {
+      "label": "dual_silu_block128",
+      "benchmark_json": "/tmp/p9_d11_q8silu_512x16_bench.json",
+      "rocprof_summary_json": "/tmp/p9_d11_q8silu_summary.json",
+      "decode_tok_s_512x16": 76.52665523989091,
+      "generated_tail_token_ids": [
+        75,
+        26417,
+        126878,
+        188,
+        50557,
+        11,
+        53213,
+        14405,
+        99969,
+        220,
+        220,
+        220,
+        220,
+        95912,
+        100515,
+        38118
+      ],
+      "final_token_id": 38118,
+      "finite_final_logits": true,
+      "total_decode_kernel_ms_512x16": 155.896056,
+      "dispatches_512x16": 10478,
+      "dense_q8_bucket_ms": 22.759309,
+      "silu_bucket_ms": 11.341834,
+      "q8_silu_kernel_dispatches": 638,
+      "q8_silu_kernel_ms": 11.341834
+    },
+    {
+      "label": "dual_silu_block64",
+      "benchmark_json": "/tmp/p9_d11_q8silu64_512x16_bench.json",
+      "rocprof_summary_json": "/tmp/p9_d11_q8silu64_summary.json",
+      "decode_tok_s_512x16": 75.4582469780192,
+      "generated_tail_token_ids": [
+        318,
+        7674,
+        220,
+        220,
+        27,
+        318,
+        77518,
+        70736,
+        16283,
+        100094,
+        240126,
+        109160,
+        50557,
+        328,
+        208986,
+        103146
+      ],
+      "final_token_id": 103146,
+      "finite_final_logits": true,
+      "total_decode_kernel_ms_512x16": 158.714288,
+      "dispatches_512x16": 10478,
+      "dense_q8_bucket_ms": 22.663273,
+      "silu_bucket_ms": 14.334366,
+      "q8_silu_kernel_dispatches": 638,
+      "q8_silu_kernel_ms": 14.334366
+    }
+  ],
+  "baseline_512x16_rocprof_buckets": {
+    "dense_q8_bucket_ms": 30.539501,
+    "silu_mul_bucket_ms": 1.524491,
+    "q8_dual_gate_up_kernel_ms": 7.228469,
+    "total_decode_kernel_ms": 156.246952
+  },
+  "decision": "Reject and revert. Block128 preserved local 512x16 token tail but regressed wall throughput (78.745 -> 76.527 tok/s) and moved the shared gate/up work into a slower fused kernel (about 11.34 ms vs prior q8 dual gate/up 7.23 ms + silu 1.52 ms). Block64 was even slower (75.458 tok/s) and changed the 512x16 generated tail, so it is not correctness-safe without further investigation."
+}

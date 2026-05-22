@@ -1,0 +1,240 @@
+{
+  "schema": 2,
+  "status": "diagnostic_retained_blocked",
+  "performance_claim": false,
+  "timestamp": "2026-05-17T20:24:25.663500+00:00",
+  "run_tag": "hipengine-qwen36-q4km-expert-pack8-sidecar-prefill",
+  "summary": "Task #60: added qwen35moe GGUF expert pack8 selected prefill kernels and opt-in sidecar integration; correctness/profiler gates pass, but the transient sidecar path is slower than the current raw-GGUF fast-bulk default and remains a blocker for task #61.",
+  "hardware": {
+    "gpu": "attached RX 7900 XTX / gfx1100",
+    "device_total_gib": 23.984375,
+    "default_claim_hardware": "W7900/gfx1100 rows remain directional on this card"
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.13.60940-478a7a43c6\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git a3c1e65bfd98c7a76cafd24c34baf11f93e06be4+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "hipengine_commit_before_commit": "a462ba3",
+    "hipengine_status_at_artifact": "## gguf-bulk-prefill\n M hipengine/runtime/qwen35_gguf_runner.py\n M scripts/qwen35_gguf_bench.py\n?? hipengine/kernels/hip_gfx1100/quant/gguf_expert_pack8_gemv.hip\n?? hipengine/kernels/hip_gfx1100/quant/gguf_expert_pack8_gemv.py\n?? scripts/qwen35_gguf_expert_pack8_smoke.py\n?? tests/test_gguf_expert_pack8_gemv.py\n"
+  },
+  "commands": {
+    "build_full_sidecar_cache": "PYTHONPATH=. python3 scripts/qwen35_gguf_build_expert_sidecar.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --layers all --cache-dir /tmp/hipengine-task60-sidecar --json /tmp/hipengine-task60-sidecar-build.json",
+    "selected_expert_smoke": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_expert_pack8_smoke.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --layer 34 --cache-dir /tmp/hipengine-task60-sidecar --require-sidecar --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task60-expert-pack8-smoke-layer34-dual.json",
+    "rocprof_smoke": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-task60-rocprof -- python3 scripts/qwen35_gguf_expert_pack8_smoke.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --layer 34 --cache-dir /tmp/hipengine-task60-sidecar --require-sidecar --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task60-expert-pack8-smoke-rocprof-dual.json",
+    "short_full_prefill_parity": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<PY  # compares 4-token raw fast-bulk vs sidecar fast-bulk logits, writes /tmp/hipengine-task60-sidecar-short-parity.json",
+    "public_correctness": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json --json /tmp/hipengine-task60-qwen36-public-e2e.json",
+    "default_512_128_post": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-task60-default-512-128-post.json",
+    "sidecar_512_128": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --use-expert-sidecar --expert-sidecar-cache-dir /tmp/hipengine-task60-sidecar --require-expert-sidecar --json /tmp/hipengine-task60-sidecar-t128-512-128.json",
+    "targeted_tests": "python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/kernels/hip_gfx1100/quant/gguf_expert_pack8_gemv.py scripts/qwen35_gguf_bench.py scripts/qwen35_gguf_expert_pack8_smoke.py && HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_gguf_expert_pack8_gemv.py tests/test_qwen35_gguf_runner.py::test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback tests/test_llm_gguf_generate_path.py"
+  },
+  "sidecar_cache": {
+    "format": "hipengine.qwen35moe.gguf_expert_pack8.v1",
+    "layout": "gguf_expert_pack8_v1",
+    "layers": 40,
+    "slots": [
+      "ffn_gate_exps",
+      "ffn_up_exps",
+      "ffn_down_exps"
+    ],
+    "npz_files": 120,
+    "nbytes": 25602031616,
+    "gib": 23.84375,
+    "cache_dir": "/tmp/hipengine-task60-sidecar"
+  },
+  "correctness": {
+    "selected_expert_layer34_all_within_gate": true,
+    "selected_expert_layer34_results": [
+      {
+        "bit_equal": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "nonzero": 0,
+        "raw_preview": [
+          48415,
+          48445,
+          48435,
+          48258,
+          15371,
+          48279,
+          48480,
+          15497
+        ],
+        "packed_preview": [
+          48415,
+          48445,
+          48435,
+          48258,
+          15371,
+          48279,
+          48480,
+          15497
+        ],
+        "slot": "ffn_gate_exps",
+        "quant_key": "gguf_q4_k"
+      },
+      {
+        "bit_equal": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "nonzero": 0,
+        "raw_preview": [
+          48328,
+          15617,
+          15640,
+          48009,
+          48297,
+          15581,
+          48434,
+          15600
+        ],
+        "packed_preview": [
+          48328,
+          15617,
+          15640,
+          48009,
+          48297,
+          15581,
+          48434,
+          15600
+        ],
+        "slot": "ffn_up_exps",
+        "quant_key": "gguf_q4_k"
+      },
+      {
+        "bit_equal": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "nonzero": 0,
+        "raw_preview": [
+          15244,
+          48137,
+          15570,
+          15574,
+          15487,
+          48003,
+          48277,
+          48176
+        ],
+        "packed_preview": [
+          15244,
+          48137,
+          15570,
+          15574,
+          15487,
+          48003,
+          48277,
+          48176
+        ],
+        "slot": "ffn_down_exps",
+        "quant_key": "gguf_q6_k"
+      },
+      {
+        "slot": "ffn_gate_up_exps_dual",
+        "quant_key": "gguf_q4_k+gguf_q4_k",
+        "launched": true,
+        "bit_equal": true,
+        "gate_max_abs": 0.0,
+        "gate_mean_abs": 0.0,
+        "gate_nonzero": 0,
+        "up_max_abs": 0.0,
+        "up_mean_abs": 0.0,
+        "up_nonzero": 0
+      }
+    ],
+    "short_full_prefill_raw_vs_sidecar": {
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "token_ids": [
+        760,
+        4087,
+        369,
+        220
+      ],
+      "raw_token_id": 4469,
+      "sidecar_token_id": 4469,
+      "top1_match": true,
+      "kl_raw_to_sidecar": 0.0,
+      "max_abs_logit": 0.0,
+      "raw_seconds_with_load": 6.521931708033662,
+      "sidecar_seconds_with_load": 36.35583623603452,
+      "sidecar_cache_dir": "/tmp/hipengine-task60-sidecar"
+    },
+    "public_gate_passed": true,
+    "public_outputs": [
+      "izio."
+    ],
+    "public_generated_token_ids": [
+      43482,
+      13
+    ],
+    "torch_loaded_by_generate": false,
+    "targeted_tests_passed": true
+  },
+  "rocprof": {
+    "kernel_trace_csv": "/tmp/hipengine-task60-rocprof/rocm/420142_kernel_trace.csv",
+    "expected_kernel_substrings": [
+      "gguf_expert_pack8_selected_prefill_kernel",
+      "gguf_expert_pack8_q4_dual_selected_prefill_kernel"
+    ],
+    "matched_dispatch_count": 4,
+    "matched_dispatch_lines_preview": [
+      "\"KERNEL_DISPATCH\",\"Agent 1\",1,0,420142,4,35,\"void (anonymous namespace)::gguf_expert_pack8_selected_prefill_kernel<unsigned short, unsigned short, 4>(unsigned short const*, long const*, int const*, void const*, float const*, float const*, unsigned short*, int, int, int, int, int, int)\",4,276673047528899,276673047625381,512,0,72,0,128,128,1,1,8192,8,1",
+      "\"KERNEL_DISPATCH\",\"Agent 1\",1,0,420142,10,35,\"void (anonymous namespace)::gguf_expert_pack8_selected_prefill_kernel<unsigned short, unsigned short, 4>(unsigned short const*, long const*, int const*, void const*, float const*, float const*, unsigned short*, int, int, int, int, int, int)\",10,276673084584714,276673084606954,512,0,72,0,128,128,1,1,8192,8,1",
+      "\"KERNEL_DISPATCH\",\"Agent 1\",1,0,420142,16,32,\"void (anonymous namespace)::gguf_expert_pack8_selected_prefill_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, int const*, void const*, float const*, float const*, unsigned short*, int, int, int, int, int, int)\",16,276673131207162,276673131241963,512,0,72,0,128,128,1,1,32768,8,1",
+      "\"KERNEL_DISPATCH\",\"Agent 1\",1,0,420142,21,34,\"void (anonymous namespace)::gguf_expert_pack8_q4_dual_selected_prefill_kernel<unsigned short, unsigned short>(unsigned short const*, long const*, int const*, float const*, float const*, int const*, float const*, float const*, unsigned short*, unsigned short*, int, int, int, int, int, int)\",21,276673196364717,276673196418638,512,0,88,0,128,128,1,1,8192,8,1"
+    ]
+  },
+  "measurements": {
+    "rows": [
+      {
+        "workload": "512/128",
+        "path": "fast_bulk_default_raw_gguf_selected",
+        "prefill_tok_s": 99.94063953519412,
+        "decode_tok_s": 49.849875696939684,
+        "prefill_seconds": 5.123041060985997,
+        "decode_seconds": 2.5677095120190643,
+        "tracked_peak_gib": 20.885867577046156,
+        "hip_used_peak_sampled_gib": 21.34375,
+        "final_token_id": 11
+      },
+      {
+        "workload": "512/128",
+        "path": "opt_in_expert_pack8_sidecar_transient",
+        "prefill_tok_s": 62.45794509568699,
+        "decode_tok_s": 49.5391772841272,
+        "prefill_seconds": 8.197515931969974,
+        "decode_seconds": 2.5838136000093073,
+        "tracked_peak_gib": 21.51086661592126,
+        "hip_used_peak_sampled_gib": 21.345703125,
+        "final_token_id": 11
+      }
+    ]
+  },
+  "comparisons": {
+    "sidecar_vs_task58_native_row_baseline": {
+      "baseline_prefill_tok_s": 15.469,
+      "sidecar_prefill_tok_s": 62.45794509568699,
+      "prefill_delta_pct": 303.7620085053138
+    },
+    "sidecar_vs_current_raw_fast_default": {
+      "baseline_prefill_tok_s": 99.94063953519412,
+      "sidecar_prefill_tok_s": 62.45794509568699,
+      "prefill_delta_pct": -37.504957556638004
+    },
+    "sidecar_vs_llamacpp_hip_q4km_512_128": {
+      "baseline_prefill_tok_s": 2436.049,
+      "sidecar_prefill_tok_s": 62.45794509568699,
+      "prefill_delta_pct": -97.43609651958204
+    },
+    "sidecar_vs_paro_parent_512_128": {
+      "baseline_prefill_tok_s": 2696.4,
+      "sidecar_prefill_tok_s": 62.45794509568699,
+      "prefill_delta_pct": -97.68365431331823
+    }
+  },
+  "blocker": {
+    "summary": "The correctness-safe sidecar path is opt-in and launches the packed kernels, but it copies/allocates/free sidecar arrays layer-by-layer because 24 GiB device budget cannot hold raw GGUF weights plus all packed sidecars. With default 128-thread parity-safe reductions it reaches 62.46 tok/s, which is +303.8% vs the old native row baseline but -37.5% vs the current raw selected fast-bulk default. Task #61 needs grouped/tiled reuse and/or a memory plan that avoids duplicate raw+sidecar residency.",
+    "next_actions": [
+      "Profile layer-level selected kernels vs raw to separate copy overhead from compute overhead.",
+      "Design a grouped-by-expert/tiled kernel that reuses packed weights across rows selected for the same expert.",
+      "Evaluate sidecar residency policies that omit raw expert weights only if decode gets an equivalent fallback or sidecar decode path."
+    ]
+  }
+}

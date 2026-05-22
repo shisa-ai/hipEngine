@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "description": "True hipengine.LLM.generate() E2E acceptance fixture for local Qwen3.5-0.8B UD-Q4_K_XL GGUF bring-up.",
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+    "file_size_bytes": 558772480,
+    "architecture": "qwen35",
+    "quant": "gguf_ud_q4_k_xl"
+  },
+  "oracle": {
+    "name": "local llama.cpp tokenizer oracle; greedy text captured from hipENGINE graph/eager parity smoke",
+    "checkout": "/home/lhl/llama.cpp/llama.cpp-hip-therock",
+    "commit": "59778f019",
+    "tokenize_command": "/home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-tokenize -m /models/gguf/Qwen3.5-0.8B-UD-Q4_K_XL.gguf --ids --log-disable -p <text>"
+  },
+  "prompt": "The answer is",
+  "prompt_ids": [760, 4087, 369],
+  "sampling": {
+    "max_new_tokens": 4,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "ignore_eos": false
+  },
+  "expected_generated_text": " 1.\n",
+  "expected_generated_token_ids": [220, 16, 13, 198],
+  "expected_full_text": "The answer is 1.\n",
+  "acceptance": {
+    "public_api": "hipengine.LLM.generate",
+    "backend": "hip_gfx1100",
+    "quant": "gguf_ud_q4_k_xl",
+    "repeat": 2,
+    "finite_logits_required": true,
+    "deterministic_required": true,
+    "expected_text_match_required": true,
+    "expected_token_ids_match_required": true,
+    "torch_hot_path_allowed": false,
+    "required_kernel_families": [
+      "gguf_q4_k",
+      "gguf_q5_k_dense_bf16_fallback",
+      "gguf_q6_k",
+      "gguf_q6_k_dense_bf16_fallback",
+      "gguf_q8_0",
+      "fp16_dense_bf16_fallback",
+      "gguf_iq4_xs_dense_bf16_fallback"
+    ]
+  }
+}

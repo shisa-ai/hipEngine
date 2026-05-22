@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "status": "accepted_small_op_optimization_target_still_blocked",
+  "performance_claim": true,
+  "task": "P9.D1/#28",
+  "change": "GGUF qwen35moe rows=1 decode routes expert router logits + shared-gate logits + top-k selection through qwen35_router_topk_split_shared_coop_out instead of three launches.",
+  "hardware": {
+    "gpu": "local RX 7900 XTX / gfx1100 run environment (W7900 not rerun)",
+    "backend": "hip_gfx1100"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk"
+  },
+  "environment": {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_GGUF_GEMV_DECODE": "1",
+    "HIPENGINE_GGUF_WMMA_PREFILL": "1",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "correctness_gate": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --json /tmp/p9_d1_router_split_e2e.json",
+    "status": "accepted",
+    "kl_mean_worst": 0.0,
+    "kl_max_worst": 0.0,
+    "top1_agreement_worst": 1.0,
+    "candidate_deterministic_tail": true,
+    "finite_final_logits": true
+  },
+  "benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d1_router_split_512x128_bench.json",
+    "baseline_artifact": "benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h3-t16-512x128-bench.json",
+    "before": {
+      "prefill_tok_s_median": 501.2615357858433,
+      "decode_tok_s_median": 85.72839182286306,
+      "decode_tok_s_samples": [
+        85.72839182286306,
+        85.72005874724013,
+        85.74186961899628
+      ],
+      "peak_tracked_gib_median": 21.343075528740883
+    },
+    "after": {
+      "prefill_tok_s_median": 502.137909531206,
+      "decode_tok_s_median": 85.81746230669972,
+      "decode_tok_s_samples": [
+        85.81675058943459,
+        85.87461407810818,
+        85.81746230669972
+      ],
+      "peak_tracked_gib_median": 21.343075528740883
+    },
+    "delta": {
+      "decode_tok_s_abs": 0.0890704838366645,
+      "decode_tok_s_pct": 0.10389846577398831,
+      "prefill_tok_s_abs": 0.8763737453626845,
+      "prefill_tok_s_pct": 0.17483363130761376
+    },
+    "acceptance_target": {
+      "decode_tok_s_median_min": 95.0
+    },
+    "acceptance_result": "target still blocked: 85.817 tok/s < 95 tok/s"
+  },
+  "kernel_trace_smoke": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace -d /tmp/p9_d1_router_split_unit_rocprof_csv -f csv -- python3 -m pytest tests/test_qwen35_router_plan.py -q -k split_shared_coop_bf16_matches_cpu_router --tb=short",
+    "csv": "/tmp/p9_d1_router_split_unit_rocprof_csv/rocm/1948026_kernel_trace.csv",
+    "kernel": "qwen35_router_topk_split_shared_coop_out_kernel<unsigned short>",
+    "duration_ns_observed": 17440
+  },
+  "tests": [
+    "PYTHONPATH=. python3 -m pytest tests/test_qwen35_router_plan.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_p9_e2e_correctness.py tests/test_qwen35_gguf_fastpath_safety.py -q --tb=short # 20 passed"
+  ],
+  "notes": [
+    "Small positive launch-count reduction only; #51/#52/#26 remain open because decode is below 95 tok/s."
+  ]
+}

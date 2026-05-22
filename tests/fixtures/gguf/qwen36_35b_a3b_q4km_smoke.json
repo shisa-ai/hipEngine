@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "description": "Narrow public hipengine.LLM.generate() correctness fixture for local Qwen3.6 35B-A3B qwen35moe Q4_K_M GGUF bring-up.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "architecture": "qwen35moe"
+  },
+  "prompt": "Hello",
+  "prompt_ids": [9419],
+  "sampling": {
+    "max_new_tokens": 2,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "ignore_eos": true
+  },
+  "expected_generated_text": "izio.",
+  "expected_generated_token_ids": [43482, 13],
+  "acceptance": {
+    "public_api": "hipengine.LLM.generate",
+    "backend": "hip_gfx1100",
+    "quant": "gguf_q4_k_m",
+    "torch_hot_path_allowed": false,
+    "deterministic_required": true,
+    "expected_text_match_required": true,
+    "expected_token_ids_match_required": true,
+    "repeat": 1,
+    "finite_logits_required": true,
+    "external_token_oracle": "llama-tokenize",
+    "required_kernel_families": [
+      "gguf_q4_k",
+      "gguf_q5_k",
+      "gguf_q6_k",
+      "gguf_q8_0",
+      "qwen35_router",
+      "paro_combine"
+    ]
+  }
+}

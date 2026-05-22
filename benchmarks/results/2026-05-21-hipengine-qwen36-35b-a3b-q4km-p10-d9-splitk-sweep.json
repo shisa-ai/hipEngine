@@ -1,0 +1,102 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "exploratory_default_retained_no_rollup_change",
+  "performance_claim": false,
+  "label": "p10_d9_split_k_threshold_mode_sweep",
+  "date": "2026-05-21",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card",
+  "commit_under_test": "5afb46f",
+  "accepted_baseline_artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-d8-splitk-decode.json",
+  "accepted_baseline": {
+    "512x128_prefill_tok_s_median": 2140.225,
+    "512x128_decode_tok_s_median": 89.322,
+    "4096x128_prefill_tok_s_median": 2700.015,
+    "4096x128_decode_tok_s_median": 97.008,
+    "default_threshold": 1024,
+    "default_4k_mode": "grouped_gqa"
+  },
+  "command_shape": "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --decode-tokens 128 --warmup-runs 1 --measured-runs 2 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --prompt-length <PROMPT> --json <OUT>.json",
+  "sweep_results": [
+    {
+      "label": "512_thr512",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "env": {"HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT": "512"},
+      "prefill_tok_s_median": 2112.803,
+      "decode_tok_s_median": 95.090,
+      "tracked_peak_allocated_gib_median": 21.344,
+      "final_token_ids": [318, 318],
+      "decision": "not_retained",
+      "reason": "Short-context split-K is faster in this two-run exploratory sample, but it changes the generated token stream versus the retained 512 row and needs a dedicated split-vs-context numerical fixture before lowering the default threshold."
+    },
+    {
+      "label": "2048_thr1024",
+      "prompt_length": 2048,
+      "decode_tokens": 128,
+      "env": {"HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT": "1024"},
+      "prefill_tok_s_median": 2638.561,
+      "decode_tok_s_median": 95.223,
+      "tracked_peak_allocated_gib_median": 21.875,
+      "final_token_ids": [87209, 87209],
+      "decision": "supports_default_threshold",
+      "reason": "Default split-K threshold is already beneficial at 2K."
+    },
+    {
+      "label": "2048_nosplit",
+      "prompt_length": 2048,
+      "decode_tokens": 128,
+      "env": {"HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT": "999999"},
+      "prefill_tok_s_median": 2639.942,
+      "decode_tok_s_median": 64.611,
+      "tracked_peak_allocated_gib_median": 21.875,
+      "final_token_ids": [98732, 98732],
+      "decision": "rejected",
+      "reason": "Disabling split-K at 2K is 32.1% slower than the default split-K route."
+    },
+    {
+      "label": "4096_warp",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "env": {
+        "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT": "1024",
+        "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX": "0",
+        "HIPENGINE_PAGED_ATTN_WARP_SPLIT_CTX": "1"
+      },
+      "prefill_tok_s_median": 2695.189,
+      "decode_tok_s_median": 94.862,
+      "tracked_peak_allocated_gib_median": 22.584,
+      "final_token_ids": [220, 220],
+      "decision": "rejected",
+      "reason": "Warp split is 2.2% slower than the retained grouped-GQA 4K row."
+    },
+    {
+      "label": "4096_generic",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "env": {
+        "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT": "1024",
+        "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX": "0",
+        "HIPENGINE_PAGED_ATTN_WARP_SPLIT_CTX": "0"
+      },
+      "prefill_tok_s_median": 2698.904,
+      "decode_tok_s_median": 85.905,
+      "tracked_peak_allocated_gib_median": 22.584,
+      "final_token_ids": [220, 220],
+      "decision": "rejected",
+      "reason": "Generic split-K is 11.4% slower than the retained grouped-GQA 4K row."
+    }
+  ],
+  "conclusion": {
+    "retained_default_threshold": 1024,
+    "retained_4k_mode": "grouped_gqa",
+    "rollup_change": false,
+    "next_actions": [
+      "Keep the P10.D8 default threshold/mode as the retained configuration.",
+      "Do not lower the default threshold to 512 until a targeted split-K-vs-context numerical correctness fixture is added for short contexts.",
+      "Proceed to post-split-K rocprof to identify whether attention, selected GEMV, shared expert, or router/scatter is now dominant."
+    ]
+  }
+}

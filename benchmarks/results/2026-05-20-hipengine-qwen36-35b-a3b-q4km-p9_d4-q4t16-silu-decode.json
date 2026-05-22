@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "status": "accepted_small_op_optimization_target_still_blocked",
+  "performance_claim": true,
+  "task": "P9.D4/#28",
+  "change": "Add a decode-only Q4T16 selected dual GEMV variant that fuses split-kernel-equivalent BF16 round-trip SiLU*up into the gate/up accumulator output, removing the separate selected expert SiLU launch for rows=1 decode while keeping rows>1 bulk prefill on the split path.",
+  "hardware": {
+    "gpu": "local RX 7900 XTX / gfx1100 run environment (W7900 not rerun)",
+    "backend": "hip_gfx1100"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workload": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "bulk_prefill_attention_mode": "bulk"
+  },
+  "environment": {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_GGUF_GEMV_DECODE": "1",
+    "HIPENGINE_GGUF_WMMA_PREFILL": "1",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "correctness_gate": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d4_q4t16_silu_decode_only_e2e.json",
+    "status": "accepted",
+    "kl_mean_worst": 0.0,
+    "kl_max_worst": 0.0,
+    "top1_agreement_worst": 1.0,
+    "candidate_deterministic_tail": true,
+    "finite_final_logits": true
+  },
+  "benchmark": {
+    "command": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p9_d4_q4t16_silu_decode_only_512x128_bench.json",
+    "baseline_artifact": "benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d1-router-split-coop.json",
+    "before": {
+      "prefill_tok_s_median": 502.137909531206,
+      "decode_tok_s_median": 85.81746230669972,
+      "decode_tok_s_samples": [
+        85.81675058943459,
+        85.87461407810818,
+        85.81746230669972
+      ],
+      "peak_tracked_gib_median": 21.343075528740883
+    },
+    "after": {
+      "prefill_tok_s_median": 501.10658623917107,
+      "prefill_tok_s_samples": [
+        501.10658623917107,
+        500.5088880092994,
+        502.6425094852566
+      ],
+      "decode_tok_s_median": 86.02542617916099,
+      "decode_tok_s_samples": [
+        85.98736579199762,
+        86.02542617916099,
+        86.04143102193092
+      ],
+      "peak_tracked_gib_median": 21.343075528740883
+    },
+    "delta": {
+      "decode_tok_s_abs": 0.20796387246126358,
+      "decode_tok_s_pct": 0.2423328153401183,
+      "prefill_tok_s_abs": -1.0313232920349265,
+      "prefill_tok_s_pct": -0.20538646305310326
+    },
+    "acceptance_target": {
+      "decode_tok_s_median_min": 95.0
+    },
+    "acceptance_result": "target still blocked: 86.025 tok/s < 95 tok/s"
+  },
+  "kernel_trace_smoke": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace -d /tmp/p9_d4_q4t16_silu_decode_only_unit_rocprof_csv -f csv -- python3 -m pytest tests/test_gguf_t16_selected_gemv_decode.py -q -k p9_d4_q4_t16_direct_dual_silu_matches_split_kernel_bits --tb=short",
+    "csv": "/tmp/p9_d4_q4t16_silu_decode_only_unit_rocprof_csv/rocm/2039886_kernel_trace.csv",
+    "kernel": "q4_k_t16_selected_dual_silu_direct_gemv_kernel<unsigned short>",
+    "duration_ns_observed": 24919,
+    "workgroup_size_x": 128,
+    "grid_size_x": 2048,
+    "grid_size_y": 6,
+    "vgpr_count": 200,
+    "sgpr_count": 128
+  },
+  "tests": [
+    "PYTHONPATH=. python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py hipengine/runtime/qwen35_gguf_runner.py && PYTHONPATH=. python3 -m pytest tests/test_gguf_t16_selected_gemv_decode.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q --tb=short # 72 passed",
+    "PYTHONPATH=. python3 -m pytest tests/test_qwen35_gguf_p9_e2e_correctness.py tests/test_qwen35_gguf_fastpath_safety.py -q --tb=short # 9 passed"
+  ],
+  "notes": [
+    "Rows>1 bulk prefill tried the same fusion locally (512/128 median prefill/decode 496.370/85.909 tok/s) but was left on the split pair+SiLU path because accumulator-side exp/rounding did not pay for the removed SiLU launch at prefill shapes.",
+    "Small positive decode-only launch reduction; #51/#52/#26 remain open because median decode is still below 95 tok/s."
+  ]
+}

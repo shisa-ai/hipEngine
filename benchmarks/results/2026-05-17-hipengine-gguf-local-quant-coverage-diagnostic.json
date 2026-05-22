@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "date": "2026-05-17",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "task": 49,
+  "title": "GGUF local quant coverage: Q4_K_M, Q8_0, Q4_1, UD-Q4_K_XL",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100"
+  },
+  "change": {
+    "summary": "Broadened Qwen3.5 GGUF materialization/runtime coverage to the local Q8_0, Q4_1, and UD-Q4_K_XL files while preserving the existing Q4_K_M path.",
+    "implemented": [
+      "registered public GGUF generator keys for gguf_q8_0, gguf_q4_1, and gguf_ud_q4_k_xl",
+      "added Q8_0 token-embedding lookup into BF16 hidden state",
+      "added registry-driven GGUF embedding dispatch for raw Q6_K/Q8_0 and dense BF16 fallback embeddings",
+      "added dense BF16 fallback materialization for GGUF Q4_1, F16, BF16, and IQ4_XS tensors",
+      "routed dense BF16 fallback projections through the registered dense_gemv BF16 kernel",
+      "added quant plugin metadata for gguf_q4_1 and gguf_iq4_xs",
+      "added E2E fixtures for Q8_0, Q4_1, and UD-Q4_K_XL"
+    ],
+    "caveats": [
+      "Q4_1, F16, BF16, and IQ4_XS projection support is a correctness-oriented dense BF16 fallback, not a promoted native throughput path.",
+      "Public full-model prefill remains token-serial until the linear-attention bulk scheduler path lands."
+    ]
+  },
+  "e2e_acceptance": {
+    "command": "for f in tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json tests/fixtures/gguf/qwen35_0_8b_q8_0_e2e.json tests/fixtures/gguf/qwen35_0_8b_q4_1_e2e.json tests/fixtures/gguf/qwen35_0_8b_ud_q4_k_xl_e2e.json; do env HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_gguf_e2e_correctness.py --fixture $f --json /tmp/${f##*/}_task49_e2e.json; done",
+    "results": [
+      {
+        "fixture": "tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json",
+        "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+        "quant": "gguf_q4_k_m",
+        "repeat": 2,
+        "outputs": [
+          " 1.\n\n",
+          " 1.\n\n"
+        ],
+        "generated_token_ids": [
+          220,
+          16,
+          13,
+          271
+        ],
+        "torch_loaded_by_generate": false,
+        "passed": true,
+        "elapsed_wall": "0:23.71"
+      },
+      {
+        "fixture": "tests/fixtures/gguf/qwen35_0_8b_q8_0_e2e.json",
+        "model": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+        "quant": "gguf_q8_0",
+        "repeat": 2,
+        "outputs": [
+          " 1.\n",
+          " 1.\n"
+        ],
+        "generated_token_ids": [
+          220,
+          16,
+          13,
+          198
+        ],
+        "torch_loaded_by_generate": false,
+        "passed": true,
+        "elapsed_wall": "0:04.29"
+      },
+      {
+        "fixture": "tests/fixtures/gguf/qwen35_0_8b_q4_1_e2e.json",
+        "model": "/models/gguf/Qwen3.5-0.8B-Q4_1.gguf",
+        "quant": "gguf_q4_1",
+        "repeat": 2,
+        "outputs": [
+          " 1.\n",
+          " 1.\n"
+        ],
+        "generated_token_ids": [
+          220,
+          16,
+          13,
+          198
+        ],
+        "torch_loaded_by_generate": false,
+        "passed": true,
+        "elapsed_wall": "0:09.77"
+      },
+      {
+        "fixture": "tests/fixtures/gguf/qwen35_0_8b_ud_q4_k_xl_e2e.json",
+        "model": "/models/gguf/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+        "quant": "gguf_ud_q4_k_xl",
+        "repeat": 2,
+        "outputs": [
+          " 1.\n",
+          " 1.\n"
+        ],
+        "generated_token_ids": [
+          220,
+          16,
+          13,
+          198
+        ],
+        "torch_loaded_by_generate": false,
+        "passed": true,
+        "elapsed_wall": "0:14.57"
+      }
+    ]
+  },
+  "validation": {
+    "targeted_tests_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_gguf_embedding_dispatch.py tests/test_gguf_linear_dispatch.py tests/test_model_quant_and_imports.py tests/test_gguf_e2e_acceptance.py tests/test_qwen35_gguf_materialize.py tests/test_gguf_q6_k_embedding.py tests/test_llm_gguf_generate_path.py tests/test_qwen35_gguf_runner.py tests/test_gguf_ops.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_tokenizer.py tests/test_aotriton_discovery.py -q",
+    "targeted_tests_result": "57 passed",
+    "embedding_smoke_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_q6_k_embedding_smoke.py --compiler-version-file /tmp/hipengine-hipcc-version.txt",
+    "embedding_smoke_result": "synthetic_q6_k_embedding max_abs=0.0; real_q6_k_token_embd max_abs=0.0; real_q8_0_token_embd max_abs=0.0; worst_max_abs=0.0",
+    "embedding_rocprof_command": "rocprofv3 --kernel-trace --output-directory /tmp/hipengine-gguf-q8-embed-rocprof-task49 --output-file q8-embed --output-format csv -- python3 scripts/gguf_q6_k_embedding_smoke.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "embedding_rocprof_result": {
+      "trace": "/tmp/hipengine-gguf-q8-embed-rocprof-task49/q8-embed_kernel_trace.csv",
+      "kernels": [
+        {
+          "kernel": "gguf_q6_k_embedding_bf16_out_kernel",
+          "duration_ns": 5400,
+          "scratch_size": 0,
+          "workgroup_size_x": 256,
+          "grid_size_x": 512,
+          "grid_size_y": 4
+        },
+        {
+          "kernel": "gguf_q6_k_embedding_bf16_out_kernel",
+          "duration_ns": 8160,
+          "scratch_size": 0,
+          "workgroup_size_x": 256,
+          "grid_size_x": 1024,
+          "grid_size_y": 4
+        },
+        {
+          "kernel": "gguf_q8_0_embedding_bf16_out_kernel",
+          "duration_ns": 8120,
+          "scratch_size": 0,
+          "workgroup_size_x": 256,
+          "grid_size_x": 1024,
+          "grid_size_y": 4
+        }
+      ]
+    }
+  }
+}

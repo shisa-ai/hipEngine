@@ -205,6 +205,15 @@ def test_aotriton_prefill_variant_is_registered() -> None:
         resolve(
             backend="hip_gfx1100",
             layer="full_attn_prefill",
+            quant="gguf_qwen35",
+            variant="aotriton_attn_fwd_v3",
+        )
+        is aotriton_attn_fwd_v3_compact_varlen
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="full_attn_prefill",
             quant="w4_paro",
             variant="aotriton_attn_fwd_gqa_per_q_head",
         )
