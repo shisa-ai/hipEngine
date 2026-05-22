@@ -21753,3 +21753,45 @@ Validation:
 - Leaf rocprof at backend=hip_gfx1100, chain_attn_mode='batched', decode-tokens=32, candidate-budget=3, 29 verifier passes: `kernel_calls/pass=1011.6` vs M12.6c baseline `1052` => **-40.4 launches/pass (-3.8%)**. Kernel-only time `17.32 ms/pass` vs M12.6c `17.38 ms/pass` => within noise as expected (D2D copies are ~5 us each, almost all dispatch overhead). `runtime_copy` family dropped 52 -> 12.6 calls/pass. Artifact: `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b0.json`.
 
 Conclusion: numerically free, exact-AR safe, removes 40 per-layer D2D launches from the captured graph DAG. Modest -2.8% cycle_cost win on the suite; the bigger benefit is that the captured DAG is now ~960 nodes instead of ~1000, which moves M12.1 graph capture one step closer to load-bearing. Next: M13.B.1 (transposed-layout fused rotate+selected_dual GEMV instantiation).
+
+## 2026-05-23 M13.B.1 fused rotate+selected_dual GEMV: kernel infra landed, default-off (cost-model rejection)
+
+Implemented the Option-C bit-exact fused rotate + selected_dual_pack8 GEMV per the prior planning round:
+
+- `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip`: added an LDS scalar_t round-trip after the krot rotation loop in `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`. The kernel is now bit-exact with the unfused `paro_rotate1_*` + `gemv_awq_selected_dual_pack8_*` chain it could replace. Added `hipengine_gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16` extern wrapper calling `launch_selected_dual_rotate<half_t, true>`.
+- `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py` + `__init__.py`: Python wrapper `gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16` and registry entry under `("hip_gfx1100", "rotate+selected_dual_pack8_gemv", "w4_paro", "transposed_fp16")`.
+- `hipengine/runtime/qwen35_paro.py`: `selected_moe_gate_up_pack8_fp16` now branches on `HIPENGINE_MOE_FUSED_ROTATE` (default-off after measurement; see below).
+
+Bit-exactness validation passed (all four chain_attn_mode × graph_mode combinations on the quicksort smoke produced an IDENTICAL token sequence `[180184, 148897, 205222, 318, 83390, 899, 6070, 8]` whether `HIPENGINE_MOE_FUSED_ROTATE=1` or `=0`). The exact-AR contract holds.
+
+**Performance: default-off after measurement.** Leaf rocprof (`scripts/mtp_verifier_rocprof.py --chain-attn-mode batched --decode-tokens 32 --candidate-budget 3`):
+
+| | M13.B.0 (`fused=off`) | M13.B.1 (`fused=on`) | Δ |
+|---|---:|---:|---:|
+| kernel_calls/pass | 1011.6 | **971.6** | -40.0 (-3.9%) |
+| kernel_time/pass (ms) | 17.32 | **29.76** | +12.44 (+71.8%) |
+| `moe_gate_up_dual_gemv` ms/pass | 1.86 | **14.21** | +12.35 (+664%) |
+| `moe_paro_rotate_in` calls/pass | 190 | 150 | -40 (matches launches saved) |
+| 9-prompt suite aggregate cycle_cost | 3.613 | 3.658 | +0.045 (+1.2%) |
+
+Root cause: the existing `gemv_awq_selected_dual_pack8_*_rotate_out_kernel` re-does the full in-LDS rotation in every `(out_pack, row)` block. The verifier shape has `out_packs ≈ 192`, `rows = tokens × top_k = 32` (with 8-way redundancy per token), so:
+
+- Unfused rotation work / pass: `4 tokens × 32 groups × 64 ops ≈ 8K ops`
+- Fused rotation work / pass: `192 out_packs × 32 rows × 32 groups × 64 ops ≈ 12.6M ops` (~1500× the unfused)
+
+The kernel design only amortizes well when `out_packs × top_k ≈ 1` (e.g. the existing `dual_pack8_transposed_rotate_staged_kernel` use case at tokens=1). For the verifier shape it loses badly even though it saves 40 launches.
+
+**Disposition:**
+
+- Kernel body change (LDS round-trip) kept — preserves bit-exactness for any future caller of the strided-rotate kernel; harmless to nothing-uses-it-today.
+- Transposed extern wrapper + Python wrapper + registry entry kept — opt-in via env, no default impact.
+- `selected_moe_gate_up_pack8_fp16` default behavior unchanged (unfused chain); env override available for shape-specific experiments.
+- A future properly-staged selected-MoE rotate+GEMV (HBM staging, rotate once per x_row, multi-block GEMV reads back) is the right design for the verifier shape. Tracked as M13.B.3 contingency.
+
+Artifacts:
+- `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.b1-fusedon-rejected.json`
+- `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b1-fusedon-rejected.json`
+
+Lesson for future fusions: account for the per-block work amortization. A fuse that saves N launches but multiplies per-block work by M may net negative when M × (block count) > N × (launch overhead). For our case M = `out_packs × top_k`, which is too large to ignore.
+
+Next: M13.C (C-side per-MoE-layer dispatcher) per the M13 plan.

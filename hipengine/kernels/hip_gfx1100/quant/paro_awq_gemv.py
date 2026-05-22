@@ -38,6 +38,7 @@ _SYMBOL_SELECTED_DUAL_TRANSPOSED = "hipengine_gemv_awq_selected_dual_pack8_trans
 _SYMBOL_SELECTED_STRIDED = "hipengine_gemv_awq_selected_pack8_strided_bf16"
 _SYMBOL_SELECTED_TRANSPOSED = "hipengine_gemv_awq_selected_pack8_transposed_bf16"
 _SYMBOL_SELECTED_DUAL_ROTATE_STRIDED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_strided_rotate_out_fp16"
+_SYMBOL_SELECTED_DUAL_ROTATE_TRANSPOSED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16"
 _SYMBOL_SELECTED_DUAL_STRIDED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_strided_fp16"
 _SYMBOL_SELECTED_DUAL_TRANSPOSED_FP16 = "hipengine_gemv_awq_selected_dual_pack8_transposed_fp16"
 _SYMBOL_SELECTED_STRIDED_FP16 = "hipengine_gemv_awq_selected_pack8_strided_fp16"
@@ -1092,10 +1093,82 @@ def gemv_awq_selected_dual_pack8_strided_rotate_out_fp16(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch parent fused rotate + selected dual pack8 GEMV for FP16 buffers."""
+    """Launch parent fused rotate + selected dual pack8 GEMV for FP16 buffers.
+
+    M13.B.1 (Option C): the kernel body now applies an LDS scalar_t round-trip
+    after rotation, so this fused kernel is bit-exact with the unfused
+    ``paro_rotate1_fp16`` + ``gemv_awq_selected_dual_pack8_strided_fp16``
+    chain it replaces.
+    """
 
     _launch_selected_dual_rotate(
         _SYMBOL_SELECTED_DUAL_ROTATE_STRIDED_FP16,
+        x_ptr,
+        selected_ptr,
+        pairs_ptr,
+        theta_ptr,
+        channel_scales_ptr,
+        qweight_a_ptr,
+        qzeros_a_ptr,
+        scales_a_ptr,
+        qweight_b_ptr,
+        qzeros_b_ptr,
+        scales_b_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        in_features,
+        out_packed_a,
+        out_packed_b,
+        num_experts,
+        group_size,
+        krot,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16(
+    x_ptr: int,
+    selected_ptr: int,
+    pairs_ptr: int,
+    theta_ptr: int,
+    channel_scales_ptr: int,
+    qweight_a_ptr: int,
+    qzeros_a_ptr: int,
+    scales_a_ptr: int,
+    qweight_b_ptr: int,
+    qzeros_b_ptr: int,
+    scales_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_packed_a: int,
+    out_packed_b: int,
+    num_experts: int,
+    group_size: int,
+    krot: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch fused rotate + selected dual pack8 GEMV for FP16 buffers using
+    the transposed `qweight_pack8_decode` layout the production MoE selected
+    gate_up path uses.
+
+    M13.B.1 (Option C): the kernel body applies an LDS scalar_t round-trip
+    after rotation, so this fused kernel is bit-exact with the unfused
+    ``paro_rotate1_fp16`` + ``gemv_awq_selected_dual_pack8_transposed_fp16``
+    chain it replaces.
+    """
+
+    _launch_selected_dual_rotate(
+        _SYMBOL_SELECTED_DUAL_ROTATE_TRANSPOSED_FP16,
         x_ptr,
         selected_ptr,
         pairs_ptr,
@@ -1397,6 +1470,11 @@ def register_paro_awq_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "rotate+selected_dual_pack8_gemv", "w4_paro", "strided_fp16"),
         gemv_awq_selected_dual_pack8_strided_rotate_out_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "rotate+selected_dual_pack8_gemv", "w4_paro", "transposed_fp16"),
+        gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16,
         replace=replace,
     )
     register(

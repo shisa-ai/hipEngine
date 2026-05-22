@@ -1542,6 +1542,20 @@ __global__ void gemv_awq_selected_dual_pack8_strided_rotate_out_kernel(
     }
   }
 
+  // M13.B.1 (Option C): force the LDS-resident rotated buffer through a
+  // scalar_t round-trip so the GEMV consumes the same fp16/bf16-quantized
+  // values that the standalone paro_rotate1 kernel would have written to
+  // HBM.  Cost: in_features / blockDim.x conversions per thread + 1 sync.
+  // Benefit: bit-exact equivalence with the unfused (paro_rotate1 + GEMV)
+  // chain, so the existing exact-AR gate holds without re-baselining.
+  // Without this pass the fused kernel keeps higher-precision fp32 values
+  // in LDS and produces numerically different (slightly more precise)
+  // outputs than the unfused chain it replaces.
+  for (int64_t idx = tid; idx < in_features; idx += blockDim.x) {
+    rotated_buf[idx] = scalar_to_float(float_to_scalar<scalar_t>(rotated_buf[idx]));
+  }
+  __syncthreads();
+
   // ---- Selected dual pack8 GEMV on rotated result ----
   float acc0 = 0.0f;
   float acc1 = 0.0f;
@@ -2731,6 +2745,60 @@ extern "C" int hipengine_gemv_awq_selected_dual_pack8_transposed_fp16(
       out_packed_b,
       num_experts,
       group_size,
+      threads,
+      stream);
+}
+
+// M13.B.1: transposed-layout fused rotate+selected_dual_pack8 GEMV.  The
+// templated kernel body already handles `qweight_transposed=true`; this just
+// exposes the missing extern-C wrapper so the runtime MoE selected gate_up
+// path can replace its (paro_rotate1 + selected_dual_GEMV) pair with one
+// fused launch.  Numerics are bit-exact with the unfused chain via the
+// Option-C LDS scalar_t round-trip inside the kernel body.
+extern "C" int hipengine_gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16(
+    const half_t* x,
+    const int64_t* selected,
+    const int16_t* pairs,
+    const half_t* theta,
+    const half_t* channel_scales,
+    const int32_t* qweight_a,
+    const int32_t* qzeros_a,
+    const half_t* scales_a,
+    const int32_t* qweight_b,
+    const int32_t* qzeros_b,
+    const half_t* scales_b,
+    half_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed_a,
+    int64_t out_packed_b,
+    int64_t num_experts,
+    int64_t group_size,
+    int64_t krot,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_selected_dual_rotate<half_t, true>(
+      x,
+      selected,
+      pairs,
+      theta,
+      channel_scales,
+      qweight_a,
+      qzeros_a,
+      scales_a,
+      qweight_b,
+      qzeros_b,
+      scales_b,
+      out,
+      x_rows,
+      rows,
+      in_features,
+      out_packed_a,
+      out_packed_b,
+      num_experts,
+      group_size,
+      krot,
       threads,
       stream);
 }

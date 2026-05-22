@@ -954,15 +954,74 @@ measure block.
 | M13.0 | Plan + audit write-up in `docs/MTP.md` + `WORKLOG.md` | Source-only plan landed; later phases reference this section. | **Done** 2026-05-23 |
 | M13.A | Static per-pass launch audit (this section) | Reconcile static count vs M12.6c rocprof to <10% gap; identify the actual structural fat. | **Done** 2026-05-23 (static 957–959 vs measured 1052, 93-launch residual attributed to memsets + pointer-table refreshes; M13.A.2 will close the gap) |
 | M13.B.0 | Wire `out=next_hidden` through `run_moe_c1_fp16` in batched + chain_tloop verifier paths | Exact-AR on 9-prompt suite; rocprof shows ~40 fewer `runtime_copy` launches/pass. | Pending (source ready, awaits GPU) |
-| M13.B.1 | Expose transposed-layout instantiation of `gemv_awq_selected_dual_pack8_*_rotate_out_{fp16,bf16}` | Exact-AR on 9-prompt suite; rocprof shows ~40 fewer `paro_rotate1` launches/pass. | Pending |
-| M13.B.2 | Survey + (if cheap) add transposed-layout rotate-in fold for non-selected pack8 GEMVs used by shared expert | Exact-AR on 9-prompt suite; rocprof shows ~30 fewer `paro_rotate1` launches/pass. | Pending (survey first; may collapse to no-op) |
+| M13.B.1 | Expose transposed-layout instantiation of `gemv_awq_selected_dual_pack8_*_rotate_out_{fp16,bf16}` | Exact-AR on 9-prompt suite; rocprof shows ~40 fewer `paro_rotate1` launches/pass. | **Kernel landed, default-off** 2026-05-23 W7900: bit-exact LDS round-trip (Option C) added to the existing strided rotate-out kernel; transposed FP16 extern + Python wrapper + registry entry added; `selected_moe_gate_up_pack8_fp16` env-gated. Smoke + 9-prompt suite stay exact-AR with identical token sequences. Measurement rejected the default-on: launches drop 1011.6 → 971.6 (−40, as expected) but `moe_gate_up_dual_gemv` ms/pass `1.86 → 14.21` (+664%) because the kernel re-does the full in-LDS rotation in every `(out_pack, row)` block. For verifier shape (`out_packs ≈ 192`, `rows = 32` with 8-way redundancy per token) the redundant rotation work is ~1500× the unfused chain, blowing up total kernel time by +12.4 ms/pass. Default `HIPENGINE_MOE_FUSED_ROTATE=0`; opt-in for shape-specific experiments. M13.B.3 (proper HBM-staged variant) is the right structural fix. Artifacts: `benchmarks/results/2026-05-23-hipengine-mtp-{bench-suite,verifier-rocprof}-w7900-m13.b1-fusedon-rejected.json`. |
+| M13.B.2 | Survey + (if cheap) add transposed-layout rotate-in fold for non-selected pack8 GEMVs used by shared expert | Exact-AR on 9-prompt suite; rocprof shows ~30 fewer `paro_rotate1` launches/pass. | Pending (survey first; may collapse to no-op). M13.B.1 measurement implies the same kernel design will not amortize for shared-expert shapes either; survey should focus on shapes where `out_packs × token_replication` is small. |
 | M13.C | C-side per-MoE-layer dispatcher gated by `HIPENGINE_MOE_C1_LAYER_C_DISPATCH=1` | Exact-AR on 9-prompt suite when env on; behavior unchanged when env off; cycle_cost at `graph_mode=off` drops by host-dispatch savings. | Pending |
 | M13.D | Re-evaluate graph replay after B+C | At least one of `graph_mode=auto` / `validate` beats `graph_mode=off` cycle_cost by ≥5% on the 9-prompt suite with exact-AR. | Pending |
+| M13.B.3 | Properly-staged selected-MoE rotate+GEMV (HBM staging, rotate once per x_row, barrier, GEMV reads back) | Replaces M13.B.1 default-off kernel; should land both -40 launches AND ≤ baseline kernel time. Numerically bit-exact via the staged HBM scalar_t write. | Reserved (post-M13.D, contingent on M13.D not closing the gap) |
 | M13.E | Sort-by-expert pre-pass for selected MoE GEMVs (contingency only) | Only if D leaves ≥10% on the table. | Reserved |
 
 Ground rule for the whole M13 block: any code change that touches MoE
 numerics (M13.B.2 or beyond) needs the existing exact-AR gate plus the
 `benchmarks/results/` rollup discipline in `AGENTS.md`.
+
+## M14 — deferred MTP follow-ups (post-M13)
+
+Catalog of work that M13 surfaced but did **not** execute, with the lineage
+entry that surfaced each item and the gating condition under which it
+should be revisited.  Items are not ordered by priority; some are tiny
+plumbing fixes, others are full kernel implementations.  Re-prioritize at
+the start of M14 against whatever cycle-cost gap remains after M13.D.
+
+### Bookkeeping / housekeeping gaps
+
+| # | Item | Lineage | Gating condition / when to revisit |
+|---|---|---|---|
+| M14.book.1 | Enumerate every `runtime.memset_async` and `memcpy_async` call reachable from `_iterate_verify_chain_layers` and close the ~93-launch gap between the M13.A static audit (957–959/pass) and the M12.6c rocprof (1052/pass). Most likely candidates: per-layer `_memset_tensor` calls in MoE/router/grouped scratch resets + commit-table H2D pointer-table refreshes in `_commit_bulk_linear_states` fast path. | M13.A | Any time we want the static and measured launch counts to reconcile; mandatory before claiming a definitive launch-count target for M13.D. |
+| M14.book.2 | Validate M13.B.0 (`out=next_hidden` / `out=row_out` write-through) on the **verify_tree** path with a real DDTree drafter, not just chain. The code already wires it through `_run_full_attention_tree_batched` and `run_linear_attention_moe_tree_tloop_layer_fp16` but only chain modes were exercised on the W7900 smoke. | M13.B.0 | When a DDTree-shaped MTP benchmark is added or when DDTree work resumes from `docs/DFLASH.md`. |
+| M14.book.3 | BF16 siblings of the M13.B.0 `out=` forwarding: `run_full_attention_moe_c1_layer_bf16`, `run_linear_attention_moe_*_bf16`, `run_dense_mlp_residual_bf16`, `shared_expert_down_combine_residual_bf16`, and the corresponding `state.run_moe_c1_bf16(...)` call sites in the verifier orchestrator. Today the verifier path is FP16-only, so this is a consistency item, not a hot-path fix. | M13.B.0 | When/if a BF16 verifier (proposer-only or alternate quant) re-enters the picture. |
+| M14.book.4 | The FP16 prefill/varlen helpers also need `out=` forwarding for consistency: `run_full_attention_moe_prefill_layer_fp16`, `run_full_attention_moe_prefill_varlen_layer_fp16`, `run_linear_attention_moe_c1_layer_fp16` (tokens=1 helper), `run_linear_attention_moe_packed_prefill_layer_fp16`. Same pattern as M13.B.0; not on the verifier hot path. | M13.B.0 | When prefill-mode launch counts become a measured bottleneck (currently overshadowed by verifier cycle). |
+
+### Kernel fusion candidates (post-M13.B.1 cost-model lesson)
+
+M13.B.1 surfaced a hard rule: **a fused rotate+GEMV kernel that re-does
+the full LDS rotation in every `(out_pack, row)` block multiplies
+rotation work by ~`out_packs × row_replication_per_x_row`**.  For the
+verifier shape this is ~1500×, which dominates the kernel budget.  The
+right structural design is HBM-staged (rotate once per x_row, write to
+HBM, GEMV blocks read back).  Apply this rule before greenlighting any
+further rotate+GEMV fuses.
+
+| # | Item | Lineage | Gating condition / when to revisit |
+|---|---|---|---|
+| M14.fuse.1 | Properly-staged selected-MoE rotate+GEMV (HBM staging, rotate once per x_row, atomic barrier, GEMV reads back). Replaces the M13.B.1 default-off kernel. Should land both **−40 launches/pass and ≤ baseline kernel time**. Numerically bit-exact via the same scalar_t HBM write the existing `gemv_awq_dual_pack8_transposed_rotate_staged_kernel` (non-selected) already uses. **This is M13.B.3 in the M13 tracker; copied here for visibility.** | M13.B.1 | Only if M13.D's graph-replay re-eval still leaves ≥5% on the table after M13.C lands. Otherwise the marginal -40 launches isn't worth a new kernel. |
+| M14.fuse.2 | Down-side fuse: `silu_mul_dual_rotate_out + selected_pack8_gemv` (the down projection). Same launch-count savings as M13.B.1 (~30 launches/pass for the silu+rotate kernel that currently runs before the down GEMV). Has the SAME cost-model risk as M13.B.1 because the down GEMV is also large-grid. Must use HBM staging from day one; never use an in-LDS-only design. | M13.B.1 lesson + M13 framing | Same as M14.fuse.1: revisit only if M13.D leaves ≥5% to take. |
+| M14.fuse.3 | Shared-expert rotate+pack8 GEMV fold (non-selected). Currently `paro_rotate1_fp16` + `gemv_awq_pack8_transposed_fp16` for the shared-expert gate/up/down rotations consume ~30 paro_rotate launches/pass at the verifier. Check whether the existing `gemv_awq_dual_pack8_transposed_rotate_staged_kernel` (already HBM-staged) covers this shape; if so, expose a single-output sibling and wire it. | M13.A audit (rotate launches in shared expert), M13.B.2 placeholder | Post-M13.D, evaluate against the lesson: shape is `out_packs × 1 row` (no expert lane replication), so the cost model is friendlier than M13.B.1 was. Likely safe to fuse with HBM staging. |
+| M14.fuse.4 | Router op fusion: `route_moe_topk_shared_fp16` is currently 1 small launch per MoE layer (40/pass) but the underlying op chain (logits GEMV + softmax + top-k + gather) could be a single composite. Vulkan/llama.cpp has `MUL_MAT_ID_MUL` as their router fold. Earlier hipEngine D1.5 cooperative-router probe was rejected (`OPTIMIZE.md`), but post-M13 the topology may be different. | M13.A audit (router family at 80 calls/pass after counting paroquant variants) | Only if total post-M13.C launch count is still > 2× llama.cpp shape. |
+| M14.fuse.5 | Selected-expert *grouped* GEMV (sort tokens by expert before the GEMV) so each expert tile is read once from HBM regardless of B. This is the llama.cpp `mmid` slow-path pattern for tokens>8/expert. At B=3, top_k=8, 4× expert lanes per token = some expert collisions, so the savings would come from weight reuse, not just from fewer launches. **This is M13.E in the M13 tracker; copied here for visibility.** | M13 framing + WORKLOG 2026-05-22 ("useful MoE path still needs real expert grouping/sorting") | Only if M13.D leaves ≥10% on the table AND a profile shows MoE GEMV weight bandwidth is the bottleneck (not dispatch). |
+
+### Numerics / contracts to track
+
+| # | Item | Lineage | Gating condition |
+|---|---|---|---|
+| M14.num.1 | The M12.6 W4 multi-row pack8 site mask defaults to `full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_shared_down,single_dense_down`. The remaining unsafe sites (`shared_gate_up`, `single_full_v`, `single_linear_out`) need a WMMA/prefill-numerics-compatible small-B kernel before they can land exact. | M12.6 (pre-M13) | When a small-B WMMA path is implemented; revisit the safe-site mask. |
+| M14.num.2 | The fused-rotate Option-C LDS round-trip kernel body change in `gemv_awq_selected_dual_pack8_*_rotate_out_kernel` is currently dormant (no production caller). If a future code path turns it on (e.g. M14.fuse.1's staged variant reuses parts of the same kernel template), confirm the LDS round-trip is still desired vs the original "higher-precision" Option-A behavior. | M13.B.1 | When M14.fuse.1 starts; pick the contract explicitly. |
+| M14.num.3 | If the proposer ever uses a different selected-MoE GEMV kernel than the verifier (e.g. a CUDA-only or dense-BF16 variant for MTP weights), exact-AR will break in subtle prompt-dependent ways. The verifier and proposer MUST share kernel symbols on the MoE selected path. | M13 framing | Any time `hipengine/speculative/mtp_native.py` changes its dispatch. |
+
+### Out of scope for M14, but worth noting
+
+| # | Item | Lineage | Why deferred |
+|---|---|---|---|
+| M14.oos.1 | Tree-shaped MTP drafts (DDTree). `docs/DFLASH.md` covers this; the verifier infrastructure already supports `verify_tree` mode but no MTP drafter produces tree drafts. | Pre-M13, mentioned in M12 plan | DDTree is a separate axis; not part of MTP cycle-cost work. |
+| M14.oos.2 | Long-context tuning. The 9-prompt suite is short-prompt-dominated. | M12 framing | Get the short-prompt cycle-cost row first. |
+| M14.oos.3 | Quantizing MTP weights (proposer BF16 → W4 or AWQ). | M12 framing | Not required for cycle-cost ≤ 2.0; revisit if MoE bandwidth becomes the new bottleneck. |
+| M14.oos.4 | Adaptive B / fallback policy (M12.8). | M12 tracker | Sequenced after `C_3 < 2.0` is reached. |
+| M14.oos.5 | Cross-arch ports (CUDA / gfx1151) of any new MoE kernels. | M12 framing | Land on gfx1100 first, get a retained row, then port. |
+
+All M14 items are explicitly *not blocking* the M13 path to a retained
+row.  They are the inventory of "things we knew about but did not need to
+act on yet".  Revisit at the M13 closure (post-M13.D) to decide which
+become the next named phase.
 
 ## Closing the gap with llama.cpp MTP — kernel roadmap (2026-05-21)
 
