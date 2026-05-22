@@ -21795,3 +21795,34 @@ Artifacts:
 Lesson for future fusions: account for the per-block work amortization. A fuse that saves N launches but multiplies per-block work by M may net negative when M × (block count) > N × (launch overhead). For our case M = `out_packs × top_k`, which is too large to ignore.
 
 Next: M13.C (C-side per-MoE-layer dispatcher) per the M13 plan.
+
+## 2026-05-23 M13.B.2 — shared-expert fused rotate+dual GEMV (default-off after measurement)
+
+**Lineage:** Continuation of M13 after M13.B.1 was rejected default-on.
+
+**Goal:** Wire the existing HBM-staged `gemv_awq_dual_pack8_transposed_rotate_staged_fp16` (already used for the attention Q/K rotate-fuse at tokens=1) into the shared-expert small-batch path. The kernel uses a proper HBM barrier so rotation is done exactly once per `(group, row)` block — structurally bit-exact, no LDS-redundancy like M13.B.1.
+
+**Changes:**
+1. `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.hip`: patched barrier threshold from `prior + 1 == rotate_blocks` to `prior + 1 == rotate_blocks * gridDim.y` so the kernel supports rows>1.  Launcher accepts `rows >= 1` instead of `rows == 1`.
+2. `hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py`: removed the `rows != 1` Python shape check.
+3. `hipengine/runtime/qwen35_paro.py`:
+   - Added `Qwen35ParoMoeScratch.shared_rotate_fuse_barrier` and `Qwen35ParoGroupedMoeScratch.shared_rotate_fuse_barrier` (2-int32 buffers).
+   - Added `_shared_expert_fused_rotate_enabled()` env helper for `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE`.
+   - In `shared_expert_paro_w4_fp16`, the `small_batch` branch now selects the staged variant when `gate_krot == up_krot` and the env is on, replacing `paro_rotate2 + dual GEMV` with one staged kernel.
+
+**Validation (W7900, gfx1100):**
+- Smoke (8 tokens, quicksort prompt): exact-AR holds across all four combinations: `chain_attn_mode in {batched, c1_loop}` × `graph_mode in {off, validate}` and fused-on/off all produce the same token sequence `[180184, 148897, 205222, 318, 83390, 899, 6070, 8]` as M13.B.0.
+
+**Measurement (rocprof, batched mode, 32-token decode, B=3):**
+- `moe_paro_rotate_in: 190 → 180` (-10 calls/pass, as expected: one per full-attn layer × 10 layers).
+- `other: 85 → 95` (+10 calls/pass): the staged launcher's `hipMemsetAsync(barrier, 0, 8)` is counted as a runtime launch.
+- **Net launches/pass: 1011.55 → 1011.55** (0 delta).
+- `kernel_time_ms/pass: 17.315 → 17.407` (+0.5%): tiny regression from extra barrier-spin overhead on the GEMV blocks.
+
+**Decision:** Default `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE=0`.  Kernel infra retained as opt-in for a future keyed-barrier variant (tracked as M14.fuse.barrier in `docs/MTP.md`).
+
+**Lesson committed to MTP.md:** Any kernel that needs a per-launch barrier reset (`hipMemsetAsync` etc.) cancels the dispatch saving 1:1 unless the barrier mechanism is keyed (host passes a monotonically-bumped int) or double-buffered.  M14.fuse.3 (down-side rotate+GEMV) and M14.fuse.1 (HBM-staged selected_dual) both depend on M14.fuse.barrier landing first.
+
+**Artifacts:**
+- `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b2-fusedon-rejected.json`
+- `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b2-fusedoff-baseline.json`

@@ -1109,8 +1109,13 @@ __global__ void gemv_awq_dual_pack8_transposed_rotate_staged_kernel(
     }
     __threadfence();
     if (tid == 0) {
+      // M13.B.2: barrier threshold must count all (rotate_block, row) pairs
+      // so the GEMV phase only proceeds after every row has had its rotation
+      // committed to HBM.  At rows == 1 this collapses to the original
+      // rotate_blocks threshold.
+      const int total_rotate = static_cast<int>(rotate_blocks) * static_cast<int>(gridDim.y);
       const int prior = atomicAdd(&barrier[0], 1);
-      if (prior + 1 == static_cast<int>(rotate_blocks)) {
+      if (prior + 1 == total_rotate) {
         __threadfence();
         atomicExch(&barrier[1], 1);
       }
@@ -1752,7 +1757,7 @@ int launch_dual_pack8_rotate_staged(
     int64_t threads,
     hipStream_t stream) {
   const int64_t groups = (group_size > 0) ? (in_features / group_size) : 0;
-  if (rows != 1 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 || group_size <= 0 ||
+  if (rows <= 0 || in_features <= 0 || out_packed_a <= 0 || out_packed_b <= 0 || group_size <= 0 ||
       krot < 0 || (in_features % group_size) != 0 || (group_size % 8) != 0 || !valid_threads(threads) ||
       (out_packed_a + out_packed_b) < (groups * 2)) {
     return static_cast<int>(hipErrorInvalidValue);

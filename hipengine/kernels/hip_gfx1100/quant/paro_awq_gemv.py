@@ -2229,8 +2229,9 @@ def _check_pack8_dual_rotate_staged_shape(
     threads: int,
 ) -> None:
     _check_pack8_dual_shape(rows, in_features, out_packed_a, out_packed_b, group_size, threads)
-    if rows != 1:
-        raise ValueError("rotate-staged dual pack8 GEMV is decode-only and requires rows=1")
+    # M13.B.2: rows > 1 is supported after the kernel barrier was patched to
+    # count rotate_blocks * gridDim.y; the only remaining requirement is
+    # rows >= 1 (covered by _check_pack8_dual_shape via _check_positive).
     if krot < 0:
         raise ValueError("krot must be non-negative")
     rotate_blocks = (in_features // group_size) * 2
