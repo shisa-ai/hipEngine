@@ -6,10 +6,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession, _chunk_ranges
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
+
+
+def test_gguf_chunk_ranges_merge_tiny_tail() -> None:
+    assert _chunk_ranges(4097, 4096, min_chunk_size=4) == ((0, 4097),)
+    assert _chunk_ranges(8193, 4096, min_chunk_size=4) == ((0, 4096), (4096, 8193))
 
 
 def test_qwen35_gguf_chunked_prefill_matches_unchunked() -> None:

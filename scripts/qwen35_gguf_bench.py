@@ -28,6 +28,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
@@ -59,6 +60,24 @@ def main() -> int:
         choices=("bulk", "native"),
         default="bulk",
         help="When bulk prefill is forced/selected, use fully bulk attention or native row-serial attention with row-bulk FFN/MoE.",
+    )
+    parser.add_argument("--prefill-chunk-size", type=int, default=0, help="Manual GGUF all-layer prefill chunk override (0 uses PrefillConfig policy).")
+    parser.add_argument("--prefill-linear-chunk-size", type=int, default=0, help="Chunk linear-attention prefill layers (0 lets auto policy decide).")
+    parser.add_argument("--prefill-moe-chunk-size", type=int, default=0, help="Chunk MoE/post-attention rows where supported (0 lets auto policy decide).")
+    parser.add_argument("--prefill-full-attn-query-chunk-size", type=int, default=0, help="Chunk full-attention query rows (0 lets auto policy decide).")
+    parser.add_argument("--prefill-full-attn-post-chunk-size", type=int, default=0, help="Limit full-attention post/MoE chunk rows when query chunk is unset.")
+    parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0, help="Limit full-attention RoPE chunk rows when query chunk is unset.")
+    parser.add_argument(
+        "--prefill-chunk-autotune",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Auto-select long-context prefill chunk sizes from the memory budget (default).",
+    )
+    parser.add_argument(
+        "--prefill-chunk-memory-budget-gib",
+        type=float,
+        default=0.0,
+        help="Optional resident high-water budget for long-context chunk tuning; 0 derives a budget from device VRAM.",
     )
     parser.add_argument(
         "--graph-replay-decode",
@@ -125,6 +144,18 @@ def main() -> int:
         raise ValueError("--graph-steps-per-replay must be positive")
     if args.graph_replay_decode and args.decode_tokens % args.graph_steps_per_replay != 0:
         raise ValueError("--decode-tokens must be divisible by --graph-steps-per-replay")
+    for name in (
+        "prefill_chunk_size",
+        "prefill_linear_chunk_size",
+        "prefill_moe_chunk_size",
+        "prefill_full_attn_query_chunk_size",
+        "prefill_full_attn_post_chunk_size",
+        "prefill_full_attn_rope_chunk_size",
+    ):
+        if int(getattr(args, name)) < 0:
+            raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
+    if args.prefill_chunk_memory_budget_gib < 0.0:
+        raise ValueError("--prefill-chunk-memory-budget-gib must be non-negative")
 
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file else None
     if args.force_bulk_prefill:
@@ -135,6 +166,15 @@ def main() -> int:
         use_bulk_prefill = None
     prompt_tokens = [int(args.token_id)] * int(args.prompt_length)
     max_sequence_length = len(prompt_tokens) + args.warmup_decode_tokens + args.decode_tokens + 1
+    prefill_config = PrefillConfig(
+        linear_chunk_size=args.prefill_linear_chunk_size,
+        moe_chunk_size=args.prefill_moe_chunk_size,
+        full_attn_query_chunk_size=args.prefill_full_attn_query_chunk_size,
+        full_attn_post_chunk_size=args.prefill_full_attn_post_chunk_size,
+        full_attn_rope_chunk_size=args.prefill_full_attn_rope_chunk_size,
+        auto_tune_chunk_sizes=args.prefill_chunk_autotune,
+        chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
+    )
 
     runs: list[dict[str, Any]] = []
     for run_index in range(args.warmup_runs + args.measured_runs):
@@ -158,6 +198,8 @@ def main() -> int:
             preload_expert_sidecars=args.preload_expert_sidecars,
             use_wmma_prefill=args.use_wmma_prefill,
             use_gemv_decode=args.use_gemv_decode,
+            prefill_chunk_size=args.prefill_chunk_size,
+            prefill_config=prefill_config,
             measured=measured,
             run_index=(run_index - args.warmup_runs + 1 if measured else run_index + 1),
         )
@@ -194,6 +236,18 @@ def main() -> int:
         "graph_steps_per_replay": int(args.graph_steps_per_replay if args.graph_replay_decode else 0),
         "use_bulk_prefill": use_bulk_prefill,
         "bulk_prefill_attention_mode": args.bulk_prefill_attention_mode,
+        "requested_prefill_chunk_size": int(args.prefill_chunk_size),
+        "requested_prefill_chunk_sizes": {
+            "linear": int(args.prefill_linear_chunk_size),
+            "moe": int(args.prefill_moe_chunk_size),
+            "full_attn_query": int(args.prefill_full_attn_query_chunk_size),
+            "full_attn_post": int(args.prefill_full_attn_post_chunk_size),
+            "full_attn_rope": int(args.prefill_full_attn_rope_chunk_size),
+        },
+        "prefill_chunk_autotune": bool(args.prefill_chunk_autotune),
+        "prefill_chunk_memory_budget_gib": float(args.prefill_chunk_memory_budget_gib),
+        "prefill_chunk_tuning_all": [run.get("prefill_chunk_tuning") for run in runs],
+        "prefill_chunk_sizes_all": [run.get("prefill_chunk_sizes") for run in runs],
         "require_cached_build": bool(args.require_cached_build),
         "use_expert_sidecar": bool(args.use_expert_sidecar),
         "expert_sidecar_cache_dir": None if args.expert_sidecar_cache_dir is None else str(args.expert_sidecar_cache_dir),
@@ -217,6 +271,7 @@ def main() -> int:
             "--use-expert-sidecar enables explicit qwen35moe GGUF expert pack8 sidecar kernels for bulk prefill; generated sidecars live in the requested cache dir.",
             "--use-wmma-prefill opts GGUF bulk prefill into P8 WMMA dispatch, including qwen35moe compact grouped selected-MoE when the raw kernels are available.",
             "--use-gemv-decode opts rows=1 GGUF decode into the P9 pack8 GEMV decode path, including graph-capture decode.",
+            "GGUF prefill chunking uses the same PrefillConfig auto policy as PARO unless --prefill-chunk-size or explicit per-surface chunk flags override it.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
         ],
     }
@@ -259,6 +314,8 @@ def _run_once(
     preload_expert_sidecars: bool,
     use_wmma_prefill: bool | None,
     use_gemv_decode: bool | None,
+    prefill_chunk_size: int,
+    prefill_config: PrefillConfig,
     measured: bool,
     run_index: int,
 ) -> dict[str, Any]:
@@ -278,6 +335,8 @@ def _run_once(
         preload_expert_sidecars=preload_expert_sidecars,
         use_wmma_prefill=use_wmma_prefill,
         use_gemv_decode=use_gemv_decode,
+        prefill_chunk_size=prefill_chunk_size,
+        prefill_config=prefill_config,
     )
     load_seconds = time.perf_counter() - load_start
     fastpath_safety = session.fastpath_safety.as_dict() if session.fastpath_safety is not None else None
@@ -354,6 +413,9 @@ def _run_once(
         "use_gemv_decode": use_gemv_decode,
         "requested_use_wmma_prefill": use_wmma_prefill,
         "requested_use_gemv_decode": use_gemv_decode,
+        "requested_prefill_chunk_size": int(prefill_chunk_size),
+        "prefill_chunk_sizes": _prefill_chunk_sizes(session.prefill_config),
+        "prefill_chunk_tuning": session.prefill_chunk_tuning,
         "effective_use_wmma_prefill": None if fastpath_safety is None else fastpath_safety.get("effective_wmma_prefill"),
         "effective_use_gemv_decode": None if fastpath_safety is None else fastpath_safety.get("effective_gemv_decode"),
         "fastpath_safety": fastpath_safety,
@@ -398,6 +460,21 @@ def _summary(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "hip_used_peak_sampled_gib": _stats([run["memory"].get("hip_used_peak_sampled_gib") for run in runs]),
         "finite_final_logits_all": all(bool(run["correctness_sanity"]["finite_final_logits"]) for run in runs),
         "final_token_ids": [run["correctness_sanity"]["final_token_id"] for run in runs],
+    }
+
+
+def _prefill_chunk_sizes(config: PrefillConfig | None) -> dict[str, int | bool] | None:
+    if config is None:
+        return None
+    return {
+        "linear": int(config.linear_chunk_size),
+        "moe": int(config.moe_chunk_size),
+        "full_attn_query": int(config.full_attn_query_chunk_size),
+        "full_attn_post": int(config.full_attn_post_chunk_size),
+        "full_attn_rope": int(config.full_attn_rope_chunk_size),
+        "attn_aotriton_min_tokens": int(config.attn_aotriton_min_tokens),
+        "auto_tune": bool(config.auto_tune_chunk_sizes),
+        "chunk_tune_min_tokens": int(config.chunk_tune_min_tokens),
     }
 
 

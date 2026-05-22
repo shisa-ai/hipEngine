@@ -14,7 +14,7 @@ from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
-    aotriton_attn_fwd_compact_varlen,
+    aotriton_attn_fwd_v3_compact_varlen,
     build_aotriton_wrap,
 )
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
@@ -164,7 +164,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_triple,
     wmma_prefill_session,
 )
-from hipengine.runtime.prefill import PrefillConfig
+from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
 
 
 @dataclass(frozen=True)
@@ -1207,7 +1207,7 @@ class Qwen35GGUFFullStackRunner:
                 DType.BF16,
             )
 
-            aotriton_attn_fwd_compact_varlen(
+            aotriton_attn_fwd_v3_compact_varlen(
                 aotriton_tensor4(scratch.full_query_bf16.ptr, (1, cfg.head_count, rows, cfg.key_length), (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1), DType.BF16),
                 k_tensor,
                 v_tensor,
@@ -1215,6 +1215,7 @@ class Qwen35GGUFFullStackRunner:
                 aotriton_tensor1(scratch.cu_k.ptr, (2,), (1,), DType.INT32),
                 aotriton_tensor2(scratch.softmax_lse.ptr, (cfg.head_count, rows), (rows, 1), DType.FP32),
                 aotriton_tensor4(scratch.full_attn_bf16.ptr, (1, cfg.head_count, rows, cfg.key_length), (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1), DType.BF16),
+                persistent_atomic_counter_ptr=scratch.atomic.ptr,
                 max_seqlen_q=rows,
                 max_seqlen_k=end,
                 sm_scale=cfg.key_length ** -0.5,
@@ -2584,11 +2585,19 @@ def resolve_qwen35moe_fastpath_safety(
     )
 
 
-def _chunk_ranges(total: int, chunk_size: int) -> tuple[tuple[int, int], ...]:
+def _chunk_ranges(total: int, chunk_size: int, *, min_chunk_size: int = 1) -> tuple[tuple[int, int], ...]:
+    total = int(total)
+    if total <= 0:
+        raise ValueError("total must be positive")
     size = int(chunk_size)
+    min_rows = max(1, int(min_chunk_size))
     if size <= 0 or total <= size:
-        return ((0, int(total)),)
-    return tuple((start, min(start + size, total)) for start in range(0, total, size))
+        return ((0, total),)
+    ranges = [(start, min(start + size, total)) for start in range(0, total, size)]
+    while len(ranges) >= 2 and ranges[-1][1] - ranges[-1][0] < min_rows:
+        ranges[-2] = (ranges[-2][0], ranges[-1][1])
+        ranges.pop()
+    return tuple(ranges)
 
 
 @dataclass
@@ -2613,7 +2622,8 @@ class Qwen35GGUFResidentSession:
     preload_expert_sidecars: bool = True
     use_wmma_prefill: bool | None = None
     use_gemv_decode: bool | None = None
-    prefill_chunk_size: int = 4096
+    prefill_chunk_size: int = 0
+    prefill_config: PrefillConfig | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _token_buf: object | None = field(default=None, init=False)
@@ -2641,6 +2651,7 @@ class Qwen35GGUFResidentSession:
     _lm_head_threads: int = field(default=128, init=False)
     _lm_head_stage1_blocks: int = field(default=0, init=False)
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
+    prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
@@ -2683,6 +2694,16 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             max_sequence_length=self.max_sequence_length,
         )
+        total_memory_bytes = 0
+        try:
+            _free_bytes, total_memory_bytes = runtime.mem_get_info()
+        except Exception:
+            total_memory_bytes = 0
+        self.prefill_config, self.prefill_chunk_tuning = resolve_prefill_config_for_sequence(
+            self.prefill_config or PrefillConfig(),
+            max_sequence_length=int(self.scratch.max_positions),
+            total_memory_bytes=int(total_memory_bytes),
+        )
         self._token_buf = malloc(self._token_host.nbytes, runtime=runtime)
         hidden_bytes = self.runner.hidden_size * 2
         self._hidden_a = malloc(hidden_bytes, runtime=runtime)
@@ -2699,7 +2720,7 @@ class Qwen35GGUFResidentSession:
         self._prefill_token_buf = malloc(prefill_capacity * DType.INT64.itemsize, runtime=runtime)
         self._prefill_hidden_a = malloc(prefill_capacity * hidden_bytes, runtime=runtime)
         self._prefill_hidden_b = malloc(prefill_capacity * hidden_bytes, runtime=runtime)
-        prefill_rows = min(prefill_capacity, int(self.prefill_chunk_size))
+        prefill_rows = self._prefill_scratch_rows(prefill_capacity)
         self._bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
             self.runner,
             rows=prefill_rows,
@@ -2736,6 +2757,56 @@ class Qwen35GGUFResidentSession:
         runtime = self.runtime or get_hip_runtime()
         self.scratch.zero_states(runtime)
         self._position = 0
+
+    @staticmethod
+    def _smallest_positive_or_total(total: int, *sizes: int) -> int:
+        positives = [int(size) for size in sizes if int(size) > 0]
+        return int(total) if not positives else min(int(total), min(positives))
+
+    def _manual_prefill_chunk_size(self) -> int:
+        return max(0, int(self.prefill_chunk_size or 0))
+
+    def _linear_prefill_layer_chunk_size(self, tokens: int) -> int:
+        tokens = int(tokens)
+        min_rows = int(getattr(self.runner.weights.config, "ssm_conv_kernel", 1)) if self.runner and self.runner.weights else 1
+        manual = self._manual_prefill_chunk_size()
+        if manual > 0:
+            return min(tokens, max(manual, min_rows)) if tokens >= min_rows else tokens
+        config = self.prefill_config or PrefillConfig()
+        size = self._smallest_positive_or_total(tokens, config.linear_chunk_size, config.moe_chunk_size)
+        return min(tokens, max(size, min_rows)) if tokens >= min_rows else tokens
+
+    def _full_attention_prefill_layer_chunk_size(self, tokens: int) -> int:
+        tokens = int(tokens)
+        manual = self._manual_prefill_chunk_size()
+        if manual > 0:
+            return min(tokens, max(manual, 2)) if tokens > 1 else tokens
+        config = self.prefill_config or PrefillConfig()
+        if int(config.full_attn_query_chunk_size) > 0:
+            size = min(tokens, int(config.full_attn_query_chunk_size))
+        else:
+            size = self._smallest_positive_or_total(
+                tokens,
+                config.full_attn_post_chunk_size,
+                config.full_attn_rope_chunk_size,
+                config.moe_chunk_size,
+            )
+        return 2 if tokens > 1 and size == 1 else size
+
+    def _prefill_scratch_rows(self, capacity: int) -> int:
+        capacity = int(capacity)
+        if capacity <= 0:
+            raise ValueError("prefill capacity must be positive")
+        return max(
+            1,
+            min(
+                capacity,
+                max(
+                    self._linear_prefill_layer_chunk_size(capacity),
+                    self._full_attention_prefill_layer_chunk_size(capacity),
+                ),
+            ),
+        )
 
     def prefill(
         self,
@@ -2825,8 +2896,7 @@ class Qwen35GGUFResidentSession:
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
         use_wmma_prefill = gguf_wmma_prefill_enabled(None)
-        chunk_size = max(4, getattr(self, "prefill_chunk_size", 4096))
-        ranges = _chunk_ranges(rows, chunk_size)
+        linear_min_rows = int(self.runner.weights.config.ssm_conv_kernel)
         for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
             expert_sidecar = None
             if (
@@ -2837,6 +2907,14 @@ class Qwen35GGUFResidentSession:
             ):
                 expert_sidecar = self._load_expert_sidecar_device_layer(layer_id, runtime=runtime)
             try:
+                if layer_type == LINEAR_ATTENTION:
+                    chunk_size = self._linear_prefill_layer_chunk_size(rows)
+                    ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=linear_min_rows)
+                elif layer_type == FULL_ATTENTION:
+                    chunk_size = self._full_attention_prefill_layer_chunk_size(rows)
+                    ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=2)
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                 for start, end in ranges:
                     chunk_rows = end - start
                     src_chunk_ptr = src.ptr + start * self.runner.hidden_size * 2
@@ -2909,7 +2987,6 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         last_hidden_ptr = last_bulk_scratch.norm.ptr
-        return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
         return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
 
     def _load_expert_sidecar_host_layer(self, layer_id: int) -> dict[str, GGUFExpertPackedTensor]:
@@ -3669,6 +3746,10 @@ class _GGUFFullAttentionPrefillScratch:
         total_tokens = int(total_tokens)
         if start < 0 or rows <= 0 or start + rows > self.max_positions:
             raise ValueError(f"chunk bounds [{start}, {start+rows}) must be within [0, {self.max_positions})")
+        if total_tokens <= 0 or total_tokens > self.max_positions or start + rows > total_tokens:
+            raise ValueError(
+                f"chunk bounds [{start}, {start+rows}) must be within total_tokens={total_tokens} and max_positions={self.max_positions}"
+            )
         cu_q_arr = np.asarray([0, rows], dtype=np.int32)
         cu_k_arr = np.asarray([0, start + rows], dtype=np.int32)
         atomic_arr = np.asarray([0], dtype=np.int32)

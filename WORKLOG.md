@@ -21827,7 +21827,7 @@ Commits landed:
 
 Tests: 22 Q5T16/Q6T16 + 75 Q8T16 + 7 resolver fixtures pass (kernel-level CPU-oracle gate per AGENTS.md).
 
-Measured impact on Qwen3.6-35B-A3B-UD-Q4_K_M @ 512/0 in T16 decode-repack + WMMA prefill + GEMV decode mode (W7900 / gfx1100):
+Measured impact on Qwen3.6-35B-A3B-UD-Q4_K_M @ 512/0 in T16 decode-repack + WMMA prefill + GEMV decode mode (local RX 7900 XTX / gfx1100; W7900 not rerun):
 
 | Metric | Pre-P10 | Post-Wave-1 | Notes |
 | --- | ---: | ---: | --- |
@@ -21874,7 +21874,7 @@ Until P10.X1 lands, Wave 1 kernel throughput numbers (1900 prefill / 98 decode) 
 
 ## 2026-05-20 P10.B5 — P9.E2 KL gate re-run at Wave-1 HEAD (6362fda): REJECTED, blocker confirmed as P10.X1
 
-Ran the formal P9.E2 KL gate command from `tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json` against HEAD (`6362fda`) on Qwen3.6-35B-A3B-UD-Q4_K_M, W7900 / gfx1100:
+Ran the formal P9.E2 KL gate command from `tests/fixtures/gguf/qwen36_35b_a3b_q4km_p9_e2e.json` against HEAD (`6362fda`) on Qwen3.6-35B-A3B-UD-Q4_K_M, local RX 7900 XTX / gfx1100 (W7900 not rerun):
 
 ```
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
@@ -22381,3 +22381,43 @@ Saved compact review artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35
   - Result: **10 passed** (all green!).
 - Correctness and performance are preserved while VRAM overhead is drastically reduced. We are now fully prepared to scale up tests and benchmarks to 32K/128K context shapes.
 
+
+## 2026-05-21 — GGUF chunked prefill review corrections
+
+Reviewed the prior GGUF chunked-prefill implementation before treating the 32K smoke as retained evidence. Corrections made:
+
+- Hardware provenance: current attached 24 GiB gfx1100 card reports **AMD Radeon RX 7900 XTX**, not W7900 (`rocminfo` Marketing Name and `rocm-smi --showproductname`). Any 24 GiB local GGUF result from this session is RX 7900 XTX/gfx1100; W7900 remains a separate future rerun. Corrected two recent WORKLOG P10.B5 labels that said W7900 for local 23.984 GiB runs.
+- AOTriton path: switched GGUF cache-backed full-attention prefill from the V2 compact-varlen wrapper to the V3 wrapper with the persistent atomic buffer. V3 is the PARO-standard path and sets bottom-right causal alignment, which is required for query chunks with `max_seqlen_k = start + rows`.
+- Chunking policy: replaced the fixed default `prefill_chunk_size=4096` behavior with the PARO `PrefillConfig` auto policy. Short/mid prompts remain unchunked unless manually overridden; long contexts resolve to the retained 1024 linear/MoE and 4096 full-attention query policy. `prefill_chunk_size > 0` remains as a manual all-layer diagnostic override.
+- Tail safety: changed GGUF `_chunk_ranges` to match PARO and merge a tiny final chunk into the previous chunk so linear-attention conv prefill never sees an invalid `< ssm_conv_kernel` tail.
+- Cleanup: removed a duplicate return in `_run_bulk_prefill_and_sample`, added chunk-bound validation, and exposed GGUF prefill chunk policy fields in `scripts/qwen35_gguf_bench.py` for follow-up sweeps.
+
+Validation so far:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_gguf_bench.py tests/test_qwen35_gguf_chunked_prefill.py
+PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_chunked_prefill.py -q
+# 11 passed
+```
+
+No new 32K/128 performance row is accepted yet after these corrections; next step is a narrow RX 7900 XTX 32K smoke plus benchmark artifact, then W7900 rerun when available.
+
+### 32K/128 smoke after review fixes
+
+Ran a narrow post-review 32K/128 smoke on the current attached **RX 7900 XTX / gfx1100** (24 GiB). This is diagnostic, not a retained rollup row; W7900 is still unverified.
+
+```bash
+HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-length 32768 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 0 --measured-runs 1 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/hipengine-gguf-32k-128-chunked-review-smoke.json
+```
+
+Result: **fits**. Single-run diagnostic: prefill `1859.328 tok/s`, decode `85.145 tok/s`, tracked peak `23.368930 GiB`, HIP sampled peak `23.874512 GiB`, finite final logits, final token id `220`. Resolved auto chunk policy: linear `1024`, MoE `1024`, full-attn query `4096`, full-attn post/RoPE `1024`; AOTriton path is V3 cache-backed K/V. Compact artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-chunked-smoke.json`.
+
+Decision: this overturns the prior 32K preflight OOM estimate for the local RX 7900 XTX after chunked prefill, but it is still a one-run diagnostic. Do not update `benchmarks/README.md` until we run the standard repeated benchmark/correctness gate and the W7900 rerun.
