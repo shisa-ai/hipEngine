@@ -21826,3 +21826,22 @@ Next: M13.C (C-side per-MoE-layer dispatcher) per the M13 plan.
 **Artifacts:**
 - `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b2-fusedon-rejected.json`
 - `benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b2-fusedoff-baseline.json`
+
+## 2026-05-23 docs: DFLASH.md Round-2 plan appended (post-MTP M13)
+
+Added a new "Round-2 optimization plan (post-MTP M13)" section to `docs/DFLASH.md` (~150 lines, appended at end; existing content untouched). The section is forward-looking — the explicit trigger is "MTP M13.C lands and the shared verifier wall has measurably improved". Until then DFlash optimization remains paused while MTP iterates the shared verifier.
+
+Section contents:
+
+1. **Trigger and context.** Cross-references `docs/MTP.md` M13 (the verifier track) and explains why MTP iterates the shared verifier first (no second model load per cycle).
+2. **Round-1 wall summary.** Lists the three retained Round-1 DFlash diagnostics (`phaseABC` 0.289x, `nativebulk` 0.124x, `batched-vs-c1-loop` 2.0-5.0x slower than serial) and notes the M13.B.0 MTP wall (0.53x AR, cycle_cost=3.61) as the current shared baseline.
+3. **BeeLlama v0.2.0 reference table.** RTX 3090 numbers from `~/beellama.cpp/CHANGELOG.md` v0.2.0: Qwen 3.6 27B 4.40x at 67.7%/89.2% acceptance, etc. Plus the gfx1100 existence proof (hipfire 4.45x on 7900 XTX). Key BeeLlama structural choices listed with `tools/server/server-context.cpp`, `src/models/dflash_draft.cpp`, `src/llama-context.cpp` line refs.
+4. **ROCm 7.x graph-replay ceiling (Gap 3).** Records the M12.1 finding explicitly so the next agent does not re-litigate "do graph capture better": at ~1052 graph nodes on ROCm 7.x, `hipGraphLaunch` per-node overhead matches direct ctypes overhead. Cycle wall 33.3 ms whether `graph_mode=auto` or `graph_mode=off`.
+5. **"Things we have already tried" table** (8 rows): HIP graph capture (MTP M12.1), drafter graph capture (Phase D5), drafter QKV fusion, warm-scratch, true-batched chain, branching top-K DDTree, MTP M13.B.1 selected-MoE rotate+GEMV fusion (the +71.8% kernel-time wall), MTP M13.B.2 shared-expert transposed-rotate fold. Each row has artifact, result, lesson. This is the carry-forward against repeating the same negative attempts.
+6. **Round-2 punchlist** (R2.1-R2.9, dependency-ordered): pull MTP M13.C through, land DFlash drafter propose chain, drafter cross_bucket() bucketing, reduced-logits verifier wired through, drafter K/V projection caching (BeeLlama `dflash_kv_cache` analog), adaptive draft budget profit controller, DDTree budget=4 (only after chain > AR), principled fusion with L1 cost model gating, re-evaluate HIP graph capture after node count drops. Each row has Gate / Expected Δ / Actual Δ (_TBD_) / Status. Explicit rule: cannot mark "completed" without filling Actual Δ.
+7. **Lessons carried forward (living)** table with L1-L8 codified from the experiments above. L1 is the fusion cost-model rule from M13.B.1; L3 is the ROCm 7.x graph ceiling from M12.1; L7 is "drafter quality dominates" (acceptance is the biggest visible/cycle lever).
+
+Files touched:
+- `docs/DFLASH.md`: appended one new section (no changes elsewhere).
+
+Validation: re-read appended section end-to-end; verified all artifact paths cited resolve under `benchmarks/results/`; section count went 13 → 14 with existing 13 unchanged.

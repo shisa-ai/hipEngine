@@ -783,3 +783,150 @@ Do not start these before D1-D6 establish a winning native chain path.
 9. Benchmark HumanEval/code chain N=1/2/4/8 against same-session packed-target
    AR on native `gfx1151`.
 10. Only after chain > AR: add DDTree budget=4 compiler and tree accept/commit.
+
+## Round-2 optimization plan (post-MTP M13)
+
+> **Trigger:** Re-engage DFlash optimization once MTP M13.C (C-side per-layer
+> dispatcher) lands and the shared native verifier has measurably improved on
+> the 9-prompt `mtp-bench.py --mode hipengine-current` suite. MTP and DFlash
+> share the same target verifier; verifier wins land in MTP first because it
+> iterates without a second model load, then port to DFlash.
+> See [`MTP.md`](MTP.md#m13--launch-count--host-dispatch-consolidation-2026-05-23)
+> for the current verifier track. This section is the **next** DFlash round,
+> not work in progress.
+
+### Where Round-1 left us (and what changed in MTP since)
+
+Round-1 (Phase D1–D3 native bring-up, 2026-05-18/19) landed a correct chain
+verifier and an operational DFlash drafter, but every speed gate failed:
+
+- Phase A+B+C chain DFlash on the packed PARO target: `0.289x` AR on gfx1151,
+  serial fallback verifier
+  ([artifact](../benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-phaseABC-diagnostic.json)).
+- Native B+1 verifier: `0.124x` AR — exact and correct, but per-row wall
+  worse than serial because the tiny-row path is launch/kernel dominated
+  ([artifact](../benchmarks/results/2026-05-18-hipengine-dflash-chain-full-model-e2e-nativebulk-diagnostic.json)).
+- True-batched chain verifier (`--full-attn-chain-mode batched`): 6–8% faster
+  than `c1_loop` at B=2/4, but still 2.0–5.0x slower than serial c=1 across
+  all B because each batched cycle still pays B+1 rows of multi-token MoE
+  ([artifact](../benchmarks/results/2026-05-19-hipengine-dflash-chain-batched-vs-c1-loop-speedgate-diagnostic.json)).
+
+The DFlash and MTP paths share the same target verifier shape and the same
+wall. MTP picked up the verifier optimization track in M11–M13 because the
+MTP prompt suite iterates without a second model load; the verifier wins port
+back to DFlash. As of M13.B.0 (2026-05-23) the MTP wall is `0.53x` AR with
+`cycle_cost = 3.61 AR-token-eq` for B=3 verifier
+([artifact](../benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.b0.json)),
+still under unity.
+
+### Reference baseline: BeeLlama v0.2.0 (RTX 3090)
+
+`~/beellama.cpp/CHANGELOG.md` v0.2.0 (DFlash on llama.cpp b9275 CUDA 13.1) on a
+single RTX 3090 with Qwen 3.6 27B Q5_K_S target + DFlash drafter Q4_K_M:
+
+| Workload | Baseline | DFlash | Speedup | Acceptance (acc/draft / acc/total) |
+| --- | ---: | ---: | ---: | --- |
+| Task store module ~1K tok | 37.2 tok/s | 163.9 tok/s | **4.40x** | 67.7% / 89.2% |
+| KV report module ~1K tok | 34.6 tok/s | 157.7 tok/s | 4.56x | 58.8% / 88.9% |
+| Doubly-linked list ~4K tok | 36.8 tok/s | 130.8 tok/s | 3.56x | 50.4% / 86.8% |
+| Multi-turn coding ~28K tok | 33.3 tok/s | 64.6 tok/s | 1.94x | 24.9% / 72.9% |
+
+Existence proof on gfx1100: hipfire on 7900 XTX gets `4.45x` on HumanEval
+DDTree (see the Reference-numbers table above). The 4–5x DFlash class is
+hardware-achievable on AMD; our `0.53x` is a software gap, not a hardware
+ceiling.
+
+Key structural choices in BeeLlama (cited for cross-reference, not for
+blind copying):
+
+1. **Verifier is one `llama_decode([id_last, draft0, …, draftN])` through the
+   same ggml graph as AR decode** — no separate "batched verifier" code path.
+   `tools/server/server-context.cpp` ~line 3936.
+2. **DFlash drafter is a small 1-layer block-diffusion model with
+   cross-attention over a ring of recent target hiddens**, with K/V projection
+   caching across cycles so only newly committed rows are re-projected
+   (`src/models/dflash_draft.cpp` `llm_build_dflash_draft` ~line 691;
+   `dflash_kv_cache_ready_for_window` ~line 203).
+3. **Drafter cross-context bucketed by power-of-2 (<=128) then 128-aligned**
+   (`src/llama-context.cpp` `cross_bucket()` ~line 3649) so cycle-to-cycle the
+   graph reservation is reused after ~7–8 buckets fill.
+4. **Reduced verifier logits**: `llama_set_dflash_verify_logits(ctx, true, top_k)`
+   makes the target graph emit `ggml_topk_ext` / `ggml_argmax_ext` in-graph and
+   skip full-vocab readback (`src/models/qwen35.cpp` ~line 160).
+5. **Hidden capture is graph-embedded** as a `ggml_cpy` into per-layer GPU
+   rings, not a follow-up D2D pass (`src/models/qwen35.cpp` ~line 80).
+
+### The ROCm 7.x graph-replay ceiling ("Gap 3")
+
+`hipGraphLaunch` per-node overhead on ROCm 7.x at our ~1052-kernel DAG matches
+direct `ctypes → hipModuleLaunchKernel` overhead. MTP M12.1 (2026-05-22) landed
+HIP graph capture for the batched verifier, validated exact-AR, and measured
+`33.3 ms cycle wall in both graph=auto and graph=off`
+([artifact](../benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-graph-capture-diagnostic.json)).
+The Python round-trip *is* removed on replay; ROCm's per-node graph runtime
+overhead replaces it ~1:1.
+
+CUDA on RTX 3090 with a smaller (~500–800 node) DAG does not have this
+property — `cudaGraphLaunch` is a real win in BeeLlama's regime. We cannot
+copy that piece directly. Closing this gap requires either (a) reducing the
+GPU launch count via actual fusion (subject to the cost-model wall in L1
+below) or (b) accepting it as a ROCm runtime characteristic at this DAG size.
+
+### Things we have already tried (do NOT repeat without a different cost model)
+
+| Attempt | Artifact | Result | Lesson |
+| --- | --- | --- | --- |
+| HIP graph capture/replay for batched chain verifier (MTP M12.1) | [`2026-05-22-...m12.1-w7900-graph-capture-diagnostic.json`](../benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-graph-capture-diagnostic.json) | Cycle wall unchanged (33.3 ms both graph=auto and graph=off); exact-AR preserved | At ~1052 graph nodes on ROCm 7.x, `hipGraphLaunch` per-node overhead ≈ ctypes overhead. Graph capture wins require fewer nodes first, not better keys. |
+| DFlash drafter HIP graph capture (Phase D5 prototype) | [`2026-05-18-...drafter-graph-validate-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-dflash-drafter-graph-validate-diagnostic.json) | Validation passes (10/10 candidates); exact `context_tokens` buckets are unique per decode cycle → 0 cache-hit replays; replay regresses to 133.8 ms/call vs no-graph 68.9 ms/call | Drafter graph bucket keys must match BeeLlama's `cross_bucket()` shape. Exact `n_enc` keys do not repeat. |
+| QKV projection fusion for DFlash drafter | [`2026-05-18-...drafter-qkv-fusion-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-dflash-drafter-qkv-fusion-diagnostic.json) | Bit-exact, rocprofv3 confirms `dflash_qkv_proj_bf16_mixed_kernel` runs; retained E2E neutral (69.6 ms/call vs 68.9 ms no-fusion) | Mixed-output branchy grid did not amortize the dominant work. Single-kernel fuse without a tile/work-amortization analysis is unlikely to win. |
+| Verifier warm-scratch reuse | [`2026-05-18-...verifier-warmscratch-speedgate-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-dflash-verifier-warmscratch-speedgate-diagnostic.json) | Verify seconds −26–35% at B={1,2,4,8} but still 1.8–4.9x slower than serial c=1 | Reduces verifier scratch churn but does not reduce per-row target compute. Necessary, not sufficient. |
+| True-batched chain verifier vs c1_loop | [`2026-05-19-...batched-vs-c1-loop-speedgate-diagnostic.json`](../benchmarks/results/2026-05-19-hipengine-dflash-chain-batched-vs-c1-loop-speedgate-diagnostic.json) | 6–8% faster at B=2/4 over c1_loop; neutral or slower at B=1/8; still 2.0–5.0x slower than serial c=1 | B+1-row MoE/router cost grows roughly linearly with B; cycle wall pays B+1 rows of multi-token MoE regardless of early chain rejection. Retained as DDTree infrastructure foundation only. |
+| Branching top-K DDTree (B=4, K=2) | retained 2026-05-19 row in `dflash_chain_e2e_bench` | Exact-AR, GPU-accept matches CPU, beats chain at B=2/4/8 but still loses to serial c=1 | Tree topology is correctness-free but verifier row-cost dominates; DDTree before chain DFlash > AR is premature (matches Anti-patterns rule above). |
+| Selected-MoE rotate+GEMV fusion (MTP M13.B.1) | [`2026-05-23-...m13.b1-fusedon-rejected.json`](../benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b1-fusedon-rejected.json) | −40 launches/pass but **+71.8% kernel time**; `moe_gate_up_dual_gemv` ms/pass +664% | Cost model: a fuse that saves N launches but multiplies per-block work by M loses when M × block_count > N × launch_overhead. For verifier shape M ≈ `out_packs × top_k` ≈ 192 × 8 = ~1500x rotation work. |
+| Shared-expert transposed-rotate fold (MTP M13.B.2) | [`2026-05-23-...m13.b2-fusedon-rejected.json`](../benchmarks/results/2026-05-23-hipengine-mtp-verifier-rocprof-w7900-m13.b2-fusedon-rejected.json) | −10 paro_rotate launches but +10 implicit `hipMemsetAsync` barrier resets → net 0; kernel time +0.5% | Single-kernel fuses with implicit host-side init (barrier resets, scratch zeros) swallow the dispatch saving. Account for host-side per-kernel overhead, not just launch count. |
+
+### Round-2 punchlist (in dependency order)
+
+Baseline for "Expected Δ" columns: MTP M13.B.0 W7900 (`0.53x` AR, `cycle_cost
+= 3.61`, `verify = 25.1 ms`, acceptance 30%,
+[artifact](../benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m13.b0.json)).
+Port each MTP win into DFlash before measuring DFlash-side rows. **A row
+cannot move to "completed" without filling in the Actual Δ column.**
+
+Exact-AR equality on the 9-prompt suite is mandatory for every row and is not
+repeated in the Gate column.
+
+| # | Task | Gate | Expected Δ | Actual Δ | Status |
+| --- | --- | --- | --- | --- | --- |
+| R2.1 | Pull MTP M13.C (C-side per-layer dispatcher) through to the DFlash chain verifier launch path once it lands in MTP. | `kernel_calls/pass` unchanged; host verify wall drops; rocprofv3 shows no in-kernel-time regression. | verify 25→20 ms (−20%); cycle_cost 3.61→2.9; 0.53x→0.65x | _TBD_ | Blocked on MTP M13.C |
+| R2.2 | Land DFlash drafter `propose()` chain on packed PARO target + z-lab drafter, re-measure same-session AR. Build on the existing Phase D3 work; close out the half-built drafter forward and wire to `verify_chain_bulk_and_commit`. | Exact greedy AR equality on quicksort + 3 representative prompts; finite logits across cycles. Retained DFlash row > current best Round-1 (`0.289x`). | New retained DFlash row at >=0.7x AR (acceptance bump from MTP 30% to DFlash ~50–65%). | _TBD_ | Pending R2.1 |
+| R2.3 | Drafter cross-context bucketing matching BeeLlama `cross_bucket()` (<=16→16; <=128→next pow2; >128→128-aligned). Replace the exact `context_tokens` graph key. | Drafter graph cache hit rate >=50% after first 8 cycles on real decode; replay validates exact candidate equality. | Drafter time 68.9 ms/call → ~25–40 ms/call (graph replay amortizes for steady-state cycles). | _TBD_ | Pending R2.2 |
+| R2.4 | Reduced-logits verifier path wired through DFlash chain accept summary. Confirm no full-vocab tensor materializes in steady state. | `HIPENGINE_VERIFY_GPU_ACCEPT=1` returns exact-AR; rocprofv3 shows no full-vocab lm-head kernel and no full-vocab D2H copy in the verifier window. | verify −0.5–1 ms/cycle (small; most groundwork already in MTP M12.6+). | _TBD_ | Pending R2.2 |
+| R2.5 | Drafter K/V projection caching for the cross-attention window (BeeLlama `dflash_kv_cache` analog at `src/models/dflash_draft.cpp:203`). Re-project only newly committed rows; reuse cached K/V for the rest of the ring. | Cached K/V matches full re-projection bit-exact for crafted windows; finite candidate logits across 32 decode cycles. | Drafter time −25–40% in steady state. Combined with R2.3, drafter ~12–25 ms/call. | _TBD_ | Pending R2.2 |
+| R2.6 | Adaptive draft budget B (BeeLlama `profit` controller analog in `tools/server/server-adaptive-dm.h`). Switch DFlash off when measured baseline wins. | Profit/no-profit transitions logged; observed speedup never regresses below 0.95x AR on any retained prompt. | Maintains best-of-(DFlash, AR) across genre mix; protects low-acceptance regimes (multi-turn coding) where chain DFlash regresses. | _TBD_ | Pending R2.4 |
+| R2.7 | DDTree budget=4 branching (lands only if R2.5 closes chain > AR by >=10%). | Tree-shape verify accepts dense path; DDTree improves chain by >=5%. | +5–15% over chain (matches DDTree-MLX / Lucebox topping). | _TBD_ | Pending R2.5 win |
+| R2.8 | Reduce verifier graph node count via principled fusion, **with the L1 cost-model check completed before implementation**. Survey candidates: add+RMSNorm pair, RoPE+QKV-cur pair, RoPE+QKV-noise pair — fuses where per-block work scales with `tokens`, not `out_packs × top_k`. | Each fuse passes `saved_launches × launch_overhead > added_per_block_work × block_count` on paper before code lands; bit-exact vs unfused chain after. | Each accepted fuse: −10–30 launches/pass, kernel time within ±noise. Aggregate target: ~100–200 fewer launches/pass. | _TBD_ | Pending R2.6 |
+| R2.9 | Re-evaluate HIP graph capture (M13.D analog) after R2.8 drops node count toward ~600–750. | At least one of `graph_mode=auto/validate` beats `graph_mode=off` by >=5% on the 9-prompt suite. | If node count drops below ~750, graph capture may start paying; otherwise mark as confirmed ROCm runtime ceiling at this DAG size and stop. | _TBD_ | Pending R2.8 |
+
+Promotion rule (carried from MTP.md): no DFlash speed row is accepted as a
+performance claim until the economics artifact shows
+`avg_visible_tokens_per_cycle / cycle_cost_ar_tokens > 1.0` on the same
+prompt/workload, with exact AR equality and accepted-token provenance
+preserved.
+
+### Lessons carried forward (living table)
+
+Update this table whenever a Round-2 row lands with a non-trivial finding,
+positive or negative.
+
+| # | Lesson | First learned | Applies to |
+| --- | --- | --- | --- |
+| L1 | **Fusion cost model**: a fuse saving N launches but multiplying per-block work by M loses when M × block_count > N × launch_overhead. For verifier shape, M ≈ `out_packs × top_k` is typically 1000–2000x. Check the math before writing the kernel. | MTP M13.B.1 (2026-05-23) | Every speculative kernel fuse proposal |
+| L2 | **Hidden host overhead**: single-kernel fuses with implicit host-side init (barrier resets, scratch zeros, lazy allocation) swallow the dispatch saving. Count host-side per-kernel cost, not just `hipModuleLaunchKernel` calls. | MTP M13.B.2 (2026-05-23) | Staged HBM kernels with atomic-style barriers |
+| L3 | **ROCm 7.x graph ceiling**: HIP graph capture does not pay at >~1000-node DAGs because `hipGraphLaunch` per-node overhead ≈ direct dispatch. Reduce node count first; capture second. CUDA on consumer NVIDIA does not have this property at the same node count. | MTP M12.1 (2026-05-22) | Any HIP graph capture/replay work |
+| L4 | **Bucket-shape graph keys**: exact-shape graph cache keys do not repeat in decode. Use BeeLlama-style power-of-2 / stride-aligned buckets (`cross_bucket()` shape) for any cross-context-dependent graph. | DFlash Phase D5 (2026-05-18) | Drafter graph capture; any context-dependent graph |
+| L5 | **B+1 MoE linearity**: B+1-row MoE/router cost grows roughly linearly with B in the current "batched" path. Cycle cost in AR-token-eq tracks B+1 closely. Lowering per-row cost is the only way to win at B >= 4. | DFlash 2026-05-19 batched-vs-c1-loop | All speculative budgets B >= 2 |
+| L6 | **Tree before chain is premature**: tree topology is correctness-free (DDTree exact-AR holds at the kernel level), but tree-before-chain > AR yields nothing. Topology helps 5–15%; drafter quality helps 50–200%. | DFlash 2026-05-19 branching top-K | Tree/DDTree work ordering |
+| L7 | **Drafter quality dominates**: native MTP (replicated single decoder layer) caps acceptance ~30% at B=3. DFlash-class drafters (1-layer cross-attention over hidden ring) reach 60–90%. Drafter quality is the single largest visible/cycle lever. | MTP M11–M13 baseline acceptance | Drafter design choices |
+| L8 | **Warm scratch is necessary, not sufficient**: persistent rings reduce verifier wall ~25–35% but do not unlock break-even alone. Keep as a building block. | DFlash 2026-05-18 warm-scratch | All scratch/cache discipline work |
+
